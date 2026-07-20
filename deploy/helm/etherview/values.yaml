@@ -1,0 +1,253 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/islishude/etherview
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# monolith runs only the `all` deployment. distributed runs every enabled
+# non-all role from the same image and component implementations.
+mode: monolith
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+
+roles:
+  all:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+  api:
+    enabled: true
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+  sync:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 1
+      targetCPUUtilizationPercentage: 70
+  enrich:
+    enabled: true
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 75
+  trace:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 75
+  verify:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 75
+  metadata:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 75
+  maintenance:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 1
+      targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: explorer.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+migration:
+  enabled: true
+  backoffLimit: 4
+  activeDeadlineSeconds: 600
+
+# This secret is referenced, never rendered by the chart. It must contain the
+# keys named below, or externalSecret may materialize it from an external store.
+secrets:
+  existingSecret: etherview
+  databaseURLKey: database-url
+  rpcURLsKey: rpc-urls
+  apiKeyPepperKey: api-key-pepper
+
+externalSecret:
+  enabled: false
+  apiVersion: external-secrets.io/v1beta1
+  refreshInterval: 1h
+  secretStoreRef:
+    name: cluster-secret-store
+    kind: ClusterSecretStore
+  databaseURLRemoteKey: etherview/database-url
+  rpcURLsRemoteKey: etherview/rpc-urls
+  apiKeyPepperRemoteKey: etherview/api-key-pepper
+
+config:
+  server:
+    address: 0.0.0.0:8080
+    metrics_address: 0.0.0.0:9090
+    public_url: ""
+    shutdown_timeout: 20s
+    read_timeout: 15s
+    write_timeout: 30s
+  chain:
+    id: 1
+    genesis_hash: "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+    start_block: 0
+    name: Ethereum
+    native_symbol: ETH
+    native_name: Ether
+    native_decimals: 18
+    max_reorg_depth: 128
+  database:
+    url: ""
+    max_connections: 20
+    min_connections: 2
+    connect_timeout: 10s
+    statement_timeout: 30s
+  rpc:
+    request_timeout: 20s
+    batch_size: 100
+    endpoints: []
+  runtime:
+    roles: [all]
+    poll_interval: 2s
+    worker_count: 4
+    backfill_workers: 4
+    lease_duration: 30s
+  mempool:
+    poll_interval: 3s
+    retention: 10m
+    max_transactions: 50000
+    max_response_bytes: 16777216
+  maintenance:
+    interval: 15m
+    search_retention_generations: 100000
+    adapter_delete_batch: 1000
+  features:
+    trace: false
+    mempool: false
+    historical_state: false
+    verification: false
+    nft_metadata: false
+    pricing: false
+  security:
+    public_verification: false
+    compiler_sandbox: disabled
+    api_key_pepper: ""
+    anonymous_rate: 5
+    anonymous_burst: 20
+    allowed_origins: []
+    trusted_proxies: []
+  verification:
+    max_input_bytes: 5242880
+    max_output_bytes: 67108864
+    timeout: 2m
+    cache_directory: /var/lib/etherview/compilers
+    container_runtime: docker
+    container_memory: 512m
+    container_cpus: "1"
+    container_pids: 64
+    artifacts: {}
+    images: {}
+  adapters:
+    nats_url: ""
+    redis_url: ""
+    s3_endpoint: ""
+    s3_bucket: ""
+    price_base_url: ""
+    name_base_url: ""
+    fetch_timeout: 5s
+    max_response_bytes: 1048576
+    max_redirects: 2
+    price_freshness: 5m
+    name_freshness: 24h
+    failure_ttl: 30s
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+
+prometheusRule:
+  enabled: false
+  additionalLabels: {}
+  syncLagBlocks: 2
+  pendingJobs: 1000
+
+networkPolicy:
+  enabled: true
+  allowExternalHTTPS: true
+  additionalEgress: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+terminationGracePeriodSeconds: 30

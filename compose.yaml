@@ -1,0 +1,136 @@
+name: etherview
+
+x-app-environment: &app-environment
+  ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://host.docker.internal:8545}
+  ETHERVIEW_CHAIN_ID: ${ETHERVIEW_CHAIN_ID:-1}
+  ETHERVIEW_CHAIN_GENESIS_HASH: ${ETHERVIEW_CHAIN_GENESIS_HASH:-}
+  ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
+  ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
+  ETHERVIEW_API_KEY_PEPPER: ${ETHERVIEW_API_KEY_PEPPER:-}
+  ETHERVIEW_METADATA_IPFS_GATEWAY: ${ETHERVIEW_METADATA_IPFS_GATEWAY:-}
+
+x-app: &app
+  image: ${ETHERVIEW_IMAGE:-etherview:local}
+  build:
+    context: .
+    target: production
+  environment: *app-environment
+  init: true
+  restart: unless-stopped
+  read_only: true
+  user: "65532:65532"
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  volumes:
+    - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  stop_grace_period: 30s
+  depends_on:
+    migration:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: etherview
+      POSTGRES_USER: etherview
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-etherview-dev-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etherview -d etherview"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    volumes:
+      # PostgreSQL 18 stores version-specific clusters below this mount.
+      - postgres-data:/var/lib/postgresql
+
+  migration:
+    <<: *app
+    command: ["migrate", "up", "--config=/etc/etherview/config.yaml"]
+    profiles: ["monolith", "distributed"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  etherview:
+    <<: *app
+    command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
+    profiles: ["monolith"]
+    ports:
+      - "${ETHERVIEW_PORT:-8080}:8080"
+      - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+
+  api:
+    <<: *app
+    command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+    ports:
+      - "${ETHERVIEW_PORT:-8080}:8080"
+      - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+
+  sync:
+    <<: *app
+    command: ["serve", "--roles=sync", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  enrich:
+    <<: *app
+    command: ["serve", "--roles=enrich", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  trace:
+    <<: *app
+    command: ["serve", "--roles=trace", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  verify:
+    <<: *app
+    command: ["serve", "--roles=verify", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  metadata:
+    <<: *app
+    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  maintenance:
+    <<: *app
+    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    profiles: ["distributed"]
+
+  nats:
+    image: nats:2.12-alpine
+    command: ["--jetstream", "--store_dir=/data"]
+    profiles: ["accelerators"]
+    restart: unless-stopped
+    volumes:
+      - nats-data:/data
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    profiles: ["accelerators"]
+    restart: unless-stopped
+
+  object-storage:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    profiles: ["accelerators"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-etherview}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-etherview-dev-only}
+    restart: unless-stopped
+    volumes:
+      - object-data:/data
+
+volumes:
+  postgres-data:
+  nats-data:
+  object-data:

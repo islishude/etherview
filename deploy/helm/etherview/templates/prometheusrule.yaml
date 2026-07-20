@@ -1,0 +1,67 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "etherview.fullname" . }}
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: etherview.runtime
+      rules:
+        - alert: EtherviewSyncLagHigh
+          expr: max(etherview_sync_lag_blocks) > {{ .Values.prometheusRule.syncLagBlocks }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Etherview canonical indexing is behind upstream
+        - alert: EtherviewCanonicalSafetyHalt
+          expr: max(etherview_sync_halted{reason=~"finalized_reorg|reorg_too_deep|no_common_ancestor|source_inconsistent"}) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: Etherview stopped core sync at a canonical safety boundary
+        - alert: EtherviewRPCErrorRateHigh
+          expr: sum(rate(etherview_rpc_requests_total{result="error"}[5m])) / clamp_min(sum(rate(etherview_rpc_requests_total[5m])), 0.001) > 0.10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: More than ten percent of Etherview RPC calls are failing
+        - alert: EtherviewDurableJobBacklog
+          expr: max(etherview_jobs_pending) > {{ .Values.prometheusRule.pendingJobs }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Etherview PostgreSQL job backlog is growing
+        - alert: EtherviewTraceFailures
+          expr: sum(increase(etherview_trace_jobs_total{result=~"error|timeout"}[10m])) > 5
+          labels:
+            severity: warning
+          annotations:
+            summary: Etherview trace jobs are repeatedly failing
+        - alert: EtherviewVerificationFailures
+          expr: sum(increase(etherview_verification_jobs_total{result=~"error|timeout|resource_exhausted"}[10m])) > 5
+          labels:
+            severity: warning
+          annotations:
+            summary: Etherview verification jobs are repeatedly failing
+        - alert: EtherviewMetadataSSRFRejected
+          expr: sum(increase(etherview_metadata_fetches_total{result="ssrf_rejected"}[5m])) > 0
+          labels:
+            severity: info
+          annotations:
+            summary: Etherview blocked a metadata SSRF attempt
+        - alert: EtherviewRateLimitPressure
+          expr: sum(increase(etherview_rate_limit_decisions_total{decision="rejected"}[5m])) > 100
+          labels:
+            severity: info
+          annotations:
+            summary: Etherview is rejecting sustained request volume
+{{- end }}

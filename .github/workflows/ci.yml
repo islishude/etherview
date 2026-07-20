@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  GOPATH: /tmp/etherview-ci-go
+  GOMODCACHE: /tmp/etherview-ci-go/pkg/mod
+  GOCACHE: /tmp/etherview-ci-go-build
+  GOFLAGS: -mod=readonly
+  NPM_CONFIG_CACHE: /tmp/etherview-ci-npm-cache
+
+jobs:
+  quality:
+    name: Generate, lint, and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install exact npm and verify toolchain
+        run: |
+          npm install --global npm@11.16.0
+          make toolchain-check
+      - name: Run deterministic common gates
+        run: make toolchain-check plan-check generate-check lint test test-race
+      - name: Reject unexpected workspace changes
+        run: git diff --check && git diff --exit-code
+
+  integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: etherview
+          POSTGRES_USER: etherview
+          POSTGRES_PASSWORD: etherview
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U etherview -d etherview"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      INTEGRATION_DATABASE_URL: postgres://etherview:etherview@127.0.0.1:5432/etherview?sslmode=disable
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Run migrations and integration tests
+        run: make test-integration
+
+  browser:
+    name: Embedded SPA browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_USE_BUNDLED: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install exact npm and verify toolchain
+        run: |
+          npm install --global npm@11.16.0
+          make toolchain-check
+      - name: Install frontend and browser
+        run: |
+          npm --prefix web ci --ignore-scripts
+          npm --prefix web exec -- playwright install --with-deps chromium
+      - name: Run embedded-binary browser flows
+        run: make test-e2e
+
+  security:
+    name: Security and licenses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TOOLS_BIN: /tmp/etherview-ci-tools
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            Makefile
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install exact npm and verify toolchain
+        run: |
+          npm install --global npm@11.16.0
+          make toolchain-check
+      - name: Install pinned security and license tools
+        run: make install-security-tools
+      - name: Audit source and dependencies
+        run: make security-check license-check
+
+  deployment:
+    name: Container, Compose, and Helm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a # v4
+        with:
+          version: v3.18.4
+      - name: Validate Dockerfile, Compose profiles, and Helm templates
+        run: make deployment-check
+      - name: Build production image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: production
+          push: false
+          load: true
+          tags: etherview:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the PostgreSQL schema lifecycle
+        run: make compose-schema-smoke

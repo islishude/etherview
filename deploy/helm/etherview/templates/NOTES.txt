@@ -1,0 +1,16 @@
+Etherview was rendered in {{ .Values.mode }} mode.
+
+The application expects Secret {{ .Values.secrets.existingSecret | quote }} with
+key {{ .Values.secrets.databaseURLKey | quote }} and, for RPC-consuming roles,
+key {{ .Values.secrets.rpcURLsKey | quote }}.
+
+{{- if eq .Values.mode "monolith" }}
+The monolith Service is available inside the cluster at:
+  http://{{ include "etherview.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+{{- else }}
+The distributed API Service is available inside the cluster at:
+  http://{{ include "etherview.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+{{- end }}
+
+Run the chart smoke test after the API becomes ready:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

@@ -1,0 +1,25 @@
+mode: distributed
+
+# Disable a role here when its optional feature is not enabled. Every enabled
+# role still uses PostgreSQL as the durable work and correctness source.
+roles:
+  api:
+    enabled: true
+  sync:
+    enabled: true
+  enrich:
+    enabled: true
+  trace:
+    enabled: true
+  verify:
+    enabled: true
+  metadata:
+    enabled: true
+  maintenance:
+    enabled: true
+
+serviceMonitor:
+  enabled: true
+
+prometheusRule:
+  enabled: true

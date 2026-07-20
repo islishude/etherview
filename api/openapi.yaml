@@ -1,0 +1,1438 @@
+openapi: 3.0.3
+info:
+  title: Etherview API
+  version: 0.1.0
+  description: Versioned native API for a single-chain Etherview deployment.
+servers:
+  - url: /api/v1
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      tags: [system]
+      responses:
+        "200":
+          description: Current indexing and capability status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /config:
+    get:
+      operationId: getPublicConfig
+      tags: [system]
+      responses:
+        "200":
+          description: Public, non-secret deployment configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicConfigResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /blocks:
+    get:
+      operationId: listBlocks
+      tags: [blocks]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical blocks ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /blocks/{id}:
+    get:
+      operationId: getBlock
+      tags: [blocks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Decimal/hex block number or 32-byte block hash.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Block selected by canonical height or exact hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical transactions ordered by block and transaction index, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions/{hash}:
+    get:
+      operationId: getTransaction
+      tags: [transactions]
+      parameters:
+        - $ref: "#/components/parameters/TransactionHash"
+      responses:
+        "200":
+          description: Transaction and current inclusion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /pending:
+    get:
+      operationId: listPendingTransactions
+      tags: [transactions]
+      description: Transactions from one immutable, successfully polled pending-block snapshot.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Pending transactions ordered by first-seen time and hash, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingTransactionListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions/{hash}/trace:
+    get:
+      operationId: getTransactionTrace
+      tags: [transactions, traces]
+      parameters:
+        - $ref: "#/components/parameters/TransactionHash"
+      responses:
+        "200":
+          description: Normalized canonical transaction call tree.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionTraceResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}:
+    get:
+      operationId: getAddress
+      tags: [addresses]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Address summary at one canonical block.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/nfts:
+    get:
+      operationId: listAddressNFTBalances
+      tags: [addresses, tokens, nfts]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Positive canonical ERC-721/ERC-1155 balances for an owner.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NFTBalanceListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /tokens:
+    get:
+      operationId: listTokens
+      tags: [tokens]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Discovered token contracts at a stable canonical snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /tokens/{address}:
+    get:
+      operationId: getToken
+      tags: [tokens]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: A discovered token contract and metadata state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /tokens/{address}/transfers:
+    get:
+      operationId: listTokenTransfers
+      tags: [tokens]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical token events ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenEventListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /nfts/{address}/{token_id}:
+    get:
+      operationId: getNFTOwner
+      tags: [tokens, nfts]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Canonical NFT ownership or balance for one token instance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NFTOwnershipResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /nfts/{address}/{token_id}/media:
+    get:
+      operationId: getNFTMedia
+      tags: [tokens, nfts]
+      description: >-
+        Fetches the image URI selected only from the current canonical, available
+        PostgreSQL NFT metadata document and returns a freshly retrieved,
+        byte-signature-verified image. The upstream URI is never accepted from
+        the request or exposed in the response, media is never persisted, and
+        every response is no-store. A valid API key is always required; a
+        deployment without configured API-key authentication cannot expose the
+        media proxy anonymously.
+      security:
+        - APIKey: []
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Freshly fetched PNG, JPEG, GIF, WebP, or AVIF image.
+          headers:
+            Cache-Control:
+              description: Always `no-store, max-age=0`.
+              schema:
+                type: string
+            Content-Disposition:
+              description: Fixed safe inline filename derived only from the validated media type.
+              schema:
+                type: string
+            Content-Security-Policy:
+              description: Restrictive policy for an untrusted binary response.
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: Always `nosniff`.
+              schema:
+                type: string
+            X-Etherview-Media-State:
+              description: Always `available` for a successful response.
+              schema:
+                type: string
+                enum: [available]
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/avif:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
+  /stats/blocks:
+    get:
+      operationId: getBlockStats
+      tags: [stats]
+      parameters:
+        - name: from_block
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+        - name: to_block
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Complete canonical per-block statistics for a closed range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockStatListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /stats/summary:
+    get:
+      operationId: getAggregateStats
+      tags: [stats]
+      parameters:
+        - name: from_block
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+        - name: to_block
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Canonical aggregate statistics with explicit range completeness.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregateStatsResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /search:
+    get:
+      operationId: search
+      tags: [search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Ranked, non-auto-redirecting search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /events:
+    get:
+      operationId: streamHeadEvents
+      tags: [system]
+      description: >-
+        Server-sent head, reorganization, and sync status events with bounded
+        replay from the durable PostgreSQL event ledger. Last-Event-ID resumes
+        within the retained durable range; malformed, expired, and future cursor
+        values return a typed 400 error, while replay backend failures return a
+        typed 503 error.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification/jobs:
+    post:
+      operationId: submitVerificationJob
+      tags: [verification]
+      security:
+        - APIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificationSubmission"
+      responses:
+        "202":
+          description: Verification job accepted for asynchronous execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        "200":
+          description: An equivalent verification job already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification/jobs/{id}:
+    get:
+      operationId: getVerificationJob
+      tags: [verification]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current verification job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /contracts/{address}/verification:
+    get:
+      operationId: getVerifiedContract
+      tags: [contracts, verification]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - name: code_hash
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+      responses:
+        "200":
+          description: Verified contract artifact bound to the requested code hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifiedContractResponse"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    APIKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        $ref: "#/components/schemas/OpaqueCursor"
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    TransactionHash:
+      name: hash
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Hash"
+    Address:
+      name: address
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Address"
+  responses:
+    Error:
+      description: Machine-readable error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Hash:
+      type: string
+      pattern: '^0x[0-9a-fA-F]{64}$'
+      description: A 32-byte hash; responses use normalized lowercase hexadecimal.
+    Address:
+      type: string
+      pattern: '^0x[0-9a-fA-F]{40}$'
+      description: A 20-byte address; responses use the EIP-55 checksum form.
+    Quantity:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)$'
+      maxLength: 78
+      description: A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+    Decimal:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)(\.[0-9]{0,17}[1-9])?$'
+      maxLength: 97
+      description: A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+    OpaqueCursor:
+      type: string
+      maxLength: 1024
+      description: A bounded server-issued traversal token that clients must not decode or construct.
+    Completeness:
+      type: object
+      required: [core, trace, metadata, state]
+      properties:
+        core:
+          $ref: "#/components/schemas/StageState"
+        trace:
+          $ref: "#/components/schemas/StageState"
+        metadata:
+          $ref: "#/components/schemas/StageState"
+        state:
+          $ref: "#/components/schemas/StageState"
+    StageState:
+      type: string
+      enum: [complete, pending, unavailable, failed]
+    Finality:
+      type: string
+      enum: [pending, latest, safe, finalized, orphan]
+    Meta:
+      type: object
+      required: [request_id, chain_id]
+      properties:
+        request_id:
+          type: string
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        next_cursor:
+          $ref: "#/components/schemas/OpaqueCursor"
+        coverage_start:
+          $ref: "#/components/schemas/Quantity"
+        coverage_end:
+          $ref: "#/components/schemas/Quantity"
+    Status:
+      type: object
+      required: [chain_id, core_ready, latest_block, indexed_block, backfill_complete, lag, completeness]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        core_ready:
+          type: boolean
+        latest_block:
+          $ref: "#/components/schemas/Quantity"
+        indexed_block:
+          $ref: "#/components/schemas/Quantity"
+          description: Highest canonical block contiguous from the configured start block.
+        highest_covered_block:
+          $ref: "#/components/schemas/Quantity"
+          description: Highest canonical block stored in any coverage range; absent before the first block is stored.
+        backfill_complete:
+          type: boolean
+          description: Whether canonical coverage is contiguous from the configured start through the latest known head.
+        safe_block:
+          $ref: "#/components/schemas/Quantity"
+        finalized_block:
+          $ref: "#/components/schemas/Quantity"
+        lag:
+          $ref: "#/components/schemas/Quantity"
+        completeness:
+          $ref: "#/components/schemas/Completeness"
+    PublicConfig:
+      type: object
+      required: [chain_id, chain_name, native_symbol, native_name, native_decimals, features]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        chain_name:
+          type: string
+        native_symbol:
+          type: string
+        native_name:
+          type: string
+        native_decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+        features:
+          type: object
+          additionalProperties:
+            type: boolean
+    Block:
+      type: object
+      required: [hash, number, parent_hash, timestamp, transaction_count, canonical, finality, completeness]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        number:
+          $ref: "#/components/schemas/Quantity"
+        parent_hash:
+          $ref: "#/components/schemas/Hash"
+        timestamp:
+          type: string
+          format: date-time
+        miner:
+          $ref: "#/components/schemas/Address"
+        transaction_count:
+          type: integer
+          minimum: 0
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
+        gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        base_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        canonical:
+          type: boolean
+        finality:
+          $ref: "#/components/schemas/Finality"
+        completeness:
+          $ref: "#/components/schemas/Completeness"
+    Transaction:
+      type: object
+      required: [hash, from, nonce, value, gas, input, canonical, finality, completeness]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        transaction_index:
+          type: integer
+          minimum: 0
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+          nullable: true
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        value:
+          $ref: "#/components/schemas/Quantity"
+        gas:
+          $ref: "#/components/schemas/Quantity"
+        gas_price:
+          $ref: "#/components/schemas/Quantity"
+        max_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        max_priority_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        type:
+          type: string
+        input:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        status:
+          type: string
+          enum: [pending, success, failed, unknown]
+        canonical:
+          type: boolean
+        finality:
+          $ref: "#/components/schemas/Finality"
+        completeness:
+          $ref: "#/components/schemas/Completeness"
+    PendingTransaction:
+      type: object
+      required:
+        - hash
+        - from
+        - nonce
+        - value
+        - gas
+        - input
+        - first_seen_at
+        - last_seen_at
+        - expires_at
+        - endpoint
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+          nullable: true
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        value:
+          $ref: "#/components/schemas/Quantity"
+        gas:
+          $ref: "#/components/schemas/Quantity"
+        gas_price:
+          $ref: "#/components/schemas/Quantity"
+        max_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        max_priority_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        type:
+          $ref: "#/components/schemas/Quantity"
+        input:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        endpoint:
+          type: string
+    PendingMeta:
+      type: object
+      required:
+        - request_id
+        - chain_id
+        - snapshot_id
+        - snapshot_at
+        - expires_at
+        - endpoint
+        - capability
+        - transaction_count
+      properties:
+        request_id:
+          type: string
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        next_cursor:
+          $ref: "#/components/schemas/OpaqueCursor"
+        snapshot_id:
+          $ref: "#/components/schemas/Quantity"
+        snapshot_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        endpoint:
+          type: string
+        capability:
+          $ref: "#/components/schemas/StageState"
+        transaction_count:
+          $ref: "#/components/schemas/Quantity"
+    AddressSummary:
+      type: object
+      required: [address, type, balance, nonce, at_block, completeness]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        type:
+          type: string
+          enum: [eoa, contract, delegated_eoa, unknown]
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        at_block:
+          $ref: "#/components/schemas/Hash"
+        name:
+          type: string
+        completeness:
+          $ref: "#/components/schemas/Completeness"
+    CatalogSnapshot:
+      type: object
+      required: [chain_id, block_number, block_hash]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+    TokenContract:
+      type: object
+      required:
+        - chain_id
+        - address
+        - code_hash
+        - standard
+        - confidence
+        - metadata_state
+        - observed_block_number
+        - observed_block_hash
+        - updated_at
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        standard:
+          type: string
+          enum: [erc20, erc721, erc1155, unknown]
+        confidence:
+          type: string
+          enum: [verified, high, inferred, guess]
+        name:
+          type: string
+        symbol:
+          type: string
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+        total_supply:
+          $ref: "#/components/schemas/Quantity"
+        metadata_state:
+          type: string
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
+        updated_at:
+          type: string
+          format: date-time
+    TokenEvent:
+      type: object
+      required:
+        - chain_id
+        - block_number
+        - block_hash
+        - log_index
+        - sub_index
+        - transaction_hash
+        - token_address
+        - standard
+        - kind
+        - confidence
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        sub_index:
+          $ref: "#/components/schemas/Quantity"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        standard:
+          type: string
+        kind:
+          type: string
+        operator:
+          $ref: "#/components/schemas/Address"
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          type: string
+    StateConfidence:
+      type: string
+      enum: [rpc_exact]
+      description: State observed by an exact block-hash RPC call and rechecked against canonicality.
+    NFTOwnership:
+      type: object
+      required: [chain_id, token_address, token_id, owner, balance, confidence, snapshot]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        owner:
+          $ref: "#/components/schemas/Address"
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          $ref: "#/components/schemas/StateConfidence"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+    NFTBalance:
+      type: object
+      required: [chain_id, owner, token_address, token_id, balance, confidence]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        owner:
+          $ref: "#/components/schemas/Address"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          $ref: "#/components/schemas/StateConfidence"
+    BlockStat:
+      type: object
+      required:
+        - chain_id
+        - block_number
+        - block_hash
+        - transaction_count
+        - gas_used
+        - gas_limit
+        - block_timestamp
+        - token_event_count
+        - token_transfer_count
+        - nft_transfer_count
+        - computed_at
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_count:
+          $ref: "#/components/schemas/Quantity"
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
+        gas_limit:
+          $ref: "#/components/schemas/Quantity"
+        base_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        blob_gas_used:
+          $ref: "#/components/schemas/Quantity"
+        excess_blob_gas:
+          $ref: "#/components/schemas/Quantity"
+        blob_base_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+        burned_wei:
+          $ref: "#/components/schemas/Quantity"
+        blob_burned_wei:
+          $ref: "#/components/schemas/Quantity"
+        block_timestamp:
+          $ref: "#/components/schemas/Quantity"
+        block_interval_seconds:
+          $ref: "#/components/schemas/Quantity"
+        transactions_per_second:
+          $ref: "#/components/schemas/Decimal"
+        token_event_count:
+          $ref: "#/components/schemas/Quantity"
+        token_transfer_count:
+          $ref: "#/components/schemas/Quantity"
+        nft_transfer_count:
+          $ref: "#/components/schemas/Quantity"
+        computed_at:
+          type: string
+          format: date-time
+    AggregateStatsCompleteness:
+      type: object
+      required: [core, stats, token]
+      properties:
+        core:
+          type: boolean
+        stats:
+          type: boolean
+        token:
+          type: boolean
+    AggregateStats:
+      type: object
+      required:
+        - chain_id
+        - from_block
+        - to_block
+        - snapshot
+        - block_count
+        - transaction_count
+        - gas_used
+        - burned_wei
+        - blob_burned_wei
+        - token_event_count
+        - token_transfer_count
+        - nft_transfer_count
+        - completeness
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        from_block:
+          $ref: "#/components/schemas/Quantity"
+        to_block:
+          $ref: "#/components/schemas/Quantity"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        block_count:
+          $ref: "#/components/schemas/Quantity"
+        transaction_count:
+          $ref: "#/components/schemas/Quantity"
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
+        burned_wei:
+          $ref: "#/components/schemas/Quantity"
+        blob_burned_wei:
+          $ref: "#/components/schemas/Quantity"
+        token_event_count:
+          $ref: "#/components/schemas/Quantity"
+        token_transfer_count:
+          $ref: "#/components/schemas/Quantity"
+        nft_transfer_count:
+          $ref: "#/components/schemas/Quantity"
+        average_tps:
+          $ref: "#/components/schemas/Decimal"
+          description: Weighted TPS across only blocks with an exact parent interval; omitted when the range has no such interval.
+        completeness:
+          $ref: "#/components/schemas/AggregateStatsCompleteness"
+    TraceFrame:
+      type: object
+      required: [path, parent_path, depth, call_type, reverted]
+      properties:
+        path:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        parent_path:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        depth:
+          type: integer
+          minimum: 0
+        call_type:
+          type: string
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        created_address:
+          $ref: "#/components/schemas/Address"
+        value:
+          $ref: "#/components/schemas/Quantity"
+        gas:
+          $ref: "#/components/schemas/Quantity"
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
+        input:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        output:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        error:
+          type: string
+        reverted:
+          type: boolean
+    TransactionTrace:
+      type: object
+      required:
+        - chain_id
+        - block_number
+        - block_hash
+        - transaction_hash
+        - transaction_index
+        - state
+        - frames
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        state:
+          type: string
+          enum: [complete, missing, unavailable, failed]
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceFrame"
+    SearchResult:
+      type: object
+      required: [kind, key, label, rank]
+      properties:
+        kind:
+          type: string
+          enum: [block, transaction, address, contract, token, nft, label]
+        key:
+          type: string
+        label:
+          type: string
+        rank:
+          type: integer
+        canonical:
+          type: boolean
+    VerificationSubmission:
+      type: object
+      required:
+        - address
+        - code_hash
+        - at_block_hash
+        - language
+        - compiler_version
+        - contract_identifier
+        - standard_json
+        - creation_bytecode
+        - runtime_bytecode
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        at_block_hash:
+          $ref: "#/components/schemas/Hash"
+        language:
+          type: string
+          enum: [solidity, vyper]
+        compiler_version:
+          type: string
+          minLength: 1
+          maxLength: 128
+        contract_identifier:
+          type: string
+          minLength: 3
+          maxLength: 1024
+        standard_json:
+          type: object
+          additionalProperties: true
+        creation_bytecode:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        runtime_bytecode:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+          minLength: 4
+          description: Non-empty deployed runtime bytecode whose Keccak-256 digest must equal code_hash.
+        submit_to_sourcify:
+          type: boolean
+          default: false
+    VerificationMatch:
+      type: string
+      enum: [exact, metadata_only, mismatch]
+    VerificationJob:
+      type: object
+      required: [id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        result_kind:
+          $ref: "#/components/schemas/VerificationMatch"
+        creation_match:
+          $ref: "#/components/schemas/VerificationMatch"
+        runtime_match:
+          $ref: "#/components/schemas/VerificationMatch"
+        published:
+          type: boolean
+        error_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    VerifiedContract:
+      type: object
+      required:
+        - chain_id
+        - address
+        - code_hash
+        - valid_from_block
+        - language
+        - compiler_version
+        - match_kind
+        - contract_name
+        - abi
+        - sources
+        - settings
+        - created_at
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        valid_from_block:
+          $ref: "#/components/schemas/Quantity"
+        valid_to_block:
+          $ref: "#/components/schemas/Quantity"
+        language:
+          type: string
+          enum: [solidity, vyper]
+        compiler_version:
+          type: string
+        match_kind:
+          $ref: "#/components/schemas/VerificationMatch"
+        contract_name:
+          type: string
+        abi:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        sources:
+          type: object
+          additionalProperties: true
+        settings:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    APIError:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        request_id:
+          type: string
+    StatusResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Status"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    PublicConfigResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/PublicConfig"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BlockResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Block"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BlockListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Block"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Transaction"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    PendingTransactionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PendingTransaction"
+        meta:
+          $ref: "#/components/schemas/PendingMeta"
+    AddressResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AddressSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TokenResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TokenContract"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TokenListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenContract"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TokenEventListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenEvent"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NFTOwnershipResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NFTOwnership"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NFTBalanceListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NFTBalance"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BlockStatListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockStat"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AggregateStatsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AggregateStats"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionTraceResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionTrace"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SearchResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    VerificationJobResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/VerificationJob"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    VerifiedContractResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/VerifiedContract"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/APIError"

@@ -1,0 +1,111 @@
+server:
+  address: 0.0.0.0:8080
+  metrics_address: 0.0.0.0:9090
+  public_url: https://explorer.example.com
+  shutdown_timeout: 20s
+  read_timeout: 15s
+  write_timeout: 30s
+
+chain:
+  id: 1
+  genesis_hash: "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+  start_block: 0
+  name: Ethereum
+  native_symbol: ETH
+  native_name: Ether
+  native_decimals: 18
+  max_reorg_depth: 128
+
+database:
+  # Supply ETHERVIEW_DATABASE_URL or ETHERVIEW_DATABASE_URL_FILE at runtime.
+  url: ""
+  max_connections: 20
+  min_connections: 2
+  connect_timeout: 10s
+  statement_timeout: 30s
+
+rpc:
+  request_timeout: 20s
+  batch_size: 100
+  # Supply comma-separated ETHERVIEW_RPC_URLS at runtime to keep credentials
+  # out of checked-in configuration and container images.
+  endpoints: []
+
+runtime:
+  roles: [all]
+  poll_interval: 2s
+  worker_count: 4
+  backfill_workers: 4
+  lease_duration: 30s
+
+mempool:
+  poll_interval: 3s
+  retention: 10m
+  max_transactions: 50000
+  max_response_bytes: 16777216
+
+maintenance:
+  interval: 15m
+  search_retention_generations: 100000
+  adapter_delete_batch: 1000
+
+metadata:
+  fetch_timeout: 10s
+  # JSON is stored in PostgreSQL and is hard-capped at 2 MiB by the schema.
+  max_document_bytes: 2097152
+  max_redirects: 3
+  # Optional HTTPS gateway for ipfs:// resources. DNS/IP safety checks are
+  # applied after every resolution and redirect; credentials are forbidden.
+  ipfs_gateway: ""
+
+features:
+  trace: false
+  mempool: false
+  historical_state: false
+  verification: false
+  nft_metadata: false
+  pricing: false
+
+security:
+  public_verification: false
+  compiler_sandbox: disabled
+  # Supply ETHERVIEW_API_KEY_PEPPER or ETHERVIEW_API_KEY_PEPPER_FILE. The
+  # value must contain at least 32 bytes and is never returned by the API.
+  api_key_pepper: ""
+  anonymous_rate: 5
+  anonymous_burst: 20
+  allowed_origins: []
+  trusted_proxies: []
+
+verification:
+  max_input_bytes: 5242880
+  max_output_bytes: 67108864
+  timeout: 2m
+  cache_directory: /var/lib/etherview/compilers
+  container_runtime: docker
+  container_memory: 512m
+  container_cpus: "1"
+  container_pids: 64
+  # Public verification requires digest-pinned images, for example:
+  # images:
+  #   solidity:
+  #     "0.8.30": ghcr.io/example/solc@sha256:<64 hex characters>
+  images: {}
+  # HTTPS + SHA-256 artifacts are only used by private process mode.
+  artifacts: {}
+
+# Optional accelerators and external enrichment sources. Empty values are the
+# normal PostgreSQL-only monolith configuration.
+adapters:
+  nats_url: ""
+  redis_url: ""
+  s3_endpoint: ""
+  s3_bucket: ""
+  price_base_url: ""
+  name_base_url: ""
+  fetch_timeout: 5s
+  max_response_bytes: 1048576
+  max_redirects: 2
+  price_freshness: 5m
+  name_freshness: 24h
+  failure_ttl: 30s

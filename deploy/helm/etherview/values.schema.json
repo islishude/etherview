@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["image", "mode", "roles", "secrets", "config"],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["monolith", "distributed"]
+    },
+    "image": {
+      "type": "object",
+      "required": ["repository", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string"},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+      }
+    },
+    "roles": {
+      "type": "object",
+      "required": ["all", "api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]
+    },
+    "secrets": {
+      "type": "object",
+      "required": ["existingSecret", "databaseURLKey", "rpcURLsKey", "apiKeyPepperKey"],
+      "properties": {
+        "existingSecret": {"type": "string", "minLength": 1},
+        "databaseURLKey": {"type": "string", "minLength": 1},
+        "rpcURLsKey": {"type": "string", "minLength": 1},
+        "apiKeyPepperKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": ["server", "chain", "database", "rpc", "runtime", "maintenance", "features", "security", "verification", "adapters"]
+    }
+  }
+}
