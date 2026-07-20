@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -254,38 +255,148 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 	if err != nil {
 		return TransactionTrace{}, err
 	}
-	tx, err := catalog.beginRead(ctx)
+	if catalog.traceCache != nil {
+		identity, err := catalog.readTraceIdentity(ctx, chainID, transactionHash)
+		if err != nil {
+			return TransactionTrace{}, err
+		}
+		if cached, found, cacheErr := catalog.traceCache.Get(ctx, identity.cacheKey()); cacheErr != nil {
+			catalog.logTraceCacheBypass(ctx, "optional S3 trace cache read failed; using PostgreSQL", cacheErr)
+		} else if found {
+			var envelope cachedTransactionTrace
+			if decodeErr := json.Unmarshal(cached, &envelope); decodeErr == nil &&
+				envelope.Schema == 1 && envelope.JobID == identity.JobID && envelope.JobGeneration == identity.JobGeneration &&
+				catalog.validateCachedTrace(identity, envelope.Trace) == nil {
+				current, identityErr := catalog.readTraceIdentity(ctx, chainID, transactionHash)
+				if identityErr == nil && current == identity {
+					return envelope.Trace, nil
+				}
+			} else {
+				catalog.logTraceCacheBypass(ctx, "optional S3 trace cache object invalid; using PostgreSQL", errors.New("invalid trace cache object"))
+			}
+		}
+	}
+	result, identity, err := catalog.readTransactionTrace(ctx, chainID, transactionHash)
 	if err != nil {
 		return TransactionTrace{}, err
 	}
+	if catalog.traceCache != nil {
+		encoded, encodeErr := json.Marshal(cachedTransactionTrace{
+			Schema: 1, JobID: identity.JobID, JobGeneration: identity.JobGeneration, Trace: result,
+		})
+		if encodeErr != nil {
+			catalog.logTraceCacheBypass(ctx, "optional S3 trace cache encode failed", encodeErr)
+		} else if cacheErr := catalog.traceCache.Put(ctx, identity.cacheKey(), encoded); cacheErr != nil {
+			catalog.logTraceCacheBypass(ctx, "optional S3 trace cache write failed; PostgreSQL result served", cacheErr)
+		}
+	}
+	return result, nil
+}
+
+type traceIdentity struct {
+	ChainID          string
+	BlockNumber      string
+	BlockHash        string
+	TransactionHash  string
+	TransactionIndex string
+	JobID            int64
+	JobGeneration    int64
+}
+
+func (identity traceIdentity) cacheKey() string {
+	return fmt.Sprintf("trace/v1/%s/%s/%d-%d/%s.json",
+		identity.ChainID, strings.TrimPrefix(identity.BlockHash, "0x"), identity.JobID,
+		identity.JobGeneration, strings.TrimPrefix(identity.TransactionHash, "0x"))
+}
+
+type cachedTransactionTrace struct {
+	Schema        int              `json:"schema"`
+	JobID         int64            `json:"job_id"`
+	JobGeneration int64            `json:"job_generation"`
+	Trace         TransactionTrace `json:"trace"`
+}
+
+func (catalog *Postgres) readTraceIdentity(ctx context.Context, chainID string, transactionHash []byte) (traceIdentity, error) {
+	tx, err := catalog.beginRead(ctx)
+	if err != nil {
+		return traceIdentity{}, err
+	}
 	defer tx.Rollback()
+	identity, _, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
+	if err != nil {
+		return traceIdentity{}, err
+	}
+	if err := commitRead(tx); err != nil {
+		return traceIdentity{}, err
+	}
+	return identity, nil
+}
+
+func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, chainID string, transactionHash []byte) (traceIdentity, []byte, error) {
 	var blockNumber, transactionIndex string
 	var blockHash []byte
-	err = tx.QueryRowContext(ctx, canonicalTransactionInclusionSQL,
+	err := tx.QueryRowContext(ctx, canonicalTransactionInclusionSQL,
 		chainID, transactionHash,
 	).Scan(&blockNumber, &blockHash, &transactionIndex)
 	if errors.Is(err, sql.ErrNoRows) {
-		return TransactionTrace{}, ErrNotFound
+		return traceIdentity{}, nil, ErrNotFound
 	}
 	if err != nil {
-		return TransactionTrace{}, fmt.Errorf("resolve canonical transaction inclusion: %w", err)
+		return traceIdentity{}, nil, fmt.Errorf("resolve canonical transaction inclusion: %w", err)
 	}
 	if !canonicalUint256(blockNumber) || !canonicalInt64(transactionIndex) {
-		return TransactionTrace{}, ErrCorruptData
+		return traceIdentity{}, nil, ErrCorruptData
 	}
 	encodedBlockHash, err := lowerHex(blockHash, 32)
 	if err != nil {
-		return TransactionTrace{}, err
+		return traceIdentity{}, nil, err
 	}
-	snapshot := Snapshot{ChainID: chainID, BlockNumber: blockNumber, BlockHash: encodedBlockHash}
-	if err := requireStage(ctx, tx, snapshot, StageTrace); err != nil {
-		return TransactionTrace{}, err
+	var state string
+	var jobID, jobGeneration int64
+	err = tx.QueryRowContext(ctx, traceStagePublicationSQL,
+		chainID, blockNumber, blockHash, string(StageTrace), StageTrace.Version(),
+	).Scan(&state, &jobID, &jobGeneration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return traceIdentity{}, nil, StageUnavailableError{
+			Stage: StageTrace, State: StageMissing, BlockNumber: blockNumber, BlockHash: encodedBlockHash,
+		}
+	}
+	if err != nil {
+		return traceIdentity{}, nil, fmt.Errorf("read %s catalog stage publication: %w", StageTrace, err)
+	}
+	if StageState(state) != StageComplete {
+		if StageState(state) == StageUnavailable || StageState(state) == StageFailed {
+			return traceIdentity{}, nil, StageUnavailableError{
+				Stage: StageTrace, State: StageState(state), BlockNumber: blockNumber, BlockHash: encodedBlockHash,
+			}
+		}
+		return traceIdentity{}, nil, fmt.Errorf("%w: invalid %s stage state", ErrCorruptData, StageTrace)
+	}
+	if jobID <= 0 || jobGeneration <= 0 {
+		return traceIdentity{}, nil, ErrCorruptData
+	}
+	return traceIdentity{
+		ChainID: chainID, BlockNumber: blockNumber, BlockHash: encodedBlockHash,
+		TransactionHash: "0x" + hex.EncodeToString(transactionHash), TransactionIndex: transactionIndex,
+		JobID: jobID, JobGeneration: jobGeneration,
+	}, append([]byte(nil), blockHash...), nil
+}
+
+func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID string, transactionHash []byte) (TransactionTrace, traceIdentity, error) {
+	tx, err := catalog.beginRead(ctx)
+	if err != nil {
+		return TransactionTrace{}, traceIdentity{}, err
+	}
+	defer tx.Rollback()
+	identity, blockHash, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
+	if err != nil {
+		return TransactionTrace{}, traceIdentity{}, err
 	}
 	rows, err := tx.QueryContext(ctx, transactionTraceSQL,
-		chainID, blockNumber, blockHash, transactionHash, catalog.options.MaxTraceFrames+1,
+		chainID, identity.BlockNumber, blockHash, transactionHash, catalog.options.MaxTraceFrames+1,
 	)
 	if err != nil {
-		return TransactionTrace{}, fmt.Errorf("query normalized transaction trace: %w", err)
+		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("query normalized transaction trace: %w", err)
 	}
 	defer rows.Close()
 	persisted := make([]scannedTraceFrame, 0)
@@ -293,19 +404,19 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 	for rows.Next() {
 		frame, scanErr := catalog.scanTraceFrame(rows)
 		if scanErr != nil {
-			return TransactionTrace{}, fmt.Errorf("scan normalized trace frame: %w", scanErr)
+			return TransactionTrace{}, traceIdentity{}, fmt.Errorf("scan normalized trace frame: %w", scanErr)
 		}
 		persisted = append(persisted, frame)
 		if frame.dataBytes < 0 || traceDataBytes > catalog.options.MaxTraceDataBytes-frame.dataBytes {
-			return TransactionTrace{}, ErrLimitExceeded
+			return TransactionTrace{}, traceIdentity{}, ErrLimitExceeded
 		}
 		traceDataBytes += frame.dataBytes
 		if len(persisted) > catalog.options.MaxTraceFrames {
-			return TransactionTrace{}, ErrLimitExceeded
+			return TransactionTrace{}, traceIdentity{}, ErrLimitExceeded
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return TransactionTrace{}, fmt.Errorf("iterate normalized transaction trace: %w", err)
+		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("iterate normalized transaction trace: %w", err)
 	}
 	slices.SortFunc(persisted, func(left, right scannedTraceFrame) int {
 		return compareTracePaths(left.frame.Path, right.frame.Path)
@@ -315,37 +426,119 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 	rootCount := 0
 	for index, item := range persisted {
 		if _, exists := knownPaths[item.pathText]; exists || uint32(len(item.frame.Path)) != item.frame.Depth {
-			return TransactionTrace{}, ErrCorruptData
+			return TransactionTrace{}, traceIdentity{}, ErrCorruptData
 		}
 		if item.frame.Depth == 0 {
 			if item.pathText != "" || item.parentText.Valid {
-				return TransactionTrace{}, ErrCorruptData
+				return TransactionTrace{}, traceIdentity{}, ErrCorruptData
 			}
 			rootCount++
 		} else {
 			expectedParent := tracePathText(item.frame.Path[:len(item.frame.Path)-1])
 			if !item.parentText.Valid || item.parentText.String != expectedParent {
-				return TransactionTrace{}, ErrCorruptData
+				return TransactionTrace{}, traceIdentity{}, ErrCorruptData
 			}
 			if _, exists := knownPaths[expectedParent]; !exists {
-				return TransactionTrace{}, ErrCorruptData
+				return TransactionTrace{}, traceIdentity{}, ErrCorruptData
 			}
 		}
 		knownPaths[item.pathText] = struct{}{}
 		frames[index] = item.frame
 	}
 	if rootCount != 1 {
-		return TransactionTrace{}, ErrCorruptData
+		return TransactionTrace{}, traceIdentity{}, ErrCorruptData
 	}
 	result := TransactionTrace{
-		ChainID: chainID, BlockNumber: blockNumber, BlockHash: encodedBlockHash,
-		TransactionHash: "0x" + hex.EncodeToString(transactionHash), TransactionIndex: transactionIndex,
+		ChainID: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
+		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
 		State: StageComplete, Frames: frames,
 	}
 	if err := commitRead(tx); err != nil {
-		return TransactionTrace{}, err
+		return TransactionTrace{}, traceIdentity{}, err
 	}
-	return result, nil
+	return result, identity, nil
+}
+
+func (catalog *Postgres) validateCachedTrace(identity traceIdentity, trace TransactionTrace) error {
+	if trace.ChainID != identity.ChainID || trace.BlockNumber != identity.BlockNumber || trace.BlockHash != identity.BlockHash ||
+		trace.TransactionHash != identity.TransactionHash || trace.TransactionIndex != identity.TransactionIndex || trace.State != StageComplete ||
+		len(trace.Frames) == 0 || len(trace.Frames) > catalog.options.MaxTraceFrames {
+		return ErrCorruptData
+	}
+	knownPaths := make(map[string]struct{}, len(trace.Frames))
+	dataBytes := 0
+	rootCount := 0
+	for index, frame := range trace.Frames {
+		if frame.CallType == "" || len(frame.CallType) > 128 || int(frame.Depth) != len(frame.Path) || len(frame.Path) > 128 {
+			return ErrCorruptData
+		}
+		if index > 0 && compareTracePaths(trace.Frames[index-1].Path, frame.Path) >= 0 {
+			return ErrCorruptData
+		}
+		pathText := tracePathText(frame.Path)
+		if _, exists := knownPaths[pathText]; exists {
+			return ErrCorruptData
+		}
+		if frame.Depth == 0 {
+			if len(frame.Path) != 0 || len(frame.ParentPath) != 0 {
+				return ErrCorruptData
+			}
+			rootCount++
+		} else {
+			expectedParent := frame.Path[:len(frame.Path)-1]
+			if !slices.Equal(frame.ParentPath, expectedParent) {
+				return ErrCorruptData
+			}
+			if _, exists := knownPaths[tracePathText(expectedParent)]; !exists {
+				return ErrCorruptData
+			}
+		}
+		knownPaths[pathText] = struct{}{}
+		for _, address := range []*string{frame.From, frame.To, frame.CreatedAddress} {
+			if address == nil {
+				continue
+			}
+			decoded, err := decodeFixedHex(*address, 20)
+			if err != nil {
+				return ErrCorruptData
+			}
+			canonical, err := checksumAddressBytes(decoded)
+			if err != nil || canonical != *address {
+				return ErrCorruptData
+			}
+		}
+		for _, quantity := range []*string{frame.Value, frame.Gas, frame.GasUsed} {
+			if quantity != nil && !canonicalUint256(*quantity) {
+				return ErrCorruptData
+			}
+		}
+		for _, data := range []*string{frame.Input, frame.Output} {
+			if data == nil {
+				continue
+			}
+			if len(*data) < 2 || !strings.HasPrefix(*data, "0x") || len(*data)%2 != 0 {
+				return ErrCorruptData
+			}
+			decoded, err := hex.DecodeString((*data)[2:])
+			if err != nil || dataBytes > catalog.options.MaxTraceDataBytes-len(decoded) {
+				return ErrLimitExceeded
+			}
+			dataBytes += len(decoded)
+		}
+		if frame.Error != nil && len(*frame.Error) > catalog.options.MaxTextBytes {
+			return ErrLimitExceeded
+		}
+	}
+	if rootCount != 1 {
+		return ErrCorruptData
+	}
+	return nil
+}
+
+func (catalog *Postgres) logTraceCacheBypass(ctx context.Context, message string, err error) {
+	if catalog.logger != nil && err != nil {
+		catalog.logger.WarnContext(ctx, message, "error_type", fmt.Sprintf("%T", err))
+	}
 }
 
 type scannedTraceFrame struct {
@@ -560,6 +753,15 @@ JOIN canonical_blocks AS cb
  AND cb.block_hash = inclusion.block_hash
 WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
 LIMIT 1`
+
+const traceStagePublicationSQL = `
+SELECT state, durable_job_id, job_generation
+FROM published_block_stage_results
+WHERE chain_id = $1::numeric
+  AND block_number = $2::numeric
+  AND block_hash = $3
+  AND stage = $4
+  AND stage_version = $5`
 
 const transactionTraceSQL = `
 SELECT trace_path, parent_path, depth, call_type,

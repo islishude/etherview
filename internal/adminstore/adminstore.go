@@ -7,12 +7,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
+	dbaccess "github.com/islishude/etherview/internal/db"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/maintenance"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var labelKinds = map[string]bool{
@@ -44,8 +49,9 @@ type RepairRequest struct {
 }
 
 type Repository struct {
-	db      *sql.DB
-	chainID string
+	db             *sql.DB
+	chainID        string
+	numericChainID pgtype.Numeric
 }
 
 func New(db *sql.DB, chainID uint64) (*Repository, error) {
@@ -55,70 +61,84 @@ func New(db *sql.DB, chainID uint64) (*Repository, error) {
 	if chainID == 0 {
 		return nil, errors.New("admin repository chain ID is zero")
 	}
-	return &Repository{db: db, chainID: strconv.FormatUint(chainID, 10)}, nil
+	return &Repository{
+		db: db, chainID: strconv.FormatUint(chainID, 10),
+		numericChainID: pgtype.Numeric{Int: new(big.Int).SetUint64(chainID), Valid: true},
+	}, nil
 }
 
-func (r *Repository) SetLabel(ctx context.Context, kind, key, label string) error {
+func (r *Repository) SetLabel(ctx context.Context, kind, key, label string) (Label, error) {
 	kind, key, label, err := validateLabel(kind, key, label)
 	if err != nil {
-		return err
+		return Label{}, err
 	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO operator_labels (chain_id, object_kind, object_key, label)
-		VALUES ($1::numeric, $2, $3, $4)
-		ON CONFLICT (chain_id, object_kind, object_key)
-		DO UPDATE SET label = EXCLUDED.label, updated_at = now()`, r.chainID, kind, key, label)
+	var row dbgen.UpsertOperatorLabelRow
+	err = dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		row, queryErr = queries.UpsertOperatorLabel(ctx, dbgen.UpsertOperatorLabelParams{
+			ChainID: r.numericChainID, ObjectKind: kind, ObjectKey: key, Label: label,
+		})
+		return queryErr
+	})
 	if err != nil {
-		return fmt.Errorf("set operator label: %w", err)
+		return Label{}, fmt.Errorf("set operator label: %w", err)
 	}
-	return nil
+	return storedLabel(row.ObjectKind, row.ObjectKey, row.Label, row.CreatedAt, row.UpdatedAt)
 }
 
-func (r *Repository) DeleteLabel(ctx context.Context, kind, key string) error {
+func (r *Repository) DeleteLabel(ctx context.Context, kind, key string) (Label, error) {
 	var err error
 	kind, key, err = normalizeLabelKey(kind, key)
 	if err != nil {
-		return err
+		return Label{}, err
 	}
-	result, err := r.db.ExecContext(ctx, `
-		DELETE FROM operator_labels
-		WHERE chain_id = $1::numeric AND object_kind = $2 AND object_key = $3`, r.chainID, kind, key)
+	var row dbgen.DeleteOperatorLabelRow
+	err = dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		row, queryErr = queries.DeleteOperatorLabel(ctx, r.numericChainID, kind, key)
+		return queryErr
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Label{}, errors.New("operator label not found")
+	}
 	if err != nil {
-		return fmt.Errorf("delete operator label: %w", err)
+		return Label{}, fmt.Errorf("delete operator label: %w", err)
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read deleted label count: %w", err)
-	}
-	if count == 0 {
-		return errors.New("operator label not found")
-	}
-	return nil
+	return storedLabel(row.ObjectKind, row.ObjectKey, row.Label, row.CreatedAt, row.UpdatedAt)
 }
 
 func (r *Repository) Labels(ctx context.Context) ([]Label, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT object_kind, object_key, label, created_at, updated_at
-		FROM operator_labels
-		WHERE chain_id = $1::numeric
-		ORDER BY object_kind, object_key`, r.chainID)
+	var rows []dbgen.ListOperatorLabelsRow
+	err := dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		rows, queryErr = queries.ListOperatorLabels(ctx, r.numericChainID)
+		return queryErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list operator labels: %w", err)
 	}
-	defer rows.Close()
-	var labels []Label
-	for rows.Next() {
-		var label Label
-		if err := rows.Scan(&label.Kind, &label.Key, &label.Label, &label.CreatedAt, &label.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan operator label: %w", err)
+	labels := make([]Label, 0, len(rows))
+	for _, row := range rows {
+		label, err := storedLabel(row.ObjectKind, row.ObjectKey, row.Label, row.CreatedAt, row.UpdatedAt)
+		if err != nil {
+			return nil, err
 		}
-		label.CreatedAt, label.UpdatedAt = label.CreatedAt.UTC(), label.UpdatedAt.UTC()
 		labels = append(labels, label)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate operator labels: %w", err)
-	}
 	return labels, nil
+}
+
+func storedLabel(
+	kind, key, label string,
+	createdAt, updatedAt pgtype.Timestamptz,
+) (Label, error) {
+	if !createdAt.Valid || !updatedAt.Valid {
+		return Label{}, errors.New("operator label has invalid timestamps")
+	}
+	return Label{
+		Kind: kind, Key: key, Label: label,
+		CreatedAt: createdAt.Time.UTC(), UpdatedAt: updatedAt.Time.UTC(),
+	}, nil
 }
 
 func (r *Repository) EnqueueRepair(ctx context.Context, request RepairRequest) (RepairRequest, error) {

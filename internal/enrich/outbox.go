@@ -25,6 +25,10 @@ type OutboxDispatcherOptions struct {
 	RetryMax       time.Duration
 	JobPriority    int
 	JobMaxAttempts uint32
+	// Wake is a lossy latency hint. Published is invoked only after the
+	// PostgreSQL transaction commits and must not block.
+	Wake      <-chan struct{}
+	Published func()
 }
 
 func (options *OutboxDispatcherOptions) defaults() {
@@ -134,9 +138,11 @@ func (dispatcher *OutboxDispatcher) Run(ctx context.Context) error {
 			return err
 		}
 		if result.State == OutboxIdle {
-			if err := waitContext(ctx, dispatcher.options.PollInterval); err != nil {
+			if err := waitContextOrWake(ctx, dispatcher.options.PollInterval, dispatcher.options.Wake); err != nil {
 				return err
 			}
+		} else if result.State == OutboxPublished && dispatcher.options.Published != nil {
+			dispatcher.options.Published()
 		}
 	}
 }

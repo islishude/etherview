@@ -374,10 +374,6 @@ func TestPostgresLeaseMutationsAreTokenAndExpiryConditional(t *testing.T) {
 			if isPublicationControlSQL(query) {
 				return driver.RowsAffected(1), nil
 			}
-			if strings.Contains(query, "INSERT INTO block_stage_results") {
-				stageStates = append(stageStates, arguments[5].Value.(string))
-				return driver.RowsAffected(1), nil
-			}
 			if !strings.Contains(query, "lease_token = $2") || !strings.Contains(query, "lease_expires_at > clock_timestamp()") ||
 				!strings.Contains(query, "kind = 'enrichment'") || !strings.Contains(query, "payload->>'block_hash'") {
 				t.Errorf("mutation lacks token/expiry predicate:\n%s", query)
@@ -399,6 +395,13 @@ func TestPostgresLeaseMutationsAreTokenAndExpiryConditional(t *testing.T) {
 		query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
 			mu.Lock()
 			defer mu.Unlock()
+			if strings.Contains(query, "INSERT INTO block_stage_results") {
+				stageStates = append(stageStates, arguments[5].Value.(string))
+				if arguments[8].Value != int64(9) || arguments[9].Value != int64(1) {
+					t.Errorf("stage result lacks exact job/generation identity: args=%+v", arguments)
+				}
+				return &fakeSQLRows{columns: []string{"inserted"}, values: [][]driver.Value{{int64(1)}}}, nil
+			}
 			if strings.Contains(query, "completed_generation = GREATEST") && strings.Contains(query, "RETURNING status = 'queued'") {
 				if arguments[1].Value != "owned-token" {
 					return &fakeSQLRows{columns: []string{"replay_pending"}}, nil

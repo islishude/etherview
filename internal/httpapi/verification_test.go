@@ -17,13 +17,17 @@ import (
 )
 
 type verificationRepository struct {
-	request  verify.Request
-	job      verify.VerificationJob
-	contract verify.VerifiedContract
+	request    verify.Request
+	submission verify.SubmissionOptions
+	job        verify.VerificationJob
+	contract   verify.VerifiedContract
 }
 
-func (repository *verificationRepository) Submit(_ context.Context, request verify.Request) (verify.VerificationJob, bool, error) {
+func (repository *verificationRepository) Submit(_ context.Context, request verify.Request, options ...verify.SubmissionOptions) (verify.VerificationJob, bool, error) {
 	repository.request = request
+	if len(options) == 1 {
+		repository.submission = options[0]
+	}
 	return repository.job, true, nil
 }
 
@@ -32,6 +36,10 @@ func (*verificationRepository) Claim(context.Context, string, time.Duration) (ve
 }
 
 func (*verificationRepository) Renew(context.Context, verify.VerificationLease, time.Duration) error {
+	return nil
+}
+
+func (*verificationRepository) BindCompiler(context.Context, verify.VerificationLease, verify.CompilerProvenance) error {
 	return nil
 }
 

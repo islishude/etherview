@@ -13,6 +13,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 - [Architecture](../architecture/overview.md)
 - [ADR-0001](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md)
+- [ADR-0015](../decisions/ADR-0015-disposable-runtime-accelerators.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -20,7 +21,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P60-T01 | done | P00 | Shared component lifecycle, role graph, readiness, graceful shutdown | lifecycle/parity tests |
-| P60-T02 | todo | P20 | PostgreSQL job/outbox plus optional NATS, Redis, and S3 adapters | outage/fallback tests |
+| P60-T02 | in_progress | P20 | PostgreSQL job/outbox plus optional NATS, Redis, and S3 adapters | outage/fallback tests |
 | P60-T03 | todo | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | Compose smoke tests |
 | P60-T04 | todo | P60-T01, P60-T02 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
 | P60-T05 | todo | P10–P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
@@ -45,8 +46,8 @@ deployments, observable health, safe migrations, and operator repair tooling.
 
 ## Current Blockers
 
-None for P60-T01. Remaining dependency-bound work stays unclaimed and is
-tracked by P60-T02 through P60-T06.
+None for P60-T02. Remaining dependency-bound work stays unclaimed and is
+tracked by P60-T03 through P60-T06.
 
 ## Evidence
 

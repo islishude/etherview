@@ -21,6 +21,7 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/maintenance"
+	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -117,6 +118,10 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 		t.Fatalf("label delete code=%d stderr=%q", code, stderr)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM operator_labels WHERE chain_id = 1`, 0)
+	code, stdout, stderr = runner.run(ctx, "admin", "label", "list", "--config", configPath)
+	if code != 0 || strings.TrimSpace(stdout) != "[]" || stderr != "" {
+		t.Fatalf("empty label list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
 
 	code, stdout, stderr = runner.run(ctx,
 		"admin", "api-key", "create", "--name", "integration-reader", "--rate", "10", "--burst", "20", "--config", configPath,
@@ -189,6 +194,138 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	var revoked bool
 	if err := db.QueryRowContext(ctx, `SELECT revoked_at IS NOT NULL FROM api_keys WHERE prefix = $1`, replacement.Prefix).Scan(&revoked); err != nil || !revoked {
 		t.Fatalf("API key revoked=%v error=%v", revoked, err)
+	}
+}
+
+func TestCLIOperatorLabelsAreCanonicalChainScopedAndSearchable(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockHash, transactionHash := testHash(82_000), testHash(82_100)
+	commitCanonical(t, ctx, repository, testBundle(0, blockHash, testHash(0), transactionHash, "label-chain-one"))
+	chainTwo := testBundle(0, testHash(83_000), testHash(0), testHash(83_100), "label-chain-two")
+	chainTwoRef := mustBlockRef(t, chainTwo)
+	if err := repository.CommitCanonical(ctx, "2", chainTwo, store.NewCoreCheckpoint(chainTwoRef)); err != nil {
+		t.Fatal(err)
+	}
+	var schema string
+	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	databaseURL := isolatedDatabaseURL(t, schema)
+	configDirectory := t.TempDir()
+	configPaths := make(map[uint64]string, 2)
+	for _, chainID := range []uint64{1, 2} {
+		path := filepath.Join(configDirectory, fmt.Sprintf("chain-%d.yaml", chainID))
+		body := fmt.Sprintf("chain:\n  id: %d\ndatabase:\n  url: %s\n", chainID, strconv.Quote(databaseURL))
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		configPaths[chainID] = path
+	}
+	upperHex := func(value string) string {
+		return "0x" + strings.ToUpper(strings.TrimPrefix(value, "0x"))
+	}
+	labels := []struct {
+		kind, inputKey, key, label string
+	}{
+		{"address", " 0x52908400098527886E0F7030069857D2E4169EE7 ", "0x52908400098527886e0f7030069857d2e4169ee7", "CLI address label"},
+		{"token", " 0xde709f2102306220921060314715629080e2fb77 ", "0xde709f2102306220921060314715629080e2fb77", "CLI token label"},
+		{"contract", " 0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed ", "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed", "CLI contract label"},
+		{"block", " 0 ", "0", "CLI block height label"},
+		{"block", " " + upperHex(blockHash.String()) + " ", strings.ToLower(blockHash.String()), "CLI block hash label"},
+		{"transaction", " " + upperHex(transactionHash.String()) + " ", strings.ToLower(transactionHash.String()), "CLI transaction label"},
+	}
+	runner := newCLIRunner()
+	for _, item := range labels {
+		code, stdout, stderr := runner.run(
+			ctx, "admin", "label", "set", " "+strings.ToUpper(item.kind)+" ", item.inputKey, " "+item.label+" ",
+			"--config", configPaths[1],
+		)
+		var output struct {
+			Status string `json:"status"`
+			Kind   string `json:"kind"`
+			Key    string `json:"key"`
+		}
+		if decodeErr := json.Unmarshal([]byte(stdout), &output); code != 0 || decodeErr != nil || stderr != "" ||
+			output.Status != "set" || output.Kind != item.kind || output.Key != item.key {
+			t.Fatalf("set %s code=%d output=%+v stdout=%q stderr=%q decode=%v", item.kind, code, output, stdout, stderr, decodeErr)
+		}
+	}
+	code, stdout, stderr := runner.run(ctx, "admin", "label", "list", "--config", configPaths[1])
+	var listed []struct {
+		Kind string `json:"kind"`
+		Key  string `json:"key"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &listed); code != 0 || err != nil || stderr != "" || len(listed) != len(labels) {
+		t.Fatalf("chain-one list code=%d labels=%+v stdout=%q stderr=%q error=%v", code, listed, stdout, stderr, err)
+	}
+	code, stdout, stderr = runner.run(ctx, "admin", "label", "list", "--config", configPaths[2])
+	if code != 0 || strings.TrimSpace(stdout) != "[]" || stderr != "" {
+		t.Fatalf("empty chain-two list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	code, _, stderr = runner.run(
+		ctx, "admin", "label", "set", "address", labels[0].inputKey, "Chain two address", "--config", configPaths[2],
+	)
+	if code != 0 || stderr != "" {
+		t.Fatalf("chain-two set code=%d stderr=%q", code, stderr)
+	}
+	readerOne, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range labels {
+		results, _, searchErr := readerOne.Search(ctx, item.label, "", 20)
+		found := false
+		for _, result := range results {
+			if string(result.Kind) == item.kind && strings.EqualFold(result.Key, item.key) {
+				found = true
+				break
+			}
+		}
+		if searchErr != nil || !found {
+			t.Fatalf("search %q results=%+v error=%v", item.label, results, searchErr)
+		}
+	}
+	for _, exact := range []struct {
+		query, label string
+	}{
+		{"0", "CLI block height label"},
+		{blockHash.String(), "CLI block hash label"},
+		{transactionHash.String(), "CLI transaction label"},
+	} {
+		results, _, searchErr := readerOne.Search(ctx, exact.query, "", 20)
+		if searchErr != nil || len(results) != 1 || results[0].Label != exact.label {
+			t.Fatalf("exact search %q results=%+v error=%v", exact.query, results, searchErr)
+		}
+	}
+	readerTwo, err := query.NewPostgresReader(db, query.Options{ChainID: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainTwoResults, _, err := readerTwo.Search(ctx, "Chain two address", "", 20)
+	if err != nil || len(chainTwoResults) != 1 || !strings.EqualFold(chainTwoResults[0].Key, labels[0].key) {
+		t.Fatalf("chain-two search results=%+v error=%v", chainTwoResults, err)
+	}
+	chainOneResults, _, err := readerOne.Search(ctx, "Chain two address", "", 20)
+	if err != nil || len(chainOneResults) != 0 {
+		t.Fatalf("chain-one leaked chain-two label results=%+v error=%v", chainOneResults, err)
+	}
+	code, stdout, stderr = runner.run(
+		ctx, "admin", "label", "delete", " ADDRESS ", labels[0].inputKey, "--config", configPaths[1],
+	)
+	var deleted struct {
+		Status string `json:"status"`
+		Kind   string `json:"kind"`
+		Key    string `json:"key"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &deleted); code != 0 || err != nil || stderr != "" ||
+		deleted.Status != "deleted" || deleted.Kind != "address" || deleted.Key != labels[0].key {
+		t.Fatalf("delete output=%+v code=%d stdout=%q stderr=%q error=%v", deleted, code, stdout, stderr, err)
 	}
 }
 

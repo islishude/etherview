@@ -327,6 +327,7 @@ func TestVerifiedContractQueryBindsCanonicalCodeHashAndCurrentRange(t *testing.T
 		"verified.code_hash = current_code.code_hash",
 		"verified.valid_from_block <= current_code.context_number",
 		"verified.valid_to_block >= current_code.context_number",
+		"ORDER BY (verified.match_kind = 'exact') DESC, verified.valid_from_block DESC, verified.request_digest ASC NULLS LAST",
 	} {
 		if !strings.Contains(query, compactSQL(required)) {
 			t.Fatalf("verified contract query does not contain %q: %s", compactSQL(required), query)

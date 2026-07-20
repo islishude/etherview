@@ -33,6 +33,7 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 			defer cancel()
 			processors := newDerivedProcessors(t, db)
+			published := newDerivedPublicationHarness(t, db, processors)
 			reader, err := catalog.NewPostgres(db, catalog.Options{})
 			if err != nil {
 				t.Fatal(err)
@@ -40,7 +41,12 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 
 			contract, from, recipient := testAddress(30), testAddress(31), testAddress(32)
 			genesis := testBundle(0, testHash(10_000), testHash(0), testHash(11_000), "journal-genesis")
-			commitCanonical(t, ctx, repository, genesis)
+			if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis}); err != nil {
+				t.Fatalf("commit covered genesis: %v", err)
+			}
 			oldBranch := make([]ethrpc.Bundle, depth)
 			newBranch := make([]ethrpc.Bundle, depth)
 			oldAmounts, newAmounts := make([]uint64, depth), make([]uint64, depth)
@@ -55,9 +61,11 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 				newBranch[index] = derivedTokenBundle(
 					t, height, newHash, newParent, testHash(21_000+height), "journal-new", contract, from, recipient, newAmounts[index],
 				)
-				commitCanonical(t, ctx, repository, oldBranch[index])
+				if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldBranch[index]}); err != nil {
+					t.Fatalf("commit covered block %d: %v", height, err)
+				}
 				oldParent, newParent = oldHash, newHash
-				processDerivedBlock(t, ctx, processors, oldBranch[index])
+				published.process(t, ctx, oldBranch[index])
 				assertDerivedBlockState(t, ctx, db, oldBranch[index], true)
 			}
 
@@ -68,7 +76,7 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 			assertOrphanQueriesUnavailable(t, ctx, reader, contract, oldBranch[len(oldBranch)-1])
 
 			for _, block := range newBranch {
-				processDerivedBlock(t, ctx, processors, block)
+				published.process(t, ctx, block)
 				assertDerivedBlockState(t, ctx, db, block, true)
 			}
 			assertDerivedQueriesUseBranch(t, ctx, db, reader, contract, recipient, newBranch, oldBranch, sumUint64(newAmounts))
@@ -80,14 +88,14 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 			for _, block := range oldBranch {
 				assertDerivedBlockState(t, ctx, db, block, true)
 			}
-			assertDerivedQueriesUseBranch(t, ctx, db, reader, contract, recipient, oldBranch, newBranch, sumUint64(oldAmounts))
-
-			// A retry/reindex of the exact attached hashes refreshes the same
-			// journal identities and derived rows instead of appending duplicates.
+			// A same-hash reattach is not publication evidence by itself. Replaying
+			// the exact attached hashes advances their durable generation and
+			// refreshes the same journal/output identities without duplicates.
 			for _, block := range oldBranch {
-				processDerivedBlock(t, ctx, processors, block)
+				published.process(t, ctx, block)
 				assertDerivedBlockState(t, ctx, db, block, true)
 			}
+			assertDerivedQueriesUseBranch(t, ctx, db, reader, contract, recipient, oldBranch, newBranch, sumUint64(oldAmounts))
 		})
 	}
 }
@@ -136,8 +144,12 @@ func TestDerivedJournalFailureRollsBackEveryProductionStage(t *testing.T) {
 				t, 1, testHash(50_001), testHash(50_000), testHash(51_001), "rollback-block",
 				testAddress(50), testAddress(51), testAddress(52), 13,
 			)
-			commitCanonical(t, ctx, repository, genesis)
-			commitCanonical(t, ctx, repository, block)
+			if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis, block}); err != nil {
+				t.Fatalf("commit covered rollback branch: %v", err)
+			}
 			execFixture(t, ctx, db, `
 				CREATE FUNCTION reject_derived_journal() RETURNS trigger
 				LANGUAGE plpgsql AS $$
@@ -183,6 +195,14 @@ type derivedProcessors struct {
 	trace *enrich.TraceRPCProcessor
 }
 
+type derivedPublicationHarness struct {
+	db        *sql.DB
+	queue     *enrich.PostgresJobQueue
+	worker    *enrich.Worker
+	runs      map[string]int
+	stageList []enrich.StageID
+}
+
 func newDerivedProcessors(t *testing.T, db *sql.DB) derivedProcessors {
 	t.Helper()
 	token, err := enrich.NewPostgresTokenProcessor(db)
@@ -208,6 +228,69 @@ func newDerivedProcessors(t *testing.T, db *sql.DB) derivedProcessors {
 		t.Fatal(err)
 	}
 	return derivedProcessors{token: token, stats: stats, trace: trace}
+}
+
+func newDerivedPublicationHarness(
+	t *testing.T,
+	db *sql.DB,
+	processors derivedProcessors,
+) *derivedPublicationHarness {
+	t.Helper()
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{
+		processors.token, processors.stats, processors.trace,
+	}, enrich.WorkerOptions{ID: "derived-publication", LeaseDuration: 2 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &derivedPublicationHarness{
+		db: db, queue: queue, worker: worker, runs: make(map[string]int),
+		stageList: []enrich.StageID{enrich.TokenStage, enrich.StatsStage, enrich.TraceStage},
+	}
+}
+
+func (harness *derivedPublicationHarness) process(
+	t *testing.T,
+	ctx context.Context,
+	block ethrpc.Bundle,
+) {
+	t.Helper()
+	reference := mustBlockRef(t, block)
+	word, err := enrich.ParseWord(reference.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.db.ExecContext(ctx, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
+		reference.Hash.String(),
+	); err != nil {
+		t.Fatalf("acknowledge derived block outbox: %v", err)
+	}
+	harness.runs[reference.Hash.String()]++
+	replay := enrich.ReplaySource{
+		Kind: "integration-derived-publication",
+		Key:  fmt.Sprintf("%s:%d", reference.Hash, harness.runs[reference.Hash.String()]),
+	}
+	for _, stage := range harness.stageList {
+		result, err := harness.queue.Enqueue(ctx, enrich.EnqueueRequest{
+			Stage: stage, ChainID: "1", BlockHash: word, BlockNumber: reference.Number,
+			Replay: replay,
+		})
+		if err != nil || !result.Created && !result.Replayed {
+			t.Fatalf("enqueue published %s for %s: result=%+v error=%v", stage, reference.Hash, result, err)
+		}
+	}
+	for range harness.stageList {
+		processed, err := harness.worker.ProcessOne(ctx)
+		if err != nil || !processed {
+			t.Fatalf("process published derived stage for %s: processed=%t error=%v", reference.Hash, processed, err)
+		}
+	}
 }
 
 type derivedTraceCaller struct{ db *sql.DB }

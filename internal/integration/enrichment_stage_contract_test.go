@@ -257,15 +257,16 @@ func TestEnrichmentTerminalOutcomesAndExhaustionAreDurable(t *testing.T) {
 
 func readEnrichmentJob(t *testing.T, ctx context.Context, db *sql.DB, stage enrich.StageID, blockHash enrich.Word, blockNumber uint64) enrich.Job {
 	t.Helper()
-	var id int64
+	var id, generation int64
 	if err := db.QueryRowContext(ctx, `
-		SELECT id
+		SELECT id, requested_generation
 		FROM durable_jobs
-		WHERE chain_id = 1 AND stage = $1 AND stage_version = $2`, stage.Name, stage.Version).Scan(&id); err != nil {
+		WHERE chain_id = 1 AND stage = $1 AND stage_version = $2`, stage.Name, stage.Version).Scan(&id, &generation); err != nil {
 		t.Fatalf("read enrichment job: %v", err)
 	}
 	return enrich.Job{
-		ID: strconv.FormatInt(id, 10), Stage: stage, ChainID: "1", BlockHash: blockHash, BlockNumber: blockNumber,
+		ID: strconv.FormatInt(id, 10), Stage: stage, ChainID: "1", BlockHash: blockHash,
+		BlockNumber: blockNumber, Generation: uint64(generation),
 	}
 }
 
@@ -290,13 +291,18 @@ func assertStageResult(
 	var state string
 	var details []byte
 	var lastError sql.NullString
+	var durableJobID, jobGeneration sql.NullInt64
 	if err := db.QueryRowContext(ctx, `
-		SELECT state, details, last_error
+		SELECT state, details, last_error, durable_job_id, job_generation
 		FROM block_stage_results
 		WHERE chain_id = $1::numeric AND block_hash = $2 AND stage = $3 AND stage_version = $4`,
 		job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version,
-	).Scan(&state, &details, &lastError); err != nil {
+	).Scan(&state, &details, &lastError, &durableJobID, &jobGeneration); err != nil {
 		t.Fatalf("read block stage result: %v", err)
+	}
+	var completedGeneration int64
+	if err := db.QueryRowContext(ctx, `SELECT completed_generation FROM durable_jobs WHERE id = $1`, job.ID).Scan(&completedGeneration); err != nil {
+		t.Fatalf("read completed stage generation: %v", err)
 	}
 	var decoded map[string]string
 	if err := json.Unmarshal(details, &decoded); err != nil {
@@ -304,5 +310,9 @@ func assertStageResult(
 	}
 	if state != string(wantState) || lastError.String != wantError || lastError.Valid != (wantError != "") || !reflect.DeepEqual(decoded, wantDetails) {
 		t.Fatalf("stage result state=%q details=%v error=%+v, want state=%q details=%v error=%q", state, decoded, lastError, wantState, wantDetails, wantError)
+	}
+	if !durableJobID.Valid || strconv.FormatInt(durableJobID.Int64, 10) != job.ID ||
+		!jobGeneration.Valid || jobGeneration.Int64 != completedGeneration || completedGeneration == 0 {
+		t.Fatalf("stage result publication identity=%+v/%+v, want job=%s completed_generation=%d", durableJobID, jobGeneration, job.ID, completedGeneration)
 	}
 }

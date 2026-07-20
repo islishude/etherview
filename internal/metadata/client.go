@@ -129,9 +129,12 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 		Timeout:   policy.Timeout,
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= policy.MaxRedirects {
-				return errors.New("metadata redirect limit exceeded")
+				return fetchFailure(FailureUnsafeURL, errors.New("metadata redirect limit exceeded"))
 			}
-			return client.validateURL(request.URL)
+			if err := client.validateURL(request.URL); err != nil {
+				return fetchFailure(FailureUnsafeURL, err)
+			}
+			return nil
 		},
 	}
 	if policy.IPFSGateway != "" {
@@ -146,6 +149,10 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, error) {
 	resolved, err := c.resolveURL(rawURL)
 	if err != nil {
+		var classified *FetchError
+		if errors.As(err, &classified) {
+			return Result{}, classified
+		}
 		return Result{}, fetchFailure(FailureUnsafeURL, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, resolved.String(), nil)
@@ -227,7 +234,7 @@ func (c *Client) resolveURL(rawURL string) (*url.URL, error) {
 	}
 	if parsed.Scheme == "ipfs" {
 		if c.policy.IPFSGateway == "" {
-			return nil, errors.New("IPFS metadata is unavailable without a gateway")
+			return nil, fetchFailure(FailureUnavailable, errors.New("IPFS metadata is unavailable without a gateway"))
 		}
 		cid := parsed.Host
 		if cid == "" {

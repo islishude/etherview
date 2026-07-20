@@ -291,6 +291,14 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 func markTokenStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block ethrpc.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
+	if _, err := db.ExecContext(ctx, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
+		reference.Hash.String(),
+	); err != nil {
+		t.Fatalf("acknowledge token block outbox: %v", err)
+	}
 	word, err := enrich.ParseWord(reference.Hash.String())
 	if err != nil {
 		t.Fatal(err)

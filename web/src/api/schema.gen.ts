@@ -408,6 +408,7 @@ export interface components {
         };
         APIError: {
             code: string;
+            /** @description Stable machine-readable context. A capability_unavailable response may include capability, state, and code identifiers; upstream error text and configured URLs are never included. */
             details?: {
                 [key: string]: unknown;
             };

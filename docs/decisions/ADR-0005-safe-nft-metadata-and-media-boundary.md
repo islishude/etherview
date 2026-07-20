@@ -15,12 +15,29 @@ with separate invalidation and content-moderation obligations.
 
 - External NFT metadata remains optional enrichment. Its document and stable
   outcome are stored in PostgreSQL and bound to the exact chain, token address,
-  token ID, observed block number, and observed block hash.
+  token ID, observed block number, and observed block hash. The logical
+  resource key is paired with an exact block-hash identity key, so a later
+  observation never overwrites an orphan that may become canonical again.
+  Exact source observations and terminal fetch outcomes are write-once;
+  identical concurrent writes are no-ops and disagreements are integrity
+  failures.
+- The metadata role discovers ERC-721 `tokenURI(uint256)` and ERC-1155
+  `uri(uint256)` from canonical event candidates. One state RPC endpoint and
+  one EIP-1898 block-hash selector are used for the whole exact observation.
+  ERC-1155 `{id}` templates use the required 64-character lowercase hexadecimal
+  token ID. The canonical mapping is rechecked after the RPC call and before a
+  successful URI enters the durable fetch queue. Reverts, malformed results,
+  and exact-state capability gaps become stable source observations; transient
+  transport failures remain retryable without persisting nested RPC text.
 - The media endpoint selects `image` only from an `available` metadata document
   whose observed block hash is still the current canonical mapping at that
-  height. It never accepts an upstream URL from the HTTP request. Orphaned,
-  pending, unavailable, unsafe, errored, and missing-image states remain
-  explicit and distinct.
+  height. It copies the bounded source identity, releases the database query,
+  fetches externally, and then verifies that the same exact observation is
+  still the newest canonical one before returning bytes. It never accepts an
+  upstream URL from the HTTP request. Orphaned, pending, unavailable, unsafe,
+  errored, and missing-image states remain explicit and distinct. A reorg may
+  select an older retained canonical document; an observation that changes
+  during the fetch is rejected instead of returning stale bytes.
 - Each media request fetches the selected URI through the same SSRF-resistant
   HTTPS/IPFS policy. Redirects and every DNS result are checked, environment
   proxies are disabled, private and special-purpose addresses are rejected,
@@ -29,7 +46,8 @@ with separate invalidation and content-moderation obligations.
 - Media bytes are not persisted. Success and error responses are `no-store`,
   use `nosniff`, a restrictive CSP and same-origin resource policy, and expose
   only fixed filenames and typed media state. Source and resolved URIs are not
-  returned or logged at the public boundary.
+  returned or logged at the public boundary. These headers wrap authentication
+  and rate limiting, so early rejection responses retain the same boundary.
 - The media endpoint always requires an authenticated API-key identity before
   database selection or network access. A deployment without configured key
   authentication returns a typed authorization failure and cannot expose this

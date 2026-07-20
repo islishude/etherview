@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+
+	"github.com/islishude/etherview/internal/accelerator"
 )
 
 type Options struct {
@@ -16,6 +19,8 @@ type Options struct {
 	MaxTraceDataBytes int
 	MaxTextBytes      int
 	NFTState          NFTStateReconciler
+	TraceCache        accelerator.BlobStore
+	Logger            *slog.Logger
 }
 
 func (options *Options) defaults() {
@@ -40,9 +45,11 @@ func (options *Options) defaults() {
 }
 
 type Postgres struct {
-	db       *sql.DB
-	options  Options
-	nftState NFTStateReconciler
+	db         *sql.DB
+	options    Options
+	nftState   NFTStateReconciler
+	traceCache accelerator.BlobStore
+	logger     *slog.Logger
 }
 
 func NewPostgres(db *sql.DB, options Options) (*Postgres, error) {
@@ -54,7 +61,14 @@ func NewPostgres(db *sql.DB, options Options) (*Postgres, error) {
 		options.MaxChartPoints <= 0 || options.MaxTraceFrames <= 0 || options.MaxTraceDataBytes <= 0 || options.MaxTextBytes <= 0 {
 		return nil, errors.New("catalog limits are invalid")
 	}
-	return &Postgres{db: db, options: options, nftState: options.NFTState}, nil
+	logger := options.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Postgres{
+		db: db, options: options, nftState: options.NFTState,
+		traceCache: options.TraceCache, logger: logger,
+	}, nil
 }
 
 func (catalog *Postgres) beginRead(ctx context.Context) (*sql.Tx, error) {

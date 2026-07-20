@@ -34,6 +34,35 @@ func TestValidateDocumentRequiresBoundedObjectAndKnownFieldTypes(t *testing.T) {
 	}
 }
 
+func TestValidateDocumentRejectsValuesPostgresJSONBCannotStore(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		document  []byte
+		wantError string
+	}{
+		{name: "invalid UTF-8", document: []byte{'{', '"', 'x', '"', ':', '"', 0xff, '"', '}'}, wantError: "valid UTF-8"},
+		{name: "NUL escape", document: []byte(`{"x":"\u0000"}`), wantError: "NUL escape"},
+		{name: "unpaired high surrogate", document: []byte(`{"x":"\ud800"}`), wantError: "unpaired"},
+		{name: "unpaired low surrogate", document: []byte(`{"x":"\udc00"}`), wantError: "unpaired"},
+		{name: "oversized exponent", document: []byte(`{"x":1e1001}`), wantError: "exponent"},
+		{name: "valid surrogate pair", document: []byte(`{"x":"\ud83d\ude80"}`)},
+		{name: "bounded exponent", document: []byte(`{"x":1e1000}`)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateDocument(test.document)
+			if test.wantError == "" && err != nil {
+				t.Fatalf("validate document: %v", err)
+			}
+			if test.wantError != "" && (err == nil || !strings.Contains(err.Error(), test.wantError)) {
+				t.Fatalf("error = %v, want substring %q", err, test.wantError)
+			}
+		})
+	}
+}
+
 func TestValidateDocumentRejectsExcessiveDepthAndCardinality(t *testing.T) {
 	t.Parallel()
 	deep := strings.Repeat(`{"x":`, maxDocumentDepth+1) + `null` + strings.Repeat(`}`, maxDocumentDepth+1)

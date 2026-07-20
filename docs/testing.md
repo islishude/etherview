@@ -16,9 +16,10 @@ until the Makefile target exists.
   initial Git `HEAD`.
 - `make test`: Go and frontend unit tests.
 - `make test-race`: Go tests with the race detector.
-- `make test-e2e`: build the embedded SPA and run Playwright against the Go E2E
-  server. Local runs use installed Chrome; CI sets
-  `PLAYWRIGHT_USE_BUNDLED=1` after installing Playwright Chromium.
+- `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
+  run Playwright against that embedded distribution. Local runs use installed
+  Chrome; CI sets `PLAYWRIGHT_USE_BUNDLED=1` after installing Playwright
+  Chromium.
 - `make test-integration`: migrations and PostgreSQL integration tests against
   the disposable database named by `INTEGRATION_DATABASE_URL`; the target
   explicitly skips when no URL is supplied.

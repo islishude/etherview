@@ -88,7 +88,11 @@ test-go:
 test: test-go web-test
 
 test-e2e: web-build
-	$(NPM) --prefix web run test:e2e
+	@set -eu; \
+		server_binary="$$(mktemp /tmp/etherview-web-e2e.XXXXXX)"; \
+		trap 'rm -f "$$server_binary"' EXIT INT TERM; \
+		$(GO) build -o "$$server_binary" ./web/e2e/server; \
+		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --prefix web run test:e2e
 
 test-race:
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)

@@ -78,6 +78,22 @@ func TestCapabilityErrorsAndFetchClassificationNeverExposeNestedText(t *testing.
 	}
 }
 
+func TestNameProviderKeyIsStableIsolatedAndDoesNotExposeURL(t *testing.T) {
+	t.Parallel()
+	secretURL := "https://name.example/v1?token=operator-secret"
+	first := nameProviderKey(secretURL)
+	if first != nameProviderKey(secretURL) {
+		t.Fatal("name provider key is not stable")
+	}
+	if first == nameProviderKey("https://name.example/v2?token=operator-secret") {
+		t.Fatal("different provider URLs share a cache namespace")
+	}
+	if !strings.HasPrefix(first, "sha256:") || len(first) != len("sha256:")+64 ||
+		strings.Contains(first, "operator-secret") || strings.Contains(first, "name.example") {
+		t.Fatalf("unsafe name provider key %q", first)
+	}
+}
+
 func stringContains(value, fragment string) bool {
 	return len(fragment) > 0 && len(value) >= len(fragment) && strings.Contains(value, fragment)
 }

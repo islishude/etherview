@@ -347,6 +347,8 @@ type ExternalAdapterObservation struct {
 	ObservedAt     pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	// Stable non-secret namespace for the configured adapter provider
+	ProviderKey string `db:"provider_key" json:"provider_key"`
 }
 
 type ExternalMetadataAttempt struct {
@@ -389,6 +391,7 @@ type ExternalMetadatum struct {
 	LastErrorCode       *string            `db:"last_error_code" json:"last_error_code"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	TerminalAt          pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
+	IdentityHash        []byte             `db:"identity_hash" json:"identity_hash"`
 }
 
 type IndexCheckpoint struct {
@@ -493,6 +496,19 @@ type NameRecord struct {
 	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
 	Canonical   bool               `db:"canonical" json:"canonical"`
 	ObservedAt  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type NftMetadataSourceObservation struct {
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	TokenAddress []byte             `db:"token_address" json:"token_address"`
+	TokenID      pgtype.Numeric     `db:"token_id" json:"token_id"`
+	BlockNumber  pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash    []byte             `db:"block_hash" json:"block_hash"`
+	Standard     string             `db:"standard" json:"standard"`
+	State        string             `db:"state" json:"state"`
+	SourceUri    *string            `db:"source_uri" json:"source_uri"`
+	ErrorCode    *string            `db:"error_code" json:"error_code"`
+	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
 type NormalizedTrace struct {
@@ -877,39 +893,69 @@ type TransactionalOutbox struct {
 }
 
 type VerificationJob struct {
-	ID              pgtype.UUID        `db:"id" json:"id"`
-	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Address         []byte             `db:"address" json:"address"`
-	CodeHash        []byte             `db:"code_hash" json:"code_hash"`
-	BlockHash       []byte             `db:"block_hash" json:"block_hash"`
-	Language        string             `db:"language" json:"language"`
-	CompilerVersion string             `db:"compiler_version" json:"compiler_version"`
-	Request         []byte             `db:"request" json:"request"`
-	Status          string             `db:"status" json:"status"`
-	LeasedBy        *string            `db:"leased_by" json:"leased_by"`
-	LeaseToken      *string            `db:"lease_token" json:"lease_token"`
-	LeaseExpiresAt  pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
-	ResultKind      *string            `db:"result_kind" json:"result_kind"`
-	Result          []byte             `db:"result" json:"result"`
-	ErrorCode       *string            `db:"error_code" json:"error_code"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                    pgtype.UUID        `db:"id" json:"id"`
+	ChainID               pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address               []byte             `db:"address" json:"address"`
+	CodeHash              []byte             `db:"code_hash" json:"code_hash"`
+	BlockHash             []byte             `db:"block_hash" json:"block_hash"`
+	Language              string             `db:"language" json:"language"`
+	CompilerVersion       string             `db:"compiler_version" json:"compiler_version"`
+	Request               []byte             `db:"request" json:"request"`
+	Status                string             `db:"status" json:"status"`
+	LeasedBy              *string            `db:"leased_by" json:"leased_by"`
+	LeaseToken            *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt        pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+	ResultKind            *string            `db:"result_kind" json:"result_kind"`
+	Result                []byte             `db:"result" json:"result"`
+	ErrorCode             *string            `db:"error_code" json:"error_code"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	RequestPayload        []byte             `db:"request_payload" json:"request_payload"`
+	RequestDigest         []byte             `db:"request_digest" json:"request_digest"`
+	RequiresHardIsolation bool               `db:"requires_hard_isolation" json:"requires_hard_isolation"`
+	AttemptCount          int32              `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
+	CompilerKind          *string            `db:"compiler_kind" json:"compiler_kind"`
+	CompilerDigest        []byte             `db:"compiler_digest" json:"compiler_digest"`
+	CompilerHardIsolated  *bool              `db:"compiler_hard_isolated" json:"compiler_hard_isolated"`
+}
+
+type VerificationResult struct {
+	JobID                pgtype.UUID        `db:"job_id" json:"job_id"`
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address              []byte             `db:"address" json:"address"`
+	CodeHash             []byte             `db:"code_hash" json:"code_hash"`
+	BlockHash            []byte             `db:"block_hash" json:"block_hash"`
+	BlockNumber          pgtype.Numeric     `db:"block_number" json:"block_number"`
+	RequestDigest        []byte             `db:"request_digest" json:"request_digest"`
+	CompilerKind         string             `db:"compiler_kind" json:"compiler_kind"`
+	CompilerDigest       []byte             `db:"compiler_digest" json:"compiler_digest"`
+	CompilerHardIsolated bool               `db:"compiler_hard_isolated" json:"compiler_hard_isolated"`
+	ResultKind           string             `db:"result_kind" json:"result_kind"`
+	Result               []byte             `db:"result" json:"result"`
+	ContractName         *string            `db:"contract_name" json:"contract_name"`
+	Abi                  []byte             `db:"abi" json:"abi"`
+	Sources              []byte             `db:"sources" json:"sources"`
+	Settings             []byte             `db:"settings" json:"settings"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type VerifiedContract struct {
-	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Address         []byte             `db:"address" json:"address"`
-	CodeHash        []byte             `db:"code_hash" json:"code_hash"`
-	ValidFromBlock  pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
-	ValidToBlock    pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
-	Language        string             `db:"language" json:"language"`
-	CompilerVersion string             `db:"compiler_version" json:"compiler_version"`
-	MatchKind       string             `db:"match_kind" json:"match_kind"`
-	ContractName    string             `db:"contract_name" json:"contract_name"`
-	Abi             []byte             `db:"abi" json:"abi"`
-	Sources         []byte             `db:"sources" json:"sources"`
-	Settings        []byte             `db:"settings" json:"settings"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address           []byte             `db:"address" json:"address"`
+	CodeHash          []byte             `db:"code_hash" json:"code_hash"`
+	ValidFromBlock    pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock      pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
+	Language          string             `db:"language" json:"language"`
+	CompilerVersion   string             `db:"compiler_version" json:"compiler_version"`
+	MatchKind         string             `db:"match_kind" json:"match_kind"`
+	ContractName      string             `db:"contract_name" json:"contract_name"`
+	Abi               []byte             `db:"abi" json:"abi"`
+	Sources           []byte             `db:"sources" json:"sources"`
+	Settings          []byte             `db:"settings" json:"settings"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	VerificationJobID pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest     []byte             `db:"request_digest" json:"request_digest"`
 }
 
 type Withdrawal struct {

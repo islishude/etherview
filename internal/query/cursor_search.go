@@ -91,12 +91,18 @@ func (r *PostgresReader) validateBlockCursor(ctx context.Context, tx *sql.Tx, cu
 	return nil
 }
 
-func (r *PostgresReader) searchHash(ctx context.Context, queryer searchQueryer, hash ethrpc.Hash, limit int) ([]gen.SearchResult, error) {
+func (r *PostgresReader) searchHash(
+	ctx context.Context,
+	queryer searchQueryer,
+	hash ethrpc.Hash,
+	generation int64,
+	limit int,
+) ([]gen.SearchResult, error) {
 	hashBytes, err := hash.Bytes()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := queryer.QueryContext(ctx, searchHashSQL, r.chainID, hashBytes, limit)
+	rows, err := queryer.QueryContext(ctx, searchHashSQL, r.chainID, hashBytes, generation, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search hash: %w", err)
 	}
@@ -111,6 +117,9 @@ func (r *PostgresReader) searchHash(ctx context.Context, queryer searchQueryer, 
 		}
 		if rank > int64(^uint(0)>>1) || rank < -int64(^uint(0)>>1)-1 {
 			return nil, errors.New("search rank exceeds API integer range")
+		}
+		if label == "" || len(label) > 4096 {
+			return nil, errors.New("database returned an invalid search label")
 		}
 		resultKind := gen.SearchResultKind(kind)
 		if resultKind != gen.SearchResultKindBlock && resultKind != gen.SearchResultKindTransaction {
@@ -132,15 +141,30 @@ func (r *PostgresReader) searchHash(ctx context.Context, queryer searchQueryer, 
 	return results, nil
 }
 
-func (r *PostgresReader) searchBlockNumber(ctx context.Context, queryer searchQueryer, height uint64) ([]gen.SearchResult, error) {
+func (r *PostgresReader) searchBlockNumber(
+	ctx context.Context,
+	queryer searchQueryer,
+	height uint64,
+	generation int64,
+) ([]gen.SearchResult, error) {
 	var numberText string
 	var hashBytes []byte
-	err := queryer.QueryRowContext(ctx, searchBlockNumberSQL, r.chainID, strconv.FormatUint(height, 10)).Scan(&numberText, &hashBytes)
+	var label string
+	var rank int64
+	err := queryer.QueryRowContext(
+		ctx, searchBlockNumberSQL, r.chainID, strconv.FormatUint(height, 10), generation,
+	).Scan(&numberText, &hashBytes, &label, &rank)
 	if err == sql.ErrNoRows {
 		return []gen.SearchResult{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("search block number: %w", err)
+	}
+	if rank > int64(^uint(0)>>1) || rank < -int64(^uint(0)>>1)-1 {
+		return nil, errors.New("search rank exceeds API integer range")
+	}
+	if label == "" || len(label) > 4096 {
+		return nil, errors.New("database returned an invalid search label")
 	}
 	number, err := parseDecimalUint64(numberText)
 	if err != nil || number != height {
@@ -153,8 +177,8 @@ func (r *PostgresReader) searchBlockNumber(ctx context.Context, queryer searchQu
 	canonical := true
 	return []gen.SearchResult{{
 		Kind: gen.SearchResultKindBlock,
-		Key:  strings.ToLower(hash.String()), Label: "Block #" + numberText,
-		Rank: 100, Canonical: &canonical,
+		Key:  strings.ToLower(hash.String()), Label: label,
+		Rank: int(rank), Canonical: &canonical,
 	}}, nil
 }
 
@@ -164,16 +188,19 @@ func (r *PostgresReader) searchText(
 	value string,
 	snapshotNumber uint64,
 	generation int64,
+	resolvedNameAddress string,
 	boundary *searchCursor,
 	limit int,
 ) ([]gen.SearchResult, error) {
 	hasBoundary, afterRank, afterKind, afterKey := false, 0, "", ""
 	if boundary != nil {
-		hasBoundary, afterRank, afterKind, afterKey = true, boundary.AfterRank, boundary.AfterKind, boundary.AfterKey
+		hasBoundary, afterRank, afterKind, afterKey = true, boundary.AfterRank, boundary.AfterKind,
+			canonicalSearchBoundaryKey(boundary.AfterKey)
 	}
 	rows, err := queryer.QueryContext(ctx, searchTextSQL,
 		r.chainID, strings.ToLower(value), strconv.FormatUint(snapshotNumber, 10),
 		generation, hasBoundary, afterRank, afterKind, afterKey, limit,
+		strings.ToLower(resolvedNameAddress),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search indexed names and labels: %w", err)
@@ -284,7 +311,15 @@ func afterSearchBoundary(result gen.SearchResult, cursor searchCursor) bool {
 	if string(result.Kind) != cursor.AfterKind {
 		return string(result.Kind) > cursor.AfterKind
 	}
-	return result.Key > cursor.AfterKey
+	return canonicalSearchBoundaryKey(result.Key) > canonicalSearchBoundaryKey(cursor.AfterKey)
+}
+
+// Search documents use normalized external identities for deterministic SQL
+// ordering, while address keys are rendered in EIP-55 form at the API boundary.
+// Cursors must compare the normalized identity or checksum casing can reorder
+// two otherwise adjacent address results and make a later page skip one.
+func canonicalSearchBoundaryKey(value string) string {
+	return strings.ToLower(value)
 }
 
 func normalizeSearchResult(kind, key, label string, rank int64, canonical sql.NullBool) (gen.SearchResult, error) {
@@ -343,7 +378,7 @@ func mergeSearchResults(results []gen.SearchResult, extra gen.SearchResult, limi
 		if results[left].Kind != results[right].Kind {
 			return results[left].Kind < results[right].Kind
 		}
-		return results[left].Key < results[right].Key
+		return canonicalSearchBoundaryKey(results[left].Key) < canonicalSearchBoundaryKey(results[right].Key)
 	})
 	if len(results) > limit {
 		results = results[:limit]

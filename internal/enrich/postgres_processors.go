@@ -609,7 +609,10 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 		return StageResult{}, Permanent(fmt.Errorf("decode block timestamp: %w", err))
 	}
 	var blockInterval, transactionsPerSecond any
-	if parentTimestamp.Valid {
+	// The configured indexing start defines the statistics observation boundary.
+	// Even if an older canonical parent happens to be retained in PostgreSQL, it
+	// is outside that boundary and must not manufacture an interval or TPS value.
+	if job.BlockNumber > configuredStartNumber {
 		parent, ok := new(big.Int).SetString(parentTimestamp.String, 10)
 		if !ok || parent.Sign() < 0 || timestamp.Cmp(parent) <= 0 {
 			return StageResult{}, Permanent(errors.New("stats parent timestamp is invalid"))
@@ -626,6 +629,9 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 		}
 		baseFee = value.String()
 		burned = new(big.Int).Mul(value, gasUsed).String()
+	}
+	if (block.BlobGasUsed == nil) != (block.ExcessBlobGas == nil) {
+		return StageResult{}, Permanent(errors.New("stats block has incomplete blob header fields"))
 	}
 	if block.BlobGasUsed != nil {
 		value, err := block.BlobGasUsed.Big()
@@ -717,6 +723,9 @@ func statsReceiptBlobFees(ctx context.Context, tx *sql.Tx, job Job) (*big.Int, *
 		if err != nil {
 			return nil, nil, Permanent(fmt.Errorf("decode receipt blob gas price: %w", err))
 		}
+		if used.Sign() <= 0 || currentPrice.Sign() <= 0 {
+			return nil, nil, Permanent(errors.New("stats receipt has non-positive blob fee facts"))
+		}
 		if price != nil && price.Cmp(currentPrice) != 0 {
 			return nil, nil, Permanent(errors.New("stats receipts disagree on blob gas price"))
 		}
@@ -770,10 +779,9 @@ func commitStageResult(ctx context.Context, tx *sql.Tx, job Job, result StageRes
 	return result, nil
 }
 
-// persistStageResultTx is shared by derived-output transactions and the
-// durable queue's terminal lease transaction. In particular, failed and
-// unavailable attempts have no output transaction of their own, so queue
-// completion must write this row before releasing the lease.
+// persistStageResultTx writes the nullable-identity marker used only by direct
+// processor fixtures. Durable queue completion uses the lease-bound publication
+// helper so every terminal marker carries its exact job and generation.
 func persistStageResultTx(ctx context.Context, tx *sql.Tx, job Job, result StageResult) error {
 	if tx == nil {
 		return errors.New("persist block stage result using nil transaction")

@@ -95,6 +95,36 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret }}
                   key: {{ $root.Values.secrets.apiKeyPepperKey }}
                   optional: true
+            - name: ETHERVIEW_NATS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $root.Values.secrets.natsURLKey }}
+                  optional: true
+            - name: ETHERVIEW_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $root.Values.secrets.redisURLKey }}
+                  optional: true
+            - name: ETHERVIEW_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $root.Values.secrets.s3AccessKeyKey }}
+                  optional: true
+            - name: ETHERVIEW_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $root.Values.secrets.s3SecretKeyKey }}
+                  optional: true
+            - name: ETHERVIEW_S3_SESSION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $root.Values.secrets.s3SessionTokenKey }}
+                  optional: true
           ports:
             - name: metrics
               containerPort: 9090

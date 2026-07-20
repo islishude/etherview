@@ -17,8 +17,9 @@ SELECT state, code, value, block_number, block_hash,
 FROM external_adapter_observations
 WHERE chain_id = $1::numeric
   AND capability = $2
-  AND observation_key = $3
-  AND expires_at > $4::timestamptz
+  AND provider_key = $3
+  AND observation_key = $4
+  AND expires_at > $5::timestamptz
   AND (
       capability <> 'name'
       OR state <> 'complete'
@@ -36,6 +37,7 @@ LIMIT 1
 type GetFreshAdapterObservationParams struct {
 	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Capability     string             `db:"capability" json:"capability"`
+	ProviderKey    string             `db:"provider_key" json:"provider_key"`
 	ObservationKey string             `db:"observation_key" json:"observation_key"`
 	NowAt          pgtype.Timestamptz `db:"now_at" json:"now_at"`
 }
@@ -54,6 +56,7 @@ func (q *Queries) GetFreshAdapterObservation(ctx context.Context, arg GetFreshAd
 	row := q.db.QueryRow(ctx, getFreshAdapterObservation,
 		arg.ChainID,
 		arg.Capability,
+		arg.ProviderKey,
 		arg.ObservationKey,
 		arg.NowAt,
 	)
@@ -72,17 +75,19 @@ func (q *Queries) GetFreshAdapterObservation(ctx context.Context, arg GetFreshAd
 
 const recordAdapterFailure = `-- name: RecordAdapterFailure :exec
 INSERT INTO external_adapter_observations (
-    chain_id, capability, observation_key, state, code, observed_at, expires_at
+    chain_id, capability, provider_key, observation_key, state, code,
+    observed_at, expires_at
 ) VALUES (
     $1::numeric, $2, $3,
-    $4, $5, $6::timestamptz,
-    $7::timestamptz
+    $4, $5, $6,
+    $7::timestamptz, $8::timestamptz
 )
 `
 
 type RecordAdapterFailureParams struct {
 	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Capability     string             `db:"capability" json:"capability"`
+	ProviderKey    string             `db:"provider_key" json:"provider_key"`
 	ObservationKey string             `db:"observation_key" json:"observation_key"`
 	State          string             `db:"state" json:"state"`
 	Code           *string            `db:"code" json:"code"`
@@ -94,6 +99,7 @@ func (q *Queries) RecordAdapterFailure(ctx context.Context, arg RecordAdapterFai
 	_, err := q.db.Exec(ctx, recordAdapterFailure,
 		arg.ChainID,
 		arg.Capability,
+		arg.ProviderKey,
 		arg.ObservationKey,
 		arg.State,
 		arg.Code,
@@ -128,13 +134,13 @@ WITH canonical AS MATERIALIZED (
     RETURNING stored_name.address
 ), stored_observation AS (
     INSERT INTO external_adapter_observations (
-        chain_id, capability, observation_key, state, value, block_number,
-        block_hash, observed_at, expires_at
+        chain_id, capability, provider_key, observation_key, state, value,
+        block_number, block_hash, observed_at, expires_at
     )
-    SELECT $1::numeric, 'name', $5, 'complete',
-           $9::jsonb, $2::numeric,
-           $3, $8::timestamptz,
-           $10::timestamptz
+    SELECT $1::numeric, 'name', $9,
+           $5, 'complete', $10::jsonb,
+           $2::numeric, $3,
+           $8::timestamptz, $11::timestamptz
     FROM accepted_name
     RETURNING 1
 )
@@ -156,6 +162,7 @@ type RecordNameAdapterSuccessParams struct {
 	Address             []byte             `db:"address" json:"address"`
 	Resolver            []byte             `db:"resolver" json:"resolver"`
 	ObservedAt          pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ProviderKey         string             `db:"provider_key" json:"provider_key"`
 	Value               []byte             `db:"value" json:"value"`
 	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
@@ -175,6 +182,7 @@ func (q *Queries) RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAd
 		arg.Address,
 		arg.Resolver,
 		arg.ObservedAt,
+		arg.ProviderKey,
 		arg.Value,
 		arg.ExpiresAt,
 	)
@@ -185,10 +193,12 @@ func (q *Queries) RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAd
 
 const recordPriceAdapterSuccess = `-- name: RecordPriceAdapterSuccess :exec
 INSERT INTO external_adapter_observations (
-    chain_id, capability, observation_key, state, value, observed_at, expires_at
+    chain_id, capability, provider_key, observation_key, state, value,
+    observed_at, expires_at
 ) VALUES (
-    $1::numeric, 'price', 'native', 'complete', $2::jsonb,
-    $3::timestamptz, $4::timestamptz
+    $1::numeric, 'price', 'default', 'native', 'complete',
+    $2::jsonb, $3::timestamptz,
+    $4::timestamptz
 )
 `
 

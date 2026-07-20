@@ -181,18 +181,20 @@ func (b *Backend) adminLabel(ctx context.Context, db *sql.DB, cfg config.Config,
 		if len(args) != 3 {
 			return errors.New("label set requires kind, key, and label")
 		}
-		if err := repository.SetLabel(ctx, args[0], args[1], args[2]); err != nil {
+		stored, err := repository.SetLabel(ctx, args[0], args[1], args[2])
+		if err != nil {
 			return err
 		}
-		return writeIndentedJSON(b.output(), map[string]string{"status": "set", "kind": args[0], "key": args[1]})
+		return writeIndentedJSON(b.output(), map[string]string{"status": "set", "kind": stored.Kind, "key": stored.Key})
 	case "delete":
 		if len(args) != 2 {
 			return errors.New("label delete requires kind and key")
 		}
-		if err := repository.DeleteLabel(ctx, args[0], args[1]); err != nil {
+		stored, err := repository.DeleteLabel(ctx, args[0], args[1])
+		if err != nil {
 			return err
 		}
-		return writeIndentedJSON(b.output(), map[string]string{"status": "deleted", "kind": args[0], "key": args[1]})
+		return writeIndentedJSON(b.output(), map[string]string{"status": "deleted", "kind": stored.Kind, "key": stored.Key})
 	case "list":
 		if len(args) != 0 {
 			return errors.New("label list accepts no arguments")

@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"crypto/sha256"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -27,10 +28,20 @@ func TestNFTRequestValidationAndIdempotency(t *testing.T) {
 	if err != nil || changedKey == first {
 		t.Fatalf("changed key = %q, err=%v, original=%q", changedKey, err, first)
 	}
+	maximum := request
+	maximum.TokenID = maximumUint256.String()
+	if err := maximum.Validate(); err != nil {
+		t.Fatalf("maximum uint256 token ID rejected: %v", err)
+	}
 
 	invalid := []NFTRequest{
 		func() NFTRequest { value := request; value.ChainID = "01"; return value }(),
 		func() NFTRequest { value := request; value.TokenID = "-1"; return value }(),
+		func() NFTRequest {
+			value := request
+			value.TokenID = new(big.Int).Add(maximumUint256, big.NewInt(1)).String()
+			return value
+		}(),
 		func() NFTRequest { value := request; value.Token = "0x01"; return value }(),
 		func() NFTRequest {
 			value := request

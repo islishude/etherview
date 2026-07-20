@@ -74,6 +74,24 @@ func TestStageVersionChangesIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestDurableWorkerWakeIsOnlyALatencyHint(t *testing.T) {
+	t.Parallel()
+	wake := make(chan struct{}, 1)
+	wake <- struct{}{}
+	started := time.Now()
+	if err := waitContextOrWake(context.Background(), time.Hour, wake); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("wake was not consumed promptly: %s", elapsed)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	if err := waitContextOrWake(ctx, time.Hour, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("nil/lost wake did not retain cancellable polling fallback: %v", err)
+	}
+}
+
 func TestWorkerRenewsAndCompletes(t *testing.T) {
 	t.Parallel()
 	stage := StageID{Name: "trace", Version: 1}

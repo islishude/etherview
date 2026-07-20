@@ -75,7 +75,7 @@ func (s *PriceService) NativePrice(ctx context.Context) (NativePrice, error) {
 		return NativePrice{}, errors.New("price adapter is nil")
 	}
 	now := s.now().UTC()
-	if cached, exists, err := s.repository.fresh(ctx, "price", priceObservationKey, now); err != nil {
+	if cached, exists, err := s.repository.fresh(ctx, "price", defaultProviderKey, priceObservationKey, now); err != nil {
 		return NativePrice{}, err
 	} else if exists {
 		if cached.State != "complete" {
@@ -86,14 +86,14 @@ func (s *PriceService) NativePrice(ctx context.Context) (NativePrice, error) {
 	result, err := s.fetcher.Fetch(ctx, s.baseURL, metadata.KindJSON)
 	if err != nil {
 		code, state := classifyFetchFailure(err)
-		if persistErr := s.repository.failure(ctx, "price", priceObservationKey, state, code, now, now.Add(s.failureTTL)); persistErr != nil {
+		if persistErr := s.repository.failure(ctx, "price", defaultProviderKey, priceObservationKey, state, code, now, now.Add(s.failureTTL)); persistErr != nil {
 			return NativePrice{}, persistErr
 		}
 		return NativePrice{}, CapabilityError{Capability: "price", State: state, Code: code}
 	}
 	price, err := decodeNativePrice(result.Body, now, s.freshness)
 	if err != nil {
-		if persistErr := s.repository.failure(ctx, "price", priceObservationKey, "failed", "invalid_response", now, now.Add(s.failureTTL)); persistErr != nil {
+		if persistErr := s.repository.failure(ctx, "price", defaultProviderKey, priceObservationKey, "failed", "invalid_response", now, now.Add(s.failureTTL)); persistErr != nil {
 			return NativePrice{}, persistErr
 		}
 		return NativePrice{}, CapabilityError{Capability: "price", State: "failed", Code: "invalid_response"}

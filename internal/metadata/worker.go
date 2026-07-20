@@ -168,7 +168,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 	if retry {
 		state = StateError
 		code = "attempts_exhausted"
-		message = boundedError(fmt.Errorf("maximum metadata fetch attempts exhausted: %w", completed.err))
+		message = "maximum metadata fetch attempts exhausted"
 	}
 	return worker.repository.Finish(ctx, lease, terminalOutcome(state, code, message))
 }

@@ -137,6 +137,38 @@ func TestIPFSRewriteAndTraversal(t *testing.T) {
 	}
 }
 
+func TestIPFSWithoutGatewayIsUnavailableNotUnsafe(t *testing.T) {
+	t.Parallel()
+	client, err := New(Policy{}, staticResolver{err: errors.New("unused")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Fetch(t.Context(), "ipfs://bafybeigdyrzt1234567890/metadata.json", KindJSON)
+	var failure *FetchError
+	if !errors.As(err, &failure) || failure.Kind != FailureUnavailable {
+		t.Fatalf("fetch error = %v classification=%+v, want unavailable", err, failure)
+	}
+}
+
+func TestRedirectPolicyFailuresRemainUnsafeURL(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Redirect(w, &http.Request{}, "file:///etc/passwd", http.StatusFound)
+	}))
+	defer server.Close()
+	client, err := New(Policy{
+		AllowHTTP: true, UnsafeAllowPrivateNetworks: true, MaxRedirects: 1,
+	}, net.DefaultResolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Fetch(t.Context(), server.URL, KindJSON)
+	var failure *FetchError
+	if !errors.As(err, &failure) || failure.Kind != FailureUnsafeURL {
+		t.Fatalf("redirect error = %v classification=%+v, want unsafe URL", err, failure)
+	}
+}
+
 func TestMixedPublicAndPrivateDNSIsRejected(t *testing.T) {
 	t.Parallel()
 	resolver := staticResolver{addresses: []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}, {IP: net.ParseIP("10.0.0.1")}}}

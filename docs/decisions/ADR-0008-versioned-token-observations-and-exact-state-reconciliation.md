@@ -21,6 +21,11 @@ and improving its confidence.
   new observation. Readers select the newest observation at or before their
   snapshot whose exact height and hash remain canonical, so an orphaned latest
   observation naturally falls back to the previous canonical version.
+- NFT metadata source and document observations follow the same exact-block
+  rule. Their PostgreSQL identity includes the observed block hash even when
+  address, token ID, logical resource key, or source URI repeats. Exact source
+  and terminal document facts are write-once, and media readers select the
+  newest retained observation whose exact height/hash remains canonical.
 - Event-derived token deltas remain block-scoped candidate/evidence rows. They
   are never returned as authoritative NFT owner or balance state.
 - ERC-721 ownership is promoted only by `ownerOf(tokenId)` at the exact
@@ -49,6 +54,11 @@ and improving its confidence.
   repeatable-read transaction before making these external calls. Exact block
   identity and post-call canonicality checks preserve the snapshot boundary
   without holding a database connection across network latency.
+- NFT metadata source discovery uses the same one-endpoint, EIP-1898 and
+  post-call canonicality boundary. Public media resolution similarly releases
+  the database query before the external image fetch and then rechecks the
+  selected exact observation, so neither path holds a PostgreSQL snapshot over
+  network latency.
 - Token detection and proxy discovery use one exact-state error classifier.
   Missing EIP-1898 support and known pruned or unavailable historical state are
   terminal `unavailable` capability facts for that block. Transport failures

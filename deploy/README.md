@@ -19,6 +19,9 @@ The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
 and one process per role. Add `--profile accelerators` only when developing an
 optional adapter; those services are intentionally absent from `depends_on`.
+Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
+only when using them. The application remains ready when any accelerator is
+unreachable; create the configured S3 bucket before expecting trace-cache hits.
 The maintenance component runs one search-catalog and adapter-retention sweep
 at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
@@ -27,9 +30,12 @@ uses PostgreSQL only and a retryable failure does not withdraw readiness.
 ## Helm
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
-`database-url` and optional `rpc-urls` and `api-key-pepper` keys. It can instead create that Secret
-through External Secrets when `externalSecret.enabled=true`; secret values are
-never rendered into a ConfigMap or chart defaults.
+`database-url` and optional `rpc-urls`, `api-key-pepper`, `nats-url`,
+`redis-url`, `s3-access-key`, `s3-secret-key`, and `s3-session-token` keys. With
+`externalSecret.enabled=true`, the included ExternalSecret materializes the
+database, RPC, and API-key-pepper entries; deployments that also source optional
+adapter credentials externally must add those keys to the target Secret. Secret
+values are never rendered into a ConfigMap or chart defaults.
 
 ```sh
 helm lint deploy/helm/etherview
@@ -51,6 +57,9 @@ Every role exposes liveness, readiness, and Prometheus metrics on its dedicated
 listener. The default NetworkPolicy permits DNS, PostgreSQL on TCP 5432, and HTTPS RPC or
 metadata egress. Set `networkPolicy.additionalEgress` for private RPC endpoints,
 nonstandard PostgreSQL ports, or an in-cluster OpenTelemetry collector.
+NATS, Redis, and S3-compatible endpoints on non-HTTPS ports likewise require
+explicit `networkPolicy.additionalEgress` entries; the chart never broadens
+egress merely because an optional adapter URL is configured.
 
 ## Image properties
 

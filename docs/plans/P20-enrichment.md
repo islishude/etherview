@@ -1,6 +1,6 @@
 # P20 — Enrichment
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -16,6 +16,7 @@ search documents, and rollup statistics without delaying core readiness.
 - [ADR-0009: Block-bound ABI provenance](../decisions/ADR-0009-block-bound-abi-provenance.md)
 - [ADR-0010: Block-pinned proxy stage and ABI dependency](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md)
 - [ADR-0011: Snapshot search, statistics, and bounded adapters](../decisions/ADR-0011-snapshot-search-stats-and-bounded-adapters.md)
+- [ADR-0012: Lease-fenced derived publication](../decisions/ADR-0012-lease-fenced-derived-publication.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -27,11 +28,11 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T03 | done | P20-T02 | Contract creation and EIP-1167/1967/beacon proxy versioning | proxy-upgrade tests |
 | P20-T04 | done | P20-T01 | ERC-20/721/1155 discovery, transfers, ownership, balances, supply | standard/nonstandard token tests |
 | P20-T05 | done | P20-T01 | Geth callTracer and trace_* adapters with normalized call frames | trace/revert tests |
-| P20-T06 | in_progress | P20-T03, P20-T04, P20-T05 | Search, name/price adapters, and aggregate statistics | reorg, adapter, and consistency tests |
+| P20-T06 | done | P20-T03, P20-T04, P20-T05 | Search, name/price adapters, and aggregate statistics | reorg, adapter, and consistency tests |
 | P20-T07 | done | P20-T01, P20-T03, P20-T05 | Reattach-safe durable replay generations and one retry budget | detach/reattach and lease-race tests |
 | P20-T08 | done | P20-T02, P20-T04, P20-T05 | Global ABI/Trace resource budgets and builtin/large-batch boundaries | adversarial budget and fixture tests |
 | P20-T09 | done | P20-T04 | Immutable exact NFT state and typed token state-capability failures | conflict and capability tests |
-| P20-T10 | in_progress | P20-T01, P20-T07 | Lease-fenced atomic publication of derived output, stage result, journal, and job generation | stale-worker and publication-window tests |
+| P20-T10 | done | P20-T01, P20-T07 | Lease-fenced atomic publication of derived output, stage result, journal, and job generation | stale-worker and publication-window tests |
 
 ## Acceptance
 
@@ -52,24 +53,58 @@ search documents, and rollup statistics without delaying core readiness.
       dynamic offsets and multi-transaction blocks.
 - [x] Exact NFT observations are write-once per block identity, and unsupported
       exact-state RPC is reported as `unavailable` rather than exhausted failure.
-- [ ] Search pagination remains fixed across label/enrichment changes, retains
+- [x] Search pagination remains fixed across label/enrichment changes, retains
       reorg fallback above finality, and rejects a pruned generation.
-- [ ] `stats@2` distinguishes an indexing start, missing parent interval,
+- [x] `stats@2` distinguishes an indexing start, missing parent interval,
       no-blob block, and inconsistent blob facts without fabricating values.
-- [ ] Name, price, and API-only state capabilities remain optional, block-bound
+- [x] Name, price, and API-only state capabilities remain optional, block-bound
       where applicable, SSRF-safe, and expose stable failures without upstream
       error text.
-- [ ] A successful production attempt publishes derived output, stage result,
+- [x] A successful production attempt publishes derived output, stage result,
       journal, and the matching durable-job generation in one lease-fenced
       PostgreSQL transaction; an expired worker can never make results visible.
 
 ## Current Blockers
 
-None. P20-T06 and P20-T10 remain independently actionable. P20-T10 owns the
-stronger atomic publication boundary discovered while reviewing P20-T07;
-P20-T07 does not claim that separate guarantee.
+None. Every P20 work item and acceptance boundary is complete; downstream P30,
+P40, P50, and P60 items may now consume the published enrichment contracts.
 
 ## Evidence
+
+- P20-T10: all five production derived stages (`proxy@1`, `abi@1`, `token@1`,
+  `stats@2`, and `trace@1`) use the PostgreSQL worker's lease-aware processor
+  path. Derived output, the exact job/generation stage result, controlled
+  journal, durable-job success transition, and append-only publication proof
+  commit in one transaction after a token-, expiry-, identity-, and
+  generation-fenced compare-and-set. Pending replay rolls writer output back
+  to a savepoint before handing off the next generation; a lost or expired
+  lease rolls back the whole attempt.
+- P20-T10: failed, unavailable, retry-exhausted, and expired-exhausted terminal
+  paths publish the exact durable job/generation result in the same transaction
+  as completion and intentionally have no journal. This includes non-manifest
+  enrichment stages used by durable queue clients; regressions now require
+  non-null `durable_job_id` and `job_generation` matching the job's completed
+  generation. Direct successful completion of a known derived stage remains
+  rejected, and production readers use only `published_block_stage_results`.
+- P20-T10: against PostgreSQL 18, `go test -race -tags=integration
+  ./internal/integration -run
+  'Test(AllDerivedStagesUseOneLeaseFencedPublicationProtocol|ExpiredWriterCannotPublishAfterReplacementLease|PendingReplayDiscardsOwnedWriterAndInvalidatesPublishedView|AtomicPublicationRollsBackDerivedOutputOnJournalFailure|OlderGenerationAndDirectFixtureCannotOverwritePublishedGeneration|DerivedTerminalMarkersArePublishedWithoutJournals|PublicationMigrationAndViewRequireExactDurableTerminalIdentity|LeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorkers|OlderExhaustionCannotOverwriteNewerOrForeignPublicationMarker|ReplayGenerationHandoffRejectsForeignJournal|StaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach|CompletedPublicationRemainsInvisibleUntilSameHashReattachReplay)$'
+  -count=1` passed. It covers stale and expired writers, replay races,
+  rollback on journal failure, direct/older marker exclusion, terminal
+  publication identity, migration compatibility, same-hash reattach, and
+  ambiguous publication windows.
+- P20-T10: against the same PostgreSQL 18 isolation, `go test -race
+  -tags=integration ./internal/integration -run
+  'TestEnrichment(OutboxCrashRecoveryReplayAndIdempotency|TerminalOutcomesAndExhaustionAreDurable)$'
+  -count=1` passed. `go test -tags=integration ./internal/integration
+  -count=1` also passed the full integration package after legacy reorg,
+  proxy/ABI dependency, replay-generation, and token catalog fixtures were
+  moved onto production publication semantics.
+- P20-T10: `go test -race ./internal/enrich ./internal/store -count=1`,
+  `go test ./... -count=1`, `go vet ./...`, `make toolchain-check`, and `make
+  generate-check` passed with the repository-pinned toolchains.
+- P20-T10: commit and pull request were not created; completion is recorded in
+  the existing shared working tree.
 
 - P20-T06: `stats@2` persists block timestamp, positive parent interval,
   interval-derived TPS, excess/blob fee fields, blob burn, and the existing gas,
@@ -123,6 +158,27 @@ P20-T07 does not claim that separate guarantee.
   ./internal/query ./internal/catalog ./internal/httpapi ./internal/enrich
   ./internal/app ./internal/maintenance -count=1` and the same PostgreSQL 18
   targeted command with `-race` passed. `go vet ./...` also passed.
+- P20-T06 closure hardening: the exact configured indexing start now retains
+  null interval/TPS even when older canonical history remains in PostgreSQL;
+  incomplete blob header pairs and non-positive receipt blob facts fail rather
+  than fabricating fees. Search cursor keys are emitted and compared in the
+  same lowercase address order used by SQL, while read-time normalization keeps
+  previously issued checksum-address boundaries usable.
+- P20-T06 closure: `go test ./... -count=1`, `go vet ./...`, `make
+  toolchain-check`, and `make generate-check` passed with the pinned Node 24 and
+  repository Go toolchains. The focused search/stats packages and all relevant
+  adapter, state, query, catalog, HTTP API, enrichment, app, maintenance,
+  config, and database packages also passed with `-count=1`; the applicable
+  runtime packages passed under `-race`.
+- P20-T06 closure: against PostgreSQL 18, the targeted integration suite passed
+  under `-race`, including schema-local migrations and catalog functions,
+  dotted-name snapshot gating, canonical detach/name-lock serialization,
+  bounded maintenance, frozen/pruned search generations, reorg fallback,
+  adapter caching, normalized address pagination, and configured-start stats
+  with retained canonical history. The two new pagination/stats regressions
+  also passed independently without the race detector.
+- P20-T06: commit and pull request were not created; this task explicitly
+  required completion in the existing working tree without a commit.
 
 - P20-T07: durable jobs now retain requested, claimed, leased, and completed
   generations plus source-deduplicated replay requests. A replay racing an

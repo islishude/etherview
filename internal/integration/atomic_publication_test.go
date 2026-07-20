@@ -205,23 +205,6 @@ func TestPendingReplayDiscardsOwnedWriterAndInvalidatesPublishedView(t *testing.
 		t.Fatalf("claim generation one=%+v found=%t err=%v", lease, found, err)
 	}
 	processor, _ := enrich.NewPostgresStatsProcessor(db)
-	blocker, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer blocker.Rollback()
-	var locked int
-	if err := blocker.QueryRowContext(ctx, `
-		SELECT 1 FROM canonical_blocks
-		WHERE chain_id = 1 AND number = $1 AND block_hash = $2
-		FOR UPDATE`, reference.Number, mustBytes(t, reference.Hash)).Scan(&locked); err != nil {
-		t.Fatal(err)
-	}
-	publication := make(chan error, 1)
-	go func() {
-		_, publishErr := processor.ProcessLease(ctx, lease, queue)
-		publication <- publishErr
-	}()
 	replay, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
 		Stage: enrich.StatsStage, ChainID: "1", BlockHash: word, BlockNumber: reference.Number,
 		Replay: enrich.ReplaySource{Kind: "integration", Key: "pending-generation-two"},
@@ -229,15 +212,19 @@ func TestPendingReplayDiscardsOwnedWriterAndInvalidatesPublishedView(t *testing.
 	if err != nil || !replay.Replayed {
 		t.Fatalf("request pending replay=%+v err=%v", replay, err)
 	}
-	if err := blocker.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-publication; err != nil {
+	assertReplayGeneration(t, ctx, db, enqueued.Job.ID, replayGenerationState{
+		Status: "leased", Requested: 2, Claimed: 1, Completed: 0, Leased: true,
+	})
+	if _, err := processor.ProcessLease(ctx, lease, queue); err != nil {
 		t.Fatalf("consume pending publication: %v", err)
 	}
 	assertReplayGeneration(t, ctx, db, enqueued.Job.ID, replayGenerationState{
 		Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
 	})
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM durable_stage_publications
+		WHERE job_id = $1 AND job_generation = 1 AND state = 'superseded'`,
+		1, enqueued.Job.ID)
 	assertAtomicStageAbsent(t, ctx, db, reference, enrich.StatsStage)
 
 	second, found, err := queue.Claim(ctx, "pending-generation-two", []enrich.StageID{enrich.StatsStage}, time.Minute)
@@ -794,9 +781,10 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	original := testBundle(1, testHash(118_001), testHash(118_000), testHash(118_101), "stale-publish-original")
 	replacement := testBundle(1, testHash(118_002), testHash(118_000), testHash(118_102), "stale-publish-replacement")
 	commitCanonical(t, ctx, repository, genesis)
-	configureAtomicStatsStart(t, ctx, db)
-	commitCanonical(t, ctx, repository, genesis)
 	commitCanonical(t, ctx, repository, original)
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
 	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{original}, []ethrpc.Bundle{replacement}, "orphan before stale stage")
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
@@ -907,9 +895,10 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	original := testBundle(1, testHash(118_201), testHash(118_200), testHash(118_211), "complete-reattach-original")
 	replacement := testBundle(1, testHash(118_202), testHash(118_200), testHash(118_212), "complete-reattach-replacement")
 	commitCanonical(t, ctx, repository, genesis)
-	configureAtomicStatsStart(t, ctx, db)
-	commitCanonical(t, ctx, repository, genesis)
 	commitCanonical(t, ctx, repository, original)
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
 	originalRef := mustBlockRef(t, original)
 	word, _ := enrich.ParseWord(originalRef.Hash.String())

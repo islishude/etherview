@@ -25,7 +25,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T02 | todo | P40 | Home, blocks/orphans, transactions, addresses, and search pages | Playwright core flows |
 | P50-T03 | todo | P20, P30, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages | capability UI tests |
 | P50-T04 | todo | P30, P40 | EIP-6963 discovery and wallet-only contract read/write forms | provider/mismatch tests |
-| P50-T05 | in_progress | P50-T01 | Embedded assets, deep-link fallback, cache headers, CSP, accessibility | binary E2E and a11y tests |
+| P50-T05 | done | P50-T01 | Embedded assets, deep-link fallback, cache headers, CSP, accessibility | binary E2E and a11y tests |
 
 ## Acceptance
 
@@ -59,3 +59,19 @@ P40 is not complete.
 - P50-T01 commit/PR: none created because the repository has no `HEAD` and this
   task did not authorize a commit or pull request; evidence is bound to the
   current working tree.
+- P50-T05: `make toolchain-check`, `go test -race ./internal/webui -count=1`,
+  `npm --prefix web run lint`, and `npm --prefix web run test` pass; Vitest
+  reports 9 files and 33 tests. Handler regressions cover HTML media-range
+  precedence, malformed quality values, reserved and asset-shaped misses,
+  exact eight-character Vite base64url hashes, revalidating non-hashed files,
+  real-file `HEAD`, SHA-256 ETags, conditional responses, and security headers.
+- P50-T05: `make test-e2e` explicitly builds a temporary Go binary containing
+  the `go:embed` distribution and passes 4 Playwright flows. The suite proves
+  deep-link isolation, no-store shell/miss behavior, immutable hashed assets,
+  conditional-response CSP/security headers, no external browser requests,
+  keyboard skip navigation, narrow layout, reduced motion, and WCAG 2.1 A/AA
+  scans in both light English and dark Chinese. The expanded scan found the
+  dark-theme filled-control contrast regression and verified its fix. The
+  `make generate-check` no-drift gate also passes.
+- P50-T05 commit/PR: none created because this task explicitly requested no
+  commit; evidence is bound to the current working tree.

@@ -134,6 +134,88 @@ func TestExternalAdapterConfigurationIsHTTPSAndBounded(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	if !validS3Bucket("123") {
+		t.Fatal("purely numeric, non-IP S3 bucket was rejected")
+	}
+}
+
+func TestOptionalAcceleratorConfigurationIsStrictAndPostgresOnlyByDefault(t *testing.T) {
+	t.Parallel()
+	if err := Default().Validate(); err != nil {
+		t.Fatalf("PostgreSQL-only defaults are invalid: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "namespace", mutate: func(cfg *Config) { cfg.Adapters.Namespace = "bad namespace" }},
+		{name: "nats scheme", mutate: func(cfg *Config) { cfg.Adapters.NATSURL = "https://nats.example" }},
+		{name: "redis scheme", mutate: func(cfg *Config) { cfg.Adapters.RedisURL = "http://redis.example" }},
+		{name: "s3 credentials", mutate: func(cfg *Config) {
+			cfg.Adapters.S3Endpoint = "https://s3.example"
+			cfg.Adapters.S3Bucket = "cache"
+			cfg.Adapters.S3AccessKey = "only-access"
+		}},
+		{name: "s3 endpoint userinfo", mutate: func(cfg *Config) {
+			cfg.Adapters.S3Endpoint = "https://user:secret@s3.example"
+			cfg.Adapters.S3Bucket = "cache"
+		}},
+		{name: "s3 bucket", mutate: func(cfg *Config) {
+			cfg.Adapters.S3Endpoint = "https://s3.example"
+			cfg.Adapters.S3Bucket = "Invalid_Bucket"
+		}},
+		{name: "s3 bucket leading dot", mutate: func(cfg *Config) {
+			cfg.Adapters.S3Endpoint = "https://s3.example"
+			cfg.Adapters.S3Bucket = ".cache"
+		}},
+		{name: "s3 bucket IPv4", mutate: func(cfg *Config) {
+			cfg.Adapters.S3Endpoint = "https://s3.example"
+			cfg.Adapters.S3Bucket = "192.0.2.1"
+		}},
+		{name: "operation timeout", mutate: func(cfg *Config) { cfg.Adapters.OperationTimeout = 0 }},
+		{name: "cache ttl", mutate: func(cfg *Config) { cfg.Adapters.RedisCacheTTL = 0 }},
+		{name: "blob limit", mutate: func(cfg *Config) { cfg.Adapters.S3MaxObjectBytes = 64<<20 + 1 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "adapters.") {
+				t.Fatalf("invalid accelerator config passed: %#v error=%v", cfg.Adapters, err)
+			}
+		})
+	}
+	cfg := Default()
+	cfg.Adapters.NATSURL = "nats://user:secret@nats.example:4222"
+	cfg.Adapters.RedisURL = "rediss://user:secret@redis.example:6379/0"
+	cfg.Adapters.S3Endpoint = "https://s3.example"
+	cfg.Adapters.S3Bucket = "etherview-cache"
+	cfg.Adapters.S3AccessKey = "access"
+	cfg.Adapters.S3SecretKey = "secret"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAcceleratorSecretsSupportFileEnvironment(t *testing.T) {
+	directory := t.TempDir()
+	secretPath := filepath.Join(directory, "s3-secret")
+	if err := os.WriteFile(secretPath, []byte("top-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ETHERVIEW_S3_SECRET_KEY_FILE", secretPath)
+	t.Setenv("ETHERVIEW_S3_ACCESS_KEY", "access")
+	t.Setenv("ETHERVIEW_S3_ENDPOINT", "http://127.0.0.1:9000")
+	t.Setenv("ETHERVIEW_S3_BUCKET", "etherview-cache")
+	t.Setenv("ETHERVIEW_S3_PATH_STYLE", "true")
+	t.Setenv("ETHERVIEW_ADAPTER_OPERATION_TIMEOUT", "250ms")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Adapters.S3SecretKey != "top-secret" || cfg.Adapters.S3AccessKey != "access" ||
+		!cfg.Adapters.S3PathStyle || cfg.Adapters.OperationTimeout != 250*time.Millisecond {
+		t.Fatalf("accelerator environment was not applied: %#v", cfg.Adapters)
+	}
 }
 
 func TestValidateAggregatesErrorsAndDoesNotRequireGenesisDuringBootstrap(t *testing.T) {

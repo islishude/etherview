@@ -352,12 +352,14 @@ func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(5)},
 		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(4), rows: [][]driver.Value{{
+			"2", testHashBytes(3), "Canonical block two", int64(110),
+		}}},
 		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: [][]driver.Value{
-			{"block", testHash(3), "Block #2", int64(100), false},
-			{"transaction", testHash(3), "Transaction " + testHash(3), int64(90), true},
+			{"block", testHash(3), "Block hash label", int64(110), false},
+			{"transaction", testHash(3), "Transaction hash label", int64(110), true},
 		}},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -366,11 +368,13 @@ func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 		t.Fatalf("address search = %+v, error = %v", addressResults, err)
 	}
 	blockResults, _, err := reader.Search(context.Background(), "2", "", 20)
-	if err != nil || len(blockResults) != 1 || blockResults[0].Key != testHash(3) {
+	if err != nil || len(blockResults) != 1 || blockResults[0].Key != testHash(3) ||
+		blockResults[0].Label != "Canonical block two" || blockResults[0].Rank != 110 {
 		t.Fatalf("block search = %+v, error = %v", blockResults, err)
 	}
 	hashResults, _, err := reader.Search(context.Background(), testHash(3), "", 20)
-	if err != nil || len(hashResults) != 2 || hashResults[0].Canonical == nil || *hashResults[0].Canonical {
+	if err != nil || len(hashResults) != 2 || hashResults[0].Label != "Block hash label" ||
+		hashResults[1].Label != "Transaction hash label" || hashResults[0].Canonical == nil || *hashResults[0].Canonical {
 		t.Fatalf("hash search = %+v, error = %v", hashResults, err)
 	}
 }
@@ -426,10 +430,113 @@ func TestSearchTextRejectsMalformedPersistedEntityKey(t *testing.T) {
 		rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
-	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, nil, 20)
+	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, "", nil, 20)
 	if err == nil || !strings.Contains(err.Error(), "invalid transaction") {
 		t.Fatalf("results=%+v error=%v", results, err)
 	}
+}
+
+type controlledNameResolverError struct {
+	capability string
+	state      string
+	code       string
+	message    string
+}
+
+func (err controlledNameResolverError) Error() string { return err.message }
+
+func (err controlledNameResolverError) CapabilityDetails() (string, string, string) {
+	return err.capability, err.state, err.code
+}
+
+type failingNameResolver struct{ err error }
+
+func (resolver failingNameResolver) Resolve(context.Context, string) (string, error) {
+	return "", resolver.err
+}
+
+func TestSearchMapsOnlyControlledNameCapabilityDetails(t *testing.T) {
+	t.Parallel()
+	secret := "https://operator:secret@example.invalid/private"
+	for _, test := range []struct {
+		name     string
+		resolver NameResolver
+		state    string
+		code     string
+	}{
+		{name: "not configured", state: "unavailable", code: "not_configured"},
+		{
+			name: "controlled adapter failure",
+			resolver: failingNameResolver{err: controlledNameResolverError{
+				capability: "name", state: "unavailable", code: "unsafe_url", message: secret,
+			}},
+			state: "unavailable", code: "unsafe_url",
+		},
+		{
+			name:     "arbitrary resolver failure",
+			resolver: failingNameResolver{err: errors.New(secret)},
+			state:    "failed", code: "resolver_failure",
+		},
+		{
+			name: "unrecognized controlled code",
+			resolver: failingNameResolver{err: controlledNameResolverError{
+				capability: "name", state: "failed", code: "upstream_credential", message: secret,
+			}},
+			state: "failed", code: "resolver_failure",
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			reader := testReader(t, testDatabase(t), Options{ChainID: 1, NameResolver: test.resolver})
+			_, _, err := reader.Search(context.Background(), "alice.eth", "", 20)
+			var capability *httpapi.CapabilityUnavailableError
+			if !errors.As(err, &capability) || capability.Capability != "name" ||
+				capability.State != test.state || capability.Code != test.code {
+				t.Fatalf("capability error=%#v", err)
+			}
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("resolver text leaked through error: %q", err)
+			}
+		})
+	}
+}
+
+func TestSearchBoundaryUsesNormalizedIdentityInsteadOfChecksumOrdering(t *testing.T) {
+	t.Parallel()
+	first, second := checksumOrderInversion(t)
+	if !(strings.ToLower(first) < strings.ToLower(second)) || !(first > second) {
+		t.Fatalf("test addresses do not invert ordering: first=%s second=%s", first, second)
+	}
+	cursor := searchCursor{AfterRank: 100, AfterKind: string(gen.SearchResultKindAddress), AfterKey: first}
+	result := gen.SearchResult{Rank: 100, Kind: gen.SearchResultKindAddress, Key: second}
+	if !afterSearchBoundary(result, cursor) {
+		t.Fatalf("normalized address %s was skipped after %s", second, first)
+	}
+}
+
+func checksumOrderInversion(t *testing.T) (string, string) {
+	t.Helper()
+	type candidate struct {
+		normalized string
+		checksum   string
+	}
+	candidates := make([]candidate, 0, 512)
+	for value := uint64(1); value <= 512; value++ {
+		normalized := fmt.Sprintf("0x%040x", value)
+		checksum, err := ChecksumAddress(normalized)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, previous := range candidates {
+			if previous.normalized < normalized && previous.checksum > checksum {
+				return previous.checksum, checksum
+			}
+		}
+		candidates = append(candidates, candidate{normalized: normalized, checksum: checksum})
+	}
+	t.Fatal("failed to find EIP-55 checksum ordering inversion")
+	return "", ""
 }
 
 func TestDecodeRawObjectRejectsTrailingJSON(t *testing.T) {

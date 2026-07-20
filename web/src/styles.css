@@ -42,6 +42,7 @@
   --brand: #126b48;
   --brand-strong: #084e34;
   --brand-soft: #daf4e7;
+  --on-brand: #ffffff;
   --signal: #d7ff64;
   --danger: #ad3329;
   --warning: #946200;
@@ -65,6 +66,7 @@
   --brand: #6ee0a5;
   --brand-strong: #a2f1c7;
   --brand-soft: #173a2a;
+  --on-brand: #0d1511;
   --signal: #c9f45d;
   --danger: #ff8f83;
   --warning: #f2c45e;
@@ -148,7 +150,7 @@ code {
   top: 0.75rem;
   left: 0.75rem;
   padding: 0.7rem 1rem;
-  color: #fff;
+  color: var(--on-brand);
   background: var(--brand-strong);
   border-radius: var(--radius-sm);
   transform: translateY(-160%);
@@ -253,7 +255,7 @@ code {
 
 .global-search button {
   padding: 0.65rem 1.05rem;
-  color: #fff;
+  color: var(--on-brand);
   background: var(--brand-strong);
   border: 0;
   cursor: pointer;
@@ -1200,7 +1202,7 @@ tbody tr:hover {
 }
 
 .button.primary {
-  color: #fff;
+  color: var(--on-brand);
   background: var(--brand-strong);
 }
 

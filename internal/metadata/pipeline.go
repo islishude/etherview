@@ -28,7 +28,11 @@ const (
 	maxDocumentDepth      = 32
 	maxDocumentNodes      = 10_000
 	maxDocumentStringSize = 256 << 10
+	maxJSONNumberBytes    = 1024
+	maxJSONNumberExponent = 1000
 )
+
+var maximumUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
 
 type State string
 
@@ -62,6 +66,10 @@ func (request NFTRequest) Validate() error {
 	}
 	if err := validateDecimal(request.TokenID, 78, "token ID"); err != nil {
 		return err
+	}
+	tokenID, _ := new(big.Int).SetString(request.TokenID, 10)
+	if tokenID.Cmp(maximumUint256) > 0 {
+		return errors.New("metadata token ID exceeds uint256")
 	}
 	if _, err := ethrpc.ParseHash(request.BlockHash.String()); err != nil {
 		return fmt.Errorf("metadata observed block hash: %w", err)

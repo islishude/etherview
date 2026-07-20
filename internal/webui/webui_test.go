@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestEmbeddedDistributionHasNoServerConfigurationOrExternalEntrypoints(t *testing.T) {
@@ -130,6 +131,24 @@ func TestHashedAssetCachingAndETag(t *testing.T) {
 	if notModified.Code != http.StatusNotModified {
 		t.Errorf("conditional status = %d, want %d", notModified.Code, http.StatusNotModified)
 	}
+	if got := notModified.Header().Get("Cache-Control"); got != immutableCache {
+		t.Errorf("conditional Cache-Control = %q, want %q", got, immutableCache)
+	}
+	assertSecurityHeaders(t, notModified.Header())
+
+	headRequest := httptest.NewRequest(http.MethodHead, "/"+asset, nil)
+	headResponse := httptest.NewRecorder()
+	NewHandler().ServeHTTP(headResponse, headRequest)
+	if headResponse.Code != http.StatusOK {
+		t.Errorf("HEAD status = %d, want %d", headResponse.Code, http.StatusOK)
+	}
+	if headResponse.Body.Len() != 0 {
+		t.Errorf("HEAD body length = %d, want 0", headResponse.Body.Len())
+	}
+	if got := headResponse.Header().Get("ETag"); got != etag {
+		t.Errorf("HEAD ETag = %q, want %q", got, etag)
+	}
+	assertSecurityHeaders(t, headResponse.Header())
 }
 
 func TestOnlyViteContentHashedAssetsAreImmutable(t *testing.T) {
@@ -137,15 +156,55 @@ func TestOnlyViteContentHashedAssetsAreImmutable(t *testing.T) {
 
 	for name, want := range map[string]bool{
 		"assets/index-BR0k1Xmr.js":           true,
+		"assets/index-Abc-1234.js":           true,
+		"assets/index_Abc_1234.css":          false,
 		"assets/StatsChart-BHcCzZxN.js":      true,
 		"assets/index-too-short.js":          false,
 		"assets/logo-not-a-build-hash.svg":   false,
+		"assets/nested/file-BR0k1Xmr.js":     false,
 		"favicon-BR0k1Xmr.ico":               false,
 		"assets/nested/file-BR0k1Xmr.js.map": false,
 	} {
 		if got := isHashedAsset(name); got != want {
 			t.Errorf("isHashedAsset(%q) = %t, want %t", name, got, want)
 		}
+	}
+}
+
+func TestOnlyExactHashedFilesReceiveImmutableCaching(t *testing.T) {
+	t.Parallel()
+
+	assets := fstest.MapFS{
+		"index.html":                       {Data: []byte(`<div id="root"></div>`)},
+		"assets/chunk-Abc-1234.js":         {Data: []byte("hashed")},
+		"assets/logo-not-a-build-hash.svg": {Data: []byte("mutable")},
+		"assets/nested/chunk-BR0k1Xmr.js":  {Data: []byte("nested")},
+		"assets/chunk-BR0k1Xmr.js.map":     {Data: []byte("source map")},
+	}
+	handler := &handler{assets: assets}
+
+	for _, test := range []struct {
+		name      string
+		path      string
+		wantCache string
+	}{
+		{name: "base64url hash", path: "/assets/chunk-Abc-1234.js", wantCache: immutableCache},
+		{name: "unhashed file", path: "/assets/logo-not-a-build-hash.svg", wantCache: "public, max-age=0, must-revalidate"},
+		{name: "nested file", path: "/assets/nested/chunk-BR0k1Xmr.js", wantCache: "public, max-age=0, must-revalidate"},
+		{name: "source map", path: "/assets/chunk-BR0k1Xmr.js.map", wantCache: "public, max-age=0, must-revalidate"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+			}
+			if got := response.Header().Get("Cache-Control"); got != test.wantCache {
+				t.Errorf("Cache-Control = %q, want %q", got, test.wantCache)
+			}
+			assertSecurityHeaders(t, response.Header())
+		})
 	}
 }
 
@@ -161,6 +220,9 @@ func TestNoFallbackForReservedOrAssetRequests(t *testing.T) {
 		"/metrics",
 		"/assets/missing.js",
 		"/favicon.ico",
+		"/robots.txt",
+		"/module.wasm",
+		"/feed.xml",
 	} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		request.Header.Set("Accept", "text/html")
@@ -189,6 +251,11 @@ func TestNonHTMLAndUnsafeRequestsAreRejected(t *testing.T) {
 	}{
 		{name: "json navigation", method: http.MethodGet, path: "/blocks/1", accept: "application/json", want: http.StatusNotFound},
 		{name: "explicitly refused html", method: http.MethodGet, path: "/blocks/1", accept: "text/html;q=0, application/json", want: http.StatusNotFound},
+		{name: "specific refusal overrides wildcard", method: http.MethodGet, path: "/blocks/1", accept: "text/html;q=0, */*;q=1", want: http.StatusNotFound},
+		{name: "type refusal overrides wildcard", method: http.MethodGet, path: "/blocks/1", accept: "text/*;q=0, */*;q=1", want: http.StatusNotFound},
+		{name: "invalid quality", method: http.MethodGet, path: "/blocks/1", accept: "text/html;q=NaN", want: http.StatusNotFound},
+		{name: "out of range quality", method: http.MethodGet, path: "/blocks/1", accept: "text/html;q=2", want: http.StatusNotFound},
+		{name: "html wildcard", method: http.MethodGet, path: "/blocks/1", accept: "application/json, text/*;q=0.5", want: http.StatusOK},
 		{name: "head deep link", method: http.MethodHead, path: "/blocks/1", accept: "text/html", want: http.StatusNotFound},
 		{name: "post", method: http.MethodPost, path: "/", accept: "text/html", want: http.StatusMethodNotAllowed},
 		{name: "traversal", method: http.MethodGet, path: "/../index.html", accept: "text/html", want: http.StatusNotFound},

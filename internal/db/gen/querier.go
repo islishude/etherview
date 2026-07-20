@@ -12,17 +12,20 @@ import (
 
 type Querier interface {
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
+	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
 	GetCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric) (GetCanonicalBlockRow, error)
 	GetCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (GetCanonicalTipRow, error)
 	GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error)
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
 	ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaMigration, error)
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
+	ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric) ([]ListOperatorLabelsRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
 	RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error
 	RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAdapterSuccessParams) (RecordNameAdapterSuccessRow, error)
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error)
+	UpsertOperatorLabel(ctx context.Context, arg UpsertOperatorLabelParams) (UpsertOperatorLabelRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -31,6 +31,13 @@ API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
 ```
 
+Optional accelerator behavior is intentionally asymmetric: NATS carries only
+coalesced poll hints, Redis shares rate buckets and caches only the durable
+runtime-status model behind an event generation, and S3-compatible storage
+caches only exact-generation normalized transaction traces. Every adapter has
+a bounded PostgreSQL fallback and is detailed in
+[ADR-0015](../decisions/ADR-0015-disposable-runtime-accelerators.md).
+
 PostgreSQL stores all correctness-critical facts, canonical mappings, stage
 state, jobs, leases, and outbox records. Optional systems may reduce latency or
 storage pressure but never become the only copy of required state.
@@ -268,25 +275,34 @@ size alone is not sufficient justification to weaken those invariants.
   height. Human display text is never used as a persistence key. Search
   cursors bind the exact canonical tip and a retained per-chain catalog
   generation, so labels and late enrichment cannot change later pages. The
-  latest canonical logical name, token, or verified code wins; pruning retains
-  every reorgable version above finality and rejects cursors older than the
-  retained generation floor. Search-source chain identity is immutable, and
-  catalog trigger/prune functions bind their own migration schema instead of
-  inheriting a pooled connection's `search_path`.
+  exact block-height, block-hash, and transaction-hash routes overlay labels
+  visible at that same generation instead of bypassing the temporal catalog. A
+  height-keyed block label cannot leak onto an orphan merely because it shares
+  a labeled canonical height. The latest canonical logical name, token, or
+  verified code wins; pruning retains every reorgable version above finality
+  and rejects cursors older than the retained generation floor. Search-source
+  chain identity is immutable, and catalog trigger/prune functions bind their
+  own migration schema instead of inheriting a pooled connection's
+  `search_path`.
 - Optional API capabilities return a typed unavailable error when no fresh,
-  authoritative source exists; an empty successful list means the capability
-  was available and observed no matching objects.
+  authoritative source exists. Its optional details contain only controlled
+  `capability`, `state`, and `code` identifiers; an empty successful list means
+  the capability was available and observed no matching objects.
 - Price and external-name adapters persist short-lived success or stable
   failure facts in PostgreSQL. Every first-page dotted search must obtain a
   fresh resolution before opening its read snapshot, then verify that exact
   name/address is visible at the chosen canonical tip and catalog generation;
-  an unavailable refresh never falls back to stale catalog data. Its cursor
-  freezes the accepted address and later pages do not refetch after TTL expiry.
+  an unavailable refresh never falls back to stale catalog data. Name-source
+  candidates are filtered to that accepted address even if another registry
+  publishes the same name. Its cursor freezes the accepted address and later
+  pages do not refetch after TTL expiry.
   A name success takes a key-share lock on its exact canonical block through
   publication and is immutable for its registry/name/block-hash identity; an
   identical concurrent write preserves the first fact without catalog churn,
-  while a conflict is unavailable rather than an overwrite. Adapter fetches
-  use the shared SSRF-safe HTTPS client outside API read transactions. An
+  while a conflict is unavailable rather than an overwrite. Name cache
+  identities include a SHA-256 namespace of the validated configured base URL,
+  isolating provider changes without persisting the URL. Adapter fetches use
+  the shared SSRF-safe HTTPS client outside API read transactions. An
   API-only role may use a state-purpose RPC endpoint without configuring
   history RPC, but state calls retain exact block binding and typed capability
   failures.
@@ -310,9 +326,17 @@ size alone is not sufficient justification to weaken those invariants.
   and status use POST; proxy status uses GET, but both proxy operations report
   unavailable until a durable proxy verification workflow exists.
 - Native and compatibility verification both reject empty runtime bytecode or
-  a code hash that differs from its Keccak-256 digest. Successful worker output
-  is publishable only when the completion transaction finds an exact canonical
-  code observation for the request's chain, address, code hash, and block hash.
+  a code hash that differs from its Keccak-256 digest. A durable submission
+  digest covers the exact request payload and the server-derived public sandbox
+  requirement; only the same active or successful digest is idempotent. A
+  worker binds the job to its compiler artifact digest before execution, and
+  expired leases stop at their persisted attempt budget. Successful worker
+  output is publishable only when the completion transaction finds an exact
+  canonical code observation for the request's chain, address, code hash, and
+  block hash. A stale target becomes a stable terminal failure, while successful
+  results are immutable provenance rows projected deterministically to the
+  verified-contract read model. See
+  [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
 - `/v2/api` authentication accepts the legacy API key from a header, query, or
   bounded URL-encoded POST form. Header takes precedence when equal credentials
   are repeated across sources; any conflicting sources are rejected. Form
@@ -341,8 +365,14 @@ size alone is not sufficient justification to weaken those invariants.
   unavailable rather than an empty snapshot.
 - NFT media is never an arbitrary URL proxy. The server first resolves an
   `image` URI from an available metadata document bound to a canonical NFT
-  observation, then applies DNS/IP/redirect policy, byte limits, MIME and image
-  signature checks, and returns the bytes with no-store headers.
+  observation, releases the database query, then applies DNS/IP/redirect
+  policy, byte limits, MIME and image signature checks. Before returning bytes
+  it rechecks that the same exact block-hash observation is still the newest
+  canonical version. Metadata source discovery uses one state RPC endpoint and
+  an EIP-1898 block-hash selector per NFT observation; exact source and terminal
+  document facts are immutable and retained across reorgs. Media success and
+  every early authentication or rate-limit error use no-store, restrictive CSP,
+  nosniff, and same-origin resource headers.
 
 ## Operator Recovery Boundary
 

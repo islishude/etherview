@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -36,12 +37,13 @@ type nameObservation struct {
 }
 
 type NameService struct {
-	repository repository
-	fetcher    JSONFetcher
-	baseURL    string
-	freshness  time.Duration
-	failureTTL time.Duration
-	now        func() time.Time
+	repository  repository
+	fetcher     JSONFetcher
+	baseURL     string
+	providerKey string
+	freshness   time.Duration
+	failureTTL  time.Duration
+	now         func() time.Time
 }
 
 func NewPostgresNameService(db *sql.DB, chainID uint64, fetcher JSONFetcher, options NameOptions) (*NameService, error) {
@@ -66,7 +68,7 @@ func NewPostgresNameService(db *sql.DB, chainID uint64, fetcher JSONFetcher, opt
 		options.Now = time.Now
 	}
 	return &NameService{
-		repository: repository, fetcher: fetcher, baseURL: baseURL,
+		repository: repository, fetcher: fetcher, baseURL: baseURL, providerKey: nameProviderKey(baseURL),
 		freshness: options.Freshness, failureTTL: options.FailureTTL, now: options.Now,
 	}, nil
 }
@@ -80,7 +82,7 @@ func (s *NameService) Resolve(ctx context.Context, rawName string) (string, erro
 		return "", err
 	}
 	now := s.now().UTC()
-	if cached, exists, err := s.repository.fresh(ctx, "name", name, now); err != nil {
+	if cached, exists, err := s.repository.fresh(ctx, "name", s.providerKey, name, now); err != nil {
 		return "", err
 	} else if exists {
 		if cached.State != "complete" {
@@ -100,14 +102,14 @@ func (s *NameService) Resolve(ctx context.Context, rawName string) (string, erro
 	result, err := s.fetcher.Fetch(ctx, endpoint.String(), metadata.KindJSON)
 	if err != nil {
 		code, state := classifyFetchFailure(err)
-		if persistErr := s.repository.failure(ctx, "name", name, state, code, now, now.Add(s.failureTTL)); persistErr != nil {
+		if persistErr := s.repository.failure(ctx, "name", s.providerKey, name, state, code, now, now.Add(s.failureTTL)); persistErr != nil {
 			return "", persistErr
 		}
 		return "", CapabilityError{Capability: "name", State: state, Code: code}
 	}
 	observation, err := decodeNameObservation(result.Body, name, now, s.freshness)
 	if err != nil {
-		if persistErr := s.repository.failure(ctx, "name", name, "failed", "invalid_response", now, now.Add(s.failureTTL)); persistErr != nil {
+		if persistErr := s.repository.failure(ctx, "name", s.providerKey, name, "failed", "invalid_response", now, now.Add(s.failureTTL)); persistErr != nil {
 			return "", persistErr
 		}
 		return "", CapabilityError{Capability: "name", State: "failed", Code: "invalid_response"}
@@ -127,7 +129,7 @@ func (s *NameService) Resolve(ctx context.Context, rawName string) (string, erro
 		stored, queryErr = queries.RecordNameAdapterSuccess(ctx, dbgen.RecordNameAdapterSuccessParams{
 			ChainID: s.repository.chainID, ObservedBlockNumber: blockNumber,
 			ObservedBlockHash: blockHash, Registry: registry, Name: name, Address: address,
-			Resolver: resolver, ObservedAt: timestamptz(observation.ObservedAt), Value: encoded,
+			Resolver: resolver, ObservedAt: timestamptz(observation.ObservedAt), ProviderKey: s.providerKey, Value: encoded,
 			ExpiresAt: timestamptz(observation.ObservedAt.Add(s.freshness)),
 		})
 		return queryErr
@@ -146,6 +148,11 @@ func (s *NameService) Resolve(ctx context.Context, rawName string) (string, erro
 		return "", errors.New("stored name adapter state is invalid")
 	}
 	return observation.Address, nil
+}
+
+func nameProviderKey(baseURL string) string {
+	digest := sha256.Sum256([]byte(baseURL))
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func decodeNameObservation(raw []byte, expectedName string, now time.Time, freshness time.Duration) (nameObservation, error) {

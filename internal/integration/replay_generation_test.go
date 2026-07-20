@@ -313,9 +313,9 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	if _, err := proxyProcessor.ProcessLease(ctx, proxyLease, queue); err != nil {
 		t.Fatalf("publish proxy generation one: %v", err)
 	}
-	abiLease, found, err := queue.Claim(ctx, "abi-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
-	if err != nil || !found || abiLease.Job.Generation != 1 {
-		t.Fatalf("claim ABI generation one: lease=%+v found=%t err=%v", abiLease, found, err)
+	abiLease, found, err := queue.Claim(ctx, "abi-after-proxy-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
+	if err != nil || !found || abiLease.Job.Generation != 2 {
+		t.Fatalf("claim ABI generation two: lease=%+v found=%t err=%v", abiLease, found, err)
 	}
 	abiProcessor, err := enrich.NewPostgresABIProcessorWithProxyDependency(db)
 	if err != nil {
@@ -332,16 +332,19 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 		Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
 	})
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "leased", Requested: 2, Claimed: 1, Completed: 0, Leased: true,
+		Status: "leased", Requested: 3, Claimed: 2, Completed: 0, Leased: true,
 	})
-	// The active owner performs its whole stage transaction after the replay is
-	// pending. Its lease-fenced publication discards generation-one output and
-	// consumes that marker without a separate Finish call.
-	if _, err := abiProcessor.ProcessLease(ctx, abiLease, queue); err != nil {
-		t.Fatalf("supersede ABI generation one with replay pending: %v", err)
+	// Trace also invalidates the exact proxy dependency. The active ABI owner
+	// therefore cannot enter publication; its production retry transition
+	// consumes generation two and preserves the pending generation atomically.
+	if _, err := abiProcessor.ProcessLease(ctx, abiLease, queue); err == nil {
+		t.Fatal("ABI generation two ignored its replayed proxy dependency")
+	}
+	if err := queue.Retry(ctx, abiLease, enrich.Retry{Reason: "proxy dependency replay pending"}); err != nil {
+		t.Fatalf("consume ABI generation two with replay pending: %v", err)
 	}
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
+		Status: "queued", Requested: 3, Claimed: 2, Completed: 2,
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
@@ -355,16 +358,19 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	if _, err := proxyProcessor.ProcessLease(ctx, proxyLease, queue); err != nil {
 		t.Fatalf("publish proxy generation two: %v", err)
 	}
-	abiLease, found, err = queue.Claim(ctx, "abi-generation-two", []enrich.StageID{enrich.ABIStage}, time.Minute)
-	if err != nil || !found || abiLease.Job.Generation != 2 || abiLease.Job.Attempt != 1 {
-		t.Fatalf("claim ABI generation two: lease=%+v found=%t err=%v", abiLease, found, err)
+	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
+		Status: "queued", Requested: 4, Claimed: 2, Completed: 2,
+	})
+	abiLease, found, err = queue.Claim(ctx, "abi-after-proxy-generation-two", []enrich.StageID{enrich.ABIStage}, time.Minute)
+	if err != nil || !found || abiLease.Job.Generation != 4 || abiLease.Job.Attempt != 1 {
+		t.Fatalf("claim ABI generation four: lease=%+v found=%t err=%v", abiLease, found, err)
 	}
 	abiResult, err := abiProcessor.ProcessLease(ctx, abiLease, queue)
 	if err != nil || abiResult.State != enrich.ResultComplete {
-		t.Fatalf("publish ABI generation two: result=%+v err=%v", abiResult, err)
+		t.Fatalf("publish ABI generation four: result=%+v err=%v", abiResult, err)
 	}
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "succeeded", Requested: 2, Claimed: 2, Completed: 2,
+		Status: "succeeded", Requested: 4, Claimed: 4, Completed: 4,
 	})
 
 	duplicate, err := traceProcessor.Process(ctx, traceJob)
@@ -375,11 +381,11 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 		Status: "succeeded", Requested: 2, Claimed: 2, Completed: 2,
 	})
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "succeeded", Requested: 2, Claimed: 2, Completed: 2,
+		Status: "succeeded", Requested: 4, Claimed: 4, Completed: 4,
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM durable_job_replay_requests
-		WHERE job_id IN ($1, $2) AND source_kind = 'stage-completion'`, 2, proxyJob.Job.ID, abiJob.Job.ID)
+		WHERE job_id IN ($1, $2) AND source_kind = 'stage-completion'`, 4, proxyJob.Job.ID, abiJob.Job.ID)
 }
 
 func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *testing.T) {
@@ -404,7 +410,6 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	insertABICodeObservation(t, ctx, db, reference, proxy, proxyCode)
 	insertABIVerifiedContract(t, ctx, db, direct, directCode)
 	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
-	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	insertABISignatureCandidates(t, ctx, db)
 	insertABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
 
@@ -432,9 +437,13 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	if _, err := proxyProcessor.ProcessLease(ctx, proxyLease, queue); err != nil {
 		t.Fatalf("publish crash fixture proxy: %v", err)
 	}
-	abiLease, found, err := queue.Claim(ctx, "crash-abi-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
-	if err != nil || !found || abiLease.Job.Generation != 1 {
-		t.Fatalf("claim crash fixture ABI generation one: lease=%+v found=%t err=%v", abiLease, found, err)
+	// The proxy stage sees exact code history and therefore has no RPC candidate;
+	// add the historical implementation fixture only after its production
+	// publication so replay discovery cannot conflict with the synthetic hash.
+	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
+	abiLease, found, err := queue.Claim(ctx, "crash-abi-generation-two", []enrich.StageID{enrich.ABIStage}, time.Minute)
+	if err != nil || !found || abiLease.Job.Generation != 2 {
+		t.Fatalf("claim crash fixture ABI generation two: lease=%+v found=%t err=%v", abiLease, found, err)
 	}
 	abiProcessor, err := enrich.NewPostgresABIProcessorWithProxyDependency(db)
 	if err != nil {
@@ -442,7 +451,7 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	abiResult, err := abiProcessor.Process(ctx, abiLease.Job)
 	if err != nil || abiResult.State != enrich.ResultComplete {
-		t.Fatalf("persist crash fixture ABI generation one: result=%+v err=%v", abiResult, err)
+		t.Fatalf("persist crash fixture ABI generation two: result=%+v err=%v", abiResult, err)
 	}
 	for table, count := range map[string]int{"contract_abis": 4, "abi_decodings": 5} {
 		assertRowCount(t, ctx, db,
@@ -470,22 +479,22 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 		t.Fatalf("request ABI replay during active lease: result=%+v err=%v", replay, err)
 	}
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "leased", Requested: 2, Claimed: 1, Completed: 0, Leased: true,
+		Status: "leased", Requested: 3, Claimed: 2, Completed: 0, Leased: true,
 	})
 	execFixture(t, ctx, db, `
 		UPDATE durable_jobs
 		SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 		WHERE id = $1`, abiJob.Job.ID)
 
-	// Reclaiming generation two must clear every generation-one observable in
+	// Reclaiming generation three must clear every generation-two observable in
 	// the same transaction that publishes the new lease, even though the old
 	// worker never reached Finish or Retry.
-	reclaimed, found, err := queue.Claim(ctx, "crash-abi-generation-two", []enrich.StageID{enrich.ABIStage}, time.Minute)
-	if err != nil || !found || reclaimed.Job.Generation != 2 || reclaimed.Job.Attempt != 1 {
-		t.Fatalf("reclaim ABI generation two: lease=%+v found=%t err=%v", reclaimed, found, err)
+	reclaimed, found, err := queue.Claim(ctx, "crash-abi-generation-three", []enrich.StageID{enrich.ABIStage}, time.Minute)
+	if err != nil || !found || reclaimed.Job.Generation != 3 || reclaimed.Job.Attempt != 1 {
+		t.Fatalf("reclaim ABI generation three: lease=%+v found=%t err=%v", reclaimed, found, err)
 	}
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "leased", Requested: 2, Claimed: 2, Completed: 0, Leased: true,
+		Status: "leased", Requested: 3, Claimed: 3, Completed: 0, Leased: true,
 	})
 	for _, table := range []string{"contract_abis", "abi_decodings"} {
 		assertRowCount(t, ctx, db,
@@ -502,15 +511,15 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@1'`,
 		0, mustBytes(t, reference.Hash))
 	if err := queue.Finish(ctx, abiLease, enrich.StageResult{State: enrich.ResultFailed, Error: "expired writer"}); !errors.Is(err, enrich.ErrLeaseLost) {
-		t.Fatalf("expired generation-one terminal write err=%v, want ErrLeaseLost", err)
+		t.Fatalf("expired generation-two terminal write err=%v, want ErrLeaseLost", err)
 	}
 
 	abiResult, err = abiProcessor.ProcessLease(ctx, reclaimed, queue)
 	if err != nil || abiResult.State != enrich.ResultComplete {
-		t.Fatalf("publish rebuilt ABI generation two: result=%+v err=%v", abiResult, err)
+		t.Fatalf("publish rebuilt ABI generation three: result=%+v err=%v", abiResult, err)
 	}
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
-		Status: "succeeded", Requested: 2, Claimed: 2, Completed: 2,
+		Status: "succeeded", Requested: 3, Claimed: 3, Completed: 3,
 	})
 	_ = proxyJob
 }

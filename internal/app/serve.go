@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/auth"
@@ -53,7 +54,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	tracker := &syncer.Tracker{}
 
 	var rpcBuild *RPCBuild
-	if needsRPC(roleSet) || (roleSet[components.RoleAPI] && len(cfg.RPC.Endpoints) > 0) {
+	if needsRPCForServe(roleSet, cfg) ||
+		(roleSet[components.RoleAPI] && len(cfg.RPC.Endpoints) > 0) {
 		built, err := buildRPC(ctx, cfg, logger)
 		if err != nil {
 			return err
@@ -89,15 +91,65 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err != nil {
 		return err
 	}
-	broker, err := events.NewDurableBroker(events.DefaultReplayLimit, runtimeEvents)
+	var redisAccelerator *accelerator.RedisAccelerator
+	if roleSet[components.RoleAPI] && cfg.Adapters.RedisURL != "" {
+		redisAccelerator, err = accelerator.NewRedisAccelerator(cfg.Adapters.RedisURL, accelerator.RedisOptions{
+			Namespace: cfg.Adapters.Namespace, ChainID: cfg.Chain.ID,
+			OperationTimeout: cfg.Adapters.OperationTimeout, CacheTTL: cfg.Adapters.RedisCacheTTL,
+			Logger: logger,
+		})
+		if err != nil {
+			return err
+		}
+		defer redisAccelerator.Close()
+		redisAccelerator.FenceCache(ctx)
+	}
+	var brokerInvalidators []events.CacheInvalidator
+	if redisAccelerator != nil {
+		brokerInvalidators = append(brokerInvalidators, redisAccelerator)
+	}
+	broker, err := events.NewDurableBroker(events.DefaultReplayLimit, runtimeEvents, brokerInvalidators...)
 	if err != nil {
 		return err
 	}
 	eventWake := make(chan struct{}, 1)
+	var natsWake *accelerator.NATSWake
+	var outboxWake, enrichJobWake, traceJobWake <-chan struct{}
+	if cfg.Adapters.NATSURL != "" && rolesUseNATSWake(roles, cfg) {
+		natsWake, err = accelerator.NewNATSWake(cfg.Adapters.NATSURL, accelerator.NATSWakeOptions{
+			Namespace: cfg.Adapters.Namespace, ChainID: cfg.Chain.ID,
+			ConnectTimeout: cfg.Adapters.ConnectTimeout, Logger: logger,
+		})
+		if err != nil {
+			return err
+		}
+		if roleSet[components.RoleAPI] {
+			if err := natsWake.SubscribeInto(accelerator.WakeRuntime, eventWake); err != nil {
+				return err
+			}
+		}
+		if roleSet[components.RoleEnrich] {
+			if outboxWake, err = natsWake.Subscribe(accelerator.WakeOutbox); err != nil {
+				return err
+			}
+			if enrichJobWake, err = natsWake.Subscribe(accelerator.WakeJobs); err != nil {
+				return err
+			}
+		}
+		if roleSet[components.RoleTrace] && cfg.Features.Trace {
+			if traceJobWake, err = natsWake.Subscribe(accelerator.WakeJobs); err != nil {
+				return err
+			}
+		}
+	}
 	signalEvents := func() {
 		select {
 		case eventWake <- struct{}{}:
 		default:
+		}
+		if natsWake != nil {
+			natsWake.Signal(accelerator.WakeRuntime)
+			natsWake.Signal(accelerator.WakeOutbox)
 		}
 	}
 	var coreRPCSource *syncer.RPCSource
@@ -129,7 +181,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		verificationService, err = verify.NewService(verificationRepository, cfg.Verification.MaxInputBytes)
+		verificationService, err = verify.NewService(
+			verificationRepository,
+			cfg.Verification.MaxInputBytes,
+			verify.ServiceOptions{RequiresHardIsolation: cfg.Security.PublicVerification},
+		)
 		if err != nil {
 			return err
 		}
@@ -146,6 +202,19 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}, nil
 		}); err != nil {
 			return err
+		}
+	}
+	if natsWake != nil {
+		for _, role := range roles {
+			if !roleUsesNATSWake(role, cfg) {
+				continue
+			}
+			role := role
+			if err := componentRegistry.Register(role, "04-optional-nats-wake", func() (components.Service, error) {
+				return natsWake, nil
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	if roleSet[components.RoleAPI] {
@@ -265,7 +334,19 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return err
 			}
 		}
-		catalogReader, err := catalog.NewPostgres(db, catalog.Options{NFTState: nftState})
+		var traceCache accelerator.BlobStore
+		if cfg.Adapters.S3Endpoint != "" {
+			traceCache, err = accelerator.NewS3BlobStore(cfg.Adapters.S3Endpoint, accelerator.S3Options{
+				Bucket: cfg.Adapters.S3Bucket, Prefix: cfg.Adapters.S3Prefix, Region: cfg.Adapters.S3Region,
+				AccessKey: cfg.Adapters.S3AccessKey, SecretKey: cfg.Adapters.S3SecretKey,
+				SessionToken: cfg.Adapters.S3SessionToken, PathStyle: cfg.Adapters.S3PathStyle,
+				OperationTimeout: cfg.Adapters.OperationTimeout, MaxObjectBytes: cfg.Adapters.S3MaxObjectBytes,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		catalogReader, err := catalog.NewPostgres(db, catalog.Options{NFTState: nftState, TraceCache: traceCache, Logger: logger})
 		if err != nil {
 			return err
 		}
@@ -298,6 +379,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}
 			publicReader = stateReader
 			compatibilityState = stateReader
+		}
+		if redisAccelerator != nil {
+			publicReader = redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
 		}
 		compatibilityBackend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
 			ChainID: cfg.Chain.ID, State: compatibilityState, Price: priceProvider,
@@ -338,7 +422,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		publicHandler, err := b.protectPublicAPI(db, cfg, registry, handler)
+		limiter := auth.Limiter(auth.NewMemoryLimiter(nil))
+		if redisAccelerator != nil {
+			limiter = redisAccelerator.Limiter(limiter)
+		}
+		publicHandler, err := b.protectPublicAPI(db, cfg, registry, limiter, handler)
 		if err != nil {
 			return err
 		}
@@ -392,6 +480,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		dispatcher, err := enrich.NewOutboxDispatcher(db, queue, enrich.OutboxDispatcherOptions{
 			PollInterval: cfg.Runtime.PollInterval,
 			Stages:       stages,
+			Wake:         outboxWake,
+			Published: func() {
+				if natsWake != nil {
+					natsWake.Signal(accelerator.WakeJobs)
+				}
+			},
 		})
 		if err != nil {
 			return err
@@ -419,7 +513,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		worker, err := enrich.NewWorker(queue, []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}, enrich.WorkerOptions{
 			ID: runtimeWorkerID("enrich"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval,
+			PollInterval: cfg.Runtime.PollInterval, Wake: enrichJobWake,
 		})
 		if err != nil {
 			return err
@@ -445,7 +539,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
 			ID: runtimeWorkerID("trace"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval,
+			PollInterval: cfg.Runtime.PollInterval, Wake: traceJobWake,
 		})
 		if err != nil {
 			return err
@@ -458,7 +552,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 
 	if roleSet[components.RoleMetadata] && cfg.Features.NFTMetadata {
-		if err := registerMetadataWorker(componentRegistry, db, cfg); err != nil {
+		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
+			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
+		}
+		if err := registerMetadataWorker(componentRegistry, db, rpcBuild.Pool, cfg); err != nil {
 			return err
 		}
 	}
@@ -541,8 +638,10 @@ func enrichmentDispatchStages(trace bool) []enrich.StageID {
 	return stages
 }
 
-func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.RateObserver, next http.Handler) (http.Handler, error) {
-	limiter := auth.NewMemoryLimiter(nil)
+func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.RateObserver, limiter auth.Limiter, next http.Handler) (http.Handler, error) {
+	if limiter == nil {
+		limiter = auth.NewMemoryLimiter(nil)
+	}
 	protected := auth.RateMiddleware{
 		Limiter:   limiter,
 		Anonymous: auth.Limit{Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst},
@@ -559,13 +658,13 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 		}
 		protected = manager.Middleware(false, protected)
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httpapi.NFTMediaSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v2/api" {
 			protected.ServeHTTP(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
-	}), nil
+	})), nil
 }
 
 func componentRoles(names []string) ([]components.Role, map[components.Role]bool, error) {
@@ -587,6 +686,24 @@ func needsRPC(roles map[components.Role]bool) bool {
 	return roles[components.RoleSync] || roles[components.RoleEnrich] || roles[components.RoleTrace] || roles[components.RoleMaintenance]
 }
 
+func needsRPCForServe(roles map[components.Role]bool, cfg config.Config) bool {
+	return needsRPC(roles) || roles[components.RoleMetadata] && cfg.Features.NFTMetadata
+}
+
+func roleUsesNATSWake(role components.Role, cfg config.Config) bool {
+	return role == components.RoleAPI || role == components.RoleSync || role == components.RoleEnrich ||
+		role == components.RoleTrace && cfg.Features.Trace
+}
+
+func rolesUseNATSWake(roles []components.Role, cfg config.Config) bool {
+	for _, role := range roles {
+		if roleUsesNATSWake(role, cfg) {
+			return true
+		}
+	}
+	return false
+}
+
 // productionComponentKeys is the durable role/feature graph contract used by
 // both monolith and split processes. Serve compares it with the components it
 // actually registered, so a new runtime component cannot silently diverge
@@ -596,6 +713,9 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 	add := func(key string) { set[key] = struct{}{} }
 	for _, role := range roles {
 		add("00-operations-http")
+		if cfg.Adapters.NATSURL != "" && roleUsesNATSWake(role, cfg) {
+			add("04-optional-nats-wake")
+		}
 		switch role {
 		case components.RoleAPI:
 			add("08-runtime-event-relay")
@@ -625,6 +745,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			}
 		case components.RoleMetadata:
 			if cfg.Features.NFTMetadata {
+				add("42-nft-metadata-discovery")
 				add("45-nft-metadata")
 			} else {
 				add("50-role-metadata")

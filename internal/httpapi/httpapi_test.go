@@ -147,6 +147,36 @@ func TestReaderErrorsMapToMachineStates(t *testing.T) {
 	}
 }
 
+func TestReaderCapabilityErrorIncludesOnlyStableDetails(t *testing.T) {
+	t.Parallel()
+	err := NewCapabilityUnavailableError("name", "failed", "resolver_failure")
+	handler := testHandler(t, fakeReader{err: err})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/search?q=alice.eth", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Error.Code != "capability_unavailable" ||
+		response.Error.Details["capability"] != "name" ||
+		response.Error.Details["state"] != "failed" ||
+		response.Error.Details["code"] != "resolver_failure" {
+		t.Fatalf("response=%+v", response)
+	}
+	secret := "https://operator:secret@example.invalid/private"
+	if invalid := NewCapabilityUnavailableError("name", "failed", secret); invalid != ErrUnavailable {
+		t.Fatalf("unsafe capability detail was retained: %#v", invalid)
+	}
+}
+
 func TestCORSIsExactAllowlistAndRequestIDIsBounded(t *testing.T) {
 	t.Parallel()
 	handler := testHandler(t, fakeReader{status: StatusSnapshot{CoreReady: true}})

@@ -82,6 +82,12 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 			cfg.Features.NFTMetadata = true
 			return cfg
 		}(), wake: true},
+		{name: "optional NATS wake", cfg: func() config.Config {
+			cfg := config.Default()
+			cfg.Adapters.NATSURL = "nats://127.0.0.1:4222"
+			cfg.Features.Trace = true
+			return cfg
+		}()},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -114,6 +120,9 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		want  []string
 	}{
 		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "08-runtime-event-relay", "20-public-api"}},
+		{name: "api NATS", role: components.RoleAPI, setup: func(cfg *config.Config) {
+			cfg.Adapters.NATSURL = "nats://127.0.0.1:4222"
+		}, want: []string{"00-operations-http", "04-optional-nats-wake", "08-runtime-event-relay", "20-public-api"}},
 		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "10-core-sync"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
@@ -130,7 +139,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "50-role-metadata"}},
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
-		}, want: []string{"00-operations-http", "45-nft-metadata"}},
+		}, want: []string{"00-operations-http", "42-nft-metadata-discovery", "45-nft-metadata"}},
 		{name: "maintenance", role: components.RoleMaintenance, want: []string{"00-operations-http", "45-maintenance", "46-search-catalog-maintenance"}},
 	}
 	for _, test := range tests {

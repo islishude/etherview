@@ -127,13 +127,19 @@ migration:
   backoffLimit: 4
   activeDeadlineSeconds: 600
 
-# This secret is referenced, never rendered by the chart. It must contain the
-# keys named below, or externalSecret may materialize it from an external store.
+# This secret is referenced, never rendered by the chart. The included
+# ExternalSecret materializes only the database, RPC, and API-key-pepper keys;
+# operators may add the optional adapter keys to the same target Secret.
 secrets:
   existingSecret: etherview
   databaseURLKey: database-url
   rpcURLsKey: rpc-urls
   apiKeyPepperKey: api-key-pepper
+  natsURLKey: nats-url
+  redisURLKey: redis-url
+  s3AccessKeyKey: s3-access-key
+  s3SecretKeyKey: s3-secret-key
+  s3SessionTokenKey: s3-session-token
 
 externalSecret:
   enabled: false
@@ -215,10 +221,18 @@ config:
     artifacts: {}
     images: {}
   adapters:
+    namespace: etherview
     nats_url: ""
     redis_url: ""
+    connect_timeout: 2s
+    operation_timeout: 500ms
+    redis_cache_ttl: 30s
     s3_endpoint: ""
     s3_bucket: ""
+    s3_prefix: etherview
+    s3_region: ""
+    s3_path_style: false
+    s3_max_object_bytes: 16777216
     price_base_url: ""
     name_base_url: ""
     fetch_timeout: 5s

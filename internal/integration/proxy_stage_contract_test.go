@@ -202,6 +202,11 @@ func TestProxyStageCreationUpgradeBeaconDependencyAndReorg(t *testing.T) {
 	assertProxyProcessComplete(t, ctx, processor, proxyJob(t, newTwo, "upgrade-new-replay"))
 
 	commitCanonical(t, ctx, repository, blockThree)
+	execFixture(t, ctx, db, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
+		blockThree.Block.Hash.String())
 	queue, err := enrich.NewPostgresJobQueue(db)
 	if err != nil {
 		t.Fatal(err)
@@ -278,6 +283,11 @@ func TestProxyUnavailableMakesDependentABIUnavailableWithoutUnboundResult(t *tes
 	defer cancel()
 	block := testBundle(0, testHash(90_000), testHash(0), testHash(91_000), "proxy-unavailable")
 	commitCanonical(t, ctx, repository, block)
+	execFixture(t, ctx, db, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical' AND message_key = $1`,
+		block.Block.Hash.String())
 	word, _ := enrich.ParseWord(block.Block.Hash.String())
 	rpcError := &ethrpc.RPCError{Code: -32602, Message: "block hash object is unsupported"}
 	states := map[string]map[string]proxyContractState{}

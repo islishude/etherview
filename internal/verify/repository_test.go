@@ -98,7 +98,7 @@ func openVerifyDB(t *testing.T, backend *verifySQLBackend) *sql.DB {
 }
 
 func verifyRows(values ...[]driver.Value) driver.Rows {
-	columns := make([]string, 14)
+	columns := make([]string, 21)
 	for index := range columns {
 		columns[index] = fmt.Sprintf("column_%d", index)
 	}
@@ -118,6 +118,17 @@ func verifyJobRow(id string, request Request, status JobStatus, resultKind, resu
 	codeHash, _ := hex.DecodeString(request.CodeHash[2:])
 	blockHash, _ := hex.DecodeString(request.AtBlockHash[2:])
 	now := time.Unix(1_700_000_000, 0).UTC()
+	requestDigest := verificationRequestDigest(requestJSON, false)
+	attemptCount := 0
+	var compilerKind, compilerDigest, compilerHard driver.Value
+	if status != JobQueued {
+		attemptCount = 1
+	}
+	if status == JobRunning || status == JobSucceeded {
+		digest := make([]byte, 32)
+		digest[0] = 1
+		compilerKind, compilerDigest, compilerHard = string(CompilerProcess), digest, false
+	}
 	return []driver.Value{
 		id,
 		fmt.Sprintf("%d", request.ChainID),
@@ -133,6 +144,13 @@ func verifyJobRow(id string, request Request, status JobStatus, resultKind, resu
 		errorCode,
 		now,
 		now,
+		requestDigest[:],
+		false,
+		attemptCount,
+		3,
+		compilerKind,
+		compilerDigest,
+		compilerHard,
 	}
 }
 
@@ -174,7 +192,8 @@ func TestPostgresRepositorySubmitIsIdempotentForBoundIdentity(t *testing.T) {
 		switch {
 		case strings.Contains(query, "INSERT INTO verification_jobs"):
 			insertions++
-			if !strings.Contains(query, "ON CONFLICT (chain_id, address, code_hash, block_hash) DO NOTHING") {
+			if !strings.Contains(query, "ON CONFLICT (chain_id, address, code_hash, block_hash, request_digest)") ||
+				!strings.Contains(query, "status IN ('queued', 'running', 'succeeded')") {
 				return nil, errors.New("submission does not use the bound identity")
 			}
 			if insertions == 1 {
@@ -203,6 +222,32 @@ func TestPostgresRepositorySubmitIsIdempotentForBoundIdentity(t *testing.T) {
 	}
 }
 
+func TestPostgresRepositorySubmitRetriesWhenConflictingJobBecomesFailed(t *testing.T) {
+	request := validVerifyRequest()
+	inserts, selects := 0, 0
+	backend := &verifySQLBackend{}
+	backend.query = func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+		switch {
+		case strings.Contains(query, "INSERT INTO verification_jobs"):
+			inserts++
+			if inserts == 1 {
+				return verifyRows(), nil
+			}
+			return verifyRows(verifyJobRow(arguments[0].Value.(string), request, JobQueued, nil, nil, nil)), nil
+		case strings.Contains(query, "FROM verification_jobs") && strings.Contains(query, "request_digest = $5"):
+			selects++
+			return verifyRows(), nil
+		default:
+			return nil, fmt.Errorf("unexpected query: %s", query)
+		}
+	}
+	repository := newVerifyRepository(t, backend)
+	job, created, err := repository.Submit(context.Background(), request)
+	if err != nil || !created || job.ID == "" || inserts != 2 || selects != 1 {
+		t.Fatalf("job=%+v created=%t inserts=%d selects=%d error=%v", job, created, inserts, selects, err)
+	}
+}
+
 func TestPostgresRepositoryClaimReclaimsExpiredLeaseWithNewToken(t *testing.T) {
 	request := validVerifyRequest()
 	var tokens []string
@@ -210,6 +255,8 @@ func TestPostgresRepositoryClaimReclaimsExpiredLeaseWithNewToken(t *testing.T) {
 	backend.query = func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
 		if !strings.Contains(query, "FOR UPDATE SKIP LOCKED") ||
 			!strings.Contains(query, "status = 'running' AND lease_expires_at <= clock_timestamp()") ||
+			!strings.Contains(query, "attempt_count >= max_attempts") ||
+			!strings.Contains(query, "attempt_count = job.attempt_count + 1") ||
 			!strings.Contains(query, "SET status = 'running'") {
 			return nil, errors.New("claim does not atomically recover queued and expired jobs")
 		}
@@ -282,10 +329,16 @@ func TestPostgresRepositoryLeaseGuardAndMismatchPrivacy(t *testing.T) {
 	lease := VerificationLease{Job: VerificationJob{ID: verificationID(1), Request: request}, Token: "lease-token"}
 	t.Run("lease lost", func(t *testing.T) {
 		var statements []string
-		backend := &verifySQLBackend{exec: func(query string, _ []driver.NamedValue) (driver.Result, error) {
-			statements = append(statements, query)
-			return driver.RowsAffected(0), nil
-		}}
+		backend := &verifySQLBackend{
+			query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+				statements = append(statements, query)
+				return verifyRows(), nil
+			},
+			exec: func(query string, _ []driver.NamedValue) (driver.Result, error) {
+				statements = append(statements, query)
+				return driver.RowsAffected(0), nil
+			},
+		}
 		repository := newVerifyRepository(t, backend)
 		if err := repository.Renew(context.Background(), lease, time.Minute); !errors.Is(err, ErrLeaseLost) {
 			t.Fatalf("renew error=%v", err)
@@ -309,20 +362,30 @@ func TestPostgresRepositoryLeaseGuardAndMismatchPrivacy(t *testing.T) {
 
 	t.Run("mismatch has no publishable material", func(t *testing.T) {
 		queries := 0
-		var statement string
+		var statements []string
 		backend := &verifySQLBackend{
-			query: func(string, []driver.NamedValue) (driver.Rows, error) {
+			query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 				queries++
-				return nil, errors.New("mismatch must not query a block for publication")
+				if strings.Contains(query, "FROM verification_jobs") {
+					return verifyRows(verifyJobRow(verificationID(1), request, JobRunning, nil, nil, nil)), nil
+				}
+				if strings.Contains(query, "FROM contract_code_observations") {
+					return oneColumnVerifyRows("42"), nil
+				}
+				return nil, fmt.Errorf("unexpected query: %s", query)
 			},
 			exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
-				statement = query
+				statements = append(statements, query)
 				if strings.Contains(query, "verified_contracts") {
 					return nil, errors.New("mismatch attempted to publish contract material")
 				}
-				encoded, ok := arguments[3].Value.(string)
-				if !ok || strings.Contains(encoded, "abi") || strings.Contains(encoded, "sources") {
-					return nil, errors.New("mismatch result contains publishable material")
+				if strings.Contains(query, "verification_results") {
+					encoded, ok := arguments[11].Value.(string)
+					if !ok || strings.Contains(encoded, "abi") || strings.Contains(encoded, "sources") ||
+						arguments[12].Value != nil || arguments[13].Value != nil ||
+						arguments[14].Value != nil || arguments[15].Value != nil {
+						return nil, errors.New("mismatch result contains publishable material")
+					}
 				}
 				return driver.RowsAffected(1), nil
 			},
@@ -332,8 +395,10 @@ func TestPostgresRepositoryLeaseGuardAndMismatchPrivacy(t *testing.T) {
 		if err := repository.Complete(context.Background(), lease, completion); err != nil {
 			t.Fatal(err)
 		}
-		if queries != 0 || !strings.Contains(statement, "SET status = 'succeeded'") {
-			t.Fatalf("queries=%d statement=%q", queries, statement)
+		if queries != 2 || len(statements) != 2 ||
+			!strings.Contains(statements[0], "INSERT INTO verification_results") ||
+			!strings.Contains(statements[1], "SET status = 'succeeded'") {
+			t.Fatalf("queries=%d statements=%q", queries, statements)
 		}
 	})
 }
@@ -344,6 +409,9 @@ func TestPostgresRepositoryPublishesOnlyVerifiedCompletion(t *testing.T) {
 	var statements []string
 	backend := &verifySQLBackend{
 		query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+			if strings.Contains(query, "FROM verification_jobs") {
+				return verifyRows(verifyJobRow(verificationID(1), request, JobRunning, nil, nil, nil)), nil
+			}
 			if !strings.Contains(query, "FROM contract_code_observations AS observation") ||
 				!strings.Contains(query, "JOIN canonical_blocks AS canonical") ||
 				!strings.Contains(query, "observation.address = $2") ||
@@ -380,8 +448,9 @@ func TestPostgresRepositoryPublishesOnlyVerifiedCompletion(t *testing.T) {
 	if err := repository.Complete(context.Background(), lease, completion); err != nil {
 		t.Fatal(err)
 	}
-	if len(statements) != 2 || !strings.Contains(statements[0], "INSERT INTO verified_contracts") ||
-		!strings.Contains(statements[1], "SET status = 'succeeded'") {
+	if len(statements) != 3 || !strings.Contains(statements[0], "INSERT INTO verification_results") ||
+		!strings.Contains(statements[1], "INSERT INTO verified_contracts") ||
+		!strings.Contains(statements[2], "SET status = 'succeeded'") {
 		t.Fatalf("unexpected completion statements: %v", statements)
 	}
 }
@@ -392,6 +461,9 @@ func TestPostgresRepositoryDoesNotPublishWithoutCanonicalCodeObservation(t *test
 	executions := 0
 	backend := &verifySQLBackend{
 		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+			if strings.Contains(query, "FROM verification_jobs") {
+				return verifyRows(verifyJobRow(verificationID(1), request, JobRunning, nil, nil, nil)), nil
+			}
 			if !strings.Contains(query, "FROM contract_code_observations AS observation") || !strings.Contains(query, "JOIN canonical_blocks AS canonical") {
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
@@ -410,7 +482,7 @@ func TestPostgresRepositoryDoesNotPublishWithoutCanonicalCodeObservation(t *test
 		Settings: json.RawMessage(`{}`),
 	}
 	err := repository.Complete(context.Background(), lease, completion)
-	if !errors.Is(err, sql.ErrNoRows) || !strings.Contains(err.Error(), "canonical verification target") || executions != 0 {
+	if !errors.Is(err, ErrTargetNotCanonical) || executions != 1 {
 		t.Fatalf("error=%v executions=%d", err, executions)
 	}
 }

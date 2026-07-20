@@ -106,6 +106,26 @@ type compileOutcome struct {
 }
 
 func (worker *Worker) processLease(ctx context.Context, lease VerificationLease) error {
+	provenance, err := worker.compiler.Provenance(
+		lease.Job.Request.Language, lease.Job.Request.CompilerVersion,
+	)
+	if err != nil {
+		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
+	}
+	if lease.Job.RequiresHardIsolation && !provenance.HardIsolated {
+		return worker.failLease(ctx, lease, ErrorSandboxRequired)
+	}
+	if err := worker.repository.BindCompiler(ctx, lease, provenance); err != nil {
+		switch {
+		case errors.Is(err, ErrSandboxRequired):
+			return worker.failLease(ctx, lease, ErrorSandboxRequired)
+		case errors.Is(err, ErrCompilerProvenanceConflict):
+			return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
+		default:
+			return fmt.Errorf("bind verification compiler: %w", err)
+		}
+	}
+	lease.Job.Compiler = &provenance
 	compileContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	finished := make(chan compileOutcome, 1)
@@ -159,20 +179,26 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 				return errors.New("verification compiler cancelled")
 			}
 			if outcome.errorCode != "" {
-				if err := worker.repository.Fail(ctx, lease, outcome.errorCode); err != nil {
-					return fmt.Errorf("fail verification job: %w", err)
-				}
-				return nil
+				return worker.failLease(ctx, lease, outcome.errorCode)
 			}
 			if outcome.completion == nil {
 				return errors.New("verification compiler returned no outcome")
 			}
-			if err := worker.repository.Complete(ctx, lease, *outcome.completion); err != nil {
+			if err := worker.repository.Complete(ctx, lease, *outcome.completion); errors.Is(err, ErrTargetNotCanonical) {
+				return nil
+			} else if err != nil {
 				return fmt.Errorf("complete verification job: %w", err)
 			}
 			return nil
 		}
 	}
+}
+
+func (worker *Worker) failLease(ctx context.Context, lease VerificationLease, code ErrorCode) error {
+	if err := worker.repository.Fail(ctx, lease, code); err != nil {
+		return fmt.Errorf("fail verification job: %w", err)
+	}
+	return nil
 }
 
 func buildCompletion(request Request, compilerOutput []byte, maximum int) (Completion, ErrorCode) {

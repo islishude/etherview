@@ -166,6 +166,12 @@ in `PLAN.md` and `docs/plans/`, not here.
   advance the relay cursor; invalidators are idempotent because retries are
   expected. An optional Redis adapter must disable or bypass its cache when
   Redis is unavailable; backend loss alone must not make invalidation fail.
+- NATS messages are content-free, coalesced wake hints; outbox dispatch and job
+  claims always re-read PostgreSQL and retain periodic polling. Redis rate-limit
+  failures fall back to the process-local bucket. S3-compatible trace cache
+  keys bind the exact block hash and published job generation, and every hit is
+  checksum/limit validated plus PostgreSQL-postchecked; NFT media, durable job
+  payloads, and stage completion never depend on object storage.
 - Pending transactions are expiring observations from one successfully polled
   RPC endpoint and one immutable PostgreSQL snapshot. An unavailable poll is
   not an authoritative empty mempool.
@@ -193,10 +199,13 @@ in `PLAN.md` and `docs/plans/`, not here.
   a name success only while holding a key-share lock on its exact canonical
   block and never overwrite a different registry/name/block-hash identity;
   an identical concurrent write is a no-op. A first-page dotted search must
-  refresh the name and verify its exact address in the new canonical snapshot;
-  an issued cursor freezes that accepted identity and does not refetch on later
-  pages. Cache failures only through their short TTL and expose stable typed
-  codes without nested upstream text.
+  refresh the name, verify its exact address in the new canonical snapshot, and
+  filter name-source candidates to that accepted address; an issued cursor
+  freezes that identity and does not refetch on later pages. Name observation
+  caches include a non-secret SHA-256 namespace of the configured provider URL,
+  so a provider change never reuses old successes or failures. Cache failures
+  only through their short TTL and expose stable typed states/codes without
+  nested upstream text.
 - Search and adapter retention runs as a maintenance-role supervisor component
   in both monolith and split deployments. It uses only PostgreSQL, a
   chain-scoped advisory transaction lock, finalized-aware catalog pruning, and
@@ -215,12 +224,23 @@ in `PLAN.md` and `docs/plans/`, not here.
   block-scoped operation to one endpoint. Endpoint selection may rotate only
   between blocks; no single result may combine state from multiple nodes.
 - Public metadata media is resolved only from a current canonical stored NFT
-  document, fetched through the SSRF-safe client, signature-checked, and never
-  permanently mirrored. Do not expose a general-purpose URL proxy.
+  document, fetched through the SSRF-safe client, signature-checked, rechecked
+  against the same newest canonical exact-block observation after the external
+  call, and never permanently mirrored. Do not expose a general-purpose URL
+  proxy. NFT metadata source discovery pins one state RPC endpoint and one
+  EIP-1898 block-hash selector per observation; exact source and terminal
+  document facts are immutable and retained across reorgs.
 - Verification requests must bind `code_hash` to the Keccak-256 hash of a
-  non-empty runtime bytecode. Publishing a verified contract additionally
-  requires an exact canonical `contract_code_observations` row for the same
-  chain, address, code hash, and block hash inside the completion transaction.
+  non-empty runtime bytecode. Submission identity covers the exact request and
+  server-derived hard-isolation policy; only the same active or successful
+  digest is idempotent, while failed or cancelled work may be resubmitted. A
+  worker binds the first compiler kind, artifact digest, and isolation property
+  before execution, and later leases may not change them. Durable attempt count
+  is the only reclaim budget. Completion additionally requires an exact
+  canonical `contract_code_observations` row for the same chain, address, code
+  hash, and block hash; a stale target is a terminal failure. Successful
+  results are immutable job/request/compiler facts, and `verified_contracts`
+  is only their deterministic exact-first projection.
 
 ## Changes Requiring Documentation
 

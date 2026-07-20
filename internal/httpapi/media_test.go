@@ -22,14 +22,22 @@ import (
 const mediaTestAddress = "0x1111111111111111111111111111111111111111"
 
 type recordingMediaSource struct {
-	uri   string
-	err   error
-	calls int
+	uri          string
+	err          error
+	currentErr   error
+	stale        bool
+	calls        int
+	currentCalls int
 }
 
-func (source *recordingMediaSource) NFTImageURI(_ context.Context, _ ethrpc.Address, _ string) (string, error) {
+func (source *recordingMediaSource) SelectNFTImage(_ context.Context, _ ethrpc.Address, _ string) (metadata.NFTImageSelection, error) {
 	source.calls++
-	return source.uri, source.err
+	return metadata.NFTImageSelection{URI: source.uri}, source.err
+}
+
+func (source *recordingMediaSource) NFTImageCurrent(_ context.Context, _ ethrpc.Address, _ string, _ metadata.NFTImageSelection) (bool, error) {
+	source.currentCalls++
+	return !source.stale, source.currentErr
 }
 
 type recordingMediaFetcher struct {
@@ -135,8 +143,8 @@ func TestNFTMediaReturnsOnlyValidatedBytesWithStrictHeaders(t *testing.T) {
 	if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), body) {
 		t.Fatalf("status=%d body=%x", recorder.Code, recorder.Body.Bytes())
 	}
-	if source.calls != 1 || fetcher.uri != sourceURI {
-		t.Fatalf("source calls=%d fetched=%q", source.calls, fetcher.uri)
+	if source.calls != 1 || source.currentCalls != 1 || fetcher.uri != sourceURI {
+		t.Fatalf("source calls=%d current=%d fetched=%q", source.calls, source.currentCalls, fetcher.uri)
 	}
 	wantHeaders := map[string]string{
 		"Cache-Control":                "no-store, max-age=0",
@@ -187,8 +195,23 @@ func TestNFTMediaValidatesIdentityBeforeLookup(t *testing.T) {
 			t.Fatalf("path=%s status=%d body=%s", test.path, recorder.Code, recorder.Body.String())
 		}
 	}
-	if source.calls != 0 || fetcher.uri != "" {
+	if source.calls != 0 || source.currentCalls != 0 || fetcher.uri != "" {
 		t.Fatalf("invalid identity reached source=%d fetch=%q", source.calls, fetcher.uri)
+	}
+}
+
+func TestNFTMediaRejectsSelectionThatBecomesNoncanonicalDuringFetch(t *testing.T) {
+	source := &recordingMediaSource{uri: "https://example.invalid/image.png", stale: true}
+	body := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0}
+	fetcher := &recordingMediaFetcher{result: metadata.Result{
+		URL: source.uri, ContentType: "image/png", Body: body,
+	}}
+	handler := newMediaTestHandler(t, source, fetcher, true, nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/nfts/"+mediaTestAddress+"/42/media", nil))
+	if recorder.Code != http.StatusConflict || recorder.Header().Get("X-Etherview-Media-State") != "noncanonical" ||
+		!strings.Contains(recorder.Body.String(), "nft_media_noncanonical") {
+		t.Fatalf("status=%d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
 	}
 }
 
@@ -204,7 +227,8 @@ func TestNFTMediaMapsPersistedMetadataStatesWithoutLeakingSource(t *testing.T) {
 		{metadata.ErrMediaSourcePending, http.StatusServiceUnavailable, "pending", "nft_metadata_pending"},
 		{metadata.ErrMediaSourceUnavailable, http.StatusServiceUnavailable, "unavailable", "nft_media_unavailable"},
 		{metadata.ErrMediaSourceUnsafe, http.StatusUnprocessableEntity, "unsafe", "nft_media_unsafe"},
-		{metadata.ErrMediaSourceError, http.StatusServiceUnavailable, "unavailable", "nft_media_unavailable"},
+		{metadata.ErrMediaSourceError, http.StatusServiceUnavailable, "error", "nft_metadata_error"},
+		{metadata.ErrMediaSourceNoncanonical, http.StatusConflict, "noncanonical", "nft_media_noncanonical"},
 	}
 	for _, test := range tests {
 		source := &recordingMediaSource{err: test.err}
@@ -233,6 +257,29 @@ func TestNFTMediaDisabledAndConfiguredAuthenticationAreExplicit(t *testing.T) {
 	unauthenticatedDeployment.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/nfts/"+mediaTestAddress+"/42/media", nil))
 	if recorder.Code != http.StatusUnauthorized || recorder.Header().Get("X-Etherview-Media-State") != "unauthorized" || !strings.Contains(recorder.Body.String(), "api_key_required") {
 		t.Fatalf("auth status=%d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
+	}
+}
+
+func TestNFTMediaSecurityHeadersPrecedeAuthenticationAndRateRejections(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusUnauthorized, http.StatusTooManyRequests} {
+		handler := NFTMediaSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeError(w, httptest.NewRequest(http.MethodGet, "/", nil), status, "rejected", "rejected", nil)
+		}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/nfts/"+mediaTestAddress+"/42/media", nil))
+		if recorder.Code != status || recorder.Header().Get("Cache-Control") != "no-store, max-age=0" ||
+			recorder.Header().Get("X-Content-Type-Options") != "nosniff" ||
+			recorder.Header().Get("Cross-Origin-Resource-Policy") != "same-origin" ||
+			!strings.Contains(recorder.Header().Get("Content-Security-Policy"), "default-src 'none'") {
+			t.Fatalf("status=%d response=%d headers=%v", status, recorder.Code, recorder.Header())
+		}
+	}
+	adjacent := httptest.NewRecorder()
+	NFTMediaSecurityMiddleware(http.NotFoundHandler()).ServeHTTP(adjacent,
+		httptest.NewRequest(http.MethodGet, "/api/v1/nfts/not-a-media-route", nil))
+	if adjacent.Header().Get("Content-Security-Policy") != "" {
+		t.Fatalf("adjacent route received media headers: %v", adjacent.Header())
 	}
 }
 

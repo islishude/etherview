@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -150,6 +151,9 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	if len(exhaustedRepository.retries) != 0 || len(exhaustedRepository.finished) != 1 ||
 		exhaustedRepository.finished[0].State != StateError || exhaustedRepository.finished[0].Code != "attempts_exhausted" {
 		t.Fatalf("exhausted retries=%+v finished=%+v", exhaustedRepository.retries, exhaustedRepository.finished)
+	}
+	if strings.Contains(exhaustedRepository.finished[0].Message, "temporary") {
+		t.Fatalf("exhausted outcome persisted nested upstream text: %+v", exhaustedRepository.finished[0])
 	}
 }
 

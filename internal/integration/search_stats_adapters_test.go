@@ -15,6 +15,7 @@ import (
 
 	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
@@ -80,6 +81,95 @@ func TestSearchCursorGenerationFreezesLateLabelsAndEnrichment(t *testing.T) {
 	}
 }
 
+func TestSearchCursorKeepsNormalizedAddressOrderingAcrossPages(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitCanonical(t, ctx, repository, testBundle(0, testHash(913), testHash(0), testHash(9_113), "search-boundary"))
+	firstAddress, secondAddress := checksumAddressOrderInversion(t)
+	for _, address := range []string{firstAddress, secondAddress} {
+		execFixture(t, ctx, db, `INSERT INTO operator_labels
+			(chain_id, object_kind, object_key, label)
+			VALUES (1, 'address', $1, 'boundary inversion')`, strings.ToLower(address))
+	}
+	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, cursor, err := reader.Search(ctx, "boundary inversion", "", 1)
+	if err != nil || len(first) != 1 || cursor == "" || first[0].Key != firstAddress {
+		t.Fatalf("first=%+v cursor=%q error=%v", first, cursor, err)
+	}
+	second, next, err := reader.Search(ctx, "boundary inversion", cursor, 1)
+	if err != nil || len(second) != 1 || next != "" || second[0].Key != secondAddress {
+		t.Fatalf("second=%+v next=%q error=%v", second, next, err)
+	}
+}
+
+func checksumAddressOrderInversion(t *testing.T) (string, string) {
+	t.Helper()
+	type candidate struct {
+		normalized string
+		checksum   string
+	}
+	candidates := make([]candidate, 0, 512)
+	for value := uint64(1); value <= 512; value++ {
+		normalized := testAddress(value).String()
+		checksum, err := query.ChecksumAddress(normalized)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, previous := range candidates {
+			if previous.normalized < normalized && previous.checksum > checksum {
+				return previous.checksum, checksum
+			}
+		}
+		candidates = append(candidates, candidate{normalized: normalized, checksum: checksum})
+	}
+	t.Fatal("failed to find EIP-55 checksum ordering inversion")
+	return "", ""
+}
+
+func TestStatsV2ConfiguredStartRemainsParentlessWithRetainedCanonicalHistory(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := testBundle(6, testHash(914), testHash(0), testHash(9_114), "stats-retained-parent")
+	start := testBundle(7, testHash(915), testHash(914), testHash(9_115), "stats-configured-start")
+	commitCanonical(t, ctx, repository, parent)
+	if err := repository.ConfigureIndex(ctx, "1", 7); err != nil {
+		t.Fatal(err)
+	}
+	commitCanonical(t, ctx, repository, start)
+	processor, err := enrich.NewPostgresStatsProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := processor.Process(ctx, derivedJob(t, start, enrich.StatsStage))
+	if err != nil || result.State != enrich.ResultComplete {
+		t.Fatalf("stats result=%+v error=%v", result, err)
+	}
+	var interval, transactionsPerSecond sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT block_interval_seconds::text,
+		transactions_per_second::text FROM block_statistics
+		WHERE chain_id = 1 AND block_number = 7 AND block_hash = $1`, mustBytes(t, testHash(915))).Scan(
+		&interval, &transactionsPerSecond,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if interval.Valid || transactionsPerSecond.Valid {
+		t.Fatalf("configured start interval=%v tps=%v", interval, transactionsPerSecond)
+	}
+}
+
 func TestSearchUsesLatestCanonicalLogicalObservationAndPrunePreservesReorgFallback(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -99,6 +189,10 @@ func TestSearchUsesLatestCanonicalLogicalObservationAndPrunePreservesReorgFallba
 	execFixture(t, ctx, db, `INSERT INTO name_records
 		(chain_id, registry, name, address, block_number, block_hash, canonical)
 		VALUES (1, $1, 'alice.eth', $2, 2, $3, true)`, registry, newAddress, mustBytes(t, testHash(922)))
+	execFixture(t, ctx, db, `INSERT INTO name_records
+		(chain_id, registry, name, address, block_number, block_hash, canonical)
+		VALUES (1, $1, 'alice.eth', $2, 2, $3, true)`,
+		mustBytes(t, testAddress(929)), mustBytes(t, testAddress(928)), mustBytes(t, testHash(922)))
 	tokenAddress := mustBytes(t, testAddress(923))
 	execFixture(t, ctx, db, `INSERT INTO token_contracts
 		(chain_id, address, code_hash, standard, confidence, name, symbol, metadata_state,
@@ -231,6 +325,32 @@ func TestPostgresAdaptersPersistFreshSuccessAndStableFailure(t *testing.T) {
 	if failing.calls.Load() != 1 {
 		t.Fatalf("name fetches=%d", failing.calls.Load())
 	}
+	secondProvider := &integrationJSONFetcher{err: &metadata.FetchError{Kind: metadata.FailureUnsafeURL, Err: errors.New(secret)}}
+	isolatedService, err := adapters.NewPostgresNameService(db, 1, secondProvider, adapters.NameOptions{
+		BaseURL: "https://name-two.example/v1?token=operator-secret", Freshness: time.Hour,
+		FailureTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := isolatedService.Resolve(ctx, "missing.eth"); !errors.Is(err, adapters.ErrUnavailable) {
+		t.Fatalf("second-provider name error=%v", err)
+	}
+	if secondProvider.calls.Load() != 1 {
+		t.Fatalf("second provider reused the first provider cache: fetches=%d", secondProvider.calls.Load())
+	}
+	var providerCount int
+	var providerKeysSafe bool
+	if err := db.QueryRowContext(ctx, `SELECT count(DISTINCT provider_key),
+		bool_and(provider_key ~ '^sha256:[0-9a-f]{64}$'
+			AND provider_key NOT LIKE '%operator-secret%'
+			AND provider_key NOT LIKE '%name.example%')
+		FROM external_adapter_observations
+		WHERE chain_id = 1 AND capability = 'name' AND observation_key = 'missing.eth'`).Scan(
+		&providerCount, &providerKeysSafe,
+	); err != nil || providerCount != 2 || !providerKeysSafe {
+		t.Fatalf("provider identities count=%d safe=%t error=%v", providerCount, providerKeysSafe, err)
+	}
 	nameBody, _ := json.Marshal(map[string]any{
 		"name": "alice.eth", "address": testAddress(931).String(), "registry": testAddress(932).String(),
 		"block_number": "0", "block_hash": testHash(930).String(), "observed_at": now.Add(-time.Minute),
@@ -281,6 +401,50 @@ func TestPostgresAdaptersPersistFreshSuccessAndStableFailure(t *testing.T) {
 	}
 	if got := "0x" + hex.EncodeToString(storedAddress); !strings.EqualFold(got, testAddress(931).String()) {
 		t.Fatalf("stored address=%s", got)
+	}
+}
+
+func TestExactCoreSearchUsesFrozenOperatorLabels(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedHash := testHash(934)
+	commitCanonical(t, ctx, repository, testBundle(0, sharedHash, testHash(0), sharedHash, "exact-label"))
+	for _, label := range []struct {
+		kind, key, value string
+	}{
+		{"block", "0", "Height zero label"},
+		{"block", sharedHash.String(), "Block hash label"},
+		{"transaction", sharedHash.String(), "Transaction hash label"},
+	} {
+		execFixture(t, ctx, db, `INSERT INTO operator_labels
+			(chain_id, object_kind, object_key, label) VALUES (1, $1, $2, $3)`,
+			label.kind, strings.ToLower(label.key), label.value)
+	}
+	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byHeight, _, err := reader.Search(ctx, "0", "", 20)
+	if err != nil || len(byHeight) != 1 || byHeight[0].Label != "Height zero label" {
+		t.Fatalf("height results=%+v error=%v", byHeight, err)
+	}
+	first, cursor, err := reader.Search(ctx, sharedHash.String(), "", 1)
+	if err != nil || len(first) != 1 || cursor == "" || first[0].Kind != gen.SearchResultKindBlock ||
+		first[0].Label != "Block hash label" {
+		t.Fatalf("first exact results=%+v cursor=%q error=%v", first, cursor, err)
+	}
+	execFixture(t, ctx, db, `UPDATE operator_labels
+		SET label = 'Changed transaction label', updated_at = now()
+		WHERE chain_id = 1 AND object_kind = 'transaction' AND object_key = $1`, sharedHash.String())
+	second, next, err := reader.Search(ctx, sharedHash.String(), cursor, 1)
+	if err != nil || len(second) != 1 || next != "" || second[0].Kind != gen.SearchResultKindTransaction ||
+		second[0].Label != "Transaction hash label" {
+		t.Fatalf("second exact results=%+v next=%q error=%v", second, next, err)
 	}
 }
 

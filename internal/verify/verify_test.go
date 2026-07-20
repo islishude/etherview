@@ -85,6 +85,34 @@ func TestProcessCompilerRejectsPublicExecution(t *testing.T) {
 	}
 }
 
+func TestCompilerProvenanceUsesPinnedArtifactDigest(t *testing.T) {
+	digestHex := strings.Repeat("01", 32)
+	process := ProcessCompiler{Cache: &CompilerCache{Artifacts: map[Language]map[string]CompilerArtifact{
+		LanguageSolidity: {"0.8.30": {SHA256: digestHex}},
+	}}}
+	provenance, err := process.Provenance(LanguageSolidity, "0.8.30")
+	if err != nil || provenance.Kind != CompilerProcess || provenance.HardIsolated ||
+		hex.EncodeToString(provenance.Digest[:]) != digestHex {
+		t.Fatalf("process provenance=%+v error=%v", provenance, err)
+	}
+
+	container := ContainerCompiler{
+		Runtime: "unavailable-runtime",
+		Images: map[Language]map[string]string{
+			LanguageSolidity: {"0.8.30": "registry.invalid/solc@sha256:" + digestHex},
+		},
+	}
+	provenance, err = container.Provenance(LanguageSolidity, "0.8.30")
+	if err != nil || provenance.Kind != CompilerContainer || provenance.HardIsolated ||
+		hex.EncodeToString(provenance.Digest[:]) != digestHex {
+		t.Fatalf("container provenance=%+v error=%v", provenance, err)
+	}
+	container.Images[LanguageSolidity]["0.8.30"] = "registry.invalid/solc:latest"
+	if _, err := container.Provenance(LanguageSolidity, "0.8.30"); err == nil {
+		t.Fatal("mutable container image produced compiler provenance")
+	}
+}
+
 func TestContainerRequiresDigest(t *testing.T) {
 	t.Parallel()
 	compiler := ContainerCompiler{Images: map[Language]map[string]string{LanguageSolidity: {"1": "solc:latest"}}}

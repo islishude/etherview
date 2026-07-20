@@ -441,7 +441,10 @@ LEFT JOIN LATERAL (
       AND verified.valid_from_block <= current_code.context_number
       AND (verified.valid_to_block IS NULL
            OR verified.valid_to_block >= current_code.context_number)
-    ORDER BY verified.valid_from_block DESC, verified.created_at DESC
+	    ORDER BY (verified.match_kind = 'exact') DESC,
+	             verified.valid_from_block DESC,
+	             verified.request_digest ASC NULLS LAST,
+	             verified.created_at ASC
     LIMIT 1
 ) AS verified ON TRUE`
 

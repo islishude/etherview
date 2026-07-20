@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -16,7 +17,10 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ErrLeaseLost = errors.New("metadata job lease is no longer owned")
+var (
+	ErrLeaseLost                = errors.New("metadata job lease is no longer owned")
+	ErrExactNFTMetadataConflict = errors.New("exact NFT metadata observation conflicts with persisted source")
+)
 
 type PostgresRepository struct {
 	db      *sql.DB
@@ -89,11 +93,28 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	if !nftContract {
 		return EnqueueResult{}, errors.New("metadata token address is not a canonical ERC-721 or ERC-1155 contract")
 	}
-	if _, err := tx.ExecContext(ctx, upsertMetadataResourceSQL,
+	var inserted int
+	err = tx.QueryRowContext(ctx, insertMetadataResourceSQL,
 		request.ChainID, request.resourceKey(), request.SourceURI,
 		address, request.TokenID, strconv.FormatUint(request.BlockNumber, 10), blockHash,
-	); err != nil {
-		return EnqueueResult{}, fmt.Errorf("upsert NFT metadata resource: %w", err)
+	).Scan(&inserted)
+	if errors.Is(err, sql.ErrNoRows) {
+		var (
+			storedKey, storedURI, storedBlockNumber string
+			storedAddress, storedBlockHash          []byte
+			storedTokenID                           string
+		)
+		err = tx.QueryRowContext(ctx, existingMetadataResourceSQL,
+			request.ChainID, address, request.TokenID, blockHash,
+		).Scan(&storedKey, &storedURI, &storedAddress, &storedTokenID, &storedBlockNumber, &storedBlockHash)
+		if err == nil && (storedKey != request.resourceKey() || storedURI != request.SourceURI ||
+			!bytes.Equal(storedAddress, address) || storedTokenID != request.TokenID ||
+			storedBlockNumber != strconv.FormatUint(request.BlockNumber, 10) || !bytes.Equal(storedBlockHash, blockHash)) {
+			return EnqueueResult{}, ErrExactNFTMetadataConflict
+		}
+	}
+	if err != nil {
+		return EnqueueResult{}, fmt.Errorf("insert NFT metadata resource: %w", err)
 	}
 	var jobID int64
 	err = tx.QueryRowContext(ctx, enqueueMetadataJobSQL,
@@ -567,69 +588,26 @@ SELECT EXISTS (
       AND token.standard IN ('erc721', 'erc1155')
 )`
 
-const upsertMetadataResourceSQL = `
-INSERT INTO external_metadata AS current (
+const insertMetadataResourceSQL = `
+INSERT INTO external_metadata (
     chain_id, resource_kind, resource_key, source_uri, state,
     token_address, token_id, observed_block_number, observed_block_hash,
-    attempt_count, updated_at
+    identity_hash, attempt_count, updated_at
 ) VALUES (
     $1::numeric, 'nft', $2, $3, 'pending',
     $4, $5::numeric, $6::numeric, $7,
-    0, clock_timestamp()
+    $7, 0, clock_timestamp()
 )
-ON CONFLICT (chain_id, resource_kind, resource_key) DO UPDATE SET
-    source_uri = EXCLUDED.source_uri,
-    token_address = EXCLUDED.token_address,
-    token_id = EXCLUDED.token_id,
-    observed_block_number = EXCLUDED.observed_block_number,
-    observed_block_hash = EXCLUDED.observed_block_hash,
-    state = CASE
-        WHEN current.source_uri = EXCLUDED.source_uri
-         AND current.observed_block_number = EXCLUDED.observed_block_number
-         AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.state ELSE 'pending'
-    END,
-    resolved_uri = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.resolved_uri ELSE NULL END,
-    media_type = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.media_type ELSE NULL END,
-    content_hash = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.content_hash ELSE NULL END,
-    document = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.document ELSE NULL END,
-    content_size = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.content_size ELSE NULL END,
-    attempt_count = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.attempt_count ELSE 0 END,
-    last_error = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.last_error ELSE NULL END,
-    last_error_code = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.last_error_code ELSE NULL END,
-    fetched_at = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.fetched_at ELSE NULL END,
-    terminal_at = CASE WHEN current.source_uri = EXCLUDED.source_uri
-        AND current.observed_block_number = EXCLUDED.observed_block_number
-        AND current.observed_block_hash = EXCLUDED.observed_block_hash
-        THEN current.terminal_at ELSE NULL END,
-    updated_at = clock_timestamp()`
+ON CONFLICT DO NOTHING
+RETURNING 1`
+
+const existingMetadataResourceSQL = `
+SELECT resource_key, source_uri, token_address, token_id::text,
+       observed_block_number::text, observed_block_hash
+FROM external_metadata
+WHERE chain_id = $1::numeric AND resource_kind = 'nft'
+  AND token_address = $2 AND token_id = $3::numeric AND observed_block_hash = $4
+FOR UPDATE`
 
 const enqueueMetadataJobSQL = `
 INSERT INTO durable_jobs (
@@ -670,6 +648,7 @@ WITH exhausted AS (
     WHERE metadata.chain_id = exhausted.chain_id
       AND metadata.resource_kind = 'nft'
       AND metadata.resource_key = exhausted.payload->>'resource_key'
+      AND metadata.identity_hash = decode(substr(exhausted.payload->>'block_hash', 3), 'hex')
       AND metadata.source_uri = exhausted.payload->>'source_uri'
       AND metadata.observed_block_number = (exhausted.payload->>'block_number')::numeric
       AND metadata.observed_block_hash = decode(substr(exhausted.payload->>'block_hash', 3), 'hex')
@@ -719,6 +698,7 @@ SELECT
     EXISTS (
         SELECT 1 FROM external_metadata
         WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
+          AND identity_hash = $6
           AND token_address = $3 AND token_id = $4::numeric
           AND observed_block_number = $5::numeric AND observed_block_hash = $6
           AND source_uri = $7
@@ -736,6 +716,7 @@ SELECT token_address = $3
    AND source_uri = $7
 FROM external_metadata
 WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
+  AND identity_hash = $6
 FOR UPDATE`
 
 const lockOwnedMetadataJobSQL = `
@@ -752,6 +733,7 @@ SET state = $6, resolved_uri = $7, media_type = $8, content_hash = $9,
     last_error_code = $13, last_error = $14,
     fetched_at = clock_timestamp(), terminal_at = clock_timestamp(), updated_at = clock_timestamp()
 WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
+  AND identity_hash = $5
   AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5`
 
 const recordMetadataRetrySQL = `
@@ -759,6 +741,7 @@ UPDATE external_metadata
 SET state = 'pending', attempt_count = $6, last_error_code = $7, last_error = $8,
     fetched_at = clock_timestamp(), terminal_at = NULL, updated_at = clock_timestamp()
 WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
+  AND identity_hash = $5
   AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5`
 
 const insertMetadataAttemptSQL = `

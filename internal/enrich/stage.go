@@ -206,6 +206,9 @@ type WorkerOptions struct {
 	PollInterval  time.Duration
 	RetryBase     time.Duration
 	RetryMax      time.Duration
+	// Wake is a lossy latency hint. PostgreSQL Claim remains authoritative and
+	// PollInterval remains the mandatory fallback when notifications are lost.
+	Wake <-chan struct{}
 }
 
 func (options *WorkerOptions) defaults() {
@@ -299,7 +302,7 @@ func (worker *Worker) Run(ctx context.Context) error {
 			return err
 		}
 		if !found {
-			if err := waitContext(ctx, worker.options.PollInterval); err != nil {
+			if err := waitContextOrWake(ctx, worker.options.PollInterval, worker.options.Wake); err != nil {
 				return err
 			}
 		}
@@ -464,12 +467,18 @@ func (worker *Worker) retryDelay(attempt uint32) time.Duration {
 }
 
 func waitContext(ctx context.Context, duration time.Duration) error {
+	return waitContextOrWake(ctx, duration, nil)
+}
+
+func waitContextOrWake(ctx context.Context, duration time.Duration, wake <-chan struct{}) error {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-timer.C:
+		return nil
+	case <-wake:
 		return nil
 	}
 }

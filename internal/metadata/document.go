@@ -6,6 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // validateDocument enforces an object-shaped, bounded JSON metadata document.
@@ -14,6 +18,9 @@ import (
 func validateDocument(document []byte) error {
 	if len(document) == 0 || int64(len(document)) > MaxDocumentBytes {
 		return fmt.Errorf("metadata document must contain between 1 and %d bytes", MaxDocumentBytes)
+	}
+	if err := validatePostgresJSONText(document); err != nil {
+		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.UseNumber()
@@ -89,10 +96,97 @@ func validateDocumentValue(value any, depth int, nodes *int) error {
 		if len(typed) > maxDocumentStringSize {
 			return fmt.Errorf("metadata document string exceeds %d bytes", maxDocumentStringSize)
 		}
-	case nil, bool, json.Number:
+	case json.Number:
+		if err := validateJSONNumber(typed); err != nil {
+			return err
+		}
+	case nil, bool:
 		return nil
 	default:
 		return fmt.Errorf("metadata document contains unsupported JSON value %T", value)
+	}
+	return nil
+}
+
+// PostgreSQL jsonb rejects NUL escapes and malformed UTF-16 pairs even though
+// encoding/json accepts some of them by substituting U+FFFD. Validate the wire
+// representation before decoding so a successful fetch can always be stored.
+func validatePostgresJSONText(document []byte) error {
+	if !utf8.Valid(document) {
+		return errors.New("metadata document is not valid UTF-8")
+	}
+	inString := false
+	for index := 0; index < len(document); index++ {
+		switch document[index] {
+		case '"':
+			inString = !inString
+		case '\\':
+			if !inString || index+1 >= len(document) {
+				continue
+			}
+			index++
+			if document[index] != 'u' || index+4 >= len(document) {
+				continue
+			}
+			code, ok := parseHexWord(document[index+1 : index+5])
+			if !ok {
+				continue
+			}
+			if code == 0 {
+				return errors.New("metadata document contains a PostgreSQL-incompatible NUL escape")
+			}
+			index += 4
+			if utf16.IsSurrogate(rune(code)) {
+				if code < 0xd800 || code > 0xdbff || index+6 >= len(document) ||
+					document[index+1] != '\\' || document[index+2] != 'u' {
+					return errors.New("metadata document contains an unpaired UTF-16 surrogate")
+				}
+				low, lowOK := parseHexWord(document[index+3 : index+7])
+				if !lowOK || low < 0xdc00 || low > 0xdfff {
+					return errors.New("metadata document contains an unpaired UTF-16 surrogate")
+				}
+				index += 6
+			}
+		}
+	}
+	return nil
+}
+
+func parseHexWord(value []byte) (uint16, bool) {
+	if len(value) != 4 {
+		return 0, false
+	}
+	var result uint16
+	for _, character := range value {
+		result <<= 4
+		switch {
+		case character >= '0' && character <= '9':
+			result |= uint16(character - '0')
+		case character >= 'a' && character <= 'f':
+			result |= uint16(character-'a') + 10
+		case character >= 'A' && character <= 'F':
+			result |= uint16(character-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return result, true
+}
+
+func validateJSONNumber(number json.Number) error {
+	value := number.String()
+	if len(value) > maxJSONNumberBytes {
+		return fmt.Errorf("metadata JSON number exceeds %d bytes", maxJSONNumberBytes)
+	}
+	if exponentAt := strings.IndexAny(value, "eE"); exponentAt >= 0 {
+		exponentText := value[exponentAt+1:]
+		if len(exponentText) > 6 {
+			return errors.New("metadata JSON number exponent exceeds PostgreSQL bounds")
+		}
+		exponent, err := strconv.Atoi(exponentText)
+		if err != nil || exponent < -maxJSONNumberExponent || exponent > maxJSONNumberExponent {
+			return errors.New("metadata JSON number exponent exceeds PostgreSQL bounds")
+		}
 	}
 	return nil
 }

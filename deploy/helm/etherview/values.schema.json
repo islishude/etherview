@@ -27,7 +27,12 @@
         "existingSecret": {"type": "string", "minLength": 1},
         "databaseURLKey": {"type": "string", "minLength": 1},
         "rpcURLsKey": {"type": "string", "minLength": 1},
-        "apiKeyPepperKey": {"type": "string", "minLength": 1}
+        "apiKeyPepperKey": {"type": "string", "minLength": 1},
+        "natsURLKey": {"type": "string", "minLength": 1},
+        "redisURLKey": {"type": "string", "minLength": 1},
+        "s3AccessKeyKey": {"type": "string", "minLength": 1},
+        "s3SecretKeyKey": {"type": "string", "minLength": 1},
+        "s3SessionTokenKey": {"type": "string", "minLength": 1}
       }
     },
     "config": {

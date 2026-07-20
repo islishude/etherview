@@ -1259,6 +1259,10 @@ components:
           type: string
         details:
           type: object
+          description: >-
+            Stable machine-readable context. A capability_unavailable response
+            may include capability, state, and code identifiers; upstream error
+            text and configured URLs are never included.
           additionalProperties: true
         request_id:
           type: string

@@ -375,15 +375,15 @@ func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string
 	resolvedNameAddress := ""
 	if encodedCursor == "" && externalNameQuery(value) {
 		if r.nameResolver == nil {
-			return nil, "", fmt.Errorf("%w: name resolution capability is not configured", httpapi.ErrUnavailable)
+			return nil, "", nameCapabilityUnavailable("unavailable", "not_configured")
 		}
 		resolved, resolveErr := r.nameResolver.Resolve(ctx, value)
 		if resolveErr != nil {
-			return nil, "", fmt.Errorf("%w: name resolution capability is unavailable", httpapi.ErrUnavailable)
+			return nil, "", nameResolverError(resolveErr)
 		}
 		address, parseErr := ethrpc.ParseAddress(resolved)
 		if parseErr != nil {
-			return nil, "", fmt.Errorf("%w: name resolution returned an invalid address", httpapi.ErrUnavailable)
+			return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
 		}
 		resolvedNameAddress = strings.ToLower(address.String())
 	}
@@ -429,7 +429,7 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 			return nil, "", visibilityErr
 		}
 		if !visible {
-			return nil, "", fmt.Errorf("%w: resolved name is not visible at the canonical search snapshot", httpapi.ErrUnavailable)
+			return nil, "", nameCapabilityUnavailable("unavailable", "stale_block")
 		}
 	}
 	var results []gen.SearchResult
@@ -437,11 +437,13 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 	if parseErr != nil {
 		return nil, "", parseErr
 	} else if isHash {
-		results, err = r.searchHash(ctx, tx, hash, limit+1)
+		results, err = r.searchHash(ctx, tx, hash, generation, limit+1)
 	} else if height, blockParseErr := parseBlockNumber(value); blockParseErr == nil {
-		results, err = r.searchBlockNumber(ctx, tx, height)
+		results, err = r.searchBlockNumber(ctx, tx, height, generation)
 	} else {
-		results, err = r.searchText(ctx, tx, value, snapshot.SnapshotNumber, generation, boundary, limit+2)
+		results, err = r.searchText(
+			ctx, tx, value, snapshot.SnapshotNumber, generation, resolvedNameAddress, boundary, limit+2,
+		)
 	}
 	if err != nil {
 		return nil, "", err
@@ -479,12 +481,43 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 	next, err := httpapi.EncodeCursor(searchCursor{
 		ChainID: r.chainID, SnapshotNumber: snapshot.SnapshotNumber, SnapshotHash: snapshot.SnapshotHash,
 		Generation: generation, Query: strings.ToLower(value), ResolvedNameAddress: resolvedNameAddress,
-		AfterRank: last.Rank, AfterKind: string(last.Kind), AfterKey: last.Key,
+		AfterRank: last.Rank, AfterKind: string(last.Kind), AfterKey: canonicalSearchBoundaryKey(last.Key),
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("encode search cursor: %w", err)
 	}
 	return results, next, nil
+}
+
+type capabilityDetailer interface {
+	CapabilityDetails() (capability, state, code string)
+}
+
+func nameResolverError(err error) error {
+	var detailer capabilityDetailer
+	if errors.As(err, &detailer) {
+		capability, state, code := detailer.CapabilityDetails()
+		if capability == "name" && stableNameCapabilityCode(code) {
+			if stable := httpapi.NewCapabilityUnavailableError(capability, state, code); stable != httpapi.ErrUnavailable {
+				return stable
+			}
+		}
+	}
+	return nameCapabilityUnavailable("failed", "resolver_failure")
+}
+
+func stableNameCapabilityCode(code string) bool {
+	switch code {
+	case "unsafe_url", "unavailable", "temporary", "unsafe_content", "invalid_content", "too_large",
+		"transport_failure", "invalid_response", "stale_block", "identity_conflict":
+		return true
+	default:
+		return false
+	}
+}
+
+func nameCapabilityUnavailable(state, code string) error {
+	return httpapi.NewCapabilityUnavailableError("name", state, code)
 }
 
 func externalNameQuery(value string) bool {
@@ -688,19 +721,35 @@ ORDER BY (canonical.block_hash IS NOT NULL) DESC, inclusion.block_number DESC
 LIMIT 1`
 
 const searchHashSQL = `
+WITH visible_labels AS (
+    SELECT document.result_kind, document.result_key, document.result_label, document.id
+    FROM search_catalog_documents AS document
+    WHERE document.chain_id = $1::numeric
+      AND document.source_kind = 'label'
+      AND document.valid_from_generation <= $3
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
+)
 SELECT kind, key, label, rank, canonical
 FROM (
     SELECT
         'block'::text AS kind,
         '0x' || encode(block.hash, 'hex') AS key,
-        'Block #' || block.number::text AS label,
-        100::bigint AS rank,
+        COALESCE(operator_label.result_label, 'Block #' || block.number::text) AS label,
+        CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint AS rank,
         (canonical.block_hash IS NOT NULL) AS canonical
     FROM blocks AS block
     LEFT JOIN canonical_blocks AS canonical
       ON canonical.chain_id = block.chain_id
      AND canonical.number = block.number
      AND canonical.block_hash = block.hash
+    LEFT JOIN LATERAL (
+        SELECT visible.result_label
+        FROM visible_labels AS visible
+        WHERE visible.result_kind = 'block'
+          AND lower(visible.result_key) = ('0x' || encode(block.hash, 'hex'))
+        ORDER BY visible.id DESC
+        LIMIT 1
+    ) AS operator_label ON TRUE
     WHERE block.chain_id = $1::numeric AND block.hash = $2
 
     UNION ALL
@@ -708,8 +757,8 @@ FROM (
     SELECT
         'transaction'::text,
         '0x' || encode(transaction.hash, 'hex'),
-        'Transaction 0x' || encode(transaction.hash, 'hex'),
-        90::bigint,
+        COALESCE(operator_label.result_label, 'Transaction 0x' || encode(transaction.hash, 'hex')),
+        CASE WHEN operator_label.result_label IS NULL THEN 90 ELSE 110 END::bigint,
         EXISTS (
             SELECT 1 FROM transaction_inclusions AS inclusion
             JOIN canonical_blocks AS canonical
@@ -720,14 +769,45 @@ FROM (
               AND inclusion.tx_hash = transaction.hash
         )
     FROM transactions AS transaction
+    LEFT JOIN LATERAL (
+        SELECT visible.result_label
+        FROM visible_labels AS visible
+        WHERE visible.result_kind = 'transaction'
+          AND lower(visible.result_key) = ('0x' || encode(transaction.hash, 'hex'))
+        ORDER BY visible.id DESC
+        LIMIT 1
+    ) AS operator_label ON TRUE
     WHERE transaction.chain_id = $1::numeric AND transaction.hash = $2
 ) AS results
 ORDER BY rank DESC, kind
-LIMIT $3`
+LIMIT $4`
 
 const searchBlockNumberSQL = `
-SELECT canonical.number::text, canonical.block_hash
+WITH visible_labels AS (
+    SELECT document.result_key, document.result_label, document.id
+    FROM search_catalog_documents AS document
+    WHERE document.chain_id = $1::numeric
+      AND document.source_kind = 'label'
+      AND document.result_kind = 'block'
+      AND document.valid_from_generation <= $3
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
+)
+SELECT canonical.number::text,
+       canonical.block_hash,
+       COALESCE(operator_label.result_label, 'Block #' || canonical.number::text),
+       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint
 FROM canonical_blocks AS canonical
+LEFT JOIN LATERAL (
+    SELECT visible.result_label
+    FROM visible_labels AS visible
+    WHERE lower(visible.result_key) IN (
+        canonical.number::text,
+        '0x' || encode(canonical.block_hash, 'hex')
+    )
+    ORDER BY CASE WHEN lower(visible.result_key) = canonical.number::text THEN 0 ELSE 1 END,
+             visible.id DESC
+    LIMIT 1
+) AS operator_label ON TRUE
 WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric`
 
 const searchTextSQL = `
@@ -739,7 +819,7 @@ WITH visible_documents AS (
       AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
 ), candidates AS (
     SELECT document.result_kind AS kind,
-           document.result_key AS key,
+           lower(document.result_key) AS key,
            document.result_label AS label,
            CASE document.source_kind
              WHEN 'label' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 110 ELSE 80 END
@@ -774,6 +854,11 @@ WITH visible_documents AS (
         LIMIT 1
     ) AS current_code ON TRUE
     WHERE document.source_kind <> 'code'
+      AND (
+          document.source_kind <> 'name'
+          OR $10 = ''
+          OR lower(document.result_key) = $10
+      )
       AND ($2 = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
           WHERE strpos(term, $2) > 0

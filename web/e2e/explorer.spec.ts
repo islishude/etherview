@@ -59,11 +59,35 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   expect(asset.headers()["etag"]).toMatch(/^"[a-f0-9]{64}"$/);
   expect(asset.headers()["x-content-type-options"]).toBe("nosniff");
 
+  const notModified = await request.get(entrypoints[0], {
+    headers: { "If-None-Match": asset.headers()["etag"] },
+  });
+  expect(notModified.status()).toBe(304);
+  expect(notModified.headers()["cache-control"]).toBe(
+    "public, max-age=31536000, immutable",
+  );
+  expect(notModified.headers()["content-security-policy"]).toBe(policy);
+  expect(notModified.headers()["x-content-type-options"]).toBe("nosniff");
+
   const missingAPI = await request.get("/api/v1/not-a-route", {
     headers: { Accept: "text/html" },
   });
   expect(missingAPI.status()).toBe(404);
   expect(await missingAPI.text()).not.toContain('<div id="root"></div>');
+
+  for (const missingAsset of ["/robots.txt", "/assets/missing.js", "/module.wasm"]) {
+    const response = await request.get(missingAsset, { headers: { Accept: "text/html" } });
+    expect(response.status()).toBe(404);
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(await response.text()).not.toContain('<div id="root"></div>');
+  }
+
+  const refusedHTML = await request.get("/blocks/1", {
+    headers: { Accept: "text/html;q=0, */*;q=1" },
+  });
+  expect(refusedHTML.status()).toBe(404);
+  expect(refusedHTML.headers()["cache-control"]).toBe("no-store");
+  expect(await refusedHTML.text()).not.toContain('<div id="root"></div>');
 
   const headDeepLink = await request.head("/blocks/not-an-asset", {
     headers: { Accept: "text/html" },
@@ -80,6 +104,7 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const externalRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).origin !== "http://127.0.0.1:4173") {
@@ -92,6 +117,11 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   await expect(page.getByRole("button", { name: "Switch color theme" })).toBeVisible();
   await expect(page.getByRole("button", { name: "切换到中文" })).toBeVisible();
 
+  const lightScan = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(lightScan.violations, JSON.stringify(lightScan.violations, null, 2)).toEqual([]);
+
   await page.getByRole("button", { name: "Switch color theme" }).click();
   await page.getByRole("button", { name: "切换到中文" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -103,10 +133,32 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   expect(overflow).toBeLessThanOrEqual(1);
   expect(externalRequests).toEqual([]);
 
-  const scan = await new AxeBuilder({ page })
+  const reducedMotion = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.className = "pulse-dot";
+    document.body.append(probe);
+    const style = getComputedStyle(probe);
+    const rawDuration = style.animationDuration;
+    const durationMilliseconds = rawDuration.endsWith("ms")
+      ? Number.parseFloat(rawDuration)
+      : Number.parseFloat(rawDuration) * 1_000;
+    const result = {
+      durationMilliseconds,
+      iterationCount: style.animationIterationCount,
+    };
+    probe.remove();
+    return result;
+  });
+  expect(reducedMotion.durationMilliseconds).toBeLessThanOrEqual(0.01);
+  expect(reducedMotion.iterationCount).toBe("1");
+
+  const darkChineseScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
-  expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+  expect(
+    darkChineseScan.violations,
+    JSON.stringify(darkChineseScan.violations, null, 2),
+  ).toEqual([]);
 });
 
 test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatch", async ({ page }) => {

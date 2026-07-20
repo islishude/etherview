@@ -34,6 +34,12 @@ still expose state-backed capabilities without weakening their error contract.
   functions have a function-local `search_path` bound to their migration
   schema, so a pooled connection cannot redirect their writes into another
   Etherview schema.
+- Exact block-height, block-hash, and transaction-hash routes resolve operator
+  display labels from the same retained catalog generation as text search.
+  A height query prefers its height-keyed label and may fall back to the exact
+  canonical hash label; a hash query uses only its hash-keyed label so an orphan
+  cannot inherit the canonical height's label. Pagination never switches to a
+  label edit from a later generation.
 - Search returns only the latest canonical row for one logical name or token.
   Verified-contract matches additionally require the code observation selected
   for that address at the cursor's canonical snapshot and a validity range
@@ -50,7 +56,10 @@ still expose state-backed capabilities without weakening their error contract.
   exact canonical snapshot is typed unavailable; stale catalog data is never
   a fallback. The cursor records the accepted resolved address, so later pages
   validate that same identity at the frozen tip and generation without
-  refetching merely because the adapter TTL expires.
+  refetching merely because the adapter TTL expires. Name-source candidates for
+  that dotted query are restricted to the accepted address even when multiple
+  registries publish the same name; independently matching operator labels and
+  other source kinds retain their normal search semantics.
 - A successful name observation is accepted only for the exact configured
   chain and canonical block number/hash. Its statement takes `FOR KEY SHARE`
   on that canonical row through the complete insert, serializing the
@@ -63,6 +72,10 @@ still expose state-backed capabilities without weakening their error contract.
   bounded success or failure observations with an expiry. Name successes are
   canonical-block facts; failure observations intentionally require no block
   identity and suppress repeated hostile calls only for their short TTL.
+  Observation identity includes chain, capability, a provider namespace, and
+  the logical observation key. The name provider namespace is SHA-256 of the
+  validated configured base URL, so changing providers cannot reuse the old
+  success or failure cache and the URL itself is never stored.
   Adapter and state-RPC failures cross public boundaries as stable capability
   states and codes, never nested upstream messages or credential-bearing URLs.
 - The production maintenance role runs search/adapter housekeeping as a shared
@@ -118,6 +131,9 @@ prior catalog and adapter facts intact for a later retry.
 - Dotted search never converts an unavailable fresh resolution into a stale
   success, while an already-issued cursor remains traversable for its retained
   snapshot without depending on the external adapter's later health.
+- A resolver configuration change starts in an isolated cache namespace, and
+  public name failures expose only controlled `capability`, `state`, and `code`
+  identifiers.
 - Concurrent name publication and canonical detach have one serial order: a
   detach that wins rejects the stale observation, while a name write that wins
   is subsequently marked noncanonical by that detach and disappears from

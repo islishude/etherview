@@ -53,6 +53,11 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	if err != nil || duplicate.Created || duplicate.JobID != first.JobID {
 		t.Fatalf("duplicate enqueue = %+v, err=%v, first=%+v", duplicate, err, first)
 	}
+	conflicting := request
+	conflicting.SourceURI = "https://metadata.example.invalid/conflicting-42.json"
+	if _, err := repository.EnqueueNFT(ctx, conflicting); !errors.Is(err, metadata.ErrExactNFTMetadataConflict) {
+		t.Fatalf("conflicting exact source error = %v, want ErrExactNFTMetadataConflict", err)
+	}
 
 	lease, found, err := repository.Claim(ctx, "metadata-integration-1", time.Minute)
 	if err != nil || !found || lease.JobID != first.JobID || lease.Attempt != 1 || lease.MaxAttempts != 3 {
@@ -114,6 +119,10 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	assertMetadataAttemptCount(t, ctx, db, exhausted.JobID, 1)
 
 	orphanRequest := request
+	orphanBlock := testBundle(1, testHash(903), testHash(900), testHash(9_003), "metadata-child")
+	commitCanonical(t, ctx, core, orphanBlock)
+	orphanRequest.BlockNumber = 1
+	orphanRequest.BlockHash = testHash(903)
 	orphanRequest.SourceURI = "https://metadata.example.invalid/42-v2.json"
 	orphan, err := repository.EnqueueNFT(ctx, orphanRequest)
 	if err != nil || !orphan.Created || orphan.JobID == first.JobID {
@@ -123,7 +132,7 @@ func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T)
 	if err != nil || !found || orphanLease.JobID != orphan.JobID {
 		t.Fatalf("claim changed source = %+v, found=%t, err=%v", orphanLease, found, err)
 	}
-	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatalf("detach metadata source block: %v", err)
 	}
 	if err := repository.Finish(ctx, orphanLease, metadata.Outcome{
@@ -152,42 +161,145 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
-			token_address, token_id, observed_block_number, observed_block_hash
+			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
 		) VALUES (1, 'nft', 'media:42', 'https://metadata.example.invalid/42.json',
 			'available', '{"image":"https://media.example.invalid/42.png"}'::jsonb,
-			$1, 42, 0, $2)`, mustBytes(t, address), mustBytes(t, blockHash)); err != nil {
+			'https://metadata.example.invalid/42.json', 'application/json', $3, 56,
+			clock_timestamp(), clock_timestamp(), $1, 42, 0, $2, $2)`,
+		mustBytes(t, address), mustBytes(t, blockHash), mustBytes(t, testHash(912))); err != nil {
 		t.Fatalf("insert canonical NFT metadata: %v", err)
 	}
 	source, err := metadata.NewPostgresImageSource(db, "1")
 	if err != nil {
 		t.Fatalf("create PostgreSQL media source: %v", err)
 	}
-	uri, err := source.NFTImageURI(ctx, address, "42")
-	if err != nil || uri != "https://media.example.invalid/42.png" {
-		t.Fatalf("canonical image URI = %q, err=%v", uri, err)
+	selection, err := source.SelectNFTImage(ctx, address, "42")
+	if err != nil || selection.URI != "https://media.example.invalid/42.png" || selection.BlockHash != blockHash {
+		t.Fatalf("canonical image selection = %+v, err=%v", selection, err)
+	}
+	current, err := source.NFTImageCurrent(ctx, address, "42", selection)
+	if err != nil || !current {
+		t.Fatalf("canonical image current=%t err=%v", current, err)
 	}
 
 	if _, err := db.ExecContext(ctx, `
-		UPDATE external_metadata SET document = '{"name":"No image"}'::jsonb
-		WHERE chain_id = 1 AND resource_kind = 'nft' AND token_address = $1 AND token_id = 42`,
-		mustBytes(t, address)); err != nil {
-		t.Fatalf("remove canonical image field: %v", err)
+		INSERT INTO external_metadata (
+			chain_id, resource_kind, resource_key, source_uri, state, document,
+			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+		) VALUES (1, 'nft', 'media:43', 'https://metadata.example.invalid/43.json',
+			'available', '{"name":"No image"}'::jsonb,
+			'https://metadata.example.invalid/43.json', 'application/json', $3, 19,
+			clock_timestamp(), clock_timestamp(), $1, 43, 0, $2, $2)`,
+		mustBytes(t, address), mustBytes(t, blockHash), mustBytes(t, testHash(913))); err != nil {
+		t.Fatalf("insert missing-image metadata: %v", err)
 	}
-	if _, err := source.NFTImageURI(ctx, address, "42"); !errors.Is(err, metadata.ErrMediaImageNotFound) {
+	if _, err := source.SelectNFTImage(ctx, address, "43"); !errors.Is(err, metadata.ErrMediaImageNotFound) {
 		t.Fatalf("missing image error = %v, want ErrMediaImageNotFound", err)
 	}
 
+	newBlockHash := testHash(914)
+	commitCanonical(t, ctx, core, testBundle(1, newBlockHash, blockHash, testHash(9_140), "media-new"))
 	if _, err := db.ExecContext(ctx, `
-		UPDATE external_metadata SET document = '{"image":"https://media.example.invalid/42.png"}'::jsonb
-		WHERE chain_id = 1 AND resource_kind = 'nft' AND token_address = $1 AND token_id = 42`,
-		mustBytes(t, address)); err != nil {
-		t.Fatalf("restore canonical image field: %v", err)
+		INSERT INTO external_metadata (
+			chain_id, resource_kind, resource_key, source_uri, state, document,
+			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+		) VALUES (1, 'nft', 'media:42', 'https://metadata.example.invalid/42-v2.json',
+			'available', '{"image":"https://media.example.invalid/42-v2.png"}'::jsonb,
+			'https://metadata.example.invalid/42-v2.json', 'application/json', $3, 59,
+			clock_timestamp(), clock_timestamp(), $1, 42, 1, $2, $2)`,
+		mustBytes(t, address), mustBytes(t, newBlockHash), mustBytes(t, testHash(915))); err != nil {
+		t.Fatalf("insert newer NFT metadata: %v", err)
 	}
+	newSelection, err := source.SelectNFTImage(ctx, address, "42")
+	if err != nil || newSelection.BlockHash != newBlockHash || newSelection.URI != "https://media.example.invalid/42-v2.png" {
+		t.Fatalf("new canonical image selection = %+v, err=%v", newSelection, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+		t.Fatalf("orphan newer metadata observation: %v", err)
+	}
+	fallback, err := source.SelectNFTImage(ctx, address, "42")
+	if err != nil || fallback.BlockHash != blockHash || fallback.URI != selection.URI {
+		t.Fatalf("canonical fallback selection = %+v, err=%v", fallback, err)
+	}
+
 	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
 		t.Fatalf("orphan metadata observation: %v", err)
 	}
-	if _, err := source.NFTImageURI(ctx, address, "42"); !errors.Is(err, metadata.ErrMediaSourceNotFound) {
-		t.Fatalf("orphan image error = %v, want ErrMediaSourceNotFound", err)
+	if current, err := source.NFTImageCurrent(ctx, address, "42", selection); err != nil || current {
+		t.Fatalf("orphan image current=%t err=%v", current, err)
+	}
+	if _, err := source.SelectNFTImage(ctx, address, "42"); !errors.Is(err, metadata.ErrMediaSourceNoncanonical) {
+		t.Fatalf("orphan image error = %v, want ErrMediaSourceNoncanonical", err)
+	}
+}
+
+func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockHash := testHash(920)
+	bundle := testBundle(0, blockHash, testHash(0), testHash(9_200), "metadata-source")
+	commitCanonical(t, ctx, core, bundle)
+	token := testAddress(921)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO token_contracts (
+			chain_id, address, code_hash, standard, confidence, metadata_state,
+			observed_block_number, observed_block_hash
+		) VALUES (1, $1, $2, 'erc721', 'high', 'pending', 0, $3)`,
+		mustBytes(t, token), mustBytes(t, testHash(922)), mustBytes(t, blockHash)); err != nil {
+		t.Fatalf("insert NFT contract: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO token_events (
+			chain_id, block_number, block_hash, log_index, sub_index,
+			transaction_hash, token_address, standard, event_kind,
+			from_address, to_address, token_id, amount, canonical, confidence, raw
+		) VALUES (1, 0, $1, 0, 0, $2, $3, 'erc721', 'transfer',
+			$4, $5, 42, 1, TRUE, 'high', '{}')`,
+		mustBytes(t, blockHash), mustBytes(t, bundle.Block.Transactions[0].Hash),
+		mustBytes(t, token), mustBytes(t, testAddress(923)), mustBytes(t, testAddress(924))); err != nil {
+		t.Fatalf("insert NFT event candidate: %v", err)
+	}
+	repository, err := metadata.NewPostgresRepository(db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, found, err := repository.NextNFTSource(ctx)
+	if err != nil || !found || candidate.Token != token || candidate.TokenID != "42" ||
+		candidate.BlockHash != blockHash || candidate.Standard != metadata.NFTStandardERC721 {
+		t.Fatalf("source candidate = %+v found=%t err=%v", candidate, found, err)
+	}
+	observation := metadata.NFTSourceObservation{
+		Candidate: candidate, State: metadata.NFTSourceUnavailable, ErrorCode: "token_uri_unavailable",
+	}
+	if err := repository.RecordNFTSource(ctx, observation); err != nil {
+		t.Fatalf("record source observation: %v", err)
+	}
+	if err := repository.RecordNFTSource(ctx, observation); err != nil {
+		t.Fatalf("repeat identical source observation: %v", err)
+	}
+	if _, found, err := repository.NextNFTSource(ctx); err != nil || found {
+		t.Fatalf("source candidate after terminal observation found=%t err=%v", found, err)
+	}
+	conflicting := observation
+	conflicting.State = metadata.NFTSourceFound
+	conflicting.ErrorCode = ""
+	conflicting.SourceURI = "https://metadata.example.invalid/42.json"
+	if err := repository.RecordNFTSource(ctx, conflicting); !errors.Is(err, metadata.ErrExactNFTSourceConflict) {
+		t.Fatalf("conflicting source observation error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE nft_metadata_source_observations SET error_code = 'different'
+		WHERE chain_id = 1 AND token_address = $1 AND token_id = 42 AND block_hash = $2`,
+		mustBytes(t, token), mustBytes(t, blockHash)); err == nil {
+		t.Fatal("direct mutation of exact NFT source observation succeeded")
 	}
 }
 
@@ -206,8 +318,8 @@ func assertMetadataState(t *testing.T, ctx context.Context, db *sql.DB, request 
 		SELECT state, attempt_count, last_error_code, content_size
 		FROM external_metadata
 		WHERE chain_id = $1::numeric AND resource_kind = 'nft'
-		  AND token_address = $2 AND token_id = $3::numeric`,
-		request.ChainID, mustBytes(t, request.Token), request.TokenID,
+		  AND token_address = $2 AND token_id = $3::numeric AND observed_block_hash = $4`,
+		request.ChainID, mustBytes(t, request.Token), request.TokenID, mustBytes(t, request.BlockHash),
 	).Scan(&got.State, &got.Attempts, &errorCode, &got.ContentSize); err != nil {
 		t.Fatalf("read metadata state: %v", err)
 	}

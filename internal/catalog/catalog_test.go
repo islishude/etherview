@@ -182,6 +182,10 @@ func stageStep(state string) catalogQueryStep {
 	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1, []driver.Value{state})}
 }
 
+func traceStageStep(state string) catalogQueryStep {
+	return catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(3, []driver.Value{state, int64(42), int64(3)})}
+}
+
 func tokenRow(address []byte, standard, blockNumber string) []driver.Value {
 	return []driver.Value{
 		"1", address, bytesOf(0x44, 32), standard, "high", "Token", "TKN", int64(18),
@@ -447,7 +451,7 @@ func TestTransactionTraceSortsAndValidatesNormalizedTree(t *testing.T) {
 	txHash, blockHash := bytesOf(0xbb, 32), bytesOf(0xaa, 32)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", blockHash, "9007199254740993"})},
-		stageStep("complete"),
+		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(14,
 			traceRow("", nil, 0, "CALL"),
 			traceRow("10", "", 1, "CREATE2"),
@@ -474,7 +478,7 @@ func TestTransactionTraceStageStateIsNotAnEmptyTrace(t *testing.T) {
 		t.Run(string(state), func(t *testing.T) {
 			stage := catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1)}
 			if state != StageMissing {
-				stage = stageStep(string(state))
+				stage = traceStageStep(string(state))
 			}
 			catalog, backend := openCatalog(t,
 				catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
@@ -493,7 +497,7 @@ func TestTransactionTraceStageStateIsNotAnEmptyTrace(t *testing.T) {
 func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
-		stageStep("complete"),
+		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(14)},
 	)
 	_, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
@@ -506,7 +510,7 @@ func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 func TestTransactionTraceRootOnlyIsACompleteEmptyInternalCallTree(t *testing.T) {
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
-		stageStep("complete"),
+		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(14, traceRow("", nil, 0, "CALL"))},
 	)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))

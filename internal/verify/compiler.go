@@ -20,8 +20,30 @@ import (
 )
 
 type Compiler interface {
+	Provenance(Language, string) (CompilerProvenance, error)
 	Compile(context.Context, Language, string, []byte) ([]byte, error)
 	HardIsolated() bool
+}
+
+type CompilerKind string
+
+const (
+	CompilerProcess   CompilerKind = "process"
+	CompilerContainer CompilerKind = "container"
+)
+
+// CompilerProvenance identifies the exact allowlisted compiler artifact used
+// by a worker. Digest is the artifact or container image SHA-256, not a mutable
+// version label.
+type CompilerProvenance struct {
+	Kind         CompilerKind
+	Digest       [sha256.Size]byte
+	HardIsolated bool
+}
+
+func (provenance CompilerProvenance) valid() bool {
+	return (provenance.Kind == CompilerProcess || provenance.Kind == CompilerContainer) &&
+		provenance.Digest != [sha256.Size]byte{}
 }
 
 // RuntimeValidator is implemented by compiler backends whose security
@@ -151,6 +173,25 @@ type ProcessCompiler struct {
 
 func (c ProcessCompiler) HardIsolated() bool { return false }
 
+func (c ProcessCompiler) Provenance(language Language, version string) (CompilerProvenance, error) {
+	if c.Cache == nil {
+		return CompilerProvenance{}, errors.New("compiler cache is required")
+	}
+	versions, ok := c.Cache.Artifacts[language]
+	if !ok {
+		return CompilerProvenance{}, fmt.Errorf("language %q is not allowlisted", language)
+	}
+	artifact, ok := versions[version]
+	if !ok {
+		return CompilerProvenance{}, fmt.Errorf("compiler %s %s is not allowlisted", language, version)
+	}
+	digest, err := decodeCompilerDigest(artifact.SHA256)
+	if err != nil {
+		return CompilerProvenance{}, err
+	}
+	return CompilerProvenance{Kind: CompilerProcess, Digest: digest}, nil
+}
+
 func (c ProcessCompiler) Compile(ctx context.Context, language Language, version string, input []byte) ([]byte, error) {
 	if c.Public {
 		return nil, ErrSandboxRequired
@@ -218,6 +259,21 @@ func (c ContainerCompiler) HardIsolated() bool {
 	}
 	_, err := exec.LookPath(runtimeName)
 	return err == nil
+}
+
+func (c ContainerCompiler) Provenance(language Language, version string) (CompilerProvenance, error) {
+	image := c.Images[language][version]
+	separator := strings.LastIndex(image, "@sha256:")
+	if separator < 0 || separator+len("@sha256:") >= len(image) {
+		return CompilerProvenance{}, errors.New("compiler container image must be pinned by digest")
+	}
+	digest, err := decodeCompilerDigest(image[separator+len("@sha256:"):])
+	if err != nil {
+		return CompilerProvenance{}, errors.New("compiler container image digest is invalid")
+	}
+	return CompilerProvenance{
+		Kind: CompilerContainer, Digest: digest, HardIsolated: c.HardIsolated(),
+	}, nil
 }
 
 // ValidateRuntime checks both the allowlisted executable and its service
@@ -315,6 +371,22 @@ func validFileDigest(path, expected string) bool {
 		return false
 	}
 	return strings.EqualFold(hex.EncodeToString(hasher.Sum(nil)), expected)
+}
+
+func decodeCompilerDigest(value string) ([sha256.Size]byte, error) {
+	var digest [sha256.Size]byte
+	if len(value) != sha256.Size*2 {
+		return digest, errors.New("compiler artifact SHA-256 is invalid")
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return digest, errors.New("compiler artifact SHA-256 is invalid")
+	}
+	copy(digest[:], decoded)
+	if digest == [sha256.Size]byte{} {
+		return digest, errors.New("compiler artifact SHA-256 is invalid")
+	}
+	return digest, nil
 }
 
 func executableSuffix() string {

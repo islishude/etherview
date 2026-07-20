@@ -19,6 +19,8 @@ import (
 
 var ErrUnavailable = errors.New("external adapter capability unavailable")
 
+const defaultProviderKey = "default"
+
 type CapabilityError struct {
 	Capability string
 	State      string
@@ -27,6 +29,12 @@ type CapabilityError struct {
 
 func (CapabilityError) Error() string { return "external adapter capability unavailable" }
 func (CapabilityError) Unwrap() error { return ErrUnavailable }
+
+// CapabilityDetails exposes only the adapter's controlled machine state. The
+// nested transport error is deliberately never retained by CapabilityError.
+func (err CapabilityError) CapabilityDetails() (capability, state, code string) {
+	return err.Capability, err.State, err.Code
+}
 
 type observation struct {
 	State      string
@@ -52,12 +60,16 @@ func newRepository(db *sql.DB, chainID uint64) (repository, error) {
 	return repository{db: db, chain: chainID, chainID: uint64Numeric(chainID)}, nil
 }
 
-func (r repository) fresh(ctx context.Context, capability, key string, now time.Time) (observation, bool, error) {
+func (r repository) fresh(
+	ctx context.Context,
+	capability, providerKey, key string,
+	now time.Time,
+) (observation, bool, error) {
 	var row dbgen.GetFreshAdapterObservationRow
 	err := dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		row, queryErr = queries.GetFreshAdapterObservation(ctx, dbgen.GetFreshAdapterObservationParams{
-			ChainID: r.chainID, Capability: capability, ObservationKey: key,
+			ChainID: r.chainID, Capability: capability, ProviderKey: providerKey, ObservationKey: key,
 			NowAt: timestamptz(now),
 		})
 		return queryErr
@@ -83,12 +95,12 @@ func (r repository) fresh(ctx context.Context, capability, key string, now time.
 
 func (r repository) failure(
 	ctx context.Context,
-	capability, key, state, code string,
+	capability, providerKey, key, state, code string,
 	observedAt, expiresAt time.Time,
 ) error {
 	return dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
 		return queries.RecordAdapterFailure(ctx, dbgen.RecordAdapterFailureParams{
-			ChainID: r.chainID, Capability: capability, ObservationKey: key,
+			ChainID: r.chainID, Capability: capability, ProviderKey: providerKey, ObservationKey: key,
 			State: state, Code: &code, ObservedAt: timestamptz(observedAt),
 			ExpiresAt: timestamptz(expiresAt),
 		})

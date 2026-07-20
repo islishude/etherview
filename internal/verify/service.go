@@ -32,18 +32,33 @@ func (err ServiceError) Error() string {
 func (err ServiceError) Unwrap() error { return err.cause }
 
 type Service struct {
-	repository    Repository
-	maxInputBytes int
+	repository            Repository
+	maxInputBytes         int
+	requiresHardIsolation bool
 }
 
-func NewService(repository Repository, maxInputBytes int) (*Service, error) {
+type ServiceOptions struct {
+	RequiresHardIsolation bool
+}
+
+func NewService(repository Repository, maxInputBytes int, optionSets ...ServiceOptions) (*Service, error) {
 	if repository == nil {
 		return nil, errors.New("verification service requires a repository")
+	}
+	if len(optionSets) > 1 {
+		return nil, errors.New("verification service accepts at most one option set")
+	}
+	var options ServiceOptions
+	if len(optionSets) == 1 {
+		options = optionSets[0]
 	}
 	if maxInputBytes <= 0 {
 		maxInputBytes = 5 << 20
 	}
-	return &Service{repository: repository, maxInputBytes: maxInputBytes}, nil
+	return &Service{
+		repository: repository, maxInputBytes: maxInputBytes,
+		requiresHardIsolation: options.RequiresHardIsolation,
+	}, nil
 }
 
 func (service *Service) Submit(ctx context.Context, request Request) (VerificationJob, bool, error) {
@@ -57,7 +72,9 @@ func (service *Service) Submit(ctx context.Context, request Request) (Verificati
 	if err := request.Validate(service.maxInputBytes); err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
 	}
-	job, created, err := service.repository.Submit(ctx, request)
+	job, created, err := service.repository.Submit(ctx, request, SubmissionOptions{
+		RequiresHardIsolation: service.requiresHardIsolation,
+	})
 	if err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
 	}

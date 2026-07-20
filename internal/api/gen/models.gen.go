@@ -314,7 +314,9 @@ func (e VerifiedContractLanguage) Valid() bool {
 
 // APIError defines model for APIError.
 type APIError struct {
-	Code      string                  `json:"code"`
+	Code string `json:"code"`
+
+	// Details Stable machine-readable context. A capability_unavailable response may include capability, state, and code identifiers; upstream error text and configured URLs are never included.
 	Details   *map[string]interface{} `json:"details,omitempty"`
 	Message   string                  `json:"message"`
 	RequestId string                  `json:"request_id"`

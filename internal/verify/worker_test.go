@@ -20,6 +20,8 @@ type verifyMemoryRepository struct {
 	renewError error
 	complete   []Completion
 	completeEr error
+	bindings   []CompilerProvenance
+	bindError  error
 	failures   []ErrorCode
 	failError  error
 	renewals   int
@@ -29,6 +31,7 @@ type verifyMemoryRepository struct {
 	submitCreated bool
 	submitError   error
 	submitCalls   int
+	submission    SubmissionOptions
 	job           VerificationJob
 	jobFound      bool
 	jobError      error
@@ -37,10 +40,13 @@ type verifyMemoryRepository struct {
 	contractError error
 }
 
-func (repository *verifyMemoryRepository) Submit(_ context.Context, _ Request) (VerificationJob, bool, error) {
+func (repository *verifyMemoryRepository) Submit(_ context.Context, _ Request, options ...SubmissionOptions) (VerificationJob, bool, error) {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	repository.submitCalls++
+	if len(options) == 1 {
+		repository.submission = options[0]
+	}
 	return repository.submitJob, repository.submitCreated, repository.submitError
 }
 
@@ -61,6 +67,13 @@ func (repository *verifyMemoryRepository) Renew(context.Context, VerificationLea
 		}
 	}
 	return repository.renewError
+}
+
+func (repository *verifyMemoryRepository) BindCompiler(_ context.Context, _ VerificationLease, provenance CompilerProvenance) error {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	repository.bindings = append(repository.bindings, provenance)
+	return repository.bindError
 }
 
 func (repository *verifyMemoryRepository) Complete(_ context.Context, _ VerificationLease, completion Completion) error {
@@ -90,13 +103,27 @@ func (repository *verifyMemoryRepository) VerifiedContract(context.Context, uint
 }
 
 type verifyTestCompiler struct {
-	output   []byte
-	err      error
-	isolated bool
-	panic    bool
-	started  chan struct{}
-	release  chan struct{}
-	once     sync.Once
+	output          []byte
+	err             error
+	isolated        bool
+	panic           bool
+	started         chan struct{}
+	release         chan struct{}
+	once            sync.Once
+	provenanceError error
+}
+
+func (compiler *verifyTestCompiler) Provenance(Language, string) (CompilerProvenance, error) {
+	if compiler.provenanceError != nil {
+		return CompilerProvenance{}, compiler.provenanceError
+	}
+	var digest [32]byte
+	digest[0] = 1
+	kind := CompilerProcess
+	if compiler.isolated {
+		kind = CompilerContainer
+	}
+	return CompilerProvenance{Kind: kind, Digest: digest, HardIsolated: compiler.isolated}, nil
 }
 
 func (compiler *verifyTestCompiler) Compile(ctx context.Context, _ Language, _ string, _ []byte) ([]byte, error) {
@@ -269,6 +296,65 @@ func TestWorkerRequiresHardIsolationForPublicVerification(t *testing.T) {
 	}
 }
 
+func TestWorkerEnforcesDurableIsolationAndCompilerProvenance(t *testing.T) {
+	tests := []struct {
+		name      string
+		compiler  *verifyTestCompiler
+		bindError error
+		want      ErrorCode
+	}{
+		{
+			name:     "public job on process worker",
+			compiler: &verifyTestCompiler{output: verifyCompilerOutput("6001")},
+			want:     ErrorSandboxRequired,
+		},
+		{
+			name:     "compiler is not allowlisted",
+			compiler: &verifyTestCompiler{provenanceError: errors.New("mutable compiler")},
+			want:     ErrorCompilerUnavailable,
+		},
+		{
+			name:      "reclaim changed compiler digest",
+			compiler:  &verifyTestCompiler{output: verifyCompilerOutput("6001"), isolated: true},
+			bindError: ErrCompilerProvenanceConflict,
+			want:      ErrorCompilerProvenanceMismatch,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			lease := verifyLease()
+			if test.name == "public job on process worker" {
+				lease.Job.RequiresHardIsolation = true
+			}
+			repository := &verifyMemoryRepository{
+				lease: lease, claimFound: true, bindError: test.bindError,
+			}
+			worker := newVerifyTestWorker(t, repository, test.compiler, WorkerOptions{})
+			found, err := worker.ProcessOne(context.Background())
+			if err != nil || !found {
+				t.Fatalf("found=%v error=%v", found, err)
+			}
+			repository.mu.Lock()
+			defer repository.mu.Unlock()
+			if len(repository.failures) != 1 || repository.failures[0] != test.want || len(repository.complete) != 0 {
+				t.Fatalf("failures=%v completions=%d", repository.failures, len(repository.complete))
+			}
+		})
+	}
+}
+
+func TestWorkerTreatsStaleCanonicalCompletionAsHandledTerminal(t *testing.T) {
+	repository := &verifyMemoryRepository{
+		lease: verifyLease(), claimFound: true, completeEr: ErrTargetNotCanonical,
+	}
+	compiler := &verifyTestCompiler{output: verifyCompilerOutput("6001"), isolated: true}
+	worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+	found, err := worker.ProcessOne(context.Background())
+	if err != nil || !found {
+		t.Fatalf("found=%v error=%v", found, err)
+	}
+}
+
 func TestVerificationServiceUsesStableNonSensitiveErrors(t *testing.T) {
 	request := validVerifyRequest()
 	repository := &verifyMemoryRepository{submitError: errors.New("postgres://admin:secret@database")}
@@ -302,6 +388,22 @@ func TestVerificationServiceUsesStableNonSensitiveErrors(t *testing.T) {
 	}
 	if _, _, err := service.VerifiedContract(context.Background(), 0, request.Address, request.CodeHash); !errors.As(err, &serviceError) || serviceError.Code != ServiceInvalidRequest {
 		t.Fatalf("invalid contract error=%#v", err)
+	}
+}
+
+func TestVerificationServicePersistsServerIsolationPolicy(t *testing.T) {
+	repository := &verifyMemoryRepository{submitJob: VerificationJob{ID: verificationID(1)}, submitCreated: true}
+	service, err := NewService(repository, 64<<10, ServiceOptions{RequiresHardIsolation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.Submit(context.Background(), validVerifyRequest()); err != nil {
+		t.Fatal(err)
+	}
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	if !repository.submission.RequiresHardIsolation {
+		t.Fatal("public service did not persist the server-derived hard-isolation requirement")
 	}
 }
 

@@ -39,9 +39,36 @@ var (
 	ErrInvalidCursor = errors.New("invalid or stale cursor")
 )
 
+// CapabilityUnavailableError carries only controlled machine identifiers that
+// are safe to expose in the shared error envelope. Upstream text is never part
+// of this value.
+type CapabilityUnavailableError struct {
+	Capability string
+	State      string
+	Code       string
+}
+
+func (*CapabilityUnavailableError) Error() string { return ErrUnavailable.Error() }
+func (*CapabilityUnavailableError) Unwrap() error { return ErrUnavailable }
+
+func NewCapabilityUnavailableError(capability, state, code string) error {
+	errorValue := &CapabilityUnavailableError{Capability: capability, State: state, Code: code}
+	if !errorValue.valid() {
+		return ErrUnavailable
+	}
+	return errorValue
+}
+
+func (err *CapabilityUnavailableError) valid() bool {
+	return err != nil && capabilityIdentifierPattern.MatchString(err.Capability) &&
+		(err.State == "unavailable" || err.State == "failed") &&
+		capabilityIdentifierPattern.MatchString(err.Code)
+}
+
 var (
-	hashPattern    = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
-	addressPattern = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
+	hashPattern                 = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
+	addressPattern              = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
+	capabilityIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
 )
 
 const maximumOpaqueCursorLength = 1024
@@ -657,7 +684,7 @@ func (h *Handler) nftMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sourceURI, err := h.nftMediaSource.NFTImageURI(r.Context(), parsedAddress, tokenID)
+	selection, err := h.nftMediaSource.SelectNFTImage(r.Context(), parsedAddress, tokenID)
 	if err != nil {
 		if h.handleNFTMediaSourceError(w, r, err) {
 			return
@@ -668,7 +695,7 @@ func (h *Handler) nftMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proxied, err := h.nftMediaProxy.Fetch(r.Context(), sourceURI)
+	proxied, err := h.nftMediaProxy.Fetch(r.Context(), selection.URI)
 	if err != nil {
 		h.handleNFTMediaFetchError(w, r, err)
 		return
@@ -678,6 +705,17 @@ func (h *Handler) nftMedia(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "NFT media proxy returned invalid output",
 			"request_id", requestIDFrom(r.Context()))
 		writeNFTMediaError(w, r, http.StatusBadGateway, "error", "nft_media_fetch_failed", "NFT media could not be fetched safely")
+		return
+	}
+	current, err := h.nftMediaSource.NFTImageCurrent(r.Context(), parsedAddress, tokenID, selection)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "NFT media canonicality recheck failed",
+			"request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
+		writeNFTMediaError(w, r, http.StatusInternalServerError, "error", "nft_media_query_failed", "NFT media lookup failed")
+		return
+	}
+	if !current {
+		writeNFTMediaError(w, r, http.StatusConflict, "noncanonical", "nft_media_noncanonical", "NFT metadata changed while media was fetched")
 		return
 	}
 
@@ -698,8 +736,12 @@ func (h *Handler) handleNFTMediaSourceError(w http.ResponseWriter, r *http.Reque
 	case errors.Is(err, metadata.ErrMediaSourcePending):
 		w.Header().Set("Retry-After", "30")
 		writeNFTMediaError(w, r, http.StatusServiceUnavailable, "pending", "nft_metadata_pending", "NFT metadata is still pending")
-	case errors.Is(err, metadata.ErrMediaSourceUnavailable), errors.Is(err, metadata.ErrMediaSourceError):
+	case errors.Is(err, metadata.ErrMediaSourceUnavailable):
 		writeNFTMediaError(w, r, http.StatusServiceUnavailable, "unavailable", "nft_media_unavailable", "NFT media is unavailable")
+	case errors.Is(err, metadata.ErrMediaSourceError):
+		writeNFTMediaError(w, r, http.StatusServiceUnavailable, "error", "nft_metadata_error", "NFT metadata processing failed")
+	case errors.Is(err, metadata.ErrMediaSourceNoncanonical):
+		writeNFTMediaError(w, r, http.StatusConflict, "noncanonical", "nft_media_noncanonical", "NFT metadata exists only for a noncanonical block")
 	case errors.Is(err, metadata.ErrMediaSourceUnsafe):
 		writeNFTMediaError(w, r, http.StatusUnprocessableEntity, "unsafe", "nft_media_unsafe", "NFT media source is unsafe")
 	default:
@@ -740,6 +782,30 @@ func setNFTMediaHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")
 	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+// NFTMediaSecurityMiddleware applies the media boundary headers before
+// authentication and rate limiting can reject a request. This keeps every
+// response for the fixed media route no-store and hostile-content-safe.
+func NFTMediaSecurityMiddleware(next http.Handler) http.Handler {
+	if next == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		})
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isNFTMediaPath(r.URL.Path) {
+			setNFTMediaHeaders(w)
+			w.Header().Set("X-Etherview-Media-State", "unauthorized")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isNFTMediaPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 6 && parts[0] == "api" && parts[1] == "v1" &&
+		parts[2] == "nfts" && parts[3] != "" && parts[4] != "" && parts[5] == "media"
 }
 
 func writeNFTMediaError(w http.ResponseWriter, r *http.Request, status int, state, code, message string) {
@@ -1047,7 +1113,14 @@ func checksumAddress(value string) (string, error) {
 }
 
 func (h *Handler) handleReaderError(w http.ResponseWriter, r *http.Request, err error) {
+	var capability *CapabilityUnavailableError
 	switch {
+	case errors.As(err, &capability) && capability.valid():
+		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "required capability is unavailable", map[string]interface{}{
+			"capability": capability.Capability,
+			"state":      capability.State,
+			"code":       capability.Code,
+		})
 	case errors.Is(err, ErrNotFound):
 		writeError(w, r, http.StatusNotFound, "not_found", "resource not found", nil)
 	case errors.Is(err, ErrUnavailable):

@@ -675,13 +675,13 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err != nil {
 		return false, fmt.Errorf("lock exhausted enrichment job: %w", err)
 	}
+	identity, err := durableIdentityForJob(job)
+	if err != nil {
+		return false, err
+	}
 	result := StageResult{State: ResultFailed, Error: reason}
 	if isKnownDerivedStage(job.Stage) {
 		if err := clearStageReplayStateTx(ctx, tx, job); err != nil {
-			return false, err
-		}
-		identity, err := durableIdentityForJob(job)
-		if err != nil {
 			return false, err
 		}
 		if err := persistPublishedStageResultTx(ctx, tx, job, result, identity); err != nil {
@@ -690,6 +690,8 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 		if err := persistDurablePublicationTx(ctx, tx, job, result, identity, string(ResultFailed)); err != nil {
 			return false, err
 		}
+	} else if err := persistPublishedStageResultTx(ctx, tx, job, result, identity); err != nil {
+		return false, err
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -808,7 +810,7 @@ func (queue *PostgresJobQueue) Finish(ctx context.Context, lease Lease, stageRes
 			return err
 		}
 	} else {
-		if err := persistStageResultTx(ctx, tx, lease.Job, stageResult); err != nil {
+		if err := persistPublishedStageResultTx(ctx, tx, lease.Job, stageResult, identity); err != nil {
 			return err
 		}
 	}
@@ -875,7 +877,7 @@ func (queue *PostgresJobQueue) Retry(ctx context.Context, lease Lease, retry Ret
 			if err := persistDurablePublicationTx(ctx, tx, lease.Job, result, identity, string(ResultFailed)); err != nil {
 				return err
 			}
-		} else if err := persistStageResultTx(ctx, tx, lease.Job, result); err != nil {
+		} else if err := persistPublishedStageResultTx(ctx, tx, lease.Job, result, identity); err != nil {
 			return err
 		}
 	} else if status != "queued" {

@@ -161,22 +161,61 @@ func acceptsHTML(accept string) bool {
 	if strings.TrimSpace(accept) == "" {
 		return true
 	}
+	bestSpecificity := -1
+	bestQuality := 0.0
 	for _, mediaRange := range strings.Split(accept, ",") {
 		mediaType, parameters, err := mime.ParseMediaType(strings.TrimSpace(mediaRange))
 		if err != nil {
 			continue
 		}
-		if quality, ok := parameters["q"]; ok {
-			parsed, err := strconv.ParseFloat(quality, 64)
-			if err != nil || parsed <= 0 {
+		specificity := -1
+		switch strings.ToLower(mediaType) {
+		case "text/html":
+			specificity = 2
+		case "text/*":
+			specificity = 1
+		case "*/*":
+			specificity = 0
+		}
+		if specificity < 0 {
+			continue
+		}
+
+		quality := 1.0
+		if rawQuality, ok := parameters["q"]; ok {
+			parsed, valid := parseAcceptQuality(rawQuality)
+			if !valid {
 				continue
 			}
+			quality = parsed
 		}
-		if mediaType == "text/html" || mediaType == "text/*" || mediaType == "*/*" {
-			return true
+		if specificity > bestSpecificity {
+			bestSpecificity = specificity
+			bestQuality = quality
+		} else if specificity == bestSpecificity && quality > bestQuality {
+			bestQuality = quality
 		}
 	}
-	return false
+	return bestSpecificity >= 0 && bestQuality > 0
+}
+
+func parseAcceptQuality(raw string) (float64, bool) {
+	if raw == "0" {
+		return 0, true
+	}
+	if raw == "1" {
+		return 1, true
+	}
+	if len(raw) < 2 || len(raw) > 5 || raw[1] != '.' || (raw[0] != '0' && raw[0] != '1') {
+		return 0, false
+	}
+	for _, digit := range raw[2:] {
+		if digit < '0' || digit > '9' || (raw[0] == '1' && digit != '0') {
+			return 0, false
+		}
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	return parsed, err == nil
 }
 
 func looksLikeAsset(name string) bool {
@@ -184,7 +223,7 @@ func looksLikeAsset(name string) bool {
 		return true
 	}
 	switch strings.ToLower(path.Ext(name)) {
-	case ".css", ".gif", ".ico", ".jpeg", ".jpg", ".js", ".json", ".map", ".mjs", ".png", ".svg", ".webmanifest", ".webp", ".woff", ".woff2":
+	case ".avif", ".bmp", ".br", ".cjs", ".css", ".csv", ".eot", ".gif", ".gz", ".htm", ".html", ".ico", ".jpeg", ".jpg", ".js", ".json", ".jsx", ".map", ".mjs", ".mp3", ".mp4", ".ogg", ".otf", ".pdf", ".png", ".rss", ".svg", ".tar", ".ts", ".tsx", ".ttf", ".txt", ".wasm", ".webm", ".webmanifest", ".webp", ".woff", ".woff2", ".xml", ".zip":
 		return true
 	default:
 		return false
@@ -195,16 +234,19 @@ func isHashedAsset(name string) bool {
 	if !strings.HasPrefix(name, "assets/") {
 		return false
 	}
-	base := path.Base(name)
-	dash := strings.LastIndexByte(base, '-')
-	dot := strings.LastIndexByte(base, '.')
-	if dash <= 0 || dot < 0 || len(base[dash+1:dot]) != 8 {
+	base := strings.TrimPrefix(name, "assets/")
+	if base == "" || strings.ContainsRune(base, '/') {
 		return false
 	}
-	for _, character := range base[dash+1 : dot] {
+	dot := strings.LastIndexByte(base, '.')
+	separator := dot - 9
+	if separator <= 0 || dot == len(base)-1 || base[separator] != '-' {
+		return false
+	}
+	for _, character := range base[dot-8 : dot] {
 		if !((character >= 'a' && character <= 'z') ||
 			(character >= 'A' && character <= 'Z') ||
-			(character >= '0' && character <= '9') || character == '_') {
+			(character >= '0' && character <= '9') || character == '-' || character == '_') {
 			return false
 		}
 	}

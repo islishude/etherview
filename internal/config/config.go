@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -155,10 +156,21 @@ type CompilerArtifact struct {
 // AdapterConfig contains optional accelerators. No correctness path may require
 // any of these values; an empty AdapterConfig is the normal monolith setup.
 type AdapterConfig struct {
+	Namespace        string        `yaml:"namespace"`
 	NATSURL          string        `yaml:"nats_url"`
 	RedisURL         string        `yaml:"redis_url"`
+	ConnectTimeout   time.Duration `yaml:"connect_timeout"`
+	OperationTimeout time.Duration `yaml:"operation_timeout"`
+	RedisCacheTTL    time.Duration `yaml:"redis_cache_ttl"`
 	S3Endpoint       string        `yaml:"s3_endpoint"`
 	S3Bucket         string        `yaml:"s3_bucket"`
+	S3Prefix         string        `yaml:"s3_prefix"`
+	S3Region         string        `yaml:"s3_region"`
+	S3AccessKey      string        `yaml:"s3_access_key"`
+	S3SecretKey      string        `yaml:"s3_secret_key"`
+	S3SessionToken   string        `yaml:"s3_session_token"`
+	S3PathStyle      bool          `yaml:"s3_path_style"`
+	S3MaxObjectBytes int64         `yaml:"s3_max_object_bytes"`
 	PriceBaseURL     string        `yaml:"price_base_url"`
 	NameBaseURL      string        `yaml:"name_base_url"`
 	FetchTimeout     time.Duration `yaml:"fetch_timeout"`
@@ -221,6 +233,9 @@ func Default() Config {
 			MaxRedirects:     3,
 		},
 		Adapters: AdapterConfig{
+			Namespace: "etherview", ConnectTimeout: 2 * time.Second,
+			OperationTimeout: 500 * time.Millisecond, RedisCacheTTL: 30 * time.Second,
+			S3Prefix: "etherview", S3MaxObjectBytes: 16 << 20,
 			FetchTimeout: 5 * time.Second, MaxResponseBytes: 1 << 20, MaxRedirects: 2,
 			PriceFreshness: 5 * time.Minute, NameFreshness: 24 * time.Hour, FailureTTL: 30 * time.Second,
 		},
@@ -405,17 +420,37 @@ func (c Config) Validate() error {
 	if err := validateCompilerAllowlist(c.Verification); err != nil {
 		errs = append(errs, err)
 	}
-	for name, raw := range map[string]string{
-		"adapters.nats_url":    c.Adapters.NATSURL,
-		"adapters.redis_url":   c.Adapters.RedisURL,
-		"adapters.s3_endpoint": c.Adapters.S3Endpoint,
-	} {
-		if raw == "" {
-			continue
-		}
+	if !validAdapterNamespace(c.Adapters.Namespace) {
+		errs = append(errs, errors.New("adapters.namespace must contain 1 to 63 ASCII letters, digits, dots, underscores, or hyphens"))
+	}
+	if c.Adapters.ConnectTimeout < 10*time.Millisecond || c.Adapters.ConnectTimeout > 30*time.Second {
+		errs = append(errs, errors.New("adapters.connect_timeout must be between 10ms and 30s"))
+	}
+	if c.Adapters.OperationTimeout < 10*time.Millisecond || c.Adapters.OperationTimeout > 30*time.Second {
+		errs = append(errs, errors.New("adapters.operation_timeout must be between 10ms and 30s"))
+	}
+	if c.Adapters.RedisCacheTTL < time.Second || c.Adapters.RedisCacheTTL > time.Hour {
+		errs = append(errs, errors.New("adapters.redis_cache_ttl must be between 1s and 1h"))
+	}
+	if c.Adapters.S3MaxObjectBytes < 1<<20 || c.Adapters.S3MaxObjectBytes > 64<<20 {
+		errs = append(errs, errors.New("adapters.s3_max_object_bytes must be between 1048576 and 67108864"))
+	}
+	if raw := c.Adapters.NATSURL; raw != "" {
 		u, err := url.Parse(raw)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			errs = append(errs, fmt.Errorf("%s must be an absolute URL", name))
+		if err != nil || u.Host == "" || (u.Scheme != "nats" && u.Scheme != "tls" && u.Scheme != "ws" && u.Scheme != "wss") || u.Fragment != "" {
+			errs = append(errs, errors.New("adapters.nats_url must use nats, tls, ws, or wss with an absolute host and no fragment"))
+		}
+	}
+	if raw := c.Adapters.RedisURL; raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Fragment != "" {
+			errs = append(errs, errors.New("adapters.redis_url must use redis or rediss with an absolute host and no fragment"))
+		}
+	}
+	if raw := c.Adapters.S3Endpoint; raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			errs = append(errs, errors.New("adapters.s3_endpoint must be an absolute HTTP(S) origin without credentials, path, query, or fragment"))
 		}
 	}
 	for name, raw := range map[string]string{
@@ -453,6 +488,18 @@ func (c Config) Validate() error {
 	}
 	if c.Adapters.S3Endpoint != "" && strings.TrimSpace(c.Adapters.S3Bucket) == "" {
 		errs = append(errs, errors.New("adapters.s3_bucket is required when s3_endpoint is configured"))
+	}
+	if c.Adapters.S3Endpoint == "" && (c.Adapters.S3Bucket != "" || c.Adapters.S3AccessKey != "" || c.Adapters.S3SecretKey != "" || c.Adapters.S3SessionToken != "") {
+		errs = append(errs, errors.New("adapters.s3_endpoint is required when S3 bucket or credentials are configured"))
+	}
+	if c.Adapters.S3Bucket != "" && !validS3Bucket(c.Adapters.S3Bucket) {
+		errs = append(errs, errors.New("adapters.s3_bucket is not a valid DNS-style bucket name"))
+	}
+	if (c.Adapters.S3AccessKey == "") != (c.Adapters.S3SecretKey == "") {
+		errs = append(errs, errors.New("adapters.s3_access_key and adapters.s3_secret_key must be configured together"))
+	}
+	if c.Adapters.S3SessionToken != "" && c.Adapters.S3AccessKey == "" {
+		errs = append(errs, errors.New("adapters.s3_session_token requires static S3 credentials"))
 	}
 	return errors.Join(errs...)
 }
@@ -642,9 +689,12 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
 	for name, target := range map[string]*string{
-		"NATS_URL":    &cfg.Adapters.NATSURL,
-		"REDIS_URL":   &cfg.Adapters.RedisURL,
-		"S3_ENDPOINT": &cfg.Adapters.S3Endpoint,
+		"NATS_URL":         &cfg.Adapters.NATSURL,
+		"REDIS_URL":        &cfg.Adapters.RedisURL,
+		"S3_ENDPOINT":      &cfg.Adapters.S3Endpoint,
+		"S3_ACCESS_KEY":    &cfg.Adapters.S3AccessKey,
+		"S3_SECRET_KEY":    &cfg.Adapters.S3SecretKey,
+		"S3_SESSION_TOKEN": &cfg.Adapters.S3SessionToken,
 	} {
 		value, err := lookupValueOrFile(name, lookup, readFile)
 		if err != nil {
@@ -654,7 +704,10 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 			*target = value
 		}
 	}
+	setString(lookup, "ADAPTER_NAMESPACE", &cfg.Adapters.Namespace)
 	setString(lookup, "S3_BUCKET", &cfg.Adapters.S3Bucket)
+	setString(lookup, "S3_PREFIX", &cfg.Adapters.S3Prefix)
+	setString(lookup, "S3_REGION", &cfg.Adapters.S3Region)
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
 	setString(lookup, "NAME_BASE_URL", &cfg.Adapters.NameBaseURL)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
@@ -709,6 +762,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if err := setInt(lookup, "ADAPTER_MAX_REDIRECTS", &cfg.Adapters.MaxRedirects); err != nil {
 		return err
 	}
+	if err := setInt64(lookup, "S3_MAX_OBJECT_BYTES", &cfg.Adapters.S3MaxObjectBytes); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "ANONYMOUS_RATE", &cfg.Security.AnonymousRate); err != nil {
 		return err
 	}
@@ -735,6 +791,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		"MAINTENANCE_INTERVAL":       &cfg.Maintenance.Interval,
 		"METADATA_FETCH_TIMEOUT":     &cfg.Metadata.FetchTimeout,
 		"ADAPTER_FETCH_TIMEOUT":      &cfg.Adapters.FetchTimeout,
+		"ADAPTER_CONNECT_TIMEOUT":    &cfg.Adapters.ConnectTimeout,
+		"ADAPTER_OPERATION_TIMEOUT":  &cfg.Adapters.OperationTimeout,
+		"REDIS_CACHE_TTL":            &cfg.Adapters.RedisCacheTTL,
 		"ADAPTER_PRICE_FRESHNESS":    &cfg.Adapters.PriceFreshness,
 		"ADAPTER_NAME_FRESHNESS":     &cfg.Adapters.NameFreshness,
 		"ADAPTER_FAILURE_TTL":        &cfg.Adapters.FailureTTL,
@@ -752,6 +811,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		"FEATURE_NFT_METADATA":     &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":          &cfg.Features.Pricing,
 		"PUBLIC_VERIFICATION":      &cfg.Security.PublicVerification,
+		"S3_PATH_STYLE":            &cfg.Adapters.S3PathStyle,
 	} {
 		if err := setBool(lookup, name, target); err != nil {
 			return err
@@ -889,6 +949,36 @@ func splitCSV(value string) []string {
 		}
 	}
 	return result
+}
+
+func validAdapterNamespace(value string) bool {
+	if len(value) < 1 || len(value) > 63 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || character == '.' || character == '_' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validS3Bucket(value string) bool {
+	if len(value) < 3 || len(value) > 63 || value[0] == '-' || value[0] == '.' ||
+		value[len(value)-1] == '-' || value[len(value)-1] == '.' ||
+		strings.Contains(value, "..") || strings.Contains(value, ".-") || strings.Contains(value, "-.") {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '.' || character == '-' {
+			continue
+		}
+		return false
+	}
+	// DNS-looking IPv4 addresses are prohibited as S3 bucket names.
+	return net.ParseIP(value) == nil
 }
 
 func validFixedHex(value string, byteLen int) bool {

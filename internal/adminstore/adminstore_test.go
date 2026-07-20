@@ -27,6 +27,9 @@ func TestValidateLabel(t *testing.T) {
 		}
 	}
 	for _, test := range []struct{ kind, key string }{
+		{"address", "0x52908400098527886E0F7030069857D2E4169EE7"},
+		{"token", "0x52908400098527886E0F7030069857D2E4169EE7"},
+		{"contract", "0x52908400098527886E0F7030069857D2E4169EE7"},
 		{"block", "0"},
 		{"block", "18446744073709551615"},
 		{"block", "0x" + strings.Repeat("11", 32)},
