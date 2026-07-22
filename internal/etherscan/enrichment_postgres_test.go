@@ -28,17 +28,20 @@ func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			db := fakeDatabase(t, sqlExpectation{
-				contains: "latest.state IS DISTINCT FROM 'complete'",
-				columns:  fakeColumns(4),
-				rows:     [][]driver.Value{{"12", "10", testHashBytes(3), nil}},
-				check: func(arguments []driver.NamedValue) error {
-					if len(arguments) != 4 || arguments[3].Value != test.stage {
-						return fmt.Errorf("stage arguments=%v", arguments)
-					}
-					return nil
+			db := fakeDatabase(t,
+				completeCoreCoverageExpectation("0", "", "12"),
+				sqlExpectation{
+					contains: "latest.state IS DISTINCT FROM 'complete'",
+					columns:  fakeColumns(4),
+					rows:     [][]driver.Value{{"12", "10", testHashBytes(3), nil}},
+					check: func(arguments []driver.NamedValue) error {
+						if len(arguments) != 4 || arguments[3].Value != test.stage {
+							return fmt.Errorf("stage arguments=%v", arguments)
+						}
+						return nil
+					},
 				},
-			})
+			)
 			backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 			_, err := backend.Execute(context.Background(), Request{
 				Module: test.module, Action: test.action, Values: test.values,
@@ -53,6 +56,7 @@ func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
 func TestInternalTransactionsAreCanonicalPagedAndGolden(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("10", "20", "12"),
 		completedStageExpectation("trace", "10", "20"),
 		sqlExpectation{
 			contains: "JOIN canonical_blocks AS canonical ON canonical.chain_id = trace.chain_id AND canonical.number = trace.block_number AND canonical.block_hash = trace.block_hash",
@@ -119,6 +123,7 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 						return nil
 					},
 				},
+				completeCoreCoverageExpectation("10", "10", "12"),
 				completedStageExpectation("trace", "10", "10"),
 				{
 					contains: "($2::bytea IS NULL OR trace.from_address = $2 OR trace.to_address = $2 OR trace.created_address = $2)",
@@ -137,6 +142,7 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 			name:   "block range",
 			values: url.Values{"startblock": {"10"}, "endblock": {"20"}},
 			expectations: []sqlExpectation{
+				completeCoreCoverageExpectation("10", "20", "12"),
 				completedStageExpectation("trace", "10", "20"),
 				{
 					contains: "($2::bytea IS NULL OR trace.from_address = $2 OR trace.to_address = $2 OR trace.created_address = $2)",
@@ -194,6 +200,7 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 	t.Parallel()
 	maximum := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)).String()
 	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("10", "20", "12"),
 		completedStageExpectation("token", "10", "20"),
 		sqlExpectation{
 			contains: "event.canonical = TRUE AND (event.from_address = $2 OR event.to_address = $2) AND event.standard = $3",
@@ -263,6 +270,7 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 		t.Run(test.action, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
+				completeCoreCoverageExpectation("0", "", "12"),
 				completedStageExpectation("token", "0", ""),
 				sqlExpectation{
 					contains: "event.standard = $3", columns: fakeColumns(19),
@@ -294,6 +302,7 @@ func TestTokenInformationSupplyBalanceAndHolders(t *testing.T) {
 	t.Parallel()
 	contractRow := canonicalTokenRow("erc20", "1000")
 	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "12"),
 		completedStageExpectation("token", "0", ""),
 		tokenContractExpectation(contractRow),
 	)
@@ -361,6 +370,7 @@ func TestEnrichmentRowsRejectMalformedOrOverflowValues(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
+				completeCoreCoverageExpectation("0", "", "12"),
 				completedStageExpectation("trace", "0", ""),
 				sqlExpectation{contains: "FROM normalized_traces AS trace", columns: fakeColumns(16), rows: [][]driver.Value{test.row}},
 			)
@@ -388,6 +398,7 @@ func TestCompletedEnrichmentWithNoRowsReturnsNotFound(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
+				completeCoreCoverageExpectation("0", "", "12"),
 				completedStageExpectation(test.stage, "0", ""),
 				sqlExpectation{contains: test.query, columns: fakeColumns(test.columns)},
 			)
@@ -442,10 +453,13 @@ func tokenContractExpectation(row []driver.Value) sqlExpectation {
 
 func TestStageRangeRejectsInvalidStoredState(t *testing.T) {
 	t.Parallel()
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "latest.state IS DISTINCT FROM 'complete'", columns: fakeColumns(4),
-		rows: [][]driver.Value{{"12", "10", testHashBytes(3), "pending"}},
-	})
+	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "12"),
+		sqlExpectation{
+			contains: "latest.state IS DISTINCT FROM 'complete'", columns: fakeColumns(4),
+			rows: [][]driver.Value{{"12", "10", testHashBytes(3), "pending"}},
+		},
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	_, err := backend.Execute(context.Background(), Request{
 		Module: "token", Action: "tokeninfo", Values: url.Values{"contractaddress": {testContract}},

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,7 +28,8 @@ func TestMatchBytecodeExactMetadataAndMismatch(t *testing.T) {
 		value = append(value, length[:]...)
 		return "0x" + hex.EncodeToString(value)
 	}
-	left, right := withMetadata([]byte{0xa1, 0x01}), withMetadata([]byte{0xa1, 0x02})
+	left := withMetadata([]byte{0xa1, 0x61, 0x78, 0x01})
+	right := withMetadata([]byte{0xa1, 0x61, 0x78, 0x02})
 	if got, err := MatchBytecode(left, right); err != nil || got != MatchMetadataOnly {
 		t.Fatalf("got %s err=%v", got, err)
 	}
@@ -39,13 +41,21 @@ func TestMatchBytecodeExactMetadataAndMismatch(t *testing.T) {
 func TestExtractArtifactRejectsCompilerErrors(t *testing.T) {
 	t.Parallel()
 	output := json.RawMessage(`{"errors":[{"severity":"error","message":"bad source"}]}`)
-	if _, err := ExtractArtifact(output, "A.sol:A"); err == nil || !strings.Contains(err.Error(), "bad source") {
+	if _, err := ExtractArtifact(output, LanguageSolidity, "0.8.30", "A.sol:A"); !errors.Is(err, errCompilerOutputDiagnostic) || strings.Contains(err.Error(), "bad source") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	output = json.RawMessage(`{"contracts":{"A.sol":{"A":{"abi":[],"metadata":"{}","evm":{"bytecode":{"object":"6001"},"deployedBytecode":{"object":"6002"}}}}}}`)
-	artifact, err := ExtractArtifact(output, "A.sol:A")
+	output = json.RawMessage(`{"contracts":{"A.sol":{"A":{"abi":[],"metadata":"{}","evm":{"bytecode":{"object":"6001","linkReferences":{}},"deployedBytecode":{"object":"6002","linkReferences":{},"immutableReferences":{}}}}}}}`)
+	artifact, err := ExtractArtifact(output, LanguageSolidity, "0.8.30", "A.sol:A")
 	if err != nil || artifact.RuntimeBytecode != "0x6002" {
 		t.Fatalf("artifact=%#v err=%v", artifact, err)
+	}
+	for _, malformed := range []json.RawMessage{
+		json.RawMessage(`{"errors":null,"contracts":{}}`),
+		json.RawMessage(`{"contracts":{},"contracts":{}}`),
+	} {
+		if _, err := ExtractArtifact(malformed, LanguageSolidity, "0.8.30", "A.sol:A"); !errors.Is(err, errCompilerOutputMalformed) {
+			t.Fatalf("malformed compiler output error=%v", err)
+		}
 	}
 }
 
@@ -56,9 +66,10 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(payload) }))
 	defer server.Close()
 	cache := CompilerCache{
-		Root:      t.TempDir(),
-		AllowHTTP: true,
-		Artifacts: map[Language]map[string]CompilerArtifact{LanguageSolidity: {"1.2.3": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}}},
+		Root:                       t.TempDir(),
+		unsafeAllowHTTP:            true,
+		unsafeAllowPrivateNetworks: true,
+		Artifacts:                  map[Language]map[string]CompilerArtifact{LanguageSolidity: {"1.2.3": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}}},
 	}
 	path, err := cache.Ensure(context.Background(), LanguageSolidity, "1.2.3")
 	if err != nil {
@@ -71,7 +82,7 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	if _, err := cache.Ensure(context.Background(), LanguageVyper, "1.2.3"); err == nil {
 		t.Fatal("expected allowlist rejection")
 	}
-	cache.Artifacts[LanguageSolidity]["bad"] = CompilerArtifact{URL: server.URL, SHA256: strings.Repeat("0", 64)}
+	cache.Artifacts[LanguageSolidity]["bad"] = CompilerArtifact{URL: server.URL, SHA256: strings.Repeat("f", 64)}
 	if _, err := cache.Ensure(context.Background(), LanguageSolidity, "bad"); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -88,7 +99,7 @@ func TestProcessCompilerRejectsPublicExecution(t *testing.T) {
 func TestCompilerProvenanceUsesPinnedArtifactDigest(t *testing.T) {
 	digestHex := strings.Repeat("01", 32)
 	process := ProcessCompiler{Cache: &CompilerCache{Artifacts: map[Language]map[string]CompilerArtifact{
-		LanguageSolidity: {"0.8.30": {SHA256: digestHex}},
+		LanguageSolidity: {"0.8.30": {URL: "https://compiler.example/solc", SHA256: digestHex}},
 	}}}
 	provenance, err := process.Provenance(LanguageSolidity, "0.8.30")
 	if err != nil || provenance.Kind != CompilerProcess || provenance.HardIsolated ||
@@ -138,35 +149,71 @@ func TestContainerIsolationRejectsUntrustedOrMissingRuntime(t *testing.T) {
 }
 
 func TestSourcifyLookupSubmitStatusAndConsent(t *testing.T) {
-	t.Parallel()
+	address := "0x" + strings.Repeat("11", 20)
+	verificationID := "00000000-0000-4000-8000-000000000001"
+	var submissions int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/v2/contract/"):
-			_, _ = w.Write([]byte(`{"match":"exact_match"}`))
+			_, _ = w.Write([]byte(`{
+				"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"exact_match",
+				"chainId":"1","address":"` + address + `",
+				"creationBytecode":{"onchainBytecode":"0x6001"},
+				"runtimeBytecode":{"onchainBytecode":"0x6001"},
+				"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"0.8.30","fullyQualifiedName":"A.sol:A"},
+				"stdJsonInput":{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}},
+				"stdJsonOutput":{"contracts":{}},"sources":{},"abi":[],"metadata":{}
+			}`))
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/v2/verify/"):
-			_, _ = w.Write([]byte(`{"verificationId":"job-1"}`))
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2/verify/job-1"):
-			_, _ = w.Write([]byte(`{"verificationId":"job-1","status":"verified"}`))
+			submissions++
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"verificationId":"` + verificationID + `"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/v2/verify/"+verificationID):
+			_, _ = w.Write([]byte(`{
+				"isJobCompleted":true,"verificationId":"` + verificationID + `",
+				"contract":{"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"exact_match","chainId":"1","address":"` + address + `"}
+			}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
-	client := SourcifyClient{BaseURL: server.URL, AllowHTTP: true}
-	contract, err := client.Lookup(context.Background(), 1, "0x0000000000000000000000000000000000000001")
-	if err != nil || contract.Match != "exact_match" {
+	client, err := newSourcifyClient(
+		SourcifyOptions{BaseURL: server.URL}, server.Client(), nil, true, true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := client.Lookup(context.Background(), 1, address)
+	if err != nil || contract.Match != "exact_match" || contract.Compilation.CompilerVersion != "0.8.30" {
 		t.Fatalf("contract=%#v err=%v", contract, err)
 	}
-	request := Request{ChainID: 1, Address: "0x0000000000000000000000000000000000000001", StandardJSON: json.RawMessage(`{}`), CompilerVersion: "1", ContractIdentifier: "A.sol:A", SubmitToSourcify: true}
-	if _, err := client.Submit(context.Background(), request, false); err != ErrConsentRequired {
+	runtimeBytecode := []byte{0x60, 0x01}
+	imported, err := client.Import(context.Background(), VerificationTarget{
+		ChainID: 1, Address: address,
+		CodeHash:         "0x" + hex.EncodeToString(keccak256Bytes(runtimeBytecode)),
+		AtBlockHash:      "0x" + strings.Repeat("33", 32),
+		CreationBytecode: "0x6001", RuntimeBytecode: "0x6001",
+	})
+	if err != nil || imported.SubmitToSourcify || imported.CompilerVersion != "0.8.30" || imported.ContractIdentifier != "A.sol:A" {
+		t.Fatalf("imported=%#v error=%v", imported, err)
+	}
+	if submissions != 0 {
+		t.Fatal("lookup or import submitted sources without consent")
+	}
+	request := validVerifyRequest()
+	request.SubmitToSourcify = true
+	durableJob := durableSourcifyJob(request, 9)
+	if _, err := client.Submit(context.Background(), sourcifyReader(durableJob), durableJob.ID, false); err != ErrConsentRequired {
 		t.Fatalf("got %v", err)
 	}
-	ticket, err := client.Submit(context.Background(), request, true)
-	if err != nil || ticket.VerificationID != "job-1" {
+	ticket, err := client.Submit(context.Background(), sourcifyReader(durableJob), durableJob.ID, true)
+	if err != nil || ticket.VerificationID != verificationID || submissions != 1 {
 		t.Fatalf("ticket=%#v err=%v", ticket, err)
 	}
-	job, err := client.Status(context.Background(), "job-1")
-	if err != nil || job.Status != "verified" {
+	job, err := client.Status(context.Background(), verificationID)
+	if err != nil || !job.IsJobCompleted || job.Contract == nil || job.Contract.Match == nil || *job.Contract.Match != "exact_match" {
 		t.Fatalf("job=%#v err=%v", job, err)
 	}
 }
@@ -176,9 +223,11 @@ func TestSourcifyRequiresHTTPSWithoutCredentials(t *testing.T) {
 	for _, baseURL := range []string{
 		"http://sourcify.example",
 		"https://user:password@sourcify.example",
+		"https://sourcify.example/server?token=secret",
+		"https://sourcify.example/server#fragment",
+		"https://sourcify.example/server/%2e%2e/private",
 	} {
-		client := SourcifyClient{BaseURL: baseURL}
-		if _, err := client.Lookup(context.Background(), 1, "0x0000000000000000000000000000000000000001"); err == nil || !strings.Contains(err.Error(), "invalid Sourcify base URL") {
+		if _, err := NewSourcifyClient(SourcifyOptions{BaseURL: baseURL}); err == nil || !strings.Contains(err.Error(), "invalid Sourcify base URL") {
 			t.Fatalf("base URL %q error=%v", baseURL, err)
 		}
 	}
@@ -187,7 +236,7 @@ func TestSourcifyRequiresHTTPSWithoutCredentials(t *testing.T) {
 func TestRequestValidationBindsCodeAndBlock(t *testing.T) {
 	t.Parallel()
 	runtimeBytecode := []byte{0x60, 0x01}
-	request := Request{ChainID: 1, Address: "0x" + strings.Repeat("00", 20), CodeHash: "0x" + hex.EncodeToString(keccak256Bytes(runtimeBytecode)), AtBlockHash: "0x" + strings.Repeat("22", 32), Language: LanguageSolidity, CompilerVersion: "0.8.30", ContractIdentifier: "A.sol:A", StandardJSON: json.RawMessage(`{"language":"Solidity"}`), RuntimeBytecode: "0x" + hex.EncodeToString(runtimeBytecode)}
+	request := Request{ChainID: 1, Address: "0x" + strings.Repeat("00", 20), CodeHash: "0x" + hex.EncodeToString(keccak256Bytes(runtimeBytecode)), AtBlockHash: "0x" + strings.Repeat("22", 32), Language: LanguageSolidity, CompilerVersion: "0.8.30", ContractIdentifier: "A.sol:A", StandardJSON: json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":""}},"settings":{}}`), RuntimeBytecode: "0x" + hex.EncodeToString(runtimeBytecode)}
 	if err := request.Validate(1024); err != nil {
 		t.Fatal(err)
 	}

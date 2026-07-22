@@ -111,12 +111,18 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	if err != nil {
 		return nil, err
 	}
+	compilerType := "solc"
+	if record.Language == "vyper" {
+		compilerType = "vyper"
+	}
 	return []sourceCodeResult{{
 		SourceCode: sources, ABI: abi, ContractName: record.ContractName,
-		CompilerVersion: record.CompilerVersion, OptimizationUsed: settings.optimized,
-		Runs: settings.runs, ConstructorArguments: settings.constructorArguments,
+		CompilerVersion: record.CompilerVersion, CompilerType: compilerType,
+		OptimizationUsed: settings.optimized,
+		Runs:             settings.runs, ConstructorArguments: settings.constructorArguments,
 		EVMVersion: settings.evmVersion, Library: settings.libraries,
-		LicenseType: settings.licenseType, Proxy: "0", Implementation: "",
+		ContractFileName: "", LicenseType: settings.licenseType,
+		Proxy: "0", Implementation: "",
 		SwarmSource: "", SimilarMatch: "", MatchKind: record.MatchKind,
 	}}, nil
 }
@@ -364,36 +370,7 @@ func (b *PostgresBackend) oneContractCreation(
 // missing row could be an unindexed factory CREATE/CREATE2 and must be exposed
 // as an unavailable capability rather than a misleading empty result.
 func (b *PostgresBackend) contractCreationAbsence(ctx context.Context, queryer enrichmentQueryer) error {
-	var configuredStart, rangeStart, rangeEnd, tip string
-	err := queryer.QueryRowContext(ctx, contractCreationCoverageSQL, b.chain).Scan(
-		&configuredStart, &rangeStart, &rangeEnd, &tip,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrStateUnavailable
-	}
-	if err != nil {
-		return fmt.Errorf("query contract creation coverage: %w", err)
-	}
-	configured, err := storedUint256(configuredStart, "configured index start")
-	if err != nil {
-		return err
-	}
-	start, err := storedUint256(rangeStart, "contract creation coverage start")
-	if err != nil {
-		return err
-	}
-	end, err := storedUint256(rangeEnd, "contract creation coverage end")
-	if err != nil {
-		return err
-	}
-	tipNumber, err := storedUint256(tip, "contract creation canonical tip")
-	if err != nil {
-		return err
-	}
-	if configured.Sign() != 0 || start.Sign() != 0 || end.Cmp(tipNumber) < 0 {
-		return ErrStateUnavailable
-	}
-	if _, err := b.requireCanonicalStageRange(ctx, queryer, traceStage, "0", &tip, ErrTraceUnavailable); err != nil {
+	if _, err := b.requireCanonicalStageRange(ctx, queryer, traceStage, "0", nil, ErrTraceUnavailable); err != nil {
 		return err
 	}
 	return ErrNotFound
@@ -513,21 +490,3 @@ SELECT source_kind, receipt_raw, transaction_raw, transaction_hash,
 FROM candidates
 ORDER BY block_number ASC, tx_index ASC, source_rank ASC, trace_path ASC
 LIMIT 1`
-
-const contractCreationCoverageSQL = `
-WITH tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-)
-SELECT configuration.configured_start::text,
-       coverage.range_start::text, coverage.range_end::text, tip.number::text
-FROM core_index_configuration AS configuration
-JOIN core_coverage_ranges AS coverage
-  ON coverage.chain_id = configuration.chain_id
- AND coverage.range_start = configuration.configured_start
-CROSS JOIN tip
-WHERE configuration.chain_id = $1::numeric
-  AND coverage.range_end >= tip.number`

@@ -43,3 +43,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "etherview.image" -}}
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}
+
+{{- define "etherview.alertScopeLabels" -}}
+etherview_release: {{ .Release.Name | quote }}
+etherview_namespace: {{ .Release.Namespace | quote }}
+chain_id: {{ .Values.config.chain.id | quote }}
+{{- end }}

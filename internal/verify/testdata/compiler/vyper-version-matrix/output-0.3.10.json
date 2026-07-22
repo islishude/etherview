@@ -1,0 +1,92 @@
+{
+  "compiler": "vyper-0.3.10",
+  "contracts": {
+    "contracts/Matrix.vy": {
+      "Matrix": {
+        "abi": [
+          {
+            "inputs": [],
+            "name": "answer",
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint256"
+              }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          }
+        ],
+        "evm": {
+          "bytecode": {
+            "object": "0x61002761000f6000396100276000f35f3560e01c6385bb7d69811861001f573461002357602a60405260206040f35b5f5ffd5b5f80fd8418278000a16576797065728300030a0012"
+          },
+          "deployedBytecode": {
+            "object": "0x5f3560e01c6385bb7d69811861001f573461002357602a60405260206040f35b5f5ffd5b5f80fd"
+          }
+        },
+        "metadata": {
+          "function_info": {
+            "answer": {
+              "_ir_identifier": "external_answer___",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 32,
+                "frame_start": 64
+              },
+              "keyword_args": {},
+              "mutability": "view",
+              "name": "answer",
+              "positional_args": {},
+              "return_type": "uint256",
+              "visibility": "external"
+            }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    {
+      "component": "compiler",
+      "message": "Attribute n is deprecated and will be removed in Python 3.14; use value instead",
+      "severity": "warning",
+      "sourceLocation": {
+        "file": "contracts/Matrix.vy"
+      },
+      "type": "DeprecationWarning"
+    },
+    {
+      "component": "compiler",
+      "message": "Attribute n is deprecated and will be removed in Python 3.14; use value instead",
+      "severity": "warning",
+      "sourceLocation": {
+        "file": "contracts/Matrix.vy"
+      },
+      "type": "DeprecationWarning"
+    },
+    {
+      "component": "compiler",
+      "message": "Attribute n is deprecated and will be removed in Python 3.14; use value instead",
+      "severity": "warning",
+      "sourceLocation": {
+        "file": "contracts/Matrix.vy"
+      },
+      "type": "DeprecationWarning"
+    },
+    {
+      "component": "compiler",
+      "message": "Attribute n is deprecated and will be removed in Python 3.14; use value instead",
+      "severity": "warning",
+      "sourceLocation": {
+        "file": "contracts/Matrix.vy"
+      },
+      "type": "DeprecationWarning"
+    }
+  ],
+  "sources": {
+    "contracts/Matrix.vy": {
+      "id": 0
+    }
+  }
+}

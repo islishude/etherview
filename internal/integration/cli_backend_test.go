@@ -103,6 +103,28 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate repair audit records: %v", err)
 	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("close repair audit rows: %v", err)
+	}
+	const nestedFailure = "postgres://operator:secret@database/etherview"
+	if _, err := db.ExecContext(ctx, `
+		UPDATE repair_requests
+		SET status = 'failed', completed_at = now(), last_error = $1
+		WHERE chain_id = 1 AND operation = 'reindex'`, nestedFailure); err != nil {
+		t.Fatalf("record repair failure fixture: %v", err)
+	}
+	code, stdout, stderr = runner.run(ctx, "admin", "repair", "list", "--limit", "1", "--config", configPath)
+	if code != 0 || stderr != "" || !strings.Contains(stdout, `"operation": "reindex"`) ||
+		!strings.Contains(stdout, `"failure_present": true`) || strings.Contains(stdout, `"operation": "repair"`) ||
+		strings.Contains(stdout, "last_error") || strings.Contains(stdout, nestedFailure) {
+		t.Fatalf("repair status list code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	code, stdout, stderr = runner.run(ctx, "admin", "repair", "list", "--limit", "1", "--format", "table", "--config", configPath)
+	if code != 0 || stderr != "" || !strings.Contains(strings.ToLower(stdout), "reindex") ||
+		!strings.Contains(stdout, "FAILURE_PRESENT") || !strings.Contains(stdout, "true") ||
+		strings.Contains(stdout, "last_error") || strings.Contains(stdout, nestedFailure) {
+		t.Fatalf("repair status table code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
 
 	address := "0x0000000000000000000000000000000000000001"
 	code, _, stderr = runner.run(ctx, "admin", "label", "set", "address", address, "treasury", "--config", configPath)

@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/islishude/etherview/internal/adminstore"
@@ -96,8 +97,58 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 		return b.adminAPIKey(ctx, db, cfg, action, args)
 	case "label":
 		return b.adminLabel(ctx, db, cfg, action, args)
+	case "repair":
+		return b.adminRepair(ctx, db, cfg, action, args)
 	default:
 		return fmt.Errorf("unsupported admin resource %q", resource)
+	}
+}
+
+func (b *Backend) adminRepair(ctx context.Context, db *sql.DB, cfg config.Config, action string, args []string) error {
+	if action != "list" {
+		return fmt.Errorf("unsupported repair admin action %q", action)
+	}
+	fs := flag.NewFlagSet("admin repair list", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	limit := fs.Int("limit", 100, "maximum newest requests")
+	format := fs.String("format", "json", "output format: json or table")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("repair list: unexpected arguments %s", strings.Join(fs.Args(), " "))
+	}
+	repository, err := adminstore.New(db, cfg.Chain.ID)
+	if err != nil {
+		return err
+	}
+	requests, err := repository.RepairRequests(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	return writeRepairRequests(b.output(), *format, requests)
+}
+
+func writeRepairRequests(writer io.Writer, format string, requests []adminstore.RepairRequest) error {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json":
+		return writeIndentedJSON(writer, requests)
+	case "table":
+		table := tabwriter.NewWriter(writer, 0, 4, 2, ' ', 0)
+		if _, err := fmt.Fprintln(table, "ID\tOPERATION\tSTAGE\tFROM\tTO\tSTATUS\tFAILURE_PRESENT\tREQUESTED_AT"); err != nil {
+			return err
+		}
+		for _, request := range requests {
+			if _, err := fmt.Fprintf(table, "%d\t%s\t%s\t%d\t%d\t%s\t%t\t%s\n",
+				request.ID, request.Operation, request.Stage, request.FromBlock, request.ToBlock,
+				request.Status, request.FailurePresent, request.RequestedAt.UTC().Format(time.RFC3339),
+			); err != nil {
+				return err
+			}
+		}
+		return table.Flush()
+	default:
+		return errors.New("repair list format must be json or table")
 	}
 }
 

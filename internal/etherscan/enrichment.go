@@ -19,11 +19,7 @@ type enrichmentQueryer interface {
 }
 
 func (b *PostgresBackend) beginEnrichmentSnapshot(ctx context.Context) (*sql.Tx, error) {
-	tx, err := b.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("begin enrichment read snapshot: %w", err)
-	}
-	return tx, nil
+	return b.beginCanonicalSnapshot(ctx)
 }
 
 // requireCanonicalStageRange makes an empty list meaningful: every canonical
@@ -36,6 +32,10 @@ func (b *PostgresBackend) requireCanonicalStageRange(
 	end *string,
 	unavailable error,
 ) (string, error) {
+	coreTip, err := b.requireCanonicalCoreRange(ctx, queryer, start, end)
+	if err != nil {
+		return coreTip, err
+	}
 	var endArgument any
 	if end != nil {
 		endArgument = *end
@@ -43,11 +43,11 @@ func (b *PostgresBackend) requireCanonicalStageRange(
 	var tip string
 	var incompleteNumber, state sql.NullString
 	var incompleteHash []byte
-	err := queryer.QueryRowContext(ctx, canonicalStageRangeSQL,
+	err = queryer.QueryRowContext(ctx, canonicalStageRangeSQL,
 		b.chain, start, endArgument, stage,
 	).Scan(&tip, &incompleteNumber, &incompleteHash, &state)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
+		return "", errors.New("canonical stage range lost its proven core tip")
 	}
 	if err != nil {
 		return "", fmt.Errorf("check canonical %s stage range: %w", stage, err)
@@ -55,6 +55,9 @@ func (b *PostgresBackend) requireCanonicalStageRange(
 	tipNumber, err := storedUint256(tip, "canonical tip")
 	if err != nil {
 		return "", err
+	}
+	if tip != coreTip {
+		return "", errors.New("canonical stage and core coverage tips differ")
 	}
 	startNumber, err := storedUint256(start, "stage range start")
 	if err != nil {

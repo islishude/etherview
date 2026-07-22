@@ -1,7 +1,9 @@
 package etherscan
 
-// Etherscan represents every integer as a decimal string. These dedicated
-// wire models avoid accidental float64 conversion through map[string]any.
+// Etherscan represents account, token, block, and statistics integers as
+// decimal strings, while its log endpoint uses lowercase hexadecimal strings.
+// Dedicated wire models avoid accidental float64 conversion through
+// map[string]any.
 type accountTransaction struct {
 	BlockNumber       string `json:"blockNumber"`
 	TimeStamp         string `json:"timeStamp"`
@@ -69,11 +71,13 @@ type sourceCodeResult struct {
 	ABI                  string `json:"ABI"`
 	ContractName         string `json:"ContractName"`
 	CompilerVersion      string `json:"CompilerVersion"`
+	CompilerType         string `json:"CompilerType"`
 	OptimizationUsed     string `json:"OptimizationUsed"`
 	Runs                 string `json:"Runs"`
 	ConstructorArguments string `json:"ConstructorArguments"`
 	EVMVersion           string `json:"EVMVersion"`
 	Library              string `json:"Library"`
+	ContractFileName     string `json:"ContractFileName"`
 	LicenseType          string `json:"LicenseType"`
 	Proxy                string `json:"Proxy"`
 	Implementation       string `json:"Implementation"`

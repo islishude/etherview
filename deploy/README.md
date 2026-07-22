@@ -31,7 +31,8 @@ uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
 `database-url` and optional `rpc-urls`, `api-key-pepper`, `nats-url`,
-`redis-url`, `s3-access-key`, `s3-secret-key`, and `s3-session-token` keys. With
+`redis-url`, `s3-access-key`, `s3-secret-key`, `s3-session-token`, and
+`otlp-trace-endpoint` and `otlp-trace-headers` keys. With
 `externalSecret.enabled=true`, the included ExternalSecret materializes the
 database, RPC, and API-key-pepper entries; deployments that also source optional
 adapter credentials externally must add those keys to the target Secret. Secret
@@ -60,6 +61,14 @@ nonstandard PostgreSQL ports, or an in-cluster OpenTelemetry collector.
 NATS, Redis, and S3-compatible endpoints on non-HTTPS ports likewise require
 explicit `networkPolicy.additionalEgress` entries; the chart never broadens
 egress merely because an optional adapter URL is configured.
+
+OTLP tracing remains disabled when the optional Secret key is absent. Set
+`config.observability.otlp_trace_insecure=true` only for an explicitly trusted
+plain-HTTP collector, and add its port/CIDR as an explicit NetworkPolicy rule.
+Collector headers use the optional `otlp-trace-headers` Secret key and never a
+ConfigMap value.
+The [operations runbook](../docs/operations.md) documents trace sampling,
+metric staleness, alerts, and repair/reindex response.
 
 ## Image properties
 

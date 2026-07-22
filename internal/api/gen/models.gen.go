@@ -93,6 +93,78 @@ func (e SearchResultKind) Valid() bool {
 	}
 }
 
+// Defines values for SourcifyContractLanguage.
+const (
+	SourcifyContractLanguageSolidity SourcifyContractLanguage = "solidity"
+	SourcifyContractLanguageVyper    SourcifyContractLanguage = "vyper"
+)
+
+// Valid indicates whether the value is a known member of the SourcifyContractLanguage enum.
+func (e SourcifyContractLanguage) Valid() bool {
+	switch e {
+	case SourcifyContractLanguageSolidity:
+		return true
+	case SourcifyContractLanguageVyper:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourcifyJobState.
+const (
+	SourcifyJobStateFailed    SourcifyJobState = "failed"
+	SourcifyJobStatePending   SourcifyJobState = "pending"
+	SourcifyJobStateSucceeded SourcifyJobState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the SourcifyJobState enum.
+func (e SourcifyJobState) Valid() bool {
+	switch e {
+	case SourcifyJobStateFailed:
+		return true
+	case SourcifyJobStatePending:
+		return true
+	case SourcifyJobStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourcifyMatch.
+const (
+	ExactMatch SourcifyMatch = "exact_match"
+	Match      SourcifyMatch = "match"
+)
+
+// Valid indicates whether the value is a known member of the SourcifyMatch enum.
+func (e SourcifyMatch) Valid() bool {
+	switch e {
+	case ExactMatch:
+		return true
+	case Match:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourcifyUploadRequestConsent.
+const (
+	True SourcifyUploadRequestConsent = true
+)
+
+// Valid indicates whether the value is a known member of the SourcifyUploadRequestConsent enum.
+func (e SourcifyUploadRequestConsent) Valid() bool {
+	switch e {
+	case True:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StageState.
 const (
 	StageStateComplete    StageState = "complete"
@@ -288,6 +360,60 @@ func (e VerificationSubmissionLanguage) Valid() bool {
 	case VerificationSubmissionLanguageSolidity:
 		return true
 	case VerificationSubmissionLanguageVyper:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerificationSubmissionLicenseType.
+const (
+	N1  VerificationSubmissionLicenseType = "1"
+	N10 VerificationSubmissionLicenseType = "10"
+	N11 VerificationSubmissionLicenseType = "11"
+	N12 VerificationSubmissionLicenseType = "12"
+	N13 VerificationSubmissionLicenseType = "13"
+	N14 VerificationSubmissionLicenseType = "14"
+	N2  VerificationSubmissionLicenseType = "2"
+	N3  VerificationSubmissionLicenseType = "3"
+	N4  VerificationSubmissionLicenseType = "4"
+	N5  VerificationSubmissionLicenseType = "5"
+	N6  VerificationSubmissionLicenseType = "6"
+	N7  VerificationSubmissionLicenseType = "7"
+	N8  VerificationSubmissionLicenseType = "8"
+	N9  VerificationSubmissionLicenseType = "9"
+)
+
+// Valid indicates whether the value is a known member of the VerificationSubmissionLicenseType enum.
+func (e VerificationSubmissionLicenseType) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	case N10:
+		return true
+	case N11:
+		return true
+	case N12:
+		return true
+	case N13:
+		return true
+	case N14:
+		return true
+	case N2:
+		return true
+	case N3:
+		return true
+	case N4:
+		return true
+	case N5:
+		return true
+	case N6:
+		return true
+	case N7:
+		return true
+	case N8:
+		return true
+	case N9:
 		return true
 	default:
 		return false
@@ -726,6 +852,78 @@ type SearchResult struct {
 // SearchResultKind defines model for SearchResult.Kind.
 type SearchResultKind string
 
+// SourcifyContract defines model for SourcifyContract.
+type SourcifyContract struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId            Quantity                  `json:"chain_id"`
+	CompilerVersion    *string                   `json:"compiler_version,omitempty"`
+	ContractIdentifier *string                   `json:"contract_identifier,omitempty"`
+	CreationMatch      *SourcifyMatch            `json:"creation_match,omitempty"`
+	Language           *SourcifyContractLanguage `json:"language,omitempty"`
+	Match              *SourcifyMatch            `json:"match,omitempty"`
+	RuntimeMatch       *SourcifyMatch            `json:"runtime_match,omitempty"`
+}
+
+// SourcifyContractLanguage defines model for SourcifyContract.Language.
+type SourcifyContractLanguage string
+
+// SourcifyContractResponse defines model for SourcifyContractResponse.
+type SourcifyContractResponse struct {
+	Data SourcifyContract `json:"data"`
+	Meta Meta             `json:"meta"`
+}
+
+// SourcifyImportRequest defines model for SourcifyImportRequest.
+type SourcifyImportRequest struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// ConstructorArguments Optional constructor-argument suffix, accepted only when it matches the canonical creation input.
+	ConstructorArguments *string `json:"constructor_arguments,omitempty"`
+}
+
+// SourcifyJob defines model for SourcifyJob.
+type SourcifyJob struct {
+	Contract       *SourcifyContract  `json:"contract,omitempty"`
+	State          SourcifyJobState   `json:"state"`
+	VerificationId openapi_types.UUID `json:"verification_id"`
+}
+
+// SourcifyJobState defines model for SourcifyJob.State.
+type SourcifyJobState string
+
+// SourcifyJobResponse defines model for SourcifyJobResponse.
+type SourcifyJobResponse struct {
+	Data SourcifyJob `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+// SourcifyMatch defines model for SourcifyMatch.
+type SourcifyMatch string
+
+// SourcifyTicket defines model for SourcifyTicket.
+type SourcifyTicket struct {
+	VerificationId openapi_types.UUID `json:"verification_id"`
+}
+
+// SourcifyTicketResponse defines model for SourcifyTicketResponse.
+type SourcifyTicketResponse struct {
+	Data SourcifyTicket `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// SourcifyUploadRequest defines model for SourcifyUploadRequest.
+type SourcifyUploadRequest struct {
+	// Consent Explicit consent for this irreversible external source upload.
+	Consent SourcifyUploadRequestConsent `json:"consent"`
+}
+
+// SourcifyUploadRequestConsent Explicit consent for this irreversible external source upload.
+type SourcifyUploadRequestConsent bool
+
 // StageState defines model for StageState.
 type StageState string
 
@@ -1006,26 +1204,27 @@ type VerificationMatch string
 // VerificationSubmission defines model for VerificationSubmission.
 type VerificationSubmission struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address Address `json:"address"`
+	Address         Address `json:"address"`
+	CompilerVersion string  `json:"compiler_version"`
 
-	// AtBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	AtBlockHash Hash `json:"at_block_hash"`
+	// ConstructorArguments Optional constructor-argument suffix. The server accepts it only when it is an exact suffix of the canonical creation input and removes it before enqueueing.
+	ConstructorArguments *string                        `json:"constructor_arguments,omitempty"`
+	ContractIdentifier   string                         `json:"contract_identifier"`
+	Language             VerificationSubmissionLanguage `json:"language"`
 
-	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash           Hash                           `json:"code_hash"`
-	CompilerVersion    string                         `json:"compiler_version"`
-	ContractIdentifier string                         `json:"contract_identifier"`
-	CreationBytecode   string                         `json:"creation_bytecode"`
-	Language           VerificationSubmissionLanguage `json:"language"`
+	// LicenseType Optional Etherscan-compatible source-license identifier stored only as publication metadata.
+	LicenseType *VerificationSubmissionLicenseType `json:"license_type,omitempty"`
 
-	// RuntimeBytecode Non-empty deployed runtime bytecode whose Keccak-256 digest must equal code_hash.
-	RuntimeBytecode  string                 `json:"runtime_bytecode"`
+	// StandardJson Inline-source Standard JSON compiler input. The service preserves code-generation settings but replaces outputSelection with the bounded exact-target fields required for deterministic matching before persisting the request.
 	StandardJson     map[string]interface{} `json:"standard_json"`
 	SubmitToSourcify *bool                  `json:"submit_to_sourcify,omitempty"`
 }
 
 // VerificationSubmissionLanguage defines model for VerificationSubmission.Language.
 type VerificationSubmissionLanguage string
+
+// VerificationSubmissionLicenseType Optional Etherscan-compatible source-license identifier stored only as publication metadata.
+type VerificationSubmissionLicenseType string
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
@@ -1140,5 +1339,11 @@ type ListTransactionsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ImportSourcifyContractJSONRequestBody defines body for ImportSourcifyContract for application/json ContentType.
+type ImportSourcifyContractJSONRequestBody = SourcifyImportRequest
+
 // SubmitVerificationJobJSONRequestBody defines body for SubmitVerificationJob for application/json ContentType.
 type SubmitVerificationJobJSONRequestBody = VerificationSubmission
+
+// UploadVerificationJobToSourcifyJSONRequestBody defines body for UploadVerificationJobToSourcify for application/json ContentType.
+type UploadVerificationJobToSourcifyJSONRequestBody = SourcifyUploadRequest

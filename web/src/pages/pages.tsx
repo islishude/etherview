@@ -25,6 +25,7 @@ import {
 import type {
   BlockStat,
   BlockSummary,
+  ChainStatus,
   Completeness,
   SearchResult,
   TokenEvent,
@@ -42,6 +43,59 @@ const StatsChart = lazy(async () => {
   const module = await import("@/components/StatsChart");
   return { default: module.StatsChart };
 });
+
+const CORE_PAGE_SIZE = 25;
+const SEARCH_PAGE_SIZE = 20;
+
+function useCursorHistory(identity: string) {
+  const [state, setState] = useState<{
+    identity: string;
+    cursors: string[];
+    refreshGeneration: number;
+  }>({
+    identity,
+    cursors: [""],
+    refreshGeneration: 0,
+  });
+  const cursors = state.identity === identity ? state.cursors : [""];
+  const refreshGeneration = state.identity === identity ? state.refreshGeneration : 0;
+
+  return {
+    cursor: cursors.at(-1) || undefined,
+    refreshGeneration,
+    page: cursors.length,
+    hasPrevious: cursors.length > 1,
+    next(nextCursor: string | undefined) {
+      if (!nextCursor) return;
+      setState((current) => ({
+        identity,
+        cursors: [
+          ...(current.identity === identity ? current.cursors : [""]),
+          nextCursor,
+        ],
+        refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
+      }));
+    },
+    previous() {
+      setState((current) => {
+        const currentCursors = current.identity === identity ? current.cursors : [""];
+        return {
+          identity,
+          cursors: currentCursors.length > 1 ? currentCursors.slice(0, -1) : currentCursors,
+          refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
+        };
+      });
+    },
+    reset() {
+      setState((current) => ({
+        identity,
+        cursors: [""],
+        refreshGeneration:
+          (current.identity === identity ? current.refreshGeneration : 0) + 1,
+      }));
+    },
+  };
+}
 
 export function HomePage() {
   const { i18n, t } = useTranslation();
@@ -70,7 +124,7 @@ export function HomePage() {
 
       <QueryNotice loading={status.isPending} error={status.error} />
 
-      <section className="metrics-grid" aria-label="Chain metrics">
+      <section className="metrics-grid" aria-label={t("home.metrics")}>
         <Metric label={t("home.indexed")} value={formatInteger(status.data?.indexed_block, locale)} />
         <Metric label={t("home.networkHead")} value={formatInteger(status.data?.latest_block, locale)} />
         <Metric label={t("home.finality")} value={formatInteger(status.data?.finalized_block, locale)} />
@@ -81,10 +135,15 @@ export function HomePage() {
         />
       </section>
 
+      {status.data && <ChainContextPanel status={status.data} />}
+
       <div className="activity-grid">
         <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
           <PanelHeading id="recent-blocks-title" title={t("home.recentBlocks")} to="/blocks" />
           <QueryNotice compact loading={blocks.isPending} error={blocks.error} />
+          {blocks.data?.items.length === 0 && (
+            <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
+          )}
           {blocks.data?.items.map((block) => (
             <BlockRow block={block} key={block.hash} locale={locale} />
           ))}
@@ -96,6 +155,9 @@ export function HomePage() {
             to="/transactions"
           />
           <QueryNotice compact loading={transactions.isPending} error={transactions.error} />
+          {transactions.data?.items.length === 0 && (
+            <p className="empty-result compact-empty">{t("state.noTransactions")}</p>
+          )}
           {transactions.data?.items.map((transaction) => (
             <TransactionRow key={transaction.hash} transaction={transaction} />
           ))}
@@ -126,20 +188,21 @@ function PanelHeading({ id, title, to }: { id: string; title: string; to: "/bloc
 }
 
 function BlockRow({ block, locale }: { block: BlockSummary; locale: string }) {
+  const { t } = useTranslation();
   return (
     <div className="activity-row">
       <span className="block-cube" aria-hidden="true">
         B
       </span>
       <span className="activity-primary">
-        <Link to="/blocks/$blockID" params={{ blockID: block.number }}>
+        <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
           #{formatInteger(block.number, locale)}
         </Link>
         <small>{formatTimestamp(block.timestamp, locale)}</small>
       </span>
       <span className="activity-meta">
         <strong>{formatInteger(block.transaction_count, locale)}</strong>
-        <small>txs</small>
+        <small>{t("common.transactionsShort")}</small>
       </span>
       <FinalityBadge finality={block.finality} />
     </div>
@@ -147,6 +210,7 @@ function BlockRow({ block, locale }: { block: BlockSummary; locale: string }) {
 }
 
 function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
+  const { t } = useTranslation();
   return (
     <div className="activity-row transaction-row">
       <span className="tx-mark" aria-hidden="true">
@@ -161,26 +225,36 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
         </small>
       </span>
       <span className={`transaction-status ${transaction.status ?? "unknown"}`}>
-        {transaction.status ?? "indexed"}
+        {transactionStatusLabel(transaction.status, t)}
       </span>
     </div>
   );
 }
 
 function FinalityBadge({ finality }: { finality: string }) {
-  return <span className={`finality-badge ${finality}`}>{finality}</span>;
+  const { t } = useTranslation();
+  return <span className={`finality-badge ${finality}`}>{finalityLabel(finality, t)}</span>;
 }
 
 export function BlocksPage() {
   const { i18n, t } = useTranslation();
-  const blocks = useBlocks(25);
+  const pager = useCursorHistory("blocks");
+  const blocks = useBlocks(CORE_PAGE_SIZE, pager.cursor, pager.refreshGeneration);
+  const status = useChainStatus();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.blocks")} description={t("page.blocksDescription")}>
-      <QueryNotice loading={blocks.isPending} error={blocks.error} />
-      {blocks.data && (
+      <QueryNotice loading={status.isPending} error={status.error} />
+      {status.data && <ChainContextPanel status={status.data} />}
+      <p className="context-note" role="note">{t("context.canonicalBlocksOnly")}</p>
+      <QueryNotice loading={blocks.isPending} error={blocks.error} onReset={pager.reset} />
+      {blocks.data?.items.length === 0 && (
+        <p className="empty-result" role="status">{t("state.noBlocks")}</p>
+      )}
+      {blocks.data && blocks.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.blocks")}>
           <table>
+            <caption className="sr-only">{t("context.canonicalBlocksOnly")}</caption>
             <thead>
               <tr>
                 <th>{t("table.block")}</th>
@@ -194,10 +268,10 @@ export function BlocksPage() {
               {blocks.data.items.map((block) => (
                 <tr key={block.hash}>
                   <td>
-                    <Link to="/blocks/$blockID" params={{ blockID: block.number }}>
+                    <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
                       {formatInteger(block.number, locale)}
                     </Link>
-                    {!block.canonical && <span className="orphan-label">{t("common.orphan")}</span>}
+                    <code className="table-secondary" title={block.hash}>{shorten(block.hash)}</code>
                   </td>
                   <td>{formatTimestamp(block.timestamp, locale)}</td>
                   <td>{formatInteger(block.transaction_count, locale)}</td>
@@ -209,26 +283,57 @@ export function BlocksPage() {
           </table>
         </div>
       )}
+      {blocks.data && (
+        <CursorPagination
+          busy={blocks.isFetching}
+          hasNext={Boolean(blocks.data.next_cursor)}
+          hasPrevious={pager.hasPrevious}
+          label={t("pagination.blocks")}
+          onNext={() => pager.next(blocks.data?.next_cursor)}
+          onPrevious={pager.previous}
+          page={pager.page}
+        />
+      )}
     </Page>
   );
 }
 
 export function TransactionsPage() {
-  const { t } = useTranslation();
-  const transactions = useTransactions(25);
+  const { i18n, t } = useTranslation();
+  const pager = useCursorHistory("transactions");
+  const transactions = useTransactions(
+    CORE_PAGE_SIZE,
+    pager.cursor,
+    pager.refreshGeneration,
+  );
+  const status = useChainStatus();
+  const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.transactions")} description={t("page.transactionsDescription")}>
-      <QueryNotice loading={transactions.isPending} error={transactions.error} />
-      {transactions.data && (
+      <QueryNotice loading={status.isPending} error={status.error} />
+      {status.data && <ChainContextPanel status={status.data} />}
+      <p className="context-note" role="note">{t("context.canonicalTransactionsOnly")}</p>
+      <QueryNotice
+        loading={transactions.isPending}
+        error={transactions.error}
+        onReset={pager.reset}
+      />
+      {transactions.data?.items.length === 0 && (
+        <p className="empty-result" role="status">{t("state.noTransactions")}</p>
+      )}
+      {transactions.data && transactions.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.transactions")}>
           <table>
+            <caption className="sr-only">{t("context.canonicalTransactionsOnly")}</caption>
             <thead>
               <tr>
                 <th>{t("table.hash")}</th>
+                <th>{t("table.block")}</th>
                 <th>{t("table.status")}</th>
                 <th>{t("table.from")}</th>
                 <th>{t("table.to")}</th>
                 <th>{t("table.value")}</th>
+                <th>{t("table.finality")}</th>
               </tr>
             </thead>
             <tbody>
@@ -239,15 +344,48 @@ export function TransactionsPage() {
                       {shorten(transaction.hash)}
                     </Link>
                   </td>
-                  <td><span className={`transaction-status ${transaction.status}`}>{transaction.status ?? t("common.indexed")}</span></td>
-                  <td><code>{shorten(transaction.from)}</code></td>
-                  <td><code>{transaction.to ? shorten(transaction.to) : t("common.contractCreation")}</code></td>
-                  <td><code>{transaction.value}</code></td>
+                  <td>
+                    {transaction.block_hash ? (
+                      <Link to="/blocks/$blockID" params={{ blockID: transaction.block_hash }}>
+                        {formatInteger(transaction.block_number, locale)}
+                      </Link>
+                    ) : "—"}
+                  </td>
+                  <td>
+                    <span className={`transaction-status ${transaction.status ?? "unknown"}`}>
+                      {transactionStatusLabel(transaction.status, t)}
+                    </span>
+                  </td>
+                  <td>
+                    <Link to="/address/$address" params={{ address: transaction.from }}>
+                      <code>{shorten(transaction.from)}</code>
+                    </Link>
+                  </td>
+                  <td>
+                    {transaction.to ? (
+                      <Link to="/address/$address" params={{ address: transaction.to }}>
+                        <code>{shorten(transaction.to)}</code>
+                      </Link>
+                    ) : t("common.contractCreation")}
+                  </td>
+                  <td><code>{formatInteger(transaction.value, locale)}</code></td>
+                  <td><FinalityBadge finality={transaction.finality} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {transactions.data && (
+        <CursorPagination
+          busy={transactions.isFetching}
+          hasNext={Boolean(transactions.data.next_cursor)}
+          hasPrevious={pager.hasPrevious}
+          label={t("pagination.transactions")}
+          onNext={() => pager.next(transactions.data?.next_cursor)}
+          onPrevious={pager.previous}
+          page={pager.page}
+        />
       )}
     </Page>
   );
@@ -329,18 +467,37 @@ function BlockDetailPage({ identifier }: { identifier: string }) {
       <QueryNotice loading={block.isPending} error={block.error} />
       {block.data && (
         <>
+          {!block.data.canonical && (
+            <ReorgContext kind="block" hash={block.data.hash} />
+          )}
           <DetailList label={t("detail.blockSummary")}>
             <Detail label={t("table.block")} value={formatInteger(block.data.number, locale)} />
             <Detail label={t("table.hash")} value={block.data.hash} mono />
-            <Detail label={t("detail.parentHash")} value={block.data.parent_hash} mono />
+            <Detail
+              label={t("detail.parentHash")}
+              mono
+              value={block.data.number === "0" ? block.data.parent_hash : (
+                <Link to="/blocks/$blockID" params={{ blockID: block.data.parent_hash }}>
+                  {block.data.parent_hash}
+                </Link>
+              )}
+            />
             <Detail label={t("table.age")} value={formatTimestamp(block.data.timestamp, locale)} />
             <Detail label={t("table.transactions")} value={formatInteger(block.data.transaction_count, locale)} />
             <Detail label={t("table.gas")} value={formatInteger(block.data.gas_used, locale)} />
             <Detail label={t("detail.gasLimit")} value={formatInteger(block.data.gas_limit, locale)} />
             <Detail label={t("detail.baseFee")} value={formatInteger(block.data.base_fee_per_gas, locale)} />
-            <Detail label={t("detail.miner")} value={block.data.miner} mono />
+            <Detail
+              label={t("detail.miner")}
+              mono
+              value={block.data.miner ? (
+                <Link to="/address/$address" params={{ address: block.data.miner }}>
+                  {block.data.miner}
+                </Link>
+              ) : undefined}
+            />
             <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
-            <Detail label={t("table.finality")} value={block.data.finality} />
+            <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />
           </DetailList>
           <CompletenessPanel completeness={block.data.completeness} />
         </>
@@ -360,13 +517,47 @@ function TransactionDetailPage({ hash }: { hash: string }) {
       <QueryNotice loading={transaction.isPending} error={transaction.error} />
       {transaction.data && (
         <>
+          {!transaction.data.canonical && (
+            <ReorgContext kind="transaction" hash={transaction.data.hash} />
+          )}
           <DetailList label={t("detail.transactionSummary")}>
             <Detail label={t("table.hash")} value={transaction.data.hash} mono />
-            <Detail label={t("table.status")} value={transaction.data.status ?? t("state.unknown")} />
-            <Detail label={t("table.block")} value={transaction.data.block_number} />
-            <Detail label={t("detail.blockHash")} value={transaction.data.block_hash} mono />
-            <Detail label={t("table.from")} value={transaction.data.from} mono />
-            <Detail label={t("table.to")} value={transaction.data.to ?? t("common.contractCreation")} mono={Boolean(transaction.data.to)} />
+            <Detail label={t("table.status")} value={transactionStatusLabel(transaction.data.status, t)} />
+            <Detail
+              label={t("table.block")}
+              value={transaction.data.block_hash ? (
+                <Link to="/blocks/$blockID" params={{ blockID: transaction.data.block_hash }}>
+                  {formatInteger(transaction.data.block_number, locale)}
+                </Link>
+              ) : undefined}
+            />
+            <Detail
+              label={t("detail.blockHash")}
+              mono
+              value={transaction.data.block_hash ? (
+                <Link to="/blocks/$blockID" params={{ blockID: transaction.data.block_hash }}>
+                  {transaction.data.block_hash}
+                </Link>
+              ) : undefined}
+            />
+            <Detail
+              label={t("table.from")}
+              mono
+              value={(
+                <Link to="/address/$address" params={{ address: transaction.data.from }}>
+                  {transaction.data.from}
+                </Link>
+              )}
+            />
+            <Detail
+              label={t("table.to")}
+              mono={Boolean(transaction.data.to)}
+              value={transaction.data.to ? (
+                <Link to="/address/$address" params={{ address: transaction.data.to }}>
+                  {transaction.data.to}
+                </Link>
+              ) : t("common.contractCreation")}
+            />
             <Detail label={t("detail.nonce")} value={formatInteger(transaction.data.nonce, locale)} />
             <Detail label={t("table.value")} value={formatInteger(transaction.data.value, locale)} />
             <Detail label={t("detail.gasLimit")} value={formatInteger(transaction.data.gas, locale)} />
@@ -374,7 +565,7 @@ function TransactionDetailPage({ hash }: { hash: string }) {
             <Detail label={t("detail.type")} value={transaction.data.type} />
             <Detail label={t("detail.input")} value={transaction.data.input} mono wide />
             <Detail label={t("detail.canonical")} value={yesNo(transaction.data.canonical, t)} />
-            <Detail label={t("table.finality")} value={transaction.data.finality} />
+            <Detail label={t("table.finality")} value={finalityLabel(transaction.data.finality, t)} />
           </DetailList>
           <CompletenessPanel completeness={transaction.data.completeness} />
         </>
@@ -436,12 +627,21 @@ function AddressDetailPage({ address }: { address: string }) {
           <DetailList label={t("detail.addressSummary")}>
             <Detail label={t("page.address")} value={account.data.address} mono />
             <Detail label={t("detail.name")} value={account.data.name} />
-            <Detail label={t("detail.type")} value={account.data.type} />
+            <Detail label={t("detail.type")} value={accountTypeLabel(account.data.type, t)} />
             <Detail label={t("detail.balance")} value={formatInteger(account.data.balance, locale)} />
             <Detail label={t("detail.nonce")} value={formatInteger(account.data.nonce, locale)} />
-            <Detail label={t("detail.atBlock")} value={account.data.at_block} mono />
+            <Detail
+              label={t("detail.atBlock")}
+              mono
+              value={(
+                <Link to="/blocks/$blockID" params={{ blockID: account.data.at_block }}>
+                  {account.data.at_block}
+                </Link>
+              )}
+            />
             <Detail label={t("detail.codeHash")} value={account.data.code_hash} mono />
           </DetailList>
+          <p className="context-note" role="note">{t("context.addressSnapshot")}</p>
           <CompletenessPanel completeness={account.data.completeness} />
         </>
       )}
@@ -544,6 +744,121 @@ function NFTDetailPage({ address, tokenID }: { address: string; tokenID: string 
   );
 }
 
+type ChainStatusContext = ChainStatus & {
+  coverage_start?: string;
+  coverage_end?: string;
+};
+
+function ChainContextPanel({ status }: { status: ChainStatusContext }) {
+  const { i18n, t } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? "en";
+  const coverageStart = status.coverage_start;
+  const coverageEnd = status.coverage_end ?? status.indexed_block;
+
+  return (
+    <section className="panel chain-context" aria-labelledby="chain-context-title">
+      <div className="panel-heading chain-context-heading">
+        <div>
+          <span className="eyebrow">{t("context.canonicalSnapshot")}</span>
+          <h2 id="chain-context-title">{t("context.coverageTitle")}</h2>
+        </div>
+        <span className={status.core_ready ? "availability yes" : "availability no"}>
+          {status.core_ready ? t("context.coreReady") : t("context.coreNotReady")}
+        </span>
+      </div>
+      <dl className="chain-context-grid">
+        <div>
+          <dt>{t("context.contiguousEnd")}</dt>
+          <dd>{formatInteger(status.indexed_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("context.coverageBounds")}</dt>
+          <dd>
+            {formatInteger(coverageStart, locale)} – {formatInteger(coverageEnd, locale)}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("home.highestCovered")}</dt>
+          <dd>{formatInteger(status.highest_covered_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("context.safeBlock")}</dt>
+          <dd>{formatInteger(status.safe_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("home.finality")}</dt>
+          <dd>{formatInteger(status.finalized_block, locale)}</dd>
+        </div>
+        <div>
+          <dt>{t("home.backfill")}</dt>
+          <dd>{status.backfill_complete ? t("home.backfillComplete") : t("home.backfillIncomplete")}</dd>
+        </div>
+      </dl>
+      {!status.backfill_complete && (
+        <p className="coverage-warning" role="status">{t("context.coverageIslandWarning")}</p>
+      )}
+    </section>
+  );
+}
+
+function ReorgContext({ kind, hash }: { kind: "block" | "transaction"; hash: string }) {
+  const { t } = useTranslation();
+  return (
+    <section className="reorg-context" role="status" aria-labelledby="reorg-context-title">
+      <span className="reorg-mark" aria-hidden="true">↺</span>
+      <div>
+        <h2 id="reorg-context-title">
+          {kind === "block" ? t("context.orphanBlock") : t("context.orphanTransaction")}
+        </h2>
+        <p>{t("context.orphanDetail")}</p>
+        <code>{hash}</code>
+      </div>
+    </section>
+  );
+}
+
+function CursorPagination({
+  busy,
+  hasNext,
+  hasPrevious,
+  label,
+  onNext,
+  onPrevious,
+  page,
+}: {
+  busy: boolean;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  label: string;
+  onNext: () => void;
+  onPrevious: () => void;
+  page: number;
+}) {
+  const { i18n, t } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? "en";
+  return (
+    <nav className="cursor-pagination" aria-busy={busy} aria-label={label}>
+      <button
+        className="button secondary"
+        disabled={!hasPrevious || busy}
+        onClick={onPrevious}
+        type="button"
+      >
+        {t("pagination.previous")}
+      </button>
+      <span aria-live="polite">{t("pagination.page", { page: formatInteger(page, locale) })}</span>
+      <button
+        className="button secondary"
+        disabled={!hasNext || busy}
+        onClick={onNext}
+        type="button"
+      >
+        {t("pagination.next")}
+      </button>
+    </nav>
+  );
+}
+
 function DetailList({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="panel detail-card" aria-label={label}>
@@ -553,7 +868,7 @@ function DetailList({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-function Detail({ label, value, mono, wide }: { label: string; value?: string; mono?: boolean; wide?: boolean }) {
+function Detail({ label, value, mono, wide }: { label: string; value?: React.ReactNode; mono?: boolean; wide?: boolean }) {
   return (
     <div className={wide ? "detail-item wide" : "detail-item"}>
       <dt>{label}</dt>
@@ -570,9 +885,9 @@ function CompletenessPanel({ completeness }: { completeness: Completeness }) {
       <ul>
         {Object.entries(completeness).map(([stage, state]) => (
           <li key={stage}>
-            <code>{stage}</code>
+            <code>{stageLabel(stage, t)}</code>
             <span className={state === "complete" ? "availability yes" : "availability no"}>
-              {state}
+              {stageStateLabel(state, t)}
             </span>
           </li>
         ))}
@@ -587,11 +902,76 @@ function CapabilityDegraded({ stage, state }: { stage: string; state: string }) 
     <div className="query-notice degraded" role="status">
       <span className="status-dot warning" aria-hidden="true" />
       <span>
-        <strong>{t("state.stageUnavailable", { stage })}</strong>
-        <small>{t("state.stageUnavailableDetail", { state, block: "" })}</small>
+        <strong>{t("state.stageUnavailable", { stage: stageLabel(stage, t) })}</strong>
+        <small>{t("state.stageUnavailableDetail", { state: stageStateLabel(state, t), block: "" })}</small>
       </span>
     </div>
   );
+}
+
+type Translate = ReturnType<typeof useTranslation>["t"];
+
+function finalityLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "pending": return t("finality.pending");
+    case "latest": return t("finality.latest");
+    case "safe": return t("finality.safe");
+    case "finalized": return t("finality.finalized");
+    case "orphan": return t("finality.orphan");
+    default: return value;
+  }
+}
+
+function transactionStatusLabel(value: string | undefined, t: Translate): string {
+  switch (value) {
+    case "pending": return t("transactionStatus.pending");
+    case "success": return t("transactionStatus.success");
+    case "failed": return t("transactionStatus.failed");
+    case "unknown": return t("transactionStatus.unknown");
+    default: return t("common.indexed");
+  }
+}
+
+function accountTypeLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "eoa": return t("accountType.eoa");
+    case "contract": return t("accountType.contract");
+    case "delegated_eoa": return t("accountType.delegatedEoa");
+    case "unknown": return t("accountType.unknown");
+    default: return t("accountType.unknown");
+  }
+}
+
+function stageLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "core": return t("stage.core");
+    case "trace": return t("stage.trace");
+    case "metadata": return t("stage.metadata");
+    case "state": return t("stage.state");
+    default: return value;
+  }
+}
+
+function stageStateLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "complete": return t("stageState.complete");
+    case "pending": return t("stageState.pending");
+    case "unavailable": return t("stageState.unavailable");
+    case "failed": return t("stageState.failed");
+    default: return value;
+  }
+}
+
+function searchKindLabel(value: SearchResult["kind"], t: Translate): string {
+  switch (value) {
+    case "block": return t("searchKind.block");
+    case "transaction": return t("searchKind.transaction");
+    case "address": return t("searchKind.address");
+    case "contract": return t("searchKind.contract");
+    case "token": return t("searchKind.token");
+    case "nft": return t("searchKind.nft");
+    case "label": return t("searchKind.label");
+  }
 }
 
 function yesNo(value: boolean, t: ReturnType<typeof useTranslation>["t"]): string {
@@ -712,13 +1092,10 @@ export function VerifyPage() {
   const publicConfig = usePublicConfig();
   const [apiKey, setAPIKey] = useState("");
   const [address, setAddress] = useState("");
-  const [codeHash, setCodeHash] = useState("");
-  const [atBlockHash, setAtBlockHash] = useState("");
   const [language, setLanguage] = useState<VerificationSubmission["language"]>("solidity");
   const [compilerVersion, setCompilerVersion] = useState("");
   const [contractIdentifier, setContractIdentifier] = useState("");
-  const [creationBytecode, setCreationBytecode] = useState("0x");
-  const [runtimeBytecode, setRuntimeBytecode] = useState("0x");
+  const [constructorArguments, setConstructorArguments] = useState("");
   const [standardJSON, setStandardJSON] = useState('{\n  "language": "Solidity",\n  "sources": {},\n  "settings": {}\n}');
   const [submitToSourcify, setSubmitToSourcify] = useState(false);
   const [formError, setFormError] = useState<string>();
@@ -751,12 +1128,9 @@ export function VerifyPage() {
     if (
       !apiKey ||
       !isAddress(address) ||
-      !HASH_PATTERN.test(codeHash) ||
-      !HASH_PATTERN.test(atBlockHash) ||
       !compilerVersion.trim() ||
       !contractIdentifier.trim() ||
-      !isHex(creationBytecode) ||
-      !isHex(runtimeBytecode)
+      !/^(?:0x)?[0-9a-fA-F]*$/.test(constructorArguments)
     ) {
       setFormError(t("verification.invalidFields"));
       return;
@@ -764,13 +1138,10 @@ export function VerifyPage() {
 
     submission.mutate({
       address: getAddress(address),
-      at_block_hash: atBlockHash,
-      code_hash: codeHash,
       compiler_version: compilerVersion.trim(),
+      constructor_arguments: constructorArguments || undefined,
       contract_identifier: contractIdentifier.trim(),
-      creation_bytecode: creationBytecode,
       language,
-      runtime_bytecode: runtimeBytecode,
       standard_json: parsed as Record<string, unknown>,
       submit_to_sourcify: submitToSourcify,
     });
@@ -788,8 +1159,6 @@ export function VerifyPage() {
             <p className="quiet">{t("verification.securityNotice")}</p>
             <div className="form-grid">
               <FormField id="verification-address" label={t("page.address")} value={address} onChange={setAddress} />
-              <FormField id="verification-code-hash" label={t("detail.codeHash")} value={codeHash} onChange={setCodeHash} />
-              <FormField id="verification-block-hash" label={t("verification.atBlockHash")} value={atBlockHash} onChange={setAtBlockHash} />
               <label className="field-control" htmlFor="verification-language">
                 <span>{t("verification.language")}</span>
                 <select id="verification-language" value={language} onChange={(event) => setLanguage(event.target.value as VerificationSubmission["language"])}>
@@ -799,8 +1168,7 @@ export function VerifyPage() {
               </label>
               <FormField id="verification-compiler" label={t("verification.compilerVersion")} value={compilerVersion} onChange={setCompilerVersion} />
               <FormField id="verification-contract" label={t("verification.contractIdentifier")} value={contractIdentifier} onChange={setContractIdentifier} />
-              <FormField id="verification-creation" label={t("verification.creationBytecode")} value={creationBytecode} onChange={setCreationBytecode} wide />
-              <FormField id="verification-runtime" label={t("verification.runtimeBytecode")} value={runtimeBytecode} onChange={setRuntimeBytecode} wide />
+              <FormField id="verification-constructor" label={t("verification.constructorArguments")} value={constructorArguments} onChange={setConstructorArguments} wide />
               <label className="field-control wide" htmlFor="verification-standard-json">
                 <span>{t("verification.standardJSON")}</span>
                 <textarea id="verification-standard-json" spellCheck={false} value={standardJSON} onChange={(event) => setStandardJSON(event.target.value)} />
@@ -819,10 +1187,12 @@ export function VerifyPage() {
                 />
                 <small>{t("verification.apiKeyNotice")}</small>
               </label>
-              <label className="checkbox-control wide">
-                <input checked={submitToSourcify} onChange={(event) => setSubmitToSourcify(event.target.checked)} type="checkbox" />
-                <span>{t("verification.sourcifyConsent")}</span>
-              </label>
+              {publicConfig.data?.features.sourcify && (
+                <label className="checkbox-control wide">
+                  <input checked={submitToSourcify} onChange={(event) => setSubmitToSourcify(event.target.checked)} type="checkbox" />
+                  <span>{t("verification.sourcifyConsent")}</span>
+                </label>
+              )}
             </div>
             {(formError || submission.error) && (
               <p className="form-error" role="alert">{formError ?? errorMessage(submission.error, t("verification.submitFailed"))}</p>
@@ -947,9 +1317,9 @@ export function StatusPage() {
             <ul>
               {Object.entries(status.data.completeness).map(([name, state]) => (
                 <li key={name}>
-                  <code>{name}</code>
+                  <code>{stageLabel(name, t)}</code>
                   <span className={state === "complete" ? "availability yes" : "availability no"}>
-                    {state === "complete" ? t("common.available") : `${t("common.unavailable")} (${state})`}
+                    {stageStateLabel(state, t)}
                   </span>
                 </li>
               ))}
@@ -963,42 +1333,78 @@ export function StatusPage() {
 
 export function SearchPage({ query }: { query: string }) {
   const { t } = useTranslation();
-  const search = useSearchResults(query);
+  const normalizedQuery = query.trim();
+  const pager = useCursorHistory(`search:${normalizedQuery}`);
+  const search = useSearchResults(
+    normalizedQuery,
+    pager.cursor,
+    SEARCH_PAGE_SIZE,
+    pager.refreshGeneration,
+  );
   return (
     <Page title={t("page.search")} description={query} mono>
-      <QueryNotice loading={search.isPending && query.length > 0} error={search.error} />
-      {search.data && search.data.length === 0 && <p className="empty-result">{t("state.noResults")}</p>}
+      {normalizedQuery.length === 0 && <p className="context-note">{t("search.prompt")}</p>}
+      <QueryNotice
+        loading={search.isPending && normalizedQuery.length > 0}
+        error={search.error}
+        onReset={pager.reset}
+      />
+      {search.data && search.data.items.length === 0 && (
+        <p className="empty-result" role="status">{t("state.noResults")}</p>
+      )}
       <div className="search-results">
-        {search.data?.map((result) => (
-          <a className="search-result" href={searchResultPath(result)} key={`${result.kind}:${result.key}`}>
-            <span className="result-kind">{result.kind}</span>
-            <span>
-              <strong>{result.label}</strong>
-              <small>{result.key}</small>
-            </span>
-            <span aria-hidden="true">→</span>
-          </a>
+        {search.data?.items.map((result) => (
+          <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
         ))}
       </div>
+      {search.data && (
+        <CursorPagination
+          busy={search.isFetching}
+          hasNext={Boolean(search.data.next_cursor)}
+          hasPrevious={pager.hasPrevious}
+          label={t("pagination.search")}
+          onNext={() => pager.next(search.data?.next_cursor)}
+          onPrevious={pager.previous}
+          page={pager.page}
+        />
+      )}
     </Page>
   );
 }
 
-function searchResultPath(result: SearchResult): string {
-  const key = encodeURIComponent(result.key);
+function SearchResultLink({ result }: { result: SearchResult }) {
+  const { t } = useTranslation();
+  const content = (
+    <>
+      <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
+      <span>
+        <strong>{result.label}</strong>
+        <small>{result.key}</small>
+      </span>
+      <span className="search-result-tail">
+        {result.canonical !== undefined && (
+          <span className={result.canonical ? "availability yes" : "orphan-label"}>
+            {result.canonical ? t("common.canonical") : t("common.orphan")}
+          </span>
+        )}
+        <span aria-hidden="true">→</span>
+      </span>
+    </>
+  );
+
   switch (result.kind) {
     case "block":
-      return `/blocks/${key}`;
+      return <Link className="search-result" to="/blocks/$blockID" params={{ blockID: result.key }}>{content}</Link>;
     case "transaction":
-      return `/tx/${key}`;
+      return <Link className="search-result" to="/tx/$hash" params={{ hash: result.key }}>{content}</Link>;
     case "address":
-      return `/address/${key}`;
+      return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
     case "contract":
-      return `/contract/${key}`;
+      return <Link className="search-result" to="/contract/$address" params={{ address: result.key }} search={{ code_hash: "" }}>{content}</Link>;
     case "token":
-      return `/token/${key}`;
+      return <Link className="search-result" to="/token/$address" params={{ address: result.key }}>{content}</Link>;
     default:
-      return `/search?q=${key}`;
+      return <a className="search-result" href={`/search?q=${encodeURIComponent(result.key)}`}>{content}</a>;
   }
 }
 

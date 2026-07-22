@@ -1,7 +1,50 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "minReplicas",
+        "maxReplicas",
+        "targetCPUUtilizationPercentage"
+      ],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minReplicas": {"type": "integer", "minimum": 1},
+        "maxReplicas": {"type": "integer", "minimum": 1},
+        "targetCPUUtilizationPercentage": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "replicas", "autoscaling"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "replicas": {"type": "integer", "minimum": 1},
+        "autoscaling": {"$ref": "#/$defs/autoscaling"}
+      }
+    },
+    "secretKey": {"type": "string", "minLength": 1, "maxLength": 253}
+  },
   "type": "object",
-  "required": ["image", "mode", "roles", "secrets", "config"],
+  "required": [
+    "image",
+    "mode",
+    "roles",
+    "resources",
+    "migration",
+    "secrets",
+    "externalSecret",
+    "config",
+    "networkPolicy"
+  ],
   "properties": {
     "mode": {
       "type": "string",
@@ -13,31 +56,281 @@
       "properties": {
         "repository": {"type": "string", "minLength": 1},
         "tag": {"type": "string"},
-        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
       }
     },
     "roles": {
       "type": "object",
-      "required": ["all", "api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]
+      "additionalProperties": false,
+      "required": [
+        "all",
+        "api",
+        "sync",
+        "enrich",
+        "trace",
+        "verify",
+        "metadata",
+        "maintenance"
+      ],
+      "properties": {
+        "all": {"$ref": "#/$defs/role"},
+        "api": {"$ref": "#/$defs/role"},
+        "sync": {"$ref": "#/$defs/role"},
+        "enrich": {"$ref": "#/$defs/role"},
+        "trace": {"$ref": "#/$defs/role"},
+        "verify": {"$ref": "#/$defs/role"},
+        "metadata": {"$ref": "#/$defs/role"},
+        "maintenance": {"$ref": "#/$defs/role"}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": {
+          "type": "object",
+          "required": ["cpu", "memory"],
+          "properties": {
+            "cpu": {"type": "string", "minLength": 1},
+            "memory": {"type": "string", "minLength": 1}
+          }
+        },
+        "limits": {
+          "type": "object",
+          "required": ["cpu", "memory"],
+          "properties": {
+            "cpu": {"type": "string", "minLength": 1},
+            "memory": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "backoffLimit",
+        "activeDeadlineSeconds",
+        "ttlSecondsAfterFinished"
+      ],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "backoffLimit": {"type": "integer", "minimum": 0, "maximum": 20},
+        "activeDeadlineSeconds": {"type": "integer", "minimum": 1},
+        "ttlSecondsAfterFinished": {"type": "integer", "minimum": 0}
+      }
     },
     "secrets": {
       "type": "object",
-      "required": ["existingSecret", "databaseURLKey", "rpcURLsKey", "apiKeyPepperKey"],
+      "additionalProperties": false,
+      "required": [
+        "existingSecret",
+        "databaseURLKey",
+        "rpcURLsKey",
+        "apiKeyPepperKey",
+        "natsURLKey",
+        "redisURLKey",
+        "s3AccessKeyKey",
+        "s3SecretKeyKey",
+        "s3SessionTokenKey",
+        "otlpTraceEndpointKey",
+        "otlpTraceHeadersKey"
+      ],
       "properties": {
-        "existingSecret": {"type": "string", "minLength": 1},
-        "databaseURLKey": {"type": "string", "minLength": 1},
-        "rpcURLsKey": {"type": "string", "minLength": 1},
-        "apiKeyPepperKey": {"type": "string", "minLength": 1},
-        "natsURLKey": {"type": "string", "minLength": 1},
-        "redisURLKey": {"type": "string", "minLength": 1},
-        "s3AccessKeyKey": {"type": "string", "minLength": 1},
-        "s3SecretKeyKey": {"type": "string", "minLength": 1},
-        "s3SessionTokenKey": {"type": "string", "minLength": 1}
+        "existingSecret": {"type": "string", "minLength": 1, "maxLength": 253},
+        "databaseURLKey": {"$ref": "#/$defs/secretKey"},
+        "rpcURLsKey": {"$ref": "#/$defs/secretKey"},
+        "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
+        "natsURLKey": {"$ref": "#/$defs/secretKey"},
+        "redisURLKey": {"$ref": "#/$defs/secretKey"},
+        "s3AccessKeyKey": {"$ref": "#/$defs/secretKey"},
+        "s3SecretKeyKey": {"$ref": "#/$defs/secretKey"},
+        "s3SessionTokenKey": {"$ref": "#/$defs/secretKey"},
+        "otlpTraceEndpointKey": {"$ref": "#/$defs/secretKey"},
+        "otlpTraceHeadersKey": {"$ref": "#/$defs/secretKey"}
+      }
+    },
+    "externalSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "apiVersion",
+        "refreshInterval",
+        "secretStoreRef",
+        "databaseURLRemoteKey",
+        "rpcURLsRemoteKey",
+        "apiKeyPepperRemoteKey",
+        "natsURLRemoteKey",
+        "redisURLRemoteKey",
+        "s3AccessKeyRemoteKey",
+        "s3SecretKeyRemoteKey",
+        "s3SessionTokenRemoteKey",
+        "otlpTraceEndpointRemoteKey",
+        "otlpTraceHeadersRemoteKey"
+      ],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "apiVersion": {"type": "string", "minLength": 1},
+        "refreshInterval": {"type": "string", "minLength": 1},
+        "secretStoreRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "kind"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "kind": {"type": "string", "enum": ["SecretStore", "ClusterSecretStore"]}
+          }
+        },
+        "databaseURLRemoteKey": {"type": "string", "minLength": 1},
+        "rpcURLsRemoteKey": {"type": "string", "minLength": 1},
+        "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
+        "natsURLRemoteKey": {"type": "string"},
+        "redisURLRemoteKey": {"type": "string"},
+        "s3AccessKeyRemoteKey": {"type": "string"},
+        "s3SecretKeyRemoteKey": {"type": "string"},
+        "s3SessionTokenRemoteKey": {"type": "string"},
+        "otlpTraceEndpointRemoteKey": {"type": "string"},
+        "otlpTraceHeadersRemoteKey": {"type": "string"}
       }
     },
     "config": {
       "type": "object",
-      "required": ["server", "chain", "database", "rpc", "runtime", "maintenance", "features", "security", "verification", "adapters"]
+      "required": [
+        "server",
+        "chain",
+        "database",
+        "rpc",
+        "runtime",
+        "maintenance",
+        "observability",
+        "features",
+        "security",
+        "verification",
+        "sourcify",
+        "adapters"
+      ],
+      "properties": {
+        "database": {
+          "type": "object",
+          "required": ["url"],
+          "properties": {
+            "url": {
+              "const": "",
+              "description": "Database credentials must come from secrets.existingSecret."
+            }
+          }
+        },
+        "rpc": {
+          "type": "object",
+          "required": ["endpoints"],
+          "properties": {
+            "endpoints": {
+              "type": "array",
+              "maxItems": 0,
+              "description": "RPC URLs must come from secrets.existingSecret."
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "required": ["api_key_pepper"],
+          "properties": {
+            "api_key_pepper": {
+              "const": "",
+              "description": "The API-key pepper must come from secrets.existingSecret."
+            }
+          }
+        },
+        "observability": {
+          "type": "object",
+          "required": ["otlp_trace_endpoint"],
+          "properties": {
+            "otlp_trace_endpoint": {
+              "const": "",
+              "description": "The OTLP trace endpoint must come from secrets.existingSecret."
+            }
+          }
+        },
+        "adapters": {
+          "type": "object",
+          "required": [
+            "nats_url",
+            "redis_url",
+            "s3_access_key",
+            "s3_secret_key",
+            "s3_session_token"
+          ],
+          "properties": {
+            "nats_url": {
+              "const": "",
+              "description": "The NATS URL must come from secrets.existingSecret."
+            },
+            "redis_url": {
+              "const": "",
+              "description": "The Redis URL must come from secrets.existingSecret."
+            },
+            "s3_access_key": {
+              "const": "",
+              "description": "The S3 access key must come from secrets.existingSecret."
+            },
+            "s3_secret_key": {
+              "const": "",
+              "description": "The S3 secret key must come from secrets.existingSecret."
+            },
+            "s3_session_token": {
+              "const": "",
+              "description": "The S3 session token must come from secrets.existingSecret."
+            }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "allowExternalHTTPS", "additionalEgress"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "allowExternalHTTPS": {"type": "boolean"},
+        "additionalEgress": {"type": "array", "items": {"type": "object"}}
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["mode"],
+        "properties": {"mode": {"const": "monolith"}}
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "properties": {
+              "all": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["mode"],
+        "properties": {"mode": {"const": "distributed"}}
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "properties": {
+              "api": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        }
+      }
+    }
+  ]
 }

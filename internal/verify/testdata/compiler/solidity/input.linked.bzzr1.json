@@ -1,0 +1,45 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "contracts/MathLib.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity =0.8.30;\nlibrary MathLib {\n    function bump(uint256 value) external pure returns (uint256) {\n        return value + 7;\n    }\n}\n"
+    },
+    "contracts/Scale.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity =0.8.30;\nlibrary Scale {\n    function local(uint256 value) internal pure returns (uint256) {\n        return value * 3;\n    }\n}\n"
+    },
+    "contracts/Target.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity =0.8.30;\nimport {MathLib} from \"./MathLib.sol\";\nimport {Scale} from \"./Scale.sol\";\ncontract Target {\n    address public immutable owner;\n    uint256 public immutable seed;\n\n    constructor(address owner_, uint256 seed_) {\n        owner = owner_;\n        seed = seed_;\n    }\n\n    function score(uint256 value) external view returns (uint256) {\n        require(msg.sender == owner, \"owner\");\n        return MathLib.bump(value) + Scale.local(seed);\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "metadata": {
+      "bytecodeHash": "bzzr1",
+      "appendCBOR": true
+    },
+    "libraries": {
+      "contracts/MathLib.sol": {
+        "MathLib": "0x1111111111111111111111111111111111111111"
+      }
+    },
+    "outputSelection": {
+      "*": {
+        "": [
+          "ast"
+        ],
+        "*": [
+          "abi",
+          "metadata",
+          "evm.bytecode.object",
+          "evm.bytecode.linkReferences",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.linkReferences",
+          "evm.deployedBytecode.immutableReferences"
+        ]
+      }
+    }
+  }
+}

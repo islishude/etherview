@@ -66,6 +66,15 @@ type memoryRangeExecutor struct {
 	panicRepair     bool
 }
 
+type recordingRequestObserver struct {
+	operation string
+	result    string
+}
+
+func (observer *recordingRequestObserver) RecordMaintenanceRequest(operation, result string) {
+	observer.operation, observer.result = operation, result
+}
+
 func (executor *memoryRangeExecutor) Repair(_ context.Context, request Request) error {
 	executor.mu.Lock()
 	defer executor.mu.Unlock()
@@ -115,6 +124,21 @@ func TestWorkerDispatchesRepairAndReindexBoundaries(t *testing.T) {
 				t.Fatalf("executor=%+v", executor)
 			}
 		})
+	}
+}
+
+func TestWorkerObservesPersistedMaintenanceOutcome(t *testing.T) {
+	repository := &memoryMaintenanceRepository{lease: Lease{Request: validRequest()}, found: true}
+	observer := &recordingRequestObserver{}
+	worker, err := NewWorker(repository, &memoryRangeExecutor{}, WorkerOptions{WorkerID: "worker", Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found, err := worker.ProcessOne(t.Context()); err != nil || !found {
+		t.Fatalf("found=%t error=%v", found, err)
+	}
+	if observer.operation != "repair" || observer.result != "succeeded" {
+		t.Fatalf("maintenance observation operation=%q result=%q", observer.operation, observer.result)
 	}
 }
 

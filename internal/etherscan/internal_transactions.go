@@ -53,6 +53,12 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	var end *string
 	if rawHash != "" {
 		block, err := b.canonicalTransactionBlock(ctx, tx, transactionHashBytes.([]byte))
+		if errors.Is(err, ErrNotFound) {
+			if _, coverageErr := b.requireCanonicalCoreRange(ctx, tx, "0", nil); coverageErr != nil {
+				return nil, coverageErr
+			}
+			return nil, ErrNotFound
+		}
 		if err != nil {
 			return nil, err
 		}

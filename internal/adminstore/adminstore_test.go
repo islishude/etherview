@@ -1,9 +1,19 @@
 package adminstore
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 )
+
+func TestRepairRequestListLimitIsBoundedBeforeDatabaseUse(t *testing.T) {
+	repository := &Repository{db: &sql.DB{}, chainID: "1"}
+	for _, limit := range []int{0, -1, 1001} {
+		if _, err := repository.RepairRequests(t.Context(), limit); err == nil || !strings.Contains(err.Error(), "between 1 and 1000") {
+			t.Fatalf("limit %d error=%v", limit, err)
+		}
+	}
+}
 
 func TestValidateLabel(t *testing.T) {
 	t.Parallel()

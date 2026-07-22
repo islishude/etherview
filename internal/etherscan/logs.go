@@ -29,6 +29,7 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		arguments[1] = value.String()
 	}
 	clauses := []string{"log.block_number >= $2::numeric"}
+	var coverageEnd *string
 	if raw := strings.TrimSpace(values.Get("toBlock")); raw != "" {
 		value, err := parseDecimal(raw, "toBlock")
 		if err != nil {
@@ -37,7 +38,9 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 		if value.Cmp(mustBig(arguments[1].(string))) < 0 {
 			return nil, invalidParameter("toBlock is less than fromBlock")
 		}
-		arguments = append(arguments, value.String())
+		text := value.String()
+		coverageEnd = &text
+		arguments = append(arguments, text)
 		clauses = append(clauses, fmt.Sprintf("log.block_number <= $%d::numeric", len(arguments)))
 	}
 	if raw := strings.TrimSpace(values.Get("address")); raw != "" {
@@ -57,12 +60,20 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if topicClause != "" {
 		clauses = append(clauses, topicClause)
 	}
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err := b.requireCanonicalCoreRange(ctx, tx, arguments[1].(string), coverageEnd); err != nil {
+		return nil, err
+	}
 	arguments = append(arguments, page.limit, page.offset)
 	query := fmt.Sprintf(
 		logsSQL, strings.Join(clauses, " AND "), page.direction, page.direction,
 		page.direction, len(arguments)-1, len(arguments),
 	)
-	rows, err := b.db.QueryContext(ctx, query, arguments...)
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
@@ -78,8 +89,14 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate logs: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close logs: %w", err)
+	}
 	if len(result) == 0 {
 		return nil, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit log snapshot: %w", err)
 	}
 	return result, nil
 }
@@ -278,18 +295,22 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 	}
 	result := logEntry{
 		Address: address, Topics: make([]string, len(wireLog.Topics)), Data: wireLog.Data.String(),
-		BlockNumber: blockNumber.String(), BlockHash: strings.ToLower(blockHash.String()), LogIndex: strconv.FormatInt(logIndex, 10),
-		TransactionHash: strings.ToLower(transactionHash.String()), TransactionIndex: strconv.FormatInt(transactionIndex, 10),
+		BlockNumber: "0x" + blockNumber.Text(16), BlockHash: strings.ToLower(blockHash.String()),
+		LogIndex:         "0x" + strconv.FormatInt(logIndex, 16),
+		TransactionHash:  strings.ToLower(transactionHash.String()),
+		TransactionIndex: "0x" + strconv.FormatInt(transactionIndex, 16),
 	}
 	for index, topic := range wireLog.Topics {
 		result.Topics[index] = strings.ToLower(topic.String())
 	}
-	if result.TimeStamp, err = decimalQuantity(block.Timestamp); err != nil {
+	if _, err = block.Timestamp.Big(); err != nil {
 		return logEntry{}, fmt.Errorf("decode log block timestamp: %w", err)
 	}
-	if result.GasUsed, err = decimalQuantity(*receipt.GasUsed); err != nil {
+	result.TimeStamp = block.Timestamp.String()
+	if _, err = receipt.GasUsed.Big(); err != nil {
 		return logEntry{}, fmt.Errorf("decode log receipt gas used: %w", err)
 	}
+	result.GasUsed = receipt.GasUsed.String()
 	gasPrice := receipt.EffectiveGasPrice
 	if gasPrice == nil {
 		gasPrice = transaction.GasPrice
@@ -297,9 +318,10 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 	if gasPrice == nil {
 		return logEntry{}, errors.New("stored log transaction has no effective gas price")
 	}
-	if result.GasPrice, err = decimalQuantity(*gasPrice); err != nil {
+	if _, err = gasPrice.Big(); err != nil {
 		return logEntry{}, fmt.Errorf("decode log gas price: %w", err)
 	}
+	result.GasPrice = gasPrice.String()
 	return result, nil
 }
 

@@ -1,0 +1,58 @@
+{
+  "compiler": "vyper-0.4.1",
+  "contracts": {
+    "contracts/Matrix.vy": {
+      "Matrix": {
+        "abi": [
+          {
+            "inputs": [],
+            "name": "answer",
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint256"
+              }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          }
+        ],
+        "evm": {
+          "bytecode": {
+            "object": "0x61002761000f6000396100276000f35f3560e01c6385bb7d69811861001f573461002357602a60405260206040f35b5f5ffd5b5f80fd855820f357c9c24622e80903b90d293d26080a45da96f04e090ea509cc45e29b5a369c18278000a1657679706572830004010034"
+          },
+          "deployedBytecode": {
+            "object": "0x5f3560e01c6385bb7d69811861001f573461002357602a60405260206040f35b5f5ffd5b5f80fd"
+          }
+        },
+        "layout": {},
+        "metadata": {
+          "function_info": {
+            "answer (0)": {
+              "_ir_identifier": "external 0 answer()",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 32,
+                "frame_start": 64
+              },
+              "function_id": 0,
+              "keyword_args": {},
+              "module_path": "contracts/Matrix.vy",
+              "mutability": "view",
+              "name": "answer",
+              "positional_args": {},
+              "return_type": "uint256",
+              "source_id": 0,
+              "visibility": "external"
+            }
+          }
+        }
+      }
+    }
+  },
+  "sources": {
+    "contracts/Matrix.vy": {
+      "id": 0
+    }
+  }
+}

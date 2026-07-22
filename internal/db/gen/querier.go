@@ -20,6 +20,8 @@ type Querier interface {
 	ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaMigration, error)
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
 	ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric) ([]ListOperatorLabelsRow, error)
+	ListRepairRequests(ctx context.Context, chainID pgtype.Numeric, rowLimit int32) ([]ListRepairRequestsRow, error)
+	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
 	RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error
 	RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAdapterSuccessParams) (RecordNameAdapterSuccessRow, error)

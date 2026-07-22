@@ -66,6 +66,32 @@ func (fetcher fetcherFunc) Fetch(ctx context.Context, rawURL string, kind Kind) 
 	return fetcher(ctx, rawURL, kind)
 }
 
+type recordingFetchObserver struct{ results []string }
+
+func (observer *recordingFetchObserver) RecordMetadataFetch(result string) {
+	observer.results = append(observer.results, result)
+}
+
+func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
+	repository := readyFakeRepository(t, 1, 3)
+	observer := &recordingFetchObserver{}
+	worker, err := NewWorker(repository, fetcherFunc(func(_ context.Context, rawURL string, _ Kind) (Result, error) {
+		return Result{URL: rawURL, ContentType: "application/json", Body: []byte(`{"name":"NFT"}`)}, nil
+	}), WorkerOptions{
+		WorkerID: "test-worker", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+		RetryBase: time.Millisecond, RetryMaximum: 10 * time.Millisecond, Observer: observer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
+		t.Fatalf("processed=%t error=%v", processed, err)
+	}
+	if len(observer.results) != 1 || observer.results[0] != "succeeded" {
+		t.Fatalf("metadata observations=%v", observer.results)
+	}
+}
+
 func TestWorkerPersistsAvailableDocument(t *testing.T) {
 	t.Parallel()
 	repository := readyFakeRepository(t, 1, 3)

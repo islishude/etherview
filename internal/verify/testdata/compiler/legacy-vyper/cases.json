@@ -1,0 +1,33 @@
+{
+  "source": "The version-pinned official PyPI Vyper compilers generated every bytecode. Their installed official compile_ir.py source defines the three footer encodings.",
+  "contract": "minimal-<version>.vy exposes a single pure-size view function ping() returning 1.",
+  "cases": {
+    "0.3.4": {
+      "compilerCommit": "f31f0ec",
+      "creationBytes": 92,
+      "runtimeBytes": 77,
+      "executionBytes": 66,
+      "auxdataBytes": 11,
+      "auxdataHex": "0xa165767970657283000304",
+      "style": "fixed 11-byte CBOR map, no length field; present in runtime and embedded runtime in creation"
+    },
+    "0.3.9": {
+      "compilerCommit": "66b9670",
+      "creationBytes": 82,
+      "runtimeBytes": 67,
+      "executionBytes": 54,
+      "auxdataBytes": 13,
+      "auxdataHex": "0xa165767970657283000309000b",
+      "style": "CBOR map plus two-byte payload length that excludes the length field; present in runtime and embedded runtime in creation"
+    },
+    "0.3.10": {
+      "compilerCommit": "9136169",
+      "creationBytes": 72,
+      "runtimeBytes": 39,
+      "executionBytes": 39,
+      "auxdataBytes": 18,
+      "auxdataHex": "0x8418278000a16576797065728300030a0012",
+      "style": "four-element CBOR creation tuple plus two-byte inclusive total length; runtime has no auxdata"
+    }
+  }
+}

@@ -13,55 +13,93 @@ spec:
     - name: etherview.runtime
       rules:
         - alert: EtherviewSyncLagHigh
-          expr: max(etherview_sync_lag_blocks) > {{ .Values.prometheusRule.syncLagBlocks }}
+          expr: max(etherview_sync_lag_blocks{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) > {{ .Values.prometheusRule.syncLagBlocks }}
           for: 5m
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: warning
           annotations:
             summary: Etherview canonical indexing is behind upstream
         - alert: EtherviewCanonicalSafetyHalt
-          expr: max(etherview_sync_halted{reason=~"finalized_reorg|reorg_too_deep|no_common_ancestor|source_inconsistent"}) > 0
+          expr: max(etherview_sync_halted{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",reason=~"finalized_reorg|reorg_too_deep|no_common_ancestor|source_inconsistent"}) > 0
           for: 0m
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: critical
           annotations:
             summary: Etherview stopped core sync at a canonical safety boundary
         - alert: EtherviewRPCErrorRateHigh
-          expr: sum(rate(etherview_rpc_requests_total{result="error"}[5m])) / clamp_min(sum(rate(etherview_rpc_requests_total[5m])), 0.001) > 0.10
+          expr: sum(rate(etherview_rpc_requests_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="error"}[5m])) / clamp_min(sum(rate(etherview_rpc_requests_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}[5m])), 0.001) > 0.10
           for: 10m
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: warning
           annotations:
             summary: More than ten percent of Etherview RPC calls are failing
         - alert: EtherviewDurableJobBacklog
-          expr: max(etherview_jobs_pending) > {{ .Values.prometheusRule.pendingJobs }}
+          expr: max(etherview_jobs_pending{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) > {{ .Values.prometheusRule.pendingJobs }}
           for: 10m
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: warning
           annotations:
             summary: Etherview PostgreSQL job backlog is growing
-        - alert: EtherviewTraceFailures
-          expr: sum(increase(etherview_trace_jobs_total{result=~"error|timeout"}[10m])) > 5
+        - alert: EtherviewMetricsSnapshotStale
+          expr: time() - max(etherview_observability_last_refresh_timestamp_seconds{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) > {{ .Values.prometheusRule.metricsRefreshStaleSeconds }}
+          for: 5m
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
+            severity: warning
+          annotations:
+            summary: Etherview cannot refresh PostgreSQL-backed operational metrics
+        - alert: EtherviewRepairQueueStalled
+          expr: max(etherview_repair_oldest_queued_seconds{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) > {{ .Values.prometheusRule.repairQueueAgeSeconds }}
+          for: 5m
+          labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
+            severity: warning
+          annotations:
+            summary: An Etherview repair or reindex request is waiting too long
+        - alert: EtherviewRepairExecutionFailures
+          expr: sum(increase(etherview_maintenance_requests_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result=~"failed|error"}[10m])) > 0
+          labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
+            severity: warning
+          annotations:
+            summary: An Etherview repair or reindex execution failed
+        - alert: EtherviewTraceFailures
+          expr: sum(increase(etherview_trace_jobs_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result=~"failed|error|timeout"}[10m])) > 5
+          labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: warning
           annotations:
             summary: Etherview trace jobs are repeatedly failing
         - alert: EtherviewVerificationFailures
-          expr: sum(increase(etherview_verification_jobs_total{result=~"error|timeout|resource_exhausted"}[10m])) > 5
+          expr: sum(increase(etherview_verification_jobs_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result=~"failed|error|timeout|resource_exhausted"}[10m])) > 5
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: warning
           annotations:
             summary: Etherview verification jobs are repeatedly failing
         - alert: EtherviewMetadataSSRFRejected
-          expr: sum(increase(etherview_metadata_fetches_total{result="ssrf_rejected"}[5m])) > 0
+          expr: sum(increase(etherview_metadata_fetches_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="ssrf_rejected"}[5m])) > 0
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: info
           annotations:
             summary: Etherview blocked a metadata SSRF attempt
         - alert: EtherviewRateLimitPressure
-          expr: sum(increase(etherview_rate_limit_decisions_total{decision="rejected"}[5m])) > 100
+          expr: sum(increase(etherview_rate_limit_decisions_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",decision="rejected"}[5m])) > 100
           labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
             severity: info
           annotations:
             summary: Etherview is rejecting sustained request volume
+        - alert: EtherviewHTTPHandlerPanics
+          expr: sum(increase(etherview_http_panics_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}[5m])) > 0
+          labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
+            severity: warning
+          annotations:
+            summary: Etherview recovered an HTTP handler panic
 {{- end }}

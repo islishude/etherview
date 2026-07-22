@@ -1,18 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
+const transactionCursor = "transactions/snapshot?generation=7 + page=2&exact=true/#";
 
 test("embedded SPA deep links, language, theme, and keyboard entry remain functional", async ({ page }) => {
   const response = await page.goto("/blocks/1");
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Block", exact: true })).toBeVisible();
-  await expect(page.getByText("finalized", { exact: true })).toBeVisible();
+  await expect(page.getByText("Finalized", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Switch color theme" }).click();
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-  await page.getByRole("button", { name: "切换到中文" }).click();
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await expect(page.getByRole("navigation", { name: "主导航" }).getByText("区块", { exact: true })).toBeVisible();
 
@@ -22,6 +23,65 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(skipLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
+});
+
+test("core explorer keeps canonical cursor pages and retained orphan context explicit", async ({
+  page,
+}) => {
+  const transactionCursors: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/transactions" && url.searchParams.has("cursor")) {
+      transactionCursors.push(url.searchParams.get("cursor") ?? "");
+    }
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Coverage and finality context" })).toBeVisible();
+  await expect(page.getByText("0 – 2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "#2" })).toHaveAttribute(
+    "href",
+    "/blocks/0x2222222222222222222222222222222222222222222222222222222222222222",
+  );
+
+  await page.goto("/blocks");
+  await expect(page.getByRole("note")).toContainText("This list contains canonical blocks only");
+  await expect(page.getByRole("link", { name: "2" })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Next page" }));
+  await expect(page.getByRole("link", { name: "1" })).toBeVisible();
+  await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+
+  await page.goto("/transactions");
+  await expect(page.getByText("900,719,925,474,099,312,345", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Next page" }));
+  const secondPageTransaction = page.getByRole("link", { name: /0xbbbbbb…bbbbbb/ });
+  await expect(secondPageTransaction).toBeVisible();
+  await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+  expect(transactionCursors).toContain(transactionCursor);
+  await activateInView(secondPageTransaction);
+  await expect(page.getByRole("heading", { name: "Transaction summary" })).toBeVisible();
+  await expect(page.getByText("Finalized", { exact: true })).toBeVisible();
+  await activateInView(page.getByRole("link", { name: address, exact: true }).first());
+  await expect(page.getByRole("heading", { name: "Address summary" })).toBeVisible();
+  await expect(page.getByText("900,719,925,474,099,312,345", { exact: true })).toBeVisible();
+  await expect(page.getByText(/unavailable state is never displayed as zero/)).toBeVisible();
+
+  const search = page.getByRole("searchbox", { name: "Search" });
+  await search.fill("activity");
+  await search.press("Enter");
+  await expect(page.getByRole("link", { name: /Canonical transaction/ })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Next page" }));
+  const orphan = page.getByRole("link", { name: /Retained orphan block #1/ });
+  await expect(orphan).toBeVisible();
+  await expect(orphan.getByText("Orphan", { exact: true })).toBeVisible();
+  await activateInView(orphan);
+  await expect(page.getByRole("heading", { name: "Retained orphan block" })).toBeVisible();
+  await expect(page.getByText("Orphan", { exact: true })).toBeVisible();
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByRole("heading", { name: "已保留孤块" })).toBeVisible();
+  await expect(page.getByText("孤链", { exact: true })).toBeVisible();
 });
 
 test("embedded server isolates SPA fallback and serves only hashed immutable assets", async ({
@@ -103,6 +163,7 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
 test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewport", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const externalRequests: string[] = [];
@@ -112,8 +173,10 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
     }
   });
 
-  await page.goto("/blocks/1");
-  await expect(page.getByRole("heading", { name: "Block", exact: true })).toBeVisible();
+  await page.goto("/blocks");
+  await expect(page.getByRole("heading", { name: "Blocks", exact: true })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByText("Loading indexed data…", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Switch color theme" })).toBeVisible();
   await expect(page.getByRole("button", { name: "切换到中文" })).toBeVisible();
 
@@ -122,16 +185,10 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
     .analyze();
   expect(lightScan.violations, JSON.stringify(lightScan.violations, null, 2)).toEqual([]);
 
-  await page.getByRole("button", { name: "Switch color theme" }).click();
-  await page.getByRole("button", { name: "切换到中文" }).click();
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(1);
-  expect(externalRequests).toEqual([]);
 
   const reducedMotion = await page.evaluate(() => {
     const probe = document.createElement("span");
@@ -159,6 +216,14 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
     darkChineseScan.violations,
     JSON.stringify(darkChineseScan.violations, null, 2),
   ).toEqual([]);
+
+  await expect(page.getByRole("heading", { name: "区块", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(externalRequests).toEqual([]);
 });
 
 test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatch", async ({ page }) => {
@@ -187,10 +252,19 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
   });
 
   await page.goto(`/contract/${address}`);
-  await page.getByText("Connect wallet", { exact: true }).first().click();
-  await page.getByRole("button", { name: /E2E Wallet/ }).click();
+  await activateInView(page.getByText("Connect wallet", { exact: true }).first());
+  await activateInView(page.getByRole("button", { name: /E2E Wallet/ }));
 
   await expect(page.getByRole("status").filter({ hasText: "Switch the wallet to chain 1 (currently 2)." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Read contract" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Send transaction" })).toBeDisabled();
 });
+
+async function activateInView(locator: Locator) {
+  await locator.evaluate((element) => {
+    element.scrollIntoView({ behavior: "instant", block: "center" });
+    (element as HTMLElement).focus({ preventScroll: true });
+  });
+  await expect(locator).toBeFocused();
+  await locator.press("Enter");
+}

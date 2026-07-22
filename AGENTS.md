@@ -37,6 +37,11 @@ in `PLAN.md` and `docs/plans/`, not here.
   path, and is withdrawn before cancellation. An early clean exit is a failure;
   peer shutdown is bounded by `server.shutdown_timeout` and must name any
   component that does not stop within that budget.
+- Helm starts every application Pod only after checksum-aware `migrate status`
+  succeeds, while the revision migration Job runs the advisory-locked
+  `migrate up`. ConfigMaps must reject inline database, RPC, API-pepper, NATS,
+  Redis, and S3 credentials in favor of existing Secret or ExternalSecret
+  references, and every NetworkPolicy exception must remain explicit.
 - PostgreSQL is the correctness source for chain data, canonicality, jobs,
   leases, and outbox state. NATS, Redis, and S3 must remain optional.
 - Core block, transaction, receipt, log, and withdrawal ingestion must not wait
@@ -115,6 +120,24 @@ in `PLAN.md` and `docs/plans/`, not here.
 - Log hostile-boundary failures using stable error codes or concrete error
   types. Do not attach raw RPC, database, compiler, metadata, or panic errors
   to structured logs because nested messages may contain credentials or input.
+- OTLP tracing is disabled unless an explicit server-only collector endpoint
+  is configured. Collector headers are also server-only Secret inputs. Its
+  exporter is flushed through the shared bounded supervisor and exporter loss
+  never changes readiness or request results. A remote sampled parent keeps
+  its trace identity, but its export decision uses fresh server-side randomness
+  independent of the caller-controlled trace ID and replay. An escaping HTTP
+  panic preserves the selected native, compatibility, or operational boundary;
+  after a committed stream it records a bounded panic signal and aborts without
+  appending an envelope. Both HTTP servers discard net/http panic text and log
+  only a stable code. Operational
+  queue, verification, and repair snapshots come from PostgreSQL; a failed
+  refresh retains the prior snapshot and exposes staleness instead of
+  fabricating zero. Current backlog gauges scan only partial-indexed active
+  rows; because every split-role replica exports the same chain snapshot,
+  dashboards and alerts deduplicate them with `max`, never `sum`. Per-worker
+  result counters use `sum`/`rate`. Helm ServiceMonitors select and relabel only
+  their exact release and namespace, and every bundled alert retains that
+  release/namespace identity. Telemetry labels remain closed and low-cardinality.
 - Public HTTP changes start in `api/openapi.yaml`. Regenerate both Go and
   TypeScript contracts with the Makefile; generated files are never edited by
   hand.
@@ -240,7 +263,36 @@ in `PLAN.md` and `docs/plans/`, not here.
   canonical `contract_code_observations` row for the same chain, address, code
   hash, and block hash; a stale target is a terminal failure. Successful
   results are immutable job/request/compiler facts, and `verified_contracts`
-  is only their deterministic exact-first projection.
+  is only their deterministic exact-first projection. A migration that
+  strengthens this publication boundary must take write-conflicting relation
+  locks before replacing guards or validating rows, in production write order:
+  `verification_results`, `verified_contracts`, then `verification_jobs`.
+- Verification Standard JSON rejects duplicate keys and external source
+  indirection, then canonicalizes a version-aware, exact-target
+  `outputSelection` before persistence and digesting; the repository repeats
+  that step for direct submissions. Caller wildcard/group outputs are never
+  compiled; pre-0.4.0 Vyper receives only the minimal non-target `userdoc`
+  selections its formatter requires. Vyper layout is required from 0.4.1,
+  while 0.3.10 through 0.4.0 authenticate immutable size from creation auxdata;
+  older or metadata-disabled formats without a size declaration may match only
+  a zero-length immutable suffix. Solidity `metadata.appendCBOR=false` disables
+  metadata-only matching and footer-boundary interpretation entirely.
+- Compiler artifacts are canonical SHA-256 identities, not version labels.
+  Process downloads are private-only, proxy-free, redirect-free, SSRF-safe,
+  size-bounded, and installed only as checksum-verified `0500` cache files.
+  Public verification requires startup-validated digest-pinned local images;
+  compilation never pulls or uses a network and must force-remove its randomly
+  named container before accepting any outcome, including a runtime panic.
+  Failed or hung removal and compiler-runtime invariant failures are fatal to
+  the worker and must not terminalize the leased job.
+- Sourcify is an optional, untrusted interoperability boundary. Import must
+  accept only an address and optional constructor suffix, server-resolve its
+  chain, code hash, block hash, runtime bytecode, and creation input from exact
+  canonical PostgreSQL facts, then enter the normal durable verification path;
+  lookup is never publication evidence. Upload requires both the persisted
+  request opt-in and separate call-site consent, and sends only the bounded
+  Standard JSON, compiler version, and contract identifier through the
+  restricted outbound client.
 
 ## Changes Requiring Documentation
 

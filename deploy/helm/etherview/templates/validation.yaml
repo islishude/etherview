@@ -1,0 +1,17 @@
+{{- range $roleName, $role := .Values.roles }}
+{{- if and $role.autoscaling.enabled (gt (int $role.autoscaling.minReplicas) (int $role.autoscaling.maxReplicas)) }}
+{{- fail (printf "roles.%s.autoscaling.maxReplicas must be greater than or equal to minReplicas" $roleName) }}
+{{- end }}
+{{- end }}
+{{- if and .Values.prometheusRule.enabled (not .Values.serviceMonitor.enabled) }}
+{{- fail "prometheusRule.enabled requires serviceMonitor.enabled so every alert is release-scoped" }}
+{{- end }}
+{{- $s3Access := .Values.externalSecret.s3AccessKeyRemoteKey | trim }}
+{{- $s3Secret := .Values.externalSecret.s3SecretKeyRemoteKey | trim }}
+{{- $s3Session := .Values.externalSecret.s3SessionTokenRemoteKey | trim }}
+{{- if ne (empty $s3Access) (empty $s3Secret) }}
+{{- fail "externalSecret S3 access and secret remote keys must be configured together" }}
+{{- end }}
+{{- if and (not (empty $s3Session)) (empty $s3Access) }}
+{{- fail "externalSecret.s3SessionTokenRemoteKey requires the S3 access and secret remote keys" }}
+{{- end }}

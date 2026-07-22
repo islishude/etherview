@@ -101,13 +101,13 @@ test-race:
 # is supplied. CI always supplies one and exercises both migration actions
 # before running integration-tagged tests.
 test-integration:
-	@if [ -z "$$INTEGRATION_DATABASE_URL" ]; then \
+	@set -eu; \
+	if [ -z "$$INTEGRATION_DATABASE_URL" ]; then \
 		echo "test-integration: SKIP (set INTEGRATION_DATABASE_URL to a disposable PostgreSQL database)"; \
 		exit 0; \
 	fi; \
 	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate up; \
 	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate status; \
-	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" \
 	ETHERVIEW_TEST_DATABASE_URL="$$INTEGRATION_DATABASE_URL" \
 		$(GO) test -count=1 -tags=integration $(GO_PACKAGES)
 
@@ -206,6 +206,7 @@ helm-check:
 	$(HELM) lint "$(HELM_CHART)" -f "$(HELM_CHART)/values-distributed.yaml"
 	$(HELM) template etherview "$(HELM_CHART)" >/dev/null
 	$(HELM) template etherview "$(HELM_CHART)" -f "$(HELM_CHART)/values-distributed.yaml" >/dev/null
+	HELM="$(HELM)" "$(HELM_CHART)/tests/render.sh" "$(HELM_CHART)"
 
 deployment-check: docker-check compose-check helm-check
 

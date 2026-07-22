@@ -44,6 +44,7 @@ type Pool struct {
 	next            map[Purpose]int
 	failureCooldown time.Duration
 	now             func() time.Time
+	observer        Observer
 }
 
 type endpointState struct {
@@ -55,6 +56,7 @@ type endpointState struct {
 type PoolOptions struct {
 	FailureCooldown time.Duration
 	Now             func() time.Time
+	Observer        Observer
 }
 
 func NewPool(endpoints []Endpoint, options PoolOptions) (*Pool, error) {
@@ -72,6 +74,7 @@ func NewPool(endpoints []Endpoint, options PoolOptions) (*Pool, error) {
 		next:            make(map[Purpose]int),
 		failureCooldown: options.FailureCooldown,
 		now:             options.Now,
+		observer:        options.Observer,
 	}
 	seen := make(map[string]struct{}, len(endpoints))
 	usableEndpoints := 0
@@ -159,6 +162,7 @@ func (p *Pool) Acquire(purpose Purpose) (*Endpoint, error) {
 	}
 	p.next[purpose] = (selected + 1) % len(candidates)
 	endpoint := cloneEndpoint(candidates[selected].endpoint)
+	endpoint.Client = observeCaller(endpoint.Client, purpose, p.observer)
 	return &endpoint, nil
 }
 

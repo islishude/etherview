@@ -18,6 +18,7 @@ export type ApiErrorPayload = components["schemas"]["ErrorResponse"];
 
 export interface CursorPage<T> {
   items: T[];
+  meta: ApiMeta;
   next_cursor?: string;
 }
 

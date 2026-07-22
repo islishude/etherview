@@ -8,6 +8,11 @@
     "node": "24.18.0",
     "npm": "11.16.0"
   },
+  "overrides": {
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.0"
+    }
+  },
   "scripts": {
     "build": "tsc -b && vite build",
     "check:api": "openapi-typescript ../api/openapi.yaml --alphabetize --output src/api/schema.gen.ts --check",

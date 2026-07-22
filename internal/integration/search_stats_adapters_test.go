@@ -213,16 +213,15 @@ func TestSearchUsesLatestCanonicalLogicalObservationAndPrunePreservesReorgFallba
 		(chain_id, address, block_number, block_hash, code_hash, code, canonical)
 		VALUES (1, $1, 2, $2, $3, '\x02', true)`,
 		contractAddress, mustBytes(t, testHash(922)), mustBytes(t, testHash(9_242)))
-	execFixture(t, ctx, db, `INSERT INTO verified_contracts
-		(chain_id, address, code_hash, valid_from_block, valid_to_block, language,
-		 compiler_version, match_kind, contract_name, sources, settings)
-		VALUES (1, $1, $2, 1, 1, 'solidity', '0.8.30', 'exact', 'OldVerified', '{}', '{}')`,
-		contractAddress, mustBytes(t, testHash(9_241)))
-	execFixture(t, ctx, db, `INSERT INTO verified_contracts
-		(chain_id, address, code_hash, valid_from_block, language,
-		 compiler_version, match_kind, contract_name, sources, settings)
-		VALUES (1, $1, $2, 2, 'solidity', '0.8.30', 'exact', 'NewVerified', '{}', '{}')`,
-		contractAddress, mustBytes(t, testHash(9_242)))
+	oldValidTo := uint64(1)
+	insertVerifiedContractFixture(
+		t, ctx, db, contractAddress, mustBytes(t, testHash(9_241)), 1, &oldValidTo,
+		"0.8.30", "OldVerified", `[]`, `{}`, `{}`,
+	)
+	insertVerifiedContractFixture(
+		t, ctx, db, contractAddress, mustBytes(t, testHash(9_242)), 2, nil,
+		"0.8.30", "NewVerified", `[]`, `{}`, `{}`,
+	)
 	resolvedName := testAddress(922).String()
 	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1, NameResolver: nameResolverFunc(
 		func(context.Context, string) (string, error) { return resolvedName, nil },

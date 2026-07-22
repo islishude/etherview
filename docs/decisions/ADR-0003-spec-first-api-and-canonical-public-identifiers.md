@@ -42,6 +42,30 @@ authoritative empty result.
 - `/v2/api` keeps Etherscan-compatible envelopes at its compatibility boundary;
   it must still report missing trace, archive, price, or verification ability
   explicitly rather than fabricating empty success.
+- `/v2/api` is an explicit allowlist rather than an upstream proxy. Its complete
+  module/action, method, parameter, authentication, capability, and intentional
+  wire-difference contract is maintained in the
+  [Etherscan V2 compatibility matrix](../architecture/etherscan-v2-compatibility.md).
+  A compatibility action is not registered unless the handler allowlist,
+  production backend dispatch, matrix, and golden envelope/method inventory all
+  agree.
+- A Core-backed compatibility list proves continuous durable Core coverage for
+  its tip-clamped canonical block range before an empty result is authoritative.
+  A range wholly above the canonical tip has no records; an absent, gapped, or
+  non-covering Core range is an explicit unavailable capability. Trace- and
+  Token-backed lists first pass that Core proof and only then distinguish an
+  incomplete enrichment stage from a genuinely empty published range. Block
+  countdown cadence is sampled only inside the single coverage interval that
+  contains the canonical tip; sample heights must be continuous, and a
+  one-block interval is estimate-unavailable rather than permission to bridge
+  an older coverage island.
+- Compatibility wire models are action-specific. Account, token, block, and
+  statistics quantities remain decimal strings, while `logs.getLogs` uses
+  lowercase RPC-style hexadecimal quantities. `contract.getsourcecode`
+  includes `CompilerType` and `ContractFileName`; its `MatchKind` field is an
+  explicit Etherview extension. Mined-block results omit `blockReward` because
+  the durable Core model cannot authoritatively derive consensus issuance or a
+  complete execution reward; the API never substitutes zero.
 - Address-only `/v2/api` ABI and source lookups first resolve the latest
   canonical contract-code observation and select a verification record by
   chain, address, that code hash, and its validity at the canonical tip. A
@@ -50,13 +74,22 @@ authoritative empty result.
   interval is never a fallback.
 - Public source-verification submission is exposed only when
   `security.public_verification` is enabled and requires an API key. The
-  compatibility boundary accepts source and source-status requests by POST,
-  binds every job to the latest canonical code observation plus a canonical
-  top-level or traced creation input, and recomputes the runtime code hash
-  before enqueueing. Client input cannot choose the chain, address binding,
-  runtime bytecode, block hash, or Sourcify consent stored in the durable job.
-  Constructor arguments and license type are persisted as publication
-  metadata, not injected into the compiler's Standard JSON settings.
+  native and compatibility submission boundaries bind every job to the latest
+  canonical code observation plus a canonical top-level or traced creation
+  input, and recompute the runtime code hash before enqueueing. Native input
+  names the address, compiler input, and optional constructor-argument suffix;
+  it cannot supply code hash, block hash, creation bytecode, or runtime
+  bytecode. The exact constructor suffix must match the canonical creation
+  input before it is stripped. Constructor arguments and license type are
+  persisted as publication metadata, not injected into the compiler's Standard
+  JSON settings. Compatibility input likewise cannot choose the chain, address
+  binding, runtime bytecode, block hash, or Sourcify consent stored in the
+  durable job.
+- Disabling public submission does not disable authenticated reads of already
+  durable verification jobs and verified artifacts. Public configuration's
+  `verification` flag describes whether new native submissions are usable,
+  while `sourcify` independently describes the optional interoperability
+  surface.
 - Every native or compatibility verification request must carry a non-empty
   runtime bytecode whose Keccak-256 hash equals its code hash. Before publishing
   a successful result, the repository rechecks in the completion transaction

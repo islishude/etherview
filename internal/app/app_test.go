@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +81,7 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 			cfg.Features.Trace = true
 			cfg.Features.Verification = true
 			cfg.Features.NFTMetadata = true
+			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
 			return cfg
 		}(), wake: true},
 		{name: "optional NATS wake", cfg: func() config.Config {
@@ -119,28 +121,31 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		wake  bool
 		want  []string
 	}{
-		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "08-runtime-event-relay", "20-public-api"}},
+		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "20-public-api"}},
 		{name: "api NATS", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Adapters.NATSURL = "nats://127.0.0.1:4222"
-		}, want: []string{"00-operations-http", "04-optional-nats-wake", "08-runtime-event-relay", "20-public-api"}},
-		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "10-core-sync"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "04-optional-nats-wake", "08-runtime-event-relay", "20-public-api"}},
+		{name: "api with OTLP", role: components.RoleAPI, setup: func(cfg *config.Config) {
+			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
+		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "20-public-api"}},
+		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "10-core-sync"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
-		}, want: []string{"00-operations-http", "05-new-head-wake", "10-core-sync", "15-pending-mempool"}},
-		{name: "enrich", role: components.RoleEnrich, want: []string{"00-operations-http", "30-enrichment-outbox", "35-core-enrichment"}},
-		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "50-role-trace"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "10-core-sync", "15-pending-mempool"}},
+		{name: "enrich", role: components.RoleEnrich, want: []string{"00-operations-http", "02-durable-metrics", "30-enrichment-outbox", "35-core-enrichment"}},
+		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "50-role-trace"}},
 		{name: "trace enabled", role: components.RoleTrace, setup: func(cfg *config.Config) {
 			cfg.Features.Trace = true
-		}, want: []string{"00-operations-http", "37-trace-enrichment"}},
-		{name: "verify disabled", role: components.RoleVerify, want: []string{"00-operations-http", "50-role-verify"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "37-trace-enrichment"}},
+		{name: "verify disabled", role: components.RoleVerify, want: []string{"00-operations-http", "02-durable-metrics", "50-role-verify"}},
 		{name: "verify enabled", role: components.RoleVerify, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
-		}, want: []string{"00-operations-http", "40-contract-verification"}},
-		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "50-role-metadata"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "40-contract-verification"}},
+		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "02-durable-metrics", "50-role-metadata"}},
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
-		}, want: []string{"00-operations-http", "42-nft-metadata-discovery", "45-nft-metadata"}},
-		{name: "maintenance", role: components.RoleMaintenance, want: []string{"00-operations-http", "45-maintenance", "46-search-catalog-maintenance"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery", "45-nft-metadata"}},
+		{name: "maintenance", role: components.RoleMaintenance, want: []string{"00-operations-http", "02-durable-metrics", "45-maintenance", "46-search-catalog-maintenance"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -250,6 +255,24 @@ func TestPublicVerificationServiceHonorsSecuritySwitch(t *testing.T) {
 	cfg.Security.PublicVerification = true
 	if got := publicVerificationService(cfg, service); got != service {
 		t.Fatalf("enabled public verification returned %p, want %p", got, service)
+	}
+}
+
+func TestSourcifyClientHonorsFeatureSwitchAndBounds(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	client, err := sourcifyClient(cfg)
+	if err != nil || client != nil {
+		t.Fatalf("disabled Sourcify client=%p error=%v", client, err)
+	}
+	cfg.Features.Sourcify = true
+	client, err = sourcifyClient(cfg)
+	if err != nil || client == nil {
+		t.Fatalf("enabled Sourcify client=%p error=%v", client, err)
+	}
+	cfg.Sourcify.MaxResponseBytes = 64<<20 + 1
+	if _, err := sourcifyClient(cfg); err == nil || !strings.Contains(err.Error(), "response limit") {
+		t.Fatalf("unexpected propagated Sourcify bound error: %v", err)
 	}
 }
 

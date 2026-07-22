@@ -16,6 +16,12 @@ type WorkerOptions struct {
 	PollInterval   time.Duration
 	MaxOutputBytes int
 	Public         bool
+	Observer       VerificationObserver
+}
+
+// VerificationObserver receives only controlled terminal/result labels.
+type VerificationObserver interface {
+	RecordVerificationJob(result string)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -96,14 +102,21 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || !found {
 		return found, err
 	}
-	return true, worker.processLease(ctx, lease)
+	err = worker.processLease(ctx, lease)
+	if err != nil && ctx.Err() == nil {
+		worker.observe("error")
+	}
+	return true, err
 }
 
 type compileOutcome struct {
 	completion *Completion
 	errorCode  ErrorCode
 	cancelled  bool
+	fatal      error
 }
+
+const compilerCancellationCleanupTimeout = 8 * time.Second
 
 func (worker *Worker) processLease(ctx context.Context, lease VerificationLease) error {
 	provenance, err := worker.compiler.Provenance(
@@ -133,7 +146,7 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 		outcome := compileOutcome{}
 		defer func() {
 			if recover() != nil {
-				outcome = compileOutcome{errorCode: ErrorCompileFailed}
+				outcome = compileOutcome{fatal: ErrCompilerRuntime}
 			}
 			finished <- outcome
 		}()
@@ -144,6 +157,14 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 			lease.Job.Request.StandardJSON,
 		)
 		if err != nil {
+			if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
+				if errors.Is(err, ErrCompilerCleanup) {
+					outcome.fatal = ErrCompilerCleanup
+				} else {
+					outcome.fatal = ErrCompilerRuntime
+				}
+				return
+			}
 			if compileContext.Err() != nil {
 				outcome.cancelled = true
 				return
@@ -165,13 +186,30 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 		select {
 		case <-ctx.Done():
 			cancel()
+			outcome, ok := waitForCompilerCleanup(finished)
+			if !ok {
+				return ErrCompilerCleanup
+			}
+			if outcome.fatal != nil {
+				return outcome.fatal
+			}
 			return ctx.Err()
 		case <-heartbeat.C:
 			if err := worker.repository.Renew(ctx, lease, worker.options.LeaseDuration); err != nil {
 				cancel()
+				outcome, ok := waitForCompilerCleanup(finished)
+				if !ok {
+					return ErrCompilerCleanup
+				}
+				if outcome.fatal != nil {
+					return outcome.fatal
+				}
 				return fmt.Errorf("renew verification lease: %w", err)
 			}
 		case outcome := <-finished:
+			if outcome.fatal != nil {
+				return outcome.fatal
+			}
 			if outcome.cancelled {
 				if err := ctx.Err(); err != nil {
 					return err
@@ -185,12 +223,25 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 				return errors.New("verification compiler returned no outcome")
 			}
 			if err := worker.repository.Complete(ctx, lease, *outcome.completion); errors.Is(err, ErrTargetNotCanonical) {
+				worker.observe("stale_target")
 				return nil
 			} else if err != nil {
 				return fmt.Errorf("complete verification job: %w", err)
 			}
+			worker.observe("succeeded")
 			return nil
 		}
+	}
+}
+
+func waitForCompilerCleanup(finished <-chan compileOutcome) (compileOutcome, bool) {
+	timer := time.NewTimer(compilerCancellationCleanupTimeout)
+	defer timer.Stop()
+	select {
+	case outcome := <-finished:
+		return outcome, true
+	case <-timer.C:
+		return compileOutcome{}, false
 	}
 }
 
@@ -198,7 +249,23 @@ func (worker *Worker) failLease(ctx context.Context, lease VerificationLease, co
 	if err := worker.repository.Fail(ctx, lease, code); err != nil {
 		return fmt.Errorf("fail verification job: %w", err)
 	}
+	result := "failed"
+	switch code {
+	case ErrorCompilerTooLarge:
+		result = "resource_exhausted"
+	case ErrorCompilerUnavailable:
+		result = "unavailable"
+	case ErrorTargetNotCanonical:
+		result = "stale_target"
+	}
+	worker.observe(result)
 	return nil
+}
+
+func (worker *Worker) observe(result string) {
+	if worker.options.Observer != nil {
+		worker.options.Observer.RecordVerificationJob(result)
+	}
 }
 
 func buildCompletion(request Request, compilerOutput []byte, maximum int) (Completion, ErrorCode) {
@@ -208,22 +275,32 @@ func buildCompletion(request Request, compilerOutput []byte, maximum int) (Compl
 	if maximum <= 0 || len(compilerOutput) > maximum {
 		return Completion{}, ErrorCompilerTooLarge
 	}
-	artifact, err := ExtractArtifact(compilerOutput, request.ContractIdentifier)
+	artifact, err := ExtractArtifact(
+		compilerOutput,
+		request.Language,
+		request.CompilerVersion,
+		request.ContractIdentifier,
+	)
+	if err != nil {
+		return Completion{}, ErrorCompilerOutput
+	}
+	sources, settings, err := extractSourcesAndSettings(request)
 	if err != nil {
 		return Completion{}, ErrorCompilerOutput
 	}
 	match, err := MatchArtifact(request, artifact)
 	if err != nil {
+		if errors.Is(err, errCompilerOutputMalformed) ||
+			errors.Is(err, errCompiledCodeMalformed) ||
+			errors.Is(err, errCompilerVersionMalformed) {
+			return Completion{}, ErrorCompilerOutput
+		}
 		return Completion{}, ErrorMatchFailed
 	}
 	kind := summarizeMatch(match)
 	completion := Completion{Kind: kind, Match: match}
 	if kind == MatchMismatch {
 		return completion, ""
-	}
-	sources, settings, err := extractSourcesAndSettings(request)
-	if err != nil || !jsonArray(artifact.ABI) {
-		return Completion{}, ErrorCompilerOutput
 	}
 	completion.Artifact = artifact
 	completion.Sources = sources

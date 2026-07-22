@@ -19,8 +19,8 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | in_progress | P10, P20 | Sandboxed Solidity/Vyper verification, Sourcify, and metadata safety |
-| P40 | [API](docs/plans/P40-api.md) | in_progress | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
+| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Sandboxed Solidity/Vyper verification, Sourcify, and metadata safety |
+| P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | in_progress | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | in_progress | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P70 | [Release](docs/plans/P70-release.md) | planned | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
@@ -42,9 +42,18 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   statistics enrichment now uses exact-state and lease-fenced publication
   contracts. Reviewable commands and results remain in
   [P20 evidence](docs/plans/P20-enrichment.md#evidence).
-- P30, P40, P50, and P60 are in progress, while P70 remains planned.
-  Implemented supporting slices are not promoted until every
-  owning work item satisfies its full acceptance boundary.
+- P30 is complete: verification publication is immutable and exact-result
+  backed, compiler execution and cleanup fail closed, and Solidity, Vyper,
+  Sourcify, metadata, and name-resolution boundaries pass their targeted,
+  PostgreSQL, race, and common repository gates. Reviewable commands and
+  results remain in
+  [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
+- P40 is complete: the native spec-first API, stable cursors, authenticated
+  capability surfaces, durable event replay, and the explicit Etherscan V2
+  subset now pass their contract, race, security, and PostgreSQL coverage
+  boundaries. P50 and P60 are in progress, while P70 remains planned.
+  Implemented supporting slices are not promoted until every owning work item
+  satisfies its full acceptance boundary.
 
 ## Global Release Gates
 

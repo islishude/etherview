@@ -15,6 +15,12 @@ type WorkerOptions struct {
 	PollInterval  time.Duration
 	RetryBase     time.Duration
 	RetryMaximum  time.Duration
+	Observer      FetchObserver
+}
+
+// FetchObserver receives only controlled metadata result labels.
+type FetchObserver interface {
+	RecordMetadataFetch(result string)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -92,7 +98,11 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 	if err := lease.Validate(); err != nil {
 		return true, fmt.Errorf("metadata repository returned invalid lease: %w", err)
 	}
-	return true, worker.processLease(ctx, lease)
+	err = worker.processLease(ctx, lease)
+	if err != nil && ctx.Err() == nil {
+		worker.observe("error")
+	}
+	return true, err
 }
 
 type fetchResponse struct {
@@ -106,14 +116,14 @@ func (worker *Worker) processLease(ctx context.Context, lease Lease) error {
 		return fmt.Errorf("check metadata canonical identity: %w", err)
 	}
 	if !current.Resource {
-		return worker.repository.Finish(ctx, lease, terminalOutcome(
+		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "superseded", "metadata source was superseded by a newer canonical observation",
-		))
+		), "unavailable")
 	}
 	if !current.Canonical {
-		return worker.repository.Finish(ctx, lease, terminalOutcome(
+		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "source_block_noncanonical", "metadata source block is no longer canonical",
-		))
+		), "unavailable")
 	}
 
 	response := make(chan fetchResponse, 1)
@@ -140,10 +150,10 @@ func (worker *Worker) processLease(ctx context.Context, lease Lease) error {
 func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchResponse) error {
 	if completed.err == nil {
 		if err := validateDocument(completed.result.Body); err != nil {
-			return worker.repository.Finish(ctx, lease, terminalOutcome(StateError, "invalid_document", boundedError(err)))
+			return worker.finish(ctx, lease, terminalOutcome(StateError, "invalid_document", boundedError(err)), "failed")
 		}
 		if completed.result.ContentType == "" || completed.result.URL == "" || len(completed.result.URL) > MaxSourceURIBytes {
-			return worker.repository.Finish(ctx, lease, terminalOutcome(StateError, "invalid_fetch_result", "safe metadata fetcher returned incomplete source information"))
+			return worker.finish(ctx, lease, terminalOutcome(StateError, "invalid_fetch_result", "safe metadata fetcher returned incomplete source information"), "failed")
 		}
 		digest := sha256.Sum256(completed.result.Body)
 		outcome := Outcome{
@@ -154,7 +164,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		if err := outcome.validate(); err != nil {
 			return fmt.Errorf("validate fetched metadata outcome: %w", err)
 		}
-		return worker.repository.Finish(ctx, lease, outcome)
+		return worker.finish(ctx, lease, outcome, "succeeded")
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -163,14 +173,43 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 	state, code, retry := classifyFetchFailure(completed.err)
 	message := fetchFailureMessage(completed.err)
 	if retry && lease.Attempt < lease.MaxAttempts {
-		return worker.repository.Retry(ctx, lease, code, message, worker.retryDelay(lease.Attempt))
+		if err := worker.repository.Retry(ctx, lease, code, message, worker.retryDelay(lease.Attempt)); err != nil {
+			return err
+		}
+		worker.observe("retry")
+		return nil
 	}
 	if retry {
 		state = StateError
 		code = "attempts_exhausted"
 		message = "maximum metadata fetch attempts exhausted"
 	}
-	return worker.repository.Finish(ctx, lease, terminalOutcome(state, code, message))
+	result := "failed"
+	switch state {
+	case StateUnavailable:
+		result = "unavailable"
+	case StateUnsafe:
+		if code == "unsafe_url" {
+			result = "ssrf_rejected"
+		} else if code == "response_too_large" {
+			result = "resource_exhausted"
+		}
+	}
+	return worker.finish(ctx, lease, terminalOutcome(state, code, message), result)
+}
+
+func (worker *Worker) finish(ctx context.Context, lease Lease, outcome Outcome, result string) error {
+	if err := worker.repository.Finish(ctx, lease, outcome); err != nil {
+		return err
+	}
+	worker.observe(result)
+	return nil
+}
+
+func (worker *Worker) observe(result string) {
+	if worker.options.Observer != nil {
+		worker.options.Observer.RecordMetadataFetch(result)
+	}
 }
 
 func classifyFetchFailure(err error) (State, string, bool) {

@@ -43,6 +43,32 @@ type handler struct {
 	assets fs.FS
 }
 
+// RoutePattern classifies the catch-all web handler without returning a raw
+// navigation or asset path. It follows the same reserved-path, method, asset,
+// and HTML-fallback boundaries as ServeHTTP.
+func (h *handler) RoutePattern(request *http.Request) string {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		return "method_not_allowed"
+	}
+	name, valid := requestAssetName(request.URL.Path)
+	if !valid || isReservedPath(name) {
+		return "unmatched"
+	}
+	if name == "" {
+		return "/"
+	}
+	if info, err := fs.Stat(h.assets, name); err == nil && !info.IsDir() {
+		return "/assets/*"
+	}
+	if looksLikeAsset(name) {
+		return "/assets/*"
+	}
+	if request.Method != http.MethodGet || !acceptsHTML(request.Header.Get("Accept")) {
+		return "unmatched"
+	}
+	return "/{spa...}"
+}
+
 func (h *handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	setSecurityHeaders(response.Header())
 	response.Header().Add("Vary", "Accept")

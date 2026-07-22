@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/islishude/etherview/internal/config"
@@ -26,7 +25,7 @@ func verificationCompiler(cfg config.Config) (verify.Compiler, error) {
 		return verify.ProcessCompiler{
 			Cache: &verify.CompilerCache{
 				Root: cfg.Verification.CacheDirectory, Artifacts: artifacts,
-				HTTPClient: &http.Client{Timeout: cfg.Verification.Timeout},
+				Timeout: cfg.Verification.Timeout,
 			},
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 			MaxOutputBytes: cfg.Verification.MaxOutputBytes, Public: cfg.Security.PublicVerification,
@@ -40,7 +39,7 @@ func verificationCompiler(cfg config.Config) (verify.Compiler, error) {
 			}
 			images[verify.Language(language)] = converted
 		}
-		return verify.ContainerCompiler{
+		return &verify.ContainerCompiler{
 			Runtime: cfg.Verification.ContainerRuntime, Images: images,
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 			MaxOutputBytes: cfg.Verification.MaxOutputBytes, Memory: cfg.Verification.ContainerMemory,
@@ -62,6 +61,22 @@ func publicVerificationService(cfg config.Config, service *verify.Service) *veri
 		return nil
 	}
 	return service
+}
+
+func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
+	if !cfg.Features.Sourcify {
+		return nil, nil
+	}
+	client, err := verify.NewSourcifyClient(verify.SourcifyOptions{
+		BaseURL:          cfg.Sourcify.BaseURL,
+		Timeout:          cfg.Sourcify.Timeout,
+		MaxRequestBytes:  cfg.Sourcify.MaxRequestBytes,
+		MaxResponseBytes: cfg.Sourcify.MaxResponseBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure Sourcify client: %w", err)
+	}
+	return client, nil
 }
 
 func runtimeWorkerID(kind string) string {

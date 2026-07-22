@@ -5,6 +5,7 @@ import type {
   BlockSummary,
   CursorPage,
   PendingSnapshot,
+  SearchResult,
   TokenContract,
   TokenEvent,
   TransactionSummary,
@@ -14,7 +15,14 @@ import type {
 export function useChainStatus() {
   return useQuery({
     queryKey: ["status"],
-    queryFn: async () => requireEnvelope(await apiClient.GET("/status")).data,
+    queryFn: async () => {
+      const response = requireEnvelope(await apiClient.GET("/status"));
+      return {
+        ...response.data,
+        coverage_start: response.meta.coverage_start,
+        coverage_end: response.meta.coverage_end,
+      };
+    },
     retry: false,
     staleTime: 5_000,
     refetchInterval: 12_000,
@@ -30,28 +38,36 @@ export function usePublicConfig() {
   });
 }
 
-export function useBlocks(limit = 12) {
+export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
   return useQuery({
-    queryKey: ["blocks", limit],
+    queryKey: ["blocks", limit, cursor ?? null, refreshGeneration],
     queryFn: async (): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/blocks", { params: { query: { limit } } }),
+        await apiClient.GET("/blocks", { params: { query: { limit, cursor } } }),
       );
-      return { items: response.data, next_cursor: response.meta.next_cursor };
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
     },
     retry: false,
     staleTime: 5_000,
   });
 }
 
-export function useTransactions(limit = 12) {
+export function useTransactions(limit = 12, cursor?: string, refreshGeneration = 0) {
   return useQuery({
-    queryKey: ["transactions", limit],
+    queryKey: ["transactions", limit, cursor ?? null, refreshGeneration],
     queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/transactions", { params: { query: { limit } } }),
+        await apiClient.GET("/transactions", { params: { query: { limit, cursor } } }),
       );
-      return { items: response.data, next_cursor: response.meta.next_cursor };
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
     },
     retry: false,
     staleTime: 5_000,
@@ -134,7 +150,11 @@ export function useTokens(limit = 25) {
       const response = requireEnvelope(
         await apiClient.GET("/tokens", { params: { query: { limit } } }),
       );
-      return { items: response.data, next_cursor: response.meta.next_cursor };
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
     },
     retry: false,
     staleTime: 30_000,
@@ -163,7 +183,11 @@ export function useTokenTransfers(address: string, limit = 25, enabled = true) {
           params: { path: { address }, query: { limit } },
         }),
       );
-      return { items: response.data, next_cursor: response.meta.next_cursor };
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
     },
     enabled: enabled && address.length > 0,
     retry: false,
@@ -186,13 +210,24 @@ export function useNFTOwnership(address: string, tokenID: string, enabled = true
   });
 }
 
-export function useSearchResults(query: string) {
+export function useSearchResults(
+  query: string,
+  cursor?: string,
+  limit = 20,
+  refreshGeneration = 0,
+) {
   return useQuery({
-    queryKey: ["search", query],
-    queryFn: async () =>
-      requireEnvelope(
-        await apiClient.GET("/search", { params: { query: { q: query } } }),
-      ).data,
+    queryKey: ["search", query, cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<SearchResult>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/search", { params: { query: { q: query, cursor, limit } } }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
     enabled: query.trim().length > 0,
     retry: false,
     staleTime: 30_000,

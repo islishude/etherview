@@ -11,10 +11,19 @@ metadata:
 spec:
   selector:
     matchLabels:
+      app.kubernetes.io/name: {{ include "etherview.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
       etherview.io/metrics-service: "true"
   endpoints:
     - port: metrics
       path: /metrics
       interval: {{ .Values.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      relabelings:
+        - action: replace
+          targetLabel: etherview_release
+          replacement: {{ .Release.Name | quote }}
+        - action: replace
+          targetLabel: etherview_namespace
+          replacement: {{ .Release.Namespace | quote }}
 {{- end }}

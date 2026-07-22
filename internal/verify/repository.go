@@ -244,6 +244,17 @@ func verificationRequestDigest(payload []byte, requiresHardIsolation bool) [sha2
 }
 
 func (repository *PostgresRepository) encodeRequest(request Request) ([]byte, []byte, []byte, []byte, error) {
+	standardJSON, err := PrepareStandardJSON(
+		request.StandardJSON,
+		request.Language,
+		request.CompilerVersion,
+		request.ContractIdentifier,
+		repository.options.MaxRequestBytes,
+	)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	request.StandardJSON = standardJSON
 	encoded, err := json.Marshal(request)
 	if err != nil {
 		return nil, nil, nil, nil, errors.New("verification request is not valid JSON")

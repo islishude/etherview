@@ -1,0 +1,28 @@
+{
+  "language": "Vyper",
+  "sources": {
+    "contracts/Target.vy": {
+      "content": "# pragma version 0.4.3\nimport interfaces.Remote as Remote\n\nowner: public(immutable(address))\nseed: public(immutable(uint256))\n\n@deploy\ndef __init__(owner_: address, seed_: uint256):\n    owner = owner_\n    seed = seed_\n\n@external\n@view\ndef score(remote: address, amount: uint256) -> uint256:\n    assert msg.sender == owner, \"owner\"\n    return staticcall Remote(remote).bump(amount) + seed\n"
+    },
+    "interfaces/Remote.vyi": {
+      "content": "# pragma version 0.4.3\n@external\n@view\ndef bump(amount: uint256) -> uint256: ...\n"
+    }
+  },
+  "settings": {
+    "search_paths": [
+      "."
+    ],
+    "evmVersion": "prague",
+    "optimize": "gas",
+    "bytecodeMetadata": true,
+    "outputSelection": {
+      "contracts/Target.vy": [
+        "abi",
+        "metadata",
+        "layout",
+        "evm.bytecode.object",
+        "evm.deployedBytecode.object"
+      ]
+    }
+  }
+}

@@ -116,6 +116,14 @@ func TestMempoolSnapshotsRemainCursorStableAndExposeFailures(t *testing.T) {
 		t.Fatalf("restore successful status: %v", err)
 	}
 	readNow = base.Add(11 * time.Minute)
+	if _, err := apiRepository.Pending(ctx, "", 10); err == nil {
+		t.Fatal("expired latest snapshot returned a misleading successful page")
+	} else {
+		var capability mempool.CapabilityError
+		if !errors.As(err, &capability) || capability.State != mempool.StateUnavailable || capability.Code != "snapshot_expired" {
+			t.Fatalf("expired latest snapshot error = %T %v", err, err)
+		}
+	}
 	if _, err := repository.StoreSnapshot(ctx, mempool.Snapshot{
 		Endpoint: "pending-b", ObservedAt: readNow, ExpiresAt: readNow.Add(10 * time.Minute),
 		Transactions: []mempool.Transaction{},

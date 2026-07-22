@@ -82,28 +82,31 @@ func TestEthPriceUsesBoundedProviderObservation(t *testing.T) {
 
 func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 	t.Parallel()
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "inclusion.block_number <= $4::numeric ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC LIMIT $5 OFFSET $6",
-		columns:  fakeColumns(8),
-		rows: [][]driver.Value{{
-			testTransactionJSON(10, 3, 7, 1, testRecipient),
-			testReceiptJSON(10, 3, 7, 1, "0x1", ""),
-			testBlockJSON(10, 3, 2, 100, testSender),
-			"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
-		}},
-		check: func(arguments []driver.NamedValue) error {
-			want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2"}
-			if len(arguments) != len(want) {
-				return fmt.Errorf("arguments=%v", arguments)
-			}
-			for index := range arguments {
-				if fmt.Sprint(arguments[index].Value) != want[index] {
-					return fmt.Errorf("argument %d=%v, want %s", index, arguments[index].Value, want[index])
+	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("10", "20", "12"),
+		sqlExpectation{
+			contains: "inclusion.block_number <= $4::numeric ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC LIMIT $5 OFFSET $6",
+			columns:  fakeColumns(8),
+			rows: [][]driver.Value{{
+				testTransactionJSON(10, 3, 7, 1, testRecipient),
+				testReceiptJSON(10, 3, 7, 1, "0x1", ""),
+				testBlockJSON(10, 3, 2, 100, testSender),
+				"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
+			}},
+			check: func(arguments []driver.NamedValue) error {
+				want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2"}
+				if len(arguments) != len(want) {
+					return fmt.Errorf("arguments=%v", arguments)
 				}
-			}
-			return nil
+				for index := range arguments {
+					if fmt.Sprint(arguments[index].Value) != want[index] {
+						return fmt.Errorf("argument %d=%v, want %s", index, arguments[index].Value, want[index])
+					}
+				}
+				return nil
+			},
 		},
-	})
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "account", Action: "txlist", Values: url.Values{
 		"address": {testSender}, "startblock": {"10"}, "endblock": {"20"},
@@ -128,15 +131,18 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 
 func TestAccountTransactionsRejectRawIdentityMismatch(t *testing.T) {
 	t.Parallel()
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "FROM transaction_inclusions AS inclusion",
-		columns:  fakeColumns(8),
-		rows: [][]driver.Value{{
-			testTransactionJSON(10, 3, 99, 1, testRecipient),
-			testReceiptJSON(10, 3, 7, 1, "0x1", ""), testBlockJSON(10, 3, 2, 100, testSender),
-			"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
-		}},
-	})
+	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "12"),
+		sqlExpectation{
+			contains: "FROM transaction_inclusions AS inclusion",
+			columns:  fakeColumns(8),
+			rows: [][]driver.Value{{
+				testTransactionJSON(10, 3, 99, 1, testRecipient),
+				testReceiptJSON(10, 3, 7, 1, "0x1", ""), testBlockJSON(10, 3, 2, 100, testSender),
+				"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
+			}},
+		},
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	_, err := backend.Execute(context.Background(), Request{Module: "account", Action: "txlist", Values: url.Values{"address": {testSender}}})
 	if err == nil || !strings.Contains(err.Error(), "identity") {
@@ -146,11 +152,14 @@ func TestAccountTransactionsRejectRawIdentityMismatch(t *testing.T) {
 
 func TestMinedBlocksOmitsUnknownReward(t *testing.T) {
 	t.Parallel()
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "lower(block.raw->>'miner') = $2 ORDER BY block.number ASC, block.hash ASC",
-		columns:  fakeColumns(3),
-		rows:     [][]driver.Value{{testBlockJSON(10, 3, 2, 100, testSender), "10", testHashBytes(3)}},
-	})
+	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "10"),
+		sqlExpectation{
+			contains: "lower(block.raw->>'miner') = $2 ORDER BY block.number ASC, block.hash ASC",
+			columns:  fakeColumns(3),
+			rows:     [][]driver.Value{{testBlockJSON(10, 3, 2, 100, testSender), "10", testHashBytes(3)}},
+		},
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "account", Action: "getminedblocks", Values: url.Values{"address": {testSender}}})
 	if err != nil {
@@ -192,29 +201,32 @@ func TestTransactionStatusUsesCanonicalReceipt(t *testing.T) {
 	}
 }
 
-func TestLogsUseParameterizedTopicExpressionAndDecimalWireModel(t *testing.T) {
+func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 	t.Parallel()
 	topic0, topic2 := testHash(21), testHash(23)
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "log.address = $4 AND (log.topic0 = $5 OR lower(log.raw->'topics'->>2) = $6) ORDER BY log.block_number DESC, log.log_index DESC, log.block_hash DESC LIMIT $7 OFFSET $8",
-		columns:  fakeColumns(10),
-		rows: [][]driver.Value{{
-			testLogJSON(10, 3, 7, 1, 4, testContract, []string{topic0, testHash(22), topic2}),
-			testReceiptJSON(10, 3, 7, 1, "0x1", ""),
-			testTransactionJSON(10, 3, 7, 1, testRecipient),
-			testBlockJSON(10, 3, 2, 100, testSender),
-			"10", testHashBytes(3), int64(4), int64(1), testHashBytes(7), testAddressBytes(testContract),
-		}},
-		check: func(arguments []driver.NamedValue) error {
-			if len(arguments) != 8 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
-				return fmt.Errorf("arguments=%v", arguments)
-			}
-			if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) || !reflect.DeepEqual(arguments[4].Value, testHashBytes(21)) || arguments[5].Value != topic2 {
-				return fmt.Errorf("binary/topic arguments=%v", arguments)
-			}
-			return nil
+	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("5", "12", "12"),
+		sqlExpectation{
+			contains: "log.address = $4 AND (log.topic0 = $5 OR lower(log.raw->'topics'->>2) = $6) ORDER BY log.block_number DESC, log.log_index DESC, log.block_hash DESC LIMIT $7 OFFSET $8",
+			columns:  fakeColumns(10),
+			rows: [][]driver.Value{{
+				testLogJSON(10, 3, 7, 1, 4, testContract, []string{topic0, testHash(22), topic2}),
+				testReceiptJSON(10, 3, 7, 1, "0x1", ""),
+				testTransactionJSON(10, 3, 7, 1, testRecipient),
+				testBlockJSON(10, 3, 2, 100, testSender),
+				"10", testHashBytes(3), int64(4), int64(1), testHashBytes(7), testAddressBytes(testContract),
+			}},
+			check: func(arguments []driver.NamedValue) error {
+				if len(arguments) != 8 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
+					return fmt.Errorf("arguments=%v", arguments)
+				}
+				if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) || !reflect.DeepEqual(arguments[4].Value, testHashBytes(21)) || arguments[5].Value != topic2 {
+					return fmt.Errorf("binary/topic arguments=%v", arguments)
+				}
+				return nil
+			},
 		},
-	})
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "logs", Action: "getLogs", Values: url.Values{
 		"fromBlock": {"5"}, "toBlock": {"12"}, "address": {testContract},
@@ -224,7 +236,9 @@ func TestLogsUseParameterizedTopicExpressionAndDecimalWireModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := result.([]logEntry)
-	if len(logs) != 1 || logs[0].BlockNumber != "10" || logs[0].BlockHash != testHash(3) || logs[0].LogIndex != "4" || logs[0].GasPrice != "2000000000" || logs[0].GasUsed != "21000" {
+	if len(logs) != 1 || logs[0].BlockNumber != "0xa" || logs[0].BlockHash != testHash(3) ||
+		logs[0].TimeStamp != "0x64" || logs[0].LogIndex != "0x4" ||
+		logs[0].TransactionIndex != "0x1" || logs[0].GasPrice != "0x77359400" || logs[0].GasUsed != "0x5208" {
 		t.Fatalf("logs=%+v", logs)
 	}
 	if logs[0].Address != "0x27b1fdb04752bbc536007a920d24acb045561c26" || !reflect.DeepEqual(logs[0].Topics, []string{topic0, testHash(22), topic2}) {
@@ -252,8 +266,9 @@ func TestTopicValidationRejectsIgnoredOrInjectedOperators(t *testing.T) {
 func TestBlockTimeCountdownAndSupply(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t,
+		completeCoreCoverageExpectation("0", "", "10"),
 		sqlExpectation{contains: "block.timestamp <= $2::numeric ORDER BY block.timestamp DESC, block.number DESC", columns: fakeColumns(4), rows: [][]driver.Value{{testBlockJSON(10, 3, 2, 100, testSender), "10", testHashBytes(3), "100"}}},
-		sqlExpectation{contains: "WITH recent AS", columns: fakeColumns(4), rows: [][]driver.Value{{"10", "100", "2", "20"}}},
+		sqlExpectation{contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1, Supply: func(_ context.Context, chainID uint64) (string, error) {
 		if chainID != 1 {
@@ -282,7 +297,7 @@ func TestBlockTimeCountdownAndSupply(t *testing.T) {
 func TestCountdownRejectsAlreadyPassedBlock(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t, sqlExpectation{
-		contains: "WITH recent AS", columns: fakeColumns(4), rows: [][]driver.Value{{"10", "100", "2", "20"}},
+		contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	_, err := backend.Execute(context.Background(), Request{Module: "block", Action: "getblockcountdown", Values: url.Values{"blockno": {"10"}}})
@@ -313,7 +328,9 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := sourceAny.([]sourceCodeResult)
-	if len(source) != 1 || source[0].SourceCode != string(sources) || source[0].OptimizationUsed != "1" || source[0].Runs != "200" || source[0].EVMVersion != "paris" || source[0].MatchKind != "exact" {
+	if len(source) != 1 || source[0].SourceCode != string(sources) || source[0].CompilerType != "solc" ||
+		source[0].ContractFileName != "" || source[0].OptimizationUsed != "1" || source[0].Runs != "200" ||
+		source[0].EVMVersion != "paris" || source[0].MatchKind != "exact" {
 		t.Fatalf("source=%+v", source)
 	}
 }
@@ -435,15 +452,15 @@ func TestContractCreationAbsenceRequiresFullCoreAndTraceCoverage(t *testing.T) {
 			name: "core coverage unavailable",
 			expectations: []sqlExpectation{
 				{contains: "WITH candidates AS", columns: fakeColumns(13)},
-				{contains: "FROM core_index_configuration AS configuration", columns: fakeColumns(4)},
+				coreCoverageExpectation("0", "", "10", "0", nil, nil),
 			},
-			want: ErrStateUnavailable,
+			want: ErrCoreUnavailable,
 		},
 		{
 			name: "trace coverage complete",
 			expectations: []sqlExpectation{
 				{contains: "WITH candidates AS", columns: fakeColumns(13)},
-				{contains: "FROM core_index_configuration AS configuration", columns: fakeColumns(4), rows: [][]driver.Value{{"0", "0", "10", "10"}}},
+				completeCoreCoverageExpectation("0", "", "10"),
 				{contains: "FROM published_block_stage_results AS result", columns: fakeColumns(4), rows: [][]driver.Value{{"10", nil, nil, nil}}},
 			},
 			want: ErrNotFound,
@@ -475,7 +492,10 @@ func TestListQueriesReturnNotFoundInsteadOfEmptySuccess(t *testing.T) {
 		{"account", "getminedblocks", url.Values{"address": {testSender}}, "FROM blocks AS block", 3},
 		{"logs", "getLogs", url.Values{}, "FROM logs AS log", 10},
 	} {
-		db := fakeDatabase(t, sqlExpectation{contains: test.contains, columns: fakeColumns(test.columns)})
+		db := fakeDatabase(t,
+			completeCoreCoverageExpectation("0", "", "10"),
+			sqlExpectation{contains: test.contains, columns: fakeColumns(test.columns)},
+		)
 		backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 		result, err := backend.Execute(context.Background(), Request{Module: test.module, Action: test.action, Values: test.values})
 		if !errors.Is(err, ErrNotFound) {

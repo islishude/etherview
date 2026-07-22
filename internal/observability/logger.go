@@ -5,6 +5,7 @@ package observability
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -63,10 +64,22 @@ func (handler *redactingHandler) Enabled(ctx context.Context, level slog.Level) 
 
 func (handler *redactingHandler) Handle(ctx context.Context, record slog.Record) error {
 	clean := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	traceIDSet := false
+	spanIDSet := false
 	record.Attrs(func(attribute slog.Attr) bool {
+		traceIDSet = traceIDSet || attribute.Key == "trace_id"
+		spanIDSet = spanIDSet || attribute.Key == "span_id"
 		clean.AddAttrs(redactAttribute(attribute))
 		return true
 	})
+	if trace, ok := TraceFromContext(ctx); ok {
+		if !traceIDSet {
+			clean.AddAttrs(slog.String("trace_id", trace.TraceID))
+		}
+		if !spanIDSet {
+			clean.AddAttrs(slog.String("span_id", trace.SpanID))
+		}
+	}
 	return handler.next.Handle(ctx, clean)
 }
 
@@ -84,6 +97,12 @@ func (handler *redactingHandler) WithGroup(name string) slog.Handler {
 
 func redactAttribute(attribute slog.Attr) slog.Attr {
 	attribute.Value = attribute.Value.Resolve()
+	if attribute.Value.Kind() == slog.KindAny {
+		if err, ok := attribute.Value.Any().(error); ok {
+			attribute.Value = slog.StringValue(fmt.Sprintf("%T", err))
+			return attribute
+		}
+	}
 	if isSensitiveKey(attribute.Key) {
 		attribute.Value = slog.StringValue(redactedValue)
 		return attribute
@@ -106,8 +125,9 @@ func redactAttribute(attribute slog.Attr) slog.Attr {
 func isSensitiveKey(key string) bool {
 	key = strings.ToLower(strings.ReplaceAll(key, "-", "_"))
 	for _, marker := range []string{
-		"authorization", "cookie", "credential", "database_url", "password",
-		"private_key", "rpc_url", "secret", "token",
+		"api_key", "authorization", "cookie", "credential", "database_url",
+		"header", "panic", "password", "pepper", "private_key", "rpc_url",
+		"secret", "token",
 	} {
 		if strings.Contains(key, marker) {
 			return true

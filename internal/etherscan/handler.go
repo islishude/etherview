@@ -229,6 +229,8 @@ func (h Handler) writeBackendError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		h.write(w, http.StatusOK, response{Status: "0", Message: "No records found", Result: []any{}})
+	case errors.Is(err, ErrCoreUnavailable):
+		h.writeError(w, "core coverage unavailable")
 	case errors.Is(err, ErrTraceUnavailable):
 		h.writeError(w, "trace capability unavailable")
 	case errors.Is(err, ErrPriceUnavailable):

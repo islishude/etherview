@@ -21,6 +21,8 @@ const (
 	maximumCursorBytes = 2048
 )
 
+var errSnapshotExpired = errors.New("mempool snapshot expired")
+
 type PostgresOptions struct {
 	ChainID uint64
 	Enabled bool
@@ -263,8 +265,13 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	}
 	snapshot, err := repository.readSnapshot(ctx, tx, snapshotID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) && encodedCursor != "" {
+		if (errors.Is(err, sql.ErrNoRows) || errors.Is(err, errSnapshotExpired)) && encodedCursor != "" {
 			return Page{}, ErrInvalidCursor
+		}
+		if errors.Is(err, errSnapshotExpired) {
+			return Page{}, CapabilityError{
+				State: StateUnavailable, Code: "snapshot_expired", LastAttemptAt: status.lastAttemptAt,
+			}
 		}
 		if errors.Is(err, sql.ErrNoRows) {
 			return Page{}, fmt.Errorf("%w: latest mempool snapshot is missing", ErrCorruptData)
@@ -352,8 +359,8 @@ func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapsh
 	err := tx.QueryRowContext(ctx, `
 		SELECT id, endpoint_name, observed_at, expires_at, transaction_count
 		FROM mempool_snapshots
-		WHERE chain_id = $1::numeric AND id = $2 AND expires_at > $3`,
-		repository.chain, snapshotID, repository.now().UTC(),
+		WHERE chain_id = $1::numeric AND id = $2`,
+		repository.chain, snapshotID,
 	).Scan(&snapshot.ID, &snapshot.Endpoint, &snapshot.ObservedAt, &snapshot.ExpiresAt, &snapshot.TransactionCount)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -366,6 +373,9 @@ func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapsh
 	}
 	snapshot.ObservedAt = snapshot.ObservedAt.UTC()
 	snapshot.ExpiresAt = snapshot.ExpiresAt.UTC()
+	if !snapshot.ExpiresAt.After(repository.now().UTC()) {
+		return SnapshotInfo{}, errSnapshotExpired
+	}
 	return snapshot, nil
 }
 

@@ -49,6 +49,17 @@ maintenance:
   search_retention_generations: 100000
   adapter_delete_batch: 1000
 
+observability:
+  environment: production
+  # Supply ETHERVIEW_OTLP_TRACE_ENDPOINT at runtime to enable OTLP/HTTP traces.
+  # The endpoint is an origin; Etherview sends protobuf spans to /v1/traces.
+  otlp_trace_endpoint: ""
+  # Required only for an explicitly trusted plain-HTTP collector.
+  otlp_trace_insecure: false
+  trace_sample_ratio: 0.1
+  trace_export_timeout: 5s
+  metrics_refresh_interval: 15s
+
 metadata:
   fetch_timeout: 10s
   # JSON is stored in PostgreSQL and is hard-capped at 2 MiB by the schema.
@@ -63,6 +74,7 @@ features:
   mempool: false
   historical_state: false
   verification: false
+  sourcify: false
   nft_metadata: false
   pricing: false
 
@@ -86,13 +98,24 @@ verification:
   container_memory: 512m
   container_cpus: "1"
   container_pids: 64
-  # Public verification requires digest-pinned images, for example:
+  # Public verification requires pre-pulled digest-pinned images. Startup
+  # inspects every image and compilation never pulls, for example:
   # images:
   #   solidity:
   #     "0.8.30": ghcr.io/example/solc@sha256:<64 hex characters>
   images: {}
-  # HTTPS + SHA-256 artifacts are only used by private process mode.
+  # HTTPS + lowercase non-zero SHA-256 artifacts are private process mode only.
+  # Each entry may set max_bytes; omission uses the fixed 200 MiB limit.
   artifacts: {}
+
+# Optional Sourcify v2 interoperability. Set ETHERVIEW_FEATURE_SOURCIFY=true
+# only with authenticated public verification enabled. API-role processes use
+# the restricted, redirect-free outbound client; verification workers do not.
+sourcify:
+  base_url: https://sourcify.dev/server
+  timeout: 20s
+  max_request_bytes: 5242880
+  max_response_bytes: 33554432
 
 # Optional accelerators and external enrichment sources. Empty values are the
 # normal PostgreSQL-only monolith configuration.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -22,6 +23,8 @@ type operationalService struct {
 	db              databasePinger
 	registry        *observability.Registry
 	lifecycle       *components.Lifecycle
+	logger          *slog.Logger
+	telemetry       *observability.Telemetry
 }
 
 func (s *operationalService) Name() string { return "operations-http" }
@@ -30,14 +33,7 @@ func (s *operationalService) Run(ctx context.Context) error {
 	if s.db == nil || s.lifecycle == nil {
 		return errors.New("operational HTTP dependencies are not configured")
 	}
-	server := &http.Server{
-		Addr:              s.address,
-		Handler:           s.handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+	server := s.httpServer()
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 	select {
@@ -64,6 +60,18 @@ func (s *operationalService) Run(ctx context.Context) error {
 	}
 }
 
+func (s *operationalService) httpServer() *http.Server {
+	return &http.Server{
+		Addr:              s.address,
+		Handler:           s.handler(),
+		ErrorLog:          observability.HTTPServerErrorLog(s.logger),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
 func (s *operationalService) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -85,7 +93,12 @@ func (s *operationalService) handler() http.Handler {
 		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
 	})
 	observability.MountMetrics(mux, s.registry)
-	return observability.HTTPMiddleware(mux, observability.HTTPOptions{Registry: s.registry})
+	return observability.HTTPMiddleware(mux, observability.HTTPOptions{
+		Registry: s.registry, Logger: s.logger, Telemetry: s.telemetry,
+		Route: func(request *http.Request) string {
+			return observability.MuxRoutePattern(mux, request)
+		},
+	})
 }
 
 // databaseRoleService keeps a role process live while its durable worker is

@@ -23,7 +23,7 @@ type RPCBuild struct {
 	EndpointNum int
 }
 
-func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger) (RPCBuild, error) {
+func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, observers ...ethrpc.Observer) (RPCBuild, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -127,7 +127,11 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger) (RPCB
 		}
 		return RPCBuild{}, errors.New("no HTTP(S) RPC endpoint is configured for authoritative polling")
 	}
-	pool, err := ethrpc.NewPool(endpoints, ethrpc.PoolOptions{})
+	poolOptions := ethrpc.PoolOptions{}
+	if len(observers) > 0 {
+		poolOptions.Observer = observers[0]
+	}
+	pool, err := ethrpc.NewPool(endpoints, poolOptions)
 	if err != nil {
 		return RPCBuild{}, err
 	}

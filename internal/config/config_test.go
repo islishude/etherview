@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -37,6 +38,19 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if err := os.WriteFile(secretPath, []byte("postgres://example/db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// This case exercises the file-only input and must not inherit an unrelated
+	// inline value from the caller's environment.
+	inlineDatabaseURL, inlineDatabaseURLSet := os.LookupEnv("ETHERVIEW_DATABASE_URL")
+	if err := os.Unsetenv("ETHERVIEW_DATABASE_URL"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if inlineDatabaseURLSet {
+			_ = os.Setenv("ETHERVIEW_DATABASE_URL", inlineDatabaseURL)
+		} else {
+			_ = os.Unsetenv("ETHERVIEW_DATABASE_URL")
+		}
+	})
 	t.Setenv("ETHERVIEW_DATABASE_URL_FILE", secretPath)
 	t.Setenv("ETHERVIEW_CHAIN_ID", "11155111")
 	t.Setenv("ETHERVIEW_ROLES", "api,sync")
@@ -108,6 +122,82 @@ func TestMaintenanceConfigurationIsStrictlyBounded(t *testing.T) {
 	}
 }
 
+func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
+	t.Parallel()
+	if Default().Observability.OTLPTraceEndpoint != "" {
+		t.Fatal("OTLP tracing must be disabled by default")
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{name: "empty environment", mutate: func(cfg *Config) { cfg.Observability.Environment = "" }, want: "environment"},
+		{name: "sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = 1.01 }, want: "trace_sample_ratio"},
+		{name: "nan sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = math.NaN() }, want: "trace_sample_ratio"},
+		{name: "infinite sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = math.Inf(1) }, want: "trace_sample_ratio"},
+		{name: "short export timeout", mutate: func(cfg *Config) { cfg.Observability.TraceExportTimeout = 99 * time.Millisecond }, want: "trace_export_timeout"},
+		{name: "short refresh", mutate: func(cfg *Config) { cfg.Observability.MetricsRefreshInterval = time.Millisecond }, want: "metrics_refresh_interval"},
+		{name: "credential endpoint", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://user:secret@otel.example:4318" }, want: "otlp_trace_endpoint"},
+		{name: "endpoint query", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318?key=secret" }, want: "otlp_trace_endpoint"},
+		{name: "endpoint path", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318/private" }, want: "otlp_trace_endpoint"},
+		{name: "endpoint fragment", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318#secret" }, want: "otlp_trace_endpoint"},
+		{name: "implicit insecure HTTP", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "http://otel.example:4318" }, want: "otlp_trace_insecure"},
+		{name: "insecure HTTPS", mutate: func(cfg *Config) {
+			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
+			cfg.Observability.OTLPTraceInsecure = true
+		}, want: "otlp_trace_insecure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "observability."+test.want) {
+				t.Fatalf("invalid observability config passed: %#v error=%v", cfg.Observability, err)
+			}
+		})
+	}
+	for _, cfg := range []ObservabilityConfig{
+		{
+			Environment: "production", OTLPTraceEndpoint: "https://otel.example:4318",
+			TraceSampleRatio: 0.25, TraceExportTimeout: time.Second,
+			MetricsRefreshInterval: 10 * time.Second,
+		},
+		{
+			Environment: "staging", OTLPTraceEndpoint: "http://otel.monitoring.svc:4318",
+			OTLPTraceInsecure: true, TraceSampleRatio: 1, TraceExportTimeout: time.Second,
+			MetricsRefreshInterval: 10 * time.Second,
+		},
+	} {
+		root := Default()
+		root.Observability = cfg
+		if err := root.Validate(); err != nil {
+			t.Fatalf("valid observability config failed: %v", err)
+		}
+	}
+}
+
+func TestObservabilityEnvironmentOverrides(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	values := map[string]string{
+		"ETHERVIEW_OBSERVABILITY_ENVIRONMENT": "staging",
+		"ETHERVIEW_OTLP_TRACE_ENDPOINT":       "http://otel.monitoring.svc:4318",
+		"ETHERVIEW_OTLP_TRACE_INSECURE":       "true",
+		"ETHERVIEW_TRACE_SAMPLE_RATIO":        "0.5",
+		"ETHERVIEW_TRACE_EXPORT_TIMEOUT":      "3s",
+		"ETHERVIEW_METRICS_REFRESH_INTERVAL":  "20s",
+	}
+	lookup := func(name string) (string, bool) { value, ok := values[name]; return value, ok }
+	if err := applyEnvironment(&cfg, lookup, os.ReadFile); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Observability.Environment != "staging" || cfg.Observability.OTLPTraceEndpoint != "http://otel.monitoring.svc:4318" ||
+		!cfg.Observability.OTLPTraceInsecure || cfg.Observability.TraceSampleRatio != 0.5 ||
+		cfg.Observability.TraceExportTimeout != 3*time.Second || cfg.Observability.MetricsRefreshInterval != 20*time.Second {
+		t.Fatalf("observability environment was not applied: %#v", cfg.Observability)
+	}
+}
+
 func TestExternalAdapterConfigurationIsHTTPSAndBounded(t *testing.T) {
 	t.Parallel()
 	for _, mutate := range []func(*Config){
@@ -136,6 +226,76 @@ func TestExternalAdapterConfigurationIsHTTPSAndBounded(t *testing.T) {
 	}
 	if !validS3Bucket("123") {
 		t.Fatal("purely numeric, non-IP S3 bucket was rejected")
+	}
+}
+
+func TestSourcifyConfigurationIsHTTPSBoundedAndExplicit(t *testing.T) {
+	t.Parallel()
+	if Default().Features.Sourcify {
+		t.Fatal("Sourcify must be disabled by default")
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{name: "HTTP URL", mutate: func(cfg *Config) { cfg.Sourcify.BaseURL = "http://sourcify.example/server" }, want: "base_url"},
+		{name: "credentials", mutate: func(cfg *Config) { cfg.Sourcify.BaseURL = "https://user:secret@sourcify.example/server" }, want: "base_url"},
+		{name: "query", mutate: func(cfg *Config) { cfg.Sourcify.BaseURL = "https://sourcify.example/server?token=secret" }, want: "base_url"},
+		{name: "fragment", mutate: func(cfg *Config) { cfg.Sourcify.BaseURL = "https://sourcify.example/server#fragment" }, want: "base_url"},
+		{name: "escaped traversal", mutate: func(cfg *Config) { cfg.Sourcify.BaseURL = "https://sourcify.example/%2e%2e/server" }, want: "base_url"},
+		{name: "short timeout", mutate: func(cfg *Config) { cfg.Sourcify.Timeout = 99 * time.Millisecond }, want: "timeout"},
+		{name: "long timeout", mutate: func(cfg *Config) { cfg.Sourcify.Timeout = 2*time.Minute + 1 }, want: "timeout"},
+		{name: "empty request bound", mutate: func(cfg *Config) { cfg.Sourcify.MaxRequestBytes = 0 }, want: "max_request_bytes"},
+		{name: "large request bound", mutate: func(cfg *Config) { cfg.Sourcify.MaxRequestBytes = 64<<20 + 1 }, want: "max_request_bytes"},
+		{name: "empty response bound", mutate: func(cfg *Config) { cfg.Sourcify.MaxResponseBytes = 0 }, want: "max_response_bytes"},
+		{name: "large response bound", mutate: func(cfg *Config) { cfg.Sourcify.MaxResponseBytes = 64<<20 + 1 }, want: "max_response_bytes"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "sourcify."+test.want) {
+				t.Fatalf("invalid Sourcify config passed: %#v error=%v", cfg.Sourcify, err)
+			}
+		})
+	}
+
+	cfg := Default()
+	cfg.Features.Sourcify = true
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "features.sourcify requires public verification") {
+		t.Fatalf("unexpected Sourcify dependency error: %v", err)
+	}
+	cfg.Features.Verification = true
+	cfg.Security.PublicVerification = true
+	cfg.Security.CompilerSandbox = "container"
+	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid enabled Sourcify config failed: %v", err)
+	}
+}
+
+func TestSourcifyEnvironmentOverrides(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	values := map[string]string{
+		"ETHERVIEW_FEATURE_SOURCIFY":            "true",
+		"ETHERVIEW_SOURCIFY_BASE_URL":           "https://sourcify.example/v2",
+		"ETHERVIEW_SOURCIFY_TIMEOUT":            "17s",
+		"ETHERVIEW_SOURCIFY_MAX_REQUEST_BYTES":  "123456",
+		"ETHERVIEW_SOURCIFY_MAX_RESPONSE_BYTES": "654321",
+	}
+	lookup := func(name string) (string, bool) {
+		value, ok := values[name]
+		return value, ok
+	}
+	if err := applyEnvironment(&cfg, lookup, os.ReadFile); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Features.Sourcify || cfg.Sourcify.BaseURL != "https://sourcify.example/v2" ||
+		cfg.Sourcify.Timeout != 17*time.Second || cfg.Sourcify.MaxRequestBytes != 123456 ||
+		cfg.Sourcify.MaxResponseBytes != 654321 {
+		t.Fatalf("Sourcify environment was not applied: feature=%v config=%#v", cfg.Features.Sourcify, cfg.Sourcify)
 	}
 }
 
@@ -270,6 +430,25 @@ func TestAPIOnlyRoleKeepsStateRPCOptional(t *testing.T) {
 	}
 }
 
+func TestAPIVerificationReadsRequireAPIKeyAuthentication(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.Features.Verification = true
+	if err := cfg.ValidateForRoles([]string{"api"}); err == nil ||
+		!strings.Contains(err.Error(), "verification reads require API key authentication") {
+		t.Fatalf("unexpected missing verification read authentication error: %v", err)
+	}
+	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil ||
+		!strings.Contains(err.Error(), "configured compiler sandbox") {
+		t.Fatalf("verify-only role bypassed its independent sandbox requirement: %v", err)
+	}
+	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
+		t.Fatalf("authenticated API-only verification reads failed validation: %v", err)
+	}
+}
+
 func TestEnrichRoleRequiresRPCForBlockPinnedTokenDetection(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
@@ -335,5 +514,136 @@ func TestCompilerAllowlistRejectsUnpinnedOrInsecureArtifacts(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "HTTPS") || !strings.Contains(err.Error(), "pinned") {
 		t.Fatalf("unexpected compiler allowlist error: %v", err)
+	}
+}
+
+func TestCompilerAllowlistRejectsNoncanonicalSupplyChainInputs(t *testing.T) {
+	t.Parallel()
+	validDigest := strings.Repeat("a", 64)
+	tests := []struct {
+		name string
+		edit func(*Config)
+		want string
+	}{
+		{
+			name: "zero artifact digest",
+			edit: func(cfg *Config) {
+				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: strings.Repeat("0", 64)}},
+				}
+			},
+			want: "invalid SHA-256",
+		},
+		{
+			name: "uppercase artifact digest",
+			edit: func(cfg *Config) {
+				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: strings.Repeat("A", 64)}},
+				}
+			},
+			want: "invalid SHA-256",
+		},
+		{
+			name: "fragmented artifact URL",
+			edit: func(cfg *Config) {
+				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+					"solidity": {"0.8.30": {URL: "https://compiler.example/solc#fragment", SHA256: validDigest}},
+				}
+			},
+			want: "absolute HTTPS URL",
+		},
+		{
+			name: "oversized artifact",
+			edit: func(cfg *Config) {
+				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: validDigest, MaxBytes: 1<<30 + 1}},
+				}
+			},
+			want: "max_bytes",
+		},
+		{
+			name: "invalid compiler version",
+			edit: func(cfg *Config) {
+				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+					"solidity": {"../../solc": {URL: "https://compiler.example/solc", SHA256: validDigest}},
+				}
+			},
+			want: "invalid version",
+		},
+		{
+			name: "zero image digest",
+			edit: func(cfg *Config) {
+				cfg.Verification.Images = map[string]map[string]string{
+					"vyper": {"0.4.0": "registry.example/vyper@sha256:" + strings.Repeat("0", 64)},
+				}
+			},
+			want: "invalid digest",
+		},
+		{
+			name: "ambiguous image digest",
+			edit: func(cfg *Config) {
+				cfg.Verification.Images = map[string]map[string]string{
+					"vyper": {"0.4.0": "registry.example/vyper@sha256:" + validDigest + "@sha256:" + validDigest},
+				}
+			},
+			want: "pinned by SHA-256",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			test.edit(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error=%v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestCompilerContainerResourceLimitsAreValidated(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		memory string
+		cpus   string
+		want   string
+	}{
+		{name: "unbounded memory", memory: "0", cpus: "1", want: "container_memory"},
+		{name: "too little memory", memory: "63m", cpus: "1", want: "container_memory"},
+		{name: "too much memory", memory: "17g", cpus: "1", want: "container_memory"},
+		{name: "invalid CPUs", memory: "512m", cpus: "all", want: "container_cpus"},
+		{name: "zero CPUs", memory: "512m", cpus: "0", want: "container_cpus"},
+		{name: "too many CPUs", memory: "512m", cpus: "65", want: "container_cpus"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			cfg.Verification.ContainerMemory = test.memory
+			cfg.Verification.ContainerCPUs = test.cpus
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error=%v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestProcessCompilerRoleRequiresAbsoluteCache(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.Features.Verification = true
+	cfg.Security.CompilerSandbox = "process"
+	cfg.Verification.CacheDirectory = "relative/cache"
+	cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
+		"solidity": {"0.8.30": {
+			URL: "https://compiler.example/solc", SHA256: strings.Repeat("a", 64), MaxBytes: 100 << 20,
+		}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
+		t.Fatalf("unexpected cache path error: %v", err)
 	}
 }

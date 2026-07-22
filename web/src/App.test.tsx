@@ -355,8 +355,8 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/tx/${hash}`);
 
     expect(await screen.findByRole("heading", { name: "Transaction summary", level: 2 })).toBeVisible();
-    expect(await screen.findByText("trace data is unavailable")).toBeVisible();
-    expect(screen.getByText(/reported unavailable at block 42/)).toBeVisible();
+    expect(await screen.findByText("Trace data is unavailable")).toBeVisible();
+    expect(screen.getByText(/reported Unavailable at block 42/)).toBeVisible();
     expect(screen.getByText(/Core indexed data remains available\./)).toBeVisible();
   });
 
@@ -457,8 +457,8 @@ describe("embedded explorer shell", () => {
 
     renderExplorer("/charts");
 
-    expect(await screen.findByText("statistics data is unavailable")).toBeVisible();
-    expect(screen.getByText(/reported unavailable at block 8/)).toBeVisible();
+    expect(await screen.findByText("Statistics data is unavailable")).toBeVisible();
+    expect(screen.getByText(/reported Unavailable at block 8/)).toBeVisible();
   });
 
   it("rejects invalid Standard JSON locally and explains disabled verification", async () => {
@@ -508,10 +508,9 @@ describe("embedded explorer shell", () => {
 
   it("submits and polls a verification job without persisting or routing the API key", async () => {
     const address = `0x${"12".repeat(20)}`;
-    const codeHash = `0x${"34".repeat(32)}`;
-    const blockHash = `0x${"56".repeat(32)}`;
     const secret = "ev_live_component-memory-only";
     const jobID = "018f3b52-0b3d-7bf1-b65f-6f214827cb41";
+    let submittedBody: Record<string, unknown> | undefined;
     const storageSpy = vi.spyOn(window.localStorage, "setItem");
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -531,6 +530,7 @@ describe("embedded explorer shell", () => {
         });
       }
       if (path === "/api/v1/verification/jobs" && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json({
           data: { id: jobID, status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
           meta,
@@ -548,8 +548,6 @@ describe("embedded explorer shell", () => {
     renderExplorer("/verify");
 
     fireEvent.change(await screen.findByLabelText("Address"), { target: { value: address } });
-    fireEvent.change(screen.getByLabelText("Code hash"), { target: { value: codeHash } });
-    fireEvent.change(screen.getByLabelText("Block hash at verification"), { target: { value: blockHash } });
     fireEvent.change(screen.getByLabelText("Compiler version"), { target: { value: "0.8.30" } });
     fireEvent.change(screen.getByLabelText("Contract identifier"), { target: { value: "src/Test.sol:Test" } });
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
@@ -557,6 +555,15 @@ describe("embedded explorer shell", () => {
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("exact").length).toBeGreaterThan(0);
+    expect(submittedBody).toMatchObject({
+      address,
+      compiler_version: "0.8.30",
+      contract_identifier: "src/Test.sol:Test",
+    });
+    expect(submittedBody).not.toHaveProperty("code_hash");
+    expect(submittedBody).not.toHaveProperty("at_block_hash");
+    expect(submittedBody).not.toHaveProperty("creation_bytecode");
+    expect(submittedBody).not.toHaveProperty("runtime_bytecode");
     const protectedCalls = fetcher.mock.calls.filter(([input]) => String(input).includes("/verification/jobs"));
     expect(protectedCalls).toHaveLength(2);
     for (const [url, init] of protectedCalls) {

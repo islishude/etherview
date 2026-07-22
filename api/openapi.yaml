@@ -444,6 +444,8 @@ paths:
     get:
       operationId: getVerificationJob
       tags: [verification]
+      security:
+        - APIKey: []
       parameters:
         - name: id
           in: path
@@ -464,6 +466,8 @@ paths:
     get:
       operationId: getVerifiedContract
       tags: [contracts, verification]
+      security:
+        - APIKey: []
       parameters:
         - $ref: "#/components/parameters/Address"
         - name: code_hash
@@ -478,6 +482,119 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerifiedContractResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /sourcify/contracts/{address}:
+    get:
+      operationId: lookupSourcifyContract
+      tags: [contracts, verification, sourcify]
+      description: >-
+        Looks up the configured chain and address through the optional Sourcify
+        adapter. The response is a bounded, validated summary and is not local
+        verification or publication evidence.
+      security:
+        - APIKey: []
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Validated Sourcify contract summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcifyContractResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /sourcify/imports:
+    post:
+      operationId: importSourcifyContract
+      tags: [contracts, verification, sourcify]
+      description: >-
+        Resolves the address to the newest exact canonical code and creation
+        facts on this server's configured chain, then imports Sourcify compiler
+        input only after its runtime identity matches that local target. The
+        imported input enters the normal durable local verification pipeline
+        and never opts in to a later Sourcify upload.
+      security:
+        - APIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifyImportRequest"
+      responses:
+        "202":
+          description: Imported verification job accepted for local execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        "200":
+          description: An equivalent local verification job already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification/jobs/{id}/sourcify:
+    post:
+      operationId: uploadVerificationJobToSourcify
+      tags: [verification, sourcify]
+      description: >-
+        Uploads the compiler input from a durable local verification job. Both
+        its stored submit_to_sourcify opt-in and this call's explicit consent
+        must be true. A successful response contains the external job ticket.
+      security:
+        - APIKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Durable local verification job ID.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifyUploadRequest"
+      responses:
+        "202":
+          description: Sourcify accepted the upload and returned an external ticket.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcifyTicketResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /sourcify/jobs/{verification_id}:
+    get:
+      operationId: getSourcifyJob
+      tags: [verification, sourcify]
+      description: >-
+        Returns the validated external Sourcify job state. Upstream diagnostic
+        messages and error bodies are never exposed.
+      security:
+        - APIKey: []
+      parameters:
+        - name: verification_id
+          in: path
+          required: true
+          description: Sourcify verification ticket ID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current external verification job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcifyJobResponse"
         default:
           $ref: "#/components/responses/Error"
 components:
@@ -1129,23 +1246,16 @@ components:
           type: boolean
     VerificationSubmission:
       type: object
+      additionalProperties: false
       required:
         - address
-        - code_hash
-        - at_block_hash
         - language
         - compiler_version
         - contract_identifier
         - standard_json
-        - creation_bytecode
-        - runtime_bytecode
       properties:
         address:
           $ref: "#/components/schemas/Address"
-        code_hash:
-          $ref: "#/components/schemas/Hash"
-        at_block_hash:
-          $ref: "#/components/schemas/Hash"
         language:
           type: string
           enum: [solidity, vyper]
@@ -1156,21 +1266,90 @@ components:
         contract_identifier:
           type: string
           minLength: 3
-          maxLength: 1024
+          maxLength: 512
         standard_json:
           type: object
           additionalProperties: true
-        creation_bytecode:
+          description: Inline-source Standard JSON compiler input. The service preserves code-generation settings but replaces outputSelection with the bounded exact-target fields required for deterministic matching before persisting the request.
+        constructor_arguments:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
-        runtime_bytecode:
+          pattern: '^(0x)?[0-9a-fA-F]*$'
+          description: Optional constructor-argument suffix. The server accepts it only when it is an exact suffix of the canonical creation input and removes it before enqueueing.
+        license_type:
           type: string
-          pattern: '^0x[0-9a-fA-F]*$'
-          minLength: 4
-          description: Non-empty deployed runtime bytecode whose Keccak-256 digest must equal code_hash.
+          enum: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"]
+          description: Optional Etherscan-compatible source-license identifier stored only as publication metadata.
         submit_to_sourcify:
           type: boolean
           default: false
+    SourcifyImportRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - address
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        constructor_arguments:
+          type: string
+          pattern: '^(0x)?[0-9a-fA-F]*$'
+          description: Optional constructor-argument suffix, accepted only when it matches the canonical creation input.
+    SourcifyUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [consent]
+      properties:
+        consent:
+          type: boolean
+          enum: [true]
+          description: Explicit consent for this irreversible external source upload.
+    SourcifyMatch:
+      type: string
+      enum: [match, exact_match]
+    SourcifyContract:
+      type: object
+      required: [chain_id, address]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        match:
+          $ref: "#/components/schemas/SourcifyMatch"
+        creation_match:
+          $ref: "#/components/schemas/SourcifyMatch"
+        runtime_match:
+          $ref: "#/components/schemas/SourcifyMatch"
+        language:
+          type: string
+          enum: [solidity, vyper]
+        compiler_version:
+          type: string
+          minLength: 1
+          maxLength: 128
+        contract_identifier:
+          type: string
+          minLength: 3
+          maxLength: 512
+    SourcifyTicket:
+      type: object
+      required: [verification_id]
+      properties:
+        verification_id:
+          type: string
+          format: uuid
+    SourcifyJob:
+      type: object
+      required: [verification_id, state]
+      properties:
+        verification_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [pending, succeeded, failed]
+        contract:
+          $ref: "#/components/schemas/SourcifyContract"
     VerificationMatch:
       type: string
       enum: [exact, metadata_only, mismatch]
@@ -1424,6 +1603,30 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/VerificationJob"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SourcifyContractResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SourcifyContract"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SourcifyTicketResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SourcifyTicket"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SourcifyJobResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SourcifyJob"
         meta:
           $ref: "#/components/schemas/Meta"
     VerifiedContractResponse:

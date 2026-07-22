@@ -1,0 +1,25 @@
+{
+  "language": "Vyper",
+  "sources": {
+    "contracts/Matrix.vy": {
+      "content": "# pragma version 0.4.1\n\n@external\n@view\ndef answer() -> uint256:\n    return 42\n"
+    }
+  },
+  "settings": {
+    "search_paths": [
+      "."
+    ],
+    "evmVersion": "shanghai",
+    "optimize": "gas",
+    "bytecodeMetadata": true,
+    "outputSelection": {
+      "contracts/Matrix.vy": [
+        "abi",
+        "metadata",
+        "layout",
+        "evm.bytecode.object",
+        "evm.deployedBytecode.object"
+      ]
+    }
+  }
+}

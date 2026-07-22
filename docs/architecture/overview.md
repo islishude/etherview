@@ -20,6 +20,18 @@ with PostgreSQL liveness. The API probe combines it with durable core-index
 readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
 
+Each role also runs the same PostgreSQL-backed operational metric collector.
+It reads only partial-indexed active durable-job, verification, and repair
+backlogs, excluding unbounded terminal history, without making metrics a
+correctness dependency; refresh failure retains the last snapshot and exposes
+its age/failure state. Replicas expose the same chain snapshot, so current
+gauges are deduplicated with `max`, while per-worker result counters aggregate
+with `sum`/`rate`. Optional OTLP/HTTP tracing starts
+only with an explicit collector endpoint, propagates W3C trace context through
+HTTP, and flushes within the supervisor's bounded shutdown. Collector or
+exporter loss never withdraws readiness. Operator response procedures are in
+the [operations runbook](../operations.md).
+
 ```text
 Execution RPC -> sync/canonicalizer -> PostgreSQL -> durable jobs
                     |                    |          -> enrich/trace/verify/metadata
@@ -313,6 +325,9 @@ size alone is not sufficient justification to weaken those invariants.
   generation window, and deletes one bounded batch of expired adapter
   observations. Cleanup failure emits a stable redacted code and retries with
   bounded backoff without making readiness or core correctness depend on it.
+- The exact Etherscan V2 module/action, method, parameter, API-key, capability,
+  unavailable-action, and wire-difference contract is maintained in the
+  [Etherscan V2 compatibility matrix](etherscan-v2-compatibility.md).
 - Etherscan address-only ABI and source lookups resolve the address's latest
   canonical code observation, then require a verified artifact with the same
   chain, address, code hash, and a validity range covering the canonical tip.
@@ -325,8 +340,12 @@ size alone is not sufficient justification to weaken those invariants.
   the durable verification-job UUID as the compatibility GUID. Source submit
   and status use POST; proxy status uses GET, but both proxy operations report
   unavailable until a durable proxy verification workflow exists.
-- Native and compatibility verification both reject empty runtime bytecode or
-  a code hash that differs from its Keccak-256 digest. A durable submission
+- Native and compatibility verification both resolve the current canonical
+  code, block, runtime bytecode, and creation input from PostgreSQL; native
+  callers cannot submit those identities. An optional constructor-argument
+  suffix is stripped only after exact comparison with the canonical creation
+  input. Both boundaries reject empty runtime bytecode or a code hash that
+  differs from its Keccak-256 digest. A durable submission
   digest covers the exact request payload and the server-derived public sandbox
   requirement; only the same active or successful digest is idempotent. A
   worker binds the job to its compiler artifact digest before execution, and
@@ -335,8 +354,56 @@ size alone is not sufficient justification to weaken those invariants.
   canonical code observation for the request's chain, address, code hash, and
   block hash. A stale target becomes a stable terminal failure, while successful
   results are immutable provenance rows projected deterministically to the
-  verified-contract read model. See
+  verified-contract read model. Publication-guard migrations freeze concurrent
+  DML before replacing guards or validating data by taking write-conflicting
+  relation locks in the production write order: immutable results, verified
+  projections, then terminal job updates. See
   [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
+- Verification prepares one duplicate-key-free, inline-source Solidity/Vyper
+  Standard JSON input before digesting it, and the repository repeats the same
+  canonicalization for direct submissions. Caller code-generation settings are
+  preserved while `outputSelection` is replaced with a bounded, exact-target,
+  version-aware artifact set; legacy Vyper receives only the minimal required
+  non-target selections demanded by its formatter. Compiler output is fully
+  shape-checked even when the code will be recorded as a mismatch. Exact
+  matching normalizes only bounded compiler-declared immutable regions;
+  metadata-only matching additionally requires a complete language-specific
+  CBOR footer with identical executable bytes, and Solidity with
+  `metadata.appendCBOR=false` never treats a footer-shaped executable suffix as
+  metadata. Legacy Vyper without an
+  authenticated immutable size can match only a zero-length suffix. Unlinked
+  libraries, guessed suffixes, malformed reference maps, broad compiler
+  outputs, and heuristic metadata stripping are never publication evidence.
+- Compiler manifests admit only bounded Solidity/Vyper versions with canonical
+  non-zero SHA-256 identities. Private process-mode downloads use a proxy-free,
+  redirect-free, public-network-only HTTPS client and install through a
+  checksum-verified `0500` atomic cache entry under a non-writable absolute
+  root. Public workers become ready only after the allowlisted Docker/Podman
+  daemon and every digest-pinned image are locally inspectable. Each compile
+  forbids pulls and networking, uses a read-only non-root container with
+  bounded CPU, memory, PIDs, file descriptors, output, and temporary storage,
+  and accepts no outcome until its random container name has been forcibly
+  removed, including after a runtime panic. Failed or hung removal and
+  compiler-runtime invariant failures stop the worker without terminalizing
+  the lease. See
+  [ADR-0016](../decisions/ADR-0016-compiler-supply-chain-and-sandbox.md).
+- Sourcify v2 is an optional external interoperability adapter rather than a
+  verification trust root. Import accepts only an address and optional
+  constructor suffix, resolves the exact canonical local block/code target
+  from PostgreSQL, and proceeds only after Sourcify's chain/address/runtime
+  bytecode matches it. The result becomes a normal durable local verification
+  request; it cannot publish a contract directly. Source upload requires both
+  the persisted request opt-in and separate call-site consent. The
+  redirect-free, proxy-free, public-network-only client bounds and validates
+  the current v2 JSON shapes and exposes only stable redacted failures. It is
+  disabled by default and constructed only by API-role processes when
+  `features.sourcify` is enabled; verification workers and feature-off API
+  processes do not depend on the external service. See
+  [ADR-0017](../decisions/ADR-0017-sourcify-interoperability-boundary.md).
+- Verification reads and submissions are separate runtime capabilities.
+  Authenticated job and verified-artifact reads remain backed by PostgreSQL
+  when public compilation submission is disabled; the public configuration
+  advertises only actually usable submission and Sourcify surfaces.
 - `/v2/api` authentication accepts the legacy API key from a header, query, or
   bounded URL-encoded POST form. Header takes precedence when equal credentials
   are repeated across sources; any conflicting sources are rejected. Form
@@ -394,3 +461,5 @@ the downstream range an operator intends to rebuild. See
 - `docs/decisions/`: why consequential choices were made.
 - `docs/plans/`: pending and completed delivery work.
 - `docs/testing.md` and Makefile: stable validation commands.
+- `docs/operations.md`: telemetry interpretation and operator repair/admin
+  procedures.

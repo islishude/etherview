@@ -45,7 +45,7 @@ type RepairRequest struct {
 	RequestedAt    time.Time  `json:"requested_at"`
 	StartedAt      *time.Time `json:"started_at,omitempty"`
 	CompletedAt    *time.Time `json:"completed_at,omitempty"`
-	LastError      string     `json:"last_error,omitempty"`
+	FailurePresent bool       `json:"failure_present"`
 }
 
 type Repository struct {
@@ -160,6 +160,54 @@ func (r *Repository) EnqueueRepair(ctx context.Context, request RepairRequest) (
 	}
 	request.RequestedAt = request.RequestedAt.UTC()
 	return request, nil
+}
+
+// RepairRequests returns a bounded newest-first operator view. It deliberately
+// exposes only whether a failure was recorded, never the stored nested error
+// text, which may originate at an RPC or database boundary.
+func (r *Repository) RepairRequests(ctx context.Context, limit int) ([]RepairRequest, error) {
+	if limit <= 0 || limit > 1000 {
+		return nil, errors.New("repair request limit must be between 1 and 1000")
+	}
+	var rows []dbgen.ListRepairRequestsRow
+	err := dbaccess.WithQueries(ctx, r.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		rows, queryErr = queries.ListRepairRequests(ctx, r.numericChainID, int32(limit))
+		return queryErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list repair requests: %w", err)
+	}
+	requests := make([]RepairRequest, 0, len(rows))
+	for _, row := range rows {
+		request := RepairRequest{
+			ID: row.ID, Operation: row.Operation, Stage: row.Stage,
+			AllowFinalized: row.AllowFinalized, Reason: row.Reason,
+			Status: row.Status, FailurePresent: row.FailurePresent,
+		}
+		request.FromBlock, err = strconv.ParseUint(row.FromBlock, 10, 64)
+		if err != nil {
+			return nil, errors.New("repair request start block exceeds uint64")
+		}
+		request.ToBlock, err = strconv.ParseUint(row.ToBlock, 10, 64)
+		if err != nil {
+			return nil, errors.New("repair request end block exceeds uint64")
+		}
+		if !row.RequestedAt.Valid {
+			return nil, errors.New("repair request has invalid requested timestamp")
+		}
+		request.RequestedAt = row.RequestedAt.Time.UTC()
+		if row.StartedAt.Valid {
+			value := row.StartedAt.Time.UTC()
+			request.StartedAt = &value
+		}
+		if row.CompletedAt.Valid {
+			value := row.CompletedAt.Time.UTC()
+			request.CompletedAt = &value
+		}
+		requests = append(requests, request)
+	}
+	return requests, nil
 }
 
 func normalizeRepairRequest(request RepairRequest) RepairRequest {

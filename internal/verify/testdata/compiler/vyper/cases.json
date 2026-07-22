@@ -1,0 +1,65 @@
+{
+  "compiler": "vyper 0.4.3+commit.bff19ea2",
+  "identifier": "contracts/Target.vy:Target",
+  "sources": [
+    "contracts/Target.vy",
+    "interfaces/Remote.vyi"
+  ],
+  "searchPaths": [
+    "."
+  ],
+  "layout": {
+    "code_layout": {
+      "owner": {
+        "length": 32,
+        "offset": 0,
+        "type": "address"
+      },
+      "seed": {
+        "length": 32,
+        "offset": 32,
+        "type": "uint256"
+      }
+    }
+  },
+  "byteLengths": {
+    "creationWithAuxdata": 471,
+    "creationWithoutAuxdata": 416,
+    "auxdataInclusive": 55,
+    "runtimeTemplate": 345,
+    "immutableSuffix": 64,
+    "runtimeOnchainSynthetic": 409
+  },
+  "decodedCreationAuxdata": {
+    "shape": "[integrity, runtime_size, data_sizes, immutable_size, compiler]",
+    "integrityHex": "0x880e13c47ded229929a64a00a89a58b8d99f438f04410c23ab6b63cb5b9eb25d",
+    "runtimeSize": 345,
+    "dataSizes": [
+      4
+    ],
+    "immutableSize": 64,
+    "compiler": {
+      "vyper": [
+        0,
+        4,
+        3
+      ]
+    },
+    "rawHex": "0x855820880e13c47ded229929a64a00a89a58b8d99f438f04410c23ab6b63cb5b9eb25d19015981041840a1657679706572830004030037"
+  },
+  "metadataPair": {
+    "creationExecutableCoreEqual": true,
+    "creationAuxdataEqual": false,
+    "baseInclusiveLength": 55,
+    "commentInclusiveLength": 55,
+    "note": "The harmless source-comment change preserves the real compiled creation core and changes only the integrity element in the real five-element auxdata tuple."
+  },
+  "noMetadataVariant": {
+    "creationBytes": 416,
+    "strippedMetadataCreationCoreEqual": false,
+    "note": "Disabling metadata changes two creation-program constants that locate appended constructor arguments, so it is not a metadata-only pair even though the length difference equals the auxdata length."
+  },
+  "construction": {
+    "runtimeOnchainSynthetic": "Real compiler runtime template plus 64 immutable bytes declared independently by creation auxdata and layout.code_layout; owner=0x2222...2222 and seed=42. No EVM deployment was run."
+  }
+}

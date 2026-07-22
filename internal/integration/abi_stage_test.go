@@ -137,14 +137,10 @@ func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, blo
 
 func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *sql.DB, address ethrpc.Address, codeHash ethrpc.Hash) {
 	t.Helper()
-	execFixture(t, ctx, db, `
-		INSERT INTO verified_contracts (
-			chain_id, address, code_hash, valid_from_block, valid_to_block,
-			language, compiler_version, match_kind, contract_name, abi, sources, settings
-		) VALUES (
-			1, $1, $2, 0, NULL, 'solidity', '0.8.30', 'exact', 'Token',
-			$3::jsonb, '{}'::jsonb, '{}'::jsonb
-		)`, mustBytes(t, address), mustBytes(t, codeHash), []byte(integrationTokenABI))
+	insertVerifiedContractFixture(
+		t, ctx, db, mustBytes(t, address), mustBytes(t, codeHash), 0, nil,
+		"0.8.30", "Token", integrationTokenABI, `{}`, `{}`,
+	)
 }
 
 func insertABIProxyObservation(

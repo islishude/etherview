@@ -5,9 +5,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,21 +20,30 @@ import (
 
 const envPrefix = "ETHERVIEW_"
 
+var (
+	compilerVersionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
+	compilerImagePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$`)
+	compilerMemoryPattern  = regexp.MustCompile(`^([1-9][0-9]*)([bkmg])$`)
+	compilerCPUsPattern    = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$`)
+)
+
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.
 type Config struct {
-	Server       ServerConfig       `yaml:"server"`
-	Chain        ChainConfig        `yaml:"chain"`
-	Database     DatabaseConfig     `yaml:"database"`
-	RPC          RPCConfig          `yaml:"rpc"`
-	Runtime      RuntimeConfig      `yaml:"runtime"`
-	Mempool      MempoolConfig      `yaml:"mempool"`
-	Maintenance  MaintenanceConfig  `yaml:"maintenance"`
-	Metadata     MetadataConfig     `yaml:"metadata"`
-	Features     FeatureConfig      `yaml:"features"`
-	Security     SecurityConfig     `yaml:"security"`
-	Verification VerificationConfig `yaml:"verification"`
-	Adapters     AdapterConfig      `yaml:"adapters"`
+	Server        ServerConfig        `yaml:"server"`
+	Chain         ChainConfig         `yaml:"chain"`
+	Database      DatabaseConfig      `yaml:"database"`
+	RPC           RPCConfig           `yaml:"rpc"`
+	Runtime       RuntimeConfig       `yaml:"runtime"`
+	Mempool       MempoolConfig       `yaml:"mempool"`
+	Maintenance   MaintenanceConfig   `yaml:"maintenance"`
+	Observability ObservabilityConfig `yaml:"observability"`
+	Metadata      MetadataConfig      `yaml:"metadata"`
+	Features      FeatureConfig       `yaml:"features"`
+	Security      SecurityConfig      `yaml:"security"`
+	Verification  VerificationConfig  `yaml:"verification"`
+	Sourcify      SourcifyConfig      `yaml:"sourcify"`
+	Adapters      AdapterConfig       `yaml:"adapters"`
 }
 
 type ServerConfig struct {
@@ -101,6 +113,18 @@ type MaintenanceConfig struct {
 	AdapterDeleteBatch         int           `yaml:"adapter_delete_batch"`
 }
 
+// ObservabilityConfig controls process-local telemetry. OTLP tracing is
+// disabled when OTLPTraceEndpoint is empty, so the normal PostgreSQL-only
+// deployment starts no exporter goroutines and makes no collector calls.
+type ObservabilityConfig struct {
+	Environment            string        `yaml:"environment"`
+	OTLPTraceEndpoint      string        `yaml:"otlp_trace_endpoint"`
+	OTLPTraceInsecure      bool          `yaml:"otlp_trace_insecure"`
+	TraceSampleRatio       float64       `yaml:"trace_sample_ratio"`
+	TraceExportTimeout     time.Duration `yaml:"trace_export_timeout"`
+	MetricsRefreshInterval time.Duration `yaml:"metrics_refresh_interval"`
+}
+
 // MetadataConfig bounds hostile external NFT metadata retrieval. The IPFS
 // gateway is optional; without it, ipfs:// resources become explicitly
 // unavailable while direct HTTPS metadata continues to work.
@@ -116,6 +140,7 @@ type FeatureConfig struct {
 	Mempool         bool `yaml:"mempool"`
 	HistoricalState bool `yaml:"historical_state"`
 	Verification    bool `yaml:"verification"`
+	Sourcify        bool `yaml:"sourcify"`
 	NFTMetadata     bool `yaml:"nft_metadata"`
 	Pricing         bool `yaml:"pricing"`
 }
@@ -151,6 +176,16 @@ type CompilerArtifact struct {
 	URL      string `yaml:"url"`
 	SHA256   string `yaml:"sha256"`
 	MaxBytes int64  `yaml:"max_bytes"`
+}
+
+// SourcifyConfig bounds the optional external Sourcify v2 interoperability
+// adapter. Only API-role processes construct this client when the feature is
+// enabled; local verification and worker roles never depend on it.
+type SourcifyConfig struct {
+	BaseURL          string        `yaml:"base_url"`
+	Timeout          time.Duration `yaml:"timeout"`
+	MaxRequestBytes  int           `yaml:"max_request_bytes"`
+	MaxResponseBytes int64         `yaml:"max_response_bytes"`
 }
 
 // AdapterConfig contains optional accelerators. No correctness path may require
@@ -227,6 +262,10 @@ func Default() Config {
 			Interval: 15 * time.Minute, SearchRetentionGenerations: 100_000,
 			AdapterDeleteBatch: 1_000,
 		},
+		Observability: ObservabilityConfig{
+			Environment: "production", TraceSampleRatio: 0.1,
+			TraceExportTimeout: 5 * time.Second, MetricsRefreshInterval: 15 * time.Second,
+		},
 		Metadata: MetadataConfig{
 			FetchTimeout:     10 * time.Second,
 			MaxDocumentBytes: 2 << 20,
@@ -253,6 +292,12 @@ func Default() Config {
 			ContainerMemory:  "512m",
 			ContainerCPUs:    "1",
 			ContainerPIDs:    64,
+		},
+		Sourcify: SourcifyConfig{
+			BaseURL:          "https://sourcify.dev/server",
+			Timeout:          20 * time.Second,
+			MaxRequestBytes:  5 << 20,
+			MaxResponseBytes: 32 << 20,
 		},
 	}
 }
@@ -356,6 +401,9 @@ func (c Config) Validate() error {
 	if c.Maintenance.AdapterDeleteBatch <= 0 || c.Maintenance.AdapterDeleteBatch > 10_000 {
 		errs = append(errs, errors.New("maintenance.adapter_delete_batch must be between 1 and 10000"))
 	}
+	if err := validateObservability(c.Observability); err != nil {
+		errs = append(errs, err)
+	}
 	if c.Metadata.FetchTimeout < 100*time.Millisecond || c.Metadata.FetchTimeout > time.Minute {
 		errs = append(errs, errors.New("metadata.fetch_timeout must be between 100ms and 1m"))
 	}
@@ -417,7 +465,16 @@ func (c Config) Validate() error {
 	if c.Verification.ContainerPIDs <= 0 || c.Verification.ContainerPIDs > 4096 {
 		errs = append(errs, errors.New("verification.container_pids must be between 1 and 4096"))
 	}
+	if err := validateCompilerContainerResources(c.Verification); err != nil {
+		errs = append(errs, err)
+	}
 	if err := validateCompilerAllowlist(c.Verification); err != nil {
+		errs = append(errs, err)
+	}
+	if c.Features.Sourcify && (!c.Features.Verification || !c.Security.PublicVerification) {
+		errs = append(errs, errors.New("features.sourcify requires public verification"))
+	}
+	if err := validateSourcifyConfig(c.Sourcify); err != nil {
 		errs = append(errs, err)
 	}
 	if !validAdapterNamespace(c.Adapters.Namespace) {
@@ -520,12 +577,16 @@ func (c Config) ValidateForRoles(roles []string) error {
 	}
 	needsRPC := false
 	needsVerificationWorker := false
+	needsVerificationReadAuth := false
 	for _, role := range normalized {
 		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
 			needsRPC = true
 		}
 		if role == "verify" && c.Features.Verification {
 			needsVerificationWorker = true
+		}
+		if role == "api" && c.Features.Verification {
+			needsVerificationReadAuth = true
 		}
 	}
 	if needsRPC && len(c.RPC.Endpoints) == 0 {
@@ -543,10 +604,15 @@ func (c Config) ValidateForRoles(roles []string) error {
 			}
 			if strings.TrimSpace(c.Verification.CacheDirectory) == "" || len(c.Verification.Artifacts) == 0 {
 				errs = append(errs, errors.New("verification.cache_directory and artifacts are required by the verify role in process sandbox mode"))
+			} else if !filepath.IsAbs(c.Verification.CacheDirectory) || filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
+				errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
 			}
 		default:
 			errs = append(errs, errors.New("verification feature requires a configured compiler sandbox for the verify role"))
 		}
+	}
+	if needsVerificationReadAuth && len(c.Security.APIKeyPepper) < 32 {
+		errs = append(errs, errors.New("API role verification reads require API key authentication"))
 	}
 	return errors.Join(errs...)
 }
@@ -557,21 +623,23 @@ func validateCompilerAllowlist(cfg VerificationConfig) error {
 		if language != "solidity" && language != "vyper" {
 			errs = append(errs, fmt.Errorf("verification artifact language %q is unsupported", language))
 		}
+		if len(versions) == 0 {
+			errs = append(errs, fmt.Errorf("verification artifact language %q has no versions", language))
+		}
 		for version, artifact := range versions {
-			if strings.TrimSpace(version) == "" {
-				errs = append(errs, errors.New("verification artifact version is empty"))
+			if !compilerVersionPattern.MatchString(version) {
+				errs = append(errs, fmt.Errorf("verification artifact %s/%s has an invalid version", language, version))
 			}
-			u, err := url.Parse(artifact.URL)
-			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			u, err := url.Parse(strings.TrimSpace(artifact.URL))
+			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || len(u.String()) > 4096 {
 				errs = append(errs, fmt.Errorf("verification artifact %s/%s must use an absolute HTTPS URL", language, version))
 			}
-			if len(artifact.SHA256) != 64 {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s has an invalid SHA-256", language, version))
-			} else if _, err := hex.DecodeString(artifact.SHA256); err != nil {
+			digest, digestErr := decodeNonzeroSHA256(artifact.SHA256)
+			if digestErr != nil || artifact.SHA256 != strings.ToLower(artifact.SHA256) || allZero(digest) {
 				errs = append(errs, fmt.Errorf("verification artifact %s/%s has an invalid SHA-256", language, version))
 			}
-			if artifact.MaxBytes < 0 {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s max_bytes cannot be negative", language, version))
+			if artifact.MaxBytes < 0 || artifact.MaxBytes > 1<<30 {
+				errs = append(errs, fmt.Errorf("verification artifact %s/%s max_bytes must be zero or between 1 and 1073741824", language, version))
 			}
 		}
 	}
@@ -579,18 +647,143 @@ func validateCompilerAllowlist(cfg VerificationConfig) error {
 		if language != "solidity" && language != "vyper" {
 			errs = append(errs, fmt.Errorf("verification image language %q is unsupported", language))
 		}
+		if len(versions) == 0 {
+			errs = append(errs, fmt.Errorf("verification image language %q has no versions", language))
+		}
 		for version, image := range versions {
 			parts := strings.Split(image, "@sha256:")
-			if strings.TrimSpace(version) == "" || len(parts) != 2 || parts[0] == "" || len(parts[1]) != 64 {
+			if !compilerVersionPattern.MatchString(version) || len(parts) != 2 ||
+				!compilerImagePattern.MatchString(parts[0]) || strings.Contains(parts[0], "//") || strings.Contains(parts[0], "..") {
 				errs = append(errs, fmt.Errorf("verification image %s/%s must be pinned by SHA-256 digest", language, version))
 				continue
 			}
-			if _, err := hex.DecodeString(parts[1]); err != nil {
+			digest, err := decodeNonzeroSHA256(parts[1])
+			if err != nil || parts[1] != strings.ToLower(parts[1]) || allZero(digest) {
 				errs = append(errs, fmt.Errorf("verification image %s/%s has an invalid digest", language, version))
 			}
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func validateCompilerContainerResources(cfg VerificationConfig) error {
+	match := compilerMemoryPattern.FindStringSubmatch(cfg.ContainerMemory)
+	if len(match) != 3 {
+		return errors.New("verification.container_memory is invalid")
+	}
+	amount, err := strconv.ParseUint(match[1], 10, 64)
+	if err != nil {
+		return errors.New("verification.container_memory is invalid")
+	}
+	multiplier := uint64(1)
+	switch match[2] {
+	case "k":
+		multiplier = 1 << 10
+	case "m":
+		multiplier = 1 << 20
+	case "g":
+		multiplier = 1 << 30
+	}
+	if amount > ^uint64(0)/multiplier || amount*multiplier < 64<<20 || amount*multiplier > 16<<30 {
+		return errors.New("verification.container_memory must be between 64m and 16g")
+	}
+	if !compilerCPUsPattern.MatchString(cfg.ContainerCPUs) {
+		return errors.New("verification.container_cpus is invalid")
+	}
+	cpus, err := strconv.ParseFloat(cfg.ContainerCPUs, 64)
+	if err != nil || cpus <= 0 || cpus > 64 {
+		return errors.New("verification.container_cpus must be greater than zero and at most 64")
+	}
+	return nil
+}
+
+func decodeNonzeroSHA256(value string) ([]byte, error) {
+	if len(value) != 64 {
+		return nil, errors.New("invalid SHA-256")
+	}
+	return hex.DecodeString(value)
+}
+
+func allZero(value []byte) bool {
+	for _, item := range value {
+		if item != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func validateSourcifyConfig(cfg SourcifyConfig) error {
+	var errs []error
+	raw := cfg.BaseURL
+	parsed, err := url.Parse(raw)
+	if raw == "" || raw != strings.TrimSpace(raw) || err != nil || parsed.Scheme != "https" ||
+		parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" || parsed.RawQuery != "" ||
+		parsed.ForceQuery || parsed.Fragment != "" || len(parsed.String()) > 4096 || unsafeURLPath(parsed.EscapedPath()) {
+		errs = append(errs, errors.New("sourcify.base_url must be an absolute HTTPS URL without credentials, query, fragment, or path traversal"))
+	}
+	if cfg.Timeout < 100*time.Millisecond || cfg.Timeout > 2*time.Minute {
+		errs = append(errs, errors.New("sourcify.timeout must be between 100ms and 2m"))
+	}
+	if cfg.MaxRequestBytes < 1 || cfg.MaxRequestBytes > 64<<20 {
+		errs = append(errs, errors.New("sourcify.max_request_bytes must be between 1 and 67108864"))
+	}
+	if cfg.MaxResponseBytes < 1 || cfg.MaxResponseBytes > 64<<20 {
+		errs = append(errs, errors.New("sourcify.max_response_bytes must be between 1 and 67108864"))
+	}
+	return errors.Join(errs...)
+}
+
+func validateObservability(cfg ObservabilityConfig) error {
+	var errs []error
+	if environment := strings.TrimSpace(cfg.Environment); environment == "" || environment != cfg.Environment || len(environment) > 64 {
+		errs = append(errs, errors.New("observability.environment must contain between 1 and 64 trimmed bytes"))
+	}
+	if math.IsNaN(cfg.TraceSampleRatio) || math.IsInf(cfg.TraceSampleRatio, 0) || cfg.TraceSampleRatio < 0 || cfg.TraceSampleRatio > 1 {
+		errs = append(errs, errors.New("observability.trace_sample_ratio must be between 0 and 1"))
+	}
+	if cfg.TraceExportTimeout < 100*time.Millisecond || cfg.TraceExportTimeout > 30*time.Second {
+		errs = append(errs, errors.New("observability.trace_export_timeout must be between 100ms and 30s"))
+	}
+	if cfg.MetricsRefreshInterval < time.Second || cfg.MetricsRefreshInterval > 5*time.Minute {
+		errs = append(errs, errors.New("observability.metrics_refresh_interval must be between 1s and 5m"))
+	}
+	if cfg.OTLPTraceEndpoint == "" {
+		if cfg.OTLPTraceInsecure {
+			errs = append(errs, errors.New("observability.otlp_trace_insecure requires otlp_trace_endpoint"))
+		}
+		return errors.Join(errs...)
+	}
+	parsed, err := url.Parse(cfg.OTLPTraceEndpoint)
+	if err != nil || parsed == nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" ||
+		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
+		(parsed.Path != "" && parsed.Path != "/") || len(cfg.OTLPTraceEndpoint) > 4096 {
+		errs = append(errs, errors.New("observability.otlp_trace_endpoint must be an absolute HTTP(S) origin without credentials, path, query, or fragment"))
+		return errors.Join(errs...)
+	}
+	switch parsed.Scheme {
+	case "https":
+		if cfg.OTLPTraceInsecure {
+			errs = append(errs, errors.New("observability.otlp_trace_insecure cannot be used with an HTTPS endpoint"))
+		}
+	case "http":
+		if !cfg.OTLPTraceInsecure {
+			errs = append(errs, errors.New("observability.otlp_trace_insecure must explicitly allow an HTTP endpoint"))
+		}
+	default:
+		errs = append(errs, errors.New("observability.otlp_trace_endpoint must use HTTP or HTTPS"))
+	}
+	return errors.Join(errs...)
+}
+
+func unsafeURLPath(value string) bool {
+	for _, segment := range strings.Split(value, "/") {
+		decoded, err := url.PathUnescape(segment)
+		if err != nil || decoded == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func (e RPCEndpoint) Validate() error {
@@ -688,6 +881,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	setString(lookup, "COMPILER_SANDBOX", &cfg.Security.CompilerSandbox)
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
+	setString(lookup, "SOURCIFY_BASE_URL", &cfg.Sourcify.BaseURL)
+	setString(lookup, "OBSERVABILITY_ENVIRONMENT", &cfg.Observability.Environment)
+	setString(lookup, "OTLP_TRACE_ENDPOINT", &cfg.Observability.OTLPTraceEndpoint)
 	for name, target := range map[string]*string{
 		"NATS_URL":         &cfg.Adapters.NATSURL,
 		"REDIS_URL":        &cfg.Adapters.RedisURL,
@@ -777,6 +973,15 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if err := setInt(lookup, "VERIFICATION_MAX_OUTPUT_BYTES", &cfg.Verification.MaxOutputBytes); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "SOURCIFY_MAX_REQUEST_BYTES", &cfg.Sourcify.MaxRequestBytes); err != nil {
+		return err
+	}
+	if err := setInt64(lookup, "SOURCIFY_MAX_RESPONSE_BYTES", &cfg.Sourcify.MaxResponseBytes); err != nil {
+		return err
+	}
+	if err := setFloat64(lookup, "TRACE_SAMPLE_RATIO", &cfg.Observability.TraceSampleRatio); err != nil {
+		return err
+	}
 	for name, target := range map[string]*time.Duration{
 		"SERVER_SHUTDOWN_TIMEOUT":    &cfg.Server.ShutdownTimeout,
 		"SERVER_READ_TIMEOUT":        &cfg.Server.ReadTimeout,
@@ -798,6 +1003,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		"ADAPTER_NAME_FRESHNESS":     &cfg.Adapters.NameFreshness,
 		"ADAPTER_FAILURE_TTL":        &cfg.Adapters.FailureTTL,
 		"VERIFICATION_TIMEOUT":       &cfg.Verification.Timeout,
+		"SOURCIFY_TIMEOUT":           &cfg.Sourcify.Timeout,
+		"TRACE_EXPORT_TIMEOUT":       &cfg.Observability.TraceExportTimeout,
+		"METRICS_REFRESH_INTERVAL":   &cfg.Observability.MetricsRefreshInterval,
 	} {
 		if err := setDuration(lookup, name, target); err != nil {
 			return err
@@ -808,10 +1016,12 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		"FEATURE_MEMPOOL":          &cfg.Features.Mempool,
 		"FEATURE_HISTORICAL_STATE": &cfg.Features.HistoricalState,
 		"FEATURE_VERIFICATION":     &cfg.Features.Verification,
+		"FEATURE_SOURCIFY":         &cfg.Features.Sourcify,
 		"FEATURE_NFT_METADATA":     &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":          &cfg.Features.Pricing,
 		"PUBLIC_VERIFICATION":      &cfg.Security.PublicVerification,
 		"S3_PATH_STYLE":            &cfg.Adapters.S3PathStyle,
+		"OTLP_TRACE_INSECURE":      &cfg.Observability.OTLPTraceInsecure,
 	} {
 		if err := setBool(lookup, name, target); err != nil {
 			return err
@@ -889,6 +1099,17 @@ func setInt(lookup func(string) (string, bool), name string, target *int) error 
 func setInt64(lookup func(string) (string, bool), name string, target *int64) error {
 	if value, ok := lookup(envPrefix + name); ok {
 		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil {
+			return fmt.Errorf("parse %s%s: %w", envPrefix, name, err)
+		}
+		*target = parsed
+	}
+	return nil
+}
+
+func setFloat64(lookup func(string) (string, bool), name string, target *float64) error {
+	if value, ok := lookup(envPrefix + name); ok {
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if err != nil {
 			return fmt.Errorf("parse %s%s: %w", envPrefix, name, err)
 		}

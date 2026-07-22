@@ -1,0 +1,31 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "contracts/NoCBOR.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity =0.8.30;\ncontract NoCBOR {\n    function value() external pure returns (uint256) {\n        return 7;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "metadata": {
+      "bytecodeHash": "none",
+      "appendCBOR": false
+    },
+    "outputSelection": {
+      "contracts/NoCBOR.sol": {
+        "NoCBOR": [
+          "abi",
+          "metadata",
+          "evm.bytecode.object",
+          "evm.bytecode.linkReferences",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.linkReferences",
+          "evm.deployedBytecode.immutableReferences"
+        ]
+      }
+    }
+  }
+}

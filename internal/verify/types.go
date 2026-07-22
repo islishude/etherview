@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 	"regexp"
 	"strings"
@@ -74,8 +73,14 @@ func (r Request) Validate(maxInputBytes int) error {
 	if maxInputBytes <= 0 {
 		maxInputBytes = 5 << 20
 	}
-	if len(r.StandardJSON) == 0 || len(r.StandardJSON) > maxInputBytes || !jsonObject(r.StandardJSON) {
-		errs = append(errs, fmt.Errorf("standard JSON must be an object of at most %d bytes", maxInputBytes))
+	if _, _, err := validateStandardJSON(
+		r.StandardJSON,
+		r.Language,
+		r.CompilerVersion,
+		r.ContractIdentifier,
+		maxInputBytes,
+	); err != nil {
+		errs = append(errs, err)
 	}
 	if len(r.CreationBytecode) > maxInputBytes {
 		errs = append(errs, errors.New("creation bytecode exceeds the input limit"))

@@ -1,0 +1,176 @@
+{
+  "compiler": "vyper-0.4.3",
+  "contracts": {
+    "contracts/Target.vy": {
+      "Target": {
+        "abi": [
+          {
+            "inputs": [
+              {
+                "name": "remote",
+                "type": "address"
+              },
+              {
+                "name": "amount",
+                "type": "uint256"
+              }
+            ],
+            "name": "score",
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint256"
+              }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          },
+          {
+            "inputs": [],
+            "name": "owner",
+            "outputs": [
+              {
+                "name": "",
+                "type": "address"
+              }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          },
+          {
+            "inputs": [],
+            "name": "seed",
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint256"
+              }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          },
+          {
+            "inputs": [
+              {
+                "name": "owner_",
+                "type": "address"
+              },
+              {
+                "name": "seed_",
+                "type": "uint256"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "constructor"
+          }
+        ],
+        "evm": {
+          "bytecode": {
+            "object": "0x6101795150346100435760206101a05f395f518060a01c610043576040526040516101595260206101c05f395f516101795261015961004761000039610199610000f35b5f80fd5f3560e01c60026001821660011b61015501601e395f51565b637401edba811861011157604436103417610151576004358060a01c6101515760405260206101595f395f513318156100bc5760208060c05260056060527f6f776e657200000000000000000000000000000000000000000000000000000060805260608160c001602582825e8051806020830101601f825f03163682375050601f19601f8251602001011690509050810190506308c379a060a0528060040160bcfd5b60405163b20eb4c4606052602435608052602060606024607c845afa6100e4573d5f5f3e3d5ffd5b60203d1061015157606090505160206101795f395f51808201828110610151579050905060a052602060a0f35b637d94792a811861014d573461015157602061017960403960206040f35b638da5cb5b811861014d573461015157602061015960403960206040f35b5f5ffd5b5f80fd0018012f"
+          },
+          "deployedBytecode": {
+            "object": "0x5f3560e01c60026001821660011b61015501601e395f51565b637401edba811861011157604436103417610151576004358060a01c6101515760405260206101595f395f513318156100bc5760208060c05260056060527f6f776e657200000000000000000000000000000000000000000000000000000060805260608160c001602582825e8051806020830101601f825f03163682375050601f19601f8251602001011690509050810190506308c379a060a0528060040160bcfd5b60405163b20eb4c4606052602435608052602060606024607c845afa6100e4573d5f5f3e3d5ffd5b60203d1061015157606090505160206101795f395f51808201828110610151579050905060a052602060a0f35b637d94792a811861014d573461015157602061017960403960206040f35b638da5cb5b811861014d573461015157602061015960403960206040f35b5f5ffd5b5f80fd0018012f"
+          }
+        },
+        "layout": {
+          "code_layout": {
+            "owner": {
+              "length": 32,
+              "offset": 0,
+              "type": "address"
+            },
+            "seed": {
+              "length": 32,
+              "offset": 32,
+              "type": "uint256"
+            }
+          }
+        },
+        "metadata": {
+          "function_info": {
+            "__init__ (3)": {
+              "_ir_identifier": "external 3 __init__(address,uint256)",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 32,
+                "frame_start": 64
+              },
+              "function_id": 3,
+              "keyword_args": {},
+              "module_path": "contracts/Target.vy",
+              "mutability": "nonpayable",
+              "name": "__init__",
+              "positional_args": {
+                "owner_": "address",
+                "seed_": "uint256"
+              },
+              "return_type": "None",
+              "source_id": 0,
+              "visibility": "deploy"
+            },
+            "owner (1)": {
+              "_ir_identifier": "external 1 owner()",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 32,
+                "frame_start": 64
+              },
+              "function_id": 1,
+              "keyword_args": {},
+              "module_path": "contracts/Target.vy",
+              "mutability": "view",
+              "name": "owner",
+              "positional_args": {},
+              "return_type": "address",
+              "source_id": 0,
+              "visibility": "external"
+            },
+            "score (0)": {
+              "_ir_identifier": "external 0 score(address,uint256)",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 224,
+                "frame_start": 64
+              },
+              "function_id": 0,
+              "keyword_args": {},
+              "module_path": "contracts/Target.vy",
+              "mutability": "view",
+              "name": "score",
+              "positional_args": {
+                "amount": "uint256",
+                "remote": "address"
+              },
+              "return_type": "uint256",
+              "source_id": 0,
+              "visibility": "external"
+            },
+            "seed (2)": {
+              "_ir_identifier": "external 2 seed()",
+              "default_values": {},
+              "frame_info": {
+                "frame_size": 32,
+                "frame_start": 64
+              },
+              "function_id": 2,
+              "keyword_args": {},
+              "module_path": "contracts/Target.vy",
+              "mutability": "view",
+              "name": "seed",
+              "positional_args": {},
+              "return_type": "uint256",
+              "source_id": 0,
+              "visibility": "external"
+            }
+          }
+        }
+      }
+    }
+  },
+  "sources": {
+    "contracts/Target.vy": {
+      "id": 0
+    }
+  }
+}

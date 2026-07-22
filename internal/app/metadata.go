@@ -11,7 +11,7 @@ import (
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-func registerMetadataWorker(registry *components.Registry, db *sql.DB, pool *ethrpc.Pool, cfg config.Config) error {
+func registerMetadataWorker(registry *components.Registry, db *sql.DB, pool *ethrpc.Pool, cfg config.Config, observers ...metadata.FetchObserver) error {
 	if registry == nil {
 		return fmt.Errorf("register metadata worker: nil component registry")
 	}
@@ -29,10 +29,14 @@ func registerMetadataWorker(registry *components.Registry, db *sql.DB, pool *eth
 	if err != nil {
 		return fmt.Errorf("configure safe metadata client: %w", err)
 	}
-	worker, err := metadata.NewWorker(repository, client, metadata.WorkerOptions{
+	workerOptions := metadata.WorkerOptions{
 		WorkerID: runtimeWorkerID("metadata"), LeaseDuration: cfg.Runtime.LeaseDuration,
 		PollInterval: cfg.Runtime.PollInterval,
-	})
+	}
+	if len(observers) > 0 {
+		workerOptions.Observer = observers[0]
+	}
+	worker, err := metadata.NewWorker(repository, client, workerOptions)
 	if err != nil {
 		return err
 	}

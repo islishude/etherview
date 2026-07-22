@@ -21,6 +21,7 @@ const usage = `Usage:
   etherview reindex [--config path] [arguments]
   etherview admin api-key <create|rotate|revoke|list> [--config path] [arguments]
   etherview admin label <set|delete|list> [--config path] [arguments]
+  etherview admin repair list [--config path] [--limit count] [--format json|table]
   etherview version
 `
 
@@ -216,8 +217,8 @@ func (p Program) runRepair(ctx context.Context, kind string, args []string) erro
 }
 
 func (p Program) runAdmin(ctx context.Context, args []string) error {
-	if len(args) < 2 || (args[0] != "api-key" && args[0] != "label") {
-		return errors.New("admin requires api-key or label and an action")
+	if len(args) < 2 || (args[0] != "api-key" && args[0] != "label" && args[0] != "repair") {
+		return errors.New("admin requires api-key, label, or repair and an action")
 	}
 	resource, action := args[0], args[1]
 	cfg, rest, err := loadConfigFlag("admin", args[2:])

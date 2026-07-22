@@ -21,6 +21,14 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if closest != "before" && closest != "after" {
 		return "", invalidParameter("closest must be before or after")
 	}
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
+		return "", err
+	}
 	comparison, direction := "<=", "DESC"
 	if closest == "after" {
 		comparison, direction = ">=", "ASC"
@@ -29,7 +37,7 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	var raw []byte
 	var numberText, timestampText string
 	var hashBytes []byte
-	err = b.db.QueryRowContext(ctx, query, b.chain, timestamp.String()).Scan(&raw, &numberText, &hashBytes, &timestampText)
+	err = tx.QueryRowContext(ctx, query, b.chain, timestamp.String()).Scan(&raw, &numberText, &hashBytes, &timestampText)
 	if err == sql.ErrNoRows {
 		return "", ErrNotFound
 	}
@@ -66,6 +74,9 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if closest == "before" && wireTimestamp.Cmp(timestamp) > 0 || closest == "after" && wireTimestamp.Cmp(timestamp) < 0 {
 		return "", errors.New("block-by-time query returned a block outside the requested bound")
 	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit block-by-time snapshot: %w", err)
+	}
 	return number.String(), nil
 }
 
@@ -74,12 +85,21 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	if err != nil {
 		return blockCountdown{}, err
 	}
-	var currentText, currentTimestampText, anchorText, anchorTimestampText string
-	err = b.db.QueryRowContext(ctx, blockCountdownSQL, b.chain).Scan(
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return blockCountdown{}, err
+	}
+	defer tx.Rollback()
+	var (
+		currentText, currentTimestampText, anchorText, anchorTimestampText string
+		sampleCountText, configuredStartText, rangeStartText, rangeEndText string
+	)
+	err = tx.QueryRowContext(ctx, blockCountdownSQL, b.chain).Scan(
 		&currentText, &currentTimestampText, &anchorText, &anchorTimestampText,
+		&sampleCountText, &configuredStartText, &rangeStartText, &rangeEndText,
 	)
 	if err == sql.ErrNoRows {
-		return blockCountdown{}, ErrNotFound
+		return blockCountdown{}, ErrCoreUnavailable
 	}
 	if err != nil {
 		return blockCountdown{}, fmt.Errorf("query block countdown basis: %w", err)
@@ -100,6 +120,30 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	if !ok || anchorTimestamp.Sign() < 0 || anchorTimestamp.Cmp(currentTimestamp) > 0 {
 		return blockCountdown{}, errors.New("countdown anchor timestamp is invalid")
 	}
+	sampleCount, err := storedUint256(sampleCountText, "countdown sample count")
+	if err != nil || sampleCount.Sign() == 0 || sampleCount.Cmp(big.NewInt(128)) > 0 {
+		return blockCountdown{}, errors.New("countdown sample count is invalid")
+	}
+	configuredStart, err := storedUint256(configuredStartText, "countdown configured start")
+	if err != nil {
+		return blockCountdown{}, err
+	}
+	rangeStart, err := storedUint256(rangeStartText, "countdown coverage start")
+	if err != nil {
+		return blockCountdown{}, err
+	}
+	rangeEnd, err := storedUint256(rangeEndText, "countdown coverage end")
+	if err != nil {
+		return blockCountdown{}, err
+	}
+	if rangeStart.Cmp(configuredStart) < 0 || anchor.Cmp(rangeStart) < 0 || rangeEnd.Cmp(current) != 0 {
+		return blockCountdown{}, errors.New("countdown coverage interval is inconsistent")
+	}
+	blockSpan := new(big.Int).Sub(current, anchor)
+	expectedSamples := new(big.Int).Add(new(big.Int).Set(blockSpan), big.NewInt(1))
+	if expectedSamples.Cmp(sampleCount) != 0 {
+		return blockCountdown{}, errors.New("countdown canonical samples are not continuous")
+	}
 	result := blockCountdown{
 		CurrentBlock: current.String(), CountdownBlock: target.String(),
 		RemainingBlock: "0", EstimateTimeInSec: "0",
@@ -109,7 +153,6 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	}
 	remaining := new(big.Int).Sub(target, current)
 	result.RemainingBlock = remaining.String()
-	blockSpan := new(big.Int).Sub(current, anchor)
 	timeSpan := new(big.Int).Sub(currentTimestamp, anchorTimestamp)
 	if blockSpan.Sign() == 0 || timeSpan.Sign() == 0 {
 		return blockCountdown{}, ErrEstimateUnavailable
@@ -119,6 +162,9 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	numerator := new(big.Int).Mul(remaining, timeSpan)
 	numerator.Add(numerator, new(big.Int).Sub(blockSpan, big.NewInt(1)))
 	result.EstimateTimeInSec = numerator.Div(numerator, blockSpan).String()
+	if err := tx.Commit(); err != nil {
+		return blockCountdown{}, fmt.Errorf("commit block countdown snapshot: %w", err)
+	}
 	return result, nil
 }
 
@@ -150,21 +196,50 @@ ORDER BY block.timestamp %s, block.number %s, block.hash %s
 LIMIT 1`
 
 const blockCountdownSQL = `
-WITH recent AS (
+WITH tip AS (
+    SELECT number
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+    ORDER BY number DESC
+    LIMIT 1
+), tip_coverage AS (
+    SELECT configuration.configured_start,
+           coverage.range_start, coverage.range_end
+    FROM tip
+    JOIN core_index_configuration AS configuration
+      ON configuration.chain_id = $1::numeric
+    JOIN core_coverage_ranges AS coverage
+      ON coverage.chain_id = configuration.chain_id
+     AND coverage.range_start <= tip.number
+     AND coverage.range_end >= tip.number
+    ORDER BY coverage.range_start DESC
+    LIMIT 1
+), recent AS (
     SELECT block.number, block.timestamp
     FROM blocks AS block
     JOIN canonical_blocks AS canonical
       ON canonical.chain_id = block.chain_id
      AND canonical.number = block.number
      AND canonical.block_hash = block.hash
+    CROSS JOIN tip
+    CROSS JOIN tip_coverage AS coverage
     WHERE block.chain_id = $1::numeric
+      AND block.number >= coverage.range_start
+      AND block.number <= tip.number
     ORDER BY block.number DESC
     LIMIT 128
-), tip AS (
+), current_sample AS (
     SELECT number, timestamp FROM recent ORDER BY number DESC LIMIT 1
 ), anchor AS (
     SELECT number, timestamp FROM recent ORDER BY number ASC LIMIT 1
+), sample_count AS (
+    SELECT count(*) AS value FROM recent
 )
-SELECT tip.number::text, tip.timestamp::text,
-       anchor.number::text, anchor.timestamp::text
-FROM tip CROSS JOIN anchor`
+SELECT current_sample.number::text, current_sample.timestamp::text,
+       anchor.number::text, anchor.timestamp::text,
+       sample_count.value::text, coverage.configured_start::text,
+       coverage.range_start::text, coverage.range_end::text
+FROM current_sample
+CROSS JOIN anchor
+CROSS JOIN sample_count
+CROSS JOIN tip_coverage AS coverage`

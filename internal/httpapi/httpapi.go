@@ -28,6 +28,7 @@ import (
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/metadata"
+	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/verify"
 	"golang.org/x/crypto/sha3"
 )
@@ -99,43 +100,69 @@ type Reader interface {
 	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
 }
 
+type VerificationReader interface {
+	Job(context.Context, string) (verify.VerificationJob, bool, error)
+	VerifiedContract(context.Context, uint64, string, string) (verify.VerifiedContract, bool, error)
+}
+
+type VerificationSubmitter interface {
+	Submit(context.Context, verify.Request) (verify.VerificationJob, bool, error)
+}
+
+type VerificationTargetResolver interface {
+	ResolveVerificationTarget(context.Context, string) (verify.VerificationTarget, error)
+}
+
+type SourcifyAdapter interface {
+	Lookup(context.Context, uint64, string) (verify.SourcifyContract, error)
+	Import(context.Context, verify.VerificationTarget) (verify.Request, error)
+	Submit(context.Context, verify.SourcifyJobReader, string, bool) (verify.SourcifyTicket, error)
+	Status(context.Context, string) (verify.SourcifyJob, error)
+}
+
 type Options struct {
-	Config              config.Config
-	Reader              Reader
-	Catalog             catalog.Reader
-	Web                 http.Handler
-	Etherscan           http.Handler
-	Metrics             http.Handler
-	Events              *events.Broker
-	Mempool             mempool.Reader
-	NFTMediaSource      metadata.NFTImageSource
-	NFTMediaProxy       *metadata.MediaProxy
-	Verification        *verify.Service
-	Logger              *slog.Logger
-	RequestID           func() string
-	Now                 func() time.Time
-	RuntimeReady        func() bool
-	MaxVerificationBody int64
+	Config                config.Config
+	Reader                Reader
+	Catalog               catalog.Reader
+	Web                   http.Handler
+	Etherscan             http.Handler
+	Metrics               http.Handler
+	Events                *events.Broker
+	Mempool               mempool.Reader
+	NFTMediaSource        metadata.NFTImageSource
+	NFTMediaProxy         *metadata.MediaProxy
+	VerificationReader    VerificationReader
+	VerificationSubmitter VerificationSubmitter
+	VerificationTargets   VerificationTargetResolver
+	Sourcify              SourcifyAdapter
+	Logger                *slog.Logger
+	RequestID             func() string
+	Now                   func() time.Time
+	RuntimeReady          func() bool
+	MaxVerificationBody   int64
 }
 
 type Handler struct {
-	cfg                 config.Config
-	reader              Reader
-	catalog             catalog.Reader
-	web                 http.Handler
-	etherscan           http.Handler
-	metrics             http.Handler
-	events              *events.Broker
-	mempool             mempool.Reader
-	nftMediaSource      metadata.NFTImageSource
-	nftMediaProxy       *metadata.MediaProxy
-	verification        *verify.Service
-	logger              *slog.Logger
-	requestID           func() string
-	now                 func() time.Time
-	runtimeReady        func() bool
-	maxVerificationBody int64
-	mux                 *http.ServeMux
+	cfg                   config.Config
+	reader                Reader
+	catalog               catalog.Reader
+	web                   http.Handler
+	etherscan             http.Handler
+	metrics               http.Handler
+	events                *events.Broker
+	mempool               mempool.Reader
+	nftMediaSource        metadata.NFTImageSource
+	nftMediaProxy         *metadata.MediaProxy
+	verificationReader    VerificationReader
+	verificationSubmitter VerificationSubmitter
+	verificationTargets   VerificationTargetResolver
+	sourcify              SourcifyAdapter
+	logger                *slog.Logger
+	requestID             func() string
+	now                   func() time.Time
+	runtimeReady          func() bool
+	maxVerificationBody   int64
+	mux                   *http.ServeMux
 }
 
 func New(options Options) (*Handler, error) {
@@ -155,23 +182,26 @@ func New(options Options) (*Handler, error) {
 		options.RuntimeReady = func() bool { return true }
 	}
 	h := &Handler{
-		cfg:                 options.Config,
-		reader:              options.Reader,
-		catalog:             options.Catalog,
-		web:                 options.Web,
-		etherscan:           options.Etherscan,
-		metrics:             options.Metrics,
-		events:              options.Events,
-		mempool:             options.Mempool,
-		nftMediaSource:      options.NFTMediaSource,
-		nftMediaProxy:       options.NFTMediaProxy,
-		verification:        options.Verification,
-		logger:              options.Logger,
-		requestID:           options.RequestID,
-		now:                 options.Now,
-		runtimeReady:        options.RuntimeReady,
-		maxVerificationBody: options.MaxVerificationBody,
-		mux:                 http.NewServeMux(),
+		cfg:                   options.Config,
+		reader:                options.Reader,
+		catalog:               options.Catalog,
+		web:                   options.Web,
+		etherscan:             options.Etherscan,
+		metrics:               options.Metrics,
+		events:                options.Events,
+		mempool:               options.Mempool,
+		nftMediaSource:        options.NFTMediaSource,
+		nftMediaProxy:         options.NFTMediaProxy,
+		verificationReader:    options.VerificationReader,
+		verificationSubmitter: options.VerificationSubmitter,
+		verificationTargets:   options.VerificationTargets,
+		sourcify:              options.Sourcify,
+		logger:                options.Logger,
+		requestID:             options.RequestID,
+		now:                   options.Now,
+		runtimeReady:          options.RuntimeReady,
+		maxVerificationBody:   options.MaxVerificationBody,
+		mux:                   http.NewServeMux(),
 	}
 	if h.maxVerificationBody <= 0 {
 		h.maxVerificationBody = 6 << 20
@@ -181,7 +211,6 @@ func New(options Options) (*Handler, error) {
 }
 
 func (h *Handler) routes() {
-	h.mux.HandleFunc("OPTIONS /{path...}", h.preflight)
 	h.mux.HandleFunc("GET /health/live", h.live)
 	h.mux.HandleFunc("GET /health/ready", h.ready)
 	if h.metrics != nil {
@@ -217,6 +246,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /api/v1/verification/jobs", h.submitVerification)
 	h.mux.HandleFunc("GET /api/v1/verification/jobs/{id}", h.verificationJob)
 	h.mux.HandleFunc("GET /api/v1/contracts/{address}/verification", h.verifiedContract)
+	h.mux.HandleFunc("GET /api/v1/sourcify/contracts/{address}", h.lookupSourcifyContract)
+	h.mux.HandleFunc("POST /api/v1/sourcify/imports", h.importSourcifyContract)
+	h.mux.HandleFunc("POST /api/v1/verification/jobs/{id}/sourcify", h.uploadVerificationJobToSourcify)
+	h.mux.HandleFunc("GET /api/v1/sourcify/jobs/{verification_id}", h.sourcifyJob)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -225,6 +258,36 @@ func (h *Handler) routes() {
 	}
 	if h.web != nil {
 		h.mux.Handle("/", h.web)
+	}
+}
+
+type webRoutePatternProvider interface {
+	RoutePattern(*http.Request) string
+}
+
+// RoutePattern reports the pattern selected by the same mux used to dispatch
+// the request. The catch-all web route delegates to its own bounded classifier
+// so SPA IDs, asset names, and reserved misses never become labels.
+func (h *Handler) RoutePattern(request *http.Request) string {
+	if request.Method == http.MethodOptions {
+		return "/{path...}"
+	}
+	pattern := observability.MuxRoutePattern(h.mux, request)
+	if pattern != "/" {
+		return pattern
+	}
+	provider, ok := h.web.(webRoutePatternProvider)
+	if !ok {
+		if request.URL.Path == "/" {
+			return "/"
+		}
+		return "unmatched"
+	}
+	switch pattern = provider.RoutePattern(request); pattern {
+	case "/", "/assets/*", "/{spa...}", "unmatched", "method_not_allowed":
+		return pattern
+	default:
+		return "unmatched"
 	}
 }
 
@@ -316,13 +379,68 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			if observability.IsHTTPAbortHandlerPanic(recovered) {
+				panic(recovered)
+			}
 			// A downstream panic may contain an RPC URL, API key, compiler input,
 			// or other hostile text. Log only its type at the public boundary.
-			h.logger.ErrorContext(ctx, "panic handling HTTP request", "request_id", requestID, "panic_type", fmt.Sprintf("%T", recovered))
-			writeError(w, r.WithContext(ctx), http.StatusInternalServerError, "internal_error", "internal server error", nil)
+			h.logger.ErrorContext(ctx, "panic handling HTTP request",
+				"error_code", "http_handler_panic", "request_id", requestID,
+				"error_type", fmt.Sprintf("%T", recovered),
+			)
+			if state, ok := w.(interface {
+				ResponseCommitted() bool
+				MarkPanicked()
+			}); ok {
+				state.MarkPanicked()
+				if state.ResponseCommitted() {
+					panic(http.ErrAbortHandler)
+				}
+			}
+			WriteRecoveredPanicResponse(w, r.WithContext(ctx), requestID)
 		}
 	}()
-	h.mux.ServeHTTP(w, r.WithContext(ctx))
+	request := r.WithContext(ctx)
+	if request.Method == http.MethodOptions {
+		h.preflight(w, request)
+		return
+	}
+	h.mux.ServeHTTP(w, request)
+}
+
+type compatibilityPanicResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Result  string `json:"result"`
+}
+
+// WriteRecoveredPanicResponse preserves the selected public boundary without
+// exposing a recovered value. A request ID already chosen by Handler wins over
+// an outer trace-derived fallback.
+func WriteRecoveredPanicResponse(w http.ResponseWriter, r *http.Request, fallbackRequestID string) {
+	requestID := strings.TrimSpace(w.Header().Get("X-Request-ID"))
+	if requestID == "" || len(requestID) > 128 {
+		requestID = strings.TrimSpace(fallbackRequestID)
+	}
+	if requestID == "" || len(requestID) > 128 {
+		requestID = randomRequestID()
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Request-ID", requestID)
+	if r.URL.Path == "/v2/api" {
+		writeJSON(w, http.StatusInternalServerError, compatibilityPanicResponse{
+			Status: "0", Message: "NOTOK", Result: "query failed",
+		})
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeJSON(w, http.StatusInternalServerError, gen.ErrorResponse{Error: gen.APIError{
+			Code: "internal_error", Message: "internal server error", RequestId: requestID,
+		}})
+		return
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "error"})
 }
 
 func (h *Handler) live(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +498,8 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"trace":            h.cfg.Features.Trace,
 		"mempool":          h.cfg.Features.Mempool,
 		"historical_state": h.cfg.Features.HistoricalState,
-		"verification":     h.cfg.Features.Verification,
+		"verification":     h.verificationSubmitter != nil && h.verificationTargets != nil,
+		"sourcify":         h.sourcify != nil,
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
 	}
@@ -910,49 +1029,54 @@ func (h *Handler) transactionTrace(w http.ResponseWriter, r *http.Request) {
 
 type verificationSubmission struct {
 	Address            string          `json:"address"`
-	CodeHash           string          `json:"code_hash"`
-	AtBlockHash        string          `json:"at_block_hash"`
 	Language           verify.Language `json:"language"`
 	CompilerVersion    string          `json:"compiler_version"`
 	ContractIdentifier string          `json:"contract_identifier"`
 	StandardJSON       json.RawMessage `json:"standard_json"`
-	CreationBytecode   string          `json:"creation_bytecode"`
-	RuntimeBytecode    string          `json:"runtime_bytecode"`
+	ConstructorArgs    string          `json:"constructor_arguments"`
+	LicenseType        string          `json:"license_type"`
 	SubmitToSourcify   bool            `json:"submit_to_sourcify"`
 }
 
+type sourcifyImportSubmission struct {
+	Address         string `json:"address"`
+	ConstructorArgs string `json:"constructor_arguments"`
+}
+
+type sourcifyUploadSubmission struct {
+	Consent bool `json:"consent"`
+}
+
 func (h *Handler) submitVerification(w http.ResponseWriter, r *http.Request) {
-	if !h.verificationAvailable(w, r) {
+	if !h.verificationSubmissionAvailable(w, r) {
 		return
 	}
 	if !h.requireAPIKey(w, r) {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, h.maxVerificationBody)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
 	var submission verificationSubmission
-	if err := decoder.Decode(&submission); err != nil {
+	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "verification request is invalid") {
+		return
+	}
+	if !addressPattern.MatchString(submission.Address) {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "verification request is invalid", nil)
 		return
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "verification request contains multiple JSON values", nil)
-		return
-	} else if !errors.Is(err, io.EOF) {
-		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "verification request is invalid", nil)
+	target, constructorArguments, err := h.resolveVerificationTarget(r.Context(), submission.Address, submission.ConstructorArgs)
+	if err != nil {
+		h.handleVerificationTargetError(w, r, err)
 		return
 	}
 	request := verify.Request{
-		ChainID: h.cfg.Chain.ID, Address: strings.ToLower(submission.Address),
-		CodeHash: strings.ToLower(submission.CodeHash), AtBlockHash: strings.ToLower(submission.AtBlockHash),
+		ChainID: target.ChainID, Address: target.Address,
+		CodeHash: target.CodeHash, AtBlockHash: target.AtBlockHash,
 		Language: submission.Language, CompilerVersion: submission.CompilerVersion,
 		ContractIdentifier: submission.ContractIdentifier, StandardJSON: submission.StandardJSON,
-		CreationBytecode: submission.CreationBytecode, RuntimeBytecode: submission.RuntimeBytecode,
+		CreationBytecode: target.CreationBytecode, RuntimeBytecode: target.RuntimeBytecode,
+		ConstructorArgs: constructorArguments, LicenseType: submission.LicenseType,
 		SubmitToSourcify: submission.SubmitToSourcify,
 	}
-	job, created, err := h.verification.Submit(r.Context(), request)
+	job, created, err := h.verificationSubmitter.Submit(r.Context(), request)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -965,13 +1089,13 @@ func (h *Handler) submitVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
-	if !h.verificationAvailable(w, r) {
+	if !h.verificationReadAvailable(w, r) {
 		return
 	}
 	if !h.requireAPIKey(w, r) {
 		return
 	}
-	job, found, err := h.verification.Job(r.Context(), r.PathValue("id"))
+	job, found, err := h.verificationReader.Job(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -984,7 +1108,7 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
-	if !h.verificationAvailable(w, r) {
+	if !h.verificationReadAvailable(w, r) {
 		return
 	}
 	if !h.requireAPIKey(w, r) {
@@ -995,7 +1119,7 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address and code_hash must be fixed-size hexadecimal values", nil)
 		return
 	}
-	contract, found, err := h.verification.VerifiedContract(r.Context(), h.cfg.Chain.ID, address, codeHash)
+	contract, found, err := h.verificationReader.VerifiedContract(r.Context(), h.cfg.Chain.ID, address, codeHash)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -1013,12 +1137,298 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.VerifiedContractResponse{Data: model, Meta: h.meta(r)})
 }
 
-func (h *Handler) verificationAvailable(w http.ResponseWriter, r *http.Request) bool {
-	if h.verification != nil {
+func (h *Handler) verificationReadAvailable(w http.ResponseWriter, r *http.Request) bool {
+	if h.verificationReader != nil {
 		return true
 	}
 	writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification is unavailable", nil)
 	return false
+}
+
+func (h *Handler) verificationSubmissionAvailable(w http.ResponseWriter, r *http.Request) bool {
+	if h.verificationSubmitter != nil && h.verificationTargets != nil {
+		return true
+	}
+	writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
+	return false
+}
+
+func (h *Handler) sourcifyAvailable(w http.ResponseWriter, r *http.Request) bool {
+	if h.sourcify != nil {
+		return true
+	}
+	writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify interoperability is unavailable", map[string]interface{}{
+		"state": "unavailable", "reason": "feature_disabled",
+	})
+	return false
+}
+
+func (h *Handler) decodeBoundedJSON(w http.ResponseWriter, r *http.Request, destination any, code, message string) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxVerificationBody)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		writeError(w, r, http.StatusBadRequest, code, message, nil)
+		return false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(w, r, http.StatusBadRequest, code, message, nil)
+		return false
+	}
+	return true
+}
+
+func (h *Handler) resolveVerificationTarget(
+	ctx context.Context,
+	address string,
+	constructorArguments string,
+) (verify.VerificationTarget, string, error) {
+	target, err := h.verificationTargets.ResolveVerificationTarget(ctx, strings.ToLower(address))
+	if err != nil {
+		return verify.VerificationTarget{}, "", err
+	}
+	if target.ChainID != h.cfg.Chain.ID || !strings.EqualFold(target.Address, address) {
+		return verify.VerificationTarget{}, "", verify.ErrVerificationTargetInvalid
+	}
+	return verify.BindConstructorArguments(target, constructorArguments, int(h.maxVerificationBody))
+}
+
+func (h *Handler) handleVerificationTargetError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, verify.ErrConstructorArgumentsMismatch) {
+		writeError(w, r, http.StatusBadRequest, "invalid_constructor_arguments", "constructor arguments do not match the canonical creation input", nil)
+		return
+	}
+	h.logger.ErrorContext(r.Context(), "resolve verification target", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
+	writeError(w, r, http.StatusServiceUnavailable, "verification_target_unavailable", "canonical contract code or creation facts are unavailable", nil)
+}
+
+func (h *Handler) lookupSourcifyContract(w http.ResponseWriter, r *http.Request) {
+	if !h.sourcifyAvailable(w, r) || !h.requireAPIKey(w, r) {
+		return
+	}
+	address := strings.ToLower(r.PathValue("address"))
+	if !addressPattern.MatchString(address) {
+		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address must be 20 bytes", nil)
+		return
+	}
+	contract, err := h.sourcify.Lookup(r.Context(), h.cfg.Chain.ID, address)
+	if err != nil {
+		h.handleSourcifyError(w, r, err)
+		return
+	}
+	model, err := sourcifyContractModel(contract)
+	if err != nil || contract.ChainID != h.chainID() {
+		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.SourcifyContractResponse{Data: model, Meta: h.meta(r)})
+}
+
+func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request) {
+	if !h.sourcifyAvailable(w, r) || !h.verificationSubmissionAvailable(w, r) || !h.requireAPIKey(w, r) {
+		return
+	}
+	var submission sourcifyImportSubmission
+	if !h.decodeBoundedJSON(w, r, &submission, "invalid_sourcify_request", "Sourcify import request is invalid") {
+		return
+	}
+	if !addressPattern.MatchString(submission.Address) {
+		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "Sourcify import request is invalid", nil)
+		return
+	}
+	target, constructorArguments, err := h.resolveVerificationTarget(r.Context(), submission.Address, submission.ConstructorArgs)
+	if err != nil {
+		h.handleVerificationTargetError(w, r, err)
+		return
+	}
+	request, err := h.sourcify.Import(r.Context(), target)
+	if err != nil {
+		h.handleSourcifyError(w, r, err)
+		return
+	}
+	request.ConstructorArgs = constructorArguments
+	request.SubmitToSourcify = false
+	job, created, err := h.verificationSubmitter.Submit(r.Context(), request)
+	if err != nil {
+		h.handleVerificationError(w, r, err)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+	}
+	writeJSON(w, status, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
+}
+
+func (h *Handler) uploadVerificationJobToSourcify(w http.ResponseWriter, r *http.Request) {
+	if !h.sourcifyAvailable(w, r) || !h.verificationReadAvailable(w, r) || !h.requireAPIKey(w, r) {
+		return
+	}
+	var submission sourcifyUploadSubmission
+	if !h.decodeBoundedJSON(w, r, &submission, "invalid_sourcify_request", "Sourcify upload request is invalid") {
+		return
+	}
+	if !submission.Consent {
+		writeError(w, r, http.StatusBadRequest, "sourcify_consent_required", "explicit Sourcify upload consent is required", nil)
+		return
+	}
+	jobID := r.PathValue("id")
+	if _, err := uuid.Parse(jobID); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "local verification job ID is invalid", nil)
+		return
+	}
+	ticket, err := h.sourcify.Submit(r.Context(), h.verificationReader, jobID, submission.Consent)
+	if err != nil {
+		h.handleSourcifyError(w, r, err)
+		return
+	}
+	id, err := uuid.Parse(ticket.VerificationID)
+	if err != nil {
+		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, gen.SourcifyTicketResponse{
+		Data: gen.SourcifyTicket{VerificationId: id}, Meta: h.meta(r),
+	})
+}
+
+func (h *Handler) sourcifyJob(w http.ResponseWriter, r *http.Request) {
+	if !h.sourcifyAvailable(w, r) || !h.requireAPIKey(w, r) {
+		return
+	}
+	verificationID := r.PathValue("verification_id")
+	if _, err := uuid.Parse(verificationID); err != nil || verificationID != strings.ToLower(verificationID) {
+		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "Sourcify verification ID is invalid", nil)
+		return
+	}
+	job, err := h.sourcify.Status(r.Context(), verificationID)
+	if err != nil {
+		h.handleSourcifyError(w, r, err)
+		return
+	}
+	model, err := sourcifyJobModel(job, h.chainID())
+	if err != nil {
+		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.SourcifyJobResponse{Data: model, Meta: h.meta(r)})
+}
+
+func (h *Handler) handleSourcifyError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, verify.ErrConsentRequired):
+		writeError(w, r, http.StatusBadRequest, "sourcify_consent_required", "explicit Sourcify upload consent is required", nil)
+	case errors.Is(err, verify.ErrSourcifyNotFound), errors.Is(err, verify.ErrSourcifyRequestMissing):
+		writeError(w, r, http.StatusNotFound, "sourcify_not_found", "Sourcify contract or job is unavailable", nil)
+	case errors.Is(err, verify.ErrSourcifyTargetMismatch):
+		writeError(w, r, http.StatusConflict, "sourcify_target_mismatch", "Sourcify data does not match the canonical local target", nil)
+	case errors.Is(err, verify.ErrSourcifyAlreadyVerified):
+		writeError(w, r, http.StatusConflict, "sourcify_already_verified", "Sourcify already has a verified contract", nil)
+	case errors.Is(err, verify.ErrSourcifyRejected):
+		writeError(w, r, http.StatusBadRequest, "sourcify_rejected", "Sourcify rejected the request", nil)
+	case errors.Is(err, verify.ErrSourcifyUnavailable), errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify is unavailable", map[string]interface{}{
+			"state": "unavailable", "reason": "upstream_unavailable",
+		})
+	case errors.Is(err, verify.ErrSourcifyInvalidResponse):
+		writeError(w, r, http.StatusBadGateway, "sourcify_invalid_response", "Sourcify returned an invalid response", nil)
+	default:
+		h.logger.ErrorContext(r.Context(), "Sourcify request failed", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
+		writeError(w, r, http.StatusInternalServerError, "sourcify_failed", "Sourcify request failed", nil)
+	}
+}
+
+func sourcifyContractModel(contract verify.SourcifyContract) (gen.SourcifyContract, error) {
+	address, err := checksumAddress(contract.Address)
+	if err != nil || !canonicalQuantity(contract.ChainID) {
+		return gen.SourcifyContract{}, verify.ErrSourcifyInvalidResponse
+	}
+	model := gen.SourcifyContract{ChainId: contract.ChainID, Address: address}
+	if model.Match, err = sourcifyMatchModel(contract.Match); err != nil {
+		return gen.SourcifyContract{}, err
+	}
+	if model.CreationMatch, err = sourcifyMatchModel(contract.CreationMatch); err != nil {
+		return gen.SourcifyContract{}, err
+	}
+	if model.RuntimeMatch, err = sourcifyMatchModel(contract.RuntimeMatch); err != nil {
+		return gen.SourcifyContract{}, err
+	}
+	if contract.Compilation.Language != "" {
+		var language gen.SourcifyContractLanguage
+		switch contract.Compilation.Language {
+		case "Solidity":
+			language = gen.SourcifyContractLanguageSolidity
+		case "Vyper":
+			language = gen.SourcifyContractLanguageVyper
+		default:
+			return gen.SourcifyContract{}, verify.ErrSourcifyInvalidResponse
+		}
+		model.Language = &language
+	}
+	if contract.Compilation.CompilerVersion != "" {
+		value := contract.Compilation.CompilerVersion
+		model.CompilerVersion = &value
+	}
+	if contract.Compilation.FullyQualifiedName != "" {
+		value := contract.Compilation.FullyQualifiedName
+		model.ContractIdentifier = &value
+	}
+	return model, nil
+}
+
+func sourcifyJobModel(job verify.SourcifyJob, chainID string) (gen.SourcifyJob, error) {
+	id, err := uuid.Parse(job.VerificationID)
+	if err != nil {
+		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
+	}
+	model := gen.SourcifyJob{VerificationId: id, State: gen.SourcifyJobStatePending}
+	if job.IsJobCompleted {
+		model.State = gen.SourcifyJobStateSucceeded
+		if job.ErrorCode != "" {
+			model.State = gen.SourcifyJobStateFailed
+		}
+	}
+	if job.Contract == nil {
+		return model, nil
+	}
+	if job.Contract.ChainID != chainID {
+		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
+	}
+	address, err := checksumAddress(job.Contract.Address)
+	if err != nil {
+		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
+	}
+	contract := gen.SourcifyContract{ChainId: job.Contract.ChainID, Address: address}
+	if contract.Match, err = sourcifyOptionalMatchModel(job.Contract.Match); err != nil {
+		return gen.SourcifyJob{}, err
+	}
+	if contract.CreationMatch, err = sourcifyOptionalMatchModel(job.Contract.CreationMatch); err != nil {
+		return gen.SourcifyJob{}, err
+	}
+	if contract.RuntimeMatch, err = sourcifyOptionalMatchModel(job.Contract.RuntimeMatch); err != nil {
+		return gen.SourcifyJob{}, err
+	}
+	model.Contract = &contract
+	return model, nil
+}
+
+func sourcifyMatchModel(value string) (*gen.SourcifyMatch, error) {
+	if value == "" {
+		return nil, nil
+	}
+	match := gen.SourcifyMatch(value)
+	if !match.Valid() {
+		return nil, verify.ErrSourcifyInvalidResponse
+	}
+	return &match, nil
+}
+
+func sourcifyOptionalMatchModel(value *string) (*gen.SourcifyMatch, error) {
+	if value == nil {
+		return nil, nil
+	}
+	return sourcifyMatchModel(*value)
 }
 
 func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
@@ -1324,11 +1734,16 @@ type Service struct {
 	shutdownTimeout time.Duration
 }
 
-func NewService(cfg config.Config, handler http.Handler) *Service {
+func NewService(cfg config.Config, handler http.Handler, loggers ...*slog.Logger) *Service {
+	var logger *slog.Logger
+	if len(loggers) > 0 {
+		logger = loggers[0]
+	}
 	return &Service{
 		server: &http.Server{
 			Addr:              cfg.Server.Address,
 			Handler:           handler,
+			ErrorLog:          observability.HTTPServerErrorLog(logger),
 			ReadHeaderTimeout: cfg.Server.ReadTimeout,
 			ReadTimeout:       cfg.Server.ReadTimeout,
 			WriteTimeout:      cfg.Server.WriteTimeout,

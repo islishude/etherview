@@ -25,6 +25,14 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if err != nil {
 		return nil, err
 	}
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err := b.requireCanonicalCoreRange(ctx, tx, start, end); err != nil {
+		return nil, err
+	}
 
 	arguments := []any{b.chain, strings.ToLower(address.String()), start}
 	endClause := ""
@@ -34,7 +42,7 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	}
 	arguments = append(arguments, page.limit, page.offset)
 	query := fmt.Sprintf(accountTransactionsSQL, endClause, page.direction, page.direction, page.direction, len(arguments)-1, len(arguments))
-	rows, err := b.db.QueryContext(ctx, query, arguments...)
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query account transactions: %w", err)
 	}
@@ -50,8 +58,14 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate account transactions: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close account transactions: %w", err)
+	}
 	if len(result) == 0 {
 		return nil, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit account transaction snapshot: %w", err)
 	}
 	return result, nil
 }
@@ -232,8 +246,16 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if err != nil {
 		return nil, err
 	}
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
+		return nil, err
+	}
 	query := fmt.Sprintf(minedBlocksSQL, page.direction, page.direction)
-	rows, err := b.db.QueryContext(ctx, query, b.chain, strings.ToLower(address.String()), page.limit, page.offset)
+	rows, err := tx.QueryContext(ctx, query, b.chain, strings.ToLower(address.String()), page.limit, page.offset)
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
 	}
@@ -274,8 +296,14 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate mined blocks: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close mined blocks: %w", err)
+	}
 	if len(result) == 0 {
 		return nil, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit mined block snapshot: %w", err)
 	}
 	return result, nil
 }

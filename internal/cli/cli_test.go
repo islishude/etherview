@@ -205,6 +205,14 @@ func TestOperationalCommandsParseConfigAndForwardArguments(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "admin repair list", args: []string{"admin", "repair", "list", "--limit", "25", "--config=" + path},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "repair" || backend.adminAction != "list" || strings.Join(backend.adminArgs, " ") != "--limit 25" {
+					t.Fatalf("admin resource=%q action=%q args=%v", backend.adminResource, backend.adminAction, backend.adminArgs)
+				}
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

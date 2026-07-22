@@ -90,9 +90,7 @@ body {
   min-height: 100vh;
   margin: 0;
   color: var(--text);
-  background:
-    radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--brand-soft) 62%, transparent), transparent 28rem),
-    var(--background);
+  background: var(--background);
 }
 
 button,
@@ -658,6 +656,27 @@ code {
   font-size: 0.76rem;
 }
 
+.query-notice .notice-diagnostic {
+  margin-top: 0.15rem;
+}
+
+.notice-diagnostic code {
+  color: var(--text);
+}
+
+.notice-action {
+  width: max-content;
+  padding: 0.3rem 0;
+  color: var(--brand-strong);
+  background: transparent;
+  border: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
 .status-dot,
 .pulse-dot {
   width: 0.55rem;
@@ -757,6 +776,131 @@ tbody tr:hover {
   font-size: 0.72rem;
 }
 
+.table-secondary {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+}
+
+.context-note {
+  padding: 0.85rem 1rem;
+  margin: 0;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  border-left: 4px solid var(--brand);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.compact-empty {
+  padding: 0.75rem 0;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.chain-context {
+  padding: 0 1.1rem 1.1rem;
+}
+
+.chain-context-heading {
+  margin-bottom: 0.8rem;
+}
+
+.chain-context-heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.chain-context-heading .eyebrow {
+  font-size: 0.62rem;
+}
+
+.chain-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.chain-context-grid > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.chain-context-grid dt {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.chain-context-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.coverage-warning {
+  padding: 0.75rem 0.85rem;
+  margin: 0.8rem 0 0;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.reorg-context {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  padding: 1rem;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--line));
+  border-radius: var(--radius-md);
+}
+
+.reorg-context h2,
+.reorg-context p {
+  margin: 0;
+}
+
+.reorg-context h2 {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.reorg-context p {
+  margin-block: 0.35rem 0.55rem;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.reorg-context code {
+  overflow-wrap: anywhere;
+  color: var(--danger);
+}
+
+.reorg-mark {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-radius: 50%;
+  font-weight: 900;
+}
+
 .pending-snapshot {
   padding: 0 1.1rem 1.1rem;
 }
@@ -834,14 +978,16 @@ tbody tr:hover {
   border-radius: var(--radius-md);
 }
 
-.pending-pagination {
+.pending-pagination,
+.cursor-pagination {
   display: flex;
   gap: 0.8rem;
   align-items: center;
   justify-content: flex-end;
 }
 
-.pending-pagination > span {
+.pending-pagination > span,
+.cursor-pagination > span {
   min-width: 5rem;
   color: var(--text-soft);
   text-align: center;
@@ -1101,6 +1247,12 @@ tbody tr:hover {
 .empty-result,
 .quiet {
   color: var(--text-soft);
+}
+
+.search-result-tail {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
 }
 
 .wallet-menu {
@@ -1618,6 +1770,10 @@ tbody tr:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .chain-context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .activity-grid,
   .status-layout,
   .contract-layout,
@@ -1719,6 +1875,14 @@ tbody tr:hover {
     justify-content: space-between;
   }
 
+  .cursor-pagination {
+    justify-content: space-between;
+  }
+
+  .chain-context-grid {
+    grid-template-columns: 1fr;
+  }
+
   .activity-grid {
     gap: 0.75rem;
   }
@@ -1733,6 +1897,15 @@ tbody tr:hover {
 
   .transaction-row .transaction-status {
     display: none;
+  }
+
+  .search-result {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .search-result-tail {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
 
   .page-header {

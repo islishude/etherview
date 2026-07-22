@@ -35,8 +35,9 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P20–P60 are not complete. Release work may collect incremental evidence, but
-v1 cannot complete until every dependency plan and global gate is done.
+P30, P50, and P60 are not complete. Release work may collect incremental
+evidence, but v1 cannot complete until every dependency plan and global gate is
+done.
 
 ## Evidence
 

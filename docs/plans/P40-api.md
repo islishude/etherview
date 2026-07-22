@@ -1,6 +1,6 @@
 # P40 — API
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -11,6 +11,7 @@ the agreed Etherscan V2 subset.
 ## References
 
 - [Architecture](../architecture/overview.md)
+- [Etherscan V2 compatibility matrix](../architecture/etherscan-v2-compatibility.md)
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [Testing](../testing.md)
 
@@ -20,24 +21,23 @@ the agreed Etherscan V2 subset.
 |---|---|---|---|---|
 | P40-T01 | done | P00, P10 | OpenAPI 3.0.3 envelopes, scalars, errors, cursors, generated types | contract tests |
 | P40-T02 | done | P40-T01 | Status/config, block, transaction, address, and search endpoints | handler/repository tests |
-| P40-T03 | todo | P20, P30, P40-T02 | Token/NFT, contract/source/ABI, stats, pending, verification endpoints | capability matrix tests |
+| P40-T03 | done | P20, P30-T01, P30-T04, P40-T02 | Token/NFT, contract/source/ABI, stats, pending, verification endpoints | capability matrix tests |
 | P40-T04 | done | P40-T01 | API-key lifecycle, anonymous/keyed quotas, CORS, health, metrics | auth/rate tests |
 | P40-T05 | done | P40-T02 | Head/reorg SSE and cache invalidation | reconnect/reorg tests |
-| P40-T06 | todo | P40-T02, P40-T03, P40-T04 | Agreed `/v2/api` Etherscan module/action compatibility | golden compatibility tests |
+| P40-T06 | done | P40-T02, P40-T03, P40-T04 | Agreed `/v2/api` Etherscan module/action compatibility | golden compatibility tests |
 
 ## Acceptance
 
 - [x] uint256/wei and other unsafe numbers are strings; addresses are checksummed.
-- [ ] Responses expose canonicality, finality, coverage, and enrichment status.
-- [ ] Unsupported optional capability returns a machine-readable unavailable
+- [x] Responses expose canonicality, finality, coverage, and enrichment status.
+- [x] Unsupported optional capability returns a machine-readable unavailable
       state rather than a misleading empty success.
 - [x] Cursor order remains stable across pages and reorg boundaries.
 - [x] API keys are one-time revealed and only keyed hashes are stored.
 
 ## Current Blockers
 
-P40-T03 and P40-T06 await the remaining P20/P30 capability outputs. There is
-no blocker on the already completed native core API, auth, or event stream.
+None.
 
 ## Evidence
 
@@ -100,3 +100,69 @@ no blocker on the already completed native core API, auth, or event stream.
 - P40-T05 commit/PR: none created because the repository has no `HEAD` and this
   task did not authorize a commit or pull request; evidence is bound to the
   current working tree.
+- P40-T03: generated native contracts and handlers cover token discovery and
+  canonical transfers, exact-block NFT owner/balance/media state, trace and
+  `stats@2` publication, snapshot-stable pending transactions, durable
+  verification jobs, and exact code-hash-bound source/ABI artifacts. Responses
+  carry finality, coverage, and stage completeness; missing, failed, disabled,
+  and expired optional capabilities return typed states instead of empty data.
+- P40-T03: native verification submission accepts only an address, canonical
+  compiler input, and optional exact constructor suffix. The API resolves the
+  newest canonical code/block/runtime/creation facts from PostgreSQL and does
+  not accept caller-selected target identities. Authenticated durable reads
+  remain available when public submission is disabled, and runnable API roles
+  with verification reads now require API-key authentication material.
+- P40-T03: the optional Sourcify v2 adapter is assembled only by API roles,
+  validates the current lookup/submit/status wire contracts through the
+  restricted bounded outbound client, and exposes authenticated lookup,
+  local-import, explicit double-consent upload, and external-status envelopes.
+  Import binds the external chain/address/runtime to the local target while
+  retaining only the server-derived creation program; upload returns a
+  validated external UUID ticket and never becomes local publication evidence.
+- P40-T03 verification: `go test -race ./internal/api ./internal/config
+  ./internal/app ./internal/etherscan ./internal/httpapi ./internal/verify
+  ./internal/mempool -count=1` passes the OpenAPI/auth, capability, target
+  binding, redaction, feature-off, and current Sourcify v2 matrix. A PostgreSQL
+  18 integration run of
+  `TestMempoolSnapshotsRemainCursorStableAndExposeFailures` proves stable
+  cursors, failure states, expired-latest unavailability, expired-cursor
+  rejection, and authoritative empty snapshots.
+- P40-T03: with the pinned Go 1.26.5, Node 24.18.0, and npm 11.16.0 toolchain,
+  `make toolchain-check generate-check lint test test-race security-check
+  helm-check plan-check` passes. Govulncheck reports no called vulnerability,
+  gitleaks reports no finding, and npm audit reports zero vulnerabilities.
+- P40-T03 commit/PR: none created; the user requested implementation and
+  verification but did not request a commit or pull request.
+- P40-T06: the maintained compatibility matrix inventories all 28 registered
+  module/actions with their exact methods, parameters, API-key policy,
+  authoritative capability prerequisites, permanent negative capabilities,
+  envelopes, and intentional wire differences. Handler goldens independently
+  enforce the same action inventory, production-backend dispatch parity,
+  GET/POST policy, keyed rejection, typed capability errors, and bounded form
+  behavior.
+- P40-T06: Core-backed ranges now prove one inclusive, tip-clamped durable
+  coverage interval inside the same repeatable-read snapshot as their result
+  query. Missing or gapped coverage reports `core coverage unavailable`, while
+  an entirely future range remains a true no-records result. Trace and Token
+  completeness runs only after that Core proof; transaction-hash absence also
+  requires global Core coverage. Countdown cadence is confined to the single
+  coverage interval containing the tip and rejects cross-island or
+  non-continuous samples.
+- P40-T06: compatibility output keeps decimal account/token/block/statistics
+  quantities, emits canonical lowercase hexadecimal log quantities, adds the
+  current `CompilerType` and `ContractFileName` source fields, documents the
+  `MatchKind` extension, and omits unknown `blockReward` instead of fabricating
+  zero.
+- P40-T06 verification: `go test -race ./internal/etherscan ./internal/auth
+  ./internal/httpapi -count=1`, matching `go vet`, `make plan-check`, and
+  `git diff --check` pass. A PostgreSQL 18 race integration run of
+  `TestEtherscanCoreCoverageDistinguishesGapsFromAuthoritativeResults` proves
+  coverage-island rejection, future-only classification, gap repair, exact
+  transaction-status absence, range-local countdown, hexadecimal log output,
+  and the mined-reward omission against real migrations and queries.
+- P40-T06: with the pinned Go 1.26.5, Node 24.18.0, and npm 11.16.0 toolchain,
+  `make toolchain-check generate-check lint test test-race security-check
+  helm-check plan-check` passes. Govulncheck reports no called vulnerability,
+  gitleaks reports no finding, and npm audit reports zero vulnerabilities.
+- P40-T06 commit/PR: none created; the user requested implementation and
+  verification but did not request a commit or pull request.

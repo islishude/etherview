@@ -64,12 +64,46 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 	assertRequired(t, mappingValue(t, schemas, "APIError"), "code", "message", "request_id")
 	assertRequired(t, mappingValue(t, schemas, "ErrorResponse"), "error")
 	assertSuccessEnvelopes(t, schemas)
-	assertJSONOperationsUseCommonErrors(t, mappingValue(t, root, "paths"))
+	paths := mappingValue(t, root, "paths")
+	assertJSONOperationsUseCommonErrors(t, paths)
+	assertVerificationBoundary(t, paths, schemas)
 
 	responses := mappingValue(t, components, "responses")
 	commonError := mappingValue(t, responses, "Error")
 	errorContent := mappingValue(t, mappingValue(t, commonError, "content"), "application/json")
 	assertScalar(t, mappingValue(t, mappingValue(t, errorContent, "schema"), "$ref"), "#/components/schemas/ErrorResponse")
+}
+
+func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
+	t.Helper()
+	for _, operation := range []struct {
+		path   string
+		method string
+	}{
+		{path: "/verification/jobs", method: "post"},
+		{path: "/verification/jobs/{id}", method: "get"},
+		{path: "/contracts/{address}/verification", method: "get"},
+		{path: "/sourcify/contracts/{address}", method: "get"},
+		{path: "/sourcify/imports", method: "post"},
+		{path: "/verification/jobs/{id}/sourcify", method: "post"},
+		{path: "/sourcify/jobs/{verification_id}", method: "get"},
+	} {
+		security := mappingValue(t, mappingValue(t, mappingValue(t, paths, operation.path), operation.method), "security")
+		if security.Kind != yaml.SequenceNode || len(security.Content) != 1 {
+			t.Fatalf("%s %s must declare exactly one API-key security requirement", operation.method, operation.path)
+		}
+		mappingValue(t, security.Content[0], "APIKey")
+	}
+
+	for _, schemaName := range []string{"VerificationSubmission", "SourcifyImportRequest"} {
+		properties := mappingValue(t, mappingValue(t, schemas, schemaName), "properties")
+		for _, forbidden := range []string{"code_hash", "at_block_hash", "creation_bytecode", "runtime_bytecode"} {
+			if optionalMappingValue(properties, forbidden) != nil {
+				t.Fatalf("%s exposes server-owned field %q", schemaName, forbidden)
+			}
+		}
+		mappingValue(t, properties, "address")
+	}
 }
 
 func TestGeneratedGoContractsUseStringScalarsAndNativeEnvelopes(t *testing.T) {

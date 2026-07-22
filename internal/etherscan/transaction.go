@@ -16,14 +16,22 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	if err != nil {
 		return nil, err
 	}
+	tx, err := b.beginCanonicalSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 	var raw []byte
 	var storedHash, blockHash []byte
 	var blockNumberText string
 	var transactionIndex int64
-	err = b.db.QueryRowContext(ctx, transactionStatusSQL, b.chain, hashBytes).Scan(
+	err = tx.QueryRowContext(ctx, transactionStatusSQL, b.chain, hashBytes).Scan(
 		&raw, &storedHash, &blockHash, &blockNumberText, &transactionIndex,
 	)
 	if err == sql.ErrNoRows {
+		if _, coverageErr := b.requireCanonicalCoreRange(ctx, tx, "0", nil); coverageErr != nil {
+			return nil, coverageErr
+		}
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -73,13 +81,19 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 		return nil, errors.New("stored receipt status is neither zero nor one")
 	}
 	statusText := status.String()
+	var result any
 	if receiptOnly {
-		return transactionReceiptStatus{Status: statusText}, nil
+		result = transactionReceiptStatus{Status: statusText}
+	} else {
+		statusResult := transactionErrorStatus{IsError: "0"}
+		if status.Sign() == 0 {
+			statusResult.IsError = "1"
+			statusResult.ErrDescription = "execution failed"
+		}
+		result = statusResult
 	}
-	result := transactionErrorStatus{IsError: "0"}
-	if status.Sign() == 0 {
-		result.IsError = "1"
-		result.ErrDescription = "execution failed"
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction status snapshot: %w", err)
 	}
 	return result, nil
 }

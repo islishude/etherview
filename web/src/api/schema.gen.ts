@@ -183,6 +183,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sourcify/contracts/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Looks up the configured chain and address through the optional Sourcify adapter. The response is a bounded, validated summary and is not local verification or publication evidence. */
+        get: operations["lookupSourcifyContract"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sourcify/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Resolves the address to the newest exact canonical code and creation facts on this server's configured chain, then imports Sourcify compiler input only after its runtime identity matches that local target. The imported input enters the normal durable local verification pipeline and never opts in to a later Sourcify upload. */
+        post: operations["importSourcifyContract"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sourcify/jobs/{verification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Returns the validated external Sourcify job state. Upstream diagnostic messages and error bodies are never exposed. */
+        get: operations["getSourcifyJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stats/blocks": {
         parameters: {
             query?: never;
@@ -353,6 +404,23 @@ export interface paths {
         get: operations["getVerificationJob"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verification/jobs/{id}/sourcify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Uploads the compiler input from a durable local verification job. Both its stored submit_to_sourcify opt-in and this call's explicit consent must be true. A successful response contains the external job ticket. */
+        post: operations["uploadVerificationJobToSourcify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -583,6 +651,54 @@ export interface components {
             label: string;
             rank: number;
         };
+        SourcifyContract: {
+            address: components["schemas"]["Address"];
+            chain_id: components["schemas"]["Quantity"];
+            compiler_version?: string;
+            contract_identifier?: string;
+            creation_match?: components["schemas"]["SourcifyMatch"];
+            /** @enum {string} */
+            language?: "solidity" | "vyper";
+            match?: components["schemas"]["SourcifyMatch"];
+            runtime_match?: components["schemas"]["SourcifyMatch"];
+        };
+        SourcifyContractResponse: {
+            data: components["schemas"]["SourcifyContract"];
+            meta: components["schemas"]["Meta"];
+        };
+        SourcifyImportRequest: {
+            address: components["schemas"]["Address"];
+            /** @description Optional constructor-argument suffix, accepted only when it matches the canonical creation input. */
+            constructor_arguments?: string;
+        };
+        SourcifyJob: {
+            contract?: components["schemas"]["SourcifyContract"];
+            /** @enum {string} */
+            state: "pending" | "succeeded" | "failed";
+            /** Format: uuid */
+            verification_id: string;
+        };
+        SourcifyJobResponse: {
+            data: components["schemas"]["SourcifyJob"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        SourcifyMatch: "match" | "exact_match";
+        SourcifyTicket: {
+            /** Format: uuid */
+            verification_id: string;
+        };
+        SourcifyTicketResponse: {
+            data: components["schemas"]["SourcifyTicket"];
+            meta: components["schemas"]["Meta"];
+        };
+        SourcifyUploadRequest: {
+            /**
+             * @description Explicit consent for this irreversible external source upload.
+             * @enum {boolean}
+             */
+            consent: true;
+        };
         /** @enum {string} */
         StageState: "complete" | "pending" | "unavailable" | "failed";
         /**
@@ -738,15 +854,18 @@ export interface components {
         VerificationMatch: "exact" | "metadata_only" | "mismatch";
         VerificationSubmission: {
             address: components["schemas"]["Address"];
-            at_block_hash: components["schemas"]["Hash"];
-            code_hash: components["schemas"]["Hash"];
             compiler_version: string;
+            /** @description Optional constructor-argument suffix. The server accepts it only when it is an exact suffix of the canonical creation input and removes it before enqueueing. */
+            constructor_arguments?: string;
             contract_identifier: string;
-            creation_bytecode: string;
             /** @enum {string} */
             language: "solidity" | "vyper";
-            /** @description Non-empty deployed runtime bytecode whose Keccak-256 digest must equal code_hash. */
-            runtime_bytecode: string;
+            /**
+             * @description Optional Etherscan-compatible source-license identifier stored only as publication metadata.
+             * @enum {string}
+             */
+            license_type?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14";
+            /** @description Inline-source Standard JSON compiler input. The service preserves code-generation settings but replaces outputSelection with the bounded exact-target fields required for deterministic matching before persisting the request. */
             standard_json: {
                 [key: string]: unknown;
             };
@@ -1090,6 +1209,87 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    lookupSourcifyContract: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated Sourcify contract summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcifyContractResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    importSourcifyContract: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcifyImportRequest"];
+            };
+        };
+        responses: {
+            /** @description An equivalent local verification job already exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationJobResponse"];
+                };
+            };
+            /** @description Imported verification job accepted for local execution. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationJobResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSourcifyJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Sourcify verification ticket ID. */
+                verification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current external verification job state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcifyJobResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getBlockStats: {
         parameters: {
             query: {
@@ -1354,6 +1554,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerificationJobResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    uploadVerificationJobToSourcify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Durable local verification job ID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcifyUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Sourcify accepted the upload and returned an external ticket. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcifyTicketResponse"];
                 };
             };
             default: components["responses"]["Error"];

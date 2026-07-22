@@ -168,13 +168,9 @@ func insertEtherscanVerifiedContractFixture(
 	contractName, abi, sources string,
 ) {
 	t.Helper()
-	execFixture(t, ctx, db, `
-		INSERT INTO verified_contracts (
-			chain_id, address, code_hash, valid_from_block, valid_to_block,
-			language, compiler_version, match_kind, contract_name, abi, sources, settings
-		) VALUES (
-			1, $1, $2, $3, NULL, 'solidity', 'v0.8.30+commit.73712a01',
-			'exact', $4, $5::jsonb, $6::jsonb, $7::jsonb
-		)`, address, codeHash, validFrom, contractName, abi, sources,
-		`{"optimizer":{"enabled":false,"runs":0}}`)
+	insertVerifiedContractFixture(
+		t, ctx, db, address, codeHash, validFrom, nil,
+		"v0.8.30+commit.73712a01", contractName, abi, sources,
+		`{"optimizer":{"enabled":false,"runs":0}}`,
+	)
 }

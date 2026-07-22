@@ -65,6 +65,17 @@ func (service *Service) Submit(ctx context.Context, request Request) (Verificati
 	if service == nil || service.repository == nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: errors.New("nil repository")}
 	}
+	standardJSON, err := PrepareStandardJSON(
+		request.StandardJSON,
+		request.Language,
+		request.CompilerVersion,
+		request.ContractIdentifier,
+		service.maxInputBytes,
+	)
+	if err != nil {
+		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
+	}
+	request.StandardJSON = standardJSON
 	encoded, err := json.Marshal(request)
 	if err != nil || len(encoded) > service.maxInputBytes {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: errors.New("encoded request exceeds limit")}

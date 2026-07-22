@@ -49,14 +49,44 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err != nil {
 		return err
 	}
-	logger := b.logger().With("roles", strings.Join(roleNames, ","), "chain_id", cfg.Chain.ID)
+	logger := b.logger().With(
+		"roles", strings.Join(roleNames, ","), "chain_id", cfg.Chain.ID,
+		"environment", cfg.Observability.Environment,
+	)
 	registry := observability.NewRegistry(b.Version, strings.Join(roleNames, ","))
 	tracker := &syncer.Tracker{}
+	metricSource, err := observability.NewPostgresMetricSource(db, cfg.Chain.ID)
+	if err != nil {
+		return err
+	}
+	metricCollector, err := observability.NewDurableCollector(metricSource, registry, observability.DurableCollectorOptions{
+		Interval: cfg.Observability.MetricsRefreshInterval, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	var telemetry *observability.Telemetry
+	if cfg.Observability.OTLPTraceEndpoint != "" {
+		telemetry, err = observability.NewTelemetry(ctx, observability.TelemetryOptions{
+			Endpoint: cfg.Observability.OTLPTraceEndpoint, Insecure: cfg.Observability.OTLPTraceInsecure,
+			SampleRatio: cfg.Observability.TraceSampleRatio, ExportTimeout: cfg.Observability.TraceExportTimeout,
+			Service: "etherview", Version: b.Version, Environment: cfg.Observability.Environment,
+			Role: strings.Join(roleNames, ","), Logger: logger,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Observability.TraceExportTimeout)
+			defer cancel()
+			telemetry.Shutdown(shutdownCtx)
+		}()
+	}
 
 	var rpcBuild *RPCBuild
 	if needsRPCForServe(roleSet, cfg) ||
 		(roleSet[components.RoleAPI] && len(cfg.RPC.Endpoints) > 0) {
-		built, err := buildRPC(ctx, cfg, logger)
+		built, err := buildRPC(ctx, cfg, logger, registry)
 		if err != nil {
 			return err
 		}
@@ -198,10 +228,22 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err := componentRegistry.Register(role, "00-operations-http", func() (components.Service, error) {
 			return &operationalService{
 				address: cfg.Server.MetricsAddress, shutdownTimeout: cfg.Server.ShutdownTimeout,
-				db: db, registry: registry, lifecycle: lifecycle,
+				db: db, registry: registry, lifecycle: lifecycle, logger: logger, telemetry: telemetry,
 			}, nil
 		}); err != nil {
 			return err
+		}
+		if err := componentRegistry.Register(role, "02-durable-metrics", func() (components.Service, error) {
+			return metricCollector, nil
+		}); err != nil {
+			return err
+		}
+		if telemetry != nil {
+			if err := componentRegistry.Register(role, "03-opentelemetry-traces", func() (components.Service, error) {
+				return telemetry, nil
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	if natsWake != nil {
@@ -390,6 +432,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
+		sourcify, err := sourcifyClient(cfg)
+		if err != nil {
+			return err
+		}
 		compatibility := etherscan.Handler{
 			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
 			MaxBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
@@ -414,7 +460,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Etherscan: compatibility, Events: broker, Mempool: pendingRepository, Verification: publicVerification,
+			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
+			VerificationReader: verificationService, VerificationSubmitter: publicVerification,
+			VerificationTargets: compatibilityBackend, Sourcify: sourcify,
 			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
@@ -430,8 +478,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		publicHandler = observability.HTTPMiddleware(publicHandler, observability.HTTPOptions{Registry: registry, Logger: logger})
-		apiService := httpapi.NewService(cfg, publicHandler)
+		publicHandler = observability.HTTPMiddleware(publicHandler, observability.HTTPOptions{
+			Registry: registry, Logger: logger, Telemetry: telemetry,
+			Route: handler.RoutePattern, PanicResponse: httpapi.WriteRecoveredPanicResponse,
+		})
+		apiService := httpapi.NewService(cfg, publicHandler, logger)
 		if err := componentRegistry.Register(components.RoleAPI, "20-public-api", func() (components.Service, error) {
 			return apiService, nil
 		}); err != nil {
@@ -452,7 +503,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		worker, err := verify.NewWorker(verificationRepository, compiler, verify.WorkerOptions{
 			WorkerID: verificationWorkerID(), LeaseDuration: cfg.Runtime.LeaseDuration,
 			PollInterval: cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-			Public: cfg.Security.PublicVerification,
+			Public: cfg.Security.PublicVerification, Observer: registry,
 		})
 		if err != nil {
 			return err
@@ -513,7 +564,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		worker, err := enrich.NewWorker(queue, []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}, enrich.WorkerOptions{
 			ID: runtimeWorkerID("enrich"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval, Wake: enrichJobWake,
+			PollInterval: cfg.Runtime.PollInterval, Wake: enrichJobWake, Observer: registry,
 		})
 		if err != nil {
 			return err
@@ -539,7 +590,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
 			ID: runtimeWorkerID("trace"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval, Wake: traceJobWake,
+			PollInterval: cfg.Runtime.PollInterval, Wake: traceJobWake, Observer: registry,
 		})
 		if err != nil {
 			return err
@@ -555,7 +606,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
 			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
 		}
-		if err := registerMetadataWorker(componentRegistry, db, rpcBuild.Pool, cfg); err != nil {
+		if err := registerMetadataWorker(componentRegistry, db, rpcBuild.Pool, cfg, registry); err != nil {
 			return err
 		}
 	}
@@ -575,7 +626,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		if err := registerMaintenanceWorker(componentRegistry, requestRepository, executor, maintenance.WorkerOptions{
 			ServiceName: "maintenance-worker", WorkerID: runtimeWorkerID("maintenance"),
-			PollInterval: cfg.Runtime.PollInterval,
+			PollInterval: cfg.Runtime.PollInterval, Observer: registry,
 		}); err != nil {
 			return err
 		}
@@ -713,6 +764,10 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 	add := func(key string) { set[key] = struct{}{} }
 	for _, role := range roles {
 		add("00-operations-http")
+		add("02-durable-metrics")
+		if cfg.Observability.OTLPTraceEndpoint != "" {
+			add("03-opentelemetry-traces")
+		}
 		if cfg.Adapters.NATSURL != "" && roleUsesNATSWake(role, cfg) {
 			add("04-optional-nats-wake")
 		}

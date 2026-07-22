@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // TraceContext is compatible with the W3C trace-context fields used by
@@ -40,7 +42,16 @@ type traceContextKey struct{}
 // TraceFromContext returns the active trace identity, if one is present.
 func TraceFromContext(ctx context.Context) (TraceContext, bool) {
 	value, ok := ctx.Value(traceContextKey{}).(TraceContext)
-	return value, ok
+	if ok {
+		return value, true
+	}
+	span := oteltrace.SpanContextFromContext(ctx)
+	if !span.IsValid() {
+		return TraceContext{}, false
+	}
+	return TraceContext{
+		TraceID: span.TraceID().String(), SpanID: span.SpanID().String(), Sampled: span.IsSampled(),
+	}, true
 }
 
 // ParseTraceparent validates the W3C version 00 traceparent representation.

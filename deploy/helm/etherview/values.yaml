@@ -126,10 +126,13 @@ migration:
   enabled: true
   backoffLimit: 4
   activeDeadlineSeconds: 600
+  # Keep completed revision Jobs long enough for operator inspection without
+  # accumulating one object forever for every Helm upgrade.
+  ttlSecondsAfterFinished: 86400
 
 # This secret is referenced, never rendered by the chart. The included
-# ExternalSecret materializes only the database, RPC, and API-key-pepper keys;
-# operators may add the optional adapter keys to the same target Secret.
+# ExternalSecret always materializes database, RPC, and API-key-pepper keys and
+# adds only the optional accelerator remote keys configured below.
 secrets:
   existingSecret: etherview
   databaseURLKey: database-url
@@ -140,6 +143,8 @@ secrets:
   s3AccessKeyKey: s3-access-key
   s3SecretKeyKey: s3-secret-key
   s3SessionTokenKey: s3-session-token
+  otlpTraceEndpointKey: otlp-trace-endpoint
+  otlpTraceHeadersKey: otlp-trace-headers
 
 externalSecret:
   enabled: false
@@ -151,6 +156,15 @@ externalSecret:
   databaseURLRemoteKey: etherview/database-url
   rpcURLsRemoteKey: etherview/rpc-urls
   apiKeyPepperRemoteKey: etherview/api-key-pepper
+  # Empty optional remote keys are omitted from the ExternalSecret. Set only
+  # the accelerators used by this release.
+  natsURLRemoteKey: ""
+  redisURLRemoteKey: ""
+  s3AccessKeyRemoteKey: ""
+  s3SecretKeyRemoteKey: ""
+  s3SessionTokenRemoteKey: ""
+  otlpTraceEndpointRemoteKey: ""
+  otlpTraceHeadersRemoteKey: ""
 
 config:
   server:
@@ -194,11 +208,20 @@ config:
     interval: 15m
     search_retention_generations: 100000
     adapter_delete_batch: 1000
+  observability:
+    environment: production
+    # The OTLP endpoint is injected from secrets.existingSecret.
+    otlp_trace_endpoint: ""
+    otlp_trace_insecure: false
+    trace_sample_ratio: 0.1
+    trace_export_timeout: 5s
+    metrics_refresh_interval: 15s
   features:
     trace: false
     mempool: false
     historical_state: false
     verification: false
+    sourcify: false
     nft_metadata: false
     pricing: false
   security:
@@ -220,6 +243,11 @@ config:
     container_pids: 64
     artifacts: {}
     images: {}
+  sourcify:
+    base_url: https://sourcify.dev/server
+    timeout: 20s
+    max_request_bytes: 5242880
+    max_response_bytes: 33554432
   adapters:
     namespace: etherview
     nats_url: ""
@@ -231,6 +259,11 @@ config:
     s3_bucket: ""
     s3_prefix: etherview
     s3_region: ""
+    # Credentials are injected from secrets.existingSecret and must remain
+    # empty in this ConfigMap-backed section.
+    s3_access_key: ""
+    s3_secret_key: ""
+    s3_session_token: ""
     s3_path_style: false
     s3_max_object_bytes: 16777216
     price_base_url: ""
@@ -253,6 +286,8 @@ prometheusRule:
   additionalLabels: {}
   syncLagBlocks: 2
   pendingJobs: 1000
+  metricsRefreshStaleSeconds: 60
+  repairQueueAgeSeconds: 900
 
 networkPolicy:
   enabled: true

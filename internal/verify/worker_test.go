@@ -109,6 +109,9 @@ type verifyTestCompiler struct {
 	panic           bool
 	started         chan struct{}
 	release         chan struct{}
+	cleaned         chan struct{}
+	cancelCleanup   time.Duration
+	cancelError     error
 	once            sync.Once
 	provenanceError error
 }
@@ -136,6 +139,18 @@ func (compiler *verifyTestCompiler) Compile(ctx context.Context, _ Language, _ s
 	if compiler.release != nil {
 		select {
 		case <-ctx.Done():
+			if compiler.cancelCleanup > 0 {
+				timer := time.NewTimer(compiler.cancelCleanup)
+				defer timer.Stop()
+				<-timer.C
+			}
+			if compiler.cleaned != nil {
+				close(compiler.cleaned)
+				time.Sleep(25 * time.Millisecond)
+			}
+			if compiler.cancelError != nil {
+				return nil, compiler.cancelError
+			}
 			return nil, ctx.Err()
 		case <-compiler.release:
 		}
@@ -147,7 +162,7 @@ func (compiler *verifyTestCompiler) HardIsolated() bool { return compiler.isolat
 
 func verifyCompilerOutput(bytecode string) []byte {
 	return []byte(fmt.Sprintf(
-		`{"contracts":{"A.sol":{"A":{"abi":[],"metadata":"{}","evm":{"bytecode":{"object":%q},"deployedBytecode":{"object":%q}}}}}}`,
+		`{"contracts":{"A.sol":{"A":{"abi":[],"metadata":"{}","evm":{"bytecode":{"object":%q,"linkReferences":{}},"deployedBytecode":{"object":%q,"linkReferences":{},"immutableReferences":{}}}}}}}`,
 		bytecode,
 		bytecode,
 	))
@@ -170,6 +185,26 @@ func newVerifyTestWorker(t *testing.T, repository Repository, compiler Compiler,
 		t.Fatal(err)
 	}
 	return worker
+}
+
+type recordingVerificationObserver struct{ results []string }
+
+func (observer *recordingVerificationObserver) RecordVerificationJob(result string) {
+	observer.results = append(observer.results, result)
+}
+
+func TestWorkerObservesPersistedVerificationOutcome(t *testing.T) {
+	repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+	observer := &recordingVerificationObserver{}
+	worker := newVerifyTestWorker(t, repository, &verifyTestCompiler{
+		output: verifyCompilerOutput("6001"), isolated: true,
+	}, WorkerOptions{Observer: observer})
+	if found, err := worker.ProcessOne(t.Context()); err != nil || !found {
+		t.Fatalf("found=%t error=%v", found, err)
+	}
+	if len(observer.results) != 1 || observer.results[0] != "succeeded" {
+		t.Fatalf("verification observations=%v", observer.results)
+	}
 }
 
 func TestWorkerPersistsExactAndMismatchWithoutLeakingArtifact(t *testing.T) {
@@ -216,7 +251,6 @@ func TestWorkerPersistsOnlyStableFailureCodes(t *testing.T) {
 		want     ErrorCode
 	}{
 		{name: "compile failure", compiler: &verifyTestCompiler{err: errors.New("password=secret")}, want: ErrorCompileFailed},
-		{name: "compiler panic", compiler: &verifyTestCompiler{panic: true}, want: ErrorCompileFailed},
 		{name: "invalid output", compiler: &verifyTestCompiler{output: []byte(`{"private":"source"}`)}, want: ErrorCompilerOutput},
 		{name: "oversized output", compiler: &verifyTestCompiler{output: verifyCompilerOutput("6001")}, limit: 1, want: ErrorCompilerTooLarge},
 	}
@@ -286,6 +320,119 @@ func TestWorkerRenewsLeaseDuringCompilation(t *testing.T) {
 	if repository.renewals < 1 || len(repository.complete) != 1 {
 		t.Fatalf("renewals=%d completions=%d", repository.renewals, len(repository.complete))
 	}
+}
+
+func TestWorkerWaitsForCompilerCleanupOnCancellation(t *testing.T) {
+	repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+	compiler := &verifyTestCompiler{
+		isolated: true, started: make(chan struct{}), release: make(chan struct{}),
+		cleaned: make(chan struct{}), cancelCleanup: 25 * time.Millisecond,
+	}
+	worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := worker.ProcessOne(ctx)
+		done <- err
+	}()
+	select {
+	case <-compiler.started:
+	case <-time.After(time.Second):
+		t.Fatal("compiler did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("worker returned before compiler cleanup: %v", err)
+	case <-compiler.cleaned:
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error=%v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not return after compiler cleanup")
+	}
+}
+
+func TestWorkerStopsWithoutTerminalizingOnCompilerFatalInvariant(t *testing.T) {
+	t.Run("compiler panic", func(t *testing.T) {
+		repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+		worker := newVerifyTestWorker(t, repository, &verifyTestCompiler{panic: true}, WorkerOptions{})
+		err := worker.Run(context.Background())
+		if !errors.Is(err, ErrCompilerRuntime) || err.Error() != ErrCompilerRuntime.Error() || strings.Contains(err.Error(), "sensitive") {
+			t.Fatalf("worker error=%v", err)
+		}
+		repository.mu.Lock()
+		defer repository.mu.Unlock()
+		if len(repository.failures) != 0 || len(repository.complete) != 0 {
+			t.Fatalf("failures=%v completions=%d", repository.failures, len(repository.complete))
+		}
+	})
+
+	t.Run("runtime sentinel", func(t *testing.T) {
+		repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+		compiler := &verifyTestCompiler{isolated: true, err: ErrCompilerRuntime}
+		worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+		err := worker.Run(context.Background())
+		if !errors.Is(err, ErrCompilerRuntime) || err.Error() != ErrCompilerRuntime.Error() {
+			t.Fatalf("worker error=%v", err)
+		}
+		repository.mu.Lock()
+		defer repository.mu.Unlock()
+		if len(repository.failures) != 0 || len(repository.complete) != 0 {
+			t.Fatalf("failures=%v completions=%d", repository.failures, len(repository.complete))
+		}
+	})
+
+	t.Run("compile failure cleanup", func(t *testing.T) {
+		repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+		compiler := &verifyTestCompiler{isolated: true, err: ErrCompilerCleanup}
+		worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+		if err := worker.Run(context.Background()); !errors.Is(err, ErrCompilerCleanup) {
+			t.Fatalf("worker error=%v", err)
+		}
+		repository.mu.Lock()
+		defer repository.mu.Unlock()
+		if len(repository.failures) != 0 || len(repository.complete) != 0 {
+			t.Fatalf("failures=%v completions=%d", repository.failures, len(repository.complete))
+		}
+	})
+
+	t.Run("cancelled compile cleanup", func(t *testing.T) {
+		repository := &verifyMemoryRepository{lease: verifyLease(), claimFound: true}
+		compiler := &verifyTestCompiler{
+			isolated: true, started: make(chan struct{}), release: make(chan struct{}),
+			cancelError: ErrCompilerCleanup,
+		}
+		worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			_, err := worker.ProcessOne(ctx)
+			done <- err
+		}()
+		select {
+		case <-compiler.started:
+		case <-time.After(time.Second):
+			t.Fatal("compiler did not start")
+		}
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, ErrCompilerCleanup) {
+				t.Fatalf("worker error=%v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("worker did not return after failed cleanup")
+		}
+		repository.mu.Lock()
+		defer repository.mu.Unlock()
+		if len(repository.failures) != 0 || len(repository.complete) != 0 {
+			t.Fatalf("failures=%v completions=%d", repository.failures, len(repository.complete))
+		}
+	})
 }
 
 func TestWorkerRequiresHardIsolationForPublicVerification(t *testing.T) {
@@ -417,6 +564,31 @@ func TestBuildCompletionRequiresObjectSourcesAndArrayABI(t *testing.T) {
 	output := []byte(`{"contracts":{"A.sol":{"A":{"abi":{},"evm":{"bytecode":{"object":"6001"},"deployedBytecode":{"object":"6001"}}}}}}`)
 	if _, code := buildCompletion(request, output, 64<<10); code != ErrorCompilerOutput {
 		t.Fatalf("code=%q", code)
+	}
+}
+
+func TestBuildCompletionClassifiesMalformedVyperAuxdataAsCompilerOutput(t *testing.T) {
+	t.Parallel()
+	request := validVerifyRequest()
+	request.Language = LanguageVyper
+	request.CompilerVersion = "0.4.3"
+	request.ContractIdentifier = vyperFixtureIdentifier
+	request.StandardJSON = readCompilerJSONFixture(t, "vyper", "input.metadata.json")
+	request.CreationBytecode = readCompilerHexFixture(t, "vyper", "creation.compiled.metadata.hex")
+	request.RuntimeBytecode = readCompilerHexFixture(t, "vyper", "runtime.onchain.synthetic.hex")
+
+	// This layout is internally well-formed, so extraction succeeds, but its
+	// immutable size contradicts the authenticated compiler auxdata tuple.
+	output := replaceFixtureTargetField(
+		t,
+		readCompilerJSONFixture(t, "vyper", "output.metadata.json"),
+		[]string{"layout"},
+		map[string]any{"code_layout": map[string]any{
+			"owner": map[string]any{"offset": 0, "length": 32, "type": "address"},
+		}},
+	)
+	if _, code := buildCompletion(request, output, 64<<10); code != ErrorCompilerOutput {
+		t.Fatalf("code=%q, want %q", code, ErrorCompilerOutput)
 	}
 }
 

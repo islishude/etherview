@@ -18,6 +18,15 @@ type testJobQueue struct {
 	cancel   context.CancelFunc
 }
 
+type recordingJobObserver struct {
+	stage  string
+	result string
+}
+
+func (observer *recordingJobObserver) RecordEnrichmentJob(stage, result string) {
+	observer.stage, observer.result = stage, result
+}
+
 func (queue *testJobQueue) Claim(context.Context, string, []StageID, time.Duration) (Lease, bool, error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
@@ -113,6 +122,26 @@ func TestWorkerRenewsAndCompletes(t *testing.T) {
 	defer queue.mu.Unlock()
 	if queue.finished == nil || queue.finished.State != ResultComplete || queue.finished.Details["frames"] != "2" || queue.renewed == 0 {
 		t.Fatalf("finished=%+v renewed=%d", queue.finished, queue.renewed)
+	}
+}
+
+func TestWorkerObservesOnlyDurableJobOutcome(t *testing.T) {
+	stage := StageID{Name: "trace", Version: 1}
+	queue := &testJobQueue{cancel: func() {}, lease: Lease{
+		Job: Job{ID: "job-observed", Stage: stage, ChainID: "1", BlockHash: uintWord(1), Attempt: 1}, Token: "lease",
+	}}
+	observer := &recordingJobObserver{}
+	worker, err := NewWorker(queue, []Processor{ProcessorFunc{ID: stage, Fn: func(context.Context, Job) (StageResult, error) {
+		return StageResult{}, nil
+	}}}, WorkerOptions{ID: "worker", Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found, err := worker.ProcessOne(t.Context()); err != nil || !found {
+		t.Fatalf("found=%t error=%v", found, err)
+	}
+	if observer.stage != "trace@1" || observer.result != "succeeded" {
+		t.Fatalf("observed stage=%q result=%q", observer.stage, observer.result)
 	}
 }
 

@@ -156,6 +156,35 @@ func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, address
 	return target, nil
 }
 
+// ResolveVerificationTarget returns only locally authoritative canonical facts
+// for the configured chain. Native and interoperability submission handlers
+// use this same resolver so neither boundary can accept a client-selected code
+// hash, block hash, runtime bytecode, or creation input.
+func (b *PostgresBackend) ResolveVerificationTarget(ctx context.Context, rawAddress string) (verify.VerificationTarget, error) {
+	if b == nil || b.db == nil || b.chainID == 0 {
+		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
+	}
+	address, addressBytes, err := parseAddressParameter(rawAddress, "address")
+	if err != nil {
+		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
+	}
+	target, err := b.currentVerificationTarget(ctx, addressBytes, address.String())
+	if err != nil {
+		return verify.VerificationTarget{}, err
+	}
+	creation, err := stripConstructorArguments(target.creationBytecode, "", b.maxVerificationInputBytes)
+	if err != nil {
+		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
+	}
+	return verify.VerificationTarget{
+		ChainID: b.chainID, Address: strings.ToLower(address.String()),
+		CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
+		AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
+		CreationBytecode: creation,
+		RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
+	}, nil
+}
+
 func parseEtherscanVerificationForm(values url.Values, maximum int) (etherscanVerificationForm, []byte, string, error) {
 	if maximum <= 0 {
 		maximum = defaultVerificationInputBytes
@@ -225,9 +254,22 @@ func parseEtherscanVerificationForm(values url.Values, maximum int) (etherscanVe
 	var standardJSON json.RawMessage
 	var identifier string
 	if codeFormat == "solidity-single-file" {
-		identifier, standardJSON, err = singleFileCompilerInput(sourceCode, contractName, settings)
+		identifier, standardJSON, err = singleFileCompilerInput(
+			sourceCode,
+			contractName,
+			compilerVersion,
+			settings,
+			maximum,
+		)
 	} else {
-		identifier, standardJSON, err = standardCompilerInput(sourceCode, contractName, language, settings)
+		identifier, standardJSON, err = standardCompilerInput(
+			sourceCode,
+			contractName,
+			language,
+			compilerVersion,
+			settings,
+			maximum,
+		)
 	}
 	if err != nil {
 		return etherscanVerificationForm{}, nil, "", err
@@ -317,7 +359,13 @@ func parseVerificationCompilerSettings(values url.Values, language verify.Langua
 	return settings, nil
 }
 
-func singleFileCompilerInput(sourceCode, contractName string, form verificationCompilerSettings) (string, json.RawMessage, error) {
+func singleFileCompilerInput(
+	sourceCode string,
+	contractName string,
+	compilerVersion string,
+	form verificationCompilerSettings,
+	maximum int,
+) (string, json.RawMessage, error) {
 	source, name, err := contractIdentifier(contractName, "Contract.sol", false)
 	if err != nil {
 		return "", nil, err
@@ -341,12 +389,45 @@ func singleFileCompilerInput(sourceCode, contractName string, form verificationC
 	if err != nil {
 		return "", nil, invalidParameter("sourceCode cannot be encoded")
 	}
-	return source + ":" + name, encoded, nil
+	identifier := source + ":" + name
+	prepared, err := verify.PrepareStandardJSON(
+		encoded,
+		verify.LanguageSolidity,
+		compilerVersion,
+		identifier,
+		maximum,
+	)
+	if err != nil {
+		return "", nil, invalidParameter("compiler input is invalid")
+	}
+	return identifier, prepared, nil
 }
 
-func standardCompilerInput(raw, rawIdentifier string, language verify.Language, form verificationCompilerSettings) (string, json.RawMessage, error) {
+func standardCompilerInput(
+	raw string,
+	rawIdentifier string,
+	language verify.Language,
+	compilerVersion string,
+	form verificationCompilerSettings,
+	maximum int,
+) (string, json.RawMessage, error) {
+	source, name, err := contractIdentifier(rawIdentifier, "", true)
+	if err != nil {
+		return "", nil, err
+	}
+	identifier := source + ":" + name
+	prepared, err := verify.PrepareStandardJSON(
+		json.RawMessage(raw),
+		language,
+		compilerVersion,
+		identifier,
+		maximum,
+	)
+	if err != nil {
+		return "", nil, invalidParameter("sourceCode is not a valid bounded Standard JSON input")
+	}
 	var document map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &document); err != nil || document == nil {
+	if err := json.Unmarshal(prepared, &document); err != nil || document == nil {
 		return "", nil, invalidParameter("sourceCode must be one Standard JSON object")
 	}
 	wantLanguage := "Solidity"
@@ -372,10 +453,6 @@ func standardCompilerInput(raw, rawIdentifier string, language verify.Language, 
 		}
 		sourceNames = append(sourceNames, source)
 	}
-	source, name, err := contractIdentifier(rawIdentifier, "", true)
-	if err != nil {
-		return "", nil, err
-	}
 	if _, exists := sourceDocuments[source]; !exists {
 		return "", nil, invalidParameter("contractname source %q is not present in Standard JSON", source)
 	}
@@ -387,7 +464,9 @@ func standardCompilerInput(raw, rawIdentifier string, language verify.Language, 
 	}
 	settings := make(map[string]any)
 	if rawSettings := document["settings"]; len(rawSettings) != 0 {
-		if err := json.Unmarshal(rawSettings, &settings); err != nil || settings == nil {
+		decoder := json.NewDecoder(bytes.NewReader(rawSettings))
+		decoder.UseNumber()
+		if err := decoder.Decode(&settings); err != nil || settings == nil {
 			return "", nil, invalidParameter("Standard JSON settings must be an object")
 		}
 	}
@@ -402,7 +481,11 @@ func standardCompilerInput(raw, rawIdentifier string, language verify.Language, 
 	if err != nil {
 		return "", nil, invalidParameter("Standard JSON cannot be encoded")
 	}
-	return source + ":" + name, encoded, nil
+	prepared, err = verify.PrepareStandardJSON(encoded, language, compilerVersion, identifier, maximum)
+	if err != nil {
+		return "", nil, invalidParameter("compiler input is invalid")
+	}
+	return identifier, prepared, nil
 }
 
 func mergeCompilerSettings(settings map[string]any, language verify.Language, form verificationCompilerSettings, sources []string) error {
@@ -435,12 +518,6 @@ func mergeCompilerSettings(settings map[string]any, language verify.Language, fo
 		if err := mergeLibraries(settings, form.libraries, sources); err != nil {
 			return err
 		}
-		selection, err := solidityOutputSelection(settings["outputSelection"])
-		if err != nil {
-			return err
-		}
-		selection["*"]["*"] = appendUnique(selection["*"]["*"], "abi", "metadata", "evm.bytecode.object", "evm.deployedBytecode.object")
-		settings["outputSelection"] = selection
 		return nil
 	}
 	if form.optimizationSet {
@@ -453,12 +530,6 @@ func mergeCompilerSettings(settings map[string]any, language verify.Language, fo
 			settings["optimize"] = form.optimized
 		}
 	}
-	selection, err := vyperOutputSelection(settings["outputSelection"])
-	if err != nil {
-		return err
-	}
-	selection["*"] = appendUnique(selection["*"], "abi", "metadata", "evm.bytecode", "evm.deployedBytecode")
-	settings["outputSelection"] = selection
 	return nil
 }
 
@@ -520,31 +591,6 @@ func mergeLibraries(settings map[string]any, additions []verificationLibrary, so
 	}
 	settings["libraries"] = libraries
 	return nil
-}
-
-func solidityOutputSelection(value any) (map[string]map[string][]string, error) {
-	selection := make(map[string]map[string][]string)
-	if value != nil {
-		encoded, err := json.Marshal(value)
-		if err != nil || json.Unmarshal(encoded, &selection) != nil {
-			return nil, invalidParameter("Solidity outputSelection is invalid")
-		}
-	}
-	if selection["*"] == nil {
-		selection["*"] = make(map[string][]string)
-	}
-	return selection, nil
-}
-
-func vyperOutputSelection(value any) (map[string][]string, error) {
-	selection := make(map[string][]string)
-	if value != nil {
-		encoded, err := json.Marshal(value)
-		if err != nil || json.Unmarshal(encoded, &selection) != nil {
-			return nil, invalidParameter("Vyper outputSelection is invalid")
-		}
-	}
-	return selection, nil
 }
 
 func vyperOptimizationEnabled(value any) (bool, bool) {
@@ -668,15 +714,6 @@ func validVerificationGUID(value string) bool {
 	}
 	_, err := hex.DecodeString(strings.ReplaceAll(value, "-", ""))
 	return err == nil
-}
-
-func appendUnique(values []string, additions ...string) []string {
-	for _, addition := range additions {
-		if !containsString(values, addition) {
-			values = append(values, addition)
-		}
-	}
-	return values
 }
 
 func containsString(values []string, wanted string) bool {

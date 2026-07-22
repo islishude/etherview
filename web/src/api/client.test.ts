@@ -91,13 +91,10 @@ describe("generated OpenAPI client boundary", () => {
     const client = createExplorerClient(fetcher);
     const body = {
       address,
-      at_block_hash: hash,
-      code_hash: hash,
       compiler_version: "0.8.30",
+      constructor_arguments: "0xaabb",
       contract_identifier: "Example.sol:Example",
-      creation_bytecode: "0x6000",
       language: "solidity" as const,
-      runtime_bytecode: "0x6000",
       standard_json: { language: "Solidity" },
       submit_to_sourcify: false,
     };

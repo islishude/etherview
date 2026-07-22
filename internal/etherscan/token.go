@@ -447,8 +447,8 @@ func (b *PostgresBackend) tokenHolders(_ context.Context, values url.Values) ([]
 		return nil, err
 	}
 	// Enumerating all current ERC-20 holders cannot be proven from JSON-RPC.
-	// The event ledger is intentionally not exposed as current state until P20
-	// reconciliation persists a fixed-canonical-block proof.
+	// The event ledger is intentionally not exposed as current state unless a
+	// future reconciliation persists a fixed-canonical-block holder set.
 	return nil, ErrStateUnavailable
 }
 

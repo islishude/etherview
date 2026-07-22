@@ -11,12 +11,13 @@ import (
 	"mime"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"path"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/netpolicy"
 )
 
 type Kind string
@@ -307,43 +308,7 @@ func (c *Client) safeDial(ctx context.Context, network, address string) (net.Con
 }
 
 func publicIP(ip net.IP) bool {
-	address, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return false
-	}
-	address = address.Unmap()
-	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() ||
-		address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() || address.IsUnspecified() {
-		return false
-	}
-	// IsGlobalUnicast deliberately includes several addresses that cannot be
-	// treated as public Internet destinations: shared carrier space, protocol
-	// assignments, documentation networks, benchmarking ranges, transition
-	// prefixes, and other IANA special-purpose blocks. A metadata URL must not
-	// use any of them as a path into an operator or cloud network.
-	for _, prefix := range nonPublicSpecialPrefixes {
-		if prefix.Contains(address) {
-			return false
-		}
-	}
-	return true
-}
-
-var nonPublicSpecialPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("192.0.0.0/24"),
-	netip.MustParsePrefix("192.0.2.0/24"),
-	netip.MustParsePrefix("192.88.99.0/24"),
-	netip.MustParsePrefix("198.18.0.0/15"),
-	netip.MustParsePrefix("198.51.100.0/24"),
-	netip.MustParsePrefix("203.0.113.0/24"),
-	netip.MustParsePrefix("240.0.0.0/4"),
-	netip.MustParsePrefix("64:ff9b::/96"),
-	netip.MustParsePrefix("100::/64"),
-	netip.MustParsePrefix("2001::/23"),
-	netip.MustParsePrefix("2001:db8::/32"),
-	netip.MustParsePrefix("2002::/16"),
+	return netpolicy.PublicIP(ip)
 }
 
 func containsParentSegment(value string) bool {

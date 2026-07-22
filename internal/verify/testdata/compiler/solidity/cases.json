@@ -1,0 +1,111 @@
+{
+  "compiler": "solc-js 0.8.30+commit.73712a01.Emscripten.clang",
+  "identifier": "contracts/Target.sol:Target",
+  "sources": [
+    "contracts/MathLib.sol",
+    "contracts/Scale.sol",
+    "contracts/Target.sol"
+  ],
+  "libraries": {
+    "contracts/MathLib.sol:MathLib": "0x1111111111111111111111111111111111111111"
+  },
+  "constructorArguments": "0x0000000000000000000000002222222222222222222222222222222222222222000000000000000000000000000000000000000000000000000000000000002a",
+  "immutableVariables": [
+    {
+      "id": "37",
+      "name": "owner",
+      "type": "address"
+    },
+    {
+      "id": "39",
+      "name": "seed",
+      "type": "uint256"
+    }
+  ],
+  "immutableReferences": {
+    "37": [
+      {
+        "length": 32,
+        "start": 130
+      },
+      {
+        "length": 32,
+        "start": 214
+      }
+    ],
+    "39": [
+      {
+        "length": 32,
+        "start": 72
+      },
+      {
+        "length": 32,
+        "start": 308
+      }
+    ]
+  },
+  "byteLengths": {
+    "creation": 815,
+    "creationComment": 815,
+    "creationTransactionInput": 879,
+    "runtimeTemplateIPFS": 648,
+    "runtimeOnchainIPFS": 648,
+    "runtimeTemplateIPFSComment": 648,
+    "runtimeOnchainIPFSComment": 648,
+    "runtimeTemplateBZZR1": 647,
+    "runtimeOnchainBZZR1": 647
+  },
+  "linkReferences": {
+    "linkedCreation": {},
+    "linkedRuntime": {},
+    "unlinkedCreation": {
+      "contracts/MathLib.sol": {
+        "MathLib": [
+          {
+            "length": 20,
+            "start": 533
+          }
+        ]
+      }
+    },
+    "unlinkedRuntime": {
+      "contracts/MathLib.sol": {
+        "MathLib": [
+          {
+            "length": 20,
+            "start": 366
+          }
+        ]
+      }
+    },
+    "unlinkedCreationContainsPlaceholder": true,
+    "unlinkedRuntimeContainsPlaceholder": true
+  },
+  "metadataPair": {
+    "runtimeExecutableCoreEqual": true,
+    "runtimeFooterEqual": false,
+    "ipfsRuntimePayloadBytes": 51,
+    "ipfsRuntimeFooterBytes": 53,
+    "bzzr1RuntimePayloadBytes": 50,
+    "bzzr1RuntimeFooterBytes": 52,
+    "creationSuffixStrippedCoreEqual": false,
+    "note": "The IPFS and bzzr1 runtime executable cores agree, but the bzzr1 footer is one byte shorter. That length shift changes creation-program constants, so strict terminal-footer stripping does not make the creation cores equal."
+  },
+  "commentOnlyMetadataPair": {
+    "creationExecutableCoreEqual": true,
+    "runtimeExecutableCoreEqual": true,
+    "creationFooterEqual": false,
+    "runtimeFooterEqual": false,
+    "basePayloadBytes": 51,
+    "commentPayloadBytes": 51,
+    "baseCreationBytes": 815,
+    "commentCreationBytes": 815,
+    "baseRuntimeBytes": 648,
+    "commentRuntimeBytes": 648,
+    "note": "A source-comment-only change keeps both real creation and runtime executable cores byte-identical after strict terminal CBOR stripping while changing both same-length IPFS footers."
+  },
+  "construction": {
+    "runtimeOnchain": "Synthetic deployed runtime derived from the real compiler template by filling every compiler-declared immutable range: owner=0x2222...2222, seed=42.",
+    "transactionInput": "Synthetic deployment input derived by appending canonical ABI words for owner and seed; the native matcher fixture uses the stripped compiled creation program."
+  }
+}

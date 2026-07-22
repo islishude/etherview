@@ -208,7 +208,14 @@ type WorkerOptions struct {
 	RetryMax      time.Duration
 	// Wake is a lossy latency hint. PostgreSQL Claim remains authoritative and
 	// PollInterval remains the mandatory fallback when notifications are lost.
-	Wake <-chan struct{}
+	Wake     <-chan struct{}
+	Observer JobObserver
+}
+
+// JobObserver receives only controlled stage/result values after a durable
+// transition. Implementations must not be given processor or storage errors.
+type JobObserver interface {
+	RecordEnrichmentJob(stage, result string)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -334,6 +341,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return true, fmt.Errorf("queue returned unsupported stage %s", lease.Job.Stage)
 	}
 	if err := worker.handle(ctx, lease, processor); err != nil {
+		worker.observe(lease.Job.Stage, "error")
 		return true, err
 	}
 	return true, nil
@@ -398,6 +406,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 		if atomicPublication {
 			switch completed.result.publication {
 			case stagePublicationSucceeded, stagePublicationSuperseded:
+				worker.observe(lease.Job.Stage, "succeeded")
 				return nil
 			default:
 				return ErrAtomicPublicationRequired
@@ -411,6 +420,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 		} else if err := worker.queue.Finish(ctx, lease, completed.result); err != nil {
 			return fmt.Errorf("finish enrichment job: %w", err)
 		} else {
+			worker.observe(lease.Job.Stage, "succeeded")
 			return nil
 		}
 	}
@@ -419,9 +429,17 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 	if errors.As(completed.err, &classified) {
 		switch classified.kind {
 		case "unavailable":
-			return worker.finishError(ctx, lease, ResultUnavailable, completed.err)
+			if err := worker.finishError(ctx, lease, ResultUnavailable, completed.err); err != nil {
+				return err
+			}
+			worker.observe(lease.Job.Stage, "unavailable")
+			return nil
 		case "permanent":
-			return worker.finishError(ctx, lease, ResultFailed, completed.err)
+			if err := worker.finishError(ctx, lease, ResultFailed, completed.err); err != nil {
+				return err
+			}
+			worker.observe(lease.Job.Stage, "failed")
+			return nil
 		}
 	}
 	// The queue owns retry exhaustion. In PostgreSQL this decision is made from
@@ -432,7 +450,14 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 	if err := worker.queue.Retry(ctx, lease, retry); err != nil {
 		return fmt.Errorf("retry enrichment job: %w", err)
 	}
+	worker.observe(lease.Job.Stage, "retry")
 	return nil
+}
+
+func (worker *Worker) observe(stage StageID, result string) {
+	if worker.options.Observer != nil {
+		worker.options.Observer.RecordEnrichmentJob(stage.String(), result)
+	}
 }
 
 func isKnownDerivedStage(stage StageID) bool {

@@ -151,6 +151,29 @@ func TestSourceVerificationRejectsMissingProofAndConstructorMismatch(t *testing.
 	}
 }
 
+func TestResolveVerificationTargetReturnsCanonicalServerFacts(t *testing.T) {
+	t.Parallel()
+	runtimeBytecode := []byte{0x60, 0x02}
+	codeHash := testRuntimeCodeHash(runtimeBytecode)
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(4),
+		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001AABB"}},
+	}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
+	target, err := backend.ResolveVerificationTarget(context.Background(), testContract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.ChainID != 1 || target.Address != strings.ToLower(testContract) ||
+		target.CodeHash != "0x"+hex.EncodeToString(codeHash) || target.AtBlockHash != testHash(32) ||
+		target.CreationBytecode != "0x6001aabb" || target.RuntimeBytecode != "0x6002" {
+		t.Fatalf("target=%+v", target)
+	}
+
+	if _, err := backend.ResolveVerificationTarget(context.Background(), "not-an-address"); !errors.Is(err, ErrVerificationTargetUnavailable) {
+		t.Fatalf("invalid address error=%v", err)
+	}
+}
+
 func TestVerificationFormRejectsAmbiguousOrConflictingInput(t *testing.T) {
 	t.Parallel()
 	standard := `{"language":"Solidity","sources":{"A.sol":{"content":"contract A{}"},"L.sol":{"content":"library L{}"}},"settings":{"optimizer":{"enabled":true}}}`
@@ -195,9 +218,61 @@ func TestVyperVerificationFormNormalizesCompilerAndOutput(t *testing.T) {
 	if form.language != verify.LanguageVyper || form.compilerVersion != "0.4.0" || form.contractIdentifier != "A.vy:A" {
 		t.Fatalf("form=%+v", form)
 	}
-	if !strings.Contains(string(form.standardJSON), `"evm.deployedBytecode"`) {
-		t.Fatalf("Vyper output selection=%s", form.standardJSON)
+	var input struct {
+		Settings struct {
+			OutputSelection map[string][]string `json:"outputSelection"`
+		} `json:"settings"`
 	}
+	if err := json.Unmarshal(form.standardJSON, &input); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(input.Settings.OutputSelection["A.vy"], ",")
+	want := "abi,metadata,evm.bytecode.object,evm.deployedBytecode.object"
+	if got != want || len(input.Settings.OutputSelection) != 1 {
+		t.Fatalf("Vyper output selection=%s, want %s", form.standardJSON, want)
+	}
+}
+
+func TestVerificationFormRejectsDuplicateJSONKeysAndPreservesLargeIntegers(t *testing.T) {
+	t.Parallel()
+	base := url.Values{
+		"contractaddress": {testContract},
+		"codeformat":      {"solidity-standard-json-input"},
+		"contractname":    {"A.sol:A"},
+		"compilerversion": {"v0.8.30"},
+	}
+
+	duplicate := cloneURLValues(base)
+	duplicate.Set("sourceCode", `{
+		"language":"Solidity",
+		"sources":{"A.sol":{"content":"contract A {}","content":"contract B {}"}},
+		"settings":{}
+	}`)
+	if _, _, _, err := parseEtherscanVerificationForm(duplicate, 1<<20); !errors.Is(err, ErrInvalidParameter) {
+		t.Fatalf("duplicate-key error=%v", err)
+	}
+
+	largeInteger := cloneURLValues(base)
+	largeInteger.Set("sourceCode", `{
+		"language":"Solidity",
+		"sources":{"A.sol":{"content":"contract A {}"}},
+		"settings":{"modelChecker":{"timeout":9007199254740993}}
+	}`)
+	form, _, _, err := parseEtherscanVerificationForm(largeInteger, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(form.standardJSON), `"timeout":9007199254740993`) {
+		t.Fatalf("large integer changed during normalization: %s", form.standardJSON)
+	}
+}
+
+func cloneURLValues(values url.Values) url.Values {
+	clone := make(url.Values, len(values))
+	for key, entries := range values {
+		clone[key] = append([]string(nil), entries...)
+	}
+	return clone
 }
 
 func TestSourceVerificationStatusUsesEtherscanSemantics(t *testing.T) {
