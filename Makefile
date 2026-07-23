@@ -34,7 +34,6 @@ EXPECTED_NPM_VERSION ?= 11.16.0
 GENERATED_PATHS := \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
-	internal/webui/dist \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local
@@ -83,6 +82,7 @@ generate-check:
 		done
 
 test-go:
+	web-build
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test: test-go web-test
@@ -94,7 +94,7 @@ test-e2e: web-build
 		$(GO) build -o "$$server_binary" ./web/e2e/server; \
 		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --prefix web run test:e2e
 
-test-race:
+test-race: web-build
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 # Integration tests are explicitly skipped when no disposable PostgreSQL URL
@@ -147,7 +147,7 @@ security-tool-check:
 	@test -x "$(GOVULNCHECK)" || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }
 	@test -x "$(GITLEAKS)" || { echo "security-check: missing $(GITLEAKS); run 'make install-security-tools'"; exit 1; }
 
-security-check: security-tool-check web-install
+security-check: security-tool-check web-build
 	$(GOVULNCHECK) $(GO_PACKAGES)
 	$(GITLEAKS) dir --no-banner --redact .
 	@if git rev-parse --verify HEAD >/dev/null 2>&1; then \
@@ -156,7 +156,7 @@ security-check: security-tool-check web-install
 		echo "gitleaks history: SKIP (repository has no commits yet)"; \
 	fi
 	$(NPM) --prefix web audit --audit-level=high
-	$(GO) test ./internal/auth ./internal/metadata ./internal/verify ./internal/webui
+	$(GO) test ./internal/auth ./internal/metadata ./internal/verify ./web
 
 license-tool-check:
 	@test -x "$(GO_LICENSES)" || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }

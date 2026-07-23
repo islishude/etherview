@@ -33,7 +33,7 @@ import (
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/syncer"
 	"github.com/islishude/etherview/internal/verify"
-	"github.com/islishude/etherview/internal/webui"
+	"github.com/islishude/etherview/web"
 )
 
 func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) error {

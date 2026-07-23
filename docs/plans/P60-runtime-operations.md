@@ -176,7 +176,7 @@ P60-T03 and P60-T06 retain their P50 dependency.
   secret scan finds no leak. Final repository-wide generation, security, unit,
   race, vet, and plan gates remain pending the independent P30 repair/review.
 - P60-T05 review-hardening verification: `go test -race
-  ./internal/observability ./internal/httpapi ./internal/app ./internal/webui
+  ./internal/observability ./internal/httpapi ./internal/app ./web
   -count=1`, the same-package `go vet`, and a 20-run race repetition of the
   real net/http panic-log boundary pass. Helm lint/template passes for both
   layouts and the render suite passes exact multi-release ServiceMonitor,

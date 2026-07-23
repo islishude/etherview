@@ -15,9 +15,12 @@ worker dependencies.
 ## Decision
 
 - Vite writes the complete production distribution under
-  `internal/webui/dist`, and `go:embed` packages that directory into the Go
+  `web/dist`, and `go:embed` packages that directory into the Go
   binary. `index.html` may reference only same-origin, content-hashed build
   assets; production has no CDN or frontend runtime service.
+- `web/dist` is a build-only artifact and is not committed; the repository
+  stores source and embed logic, while build pipelines generate distribution
+  files before verification and packaging.
 - Existing embedded files support `GET` and `HEAD`. A missing path receives the
   SPA index only for a safe, non-reserved `GET` request that accepts HTML.
   API, Etherscan compatibility, health, metrics, asset-shaped, malformed, HEAD,

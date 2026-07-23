@@ -36,6 +36,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [ ] Contract calls require a discovered wallet on the configured chain; the
       backend never receives private key material or signs transactions.
 - [x] RPC credentials and server-only settings do not exist in built assets.
+- [ ] `web/dist` is treated as a build-only artifact and must be generated during build/test pipelines, not checked into git.
 
 ## Current Blockers
 
@@ -55,13 +56,13 @@ are changed and reviewed serially.
   first-load and switched Chinese/English document language, persisted
   light/dark theme, and Tailwind-backed design primitives; Vite emits only
   local content-hashed assets.
-- P50-T01: `go test -race ./internal/webui -count=1` passes the embedded
+- P50-T01: `go test -race ./web -count=1` passes the embedded
   distribution checks, including absence of server configuration markers and
   external entrypoints in the built assets.
 - P50-T01 commit/PR: none created because the repository has no `HEAD` and this
   task did not authorize a commit or pull request; evidence is bound to the
   current working tree.
-- P50-T05: `make toolchain-check`, `go test -race ./internal/webui -count=1`,
+- P50-T05: `make toolchain-check`, `go test -race ./web -count=1`,
   `npm --prefix web run lint`, and `npm --prefix web run test` pass; Vitest
   reports 9 files and 33 tests. Handler regressions cover HTML media-range
   precedence, malformed quality values, reserved and asset-shaped misses,
@@ -103,6 +104,6 @@ are changed and reviewed serially.
   contains reserved `?`, `+`, `&`, `/`, `#`, and `=` characters and must
   round-trip unchanged to select its fixture. `make generate-check` also
   passes after the embedded-SPA changes.
-- P50-T02: `go test -race ./internal/webui -count=1`, `make toolchain-check`,
+- P50-T02: `go test -race ./web -count=1`, `make toolchain-check`,
   and `make generate-check` pass. No commit or pull request was created;
   evidence is bound to the current working tree.

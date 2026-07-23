@@ -19,7 +19,8 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY api ./api
 COPY cmd ./cmd
 COPY internal ./internal
-COPY --from=web-builder /src/internal/webui/dist ./internal/webui/dist
+COPY web ./web
+COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \

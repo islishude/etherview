@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/islishude/etherview/internal/webui"
+	"github.com/islishude/etherview/web"
 )
 
 const (

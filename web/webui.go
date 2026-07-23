@@ -22,7 +22,7 @@ const (
 	noStoreCache          = "no-store"
 )
 
-//go:embed all:dist
+//go:embed dist
 var embedded embed.FS
 
 var distribution = mustSub(embedded, "dist")

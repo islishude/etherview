@@ -18,7 +18,7 @@ import (
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/observability"
-	"github.com/islishude/etherview/internal/webui"
+	"github.com/islishude/etherview/web"
 )
 
 type fakeReader struct {
