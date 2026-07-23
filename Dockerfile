@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.18.0-alpine AS web-builder
+FROM node:26.5.0-alpine AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci --ignore-scripts
