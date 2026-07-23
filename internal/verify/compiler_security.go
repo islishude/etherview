@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,7 +66,7 @@ func validateCompilerArtifact(
 	}
 	parsed, err := url.Parse(strings.TrimSpace(artifact.URL))
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" ||
-		(parsed.Scheme != "https" && !(allowHTTP && parsed.Scheme == "http")) || len(parsed.String()) > 4096 {
+		(parsed.Scheme != "https" && (!allowHTTP || parsed.Scheme != "http")) || len(parsed.String()) > 4096 {
 		return nil, [sha256.Size]byte{}, 0, errors.New("compiler artifact URL is not allowed")
 	}
 	return parsed, digest, maximum, nil
@@ -115,7 +115,7 @@ func validCompilerCacheFile(path string, expected [sha256.Size]byte, maximum int
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o500 {
 		return false
@@ -241,7 +241,7 @@ func sortedCompilerLanguages(images map[Language]map[string]string) []Language {
 	for language := range images {
 		languages = append(languages, language)
 	}
-	sort.Slice(languages, func(left, right int) bool { return languages[left] < languages[right] })
+	slices.Sort(languages)
 	return languages
 }
 

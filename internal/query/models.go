@@ -167,13 +167,13 @@ func (r *PostgresReader) transactionModel(
 	}
 	model := gen.Transaction{
 		Hash:             strings.ToLower(transactionHash.String()),
-		BlockHash:        stringPointer(strings.ToLower(blockHash.String())),
-		BlockNumber:      stringPointer(strconv.FormatUint(blockNumber, 10)),
+		BlockHash:        new(strings.ToLower(blockHash.String())),
+		BlockNumber:      new(strconv.FormatUint(blockNumber, 10)),
 		Canonical:        canonical,
 		Completeness:     r.completeness,
 		From:             from,
 		Input:            wire.Input.String(),
-		TransactionIndex: intPointer(int(transactionIndex)),
+		TransactionIndex: new(int(transactionIndex)),
 	}
 	model.Finality, err = classifyFinality(canonical, blockNumber, safeHeight, finalizedHeight)
 	if err != nil {
@@ -335,6 +335,3 @@ func finalityNumbers(safeHeight, finalizedHeight sql.NullString) (*uint64, *uint
 	}
 	return safe, finalized, nil
 }
-
-func stringPointer(value string) *string { return &value }
-func intPointer(value int) *int          { return &value }

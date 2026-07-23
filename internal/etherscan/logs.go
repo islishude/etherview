@@ -64,7 +64,7 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, arguments[1].(string), coverageEnd); err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]logEntry, 0, page.limit)
 	for rows.Next() {
 		item, err := scanLogEntry(rows)
@@ -121,7 +121,7 @@ func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, e
 			return "", nil, invalidParameter("topic parameter %s must appear exactly once", key)
 		}
 	}
-	for index := 0; index < 4; index++ {
+	for index := range 4 {
 		name := fmt.Sprintf("topic%d", index)
 		raw := strings.TrimSpace(values.Get(name))
 		if raw == "" {

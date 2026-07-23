@@ -60,7 +60,7 @@ func runStageTransaction(
 	if err != nil {
 		return StageResult{}, fmt.Errorf("begin direct block stage: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	result, err := writer(ctx, tx)
 	if err != nil {
 		return StageResult{}, err
@@ -84,7 +84,7 @@ func (queue *PostgresJobQueue) publishSuccess(
 	if err != nil {
 		return StageResult{}, fmt.Errorf("begin atomic stage publication: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return StageResult{}, err
 	}

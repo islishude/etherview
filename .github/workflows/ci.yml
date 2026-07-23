@@ -23,18 +23,15 @@ jobs:
         with:
           go-version: stable
           cache: true
-          cache-dependency-path: go.sum
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
+
       - name: Run deterministic common gates
-        run: make toolchain-check plan-check generate-check lint test test-race
+        run: make install-lint-tools toolchain-check plan-check generate-check lint test test-race
+
       - name: Reject unexpected workspace changes
         run: git diff --check && git diff --exit-code
 
@@ -64,7 +61,19 @@ jobs:
         with:
           go-version: stable
           cache: true
-          cache-dependency-path: go.sum
+
+      - name: Add Go Bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install npm dependencies
+        run: npm --prefix web ci --ignore-scripts
+      - name: Build frontend assets
+        run: make web-build
       - name: Run migrations and integration tests
         run: make test-integration
 
@@ -80,20 +89,22 @@ jobs:
         with:
           go-version: stable
           cache: true
-          cache-dependency-path: go.sum
+
+      - name: Add Go Bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
+
       - name: Install frontend and browser
         run: |
           npm --prefix web ci --ignore-scripts
           npm --prefix web exec -- playwright install --with-deps chromium
+      - name: Build frontend assets
+        run: make web-build
       - name: Run embedded-binary browser flows
         run: make test-e2e
 
@@ -101,8 +112,6 @@ jobs:
     name: Security and licenses
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      TOOLS_BIN: /tmp/etherview-ci-tools
     steps:
       - uses: actions/checkout@v7
         with:
@@ -111,18 +120,15 @@ jobs:
         with:
           go-version: stable
           cache: true
-          cache-dependency-path: |
-            go.sum
-            Makefile
+
+      - name: Add Go Bin to PATH
+        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
       - name: Install pinned security and license tools
         run: make install-security-tools
       - name: Audit source and dependencies
@@ -136,8 +142,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: azure/setup-helm@v5
-        with:
-          version: v3.18.4
       - name: Validate Dockerfile, Compose profiles, and Helm templates
         run: make deployment-check
       - name: Build production image
@@ -148,7 +152,9 @@ jobs:
           push: false
           load: true
           tags: etherview:local
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=smock-check-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=smock-check-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Smoke test the production image
+        run: docker run --rm etherview:local version
       - name: Smoke test the PostgreSQL schema lifecycle
         run: make compose-schema-smoke

@@ -25,7 +25,7 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return "", err
 	}
@@ -89,7 +89,7 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 	if err != nil {
 		return blockCountdown{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var (
 		currentText, currentTimestampText, anchorText, anchorTimestampText string
 		sampleCountText, configuredStartText, rangeStartText, rangeEndText string

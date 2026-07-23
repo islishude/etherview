@@ -224,14 +224,11 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 	started := make(chan struct{}, len(services))
 	var wg sync.WaitGroup
 	for index, service := range services {
-		index, service := index, service
 		name := names[index]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			started <- struct{}{}
 			results <- result{index: index, name: name, err: service.Run(runCtx)}
-		}()
+		})
 	}
 
 	remaining := make(map[int]string, len(names))

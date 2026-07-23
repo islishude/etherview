@@ -106,7 +106,7 @@ func (r *PostgresReader) searchHash(
 	if err != nil {
 		return nil, fmt.Errorf("search hash: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	results := make([]gen.SearchResult, 0, 2)
 	for rows.Next() {
 		var kind, key, label string
@@ -205,7 +205,7 @@ func (r *PostgresReader) searchText(
 	if err != nil {
 		return nil, fmt.Errorf("search indexed names and labels: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	results := make([]gen.SearchResult, 0, limit)
 	for rows.Next() {
 		var kind, key, label string

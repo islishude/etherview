@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -59,7 +59,7 @@ func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
 	if err != nil {
 		return SchemaStatus{}, fmt.Errorf("read migration ledger: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	applied := make(map[string]string, len(expected))
 	status := SchemaStatus{}
 	for rows.Next() {
@@ -123,7 +123,7 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	if err != nil {
 		return fmt.Errorf("begin chain identity transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}

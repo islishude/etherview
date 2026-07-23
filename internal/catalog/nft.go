@@ -18,7 +18,7 @@ func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText
 	if err != nil {
 		return NFTOwnership{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
 	if err != nil {
 		return NFTOwnership{}, err
@@ -80,7 +80,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err != nil {
 		return NFTBalancePage{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var snapshot Snapshot
 	hasBoundary := false
@@ -118,7 +118,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err != nil {
 		return NFTBalancePage{}, fmt.Errorf("query NFT balances: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	type candidateRow struct {
 		address []byte
 		tokenID string

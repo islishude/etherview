@@ -60,7 +60,7 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("begin migration transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('etherview:migrations'))`); err != nil {
 		return fmt.Errorf("lock migrations: %w", err)
 	}

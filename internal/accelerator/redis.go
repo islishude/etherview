@@ -120,7 +120,7 @@ func NewRedisAccelerator(rawURL string, options RedisOptions) (*RedisAccelerator
 		options.Namespace = "etherview"
 	}
 	if options.ChainID == 0 {
-		return nil, errors.New("Redis accelerator chain ID is zero")
+		return nil, errors.New("redis accelerator chain ID is zero")
 	}
 	if options.OperationTimeout <= 0 {
 		options.OperationTimeout = 500 * time.Millisecond
@@ -204,10 +204,7 @@ func (limiter *redisLimiter) Allow(ctx context.Context, key string, limit auth.L
 	redisKey := accelerator.prefix + ":rate:" + hex.EncodeToString(digest[:])
 	// Retain idle buckets long enough to preserve a full refill without keeping
 	// abandoned client identities indefinitely.
-	ttl := time.Duration(limit.Burst*2) * time.Second / time.Duration(limit.Rate)
-	if ttl < time.Second {
-		ttl = time.Second
-	}
+	ttl := max(time.Duration(limit.Burst*2)*time.Second/time.Duration(limit.Rate), time.Second)
 	operationCtx, cancel := accelerator.operationContext(ctx)
 	defer cancel()
 	result, err := accelerator.backend.Eval(
@@ -225,15 +222,15 @@ func (limiter *redisLimiter) Allow(ctx context.Context, key string, limit auth.L
 func parseRedisLimitResult(result any) (bool, time.Duration, error) {
 	values, ok := result.([]any)
 	if !ok || len(values) != 2 {
-		return false, 0, errors.New("Redis limiter returned an invalid tuple")
+		return false, 0, errors.New("redis limiter returned an invalid tuple")
 	}
 	allowed, ok := redisInteger(values[0])
 	if !ok || (allowed != 0 && allowed != 1) {
-		return false, 0, errors.New("Redis limiter returned an invalid decision")
+		return false, 0, errors.New("redis limiter returned an invalid decision")
 	}
 	retryMilliseconds, ok := redisInteger(values[1])
 	if !ok || retryMilliseconds < 0 {
-		return false, 0, errors.New("Redis limiter returned an invalid retry delay")
+		return false, 0, errors.New("redis limiter returned an invalid retry delay")
 	}
 	return allowed == 1, time.Duration(retryMilliseconds) * time.Millisecond, nil
 }
@@ -338,14 +335,14 @@ func (accelerator *RedisAccelerator) CacheStore(ctx context.Context, logicalKey 
 func (accelerator *RedisAccelerator) cacheGeneration(ctx context.Context) (int64, error) {
 	value, err := accelerator.backend.Get(ctx, accelerator.prefix+":cache:generation")
 	if errors.Is(err, redis.Nil) {
-		return 0, errors.New("Redis cache generation is missing")
+		return 0, errors.New("redis cache generation is missing")
 	}
 	if err != nil {
 		return 0, err
 	}
 	generation, err := strconv.ParseInt(strings.TrimSpace(string(value)), 10, 64)
 	if err != nil || generation < 0 {
-		return 0, errors.New("Redis cache generation is invalid")
+		return 0, errors.New("redis cache generation is invalid")
 	}
 	return generation, nil
 }

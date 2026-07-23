@@ -33,7 +33,7 @@ import (
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/syncer"
 	"github.com/islishude/etherview/internal/verify"
-	"github.com/islishude/etherview/web"
+	webui "github.com/islishude/etherview/web"
 )
 
 func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) error {
@@ -41,7 +41,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		defer redisAccelerator.Close()
+		defer func() { _ = redisAccelerator.Close() }()
 		redisAccelerator.FenceCache(ctx)
 	}
 	var brokerInvalidators []events.CacheInvalidator
@@ -224,7 +224,6 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	lifecycle := components.NewLifecycle()
 	componentRegistry := components.NewRegistry()
 	for _, role := range roles {
-		role := role
 		if err := componentRegistry.Register(role, "00-operations-http", func() (components.Service, error) {
 			return &operationalService{
 				address: cfg.Server.MetricsAddress, shutdownTimeout: cfg.Server.ShutdownTimeout,

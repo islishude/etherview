@@ -245,8 +245,7 @@ func TestRPCTokenDetectorReturnsTransportErrorsForRetry(t *testing.T) {
 	if strings.Contains(err.Error(), retryable.Error()) {
 		t.Fatalf("retryable error leaked hostile RPC text: %v", err)
 	}
-	var classified stageError
-	if errors.As(err, &classified) {
+	if classified, ok := errors.AsType[stageError](err); ok {
 		t.Fatalf("transport error was incorrectly made terminal: %+v", classified)
 	}
 }
@@ -286,7 +285,6 @@ func TestRPCTokenDetectorClassifiesExactStateCapabilityGaps(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			caller := &fakeTokenRPCCaller{handler: func(method string, _ []any) ([]byte, error) {
@@ -387,7 +385,6 @@ func TestClassifyTokenRequiresCompatibleSignals(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			standard, confidence := classifyToken(test.evidence, test.probes)

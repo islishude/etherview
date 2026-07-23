@@ -89,7 +89,7 @@ func (queue *PostgresJobQueue) Enqueue(ctx context.Context, request EnqueueReque
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("begin enqueue enrichment job: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	result, err := queue.enqueueTx(ctx, tx, request)
 	if err != nil {
 		return EnqueueResult{}, err
@@ -121,7 +121,7 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 	if err != nil {
 		return fmt.Errorf("begin enrichment replay: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockPublicationJobTx(ctx, tx, id); err != nil {
 		return err
 	}
@@ -562,7 +562,7 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 
 	// Bound each call's reaping work so an old exhausted backlog cannot starve
 	// ready work. Each terminal transition is its own atomic marker+job commit.
-	for reaped := 0; reaped < 32; reaped++ {
+	for range 32 {
 		terminalized, terminalErr := queue.terminalizeOneExhausted(ctx,
 			exhaustedCandidatePredicate, exhaustedLockedPredicate, stageArguments,
 		)
@@ -576,7 +576,7 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 
 	selectQuery := strings.Replace(selectClaimCandidateIDSQL, "/*STAGES*/", claimCandidatePredicate, 1)
 	claimQuery := strings.Replace(claimCandidateJobSQL, "/*STAGES*/", claimLockedPredicate, 1)
-	for contention := 0; contention < 32; contention++ {
+	for range 32 {
 		tx, beginErr := queue.db.BeginTx(ctx, nil)
 		if beginErr != nil {
 			return Lease{}, false, fmt.Errorf("begin claim enrichment job: %w", beginErr)
@@ -651,7 +651,7 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err != nil {
 		return false, fmt.Errorf("begin exhausted enrichment transition: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return false, err
 	}
@@ -774,7 +774,7 @@ func (queue *PostgresJobQueue) Finish(ctx context.Context, lease Lease, stageRes
 	if err != nil {
 		return fmt.Errorf("begin finish enrichment job: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return err
 	}
@@ -839,7 +839,7 @@ func (queue *PostgresJobQueue) Retry(ctx context.Context, lease Lease, retry Ret
 	if err != nil {
 		return fmt.Errorf("begin retry enrichment job: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return err
 	}

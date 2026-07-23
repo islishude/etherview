@@ -25,7 +25,6 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 		{stage: TraceStage, relations: []string{"normalized_traces"}},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.stage.String(), func(t *testing.T) {
 			t.Parallel()
 			first, err := encodeDerivedJournal(test.stage)

@@ -95,7 +95,6 @@ func (executor *memoryRangeExecutor) Reindex(_ context.Context, request Request)
 func TestWorkerDispatchesRepairAndReindexBoundaries(t *testing.T) {
 	t.Parallel()
 	for _, operation := range []Operation{OperationRepair, OperationReindex} {
-		operation := operation
 		t.Run(string(operation), func(t *testing.T) {
 			t.Parallel()
 			request := validRequest()
@@ -152,7 +151,6 @@ func TestWorkerRecordsExecutorFailureAndPanic(t *testing.T) {
 		{"error", &memoryRangeExecutor{repairErr: errors.New("range fetch failed")}, "range fetch failed"},
 		{"panic", &memoryRangeExecutor{panicRepair: true}, "maintenance range executor panicked"},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			repository := &memoryMaintenanceRepository{lease: Lease{Request: validRequest()}, found: true}
@@ -201,7 +199,6 @@ func TestWorkerReleasesLeaseOnCancellationOrInfrastructureError(t *testing.T) {
 		{"guard", errors.New("database unavailable"), false},
 		{"cancel", nil, true},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			repository := &memoryMaintenanceRepository{lease: Lease{Request: validRequest()}, found: true, guardErr: test.guardErr}

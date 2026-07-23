@@ -474,7 +474,6 @@ func TestTransactionTraceSortsAndValidatesNormalizedTree(t *testing.T) {
 
 func TestTransactionTraceStageStateIsNotAnEmptyTrace(t *testing.T) {
 	for _, state := range []StageState{StageMissing, StageUnavailable, StageFailed} {
-		state := state
 		t.Run(string(state), func(t *testing.T) {
 			stage := catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1)}
 			if state != StageMissing {

@@ -84,8 +84,7 @@ func TestHTTPClientRejectsDuplicateBatchResponseID(t *testing.T) {
 	client, _ := NewHTTPClient(server.URL, HTTPClientOptions{})
 	var first, second string
 	err := client.BatchCall(context.Background(), []BatchElem{{Method: "a", Result: &first}, {Method: "b", Result: &second}})
-	var protocolError *ProtocolError
-	if !errors.As(err, &protocolError) {
+	if _, ok := errors.AsType[*ProtocolError](err); !ok {
 		t.Fatalf("error = %v, want ProtocolError", err)
 	}
 }

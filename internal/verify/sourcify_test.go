@@ -281,7 +281,7 @@ func TestSourcifySubmitSendsOnlyConsentBoundCompilerInput(t *testing.T) {
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		hits.Add(1)
-		defer request.Body.Close()
+		defer func() { _ = request.Body.Close() }()
 		_ = json.NewDecoder(request.Body).Decode(&payload)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
@@ -500,7 +500,7 @@ func TestSourcifyOptionAndRequestBounds(t *testing.T) {
 	request := validVerifyRequest()
 	request.SubmitToSourcify = true
 	job := durableSourcifyJob(request, 1)
-	if _, err := client.Submit(context.Background(), sourcifyReader(job), job.ID, true); err == nil || err.Error() != "Sourcify request exceeds its configured bound" {
+	if _, err := client.Submit(context.Background(), sourcifyReader(job), job.ID, true); err == nil || err.Error() != "sourcify request exceeds its configured bound" {
 		t.Fatalf("request bound error=%v", err)
 	}
 	if hits.Load() != 0 {

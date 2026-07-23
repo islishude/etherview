@@ -176,7 +176,6 @@ func TestTransactionTraceDistinguishesStageAbsenceFromNoInternalCalls(t *testing
 	hash := "0x" + strings.Repeat("55", 32)
 	blockHash := "0x" + strings.Repeat("66", 32)
 	for _, state := range []catalog.StageState{catalog.StageMissing, catalog.StageUnavailable, catalog.StageFailed} {
-		state := state
 		t.Run(string(state), func(t *testing.T) {
 			t.Parallel()
 			fake := &fakeCatalog{traceErr: catalog.StageUnavailableError{
@@ -220,7 +219,7 @@ func TestStatsV2ResponsesExposeBlobTokenAndNullableIntervalSemantics(t *testing.
 			TransactionCount: "3", GasUsed: "21000", GasLimit: "30000000",
 			BlockTimestamp: "1700000012", BlockIntervalSeconds: &interval,
 			TransactionsPerSecond: &tps, BlobBaseFeePerGas: &blobPrice,
-			BlobBurnedWei: ptr("393216"), TokenEventCount: "4",
+			BlobBurnedWei: new("393216"), TokenEventCount: "4",
 			TokenTransferCount: "2", NFTTransferCount: "1", ComputedAt: time.Unix(20, 0).UTC(),
 		}},
 		aggregate: catalog.AggregateStats{
@@ -258,8 +257,6 @@ func TestStatsV2ResponsesExposeBlobTokenAndNullableIntervalSemantics(t *testing.
 		t.Fatalf("aggregate=%+v", aggregate.Data)
 	}
 }
-
-func ptr(value string) *string { return &value }
 
 func TestCatalogRoutesRejectMalformedIdentifiersBeforeQuery(t *testing.T) {
 	t.Parallel()

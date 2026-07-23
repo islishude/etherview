@@ -697,7 +697,7 @@ func statsReceiptBlobFees(ctx context.Context, tx *sql.Tx, job Job) (*big.Int, *
 	if err != nil {
 		return nil, nil, fmt.Errorf("query stats source receipts: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	total := new(big.Int)
 	var price *big.Int
 	for rows.Next() {

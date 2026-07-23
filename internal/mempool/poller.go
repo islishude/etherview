@@ -150,8 +150,7 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 
 func sourceFailure(err error, endpoint string, observedAt time.Time) Failure {
 	state, code, message := StateFailed, "rpc_request_failed", "pending RPC request failed"
-	var sourceErr SourceError
-	if errors.As(err, &sourceErr) {
+	if sourceErr, ok := errors.AsType[SourceError](err); ok {
 		state = sourceErr.State
 		code = sourceErr.Code
 	}

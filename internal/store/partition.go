@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,7 +177,7 @@ func ensurePartitionRange(ctx context.Context, db *sql.DB, lower, upper uint64) 
 	if err != nil {
 		return fmt.Errorf("begin partition provisioning: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := ensurePartitionRangeTx(ctx, tx, lower, upper); err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (r *PostgresRepository) ensureBundlePartitionsTx(
 	for lower := range unique {
 		ranges = append(ranges, lower)
 	}
-	sort.Slice(ranges, func(left, right int) bool { return ranges[left] < ranges[right] })
+	slices.Sort(ranges)
 	for _, lower := range ranges {
 		if err := ensurePartitionRangeTx(ctx, tx, lower, lower+DefaultPartitionSpan); err != nil {
 			return nil, err
@@ -366,7 +366,7 @@ func partitionAttachedForRange(
 	if err != nil {
 		return false, fmt.Errorf("inspect partitions for %s: %w", spec.Parent, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	wanted := normalizedPartitionBound(lower, upper)
 	newName := partitionName(spec, lower, upper)
 	legacyName := fmt.Sprintf("%s_p_%d_%d", spec.Parent, lower, upper)

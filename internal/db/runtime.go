@@ -26,7 +26,7 @@ func WithQueries(ctx context.Context, database *sql.DB, callback func(*dbgen.Que
 	if err != nil {
 		return fmt.Errorf("acquire sqlc connection: %w", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	return connection.Raw(func(driverConnection any) error {
 		pgxConnection, ok := driverConnection.(*stdlib.Conn)
 		if !ok {
@@ -52,7 +52,7 @@ func WithTransaction(ctx context.Context, database *sql.DB, callback func(*dbgen
 	if err != nil {
 		return fmt.Errorf("acquire sqlc transaction connection: %w", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	return connection.Raw(func(driverConnection any) error {
 		pgxConnection, ok := driverConnection.(*stdlib.Conn)
 		if !ok {
@@ -62,7 +62,7 @@ func WithTransaction(ctx context.Context, database *sql.DB, callback func(*dbgen
 		if err != nil {
 			return fmt.Errorf("begin sqlc transaction: %w", err)
 		}
-		defer transaction.Rollback(ctx)
+		defer func() { _ = transaction.Rollback(ctx) }()
 		if err := callback(dbgen.New(transaction)); err != nil {
 			return fmt.Errorf("execute sqlc transaction: %w", err)
 		}

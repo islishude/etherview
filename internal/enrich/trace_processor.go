@@ -157,7 +157,7 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 	if err != nil {
 		return nil, false, fmt.Errorf("query trace transactions: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var result []traceTransaction
 	for rows.Next() {
 		var index int64

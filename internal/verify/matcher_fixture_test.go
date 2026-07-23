@@ -212,7 +212,6 @@ func TestSolidityCompilerFixtureImmutableReferencesAreStrict(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			malformed := replaceFixtureTargetField(
@@ -336,7 +335,6 @@ func TestVyperCompilerFixturesMatchExactMetadataOnlyAndNoMetadata(t *testing.T) 
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			artifact := baseArtifact
@@ -379,7 +377,6 @@ func TestOfficialVyperStandardJSONVersionMatrix(t *testing.T) {
 		{version: "0.4.1", auxArity: 5, wantLayout: true},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.version, func(t *testing.T) {
 			t.Parallel()
 			input := readCompilerJSONFixture(t, "vyper-version-matrix", "input-"+test.version+".json")
@@ -479,7 +476,6 @@ func TestVyperCompilerFixtureRejectsAuxdataAndLayoutContradictions(t *testing.T)
 			}},
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			malformed := replaceFixtureTargetField(t, output, []string{"layout"}, test.layout)
@@ -667,7 +663,6 @@ func TestCompilerMetadataCBORRejectsMalformedTerminalFooters(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			if _, ok := decodeExclusiveMapFooter(test.bytecode); ok {

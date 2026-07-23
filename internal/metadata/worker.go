@@ -189,9 +189,10 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 	case StateUnavailable:
 		result = "unavailable"
 	case StateUnsafe:
-		if code == "unsafe_url" {
+		switch code {
+		case "unsafe_url":
 			result = "ssrf_rejected"
-		} else if code == "response_too_large" {
+		case "response_too_large":
 			result = "resource_exhausted"
 		}
 	}

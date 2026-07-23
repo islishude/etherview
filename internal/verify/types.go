@@ -24,7 +24,7 @@ var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
 
 var (
 	ErrSandboxRequired = errors.New("public verification requires hard compiler isolation")
-	ErrConsentRequired = errors.New("Sourcify submission requires explicit consent")
+	ErrConsentRequired = errors.New("sourcify submission requires explicit consent")
 )
 
 type Request struct {
@@ -154,7 +154,7 @@ func fixedHex(value string, bytes int) bool {
 		return false
 	}
 	for _, char := range value[2:] {
-		if !(char >= '0' && char <= '9' || char >= 'a' && char <= 'f' || char >= 'A' && char <= 'F') {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') && (char < 'A' || char > 'F') {
 			return false
 		}
 	}

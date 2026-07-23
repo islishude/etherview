@@ -20,7 +20,7 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var raw []byte
 	var storedHash, blockHash []byte
 	var blockNumberText string

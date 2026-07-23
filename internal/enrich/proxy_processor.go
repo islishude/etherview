@@ -238,7 +238,7 @@ func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.C
 	if err != nil {
 		return fmt.Errorf("query proxy transaction targets: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var hashBytes, raw []byte
 		if err := rows.Scan(&hashBytes, &raw); err != nil {
@@ -280,7 +280,7 @@ func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Conte
 	if err != nil {
 		return fmt.Errorf("query proxy creation receipts: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var index int64
 		var hashBytes, raw []byte
@@ -338,7 +338,7 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("query proxy log targets: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var index int64
 		var hashBytes, addressBytes, topicBytes, raw []byte
@@ -394,7 +394,7 @@ func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context
 	if err != nil {
 		return fmt.Errorf("query proxy trace targets: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var callType string
 		var toBytes, createdBytes []byte
@@ -438,7 +438,7 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(ctx context.Contex
 	if err != nil {
 		return fmt.Errorf("query exact proxy replay targets: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var addressBytes []byte
 		if err := rows.Scan(&addressBytes); err != nil {

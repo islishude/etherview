@@ -523,7 +523,7 @@ func (reconciler *NFTReconciler) persistOwner(
 	if err != nil {
 		return fmt.Errorf("begin ERC-721 observation transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := insertOwnerObservation(ctx, tx, chainID, contract, tokenID, reference, observation); err != nil {
 		return err
 	}
@@ -547,7 +547,7 @@ func (reconciler *NFTReconciler) persistBalances(
 	if err != nil {
 		return fmt.Errorf("begin NFT balance observation transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	for _, index := range missing {
 		candidate := parsed[index]
 		if candidate.standard == standardERC721 {

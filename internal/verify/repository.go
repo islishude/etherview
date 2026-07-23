@@ -180,7 +180,7 @@ func (repository *PostgresRepository) Submit(ctx context.Context, request Reques
 	if err != nil {
 		return VerificationJob{}, false, fmt.Errorf("begin verification submission: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	digest := verificationRequestDigest(encoded, submission.RequiresHardIsolation)
 	var (
 		job     VerificationJob
@@ -191,7 +191,7 @@ func (repository *PostgresRepository) Submit(ctx context.Context, request Reques
 	// but before the fallback SELECT takes its next read-committed snapshot. In
 	// that case the request is eligible again, so retry the insert once instead
 	// of returning a transient storage error.
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		job, scanErr = repository.scanJob(tx.QueryRowContext(ctx, submitVerificationSQL,
 			id,
 			strconv.FormatUint(request.ChainID, 10),
@@ -343,7 +343,7 @@ func (repository *PostgresRepository) BindCompiler(ctx context.Context, lease Ve
 	if err != nil {
 		return fmt.Errorf("begin verification compiler binding: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var (
 		requiresHard bool
 		kind         sql.NullString
@@ -406,7 +406,7 @@ func (repository *PostgresRepository) Complete(ctx context.Context, lease Verifi
 	if err != nil {
 		return fmt.Errorf("begin verification completion: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	job, err := repository.scanJob(tx.QueryRowContext(ctx, lockVerificationLeaseSQL, lease.Job.ID, lease.Token))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost

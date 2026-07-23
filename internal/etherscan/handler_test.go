@@ -140,9 +140,7 @@ func TestCompatibilityActionGoldenEnvelopesAndMethods(t *testing.T) {
 	}
 
 	for _, test := range compatibilityActionCases() {
-		test := test
 		for _, method := range []string{http.MethodGet, http.MethodPost} {
-			method := method
 			t.Run(test.key()+"/"+method, func(t *testing.T) {
 				backend := &fakeBackend{result: test.key()}
 				handler := manager.Middleware(false, Handler{ChainID: 1, Backend: backend})
@@ -437,7 +435,6 @@ func TestCompatibilityBoundaryGoldenFailures(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			backend := &fakeBackend{result: "must not dispatch"}
 			var configured Backend
@@ -495,7 +492,6 @@ func TestCompatibilityBackendErrorGoldenEnvelopes(t *testing.T) {
 		{name: "pending", err: ErrPending, wantStatus: http.StatusOK, wantBody: "{\"status\":\"0\",\"message\":\"NOTOK\",\"result\":\"Pending in queue\"}\n", wrap: true},
 		{name: "internal", err: errors.New("database credential detail"), wantStatus: http.StatusInternalServerError, wantBody: "{\"status\":\"0\",\"message\":\"NOTOK\",\"result\":\"query failed\"}\n"},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			backendErr := test.err
 			if test.wrap {

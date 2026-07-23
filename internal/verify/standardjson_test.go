@@ -228,7 +228,6 @@ func TestPrepareStandardJSONVyperInterfaceVersionMatrix(t *testing.T) {
 		"settings":{}
 	}`)
 	for _, version := range []string{"0.4.0", "0.4.1", "0.4.3"} {
-		version := version
 		t.Run("modern-vyi-"+version, func(t *testing.T) {
 			t.Parallel()
 			prepared, err := PrepareStandardJSON(
@@ -265,7 +264,6 @@ func TestPrepareStandardJSONVyperInterfaceVersionMatrix(t *testing.T) {
 		"settings":{}
 	}`)
 	for _, version := range []string{"0.3.4", "0.3.9", "0.3.10"} {
-		version := version
 		t.Run("legacy-ethpm-"+version, func(t *testing.T) {
 			t.Parallel()
 			prepared, err := PrepareStandardJSON(
@@ -324,7 +322,6 @@ func TestPrepareStandardJSONVyperStorageOverrideVersionMatrix(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.version, func(t *testing.T) {
 			t.Parallel()
 			input := json.RawMessage(`{"language":"Vyper","sources":{"contracts/A.vy":{"content":""}},` +
@@ -555,7 +552,6 @@ func TestPrepareStandardJSONRejectsNonCleanVyperPaths(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := PrepareStandardJSON(

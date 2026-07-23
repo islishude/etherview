@@ -128,7 +128,7 @@ func TestEventStreamReplaysContinuesAndReconnectsAcrossReorg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	assertSSEEvent(t, bufio.NewReader(response.Body), status.ID, "status")
 }
 
@@ -180,7 +180,6 @@ func TestEventStreamClassifiesCursorAndReplayFailures(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			sourceCalled := false

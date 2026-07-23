@@ -88,7 +88,6 @@ func TestRegistryMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 	registry := NewRegistry()
 	roles := []Role{RoleAPI, RoleSync, RoleEnrich, RoleTrace, RoleVerify, RoleMetadata, RoleMaintenance}
 	for _, role := range roles {
-		role := role
 		if err := registry.Register(role, "00-operations-http", namedFactory("operations-http")); err != nil {
 			t.Fatal(err)
 		}

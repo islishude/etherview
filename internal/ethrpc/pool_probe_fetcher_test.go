@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -34,12 +35,7 @@ func (f *fakeCaller) BatchCall(_ context.Context, elements []BatchElem) error {
 func (f *fakeCaller) called(method string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, candidate := range f.methods {
-		if candidate == method {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.methods, method)
 }
 
 func TestPoolSelectsOnlyPurposeEligibleEndpoints(t *testing.T) {
@@ -240,7 +236,6 @@ func TestProbeEndpointClassifiesUnavailableAndPrunedHistory(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			caller := historyProbeCaller(start, func(result any) error {
@@ -285,7 +280,6 @@ func TestProbeEndpointClassifiesUnavailableGenesisWhenConfiguredStartIsZero(t *t
 			}, wantPruned: true,
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			caller := &fakeCaller{call: func(method string, _ []any, result any) error {
@@ -330,7 +324,6 @@ func TestProbeEndpointLeavesTransientHistoryFailuresUnknown(t *testing.T) {
 		{name: "generic", err: errors.New("temporary pruned-cache lookup timeout")},
 		{name: "rpc-retry", err: &RPCError{Code: -32000, Message: "history pruning in progress; retry later"}},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			report, err := ProbeEndpoint(context.Background(), &Endpoint{

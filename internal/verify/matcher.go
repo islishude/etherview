@@ -477,7 +477,7 @@ func matchSolidityBytes(
 func solidityBytecodeMetadataEnabled(input json.RawMessage) (bool, error) {
 	document, err := decodeRawJSONObject(input)
 	if err != nil {
-		return false, errors.New("Solidity Standard JSON is malformed")
+		return false, errors.New("solidity Standard JSON is malformed")
 	}
 	rawSettings, exists := document["settings"]
 	if !exists {
@@ -485,7 +485,7 @@ func solidityBytecodeMetadataEnabled(input json.RawMessage) (bool, error) {
 	}
 	settings, err := decodeRawJSONObject(rawSettings)
 	if err != nil {
-		return false, errors.New("Solidity Standard JSON settings are malformed")
+		return false, errors.New("solidity Standard JSON settings are malformed")
 	}
 	rawMetadata, exists := settings["metadata"]
 	if !exists {
@@ -493,7 +493,7 @@ func solidityBytecodeMetadataEnabled(input json.RawMessage) (bool, error) {
 	}
 	metadata, err := decodeRawJSONObject(rawMetadata)
 	if err != nil {
-		return false, errors.New("Solidity metadata settings are malformed")
+		return false, errors.New("solidity metadata settings are malformed")
 	}
 	rawAppend, exists := metadata["appendCBOR"]
 	if !exists {
@@ -503,7 +503,7 @@ func solidityBytecodeMetadataEnabled(input json.RawMessage) (bool, error) {
 	var enabled bool
 	if !bytes.Equal(trimmed, []byte("true")) && !bytes.Equal(trimmed, []byte("false")) ||
 		json.Unmarshal(trimmed, &enabled) != nil {
-		return false, errors.New("Solidity appendCBOR setting is malformed")
+		return false, errors.New("solidity appendCBOR setting is malformed")
 	}
 	return enabled, nil
 }

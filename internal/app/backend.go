@@ -49,7 +49,7 @@ func (b *Backend) Migrate(ctx context.Context, cfg config.Config, action string)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	switch action {
 	case "up":
 		if err := store.RunMigrations(ctx, db); err != nil {
@@ -88,7 +88,7 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
@@ -294,7 +294,7 @@ func (b *Backend) Repair(ctx context.Context, cfg config.Config, operation strin
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}

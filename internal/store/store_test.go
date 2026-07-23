@@ -175,7 +175,7 @@ func TestMemoryRepositoryRefreshCanonicalIsIdentityBoundAtomicAndIdempotent(t *t
 	}
 
 	wrongHash := refreshed
-	wrongHash.Block.Hash = storeHashPointer(storeTestHash(22))
+	wrongHash.Block.Hash = new(storeTestHash(22))
 	if err := repository.RefreshCanonical(ctx, "1", wrongHash, RefreshOptions{}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("identity mismatch error=%v", err)
 	}
@@ -354,7 +354,7 @@ func storeTestBundle(number uint64, hash, parent ethrpc.Hash) ethrpc.Bundle {
 	zeroHash := storeTestHash(0)
 	return ethrpc.Bundle{Block: ethrpc.Block{
 		Number:           &numberQuantity,
-		Hash:             storeHashPointer(hash),
+		Hash:             new(hash),
 		ParentHash:       parent,
 		Sha3Uncles:       zeroHash,
 		TransactionsRoot: zeroHash,
@@ -376,8 +376,6 @@ func storeTestHash(value byte) ethrpc.Hash {
 	}
 	return hash
 }
-
-func storeHashPointer(value ethrpc.Hash) *ethrpc.Hash { return &value }
 
 func commitTestBundle(t *testing.T, repository Repository, bundle ethrpc.Bundle) {
 	t.Helper()

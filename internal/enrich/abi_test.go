@@ -211,7 +211,6 @@ func TestABIDecodeBudgetIsGlobalAcrossAliasedDynamicOffsets(t *testing.T) {
 		{name: "work", change: func(limits *DecodeLimits) { limits.MaxDecodeWork = 64 }},
 		{name: "bytes", change: func(limits *DecodeLimits) { limits.MaxDecodedBytes = 1024 }},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			limits := DefaultDecodeLimits()
@@ -366,11 +365,11 @@ func encodeDynamicBytes(value []byte) []byte {
 func encodeAliasedNestedDynamicBytes(outer, inner int, value []byte) []byte {
 	result := append([]byte(nil), wordBytes(uintWord(32))...)
 	result = append(result, wordBytes(uintWord(uint64(outer)))...)
-	for index := 0; index < outer; index++ {
+	for range outer {
 		result = append(result, wordBytes(uintWord(uint64(outer*32)))...)
 	}
 	result = append(result, wordBytes(uintWord(uint64(inner)))...)
-	for index := 0; index < inner; index++ {
+	for range inner {
 		result = append(result, wordBytes(uintWord(uint64(inner*32)))...)
 	}
 	result = append(result, wordBytes(uintWord(uint64(len(value))))...)
@@ -392,7 +391,7 @@ func addressWord(address Address) Word {
 
 func uintWord(value uint64) Word {
 	var word Word
-	for index := 0; index < 8; index++ {
+	for index := range 8 {
 		word[31-index] = byte(value)
 		value >>= 8
 	}

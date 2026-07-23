@@ -76,7 +76,7 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("begin metadata enqueue transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var canonical bool
 	if err := tx.QueryRowContext(ctx, canonicalObservationSQL,
 		request.ChainID, strconv.FormatUint(request.BlockNumber, 10), blockHash,
@@ -155,7 +155,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 	if err != nil {
 		return Lease{}, false, fmt.Errorf("begin metadata claim transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx, exhaustMetadataJobsSQL, repository.chainID); err != nil {
 		return Lease{}, false, fmt.Errorf("finalize exhausted metadata jobs: %w", err)
 	}
@@ -246,7 +246,7 @@ func (repository *PostgresRepository) Finish(ctx context.Context, lease Lease, o
 	if err != nil {
 		return fmt.Errorf("begin metadata finish transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockOwnedJob(ctx, tx, lease); err != nil {
 		return err
 	}
@@ -291,7 +291,7 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 	if err != nil {
 		return fmt.Errorf("begin metadata retry transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockOwnedJob(ctx, tx, lease); err != nil {
 		return err
 	}

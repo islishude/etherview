@@ -111,12 +111,14 @@ services:
 
   metadata:
     <<: *app
-    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    command:
+      ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
     profiles: ["distributed"]
 
   maintenance:
     <<: *app
-    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    command:
+      ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
     profiles: ["distributed"]
 
   nats:

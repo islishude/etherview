@@ -362,7 +362,7 @@ func TestCoderWakeDialerEnforcesMessageLimit(t *testing.T) {
 			serverErr <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := conn.Read(request.Context()); err != nil {
 			serverErr <- err
 			return
@@ -385,7 +385,7 @@ func TestCoderWakeDialerEnforcesMessageLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if err := conn.Write(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}`)); err != nil {
 		t.Fatal(err)
 	}

@@ -414,10 +414,7 @@ func (c *Canonicalizer) detachedCoveredAbove(
 	detached := make([]store.BlockRef, 0)
 	for rangeIndex := len(coverage.Ranges); rangeIndex > 0; rangeIndex-- {
 		covered := coverage.Ranges[rangeIndex-1]
-		end := covered.End
-		if end > tip.Number {
-			end = tip.Number
-		}
+		end := min(covered.End, tip.Number)
 		if end <= ancestor.Number {
 			continue
 		}

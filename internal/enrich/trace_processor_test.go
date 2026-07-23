@@ -158,7 +158,6 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 		{name: "data", change: func(limits *TraceLimits) { limits.MaxBlockDataBytes = 3 }},
 		{name: "text", change: func(limits *TraceLimits) { limits.MaxBlockTextBytes = 1 }},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := traceBlockReadBackend(txHash1, txHash2)
@@ -264,7 +263,6 @@ func TestTraceRPCProcessorFallsBackToSameEndpointTraceAPI(t *testing.T) {
 		{name: "method_not_found", err: &ethrpc.RPCError{Code: -32601, Message: "method not found"}},
 		{name: "pruned", err: &ethrpc.RPCError{Code: -32000, Message: "historical state pruned"}},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			job := Job{ID: "fallback", Stage: TraceStage, ChainID: "1", BlockHash: uintWord(14), BlockNumber: 14}
@@ -319,7 +317,6 @@ func TestTraceRPCProcessorRejectsEmptyOrMismatchedTrace(t *testing.T) {
 		{name: "empty_trace_api", raw: json.RawMessage(`[]`)},
 		{name: "mismatched_call_root", raw: callTracerRoot(traceAddress3, traceAddress2, "0x5", "0x1234")},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			job := Job{ID: "invalid", Stage: TraceStage, ChainID: "1", BlockHash: uintWord(15), BlockNumber: 15}

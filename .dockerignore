@@ -26,4 +26,4 @@ etherview
 web/node_modules
 web/playwright-report
 web/test-results
-internal/webui/dist
+web/dist

@@ -150,8 +150,7 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, error) {
 	resolved, err := c.resolveURL(rawURL)
 	if err != nil {
-		var classified *FetchError
-		if errors.As(err, &classified) {
+		if classified, ok := errors.AsType[*FetchError](err); ok {
 			return Result{}, classified
 		}
 		return Result{}, fetchFailure(FailureUnsafeURL, err)
@@ -164,13 +163,12 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, e
 	request.Header.Set("User-Agent", c.policy.UserAgent)
 	response, err := c.http.Do(request)
 	if err != nil {
-		var classified *FetchError
-		if errors.As(err, &classified) {
+		if classified, ok := errors.AsType[*FetchError](err); ok {
 			return Result{}, classified
 		}
 		return Result{}, fetchFailure(FailureTemporary, fmt.Errorf("fetch metadata: %w", err))
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
 		kind := FailureUnavailable
@@ -218,10 +216,7 @@ func validImageSignature(mediaType string, body []byte) bool {
 		if brand == "avif" || brand == "avis" {
 			return true
 		}
-		maximum := len(body)
-		if maximum > 64 {
-			maximum = 64
-		}
+		maximum := min(len(body), 64)
 		return bytes.Contains(body[8:maximum], []byte("avif")) || bytes.Contains(body[8:maximum], []byte("avis"))
 	default:
 		return false
@@ -268,7 +263,7 @@ func (c *Client) validateURL(parsed *url.URL) error {
 	if len(parsed.String()) > 4096 {
 		return errors.New("metadata URL exceeds 4096 bytes")
 	}
-	if parsed.Scheme != "https" && !(c.policy.AllowHTTP && parsed.Scheme == "http") {
+	if parsed.Scheme != "https" && (!c.policy.AllowHTTP || parsed.Scheme != "http") {
 		return errors.New("metadata URL scheme is not allowed")
 	}
 	if containsParentSegment(parsed.EscapedPath()) {
@@ -312,7 +307,7 @@ func publicIP(ip net.IP) bool {
 }
 
 func containsParentSegment(value string) bool {
-	for _, segment := range strings.Split(value, "/") {
+	for segment := range strings.SplitSeq(value, "/") {
 		decoded, err := url.PathUnescape(segment)
 		if err != nil || decoded == ".." {
 			return true

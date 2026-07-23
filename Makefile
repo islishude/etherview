@@ -9,27 +9,20 @@ HELM ?= helm
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
 INTEGRATION_DATABASE_URL ?=
-GOPATH ?= /tmp/etherview-gopath
-GOMODCACHE ?= /tmp/etherview-gomodcache
-GOCACHE ?= /tmp/etherview-gocache
-GOFLAGS ?= -mod=readonly
-NPM_CONFIG_CACHE ?= /tmp/etherview-npm-cache
-export GOPATH GOMODCACHE GOCACHE GOFLAGS
-export INTEGRATION_DATABASE_URL
-export npm_config_cache := $(NPM_CONFIG_CACHE)
+GO_BUILD_OUTPUT ?= ./etherview
+GO_BUILD_FLAGS ?= -trimpath
+GO_BUILD_LDFLAGS ?= -s -w
 
-TOOLS_BIN ?= $(GOPATH)/bin
-GOVULNCHECK ?= $(TOOLS_BIN)/govulncheck
-GITLEAKS ?= $(TOOLS_BIN)/gitleaks
-GO_LICENSES ?= $(TOOLS_BIN)/go-licenses
+GOVULNCHECK ?= govulncheck
+GITLEAKS ?= gitleaks
+GO_LICENSES ?= go-licenses
+GOLANGCI_LINT ?= golangci-lint
 
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v1.6.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
-EXPECTED_GO_VERSION ?= go1.26.5
-EXPECTED_NODE_VERSION ?= v24.18.0
-EXPECTED_NPM_VERSION ?= 11.16.0
 
 GENERATED_PATHS := \
 	internal/api/gen/models.gen.go \
@@ -44,21 +37,20 @@ HELM_CHART ?= deploy/helm/etherview
 
 .PHONY: \
 	check compose-check compose-schema-smoke deployment-check docker-build docker-check \
-	generate generate-check generate-go helm-check install-security-tools \
+	go-build generate generate generate-check generate-go helm-check install-lint-tools install-security-tools \
+	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-race web-build web-generate web-install web-lint web-test
+
+go-build: web-build
+	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
 
 plan-check:
 	$(GO) run ./cmd/plancheck -root .
 
 toolchain-check:
-	@test "$$($(GO) env GOVERSION)" = "$(EXPECTED_GO_VERSION)" || { \
-		echo "toolchain-check: expected Go $(EXPECTED_GO_VERSION), got $$($(GO) env GOVERSION)"; exit 1; }
-	@test "$$($(NODE) --version)" = "$(EXPECTED_NODE_VERSION)" || { \
-		echo "toolchain-check: expected Node $(EXPECTED_NODE_VERSION), got $$($(NODE) --version 2>/dev/null || echo missing)"; exit 1; }
-	@test "$$($(NPM) --version)" = "$(EXPECTED_NPM_VERSION)" || { \
-		echo "toolchain-check: expected npm $(EXPECTED_NPM_VERSION), got $$($(NPM) --version)"; exit 1; }
+	@.github/scripts/toolchain-check.sh
 
 generate-go:
 	$(GO) generate $(GO_PACKAGES)
@@ -81,8 +73,7 @@ generate-check:
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
 
-test-go:
-	web-build
+test-go: web-build
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test: test-go web-test
@@ -126,7 +117,7 @@ web-test: web-install
 web-build: web-generate
 	$(NPM) --prefix web run build
 
-lint-go:
+lint-go: lint-tool-check
 	@unformatted="$$(find . \( -path './.git' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
@@ -134,18 +125,27 @@ lint-go:
 		exit 1; \
 	fi
 	$(GO) vet $(GO_PACKAGES)
+	@$(MAKE) golangci-lint
+
+golangci-lint: lint-tool-check
+	$(GOLANGCI_LINT) run ./...
 
 lint: lint-go web-lint
 
 install-security-tools:
-	@mkdir -p "$(TOOLS_BIN)"
-	GOBIN="$(TOOLS_BIN)" $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-	GOBIN="$(TOOLS_BIN)" $(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
-	GOBIN="$(TOOLS_BIN)" $(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
+	$(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+
+install-lint-tools:
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+lint-tool-check:
+	@command -v "$(GOLANGCI_LINT)" >/dev/null 2>&1 || { echo "lint-go: missing $(GOLANGCI_LINT); run 'make install-lint-tools'"; exit 1; }
 
 security-tool-check:
-	@test -x "$(GOVULNCHECK)" || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }
-	@test -x "$(GITLEAKS)" || { echo "security-check: missing $(GITLEAKS); run 'make install-security-tools'"; exit 1; }
+	@command -v "$(GOVULNCHECK)" >/dev/null 2>&1 || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }
+	@command -v "$(GITLEAKS)" >/dev/null 2>&1 || { echo "security-check: missing $(GITLEAKS); run 'make install-security-tools'"; exit 1; }
 
 security-check: security-tool-check web-build
 	$(GOVULNCHECK) $(GO_PACKAGES)
@@ -159,14 +159,14 @@ security-check: security-tool-check web-build
 	$(GO) test ./internal/auth ./internal/metadata ./internal/verify ./web
 
 license-tool-check:
-	@test -x "$(GO_LICENSES)" || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }
+	@command -v "$(GO_LICENSES)" >/dev/null 2>&1 || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }
 	@grep -Eq '"license-checker-rseidelsohn": "$(WEB_LICENSE_CHECKER_VERSION)"' web/package.json || { \
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
-	@grep -Eq '^COPY .*LICENSE /licenses/LICENSE$$' Dockerfile || { echo "license-check: production image must include /licenses/LICENSE"; exit 1; }
+	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
 	$(GO_LICENSES) check $(GO_PACKAGES) --allowed_licenses=0BSD,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
 	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
 		--start web --production --excludePrivatePackages --summary \

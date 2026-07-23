@@ -3,6 +3,7 @@ package ethrpc
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 	"time"
@@ -180,10 +181,7 @@ func (p *Pool) ReportFailure(name string) {
 	defer p.mu.Unlock()
 	if state := p.find(name); state != nil {
 		state.failures++
-		multiplier := time.Duration(state.failures)
-		if multiplier > 6 {
-			multiplier = 6
-		}
+		multiplier := min(time.Duration(state.failures), 6)
 		state.unavailableUntil = p.now().Add(p.failureCooldown * multiplier)
 	}
 }
@@ -214,9 +212,7 @@ func (p *Pool) find(name string) *endpointState {
 func cloneEndpoint(endpoint Endpoint) Endpoint {
 	copy := endpoint
 	copy.Purposes = make(map[Purpose]bool, len(endpoint.Purposes))
-	for purpose, enabled := range endpoint.Purposes {
-		copy.Purposes[purpose] = enabled
-	}
+	maps.Copy(copy.Purposes, endpoint.Purposes)
 	copy.Capabilities = endpoint.Capabilities.Clone()
 	return copy
 }

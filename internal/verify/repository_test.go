@@ -299,15 +299,13 @@ func TestPostgresRepositoryParallelClaimsHaveUniqueJobsAndTokens(t *testing.T) {
 	results := make(chan result, claims)
 	var group sync.WaitGroup
 	for range claims {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			lease, found, err := repository.Claim(context.Background(), "worker", time.Minute)
 			if err == nil && !found {
 				err = errors.New("claim unexpectedly empty")
 			}
 			results <- result{lease: lease, err: err}
-		}()
+		})
 	}
 	group.Wait()
 	close(results)

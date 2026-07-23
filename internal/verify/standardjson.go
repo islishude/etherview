@@ -134,7 +134,7 @@ func validateStandardJSON(
 		var versionOK bool
 		compilerVyperVersion, versionOK = parseVyperVersion(compilerVersion)
 		if !versionOK {
-			return nil, nil, errors.New("Vyper compiler version must be semantic")
+			return nil, nil, errors.New("vyper compiler version must be semantic")
 		}
 	}
 	sources, ok := document["sources"].(map[string]any)
@@ -147,15 +147,15 @@ func validateStandardJSON(
 		}
 		if language == LanguageVyper {
 			if !validVyperStandardJSONPath(sourceName) {
-				return nil, nil, errors.New("Vyper source path must be a clean relative POSIX path")
+				return nil, nil, errors.New("vyper source path must be a clean relative POSIX path")
 			}
 			extension := path.Ext(sourceName)
 			if compilerVyperVersion.atLeast(0, 4, 0) {
 				if extension != ".vy" && extension != ".vyi" {
-					return nil, nil, errors.New("Vyper sources must use .vy or .vyi filenames")
+					return nil, nil, errors.New("vyper sources must use .vy or .vyi filenames")
 				}
 			} else if extension != ".vy" {
-				return nil, nil, errors.New("Vyper before 0.4.0 requires .vy sources")
+				return nil, nil, errors.New("vyper before 0.4.0 requires .vy sources")
 			}
 		}
 		source, ok := sourceValue.(map[string]any)
@@ -184,14 +184,14 @@ func validateStandardJSON(
 	}
 	if language == LanguageVyper {
 		if path.Ext(targetSource) != ".vy" {
-			return nil, nil, errors.New("Vyper verification target must be a .vy source")
+			return nil, nil, errors.New("vyper verification target must be a .vy source")
 		}
 		if _, exists := document["integrity"]; exists && !compilerVyperVersion.atLeast(0, 4, 0) {
-			return nil, nil, errors.New("Vyper integrity requires compiler 0.4.0 or newer")
+			return nil, nil, errors.New("vyper integrity requires compiler 0.4.0 or newer")
 		}
 		base := strings.TrimSuffix(path.Base(targetSource), path.Ext(targetSource))
 		if base == "" || targetName != base {
-			return nil, nil, errors.New("Vyper contract name must match its source filename")
+			return nil, nil, errors.New("vyper contract name must match its source filename")
 		}
 	}
 
@@ -208,7 +208,7 @@ func validateStandardJSON(
 			if rawSearchPaths, exists := settings["search_paths"]; exists {
 				searchPaths, ok := rawSearchPaths.([]any)
 				if !ok || len(searchPaths) != 1 || searchPaths[0] != "." {
-					return nil, nil, errors.New("Vyper search paths must contain only the virtual root")
+					return nil, nil, errors.New("vyper search paths must contain only the virtual root")
 				}
 			}
 			// Modern Vyper's in-memory JSONInputBundle needs the virtual root
@@ -216,11 +216,11 @@ func validateStandardJSON(
 			// filesystem for a supplied source.
 			settings["search_paths"] = []string{"."}
 		} else if _, exists := settings["search_paths"]; exists {
-			return nil, nil, errors.New("Vyper search paths require compiler 0.4.0 or newer")
+			return nil, nil, errors.New("vyper search paths require compiler 0.4.0 or newer")
 		}
 		if rawMetadata, exists := settings["bytecodeMetadata"]; exists {
 			if _, ok := rawMetadata.(bool); !ok {
-				return nil, nil, errors.New("Vyper bytecodeMetadata must be boolean")
+				return nil, nil, errors.New("vyper bytecodeMetadata must be boolean")
 			}
 		}
 		if err := validateVyperInlineInputs(document, sources, compilerVyperVersion); err != nil {
@@ -229,11 +229,11 @@ func validateStandardJSON(
 	} else if rawMetadata, exists := settings["metadata"]; exists {
 		metadata, ok := rawMetadata.(map[string]any)
 		if !ok {
-			return nil, nil, errors.New("Solidity metadata setting must be an object")
+			return nil, nil, errors.New("solidity metadata setting must be an object")
 		}
 		if rawAppendCBOR, exists := metadata["appendCBOR"]; exists {
 			if _, ok := rawAppendCBOR.(bool); !ok {
-				return nil, nil, errors.New("Solidity metadata appendCBOR setting must be boolean")
+				return nil, nil, errors.New("solidity metadata appendCBOR setting must be boolean")
 			}
 		}
 	}
@@ -259,9 +259,10 @@ func validateStandardJSONTopLevel(document map[string]any, language Language) er
 		"sources":  {},
 		"settings": {},
 	}
-	if language == LanguageSolidity {
+	switch language {
+	case LanguageSolidity:
 		allowed["auxiliaryInput"] = struct{}{}
-	} else if language == LanguageVyper {
+	case LanguageVyper:
 		allowed["interfaces"] = struct{}{}
 		allowed["storage_layout_overrides"] = struct{}{}
 		allowed["integrity"] = struct{}{}
@@ -273,13 +274,13 @@ func validateStandardJSONTopLevel(document map[string]any, language Language) er
 	}
 	if auxiliaryInput, exists := document["auxiliaryInput"]; exists {
 		if _, ok := auxiliaryInput.(map[string]any); !ok {
-			return errors.New("Solidity auxiliaryInput must be an object")
+			return errors.New("solidity auxiliaryInput must be an object")
 		}
 	}
 	if integrity, exists := document["integrity"]; exists {
 		value, ok := integrity.(string)
 		if !ok || value == "" || len(value) > maxStandardJSONOutputNameBytes {
-			return errors.New("Vyper integrity is invalid")
+			return errors.New("vyper integrity is invalid")
 		}
 	}
 	return nil
@@ -293,13 +294,13 @@ func validateVyperInlineInputs(
 	if rawInterfaces, exists := document["interfaces"]; exists {
 		interfaces, ok := rawInterfaces.(map[string]any)
 		if !ok || len(interfaces) > maxStandardJSONSources {
-			return errors.New("Vyper interfaces must be a bounded object")
+			return errors.New("vyper interfaces must be a bounded object")
 		}
 		totalNamespaces := 0
 		totalABIEntries := 0
 		for name, rawInterface := range interfaces {
 			if !validVyperStandardJSONPath(name) {
-				return errors.New("Vyper interface path must be a clean relative POSIX path")
+				return errors.New("vyper interface path must be a clean relative POSIX path")
 			}
 			extension := path.Ext(name)
 			namespaces, abiEntries, normalized, err := normalizeVyperInterface(
@@ -312,48 +313,48 @@ func validateVyperInlineInputs(
 			}
 			totalNamespaces += namespaces
 			if totalNamespaces > maxStandardJSONSources {
-				return errors.New("Vyper interfaces expand to too many namespaces")
+				return errors.New("vyper interfaces expand to too many namespaces")
 			}
 			totalABIEntries += abiEntries
 			if totalABIEntries > maxStandardJSONOutputEntries {
-				return errors.New("Vyper interface ABIs have too many entries")
+				return errors.New("vyper interface ABIs have too many entries")
 			}
 			interfaces[name] = normalized
 		}
 	}
 	if rawOverrides, exists := document["storage_layout_overrides"]; exists {
 		if !compilerVersion.atLeast(0, 4, 1) {
-			return errors.New("Vyper storage layout overrides require compiler 0.4.1 or newer")
+			return errors.New("vyper storage layout overrides require compiler 0.4.1 or newer")
 		}
 		overrides, ok := rawOverrides.(map[string]any)
 		if !ok || len(overrides) > maxStandardJSONSources {
-			return errors.New("Vyper storage layout overrides must be a bounded object")
+			return errors.New("vyper storage layout overrides must be a bounded object")
 		}
 		for source, rawOverride := range overrides {
 			if !validVyperStandardJSONPath(source) {
-				return errors.New("Vyper storage layout override target path must be a clean relative POSIX path")
+				return errors.New("vyper storage layout override target path must be a clean relative POSIX path")
 			}
 			if _, exists := sources[source]; !exists {
-				return errors.New("Vyper storage layout override target is not a source")
+				return errors.New("vyper storage layout override target is not a source")
 			}
 			override, ok := rawOverride.(map[string]any)
 			if !ok || len(override) > maxStandardJSONOutputEntries {
-				return errors.New("Vyper storage layout override must be an object")
+				return errors.New("vyper storage layout override must be an object")
 			}
 			// Vyper 0.4.2 moved each override into an inline JSON input
 			// whose single key is its virtual filename. Vyper 0.4.1 consumes
 			// the layout object directly and therefore has no inner path.
 			if compilerVersion.atLeast(0, 4, 2) {
 				if len(override) != 1 {
-					return errors.New("Vyper 0.4.2 or newer storage layout override must contain one inline file")
+					return errors.New("vyper 0.4.2 or newer storage layout override must contain one inline file")
 				}
 				for overridePath, rawLayout := range override {
 					if !validVyperStandardJSONPath(overridePath) {
-						return errors.New("Vyper storage layout override file path must be a clean relative POSIX path")
+						return errors.New("vyper storage layout override file path must be a clean relative POSIX path")
 					}
 					layout, ok := rawLayout.(map[string]any)
 					if !ok || len(layout) > maxStandardJSONOutputEntries {
-						return errors.New("Vyper storage layout override file must contain an object")
+						return errors.New("vyper storage layout override file must contain an object")
 					}
 				}
 			}
@@ -369,57 +370,57 @@ func normalizeVyperInterface(
 ) (int, int, any, error) {
 	modern := compilerVersion.atLeast(0, 4, 0)
 	if extension == ".vyi" && !modern {
-		return 0, 0, nil, errors.New("Vyper before 0.4.0 does not support .vyi interfaces")
+		return 0, 0, nil, errors.New("vyper before 0.4.0 does not support .vyi interfaces")
 	}
 	if extension != ".vy" && extension != ".vyi" && extension != ".json" {
 		if modern {
-			return 0, 0, nil, errors.New("Vyper interfaces must use .vy, .vyi, or .json filenames")
+			return 0, 0, nil, errors.New("vyper interfaces must use .vy, .vyi, or .json filenames")
 		}
-		return 0, 0, nil, errors.New("Vyper interfaces must use .vy or .json filenames")
+		return 0, 0, nil, errors.New("vyper interfaces must use .vy or .json filenames")
 	}
 
 	if abi, ok := rawInterface.([]any); ok {
 		if extension != ".json" {
-			return 0, 0, nil, errors.New("Vyper interface ABI must use a .json filename")
+			return 0, 0, nil, errors.New("vyper interface ABI must use a .json filename")
 		}
 		return 1, len(abi), map[string]any{"abi": abi}, nil
 	}
 	entry, ok := rawInterface.(map[string]any)
 	if !ok || len(entry) == 0 {
-		return 0, 0, nil, errors.New("Vyper interface must be an inline object")
+		return 0, 0, nil, errors.New("vyper interface must be an inline object")
 	}
 	if _, hasURLs := entry["urls"]; hasURLs {
-		return 0, 0, nil, errors.New("Vyper interface must contain inline content or ABI and no URLs")
+		return 0, 0, nil, errors.New("vyper interface must contain inline content or ABI and no URLs")
 	}
 
 	if rawContractTypes, hasContractTypes := entry["contractTypes"]; hasContractTypes {
 		if modern {
-			return 0, 0, nil, errors.New("Vyper 0.4.0 or newer does not support EthPM contractTypes interfaces")
+			return 0, 0, nil, errors.New("vyper 0.4.0 or newer does not support EthPM contractTypes interfaces")
 		}
 		if extension != ".json" {
-			return 0, 0, nil, errors.New("Vyper EthPM contractTypes interface must use a .json filename")
+			return 0, 0, nil, errors.New("vyper EthPM contractTypes interface must use a .json filename")
 		}
 		contractTypes, ok := rawContractTypes.(map[string]any)
 		if !ok || len(contractTypes) == 0 || len(contractTypes) > maxStandardJSONSources {
-			return 0, 0, nil, errors.New("Vyper EthPM contractTypes must be a bounded non-empty object")
+			return 0, 0, nil, errors.New("vyper EthPM contractTypes must be a bounded non-empty object")
 		}
 		normalizedTypes := make(map[string]any, len(contractTypes))
 		totalABIEntries := 0
 		for contractName, rawContractType := range contractTypes {
 			if !vyperContractNamePattern.MatchString(contractName) {
-				return 0, 0, nil, errors.New("Vyper EthPM contract type name is invalid")
+				return 0, 0, nil, errors.New("vyper EthPM contract type name is invalid")
 			}
 			contractType, ok := rawContractType.(map[string]any)
 			if !ok {
-				return 0, 0, nil, errors.New("Vyper EthPM contract type must be an object")
+				return 0, 0, nil, errors.New("vyper EthPM contract type must be an object")
 			}
 			abi, ok := contractType["abi"].([]any)
 			if !ok {
-				return 0, 0, nil, errors.New("Vyper EthPM contract type ABI is invalid")
+				return 0, 0, nil, errors.New("vyper EthPM contract type ABI is invalid")
 			}
 			totalABIEntries += len(abi)
 			if totalABIEntries > maxStandardJSONOutputEntries {
-				return 0, 0, nil, errors.New("Vyper EthPM contract type ABIs have too many entries")
+				return 0, 0, nil, errors.New("vyper EthPM contract type ABIs have too many entries")
 			}
 			normalizedTypes[contractName] = map[string]any{"abi": abi}
 		}
@@ -429,23 +430,23 @@ func normalizeVyperInterface(
 	content, hasContent := entry["content"]
 	abi, hasABI := entry["abi"]
 	if hasContent == hasABI || len(entry) != 1 {
-		return 0, 0, nil, errors.New("Vyper interface must contain exactly one inline content or ABI value and no URLs")
+		return 0, 0, nil, errors.New("vyper interface must contain exactly one inline content or ABI value and no URLs")
 	}
 	if hasContent {
 		if extension != ".vy" && extension != ".vyi" {
-			return 0, 0, nil, errors.New("Vyper interface content must use a .vy or .vyi filename")
+			return 0, 0, nil, errors.New("vyper interface content must use a .vy or .vyi filename")
 		}
 		if _, ok := content.(string); !ok {
-			return 0, 0, nil, errors.New("Vyper interface content is invalid")
+			return 0, 0, nil, errors.New("vyper interface content is invalid")
 		}
 		return 1, 0, entry, nil
 	}
 	if extension != ".json" {
-		return 0, 0, nil, errors.New("Vyper interface ABI must use a .json filename")
+		return 0, 0, nil, errors.New("vyper interface ABI must use a .json filename")
 	}
 	values, ok := abi.([]any)
 	if !ok {
-		return 0, 0, nil, errors.New("Vyper interface ABI is invalid")
+		return 0, 0, nil, errors.New("vyper interface ABI is invalid")
 	}
 	return 1, len(values), entry, nil
 }
@@ -523,28 +524,28 @@ func mergeSolidityOutputSelection(settings map[string]any, targetSource, targetN
 	if exists {
 		outer, ok := rawSelection.(map[string]any)
 		if !ok || len(outer) > maxStandardJSONSelectorEntries {
-			return errors.New("Solidity outputSelection is invalid")
+			return errors.New("solidity outputSelection is invalid")
 		}
 		totalOutputs := 0
 		for sourceSelector, rawContracts := range outer {
 			if !validStandardJSONSelector(sourceSelector, maxStandardJSONSourceNameBytes) {
-				return errors.New("Solidity outputSelection source selector is invalid")
+				return errors.New("solidity outputSelection source selector is invalid")
 			}
 			contracts, ok := rawContracts.(map[string]any)
 			if !ok || len(contracts) > maxStandardJSONSelectorEntries {
-				return errors.New("Solidity outputSelection is invalid")
+				return errors.New("solidity outputSelection is invalid")
 			}
 			for contractSelector, rawOutputs := range contracts {
 				if !validStandardJSONContractSelector(contractSelector) {
-					return errors.New("Solidity outputSelection contract selector is invalid")
+					return errors.New("solidity outputSelection contract selector is invalid")
 				}
 				outputs, err := standardJSONOutputNames(rawOutputs)
 				if err != nil {
-					return errors.New("Solidity outputSelection is invalid")
+					return errors.New("solidity outputSelection is invalid")
 				}
 				totalOutputs += len(outputs)
 				if totalOutputs > maxStandardJSONOutputEntries {
-					return errors.New("Solidity outputSelection has too many entries")
+					return errors.New("solidity outputSelection has too many entries")
 				}
 			}
 		}
@@ -572,40 +573,40 @@ func mergeVyperOutputSelection(
 		var ok bool
 		outer, ok = rawSelection.(map[string]any)
 		if !ok || len(outer) > maxStandardJSONSelectorEntries {
-			return errors.New("Vyper outputSelection is invalid")
+			return errors.New("vyper outputSelection is invalid")
 		}
 	}
 	totalOutputs := 0
 	for selector, rawValue := range outer {
 		if !validStandardJSONSelector(selector, maxStandardJSONSourceNameBytes) {
-			return errors.New("Vyper outputSelection selector is invalid")
+			return errors.New("vyper outputSelection selector is invalid")
 		}
 		switch rawValue := rawValue.(type) {
 		case []any:
 			outputs, err := standardJSONOutputNames(rawValue)
 			if err != nil {
-				return errors.New("Vyper outputSelection is invalid")
+				return errors.New("vyper outputSelection is invalid")
 			}
 			totalOutputs += len(outputs)
 		case map[string]any:
 			if len(rawValue) > maxStandardJSONSelectorEntries {
-				return errors.New("Vyper outputSelection has too many selectors")
+				return errors.New("vyper outputSelection has too many selectors")
 			}
 			for contractSelector, rawOutputs := range rawValue {
 				if !validVyperContractSelector(contractSelector) {
-					return errors.New("Vyper outputSelection contract selector is invalid")
+					return errors.New("vyper outputSelection contract selector is invalid")
 				}
 				outputs, err := standardJSONOutputNames(rawOutputs)
 				if err != nil {
-					return errors.New("Vyper outputSelection is invalid")
+					return errors.New("vyper outputSelection is invalid")
 				}
 				totalOutputs += len(outputs)
 			}
 		default:
-			return errors.New("Vyper outputSelection is invalid")
+			return errors.New("vyper outputSelection is invalid")
 		}
 		if totalOutputs > maxStandardJSONOutputEntries {
-			return errors.New("Vyper outputSelection has too many entries")
+			return errors.New("vyper outputSelection has too many entries")
 		}
 	}
 	requiredOutputs := vyperRequiredOutputsForVersion(compilerVersion)

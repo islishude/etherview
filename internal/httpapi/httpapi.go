@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -601,7 +602,7 @@ func (h *Handler) pendingTransactions(w http.ResponseWriter, r *http.Request) {
 		if h.cfg.Features.Mempool {
 			reason = "reader_unavailable"
 		}
-		writeError(w, r, http.StatusServiceUnavailable, "mempool_unavailable", "pending transaction capability is unavailable", map[string]interface{}{
+		writeError(w, r, http.StatusServiceUnavailable, "mempool_unavailable", "pending transaction capability is unavailable", map[string]any{
 			"state": state, "reason": reason,
 		})
 		return
@@ -647,7 +648,7 @@ func (h *Handler) handleMempoolError(w http.ResponseWriter, r *http.Request, err
 	var capability mempool.CapabilityError
 	switch {
 	case errors.As(err, &capability):
-		details := map[string]interface{}{"state": capability.State, "reason": capability.Code}
+		details := map[string]any{"state": capability.State, "reason": capability.Code}
 		if !capability.LastAttemptAt.IsZero() {
 			details["last_attempt_at"] = capability.LastAttemptAt.UTC()
 		}
@@ -1157,7 +1158,7 @@ func (h *Handler) sourcifyAvailable(w http.ResponseWriter, r *http.Request) bool
 	if h.sourcify != nil {
 		return true
 	}
-	writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify interoperability is unavailable", map[string]interface{}{
+	writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify interoperability is unavailable", map[string]any{
 		"state": "unavailable", "reason": "feature_disabled",
 	})
 	return false
@@ -1328,7 +1329,7 @@ func (h *Handler) handleSourcifyError(w http.ResponseWriter, r *http.Request, er
 	case errors.Is(err, verify.ErrSourcifyRejected):
 		writeError(w, r, http.StatusBadRequest, "sourcify_rejected", "Sourcify rejected the request", nil)
 	case errors.Is(err, verify.ErrSourcifyUnavailable), errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify is unavailable", map[string]interface{}{
+		writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify is unavailable", map[string]any{
 			"state": "unavailable", "reason": "upstream_unavailable",
 		})
 	case errors.Is(err, verify.ErrSourcifyInvalidResponse):
@@ -1473,8 +1474,8 @@ func verificationJobModel(job verify.VerificationJob) gen.VerificationJob {
 }
 
 func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContract, error) {
-	var abi []map[string]interface{}
-	var sources, settings map[string]interface{}
+	var abi []map[string]any
+	var sources, settings map[string]any
 	address, err := checksumAddress(contract.Address)
 	if err != nil {
 		return gen.VerifiedContract{}, fmt.Errorf("checksum verified contract address: %w", err)
@@ -1526,7 +1527,7 @@ func (h *Handler) handleReaderError(w http.ResponseWriter, r *http.Request, err 
 	var capability *CapabilityUnavailableError
 	switch {
 	case errors.As(err, &capability) && capability.valid():
-		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "required capability is unavailable", map[string]interface{}{
+		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "required capability is unavailable", map[string]any{
 			"capability": capability.Capability,
 			"state":      capability.State,
 			"code":       capability.Code,
@@ -1549,7 +1550,7 @@ func (h *Handler) handleCatalogError(w http.ResponseWriter, r *http.Request, err
 	var stageError catalog.StageUnavailableError
 	switch {
 	case errors.As(err, &stageError):
-		details := map[string]interface{}{
+		details := map[string]any{
 			"stage": stageError.Stage,
 			"state": stageError.State,
 		}
@@ -1830,8 +1831,8 @@ func validBlockID(value string) bool {
 	return err == nil
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string, details map[string]interface{}) {
-	var detailsPointer *map[string]interface{}
+func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string, details map[string]any) {
+	var detailsPointer *map[string]any
 	if details != nil {
 		detailsPointer = &details
 	}
@@ -1856,12 +1857,7 @@ func saturatingSub(left, right uint64) uint64 {
 }
 
 func contains(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 
 // EncodeCursor provides a stable, versioned opaque cursor helper for stores.

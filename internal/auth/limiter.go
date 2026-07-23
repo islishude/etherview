@@ -90,10 +90,7 @@ func (m RateMiddleware) Wrap(next http.Handler) http.Handler {
 			m.Observer.RecordRateLimit(decision)
 		}
 		if !allowed {
-			seconds := int(math.Ceil(retry.Seconds()))
-			if seconds < 1 {
-				seconds = 1
-			}
+			seconds := max(int(math.Ceil(retry.Seconds())), 1)
 			w.Header().Set("Retry-After", strconv.Itoa(seconds))
 			writeAuthError(w, r, http.StatusTooManyRequests, "rate_limit_exceeded")
 			return

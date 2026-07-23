@@ -22,13 +22,13 @@ const defaultSourcifyBaseURL = "https://sourcify.dev/server"
 var sourcifyCompilerVersionPattern = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+_-]*$`)
 
 var (
-	ErrSourcifyUnavailable          = errors.New("Sourcify is unavailable")
-	ErrSourcifyNotFound             = errors.New("Sourcify contract or job was not found")
-	ErrSourcifyRejected             = errors.New("Sourcify rejected the request")
-	ErrSourcifyAlreadyVerified      = errors.New("Sourcify contract is already verified")
-	ErrSourcifyInvalidResponse      = errors.New("Sourcify returned an invalid response")
-	ErrSourcifyTargetMismatch       = errors.New("Sourcify contract does not match the exact local target")
-	ErrSourcifyRequestMissing       = errors.New("Sourcify durable verification request is unavailable")
+	ErrSourcifyUnavailable          = errors.New("sourcify is unavailable")
+	ErrSourcifyNotFound             = errors.New("sourcify contract or job was not found")
+	ErrSourcifyRejected             = errors.New("sourcify rejected the request")
+	ErrSourcifyAlreadyVerified      = errors.New("sourcify contract is already verified")
+	ErrSourcifyInvalidResponse      = errors.New("sourcify returned an invalid response")
+	ErrSourcifyTargetMismatch       = errors.New("sourcify contract does not match the exact local target")
+	ErrSourcifyRequestMissing       = errors.New("sourcify durable verification request is unavailable")
 	ErrVerificationTargetInvalid    = errors.New("canonical verification target is invalid")
 	ErrConstructorArgumentsMismatch = errors.New("constructor arguments do not match the canonical creation input")
 )
@@ -227,7 +227,7 @@ func newSourcifyClient(
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" ||
 		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || len(parsed.String()) > 4096 ||
-		(parsed.Scheme != "https" && !(unsafeAllowHTTP && parsed.Scheme == "http")) ||
+		(parsed.Scheme != "https" && (!unsafeAllowHTTP || parsed.Scheme != "http")) ||
 		unsafeSourcifyPath(parsed.EscapedPath()) {
 		return nil, errors.New("invalid Sourcify base URL")
 	}
@@ -236,21 +236,21 @@ func newSourcifyClient(
 		timeout = 20 * time.Second
 	}
 	if timeout < 100*time.Millisecond || timeout > 2*time.Minute {
-		return nil, errors.New("Sourcify timeout must be between 100ms and 2m")
+		return nil, errors.New("sourcify timeout must be between 100ms and 2m")
 	}
 	maxRequest := options.MaxRequestBytes
 	if maxRequest == 0 {
 		maxRequest = defaultCompilerInputBytes
 	}
 	if maxRequest < 1 || maxRequest > 64<<20 {
-		return nil, errors.New("Sourcify request limit must be between 1 and 67108864 bytes")
+		return nil, errors.New("sourcify request limit must be between 1 and 67108864 bytes")
 	}
 	maxResponse := options.MaxResponseBytes
 	if maxResponse == 0 {
 		maxResponse = 32 << 20
 	}
 	if maxResponse < 1 || maxResponse > 64<<20 {
-		return nil, errors.New("Sourcify response limit must be between 1 and 67108864 bytes")
+		return nil, errors.New("sourcify response limit must be between 1 and 67108864 bytes")
 	}
 	return &SourcifyClient{
 		baseURL: parsed,
@@ -263,7 +263,7 @@ func newSourcifyClient(
 
 func (c *SourcifyClient) Lookup(ctx context.Context, chainID uint64, address string) (SourcifyContract, error) {
 	if c == nil || chainID == 0 || !fixedHex(address, 20) {
-		return SourcifyContract{}, errors.New("invalid Sourcify lookup identity")
+		return SourcifyContract{}, errors.New("invalid sourcify lookup identity")
 	}
 	endpoint := c.endpoint(fmt.Sprintf("/v2/contract/%d/%s", chainID, strings.ToLower(address)))
 	query := endpoint.Query()
@@ -403,13 +403,13 @@ func (c *SourcifyClient) doJSON(
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil || len(encoded) > c.maxRequestBytes {
-			return errors.New("Sourcify request exceeds its configured bound")
+			return errors.New("sourcify request exceeds its configured bound")
 		}
 		body = bytes.NewReader(encoded)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {
-		return errors.New("create Sourcify request")
+		return errors.New("create sourcify request")
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", "etherview-sourcify/1")
@@ -423,7 +423,7 @@ func (c *SourcifyClient) doJSON(
 		}
 		return ErrSourcifyUnavailable
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.ContentLength > c.maxResponseBytes {
 		return ErrSourcifyInvalidResponse
 	}
@@ -749,7 +749,7 @@ func validSourcifyErrorCode(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '_') {
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '_' {
 			return false
 		}
 	}
@@ -812,7 +812,7 @@ func canonicalUint64(value string) bool {
 }
 
 func unsafeSourcifyPath(value string) bool {
-	for _, segment := range strings.Split(value, "/") {
+	for segment := range strings.SplitSeq(value, "/") {
 		decoded, err := url.PathUnescape(segment)
 		if err != nil || decoded == ".." {
 			return true

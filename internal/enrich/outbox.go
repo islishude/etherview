@@ -185,7 +185,7 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("begin enrichment outbox dispatch: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	message, found, err := claimOutboxMessage(ctx, tx)
 	if err != nil {
 		return OutboxDispatchResult{}, err
