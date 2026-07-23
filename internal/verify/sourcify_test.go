@@ -500,7 +500,7 @@ func TestSourcifyOptionAndRequestBounds(t *testing.T) {
 	request := validVerifyRequest()
 	request.SubmitToSourcify = true
 	job := durableSourcifyJob(request, 1)
-	if _, err := client.Submit(context.Background(), sourcifyReader(job), job.ID, true); err == nil || err.Error() != "Sourcify request exceeds its configured bound" {
+	if _, err := client.Submit(context.Background(), sourcifyReader(job), job.ID, true); err == nil || err.Error() != "sourcify request exceeds its configured bound" {
 		t.Fatalf("request bound error=%v", err)
 	}
 	if hits.Load() != 0 {

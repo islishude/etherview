@@ -29,6 +29,12 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          install-only: true
+
       - name: Install npm dependencies
         run: npm --prefix web ci --ignore-scripts
       - name: Build frontend assets
@@ -37,9 +43,6 @@ jobs:
         run: make toolchain-check plan-check generate-check lint test test-race
       - name: Reject unexpected workspace changes
         run: git diff --check && git diff --exit-code
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
 
   integration:
     name: PostgreSQL integration
@@ -112,8 +115,6 @@ jobs:
     name: Security and licenses
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      TOOLS_BIN: /tmp/etherview-ci-tools
     steps:
       - uses: actions/checkout@v7
         with:
