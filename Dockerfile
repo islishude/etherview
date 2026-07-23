@@ -4,10 +4,11 @@ FROM node:24.18.0-alpine AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
-COPY api/openapi.yaml ./api/openapi.yaml
+COPY ./api ./api
+RUN --mount=type=cache,target=/root/.npm npm --prefix api ci
 COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/src ./web/src
-RUN npm --prefix web run generate:api && npm --prefix web run build
+RUN npm --prefix api run generate:api && npm --prefix web run build
 
 FROM golang:1.26.5 AS go-builder
 WORKDIR /src

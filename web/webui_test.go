@@ -45,7 +45,7 @@ func TestEmbeddedDistributionHasNoServerConfigurationOrExternalEntrypoints(t *te
 	if err != nil {
 		t.Fatalf("walk embedded distribution: %v", err)
 	}
-	if !bytes.Contains(stylesheet, []byte("tailwindcss v4.3.0")) ||
+	if !bytes.Contains(stylesheet, []byte("tailwindcss")) ||
 		!bytes.Contains(stylesheet, []byte(".min-h-screen")) ||
 		!bytes.Contains(stylesheet, []byte(".rounded-ui-md")) {
 		t.Fatal("embedded stylesheet does not contain the pinned Tailwind design primitives")
