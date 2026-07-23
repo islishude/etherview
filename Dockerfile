@@ -4,7 +4,7 @@ FROM node:24.18.0-alpine AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
-COPY ./api ./
+COPY ./api ./api
 RUN --mount=type=cache,target=/root/.npm npm --prefix api ci
 COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./web/
 COPY web/src ./web/src
