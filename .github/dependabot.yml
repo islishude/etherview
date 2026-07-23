@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: gomod
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "02:00"
       timezone: Asia/Shanghai
@@ -15,7 +15,7 @@ updates:
   - package-ecosystem: npm
     directory: /web
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "02:30"
       timezone: Asia/Shanghai
@@ -24,7 +24,7 @@ updates:
   - package-ecosystem: npm
     directory: /api
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "02:30"
       timezone: Asia/Shanghai
@@ -36,7 +36,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "03:00"
       timezone: Asia/Shanghai
@@ -48,7 +48,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "03:30"
       timezone: Asia/Shanghai
