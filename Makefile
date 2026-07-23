@@ -103,7 +103,7 @@ test-integration:
 		$(GO) test -count=1 -tags=integration $(GO_PACKAGES)
 
 web-install:
-	$(NPM) --prefix web ci --ignore-scripts
+	$(NPM) --prefix web ci
 
 web-generate: web-install
 	$(NPM) --prefix web run generate:api

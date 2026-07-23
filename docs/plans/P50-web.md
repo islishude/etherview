@@ -48,7 +48,7 @@ are changed and reviewed serially.
 
 - P50-T01: `make toolchain-check` passes the exact Go 1.26.5, Node 24.18.0,
   and npm 11.16.0 repository pins. A clean
-  `npm --prefix web ci --ignore-scripts` followed by
+  `npm --prefix web ci` followed by
   `npm --prefix web run check:api`, `npm --prefix web run lint`,
   `npm --prefix web run test`, and `npm --prefix web run build` passes with 8
   test files and 32 tests. Coverage includes typed deep-link/search routing,
