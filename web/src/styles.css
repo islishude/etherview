@@ -1148,6 +1148,11 @@ tbody tr:hover {
   align-items: start;
 }
 
+.status-capabilities-stack {
+  display: grid;
+  gap: 1rem;
+}
+
 .status-card,
 .capability-list,
 .contract-workbench {
@@ -1280,6 +1285,9 @@ tbody tr:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
+  max-height: min(70vh, 32rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .popover-heading {
@@ -1307,6 +1315,7 @@ tbody tr:hover {
 }
 
 .wallet-option {
+  min-width: 0;
   display: flex;
   gap: 0.7rem;
   align-items: center;
@@ -1324,7 +1333,13 @@ tbody tr:hover {
 }
 
 .wallet-option > span:last-child {
+  min-width: 0;
   display: grid;
+}
+
+.wallet-option strong,
+.wallet-option small {
+  overflow-wrap: anywhere;
 }
 
 .wallet-monogram {
@@ -1421,6 +1436,12 @@ tbody tr:hover {
   font-weight: 750;
 }
 
+.contract-form .field-hint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
 .contract-form textarea,
 .contract-form input {
   width: 100%;
@@ -1443,12 +1464,10 @@ tbody tr:hover {
   border-color: var(--brand);
 }
 
-.write-form {
-  grid-template-columns: 1fr auto;
-}
-
-.write-form label {
-  grid-column: 1 / -1;
+.contract-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
 }
 
 .call-result {
@@ -1517,12 +1536,65 @@ tbody tr:hover {
 }
 
 .chart-panel > h2,
+.aggregate-stats > h2,
 .verification-form > h2,
+.verification-job-lookup > h2,
 .job-panel > h2,
 .contract-lookup > h2,
 .verified-contract-card > h2 {
   margin: 0 0 0.8rem;
   font-size: 1.1rem;
+}
+
+.aggregate-stats {
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.aggregate-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.aggregate-stats-grid > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.aggregate-stats-grid dt {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.aggregate-stats-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.aggregate-completeness {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 1rem 0 0;
+  margin: 0;
+  list-style: none;
+}
+
+.aggregate-completeness li {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
 }
 
 .stats-chart {
@@ -1542,6 +1614,10 @@ tbody tr:hover {
   box-shadow: none;
 }
 
+.chart-table table {
+  min-width: 2200px;
+}
+
 .chart-table caption {
   padding: 0.75rem 1rem;
   color: var(--text-soft);
@@ -1558,11 +1634,33 @@ tbody tr:hover {
   align-items: start;
 }
 
+.verification-read-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(280px, 1.15fr);
+  gap: 1rem;
+  align-items: start;
+}
+
 .verification-form,
+.verification-job-lookup,
 .job-panel,
 .contract-lookup,
 .verified-contract-card {
   padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.verification-job-lookup {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.verification-job-lookup > h2,
+.verification-job-lookup > p {
+  margin-block: 0;
+}
+
+.verification-job-lookup > .button {
+  justify-self: start;
 }
 
 .form-grid {
@@ -1777,8 +1875,13 @@ tbody tr:hover {
   .activity-grid,
   .status-layout,
   .contract-layout,
-  .verification-layout {
+  .verification-layout,
+  .verification-read-layout {
     grid-template-columns: 1fr;
+  }
+
+  .aggregate-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .range-form {
@@ -1936,6 +2039,11 @@ tbody tr:hover {
     min-height: 320px;
   }
 
+  .aggregate-stats-grid,
+  .aggregate-completeness {
+    grid-template-columns: 1fr;
+  }
+
   .write-form label {
     grid-column: auto;
   }
@@ -1947,6 +2055,37 @@ tbody tr:hover {
 
   .completeness-card ul {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .header-primary {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0.55rem;
+  }
+
+  .brand,
+  .header-controls,
+  .global-search {
+    grid-column: 1;
+  }
+
+  .brand {
+    grid-row: 1;
+  }
+
+  .header-controls {
+    grid-row: 2;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .global-search {
+    grid-row: 3;
+  }
+
+  .wallet-summary {
+    max-width: 8rem;
   }
 }
 

@@ -171,7 +171,14 @@ in `PLAN.md` and `docs/plans/`, not here.
   `paths` client. Only its fixed same-origin `/api/v1` adapter may invoke
   `fetch`; direct backend paths, runtime environment injection, and server
   credentials elsewhere in production SPA sources are forbidden. Wallet RPC
-  methods remain confined to the injected EIP-1193 provider boundary.
+  methods remain confined to one injected EIP-1193 provider boundary. Raw
+  providers never escape that module; EIP-6963 UUID collisions cannot replace
+  an existing page-session provider, and the closed RPC allowlist rechecks the
+  active account and configured chain before bounded `eth_call` or
+  `eth_sendTransaction`. Calls and results bind one wallet-session revision.
+  A transaction that reaches the provider without a trustworthy hash or
+  matching completion session has an unknown outcome, never a safe-to-retry
+  failure. Hostile provider error text is never rendered.
 - Tailwind is a pinned build-time Vite plugin, never a CDN or browser runtime.
   Its Preflight layer stays disabled because the established SPA base styles
   own normalization; shared theme tokens and layout primitives use generated
@@ -309,9 +316,11 @@ in `PLAN.md` and `docs/plans/`, not here.
 ## Verification and Review
 
 - Use the Makefile targets documented in `docs/testing.md`.
-- Go, Node, and npm versions are exact repository inputs. Run
-  `make toolchain-check`; do not silently widen `go.mod`, `.node-version`,
-  `.nvmrc`, `packageManager`, engine, CI, or container-builder pins.
+- Go, Node, and npm declare minimum supported versions rather than exact local
+  runtime pins. Run `make toolchain-check`; compatible newer stable releases
+  must pass, while older, malformed, and prerelease versions fail. `.nvmrc`,
+  `packageManager`, CI, and container-builder versions are reproducible defaults,
+  not ceilings; keep them compatible with the documented minimums when updated.
 - `doctor` reports a configuration as valid only after runnable-role
   validation; a parseable file with missing RPC, database, or safety inputs is
   invalid and must produce a non-zero exit.

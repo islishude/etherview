@@ -20,6 +20,23 @@ authoritative empty result.
   the same-origin `/api/v1` prefix and is the only production SPA module that
   may call browser `fetch`; wallet RPC remains a separate injected-provider
   boundary.
+- Injected-wallet discovery uses the EIP-6963 request/announce event loop.
+  Provider metadata is bounded and validated as UUIDv4, data-image URI, and
+  reverse-DNS identity; the first valid announcement owns a UUID for the page
+  lifetime. The raw EIP-1193 provider never leaves the wallet boundary: UI
+  consumers receive only bounded display metadata, the selected account, and
+  normalized chain ID.
+- The wallet boundary has a closed RPC allowlist: `eth_requestAccounts`,
+  `eth_accounts`, `eth_chainId`, `eth_call`, and `eth_sendTransaction`.
+  Every contract operation rechecks the selected account and configured chain,
+  binds `from` and `chainId` in its call object, bounds calldata/value/results,
+  and rejects malformed provider responses without trusting provider-owned
+  array methods or getters. Account, chain, and disconnect events are
+  provider-identity and session-revision fenced and fail closed, including ABA
+  transitions. Once a transaction request reaches the provider, an invalid
+  hash or changed completion session is an unknown outcome that must be checked
+  in the wallet before retrying. Provider error messages and data never reach
+  the DOM; stable local codes select bilingual text.
 - Successful native responses use `{data,meta}`. Errors use
   `{error:{code,message,details,request_id}}`.
 - Quantities that can exceed JavaScript precision are decimal strings;

@@ -2,8 +2,10 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { apiClient, requireEnvelope } from "./client";
 import type {
+  AggregateStats,
   BlockSummary,
   CursorPage,
+  NFTBalance,
   PendingSnapshot,
   SearchResult,
   TokenContract,
@@ -74,9 +76,14 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
   });
 }
 
-export function usePendingTransactions(cursor: string | undefined, enabled = true, limit = 25) {
+export function usePendingTransactions(
+  cursor: string | undefined,
+  enabled = true,
+  limit = 25,
+  refreshGeneration = 0,
+) {
   return useQuery({
-    queryKey: ["pending-transactions", cursor ?? null, limit],
+    queryKey: ["pending-transactions", cursor ?? null, limit, refreshGeneration],
     queryFn: async (): Promise<PendingSnapshot> => {
       const response = requireEnvelope(
         await apiClient.GET("/pending", { params: { query: { limit, cursor } } }),
@@ -143,12 +150,12 @@ export function useAddress(address: string, enabled = true) {
   });
 }
 
-export function useTokens(limit = 25) {
+export function useTokens(limit = 25, cursor?: string, refreshGeneration = 0) {
   return useQuery({
-    queryKey: ["tokens", limit],
+    queryKey: ["tokens", limit, cursor ?? null, refreshGeneration],
     queryFn: async (): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
-        await apiClient.GET("/tokens", { params: { query: { limit } } }),
+        await apiClient.GET("/tokens", { params: { query: { limit, cursor } } }),
       );
       return {
         items: response.data,
@@ -174,13 +181,46 @@ export function useToken(address: string, enabled = true) {
   });
 }
 
-export function useTokenTransfers(address: string, limit = 25, enabled = true) {
+export function useTokenTransfers(
+  address: string,
+  limit = 25,
+  cursor?: string,
+  refreshGeneration = 0,
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ["token", address, "transfers", limit],
+    queryKey: ["token", address, "transfers", limit, cursor ?? null, refreshGeneration],
     queryFn: async (): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
         await apiClient.GET("/tokens/{address}/transfers", {
-          params: { path: { address }, query: { limit } },
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: 10_000,
+  });
+}
+
+export function useAddressNFTBalances(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["address", address, "nfts", cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<NFTBalance>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/nfts", {
+          params: { path: { address }, query: { limit, cursor } },
         }),
       );
       return {
@@ -249,6 +289,21 @@ export function useBlockStats(fromBlock: string, toBlock: string, enabled = true
   });
 }
 
+export function useAggregateStats(fromBlock: string, toBlock: string, enabled = true) {
+  return useQuery({
+    queryKey: ["aggregate-stats", fromBlock, toBlock],
+    queryFn: async (): Promise<AggregateStats> =>
+      requireEnvelope(
+        await apiClient.GET("/stats/summary", {
+          params: { query: { from_block: fromBlock, to_block: toBlock } },
+        }),
+      ).data,
+    enabled: enabled && fromBlock.length > 0 && toBlock.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useSubmitVerification(apiKey: string) {
   return useMutation({
     mutationFn: async (submission: VerificationSubmission) =>
@@ -262,9 +317,15 @@ export function useSubmitVerification(apiKey: string) {
   });
 }
 
-export function useVerificationJob(id: string, apiKey: string, enabled = true) {
+export function useVerificationJob(
+  id: string,
+  apiKey: string,
+  requestRevision = 0,
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ["verification-job", id],
+    // The revision retries an edited credential without placing that credential in the cache key.
+    queryKey: ["verification-job", id, requestRevision],
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/verification/jobs/{id}", {
@@ -272,7 +333,7 @@ export function useVerificationJob(id: string, apiKey: string, enabled = true) {
           headers: { "X-API-Key": apiKey },
         }),
       ).data,
-    enabled: enabled && id.length > 0 && apiKey.length > 0,
+    enabled: enabled && id.length > 0 && apiKey.length > 0 && requestRevision > 0,
     retry: false,
     gcTime: 0,
     refetchInterval: (query) => {

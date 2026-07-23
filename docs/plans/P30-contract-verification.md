@@ -72,7 +72,7 @@ None. P30-T07 passed independent re-review and the applicable common gates.
   terminal job. Database constraints and guarded triggers reject incoherent
   job/result/projection mutation.
 - P30-T01 verification: `make toolchain-check`, `make generate-check`,
-  `make lint`, `make test`, and `make test-race` pass with the pinned Go
+  `make lint`, `make test`, and `make test-race` pass with the baseline Go
   1.26.5, Node 24.18.0, and npm 11.16.0 toolchain. PostgreSQL 18 passes
   `go test -count=1 -tags=integration ./internal/integration`, covering
   migration idempotency, full-input deduplication and failed resubmission,
@@ -97,7 +97,7 @@ None. P30-T07 passed independent re-review and the applicable common gates.
   `go vet` pass, including redirect/private-DNS, declared and streaming size,
   symlink/permission tamper, concurrent install, missing image, resource flag,
   diagnostic redaction, cancellation, timeout, and cleanup regressions. With
-  the pinned Go 1.26.5, Node 24.18.0, and npm 11.16.0 toolchain,
+  the Go 1.26.5, Node 24.18.0, and npm 11.16.0 baseline toolchain,
   `make generate-check`, `make lint`, `make test`, `make test-race`,
   `make security-check`, and `make license-check` pass. The security gate's
   transitive `js-yaml` finding is closed by the scoped Redocly override to
@@ -175,7 +175,7 @@ None. P30-T07 passed independent re-review and the applicable common gates.
   -count=1` and `go vet` over the same packages pass. PostgreSQL 18 runs of
   `go test [-race] -tags=integration ./internal/integration -run
   'Test(CLIOperatorLabels|Search|DottedSearch|Name|CanonicalDetachWaitsForName|SparseCanonicalReplacementWaitsForName|ConcurrentName|PostgresAdapters|ExactCore)'
-  -count=1` pass. `make toolchain-check` with the repository-pinned Node
+  -count=1` pass. `make toolchain-check` with the baseline Node
   24.18.0/npm 11.16.0 and `make generate-check` pass.
 - P30-T07: container compilation no longer relies on runtime auto-removal. The
   exact random name is always passed through a bounded `rm -f` before success,
@@ -209,7 +209,7 @@ None. P30-T07 passed independent re-review and the applicable common gates.
   locks without changing historical checksum or `applied_at` values.
   Container regressions execute the fake runtime before panicking and assert
   exactly one ordered force-removal, cleanup-error precedence, sanitized fatal
-  propagation, and no lease terminalization. With pinned Go 1.26.5, Node
+  propagation, and no lease terminalization. With baseline Go 1.26.5, Node
   24.18.0, and npm 11.16.0, `make toolchain-check`, `make generate-check`, and
   `make security-check` pass; govulncheck, both gitleaks scans, and npm audit
   report no actionable finding.

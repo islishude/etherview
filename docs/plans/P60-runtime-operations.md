@@ -125,7 +125,7 @@ P60-T03 and P60-T06 retain their P50 dependency.
   are rejected. The default NetworkPolicy admits application/metrics ingress
   and only DNS, PostgreSQL, and optional HTTPS egress, with explicit extension
   rules for private or non-standard endpoints.
-- P60-T04 verification: exact pinned toolchains pass `make toolchain-check`;
+- P60-T04 verification: supported toolchains pass `make toolchain-check`;
   `make helm-check` passes Helm lint and rendering for monolith and distributed
   values plus the role/HPA/migration/Secret/NetworkPolicy negative regression
   suite; `go test -race ./internal/store ./internal/app -count=1` and matching

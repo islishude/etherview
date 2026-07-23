@@ -12,6 +12,11 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "overrides": {
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.0"
+    }
+  },
   "dependencies": {
     "openapi-typescript": "^7.13.0"
   }

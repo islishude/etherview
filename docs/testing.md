@@ -6,8 +6,9 @@ until the Makefile target exists.
 
 ## Common Gates
 
-- `make toolchain-check`: require at least the repository-minimum Go and Node
-  versions before generating or validating artifacts.
+- `make toolchain-check`: require at least Go 1.26.5, Node 24.18.0, and npm
+  11.16.0 before generating or validating artifacts. Compatible newer stable
+  versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
@@ -24,8 +25,8 @@ until the Makefile target exists.
   the disposable database named by `INTEGRATION_DATABASE_URL`; the target
   explicitly skips when no URL is supplied.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
-- `make security-check`: `govulncheck`, dependency audit, secret scan, and
-  security-focused tests.
+- `make security-check`: `govulncheck`, API-generator and frontend dependency
+  audits, secret scan, and security-focused tests.
 - `make license-check`: Go and production frontend dependency license policy.
 - `make deployment-check`: Docker build checks, Compose profile validation,
   and Helm lint/render checks.

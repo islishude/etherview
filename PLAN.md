@@ -21,7 +21,7 @@ batch semantics are not core v1 scope.
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
 | P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Sandboxed Solidity/Vyper verification, Sourcify, and metadata safety |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
-| P50 | [Web](docs/plans/P50-web.md) | in_progress | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
+| P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | in_progress | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P70 | [Release](docs/plans/P70-release.md) | planned | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
 
@@ -30,9 +30,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Phase Results
 
-- P00 is complete: the repository now has enforced plan governance, exact
-  toolchains, a runnable role-aware CLI, embedded migrations and generated
-  contracts, and a binary-served SPA. Reviewable commands and results remain in
+- P00 is complete: the repository has enforced plan governance, minimum-version
+  Go/Node/npm checks that support compatible newer stable releases, a runnable
+  role-aware CLI, embedded migrations and generated contracts, and a
+  binary-served SPA. Reviewable commands and results remain in
   [P00 evidence](docs/plans/P00-foundation.md#evidence).
 - P10 is complete: core history has durable coverage and leases, sticky RPC
   ingestion, canonical/orphan retention, finality-safe reorg handling, derived
@@ -51,9 +52,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P40 is complete: the native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
   subset now pass their contract, race, security, and PostgreSQL coverage
-  boundaries. P50 and P60 are in progress, while P70 remains planned.
-  Implemented supporting slices are not promoted until every owning work item
-  satisfies its full acceptance boundary.
+  boundaries.
+- P50 is complete: core and capability explorer pages, exact verification-job
+  and published-artifact reads, EIP-6963 wallet discovery, session-fenced
+  contract calls, and the binary-embedded SPA pass generated-client,
+  bilingual, responsive, security-header, browser, and WCAG coverage. P60
+  remains in progress and P70 remains planned; their release gates are not
+  promoted by P50 completion.
 
 ## Global Release Gates
 

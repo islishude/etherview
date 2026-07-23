@@ -41,6 +41,7 @@ export type NFTBalance = components["schemas"]["NFTBalance"];
 export type TraceFrame = components["schemas"]["TraceFrame"];
 export type TransactionTrace = components["schemas"]["TransactionTrace"];
 export type BlockStat = components["schemas"]["BlockStat"];
+export type AggregateStats = components["schemas"]["AggregateStats"];
 export type VerificationSubmission = components["schemas"]["VerificationSubmission"];
 export type VerificationJob = components["schemas"]["VerificationJob"];
 export type VerifiedContract = components["schemas"]["VerifiedContract"];

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,10 +22,13 @@ const snapshotMeta = {
 
 describe("pending transaction route", () => {
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-20T10:00:30Z"));
     await i18n.changeLanguage("en");
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -166,6 +169,100 @@ describe("pending transaction route", () => {
     expect(
       screen.queryByText("The latest successful snapshot contains no pending transactions."),
     ).toBeNull();
+  });
+
+  it("recovers an invalid opaque page cursor with a fresh first-page request", async () => {
+    const hash = `0x${"cc".repeat(32)}`;
+    const from = `0x${"44".repeat(20)}`;
+    const cursor = "expired+snapshot/next?page=2";
+    let firstPageRequests = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === "/api/v1/config") return configResponse(true);
+      if (path === "/api/v1/pending?limit=25") {
+        firstPageRequests += 1;
+        return Response.json({
+          data: [pendingTransaction(hash, from, undefined, "9")],
+          meta: { ...snapshotMeta, next_cursor: cursor },
+        });
+      }
+      if (path === "/api/v1/pending?limit=25&cursor=expired%2Bsnapshot%2Fnext%3Fpage%3D2") {
+        return Response.json({
+          error: {
+            code: "invalid_cursor",
+            message: "cursor expired",
+            request_id: "pending-cursor-test",
+          },
+        }, { status: 400 });
+      }
+      return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    renderPendingRoute();
+
+    const user = userEvent.setup();
+    await screen.findByText("0xcccccc…cccccc");
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("This page cursor is no longer valid")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Restart from the first page" }));
+    expect(await screen.findByText("0xcccccc…cccccc")).toBeVisible();
+    expect(firstPageRequests).toBe(2);
+  });
+
+  it("expires an authoritative empty snapshot and suppresses it while refreshing", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T10:00:00Z"));
+    let requests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === "/api/v1/config") return configResponse(true);
+        if (path === "/api/v1/pending?limit=25") {
+          requests += 1;
+          if (requests === 1) {
+            return Response.json({
+              data: [],
+              meta: {
+                ...snapshotMeta,
+                snapshot_at: "2026-07-20T10:00:00Z",
+                expires_at: "2026-07-20T10:00:02Z",
+                transaction_count: "0",
+              },
+            });
+          }
+          return Response.json({
+            error: {
+              code: "mempool_unavailable",
+              message: "snapshot unavailable",
+              details: { state: "unavailable", reason: "snapshot_expired" },
+              request_id: "pending-expiry-test",
+            },
+          }, { status: 503 });
+        }
+        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+      }),
+    );
+    renderPendingRoute();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(
+      screen.getByText("The latest successful snapshot contains no pending transactions."),
+    ).toBeVisible();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+      await Promise.resolve();
+    });
+    expect(
+      screen.queryByText("The latest successful snapshot contains no pending transactions."),
+    ).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pending transaction snapshot is unavailable" })).toBeVisible();
+    expect(screen.getByText("snapshot_expired")).toBeVisible();
   });
 });
 

@@ -156,6 +156,7 @@ security-check: security-tool-check web-build
 	else \
 		echo "gitleaks history: SKIP (repository has no commits yet)"; \
 	fi
+	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
 	$(GO) test ./internal/auth ./internal/metadata ./internal/verify ./web
 

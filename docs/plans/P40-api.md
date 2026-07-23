@@ -127,7 +127,7 @@ None.
   `TestMempoolSnapshotsRemainCursorStableAndExposeFailures` proves stable
   cursors, failure states, expired-latest unavailability, expired-cursor
   rejection, and authoritative empty snapshots.
-- P40-T03: with the pinned Go 1.26.5, Node 24.18.0, and npm 11.16.0 toolchain,
+- P40-T03: with the Go 1.26.5, Node 24.18.0, and npm 11.16.0 baseline toolchain,
   `make toolchain-check generate-check lint test test-race security-check
   helm-check plan-check` passes. Govulncheck reports no called vulnerability,
   gitleaks reports no finding, and npm audit reports zero vulnerabilities.
@@ -160,7 +160,7 @@ None.
   coverage-island rejection, future-only classification, gap repair, exact
   transaction-status absence, range-local countdown, hexadecimal log output,
   and the mined-reward omission against real migrations and queries.
-- P40-T06: with the pinned Go 1.26.5, Node 24.18.0, and npm 11.16.0 toolchain,
+- P40-T06: with the Go 1.26.5, Node 24.18.0, and npm 11.16.0 baseline toolchain,
   `make toolchain-check generate-check lint test test-race security-check
   helm-check plan-check` passes. Govulncheck reports no called vulnerability,
   gitleaks reports no finding, and npm audit reports zero vulnerabilities.

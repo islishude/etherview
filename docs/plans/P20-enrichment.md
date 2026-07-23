@@ -102,7 +102,7 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   moved onto production publication semantics.
 - P20-T10: `go test -race ./internal/enrich ./internal/store -count=1`,
   `go test ./... -count=1`, `go vet ./...`, `make toolchain-check`, and `make
-  generate-check` passed with the repository-pinned toolchains.
+  generate-check` passed with supported toolchains.
 - P20-T10: commit and pull request were not created; completion is recorded in
   the existing shared working tree.
 
@@ -165,7 +165,7 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   same lowercase address order used by SQL, while read-time normalization keeps
   previously issued checksum-address boundaries usable.
 - P20-T06 closure: `go test ./... -count=1`, `go vet ./...`, `make
-  toolchain-check`, and `make generate-check` passed with the pinned Node 24 and
+  toolchain-check`, and `make generate-check` passed with the supported Node 24 and
   repository Go toolchains. The focused search/stats packages and all relevant
   adapter, state, query, catalog, HTTP API, enrichment, app, maintenance,
   config, and database packages also passed with `-count=1`; the applicable
@@ -250,7 +250,7 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   They prove built-in errors do not enter signature-database `contract_abis`
   and a whole-block budget failure publishes neither partial normalized traces
   nor a block journal.
-- P20-T08: the pinned Go/Node/npm `make toolchain-check` and `make plan-check`
+- P20-T08: the Go/Node/npm `make toolchain-check` and `make plan-check`
   passed. A full `go test ./... -count=1` was attempted but is not recorded as
   a P20-T08 pass: concurrent/shared fixtures still failed in
   `internal/app` (`TestBuildRPCAcceptsAPIOnlyStateEndpointWithoutHistoryPurpose`)
@@ -353,7 +353,7 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   -tags=integration ./internal/integration -count=1` passed the full
   integration package.
 - P20-T05: `go test ./... -count=1`, `go vet ./...`, and `make
-  toolchain-check generate-check` passed with the repository-pinned Go, Node,
+  toolchain-check generate-check` passed with supported Go, Node,
   and npm executables.
 - P20-T05: `make plan-check` passed after the work item, acceptance, references,
   and verification evidence were updated in place.
@@ -433,7 +433,7 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   constructor mints, ERC-1155 batch transfer/mint/burn, exact RPC ABI encoding,
   malformed results, unavailable state RPC, and API confidence serialization.
 - P20-T04: `go test ./...` passed across the repository.
-- P20-T04: with the repository-pinned Node 24.18.0/npm 11.16.0 toolchain,
+- P20-T04: with the Node 24.18.0/npm 11.16.0 baseline toolchain,
   `make generate-check` passed after regenerating the Go/TypeScript OpenAPI
   contracts, sqlc output, and deterministic embedded SPA distribution.
 - P20-T04: against PostgreSQL 18,

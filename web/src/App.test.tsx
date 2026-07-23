@@ -280,7 +280,7 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByRole("heading", { name: "Example Dollar", level: 1 })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Token metadata", level: 2 })).toBeVisible();
     expect(screen.getByText("EXD")).toBeVisible();
-    expect(await screen.findByRole("heading", { name: "Token transfers", level: 2 })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
     expect(screen.getByRole("link", { name: "0x787878…787878" })).toHaveAttribute(
       "href",
       `/tx/${transactionHash}`,

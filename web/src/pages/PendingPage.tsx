@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -14,12 +14,22 @@ const PAGE_SIZE = 25;
 export function PendingPage() {
   const { i18n, t } = useTranslation();
   const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const [expiredSnapshot, setExpiredSnapshot] = useState(false);
   const publicConfig = usePublicConfig();
   const mempoolEnabled = publicConfig.data?.features.mempool !== false;
   const canLoadPending = publicConfig.isSuccess && mempoolEnabled;
   const cursor = cursorHistory.at(-1) || undefined;
-  const pending = usePendingTransactions(cursor, canLoadPending, PAGE_SIZE);
+  const pending = usePendingTransactions(
+    cursor,
+    canLoadPending,
+    PAGE_SIZE,
+    refreshGeneration,
+  );
   const locale = i18n.resolvedLanguage ?? "en";
+  const expiresAt = pending.data ? Date.parse(pending.data.meta.expires_at) : Number.NaN;
+  const snapshotExpired = expiredSnapshot || (Number.isFinite(expiresAt) && expiresAt <= Date.now());
+  const snapshot = snapshotExpired ? undefined : pending.data;
   const unavailable = pending.error instanceof ApiError &&
     pending.error.status === 503 &&
     pending.error.code === "mempool_unavailable"
@@ -27,8 +37,29 @@ export function PendingPage() {
       : undefined;
   const unexpectedError = unavailable ? undefined : pending.error;
 
+  useEffect(() => {
+    if (!pending.data) return;
+    const expiry = Date.parse(pending.data.meta.expires_at);
+    if (!Number.isFinite(expiry)) return;
+    if (expiry > Date.now()) setExpiredSnapshot(false);
+    const maximumDelay = 2_147_483_647;
+    const delay = Math.min(Math.max(0, expiry - Date.now()), maximumDelay);
+    const timer = window.setTimeout(() => {
+      setExpiredSnapshot(true);
+      setCursorHistory([""]);
+      setRefreshGeneration((current) => current + 1);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [pending.data]);
+
+  const resetPagination = () => {
+    setExpiredSnapshot(false);
+    setCursorHistory([""]);
+    setRefreshGeneration((current) => current + 1);
+  };
+
   const goToNextPage = () => {
-    const nextCursor = pending.data?.meta.next_cursor;
+    const nextCursor = snapshot?.meta.next_cursor;
     if (!nextCursor) return;
     setCursorHistory((history) => [...history, nextCursor]);
   };
@@ -42,6 +73,7 @@ export function PendingPage() {
       <QueryNotice
         loading={publicConfig.isPending || (canLoadPending && pending.isPending)}
         error={publicConfig.error ?? unexpectedError}
+        onReset={resetPagination}
       />
 
       {publicConfig.isSuccess && !mempoolEnabled && (
@@ -63,16 +95,25 @@ export function PendingPage() {
         />
       )}
 
-      {pending.data && (
-        <>
-          <PendingSnapshotSummary meta={pending.data.meta} locale={locale} />
+      {snapshotExpired && !unavailable && (
+        <PendingUnavailablePanel
+          title={t("pending.unavailable")}
+          detail={t("pending.expiredDetail")}
+          state="unavailable"
+          reason="snapshot_expired"
+        />
+      )}
 
-          {pending.data.items.length === 0 ? (
+      {snapshot && (
+        <>
+          <PendingSnapshotSummary meta={snapshot.meta} locale={locale} />
+
+          {snapshot.items.length === 0 ? (
             <p className="empty-result pending-empty" role="status">
               {t("pending.empty")}
             </p>
           ) : (
-            <PendingTable transactions={pending.data.items} locale={locale} />
+            <PendingTable transactions={snapshot.items} locale={locale} />
           )}
 
           <nav className="pending-pagination" aria-label={t("pending.pagination")}>
@@ -89,7 +130,7 @@ export function PendingPage() {
             </span>
             <button
               className="button secondary"
-              disabled={!pending.data.meta.next_cursor}
+              disabled={!snapshot.meta.next_cursor}
               onClick={goToNextPage}
               type="button"
             >
@@ -109,7 +150,7 @@ function PendingSnapshotSummary({ meta, locale }: { meta: PendingMeta; locale: s
       <div className="panel-heading pending-snapshot-heading">
         <h2 id="pending-snapshot-title">{t("pending.snapshot")}</h2>
         <span className={`availability ${meta.capability === "complete" ? "yes" : "no"}`}>
-          {meta.capability}
+          {pendingStateLabel(meta.capability, t)}
         </span>
       </div>
       <dl className="pending-snapshot-grid">
@@ -244,6 +285,18 @@ function PendingUnavailablePanel({
       </div>
     </section>
   );
+}
+
+type Translate = ReturnType<typeof useTranslation>["t"];
+
+function pendingStateLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "complete": return t("stageState.complete");
+    case "pending": return t("stageState.pending");
+    case "unavailable": return t("stageState.unavailable");
+    case "failed": return t("stageState.failed");
+    default: return value;
+  }
 }
 
 function pendingUnavailableDetails(details: unknown): {
