@@ -29,6 +29,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Install npm dependencies
+        run: npm --prefix web ci --ignore-scripts
+      - name: Build frontend assets
+        run: make web-build
       - name: Run deterministic common gates
         run: make toolchain-check plan-check generate-check lint test test-race
       - name: Reject unexpected workspace changes
@@ -61,6 +65,15 @@ jobs:
           go-version: stable
           cache: true
           cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install npm dependencies
+        run: npm --prefix web ci --ignore-scripts
+      - name: Build frontend assets
+        run: make web-build
       - name: Run migrations and integration tests
         run: make test-integration
 
@@ -87,6 +100,8 @@ jobs:
         run: |
           npm --prefix web ci --ignore-scripts
           npm --prefix web exec -- playwright install --with-deps chromium
+      - name: Build frontend assets
+        run: make web-build
       - name: Run embedded-binary browser flows
         run: make test-e2e
 

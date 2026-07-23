@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY api ./api
 COPY cmd ./cmd
 COPY internal ./internal
-COPY --from=web-builder /src/web/webui.go ./web/webui.go
+COPY web/webui.go ./web/webui.go
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
@@ -30,12 +30,12 @@ ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
 LABEL org.opencontainers.image.title="Etherview" \
-      org.opencontainers.image.description="Ethereum execution-layer explorer" \
-      org.opencontainers.image.source="https://github.com/islishude/etherview" \
-      org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.revision="${REVISION}" \
-      org.opencontainers.image.created="${CREATED}"
+    org.opencontainers.image.description="Ethereum execution-layer explorer" \
+    org.opencontainers.image.source="https://github.com/islishude/etherview" \
+    org.opencontainers.image.licenses="Apache-2.0" \
+    org.opencontainers.image.version="${VERSION}" \
+    org.opencontainers.image.revision="${REVISION}" \
+    org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot LICENSE /licenses/LICENSE
 COPY --from=go-builder --chown=nonroot:nonroot /out/etherview /etherview
 USER nonroot:nonroot
