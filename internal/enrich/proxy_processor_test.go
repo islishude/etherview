@@ -153,7 +153,6 @@ func TestRPCProxyDetectorResolvesEIP1967AndBeaconFinalImplementation(t *testing.
 		{name: "implementation", kind: ProxyEIP1967, proxy: testAddress(41), implementation: testAddress(42)},
 		{name: "beacon", kind: ProxyBeacon, proxy: testAddress(51), implementation: testAddress(52), beacon: addressPointer(testAddress(53))},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			storage := map[string]Word{}
@@ -275,7 +274,6 @@ func TestRPCProxyDetectorTreatsInvalidCandidateStateAsLocalRejection(t *testing.
 			},
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			proxy := testAddress(71)

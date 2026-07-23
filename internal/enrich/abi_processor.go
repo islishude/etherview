@@ -256,7 +256,7 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 	if err != nil {
 		return nil, fmt.Errorf("query ABI transaction inputs: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var result []abiObservation
 	for rows.Next() {
 		var transactionHashBytes, raw []byte
@@ -320,7 +320,7 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 	if err != nil {
 		return nil, fmt.Errorf("query ABI logs: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var result []abiObservation
 	for rows.Next() {
 		var logIndex int64
@@ -398,7 +398,7 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	if err != nil {
 		return nil, fmt.Errorf("query ABI traces: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var result []abiObservation
 	for rows.Next() {
 		var transactionHashBytes, targetBytes, input, output []byte

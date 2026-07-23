@@ -485,7 +485,6 @@ func TestSearchMapsOnlyControlledNameCapabilityDetails(t *testing.T) {
 			state: "failed", code: "resolver_failure",
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			reader := testReader(t, testDatabase(t), Options{ChainID: 1, NameResolver: test.resolver})
@@ -505,7 +504,7 @@ func TestSearchMapsOnlyControlledNameCapabilityDetails(t *testing.T) {
 func TestSearchBoundaryUsesNormalizedIdentityInsteadOfChecksumOrdering(t *testing.T) {
 	t.Parallel()
 	first, second := checksumOrderInversion(t)
-	if !(strings.ToLower(first) < strings.ToLower(second)) || !(first > second) {
+	if (strings.ToLower(first) >= strings.ToLower(second)) || (first <= second) {
 		t.Fatalf("test addresses do not invert ordering: first=%s second=%s", first, second)
 	}
 	cursor := searchCursor{AfterRank: 100, AfterKind: string(gen.SearchResultKindAddress), AfterKey: first}

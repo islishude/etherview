@@ -203,7 +203,7 @@ func (wake *NATSWake) runConnected(ctx context.Context, connection *nats.Conn) e
 	if err != nil {
 		return fmt.Errorf("subscribe NATS wake: %w", err)
 	}
-	defer subscription.Unsubscribe()
+	defer func() { _ = subscription.Unsubscribe() }()
 	for {
 		select {
 		case <-ctx.Done():

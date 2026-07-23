@@ -95,7 +95,7 @@ func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Ev
 	if err != nil {
 		return Event{}, fmt.Errorf("begin sync status update: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO sync_runtime_status (
 			chain_id, latest_number, indexed_number, highest_covered_number,
@@ -202,7 +202,7 @@ func (s *PostgresStore) Replay(ctx context.Context, after *uint64, limit int) ([
 	if err != nil {
 		return nil, fmt.Errorf("begin runtime event replay: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var minimum, maximum sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT MIN(id), MAX(id)
@@ -287,7 +287,7 @@ func queryReplay(ctx context.Context, query queryer, chainID string, after *uint
 }
 
 func scanEvents(rows *sql.Rows) ([]Event, error) {
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]Event, 0)
 	for rows.Next() {
 		var id int64

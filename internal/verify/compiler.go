@@ -115,7 +115,7 @@ func (c *CompilerCache) Ensure(ctx context.Context, language Language, version s
 	if err != nil {
 		return "", errors.New("download compiler artifact")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", fmt.Errorf("compiler server returned HTTP %d", response.StatusCode)
 	}
@@ -127,7 +127,7 @@ func (c *CompilerCache) Ensure(ctx context.Context, language Language, version s
 		return "", errors.New("create compiler temporary file")
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	hasher := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(temporary, hasher), io.LimitReader(response.Body, maximum+1))
 	if copyErr != nil {

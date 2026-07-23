@@ -34,7 +34,7 @@ func openDatabase(ctx context.Context, cfg config.DatabaseConfig) (*sql.DB, erro
 	connectCtx, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
 	defer cancel()
 	if err := db.PingContext(connectCtx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("connect to PostgreSQL: %s", redactDatabaseError(err, cfg.URL))
 	}
 	return db, nil

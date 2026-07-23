@@ -48,7 +48,7 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var start string
 	var end *string
 	if rawHash != "" {
@@ -85,7 +85,7 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if err != nil {
 		return nil, fmt.Errorf("query internal transactions: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]internalTransaction, 0, page.limit)
 	for rows.Next() {
 		item, scanErr := scanInternalTransaction(rows)

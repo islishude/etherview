@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags="-s -w" -o /out/etherview ./cmd/etherview
 
-FROM gcr.io/distroless/static-debian12:nonroot AS production
+FROM gcr.io/distroless/base-debian13:nonroot AS production
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -36,7 +36,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.revision="${REVISION}" \
     org.opencontainers.image.created="${CREATED}"
-COPY --chown=nonroot:nonroot LICENSE /licenses/LICENSE
+COPY --chown=nonroot:nonroot LICENSE /LICENSE
 COPY --from=go-builder --chown=nonroot:nonroot /out/etherview /etherview
 USER nonroot:nonroot
 EXPOSE 8080 9090

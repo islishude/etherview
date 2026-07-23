@@ -45,7 +45,7 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	tip, err := b.requireCanonicalStageRange(ctx, tx, tokenStage, start, end, ErrTokenUnavailable)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action stri
 	if err != nil {
 		return nil, fmt.Errorf("query %s token transfers: %w", standard, err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]tokenTransfer, 0, page.limit)
 	for rows.Next() {
 		item, scanErr := scanTokenTransfer(rows, standard, tip)
@@ -357,7 +357,7 @@ func (b *PostgresBackend) tokenInformation(ctx context.Context, values url.Value
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := b.requireCanonicalStageRange(ctx, tx, tokenStage, "0", nil, ErrTokenUnavailable); err != nil {
 		return nil, err
 	}

@@ -112,7 +112,6 @@ func TestStateActionsRejectUnavailableMalformedAndUnsupportedTags(t *testing.T) 
 			want: ErrInvalidParameter,
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := testPostgresBackend(t, fakeDatabase(t), PostgresOptions{ChainID: 1, State: test.provider})

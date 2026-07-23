@@ -195,7 +195,7 @@ func (c *HTTPClient) roundTrip(ctx context.Context, payload any, destination any
 	if err != nil {
 		return fmt.Errorf("send JSON-RPC request: %w", err)
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
 		return &HTTPStatusError{StatusCode: response.StatusCode}

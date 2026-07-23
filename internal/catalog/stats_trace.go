@@ -27,7 +27,7 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err != nil {
 		return nil, fmt.Errorf("query canonical block statistics: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	items := make([]BlockStat, 0, expectedCount)
 	expectedHeight := new(big.Int)
 	expectedHeight.SetString(request.FromBlock, 10)
@@ -177,7 +177,7 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 	if err != nil {
 		return AggregateStats{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
 	if err != nil {
 		return AggregateStats{}, err
@@ -321,7 +321,7 @@ func (catalog *Postgres) readTraceIdentity(ctx context.Context, chainID string, 
 	if err != nil {
 		return traceIdentity{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	identity, _, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
 	if err != nil {
 		return traceIdentity{}, err
@@ -387,7 +387,7 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	identity, blockHash, err := catalog.resolveTraceIdentity(ctx, tx, chainID, transactionHash)
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
@@ -398,7 +398,7 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("query normalized transaction trace: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	persisted := make([]scannedTraceFrame, 0)
 	traceDataBytes := 0
 	for rows.Next() {

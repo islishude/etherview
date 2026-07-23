@@ -79,7 +79,7 @@ func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacem
 	if err != nil {
 		return fmt.Errorf("begin API key rotation: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var name string
 	var rate, burst int
@@ -137,7 +137,7 @@ func (r *PostgresRepository) List(ctx context.Context) ([]APIKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list API keys: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var keys []APIKey
 	for rows.Next() {
 		var key APIKey

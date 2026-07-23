@@ -281,7 +281,7 @@ func TestSourcifySubmitSendsOnlyConsentBoundCompilerInput(t *testing.T) {
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		hits.Add(1)
-		defer request.Body.Close()
+		defer func() { _ = request.Body.Close() }()
 		_ = json.NewDecoder(request.Body).Decode(&payload)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

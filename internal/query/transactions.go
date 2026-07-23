@@ -39,7 +39,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable transaction query: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var cursor transactionCursor
 	if encodedCursor == "" {
@@ -67,7 +67,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 	if err != nil {
 		return nil, "", fmt.Errorf("query canonical transaction page: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	records := make([]transactionRecord, 0, limit+1)
 	for rows.Next() {
 		record, err := r.scanTransaction(rows)

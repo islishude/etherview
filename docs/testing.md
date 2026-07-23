@@ -23,7 +23,7 @@ until the Makefile target exists.
 - `make test-integration`: migrations and PostgreSQL integration tests against
   the disposable database named by `INTEGRATION_DATABASE_URL`; the target
   explicitly skips when no URL is supplied.
-- `make lint`: Go formatting/vet and TypeScript type checking.
+- `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, dependency audit, secret scan, and
   security-focused tests.
 - `make license-check`: Go and production frontend dependency license policy.

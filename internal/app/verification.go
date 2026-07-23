@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 
 	"github.com/islishude/etherview/internal/config"
@@ -34,9 +35,7 @@ func verificationCompiler(cfg config.Config) (verify.Compiler, error) {
 		images := make(map[verify.Language]map[string]string, len(cfg.Verification.Images))
 		for language, versions := range cfg.Verification.Images {
 			converted := make(map[string]string, len(versions))
-			for version, image := range versions {
-				converted[version] = image
-			}
+			maps.Copy(converted, versions)
 			images[verify.Language(language)] = converted
 		}
 		return &verify.ContainerCompiler{

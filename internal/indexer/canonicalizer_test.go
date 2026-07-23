@@ -580,7 +580,7 @@ func indexerTestBundle(number uint64, hash, parent ethrpc.Hash) ethrpc.Bundle {
 	zeroHash := indexerTestHash(0)
 	return ethrpc.Bundle{Block: ethrpc.Block{
 		Number:           &numberQuantity,
-		Hash:             indexerHashPointer(hash),
+		Hash:             new(hash),
 		ParentHash:       parent,
 		Sha3Uncles:       zeroHash,
 		TransactionsRoot: zeroHash,
@@ -613,5 +613,3 @@ func indexerTestHash(value byte) ethrpc.Hash {
 	}
 	return hash
 }
-
-func indexerHashPointer(value ethrpc.Hash) *ethrpc.Hash { return &value }

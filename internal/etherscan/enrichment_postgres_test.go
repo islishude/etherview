@@ -25,7 +25,6 @@ func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
 		{"token", "account", "tokentx", url.Values{"address": {testSender}}, tokenStage, ErrTokenUnavailable},
 		{"token info", "token", "tokeninfo", url.Values{"contractaddress": {testContract}}, tokenStage, ErrTokenUnavailable},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -158,7 +157,6 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t, test.expectations...)
@@ -266,7 +264,6 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.action, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -366,7 +363,6 @@ func TestEnrichmentRowsRejectMalformedOrOverflowValues(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -394,7 +390,6 @@ func TestCompletedEnrichmentWithNoRowsReturnsNotFound(t *testing.T) {
 		{"trace", "account", "txlistinternal", traceStage, "FROM normalized_traces AS trace", url.Values{"address": {testSender}}, 16},
 		{"token", "account", "tokentx", tokenStage, "FROM token_events AS event", url.Values{"address": {testSender}}, 19},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -479,7 +474,6 @@ func TestTokenStateActionsRequireFixedCanonicalProvider(t *testing.T) {
 		{"balance", "tokenbalance", url.Values{"contractaddress": {testContract}, "address": {testSender}}},
 		{"holder ledger", "tokenholderlist", url.Values{"contractaddress": {testContract}}},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t)

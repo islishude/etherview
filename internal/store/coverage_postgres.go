@@ -22,7 +22,7 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 	if err != nil {
 		return fmt.Errorf("begin index configuration: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (r *PostgresRepository) Coverage(ctx context.Context, chainID string) (Core
 	if err != nil {
 		return CoreCoverage{}, false, fmt.Errorf("begin coverage read: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	coverage, exists, err := queryCoverageTx(ctx, tx, chainID, false)
 	if err != nil {
 		return CoreCoverage{}, false, err
@@ -115,7 +115,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin canonical segment commit: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return CoreCoverage{}, err
 	}
@@ -237,7 +237,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin sparse canonical replacement: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return CoreCoverage{}, err
 	}
@@ -412,7 +412,7 @@ func (r *PostgresRepository) ClaimBackfillRange(
 	if err != nil {
 		return BackfillLease{}, false, fmt.Errorf("begin backfill range claim: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return BackfillLease{}, false, err
 	}
@@ -533,7 +533,7 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 	if err != nil {
 		return fmt.Errorf("begin backfill range completion: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -725,7 +725,7 @@ func queryCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string) ([]B
 	if err != nil {
 		return nil, fmt.Errorf("query core coverage ranges: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ranges := make([]BlockRange, 0)
 	for rows.Next() {
 		var start, end string
@@ -787,7 +787,7 @@ func queryCanonicalReferencesTx(
 	if err != nil {
 		return nil, fmt.Errorf("query canonical blocks for coverage: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	references := make([]BlockRef, 0)
 	for rows.Next() {
 		var number string

@@ -215,7 +215,7 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable block query: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var snapshot blockCursor
 	if encodedCursor == "" {
@@ -242,7 +242,7 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 	if err != nil {
 		return nil, "", fmt.Errorf("query canonical block page: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	records := make([]blockRecord, 0, limit+1)
 	for rows.Next() {
 		record, err := r.scanBlock(rows, true)
@@ -295,7 +295,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 		if err != nil {
 			return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
 		}
-		defer rows.Close()
+		defer rows.Close() //nolint:errcheck
 		if !rows.Next() {
 			if err := rows.Err(); err != nil {
 				return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
@@ -316,7 +316,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 	if err != nil {
 		return gen.Block{}, fmt.Errorf("query block by number: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return gen.Block{}, fmt.Errorf("query block by number: %w", err)
@@ -343,7 +343,7 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
@@ -395,7 +395,7 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable search: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	snapshot, err := r.currentBlockCursor(ctx, tx)
 	if err != nil {
 		return nil, "", err

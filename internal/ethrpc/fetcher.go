@@ -100,10 +100,7 @@ func fetchTransactionReceipts(ctx context.Context, endpoint *Endpoint, transacti
 			batchSize = 100
 		}
 		for start := 0; start < len(transactions); start += batchSize {
-			end := start + batchSize
-			if end > len(transactions) {
-				end = len(transactions)
-			}
+			end := min(start+batchSize, len(transactions))
 			elements := make([]BatchElem, end-start)
 			for index := start; index < end; index++ {
 				elements[index-start] = BatchElem{

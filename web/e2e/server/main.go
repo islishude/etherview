@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"maps"
 	"net/http"
 	"time"
 
@@ -185,9 +186,7 @@ func writeEnvelope(response http.ResponseWriter, data any) {
 
 func writeEnvelopeMeta(response http.ResponseWriter, data any, extraMeta map[string]any) {
 	meta := map[string]any{"request_id": "e2e-request", "chain_id": "1"}
-	for key, value := range extraMeta {
-		meta[key] = value
-	}
+	maps.Copy(meta, extraMeta)
 	writeJSON(response, map[string]any{
 		"data": data,
 		"meta": meta,

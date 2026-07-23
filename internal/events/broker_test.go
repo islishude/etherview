@@ -13,13 +13,12 @@ import (
 func TestReplayAndLiveDelivery(t *testing.T) {
 	t.Parallel()
 	broker := NewBroker(2)
-	for index := 0; index < 3; index++ {
+	for index := range 3 {
 		if _, err := broker.Publish("head", map[string]int{"number": index}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	channel, err := broker.Subscribe(ctx, "1")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +59,7 @@ func TestValidation(t *testing.T) {
 func TestBoundedMemoryReplayRejectsExpiredCursor(t *testing.T) {
 	t.Parallel()
 	broker := NewBroker(2)
-	for index := 0; index < 4; index++ {
+	for index := range 4 {
 		if _, err := broker.Publish("head", map[string]int{"number": index}); err != nil {
 			t.Fatal(err)
 		}
@@ -119,8 +118,7 @@ func TestDurableReplayAndRelayDeliveryAreDeduplicated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	channel, err := broker.Subscribe(ctx, "41")
 	if err != nil {
 		t.Fatal(err)
@@ -178,8 +176,7 @@ func TestDurableReplayInvalidatesCacheBeforeExposingStoredEvent(t *testing.T) {
 		t.Fatalf("failed invalidation replay error = %v", err)
 	}
 	fail = false
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	stream, err := broker.Subscribe(ctx, "6")
 	if err != nil {
 		t.Fatal(err)
@@ -199,8 +196,7 @@ func TestReplayForNewSubscriberDoesNotSuppressExistingLiveSubscriber(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	first, err := broker.Subscribe(ctx, "41")
 	if err != nil {
 		t.Fatal(err)
@@ -338,8 +334,7 @@ func TestRelayInvalidatesCacheBeforePublishAndRetriesWithoutAdvancing(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	stream, err := broker.Subscribe(ctx, "0")
 	if err != nil {
 		t.Fatal(err)

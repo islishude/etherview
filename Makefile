@@ -9,23 +9,19 @@ HELM ?= helm
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
 INTEGRATION_DATABASE_URL ?=
-GOPATH ?= /tmp/etherview-gopath
-GOMODCACHE ?= /tmp/etherview-gomodcache
-GOCACHE ?= /tmp/etherview-gocache
-GOFLAGS ?= -mod=readonly
-NPM_CONFIG_CACHE ?= /tmp/etherview-npm-cache
-export GOPATH GOMODCACHE GOCACHE GOFLAGS
-export INTEGRATION_DATABASE_URL
-export npm_config_cache := $(NPM_CONFIG_CACHE)
+GO_BUILD_OUTPUT ?= ./etherview
+GO_BUILD_FLAGS ?= -trimpath
+GO_BUILD_LDFLAGS ?= -s -w
 
-TOOLS_BIN ?= $(GOPATH)/bin
-GOVULNCHECK ?= $(TOOLS_BIN)/govulncheck
-GITLEAKS ?= $(TOOLS_BIN)/gitleaks
-GO_LICENSES ?= $(TOOLS_BIN)/go-licenses
+GOVULNCHECK ?= govulncheck
+GITLEAKS ?= gitleaks
+GO_LICENSES ?= go-licenses
+GOLANGCI_LINT ?= golangci-lint
 
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v1.6.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
 GENERATED_PATHS := \
@@ -41,10 +37,14 @@ HELM_CHART ?= deploy/helm/etherview
 
 .PHONY: \
 	check compose-check compose-schema-smoke deployment-check docker-build docker-check \
-	generate generate-check generate-go helm-check install-security-tools \
+	go-build generate generate generate-check generate-go helm-check install-lint-tools install-security-tools \
+	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-race web-build web-generate web-install web-lint web-test
+
+go-build: web-build
+	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
 
 plan-check:
 	$(GO) run ./cmd/plancheck -root .
@@ -117,7 +117,7 @@ web-test: web-install
 web-build: web-generate
 	$(NPM) --prefix web run build
 
-lint-go:
+lint-go: lint-tool-check
 	@unformatted="$$(find . \( -path './.git' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
@@ -125,14 +125,23 @@ lint-go:
 		exit 1; \
 	fi
 	$(GO) vet $(GO_PACKAGES)
+	$(MAKE) golangci-lint
+
+golangci-lint: lint-tool-check
+	$(GOLANGCI_LINT) run ./...
 
 lint: lint-go web-lint
 
 install-security-tools:
-	@mkdir -p "$(TOOLS_BIN)"
-	GOBIN="$(TOOLS_BIN)" $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-	GOBIN="$(TOOLS_BIN)" $(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
-	GOBIN="$(TOOLS_BIN)" $(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
+	$(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+
+install-lint-tools:
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+lint-tool-check:
+	@test -x "$(GOLANGCI_LINT)" || { echo "lint-go: missing $(GOLANGCI_LINT); run 'make install-lint-tools'"; exit 1; }
 
 security-tool-check:
 	@test -x "$(GOVULNCHECK)" || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }

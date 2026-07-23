@@ -111,7 +111,7 @@ func queryCandidateBatch(ctx context.Context, tx *sql.Tx, cursor claimCursor) ([
 	if err != nil {
 		return nil, fmt.Errorf("query maintenance candidates: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	candidates := make([]claimCandidate, 0, claimBatchSize)
 	for rows.Next() {
 		var candidate claimCandidate
@@ -155,7 +155,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 	if err != nil {
 		return Lease{}, false, fmt.Errorf("begin maintenance claim: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	var heldKey int64
 	advisoryHeld := false
 	defer func() {

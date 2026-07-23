@@ -225,7 +225,7 @@ func (w *HeadWake) session(ctx context.Context, rawURL string) (wakeFailure, boo
 	if err != nil {
 		return wakeFailureDial, false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	subscribeCtx, cancelSubscribe := context.WithTimeout(ctx, w.subscriptionTimeout)
 	err = conn.Write(subscribeCtx, []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}`))

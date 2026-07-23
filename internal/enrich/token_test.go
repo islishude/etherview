@@ -86,7 +86,6 @@ func TestParseERC1155BatchMintAndBurn(t *testing.T) {
 		{name: "batch burn", from: holder, to: Address{}, kind: TokenBurn},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			result := ParseTokenLog(TokenLog{

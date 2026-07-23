@@ -206,7 +206,6 @@ func TestOutboxOrphanRequiresNonCanonicalJournalsAndAuditsNoReplay(t *testing.T)
 		{name: "confirmed", journalsOK: true, wantState: OutboxPublished},
 		{name: "still-canonical", journalsOK: false, wantState: OutboxRetry},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			var audit dispatchAudit
 			published, retried := 0, 0
@@ -328,15 +327,13 @@ func TestOutboxConcurrentDispatchUsesDistinctSkipLockedClaims(t *testing.T) {
 	enqueuer := &recordingEnqueuer{}
 	dispatcher, _ := NewOutboxDispatcher(openFakeSQLDB(t, backend), enqueuer, OutboxDispatcherOptions{Stages: []StageID{stage}})
 	var group sync.WaitGroup
-	for index := 0; index < count; index++ {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+	for range count {
+		group.Go(func() {
 			result, err := dispatcher.DispatchOne(context.Background())
 			if err != nil || result.State != OutboxPublished {
 				t.Errorf("result=%+v err=%v", result, err)
 			}
-		}()
+		})
 	}
 	group.Wait()
 	enqueuer.mu.Lock()

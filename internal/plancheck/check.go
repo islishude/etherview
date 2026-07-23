@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -964,12 +965,10 @@ func sectionMentions(lines []numberedLine, id string) bool {
 		if isPlaceholder(trimmed) {
 			continue
 		}
-		for _, token := range strings.FieldsFunc(trimmed, func(r rune) bool {
-			return !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') && r != '-'
-		}) {
-			if token == id {
-				return true
-			}
+		if slices.Contains(strings.FieldsFunc(trimmed, func(r rune) bool {
+			return (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-'
+		}), id) {
+			return true
 		}
 	}
 	return false

@@ -145,18 +145,14 @@ func (s *Service) Run(ctx context.Context) error {
 	backfillWake := make(chan struct{}, s.workerCount())
 	results := make(chan error, s.workerCount()+1)
 	var wait sync.WaitGroup
-	wait.Add(1)
-	go func() {
-		defer wait.Done()
+	wait.Go(func() {
 		results <- s.runLive(runCtx, backfillWake)
-	}()
+	})
 	for index := 0; index < s.workerCount(); index++ {
 		index := index
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			results <- s.runBackfill(runCtx, backfillWake, s.backfillOwner(index))
-		}()
+		})
 	}
 	err := <-results
 	cancel()
@@ -425,9 +421,7 @@ func (s *Service) syncRange(ctx context.Context, start, end, head uint64) error 
 	}
 	var wait sync.WaitGroup
 	for range workers {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			for number := range jobs {
 				purpose := ethrpc.PurposeHistory
 				if number == head {
@@ -437,7 +431,7 @@ func (s *Service) syncRange(ctx context.Context, start, end, head uint64) error 
 				index := number - start
 				bundles[index], errs[index] = bundle, err
 			}
-		}()
+		})
 	}
 	dispatchCancelled := false
 	for number := start; number <= end; number++ {

@@ -22,7 +22,7 @@ func (catalog *Postgres) TokenContract(ctx context.Context, chainID, addressText
 	if err != nil {
 		return TokenContract{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
 	if err != nil {
 		return TokenContract{}, err
@@ -65,7 +65,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 	if err != nil {
 		return TokenPage{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var snapshot Snapshot
 	afterAddress := make([]byte, 20)
@@ -99,7 +99,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 	if err != nil {
 		return TokenPage{}, fmt.Errorf("list token contracts: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	items := make([]TokenContract, 0, limit+1)
 	for rows.Next() {
 		contract, scanErr := catalog.scanTokenContract(rows)
@@ -224,7 +224,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 	if err != nil {
 		return TokenEventPage{}, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var snapshot Snapshot
 	hasBoundary := false
@@ -266,7 +266,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 	if err != nil {
 		return TokenEventPage{}, fmt.Errorf("list canonical token events: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	items := make([]TokenEvent, 0, limit+1)
 	for rows.Next() {
 		event, scanErr := scanTokenEvent(rows)

@@ -233,10 +233,8 @@ func TestPostgresClaimUsesAdvisoryFirstRevalidationAndConcurrentTokens(t *testin
 	tokens := make(chan string, jobs)
 	ids := make(chan string, jobs)
 	var group sync.WaitGroup
-	for index := 0; index < jobs; index++ {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+	for range jobs {
+		group.Go(func() {
 			lease, found, claimErr := queue.Claim(context.Background(), "worker", []StageID{stage}, time.Minute)
 			if claimErr != nil || !found {
 				t.Errorf("claim found=%v err=%v", found, claimErr)
@@ -244,7 +242,7 @@ func TestPostgresClaimUsesAdvisoryFirstRevalidationAndConcurrentTokens(t *testin
 			}
 			tokens <- lease.Token
 			ids <- lease.Job.ID
-		}()
+		})
 	}
 	group.Wait()
 	close(tokens)
@@ -520,7 +518,6 @@ func TestPostgresRequeueResetsOnlyAnUnleasedMatchingJob(t *testing.T) {
 func TestPostgresRequeueDoesNotStealActiveLease(t *testing.T) {
 	t.Parallel()
 	for _, status := range []string{"queued", "leased"} {
-		status := status
 		t.Run(status, func(t *testing.T) {
 			t.Parallel()
 			backend := &fakeSQLBackend{

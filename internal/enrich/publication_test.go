@@ -23,7 +23,6 @@ func TestDirectStageResultCannotOverwriteLeaseBoundPublication(t *testing.T) {
 		{name: "result marker", resultAffected: 0, journalAffected: 1},
 		{name: "journal marker", resultAffected: 1, journalAffected: 0},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var committed atomic.Bool
@@ -107,7 +106,6 @@ func TestPostgresWorkerRejectsFutureDerivedVersionWithoutAtomicProcessor(t *test
 func TestKnownDerivedTerminalResultCarriesExactLeaseGeneration(t *testing.T) {
 	t.Parallel()
 	for _, stage := range []StageID{ProxyStage, ABIStage, TokenStage, StatsStage, TraceStage} {
-		stage := stage
 		t.Run(stage.String(), func(t *testing.T) {
 			t.Parallel()
 			var committed atomic.Bool
@@ -169,7 +167,6 @@ func TestAtomicPublisherDiscardsStaleAndPendingGenerationOutput(t *testing.T) {
 		{name: "lost lease", pendingCAS: 0, want: ErrLeaseLost},
 		{name: "pending replay", pendingCAS: 1, outcome: stagePublicationSuperseded},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var rolledToSavepoint atomic.Bool

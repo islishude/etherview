@@ -20,8 +20,7 @@ func exactStateRPCError(ctx context.Context, method string, err error) error {
 	if ethrpc.IsMethodNotFound(err) {
 		return Unavailable(fmt.Errorf("%s with an EIP-1898 block hash is unavailable", method))
 	}
-	var rpcError *ethrpc.RPCError
-	if errors.As(err, &rpcError) {
+	if rpcError, ok := errors.AsType[*ethrpc.RPCError](err); ok {
 		message := strings.ToLower(rpcError.Message)
 		if rpcError.Code == -32602 || strings.Contains(message, "eip-1898") ||
 			strings.Contains(message, "block hash") || strings.Contains(message, "missing trie") ||

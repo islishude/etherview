@@ -64,7 +64,7 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("begin mempool snapshot transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockMempool(ctx, tx, repository.chain); err != nil {
 		return SnapshotInfo{}, err
 	}
@@ -108,7 +108,7 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("prepare mempool transaction upsert: %w", err)
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	for index, transaction := range snapshot.Transactions {
 		values, err := transactionStorageValues(transaction)
@@ -198,7 +198,7 @@ func (repository *Postgres) StoreFailure(ctx context.Context, failure Failure) e
 	if err != nil {
 		return fmt.Errorf("begin mempool failure transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockMempool(ctx, tx, repository.chain); err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	if err != nil {
 		return Page{}, fmt.Errorf("begin stable mempool query: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	status, err := repository.readStatus(ctx, tx)
 	if err != nil {
 		return Page{}, err
@@ -282,7 +282,7 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 	if err != nil {
 		return Page{}, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	items := make([]Transaction, 0, limit+1)
 	for rows.Next() {
 		transaction, err := repository.scanPending(rows, snapshot)

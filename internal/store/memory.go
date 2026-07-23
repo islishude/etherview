@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -236,13 +237,9 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 		}
 	}
 	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(attachedCopies))
-	for key, bundle := range chain.blocks {
-		nextBlocks[key] = bundle
-	}
+	maps.Copy(nextBlocks, chain.blocks)
 	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(attachedCopies))
-	for number, hash := range chain.canonical {
-		nextCanonical[number] = hash
-	}
+	maps.Copy(nextCanonical, chain.canonical)
 	for _, bundle := range attachedCopies {
 		reference, _ := RefFromBundle(bundle)
 		nextBlocks[memoryHashKey(reference.Hash)] = bundle

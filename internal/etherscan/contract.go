@@ -223,7 +223,7 @@ func (b *PostgresBackend) contractCreation(ctx context.Context, values url.Value
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	result := make([]contractCreationResult, 0, len(addresses))
 	for _, address := range addresses {
 		item, err := b.oneContractCreation(ctx, tx, address)

@@ -26,7 +26,7 @@ func testBundle(number uint64, hash, parent Hash, transactionCount int) Bundle {
 	zeroHash := testHash(0)
 	block := Block{
 		Number:           &quantityNumber,
-		Hash:             hashPointer(hash),
+		Hash:             new(hash),
 		ParentHash:       parent,
 		Sha3Uncles:       zeroHash,
 		TransactionsRoot: zeroHash,
@@ -40,18 +40,18 @@ func testBundle(number uint64, hash, parent Hash, transactionCount int) Bundle {
 	}
 	bundle := Bundle{Block: block, Receipts: make([]Receipt, transactionCount)}
 	status := QuantityFromUint64(1)
-	for index := 0; index < transactionCount; index++ {
+	for index := range transactionCount {
 		txHash := testHash(byte(number*16 + uint64(index) + 1))
 		txIndex := QuantityFromUint64(uint64(index))
 		typeValue := QuantityFromUint64(uint64(index % 5))
 		tx := &Transaction{
 			Hash:             txHash,
 			Type:             &typeValue,
-			BlockHash:        hashPointer(hash),
-			BlockNumber:      quantityPointer(quantityNumber),
-			TransactionIndex: quantityPointer(txIndex),
+			BlockHash:        new(hash),
+			BlockNumber:      new(quantityNumber),
+			TransactionIndex: new(txIndex),
 			From:             testAddress(1),
-			To:               addressPointer(testAddress(2)),
+			To:               new(testAddress(2)),
 			Nonce:            QuantityFromUint64(uint64(index)),
 			Gas:              QuantityFromUint64(21_000),
 			Value:            QuantityFromUint64(0),
@@ -66,17 +66,11 @@ func testBundle(number uint64, hash, parent Hash, transactionCount int) Bundle {
 			CumulativeGasUsed: QuantityFromUint64(21_000 * uint64(index+1)),
 			Logs:              []Log{},
 			LogsBloom:         Data("0x"),
-			Status:            quantityPointer(status),
+			Status:            new(status),
 		}
 	}
 	return bundle
 }
-
-func hashPointer(value Hash) *Hash { return &value }
-
-func quantityPointer(value Quantity) *Quantity { return &value }
-
-func addressPointer(value Address) *Address { return &value }
 
 func assignJSON(destination any, value any) error {
 	data, err := json.Marshal(value)

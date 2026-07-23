@@ -138,7 +138,11 @@ func TestCompilerCacheRejectsUnsafeRootAndReplacesUnsafeEntry(t *testing.T) {
 		if err := os.Chmod(root, 0o770); err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chmod(root, 0o700)
+		defer func() {
+			if err := os.Chmod(root, 0o700); err != nil {
+				t.Errorf("restore compiler cache root permissions: %v", err)
+			}
+		}()
 		cache := CompilerCache{Root: root, Artifacts: map[Language]map[string]CompilerArtifact{
 			LanguageSolidity: {"1": artifact},
 		}}
@@ -232,12 +236,10 @@ func TestCompilerCacheSerializesConcurrentInstall(t *testing.T) {
 	errorsFound := make(chan error, 16)
 	var wait sync.WaitGroup
 	for range 16 {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			_, err := cache.Ensure(context.Background(), LanguageSolidity, "1.2.3")
 			errorsFound <- err
-		}()
+		})
 	}
 	wait.Wait()
 	close(errorsFound)

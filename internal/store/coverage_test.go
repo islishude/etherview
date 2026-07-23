@@ -173,18 +173,16 @@ func TestMemoryBackfillLeaseContentionHasSingleWinner(t *testing.T) {
 	}
 	results := make(chan result, contenders)
 	var wait sync.WaitGroup
-	for index := 0; index < contenders; index++ {
+	for index := range contenders {
 		index := index
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			<-start
 			lease, claimed, err := repository.ClaimBackfillRange(
 				ctx, "1", BlockRange{Start: 10, End: 20}, fmt.Sprintf("worker-%d", index),
 				time.Now().UTC(), time.Minute,
 			)
 			results <- result{lease: lease, claimed: claimed, err: err}
-		}()
+		})
 	}
 	close(start)
 	wait.Wait()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"sort"
 	"strings"
@@ -83,9 +84,7 @@ type CapabilityReport struct {
 func (r CapabilityReport) Clone() CapabilityReport {
 	copy := r
 	copy.Methods = make(map[string]Availability, len(r.Methods))
-	for method, status := range r.Methods {
-		copy.Methods[method] = status
-	}
+	maps.Copy(copy.Methods, r.Methods)
 	if r.HistoryUnavailable != nil {
 		historyUnavailable := *r.HistoryUnavailable
 		copy.HistoryUnavailable = &historyUnavailable
@@ -209,9 +208,9 @@ func probeHistoricalBlock(ctx context.Context, caller Caller, start Quantity, re
 	case err == nil && block != nil && block.Hash != nil:
 		report.Methods[CapabilityHistoricalData] = AvailabilityAvailable
 	case err == nil:
-		setHistoryUnavailable(report, start, HistoryUnavailableResult)
+		_ = setHistoryUnavailable(report, start, HistoryUnavailableResult)
 	case isExplicitHistoryPruned(err):
-		setHistoryUnavailable(report, start, HistoryPrunedResult)
+		_ = setHistoryUnavailable(report, start, HistoryPrunedResult)
 	default:
 		report.Methods[CapabilityHistoricalData] = AvailabilityUnknown
 		report.Warnings = append(report.Warnings, "historical block probe returned an indeterminate error")
@@ -240,22 +239,24 @@ func isExplicitHistoryPruned(err error) bool {
 func probeBlockReceipts(ctx context.Context, caller Caller, start Quantity, report *CapabilityReport) {
 	var receipts []Receipt
 	err := caller.Call(ctx, CapabilityBlockReceipts, []any{start.String()}, &receipts)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		report.Methods[CapabilityBlockReceipts] = AvailabilityAvailable
-	case IsMethodNotFound(err):
-		report.Methods[CapabilityBlockReceipts] = AvailabilityUnavailable
 	default:
-		report.Methods[CapabilityBlockReceipts] = AvailabilityUnknown
-		report.Warnings = append(report.Warnings, fmt.Sprintf("block receipt probe failed: %v", err))
+		if IsMethodNotFound(err) {
+			report.Methods[CapabilityBlockReceipts] = AvailabilityUnavailable
+		} else {
+			report.Methods[CapabilityBlockReceipts] = AvailabilityUnknown
+			report.Warnings = append(report.Warnings, fmt.Sprintf("block receipt probe failed: %v", err))
+		}
 	}
 }
 
 func probeHistoricalState(ctx context.Context, caller Caller, start Quantity, report *CapabilityReport) {
 	var balance Quantity
 	err := caller.Call(ctx, "eth_getBalance", []any{"0x0000000000000000000000000000000000000000", start.String()}, &balance)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		report.Methods[CapabilityHistoricalState] = AvailabilityAvailable
 	default:
 		report.Methods[CapabilityHistoricalState] = AvailabilityUnavailable

@@ -110,7 +110,7 @@ func (store *S3BlobStore) Get(ctx context.Context, key string) ([]byte, bool, er
 		}
 		return nil, false, errors.New("read S3-compatible cache object")
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	if info.Size < 0 || info.Size > store.maxObjectBytes {
 		return nil, false, errors.New("S3-compatible cache object exceeds configured limit")
 	}

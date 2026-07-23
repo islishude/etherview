@@ -51,25 +51,25 @@ func (p Program) Run(ctx context.Context, args []string) int {
 		stderr = io.Discard
 	}
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
 	if p.Backend == nil && args[0] != "version" && args[0] != "help" {
-		fmt.Fprintln(stderr, "etherview: runtime backend is not configured")
+		_, _ = fmt.Fprintln(stderr, "etherview: runtime backend is not configured")
 		return 1
 	}
 
 	var err error
 	switch args[0] {
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
+		_, _ = fmt.Fprint(stdout, usage)
 		return 0
 	case "version":
 		version := p.Version
 		if version == "" {
 			version = "dev"
 		}
-		fmt.Fprintln(stdout, version)
+		_, _ = fmt.Fprintln(stdout, version)
 		return 0
 	case "serve":
 		err = p.runServe(ctx, args[1:])
@@ -82,11 +82,11 @@ func (p Program) Run(ctx context.Context, args []string) int {
 	case "admin":
 		err = p.runAdmin(ctx, args[1:])
 	default:
-		fmt.Fprintf(stderr, "etherview: unknown command %q\n\n%s", args[0], usage)
+		_, _ = fmt.Fprintf(stderr, "etherview: unknown command %q\n\n%s", args[0], usage)
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "etherview: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "etherview: %v\n", err)
 		return 1
 	}
 	return 0

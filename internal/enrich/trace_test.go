@@ -3,6 +3,7 @@ package enrich
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func traceTestIdentity() TraceIdentity {
 
 func traceTestWord(value uint64) Word {
 	var word Word
-	for index := 0; index < 8; index++ {
+	for index := range 8 {
 		word[31-index] = byte(value)
 		value >>= 8
 	}
@@ -44,9 +45,7 @@ func traceAPIIdentityFields(identity TraceIdentity) map[string]any {
 
 func mergeTraceFixture(identity TraceIdentity, fields map[string]any) map[string]any {
 	result := traceAPIIdentityFields(identity)
-	for key, value := range fields {
-		result[key] = value
-	}
+	maps.Copy(result, fields)
 	return result
 }
 
@@ -176,7 +175,6 @@ func TestTraceLimitsAndMalformedData(t *testing.T) {
 		{name: "text", data: []byte(`{"type":"CALL","from":"` + traceAddress1 + `","to":"` + traceAddress2 + `","value":"0x0","gas":"0x1","gasUsed":"0x1","input":"0x","output":"0x","error":"execution reverted"}`), change: func(limits *TraceLimits) { limits.MaxTextBytes = 4 }},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			limits := DefaultTraceLimits()

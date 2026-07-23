@@ -103,7 +103,6 @@ func TestWireModelsPreserveTransactionTypesZeroThroughFour(t *testing.T) {
 		{name: "set-code", typeValue: "0x4", fields: `"chainId":"0x1","maxPriorityFeePerGas":"0x1","maxFeePerGas":"0x2","authorizationList":[{"chainId":"0x1","address":"` + address + `","nonce":"0x0","yParity":"0x1","r":"0x1","s":"0x2"}]`, keys: []string{"authorizationList"}},
 	}
 	for index, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			payload := `{"hash":"` + testHash(byte(index+20)).String() + `","type":"` + test.typeValue + `","blockHash":"` + blockHash + `","blockNumber":"0x1","transactionIndex":"0x0","from":"` + address + `","to":null,"nonce":"0x0","gas":"0x5208","value":"0x0","input":"0x",` + test.fields + `}`

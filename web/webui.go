@@ -162,7 +162,7 @@ func requestAssetName(urlPath string) (string, bool) {
 	if strings.ContainsRune(name, '\x00') || strings.Contains(name, `\`) {
 		return "", false
 	}
-	for _, segment := range strings.Split(name, "/") {
+	for segment := range strings.SplitSeq(name, "/") {
 		if segment == "." || segment == ".." {
 			return "", false
 		}
@@ -189,7 +189,7 @@ func acceptsHTML(accept string) bool {
 	}
 	bestSpecificity := -1
 	bestQuality := 0.0
-	for _, mediaRange := range strings.Split(accept, ",") {
+	for mediaRange := range strings.SplitSeq(accept, ",") {
 		mediaType, parameters, err := mime.ParseMediaType(strings.TrimSpace(mediaRange))
 		if err != nil {
 			continue
@@ -270,9 +270,8 @@ func isHashedAsset(name string) bool {
 		return false
 	}
 	for _, character := range base[dot-8 : dot] {
-		if !((character >= 'a' && character <= 'z') ||
-			(character >= 'A' && character <= 'Z') ||
-			(character >= '0' && character <= '9') || character == '-' || character == '_') {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && character != '-' && character != '_' {
 			return false
 		}
 	}
@@ -280,7 +279,7 @@ func isHashedAsset(name string) bool {
 }
 
 func etagMatches(condition, current string) bool {
-	for _, candidate := range strings.Split(condition, ",") {
+	for candidate := range strings.SplitSeq(condition, ",") {
 		candidate = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(candidate), "W/"))
 		if candidate == "*" || candidate == current {
 			return true

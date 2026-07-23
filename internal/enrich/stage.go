@@ -425,8 +425,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 		}
 	}
 
-	var classified stageError
-	if errors.As(completed.err, &classified) {
+	if classified, ok := errors.AsType[stageError](completed.err); ok {
 		switch classified.kind {
 		case "unavailable":
 			if err := worker.finishError(ctx, lease, ResultUnavailable, completed.err); err != nil {
@@ -489,10 +488,6 @@ func (worker *Worker) retryDelay(attempt uint32) time.Duration {
 		return worker.options.RetryMax
 	}
 	return delay
-}
-
-func waitContext(ctx context.Context, duration time.Duration) error {
-	return waitContextOrWake(ctx, duration, nil)
 }
 
 func waitContextOrWake(ctx context.Context, duration time.Duration, wake <-chan struct{}) error {

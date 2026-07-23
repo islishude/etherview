@@ -29,7 +29,7 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, start, end); err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 	if err != nil {
 		return nil, fmt.Errorf("query account transactions: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]accountTransaction, 0, page.limit)
 	for rows.Next() {
 		item, err := scanAccountTransaction(rows)
@@ -250,7 +250,7 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	result := make([]minedBlock, 0, page.limit)
 	for rows.Next() {
 		var raw []byte

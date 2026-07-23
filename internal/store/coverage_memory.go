@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -126,13 +127,9 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 		return CoreCoverage{}, err
 	}
 	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(copies))
-	for key, bundle := range chain.blocks {
-		nextBlocks[key] = bundle
-	}
+	maps.Copy(nextBlocks, chain.blocks)
 	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(references))
-	for number, hash := range chain.canonical {
-		nextCanonical[number] = hash
-	}
+	maps.Copy(nextCanonical, chain.canonical)
 	for index, reference := range references {
 		nextBlocks[memoryHashKey(reference.Hash)] = copies[index]
 		nextCanonical[reference.Number] = reference.Hash
@@ -226,13 +223,9 @@ func (r *MemoryRepository) ReplaceHighestCanonicalSegment(
 	}
 
 	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(copies))
-	for key, bundle := range chain.blocks {
-		nextBlocks[key] = bundle
-	}
+	maps.Copy(nextBlocks, chain.blocks)
 	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(attached))
-	for number, hash := range chain.canonical {
-		nextCanonical[number] = hash
-	}
+	maps.Copy(nextCanonical, chain.canonical)
 	for _, detached := range replacement.Detached {
 		delete(nextCanonical, detached.Number)
 	}
@@ -380,7 +373,7 @@ func memoryCanonicalReferences(chain *memoryChain) ([]BlockRef, error) {
 	for number := range chain.canonical {
 		numbers = append(numbers, number)
 	}
-	sort.Slice(numbers, func(left, right int) bool { return numbers[left] < numbers[right] })
+	slices.Sort(numbers)
 	references := make([]BlockRef, 0, len(numbers))
 	for _, number := range numbers {
 		reference, exists, err := memoryCanonicalRef(chain, number)

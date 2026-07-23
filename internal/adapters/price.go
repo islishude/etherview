@@ -167,8 +167,7 @@ func canonicalFixedDecimal(value string) bool {
 }
 
 func classifyFetchFailure(err error) (string, string) {
-	var fetchError *metadata.FetchError
-	if errors.As(err, &fetchError) {
+	if fetchError, ok := errors.AsType[*metadata.FetchError](err); ok {
 		switch fetchError.Kind {
 		case metadata.FailureUnsafeURL, metadata.FailureUnsafeContent:
 			return string(fetchError.Kind), "unavailable"

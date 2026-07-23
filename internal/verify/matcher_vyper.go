@@ -147,8 +147,8 @@ func parseVyperVersion(value string) (vyperVersion, bool) {
 		return vyperVersion{}, false
 	}
 	for _, character := range value[patchEnd:] {
-		if !(character >= '0' && character <= '9' || character >= 'A' && character <= 'Z' ||
-			character >= 'a' && character <= 'z' || strings.ContainsRune("+-._", character)) {
+		if (character < '0' || character > '9') && (character < 'A' || character > 'Z') &&
+			(character < 'a' || character > 'z') && !strings.ContainsRune("+-._", character) {
 			return vyperVersion{}, false
 		}
 	}
@@ -254,11 +254,11 @@ func decodeVyperFixedVersionFooter(bytecode []byte) (decodedFooter, vyperVersion
 func vyperBytecodeMetadataEnabled(input json.RawMessage, version vyperVersion) (bool, error) {
 	document, err := decodeRawJSONObject(input)
 	if err != nil {
-		return false, errors.New("Vyper Standard JSON is malformed")
+		return false, errors.New("vyper Standard JSON is malformed")
 	}
 	settings, err := decodeRawJSONObject(document["settings"])
 	if err != nil {
-		return false, errors.New("Vyper Standard JSON settings are malformed")
+		return false, errors.New("vyper Standard JSON settings are malformed")
 	}
 	if !version.atLeast(0, 3, 5) {
 		// Older vyper-json versions ignore bytecodeMetadata and always emit
@@ -273,7 +273,7 @@ func vyperBytecodeMetadataEnabled(input json.RawMessage, version vyperVersion) (
 	trimmed := bytes.TrimSpace(raw)
 	if !bytes.Equal(trimmed, []byte("true")) && !bytes.Equal(trimmed, []byte("false")) ||
 		json.Unmarshal(trimmed, &enabled) != nil {
-		return false, errors.New("Vyper bytecodeMetadata setting is malformed")
+		return false, errors.New("vyper bytecodeMetadata setting is malformed")
 	}
 	return enabled, nil
 }
@@ -281,7 +281,7 @@ func vyperBytecodeMetadataEnabled(input json.RawMessage, version vyperVersion) (
 func matchVyperArtifact(request Request, artifact Artifact) (MatchResult, error) {
 	version, ok := parseVyperVersion(request.CompilerVersion)
 	if !ok {
-		return MatchResult{}, errors.New("Vyper compiler version is not semantic")
+		return MatchResult{}, errors.New("vyper compiler version is not semantic")
 	}
 	if artifact.vyperVersionPresent && artifact.vyperVersion != version {
 		return MatchResult{}, errCompilerVersionMalformed

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -777,7 +778,7 @@ func validateObservability(cfg ObservabilityConfig) error {
 }
 
 func unsafeURLPath(value string) bool {
-	for _, segment := range strings.Split(value, "/") {
+	for segment := range strings.SplitSeq(value, "/") {
 		decoded, err := url.PathUnescape(segment)
 		if err != nil || decoded == ".." {
 			return true
@@ -820,7 +821,7 @@ func NormalizeRoles(input []string) ([]string, error) {
 	}
 	wanted := make(map[string]bool, len(input))
 	for _, raw := range input {
-		for _, role := range strings.Split(raw, ",") {
+		for role := range strings.SplitSeq(raw, ",") {
 			role = strings.ToLower(strings.TrimSpace(role))
 			if role == "" {
 				continue
@@ -831,13 +832,7 @@ func NormalizeRoles(input []string) ([]string, error) {
 				}
 				continue
 			}
-			known := false
-			for _, item := range allowedRoles {
-				if role == item {
-					known = true
-					break
-				}
-			}
+			known := slices.Contains(allowedRoles, role)
 			if !known {
 				return nil, fmt.Errorf("unsupported runtime role %q", role)
 			}
@@ -1164,7 +1159,7 @@ func setBool(lookup func(string) (string, bool), name string, target *bool) erro
 
 func splitCSV(value string) []string {
 	var result []string
-	for _, item := range strings.Split(value, ",") {
+	for item := range strings.SplitSeq(value, ",") {
 		if item = strings.TrimSpace(item); item != "" {
 			result = append(result, item)
 		}

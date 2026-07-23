@@ -72,7 +72,7 @@ func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, h
 	if err != nil {
 		return ethrpc.Bundle{}, false, fmt.Errorf("query stored receipts: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var receiptJSON []byte
 		if err := rows.Scan(&receiptJSON); err != nil {
@@ -111,7 +111,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 	if err != nil {
 		return fmt.Errorf("begin canonical commit: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (r *PostgresRepository) RefreshCanonical(
 	if err != nil {
 		return fmt.Errorf("begin canonical refresh: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if err != nil {
 		return fmt.Errorf("begin reorg: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -466,7 +466,7 @@ func (r *PostgresRepository) UpdateFinality(ctx context.Context, chainID string,
 	if err != nil {
 		return fmt.Errorf("begin finality update: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
@@ -568,7 +568,7 @@ func (r *PostgresRepository) JournalsByBlock(ctx context.Context, chainID string
 	if err != nil {
 		return nil, fmt.Errorf("query block journals: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var entries []JournalEntry
 	for rows.Next() {
 		var entry JournalEntry

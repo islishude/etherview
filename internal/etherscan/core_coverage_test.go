@@ -55,7 +55,6 @@ func TestCanonicalCoreRangeRequiresOneInclusiveCoverageInterval(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := testPostgresBackend(t, fakeDatabase(t, test.expectation), PostgresOptions{ChainID: 1})
@@ -111,7 +110,6 @@ func TestCompatibilityRangeAndTimeActionsRejectIncompleteCoreCoverage(t *testing
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := testPostgresBackend(t, fakeDatabase(t, test.expectation), PostgresOptions{ChainID: 1})
@@ -156,7 +154,6 @@ func TestMissingInternalTransactionHashRequiresGlobalCoreCoverage(t *testing.T) 
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -197,7 +194,6 @@ func TestMissingTransactionStatusRequiresGlobalCoreCoverage(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(t,
@@ -250,7 +246,6 @@ func TestBlockCountdownNeverSamplesAcrossCoverageIslands(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := testPostgresBackend(t, fakeDatabase(t, test.expectation), PostgresOptions{ChainID: 1})
