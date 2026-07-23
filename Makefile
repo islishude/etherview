@@ -27,9 +27,6 @@ GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v1.6.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
-EXPECTED_GO_VERSION ?= go1.26.5
-EXPECTED_NODE_VERSION ?= v24.18.0
-EXPECTED_NPM_VERSION ?= 11.16.0
 
 GENERATED_PATHS := \
 	internal/api/gen/models.gen.go \
@@ -53,12 +50,7 @@ plan-check:
 	$(GO) run ./cmd/plancheck -root .
 
 toolchain-check:
-	@test "$$($(GO) env GOVERSION)" = "$(EXPECTED_GO_VERSION)" || { \
-		echo "toolchain-check: expected Go $(EXPECTED_GO_VERSION), got $$($(GO) env GOVERSION)"; exit 1; }
-	@test "$$($(NODE) --version)" = "$(EXPECTED_NODE_VERSION)" || { \
-		echo "toolchain-check: expected Node $(EXPECTED_NODE_VERSION), got $$($(NODE) --version 2>/dev/null || echo missing)"; exit 1; }
-	@test "$$($(NPM) --version)" = "$(EXPECTED_NPM_VERSION)" || { \
-		echo "toolchain-check: expected npm $(EXPECTED_NPM_VERSION), got $$($(NPM) --version)"; exit 1; }
+	@.github/scripts/toolchain-check.sh
 
 generate-go:
 	$(GO) generate $(GO_PACKAGES)
@@ -81,8 +73,7 @@ generate-check:
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
 
-test-go:
-	web-build
+test-go: web-build
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test: test-go web-test

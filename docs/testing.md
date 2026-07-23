@@ -6,7 +6,7 @@ until the Makefile target exists.
 
 ## Common Gates
 
-- `make toolchain-check`: require the repository-pinned Go, Node, and npm
+- `make toolchain-check`: require at least the repository-minimum Go and Node
   versions before generating or validating artifacts.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.

@@ -26,13 +26,9 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
       - name: Run deterministic common gates
         run: make toolchain-check plan-check generate-check lint test test-race
       - name: Reject unexpected workspace changes
@@ -83,13 +79,10 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
+
       - name: Install frontend and browser
         run: |
           npm --prefix web ci --ignore-scripts
@@ -116,13 +109,9 @@ jobs:
             Makefile
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .node-version
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install exact npm and verify toolchain
-        run: |
-          npm install --global npm@11.16.0
-          make toolchain-check
       - name: Install pinned security and license tools
         run: make install-security-tools
       - name: Audit source and dependencies
