@@ -30,14 +30,56 @@ until the Makefile target exists.
 - `make license-check`: Go and production frontend dependency license policy.
 - `make deployment-check`: Docker build checks, Compose profile validation,
   and Helm lint/render checks.
+- `make docker-build docker-image-check`: build the production target, run it
+  with the numeric non-root identity and hardened runtime flags, and scan its
+  exported root filesystem for Node, package-manager, shell, Go, and
+  Solidity/Vyper compiler payloads.
 - `make compose-schema-smoke`: migrate a disposable PostgreSQL Compose volume
-  twice and verify schema compatibility.
+  and then verify exact schema compatibility through `migrate status`.
+- `make compose-runtime-smoke`: rebuild the current working tree's production
+  image, then use one deterministic execution-RPC fixture and two fresh
+  PostgreSQL volumes to run it first as a monolith and then as all seven split
+  roles. The distributed run uses two sync and two enrichment replicas. It
+  first starts the config-only verification role
+  against the fresh database, then starts the RPC-backed roles, stops one sync
+  and one enrichment replica, advances a new deterministic head, probes both
+  surviving role-local readiness endpoints, and requires the checkpoint, zero
+  lag, exact stage publications, and outbox delivery to catch up. A bounded
+  in-network public-API load phase must pass in both layouts. The target then
+  compares normalized PostgreSQL state, public API responses, and embedded-SPA
+  output. Verification, Sourcify, and pricing stay disabled because they
+  require separately approved compiler or external service boundaries.
+- `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
+  30-second smoke with p95, error-rate, throughput, and final core-lag
+  thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the
+  route mix as a JSON string array in `ETHERVIEW_LOAD_PATHS`, and describe the
+  revision, dataset, hardware, and RPC model.
+- `make test-soak`: run the same driver at the P70 reference defaults of
+  500 RPS for 30 minutes. It is an executable harness, not release evidence by
+  itself; P70-T04 still requires the named reference deployment, dataset,
+  hardware, RPC behavior, and independently captured resource peaks.
 - `make check`: source, unit/race, security, license, generation, and deployment
-  gates. Browser, integration, parity, load, and soak suites run as explicit CI
-  targets because they require dedicated services or runtimes.
+  gates. Browser, integration, parity, load, and soak suites are explicit
+  opt-in targets because they require dedicated services or runtimes; CI runs
+  the browser, integration, and short runtime-parity suites, not the external
+  30-minute soak.
 
-Runtime parity, load, and soak commands remain tracked by P60 and P70 and will
-be added here only with their executable targets.
+For example:
+
+```sh
+mkdir -p artifacts
+ETHERVIEW_LOAD_BASE_URL=https://explorer.example.invalid \
+ETHERVIEW_LOAD_REVISION=0123456789abcdef \
+ETHERVIEW_LOAD_DATASET=mainnet-snapshot-2026-07-23 \
+ETHERVIEW_LOAD_HARDWARE=kubernetes-reference-profile \
+ETHERVIEW_LOAD_RPC_BEHAVIOR=isolated-head-history-state \
+ETHERVIEW_LOAD_PATHS='["/api/v1/status","/api/v1/blocks?limit=20&sort=desc"]' \
+make test-load >artifacts/load.json
+```
+
+Use `ETHERVIEW_LOAD_API_KEY_FILE` or the process environment
+`ETHERVIEW_LOAD_API_KEY` for an authenticated profile. Never place a key in a
+URL, route argument, report metadata, or command-line value.
 
 ## Evidence Rules
 

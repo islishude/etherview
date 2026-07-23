@@ -7,19 +7,26 @@ import (
 	"github.com/islishude/etherview/internal/maintenance"
 )
 
-func registerMaintenanceWorker(
+func registerMaintenanceWorkers(
 	registry *components.Registry,
 	repository maintenance.Repository,
 	executor maintenance.RangeExecutor,
+	count int,
 	options maintenance.WorkerOptions,
 ) error {
-	worker, err := maintenance.NewWorker(repository, executor, options)
-	if err != nil {
-		return err
-	}
-	return registry.Register(components.RoleMaintenance, "45-maintenance", func() (components.Service, error) {
-		return worker, nil
-	})
+	return registerWorkerPool(
+		registry,
+		components.RoleMaintenance,
+		"45-maintenance",
+		"maintenance-worker",
+		count,
+		func(index int, serviceName string) (components.Service, error) {
+			workerOptions := options
+			workerOptions.ServiceName = serviceName
+			workerOptions.WorkerID = runtimeWorkerID(indexedWorkerName("maintenance", index))
+			return maintenance.NewWorker(repository, executor, workerOptions)
+		},
+	)
 }
 
 func registerCatalogHousekeeper(

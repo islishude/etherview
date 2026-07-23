@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -172,6 +173,138 @@ func TestBoundedRuntimeReplayAndIndependentAPIReplicaRelays(t *testing.T) {
 			t.Fatalf("%s relay did not stop", name)
 		}
 	}
+}
+
+func TestSyncStatusWriterLeaseRejectsLaggingAndFailingReplicas(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+		t.Fatalf("insert runtime status chain: %v", err)
+	}
+	eventStore, err := events.NewPostgresStore(db, "1", events.PostgresOptions{ReplayLimit: 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := func(reporter string, latest uint64, code string) events.SyncStatus {
+		return events.SyncStatus{
+			Latest: latest, Indexed: latest, HighestCovered: latest,
+			LatestKnown: true, IndexedKnown: true, HighestCoveredKnown: true,
+			BackfillComplete: true, Ready: code == "", ErrorCode: code,
+			PolledAt: time.Now().UTC(), ReporterID: reporter, ReporterLease: time.Minute,
+		}
+	}
+
+	first, err := eventStore.RecordStatus(ctx, status("sync-a", 10, ""))
+	if err != nil || first.ID == 0 {
+		t.Fatalf("record first writer status: event=%+v err=%v", first, err)
+	}
+	lagging, err := eventStore.RecordStatus(ctx, status("sync-b", 9, ""))
+	if err != nil || lagging.ID != 0 {
+		t.Fatalf("lagging writer result: event=%+v err=%v", lagging, err)
+	}
+	failing, err := eventStore.RecordStatus(ctx, status("sync-b", 0, "sync_cycle_failed"))
+	if err != nil || failing.ID != 0 {
+		t.Fatalf("failing non-writer result: event=%+v err=%v", failing, err)
+	}
+	stored, exists, err := eventStore.Status(ctx)
+	if err != nil || !exists || stored.Latest != 10 || stored.ErrorCode != "" || !stored.Ready {
+		t.Fatalf("status after rejected peers: status=%+v exists=%t err=%v", stored, exists, err)
+	}
+
+	var takeover sync.WaitGroup
+	takeover.Add(2)
+	higherResult := make(chan events.Event, 1)
+	laggingResult := make(chan events.Event, 1)
+	errs := make(chan error, 2)
+	go func() {
+		defer takeover.Done()
+		event, recordErr := eventStore.RecordStatus(ctx, status("sync-b", 11, ""))
+		higherResult <- event
+		errs <- recordErr
+	}()
+	go func() {
+		defer takeover.Done()
+		event, recordErr := eventStore.RecordStatus(ctx, status("sync-c", 9, ""))
+		laggingResult <- event
+		errs <- recordErr
+	}()
+	takeover.Wait()
+	close(errs)
+	for recordErr := range errs {
+		if recordErr != nil {
+			t.Fatalf("concurrent writer takeover: %v", recordErr)
+		}
+	}
+	if higher := <-higherResult; higher.ID == 0 {
+		t.Fatalf("higher writer takeover event = %+v", higher)
+	}
+	if lagging := <-laggingResult; lagging.ID != 0 {
+		t.Fatalf("concurrent lagging writer event = %+v", lagging)
+	}
+	oldWriterFailure, err := eventStore.RecordStatus(ctx, status("sync-a", 10, "sync_cycle_failed"))
+	if err != nil || oldWriterFailure.ID != 0 {
+		t.Fatalf("old writer failure result: event=%+v err=%v", oldWriterFailure, err)
+	}
+	currentFailure, err := eventStore.RecordStatus(ctx, status("sync-b", 11, "sync_cycle_failed"))
+	if err != nil || currentFailure.ID == 0 {
+		t.Fatalf("current writer failure: event=%+v err=%v", currentFailure, err)
+	}
+	recovered, err := eventStore.RecordStatus(ctx, status("sync-a", 10, ""))
+	if err != nil || recovered.ID == 0 {
+		t.Fatalf("healthy writer recovery: event=%+v err=%v", recovered, err)
+	}
+	stored, exists, err = eventStore.Status(ctx)
+	if err != nil || !exists || stored.Latest != 10 || stored.ErrorCode != "" || !stored.Ready {
+		t.Fatalf("recovered status: status=%+v exists=%t err=%v", stored, exists, err)
+	}
+
+	// A lower contender that started from the same observed status must not
+	// overwrite the higher contender even when its write completes afterward.
+	twelve, err := eventStore.RecordStatus(ctx, status("sync-d", 12, ""))
+	if err != nil || twelve.ID == 0 {
+		t.Fatalf("record higher reversed-order writer: event=%+v err=%v", twelve, err)
+	}
+	eleven, err := eventStore.RecordStatus(ctx, status("sync-e", 11, ""))
+	if err != nil || eleven.ID != 0 {
+		t.Fatalf("lower reversed-order writer: event=%+v err=%v", eleven, err)
+	}
+	stored, exists, err = eventStore.Status(ctx)
+	if err != nil || !exists || stored.Latest != 12 || stored.ErrorCode != "" || !stored.Ready {
+		t.Fatalf("status after reversed writer completion: status=%+v exists=%t err=%v", stored, exists, err)
+	}
+
+	halted := status("sync-f", 12, "finalized_reorg")
+	halted.SafetyHalt = true
+	haltEvent, err := eventStore.RecordStatus(ctx, halted)
+	if err != nil || haltEvent.ID == 0 {
+		t.Fatalf("record safety halt: event=%+v err=%v", haltEvent, err)
+	}
+	activeLeaseTakeover, err := eventStore.RecordStatus(ctx, status("sync-e", 13, ""))
+	if err != nil || activeLeaseTakeover.ID != 0 {
+		t.Fatalf("active safety lease takeover result: event=%+v err=%v", activeLeaseTakeover, err)
+	}
+	stored, exists, err = eventStore.Status(ctx)
+	if err != nil || !exists || stored.Latest != 12 ||
+		stored.ErrorCode != "finalized_reorg" || !stored.SafetyHalt || stored.Ready {
+		t.Fatalf("active safety lease status: status=%+v exists=%t err=%v", stored, exists, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE sync_runtime_status_writer_leases
+		SET expires_at = clock_timestamp() - interval '1 second'
+		WHERE chain_id = 1`); err != nil {
+		t.Fatalf("force safety reporter lease expiry: %v", err)
+	}
+	afterExpiry, err := eventStore.RecordStatus(ctx, status("sync-e", 13, ""))
+	if err != nil || afterExpiry.ID == 0 {
+		t.Fatalf("healthy takeover after safety lease expiry: event=%+v err=%v", afterExpiry, err)
+	}
+	stored, exists, err = eventStore.Status(ctx)
+	if err != nil || !exists || stored.Latest != 13 || stored.ErrorCode != "" ||
+		stored.SafetyHalt || !stored.Ready {
+		t.Fatalf("status after safety lease expiry: status=%+v exists=%t err=%v", stored, exists, err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM runtime_events WHERE chain_id = 1`, 7)
 }
 
 func assertRuntimeEvent(t *testing.T, stream <-chan events.Event, wantID uint64) {

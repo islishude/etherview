@@ -35,9 +35,10 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P30, P50, and P60 are not complete. Release work may collect incremental
-evidence, but v1 cannot complete until every dependency plan and global gate is
-done.
+No dependency-plan blocker remains: P00 through P60 are complete. P70-T01
+through P70-T05 are still `todo`, so P70-T06 and the v1 release remain blocked
+on their conformance, security, release-CI, long-capacity, and documentation
+evidence.
 
 ## Evidence
 

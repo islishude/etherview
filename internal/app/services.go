@@ -133,3 +133,67 @@ func (s *databaseRoleService) Run(ctx context.Context) error {
 		}
 	}
 }
+
+// namedWorkerService gives worker implementations with a fixed Name method a
+// unique supervisor identity without changing their durable lease behavior.
+type namedWorkerService struct {
+	name   string
+	worker components.Service
+}
+
+func (s *namedWorkerService) Name() string { return s.name }
+
+func (s *namedWorkerService) Run(ctx context.Context) error {
+	return s.worker.Run(ctx)
+}
+
+func indexedWorkerName(base string, index int) string {
+	return fmt.Sprintf("%s-%02d", base, index+1)
+}
+
+func workerComponentKey(base string, index int) string {
+	return indexedWorkerName(base, index)
+}
+
+func registerWorkerPool(
+	registry *components.Registry,
+	role components.Role,
+	componentBase string,
+	serviceBase string,
+	count int,
+	build func(index int, serviceName string) (components.Service, error),
+) error {
+	if registry == nil || role == "" || componentBase == "" || serviceBase == "" || build == nil {
+		return errors.New("worker pool registration is incomplete")
+	}
+	if count <= 0 {
+		return errors.New("worker pool count must be positive")
+	}
+	for index := 0; index < count; index++ {
+		serviceName := indexedWorkerName(serviceBase, index)
+		worker, err := build(index, serviceName)
+		if err != nil {
+			return fmt.Errorf("build %s: %w", serviceName, err)
+		}
+		if worker == nil {
+			return fmt.Errorf("build %s: nil worker", serviceName)
+		}
+		service := worker
+		if worker.Name() != serviceName {
+			service = &namedWorkerService{name: serviceName, worker: worker}
+		}
+		componentKey := workerComponentKey(componentBase, index)
+		if err := registry.Register(role, componentKey, func() (components.Service, error) {
+			return service, nil
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addWorkerComponentKeys(add func(string), componentBase string, count int) {
+	for index := 0; index < count; index++ {
+		add(workerComponentKey(componentBase, index))
+	}
+}

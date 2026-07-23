@@ -18,7 +18,7 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 	if err != nil {
 		return err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin index configuration: %w", err)
 	}
@@ -111,7 +111,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: r.bundleWriteIsolation(references)})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin canonical segment commit: %w", err)
 	}
@@ -233,7 +233,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	// statement snapshots fresh so setDerivedCanonicalTx sees any derived fact
 	// that committed while the detach was waiting and marks it orphaned in this
 	// same transaction.
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return CoreCoverage{}, fmt.Errorf("begin sparse canonical replacement: %w", err)
 	}
@@ -408,7 +408,7 @@ func (r *PostgresRepository) ClaimBackfillRange(
 		return BackfillLease{}, false, err
 	}
 	now = now.UTC()
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return BackfillLease{}, false, fmt.Errorf("begin backfill range claim: %w", err)
 	}
@@ -529,7 +529,7 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 		return err
 	}
 	chainID, _ := normalizeChainID(lease.ChainID)
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin backfill range completion: %w", err)
 	}

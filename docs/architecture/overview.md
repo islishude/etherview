@@ -63,6 +63,10 @@ generated query boundary without maintaining a second connection pool.
 
 - Each deployment serves one configured chain and binds it with chain ID plus
   genesis hash. Every RPC endpoint is verified against both.
+- Multi-statement canonical and coverage writes use READ COMMITTED while
+  holding the chain-scoped transaction advisory lock. Fresh statement
+  snapshots after lock waits, targeted row locks, and one atomic transaction
+  form the cross-role serialization protocol.
 - Blocks are identified by hash. Canonical height is a mutable mapping and
   orphan facts remain queryable.
 - Core readiness means block, transaction, receipt, log, and withdrawal facts
@@ -70,8 +74,10 @@ generated query boundary without maintaining a second connection pool.
 - New-head subscriptions are hints. Polling, ancestry checks, and gap scans are
   authoritative.
 - The upstream head, indexed position, readiness, and bounded head/reorg/status
-  replay window are PostgreSQL facts. Each API replica tails that ledger
-  independently; see
+  replay window are PostgreSQL facts. Sync replicas elect one short-lived
+  reporter for aggregate status events, so lagging replicas cannot move the
+  snapshot backward and backfill-worker count cannot consume the replay
+  window. Each API replica tails that ledger independently; see
   [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md).
 - If an API query cache is configured, its idempotent invalidator runs before a
   tailed event advances the replica cursor or reaches SSE subscribers. A failed
@@ -205,12 +211,17 @@ generated query boundary without maintaining a second connection pool.
   claim selection and the production processor both require the exact
   `proxy@1` result first. Complete proxy facts permit decoding; unavailable
   proxy state makes ABI unavailable instead of terminal `unbound`, while a
-  failed or absent proxy result remains dependency-blocked. ABI does not wait
-  for Trace. Any normalized traces already present are decoded in the same
-  atomic stage transaction. If Trace arrives later, it requests one
-  source-deduplicated generation for proxy and ABI and removes stale ABI output
-  at the safe generation transition. The absent proxy result blocks ABI until
-  one proxy replay consumes the new creation targets. Queued work is refreshed,
+  failed or absent proxy result remains dependency-blocked. The initial proxy
+  publication unlocks ABI's already queued first generation; only later proxy
+  generations request ABI replay, so concurrency cannot manufacture a
+  topology-specific generation. ABI does not wait for Trace. Any normalized
+  traces already present are decoded in the same atomic stage transaction. A
+  non-empty Trace result that arrives later requests one source-deduplicated
+  ABI generation so its call data is decoded. It requests proxy replay only
+  for a successful, non-reverted normalized CREATE/CREATE2 target, and that
+  proxy request removes stale ABI output at the safe generation transition.
+  The absent proxy result blocks ABI until one proxy replay consumes the new
+  creation targets. Queued work is refreshed,
   leased work keeps its token until completion or expiry, and repeating the
   same source generation then quiesces.
 

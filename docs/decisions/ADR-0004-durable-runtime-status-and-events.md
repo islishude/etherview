@@ -22,9 +22,24 @@ public view.
 - A canonical block commit appends its `head` event in the same transaction.
   A reorganization appends one compact `reorg` event in the transaction that
   changes canonical mappings and journals.
-- Each polling cycle atomically replaces the sync status snapshot and appends a
-  `status` event. Only stable, bounded error codes are persisted; RPC and
-  database error details are not event payloads.
+- Sync replicas elect one short-lived PostgreSQL status reporter per chain.
+  Only the elected process's live polling lane atomically replaces the
+  aggregate sync status snapshot and appends a `status` event; its backfill
+  workers update process-local lane state but do not multiply durable events.
+  A healthy reporter with a strictly newer observed head may take over an
+  active non-halted lease, while a lagging replica cannot move the public
+  snapshot backward.
+- The current reporter persists an ordinary polling failure conservatively and
+  immediately releases its lease, allowing a healthy replica to take over.
+  Canonical-safety failures are sticky for the reporting process and may
+  preempt an ordinary writer. They protect the durable snapshot for that
+  active lease, after which a healthy peer may assume authority. This election
+  is an HA mechanism, not a permanent cluster safety latch: the halted process
+  remains scrapeable with its stable Prometheus reason until an operator
+  repairs and restarts it, while a chain-wide fault causes other replicas to
+  hit the same safety boundary independently.
+- Only stable, bounded error codes are persisted; RPC and database error
+  details are not event payloads.
 - Every API replica independently tails the ledger into an in-process fanout.
   The fanout is a latency mechanism only: it does not claim or delete rows and
   is not a correctness source.
@@ -53,6 +68,10 @@ public view.
   state and reconnect semantics after process restart.
 - Event delivery remains at-least-observable under duplicate wakes and relay
   polling; subscriber cursors suppress duplicate delivery.
+- Increasing sync or backfill-worker replicas does not consume the replay
+  window faster. Status history follows the elected live reporter, and an
+  expired or failed reporter can be replaced without a process-local tracker
+  becoming the public source of truth.
 - A client that was disconnected beyond retention must refresh REST state and
   reconnect without its expired cursor.
 - PostgreSQL load includes a small status/event write per sync cycle. Optional

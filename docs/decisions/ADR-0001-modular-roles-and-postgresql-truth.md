@@ -36,6 +36,13 @@ NATS wake workers, Redis accelerates cache/rate limiting, and S3 offloads large
 objects, but consumers always confirm durable PostgreSQL state and operations
 remain idempotent.
 
+Multi-statement canonical and coverage writes take the chain-scoped
+transaction advisory lock and use READ COMMITTED. A process that waited for
+another role therefore receives a fresh statement snapshot after the preceding
+commit; the advisory lock, targeted row locks, and atomic transaction are the
+serialization protocol. Snapshot-wide isolation must not turn expected
+multi-role contention into serialization failures.
+
 ## Consequences
 
 - Monolith and split-role behavior can share the same test fixtures.

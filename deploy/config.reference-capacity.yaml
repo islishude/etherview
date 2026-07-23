@@ -1,0 +1,59 @@
+# P60 reproducible starting profile for the core explorer read mix. Supply the
+# database URL, chain identity, and structured RPC endpoint Secret through
+# ETHERVIEW_* environment inputs. This file is not a P70 release benchmark
+# result and deliberately contains no credentials.
+server:
+  address: 0.0.0.0:8080
+  metrics_address: 0.0.0.0:9090
+  shutdown_timeout: 30s
+  read_timeout: 10s
+  write_timeout: 30s
+
+database:
+  url: ""
+  max_connections: 12
+  min_connections: 2
+  connect_timeout: 5s
+  statement_timeout: 15s
+
+rpc:
+  request_timeout: 10s
+  batch_size: 100
+  endpoints: []
+
+runtime:
+  roles: [all]
+  poll_interval: 500ms
+  worker_count: 4
+  backfill_workers: 8
+  backfill_batch_blocks: 64
+  lease_duration: 30s
+
+observability:
+  environment: capacity
+  trace_sample_ratio: 0.01
+  metrics_refresh_interval: 5s
+
+features:
+  trace: false
+  mempool: false
+  historical_state: false
+  verification: false
+  sourcify: false
+  nft_metadata: false
+  pricing: false
+
+security:
+  public_verification: false
+  compiler_sandbox: disabled
+  # High anonymous limits are appropriate only on an isolated benchmark
+  # ingress. A production-like test should use an API key with a named quota.
+  anonymous_rate: 1000
+  anonymous_burst: 2000
+  trusted_proxies: []
+
+adapters:
+  namespace: etherview
+  connect_timeout: 500ms
+  operation_timeout: 100ms
+  redis_cache_ttl: 15s

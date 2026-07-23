@@ -1,6 +1,6 @@
 # P60 — Runtime & Operations
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -13,6 +13,8 @@ deployments, observable health, safe migrations, and operator repair tooling.
 - [Architecture](../architecture/overview.md)
 - [ADR-0001](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md)
+- [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md)
+- [ADR-0010](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md)
 - [ADR-0015](../decisions/ADR-0015-disposable-runtime-accelerators.md)
 - [Testing](../testing.md)
 
@@ -22,10 +24,10 @@ deployments, observable health, safe migrations, and operator repair tooling.
 |---|---|---|---|---|
 | P60-T01 | done | P00 | Shared component lifecycle, role graph, readiness, graceful shutdown | lifecycle/parity tests |
 | P60-T02 | done | P20 | PostgreSQL job/outbox plus optional NATS, Redis, and S3 adapters | outage/fallback tests |
-| P60-T03 | todo | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | Compose smoke tests |
+| P60-T03 | done | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | Compose smoke tests |
 | P60-T04 | done | P60-T01, P60-T02 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
 | P60-T05 | done | P10, P20, P30-T01, P30-T02, P30-T05, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
-| P60-T06 | todo | P10–P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
+| P60-T06 | done | P10–P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
 
 ## Acceptance
 
@@ -37,8 +39,16 @@ deployments, observable health, safe migrations, and operator repair tooling.
       and is withdrawn before shutdown cancellation.
 - [x] P60-T01: component failure or an unexpected clean exit cancels peers;
       graceful draining has a shared timeout and reports stuck component names.
-- [ ] PostgreSQL-only monolith provides full enabled feature semantics.
-- [ ] Split roles and monolith produce identical persisted state and API output.
+- [x] P60-T03: the PostgreSQL-only monolith exercises the deterministic
+      fixture's enabled trace, mempool, historical-state, and NFT-metadata
+      semantics through the production binary. Public verification, Sourcify,
+      pricing, and optional accelerators are explicitly disabled in this
+      profile and are not claimed by its evidence.
+- [x] P60-T03: monolith and seven-role deployments produce the same normalized
+      correctness-bearing PostgreSQL projection, seven selected public API
+      responses, and embedded SPA shell on the deterministic fixture. The
+      split deployment remains ready and advances after one of two sync and
+      one of two enrichment replicas are stopped.
 - [x] NATS, Redis, or S3 loss degrades acceleration but cannot lose correctness.
 - [x] Schema compatibility is checked before serving and migrations are locked.
 - [x] P60-T05: OTLP/HTTP tracing is disabled without an explicit server-only
@@ -60,13 +70,31 @@ deployments, observable health, safe migrations, and operator repair tooling.
       HTTP panic recovery preserves native, compatibility, and operational
       envelopes; committed streams abort without a second body while retaining
       wire-status metrics plus a dedicated bounded panic counter.
-- [ ] Production images run non-root and contain no Node/package manager/compiler
-      payload unless that role explicitly mounts an approved compiler cache.
+- [x] P60-T03: the production image runs as numeric user `65532:65532` with a
+      read-only-compatible, capability-free deployment contract and contains
+      no Node, package manager, shell, Go toolchain, or compiler payload.
+- [x] P60-T06: worker concurrency, historical-backfill concurrency and batch
+      size, and per-endpoint RPC throughput are explicitly bounded and reject
+      invalid configuration before runtime.
+- [x] P60-T06: a chain-scoped writer lease makes sync status monotonic across
+      replicas, supports healthy expiry takeover, and keeps an active safety
+      halt process-sticky instead of allowing a peer to clear it.
+- [x] P60-T06: trusted-proxy parsing, the bounded process-local rate limiter,
+      and the Redis fallback circuit preserve client identity and bounded
+      memory/work during proxy input, high-cardinality traffic, and backend
+      loss.
+- [x] P60-T06: the Helm reference profile has per-role disruption budgets,
+      hard topology spread, explicit rollout strategy, and documented
+      steady-state and fully overlapping rollout Pod/connection bounds.
+- [x] P60-T06: the bounded open-loop load driver enforces readiness, lag,
+      throughput, latency, error, response-size, origin, and wall-clock
+      boundaries. The short 40 RPS Compose profiles pass; the 500 RPS,
+      30-minute release report remains P70-T04 work.
 
 ## Current Blockers
 
-P60-T05 is complete after independent review and the shared repository gates.
-P60-T03 and P60-T06 retain their P50 dependency.
+None. The longer capacity, security, conformance, and release evidence remains
+owned by P70 and is not implied by P60 completion.
 
 ## Evidence
 
@@ -185,3 +213,52 @@ P60-T03 and P60-T06 retain their P50 dependency.
   On the reviewed tree, `make toolchain-check`, `make generate-check`,
   `make lint`, `make test`, `make test-race`, `make security-check`,
   `make plan-check`, and `git diff --check` pass.
+- P60-T03: the production Dockerfile builds the SPA and Go binary in separate
+  stages, then copies only the runtime binary, embedded migrations, CA
+  certificates, and timezone data into a distroless final image. The image
+  contract is enforced by `deploy/runtime-smoke/check-image.sh`, and
+  `make docker-image-check` passes with user `65532:65532` and no forbidden
+  runtime, build, shell, package-manager, or compiler payload.
+- P60-T03: `make compose-runtime-smoke` rebuilds the current working tree and
+  passes against independently migrated fresh PostgreSQL 18 databases. The
+  monolith and seven-role runs each publish exact `proxy@1`, `abi@1`,
+  `token@1`, `stats@2`, and `trace@1` results for the final canonical block,
+  reach zero core lag with a drained outbox, and match the normalized
+  correctness projection, seven selected API responses, and embedded SPA
+  bytes. The distributed run first binds chain identity from a config-only
+  role, starts two sync and two enrichment replicas, stops one of each, and
+  proves the survivors process the next block.
+- P60-T03: both runtime shapes pass the in-network 40 RPS short profile with
+  120/120 successful requests, zero errors, zero core lag, ready core, and
+  complete backfill. The final distributed report records 40.31 successful
+  requests/second and p95 2.95 ms on the deterministic local fixture.
+- P60-T06: configuration and runtime tests cover explicit worker,
+  historical-backfill, batch, endpoint-name, and per-endpoint RPC-rate bounds.
+  Migration `0021_sync_status_writer_lease` plus PostgreSQL integration tests
+  cover one active writer, monotonic status, healthy lease-expiry takeover,
+  config-only genesis binding, and process-sticky safety-halt ownership.
+- P60-T06: API regressions cover canonical trusted-proxy chains and hostile
+  forwarding headers, bounded LRU eviction, and Redis failure/recovery with an
+  exponential circuit. Helm render tests cover disruption budgets, hard spread
+  constraints, strategy validation, and reject both an impossible all-zero
+  rollout and simultaneous legacy/new topology-spread inputs. The reference
+  profile documents 18 steady-state application Pods and 216 steady-state
+  PostgreSQL connections; a fully overlapping rollout is bounded at 36 Pods
+  and 432 connections.
+- P60-T06: the load driver uses bounded admission, concurrency, response size,
+  path/origin, deadline, and result accounting. Focused tests pass 100 repeated
+  no-drop runs and prove saturation or a hung server exits within the bounded
+  wall-clock budget. `make test-load` and `make test-soak` remain harness-only;
+  the long 500 RPS/30-minute execution is deliberately retained in P70-T04.
+- P60-T03/T06 final verification: a fresh PostgreSQL 18 database passes
+  `make test-integration`; focused Go unit, race, and vet suites pass for load,
+  config, RPC, sync status, rate limiting, Redis fallback, proxy/ABI replay,
+  and runtime assembly; `make generate-check`, `golangci-lint run ./...`,
+  `go vet ./...`, `make deployment-check`, `make license-check`, shell syntax
+  checks, and `git diff --check` pass. A repository-wide `make check` also passed
+  toolchain, plan, generation, lint, frontend, Go unit, race, vulnerability,
+  and secret-scan stages before both npm audit requests were interrupted by
+  the registry's repeatable `ECONNRESET`; that external audit interruption is
+  not counted as passing evidence. Final independent read-only review found no
+  remaining actionable P60 blocker, and the settled governance tree passes
+  `make plan-check` with 8 plans, 53 work items, and 53 local links.

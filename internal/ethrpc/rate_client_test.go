@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type rateTestCaller struct{ calls int }
@@ -40,5 +41,15 @@ func TestNewRateClientValidatesArguments(t *testing.T) {
 	}
 	if _, err := NewRateClient(&rateTestCaller{}, 0); err == nil {
 		t.Fatal("expected invalid-rate error")
+	}
+	if _, err := NewRateClient(&rateTestCaller{}, maximumRequestsPerSecond+1); err == nil {
+		t.Fatal("expected excessive-rate error")
+	}
+	client, err := NewRateClient(&rateTestCaller{}, maximumRequestsPerSecond)
+	if err != nil {
+		t.Fatalf("maximum rate rejected: %v", err)
+	}
+	if client.interval != time.Nanosecond {
+		t.Fatalf("maximum-rate interval = %s", client.interval)
 	}
 }

@@ -65,6 +65,7 @@ expect_render_failure() {
 
 monolith="$temporary_dir/monolith.yaml"
 distributed="$temporary_dir/distributed.yaml"
+reference_capacity="$temporary_dir/reference-capacity.yaml"
 monolith_service="$temporary_dir/monolith-service.yaml"
 distributed_service="$temporary_dir/distributed-service.yaml"
 distributed_hpa="$temporary_dir/distributed-hpa.yaml"
@@ -74,6 +75,8 @@ monitor_two="$temporary_dir/monitor-two.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer >"$monolith"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   -f "$chart_dir/values-distributed.yaml" >"$distributed"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-reference-capacity.yaml" >"$reference_capacity"
 "$helm_bin" template etherview "$chart_dir" --show-only templates/service.yaml >"$monolith_service"
 "$helm_bin" template etherview "$chart_dir" -f "$chart_dir/values-distributed.yaml" \
   --show-only templates/service.yaml >"$distributed_service"
@@ -86,6 +89,7 @@ monitor_two="$temporary_dir/monitor-two.yaml"
 
 assert_kind_count "$monolith" Deployment 1
 assert_kind_count "$monolith" HorizontalPodAutoscaler 0
+assert_kind_count "$monolith" PodDisruptionBudget 0
 assert_kind_count "$monolith" Job 1
 assert_kind_count "$monolith" NetworkPolicy 1
 assert_contains "$monolith" "name: etherview-all"
@@ -98,6 +102,7 @@ assert_contains "$monolith_service" "app.kubernetes.io/component: all"
 
 assert_kind_count "$distributed" Deployment 7
 assert_kind_count "$distributed" HorizontalPodAutoscaler 5
+assert_kind_count "$distributed" PodDisruptionBudget 0
 assert_kind_count "$distributed" Job 1
 assert_kind_count "$distributed" NetworkPolicy 1
 assert_contains "$distributed" "alert: EtherviewMetricsSnapshotStale"
@@ -131,6 +136,28 @@ for role in api enrich trace verify metadata; do
 done
 assert_not_contains "$distributed_hpa" "name: etherview-sync"
 assert_not_contains "$distributed_hpa" "name: etherview-maintenance"
+
+# The reference profile is an HA/capacity starting point, not a result claim.
+# It runs only core roles, retains one replica through voluntary disruption,
+# hard-spreads each role across hosts, disables rollout surge, and caps the
+# steady-state desired application DB pool at 216.
+assert_kind_count "$reference_capacity" Deployment 4
+assert_kind_count "$reference_capacity" HorizontalPodAutoscaler 2
+assert_kind_count "$reference_capacity" PodDisruptionBudget 4
+assert_occurrences "$reference_capacity" "minAvailable: 1" 4
+assert_occurrences "$reference_capacity" "minDomains: 2" 4
+assert_occurrences "$reference_capacity" 'topologyKey: "kubernetes.io/hostname"' 4
+assert_occurrences "$reference_capacity" "whenUnsatisfiable: DoNotSchedule" 4
+assert_occurrences "$reference_capacity" 'maxSurge: "0"' 4
+assert_occurrences "$reference_capacity" 'maxUnavailable: "1"' 4
+assert_contains "$reference_capacity" "max_connections: 12"
+assert_contains "$reference_capacity" "backfill_batch_blocks: 64"
+for role in api sync enrich maintenance; do
+  assert_contains "$reference_capacity" "name: etherview-$role"
+done
+for role in trace verify metadata; do
+  assert_not_contains "$reference_capacity" "name: etherview-$role"
+done
 
 # Sensitive runtime inputs are Secret references. The chart does not render a
 # Kubernetes Secret containing operator values.
@@ -191,6 +218,19 @@ expect_render_failure distributed-without-api -f "$chart_dir/values-distributed.
   --set roles.api.enabled=false
 expect_render_failure invalid-hpa --set roles.api.autoscaling.minReplicas=5 \
   --set roles.api.autoscaling.maxReplicas=2
+expect_render_failure invalid-pdb --set podDisruptionBudget.enabled=true \
+  --set podDisruptionBudget.minAvailable=0
+expect_render_failure invalid-role-topology-spread \
+  --set roleTopologySpread.enabled=true --set roleTopologySpread.minDomains=1
+expect_render_failure soft-role-topology-spread \
+  --set roleTopologySpread.enabled=true \
+  --set roleTopologySpread.whenUnsatisfiable=ScheduleAnyway
+expect_render_failure duplicate-topology-spread-inputs \
+  --set roleTopologySpread.enabled=true \
+  --set 'topologySpreadConstraints[0].maxSkew=1'
+expect_render_failure zero-capacity-deployment-strategy \
+  --set-string deploymentStrategy.maxSurge=0 \
+  --set-string deploymentStrategy.maxUnavailable=0
 expect_render_failure inline-database-secret \
   --set-string config.database.url=postgres://inline.invalid/etherview
 expect_render_failure inline-rpc-secret \

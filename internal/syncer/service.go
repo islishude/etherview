@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	defaultCycleBatch    = uint64(256)
-	maximumBackfillBatch = uint64(256)
+	defaultBackfillBatchBlocks = store.MaxBackfillRangeBlocks
+	maximumBackfillCandidates  = 256
 )
 
 // Source separates scheduling from JSON-RPC transport. PurposeHead calls are
@@ -106,29 +106,30 @@ func (t *Tracker) record(status events.SyncStatus) {
 }
 
 type Service struct {
-	ChainID       string
-	StartBlock    uint64
-	PollInterval  time.Duration
-	Workers       int
-	CycleBatch    uint64
-	WorkerID      string
-	LeaseDuration time.Duration
-	Source        Source
-	Repository    store.Repository
-	Canonicalizer *indexer.Canonicalizer
-	Status        StatusRecorder
-	EventWake     func()
-	Tracker       *Tracker
-	Observer      Observer
-	Logger        *slog.Logger
-	Wake          <-chan struct{}
-	Now           func() time.Time
+	ChainID             string
+	StartBlock          uint64
+	PollInterval        time.Duration
+	Workers             int
+	BackfillBatchBlocks uint64
+	WorkerID            string
+	LeaseDuration       time.Duration
+	Source              Source
+	Repository          store.Repository
+	Canonicalizer       *indexer.Canonicalizer
+	Status              StatusRecorder
+	EventWake           func()
+	Tracker             *Tracker
+	Observer            Observer
+	Logger              *slog.Logger
+	Wake                <-chan struct{}
+	Now                 func() time.Time
 
 	latest          atomic.Uint64
 	latestKnown     atomic.Bool
 	statusMu        sync.Mutex
 	liveErrorCode   string
 	backfillErrCode string
+	safetyHaltCode  string
 }
 
 func (s *Service) Name() string { return "core-sync" }
@@ -183,15 +184,17 @@ func (s *Service) Cycle(ctx context.Context) error {
 		return fmt.Errorf("configure core index coverage: %w", err)
 	}
 	liveErr := s.liveOnce(ctx)
-	statusErr := s.recordRuntimeStatus(ctx, "live", liveErr)
+	s.noteRuntimeLane("live", liveErr)
 	if liveErr != nil {
+		statusErr := s.recordRuntimeStatus(ctx)
 		if isFatal(liveErr) && s.Observer != nil {
 			s.Observer.RecordSyncHalt(cycleErrorCode(liveErr))
 		}
 		return errors.Join(liveErr, statusErr)
 	}
 	_, backfillErr := s.backfillOnce(ctx, s.backfillOwner(0))
-	statusErr = errors.Join(statusErr, s.recordRuntimeStatus(ctx, "backfill", backfillErr))
+	s.noteRuntimeLane("backfill", backfillErr)
+	statusErr := s.recordRuntimeStatus(ctx)
 	if isFatal(backfillErr) && s.Observer != nil {
 		s.Observer.RecordSyncHalt(cycleErrorCode(backfillErr))
 	}
@@ -202,7 +205,8 @@ func (s *Service) runLive(ctx context.Context, backfillWake chan<- struct{}) err
 	logger := s.logger()
 	for {
 		err := s.liveOnce(ctx)
-		if statusErr := s.recordRuntimeStatus(ctx, "live", err); statusErr != nil && ctx.Err() == nil {
+		s.noteRuntimeLane("live", err)
+		if statusErr := s.recordRuntimeStatus(ctx); statusErr != nil && ctx.Err() == nil {
 			logger.WarnContext(ctx, "core sync status persistence failed; polling will retry",
 				"error_code", "status_persistence_failed", "error_type", fmt.Sprintf("%T", statusErr))
 		}
@@ -224,12 +228,13 @@ func (s *Service) runBackfill(ctx context.Context, wake <-chan struct{}, owner s
 	logger := s.logger()
 	for {
 		didWork, err := s.backfillOnce(ctx, owner)
-		if statusErr := s.recordRuntimeStatus(ctx, "backfill", err); statusErr != nil && ctx.Err() == nil {
-			logger.WarnContext(ctx, "core backfill status persistence failed; retrying",
-				"error_code", "status_persistence_failed", "error_type", fmt.Sprintf("%T", statusErr))
-		}
+		s.noteRuntimeLane("backfill", err)
 		if err != nil && ctx.Err() == nil {
 			if isFatal(err) {
+				if statusErr := s.recordRuntimeStatus(ctx); statusErr != nil {
+					logger.WarnContext(ctx, "core backfill halt status persistence failed",
+						"error_code", "status_persistence_failed", "error_type", fmt.Sprintf("%T", statusErr))
+				}
 				return err
 			}
 			logger.WarnContext(ctx, "core backfill range failed; retrying from durable coverage",
@@ -328,7 +333,12 @@ func (s *Service) backfillOnce(ctx context.Context, owner string) (bool, error) 
 	if !exists {
 		return false, errors.New("core index coverage is not configured")
 	}
-	for _, target := range missingBackfillRanges(coverage, latest, s.batch()) {
+	for _, target := range missingBackfillRanges(
+		coverage,
+		latest,
+		s.backfillBatchBlocks(),
+		maximumBackfillCandidates,
+	) {
 		lease, claimed, err := s.Repository.ClaimBackfillRange(
 			ctx, s.ChainID, target, owner, s.now(), s.leaseDuration(),
 		)
@@ -492,18 +502,29 @@ func (s *Service) updateAvailableFinality(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) recordRuntimeStatus(ctx context.Context, lane string, laneErr error) error {
+func (s *Service) noteRuntimeLane(lane string, laneErr error) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 	code := cycleErrorCode(laneErr)
+	if isFatal(laneErr) && s.safetyHaltCode == "" {
+		s.safetyHaltCode = code
+	}
 	if lane == "live" {
 		s.liveErrorCode = code
 	} else {
-		if code != "" {
+		if code != "" && !isFatal(laneErr) {
 			code = "backfill_cycle_failed"
 		}
 		s.backfillErrCode = code
 	}
+}
+
+func (s *Service) recordRuntimeStatus(ctx context.Context) error {
+	s.statusMu.Lock()
+	liveErrorCode := s.liveErrorCode
+	backfillErrorCode := s.backfillErrCode
+	safetyHaltCode := s.safetyHaltCode
+	s.statusMu.Unlock()
 	coverage, exists, err := s.Repository.Coverage(ctx, s.ChainID)
 	if err != nil {
 		return fmt.Errorf("read coverage for runtime status: %w", err)
@@ -513,11 +534,18 @@ func (s *Service) recordRuntimeStatus(ctx context.Context, lane string, laneErr 
 	}
 	status := events.SyncStatus{
 		Latest: s.latest.Load(), LatestKnown: s.latestKnown.Load(),
-		PolledAt: s.now(), ErrorCode: s.liveErrorCode,
+		PolledAt:   s.now(),
+		ReporterID: s.statusReporterID(), ReporterLease: s.statusReporterLease(),
 	}
-	if status.ErrorCode == "" {
-		status.ErrorCode = s.backfillErrCode
+	switch {
+	case safetyHaltCode != "":
+		status.ErrorCode = safetyHaltCode
+	case liveErrorCode != "":
+		status.ErrorCode = liveErrorCode
+	default:
+		status.ErrorCode = backfillErrorCode
 	}
+	status.SafetyHalt = safetyErrorCode(status.ErrorCode)
 	if coverage.Contiguous != nil {
 		status.Indexed = coverage.Contiguous.Number
 		status.IndexedKnown = true
@@ -528,7 +556,7 @@ func (s *Service) recordRuntimeStatus(ctx context.Context, lane string, laneErr 
 	}
 	status.BackfillComplete = status.LatestKnown && status.Latest >= coverage.ConfiguredStart &&
 		status.IndexedKnown && status.Indexed >= status.Latest
-	status.Ready = status.BackfillComplete && s.liveErrorCode == ""
+	status.Ready = status.BackfillComplete && liveErrorCode == "" && !status.SafetyHalt
 	s.Tracker.record(status)
 	if s.Observer != nil {
 		lag := status.Latest
@@ -543,33 +571,40 @@ func (s *Service) recordRuntimeStatus(ctx context.Context, lane string, laneErr 
 	if s.Status == nil || ctx.Err() != nil {
 		return nil
 	}
-	if _, err := s.Status.RecordStatus(ctx, status); err != nil {
+	event, err := s.Status.RecordStatus(ctx, status)
+	if err != nil {
 		return fmt.Errorf("persist sync runtime status: %w", err)
 	}
-	s.signalEvents()
+	if event.ID != 0 {
+		s.signalEvents()
+	}
 	return nil
 }
 
-func missingBackfillRanges(coverage store.CoreCoverage, through, batch uint64) []store.BlockRange {
-	if through < coverage.ConfiguredStart {
+func missingBackfillRanges(coverage store.CoreCoverage, through, batch uint64, limit int) []store.BlockRange {
+	if through < coverage.ConfiguredStart || limit <= 0 {
 		return nil
 	}
-	if batch == 0 || batch > maximumBackfillBatch {
-		batch = maximumBackfillBatch
+	if limit > maximumBackfillCandidates {
+		limit = maximumBackfillCandidates
 	}
-	var result []store.BlockRange
-	appendGap := func(start, end uint64) {
+	if batch == 0 || batch > store.MaxBackfillRangeBlocks {
+		batch = store.MaxBackfillRangeBlocks
+	}
+	result := make([]store.BlockRange, 0, min(limit, maximumBackfillCandidates))
+	appendGap := func(start, end uint64) bool {
 		for start <= end {
 			chunkEnd := end
 			if end-start >= batch {
 				chunkEnd = start + batch - 1
 			}
 			result = append(result, store.BlockRange{Start: start, End: chunkEnd})
-			if chunkEnd == ^uint64(0) {
-				return
+			if len(result) == limit || chunkEnd == ^uint64(0) {
+				return true
 			}
 			start = chunkEnd + 1
 		}
+		return false
 	}
 	cursor := coverage.ConfiguredStart
 	for _, covered := range coverage.Ranges {
@@ -580,7 +615,9 @@ func missingBackfillRanges(coverage store.CoreCoverage, through, batch uint64) [
 			break
 		}
 		if covered.Start > cursor {
-			appendGap(cursor, minUint64(covered.Start-1, through))
+			if appendGap(cursor, minUint64(covered.Start-1, through)) {
+				return result
+			}
 		}
 		if covered.End >= through || covered.End == ^uint64(0) {
 			return result
@@ -590,7 +627,7 @@ func missingBackfillRanges(coverage store.CoreCoverage, through, batch uint64) [
 		}
 	}
 	if cursor <= through {
-		appendGap(cursor, through)
+		_ = appendGap(cursor, through)
 	}
 	return result
 }
@@ -684,11 +721,11 @@ func (s *Service) workerCount() int {
 	return s.Workers
 }
 
-func (s *Service) batch() uint64 {
-	if s.CycleBatch == 0 || s.CycleBatch > maximumBackfillBatch {
-		return defaultCycleBatch
+func (s *Service) backfillBatchBlocks() uint64 {
+	if s.BackfillBatchBlocks == 0 || s.BackfillBatchBlocks > store.MaxBackfillRangeBlocks {
+		return defaultBackfillBatchBlocks
 	}
-	return s.CycleBatch
+	return s.BackfillBatchBlocks
 }
 
 func (s *Service) leaseDuration() time.Duration {
@@ -708,6 +745,27 @@ func (s *Service) backfillOwner(index int) string {
 		base = base[:128-len(suffix)]
 	}
 	return base + suffix
+}
+
+func (s *Service) statusReporterID() string {
+	if s.WorkerID == "" {
+		return "core-sync"
+	}
+	if len(s.WorkerID) > 128 {
+		return s.WorkerID[:128]
+	}
+	return s.WorkerID
+}
+
+func (s *Service) statusReporterLease() time.Duration {
+	lease := 3 * s.pollInterval()
+	if lease < 5*time.Second {
+		return 5 * time.Second
+	}
+	if lease > time.Hour {
+		return time.Hour
+	}
+	return lease
 }
 
 func (s *Service) maxReorgDepth() uint64 {
@@ -752,6 +810,15 @@ func cycleErrorCode(err error) string {
 		return "source_inconsistent"
 	default:
 		return "sync_cycle_failed"
+	}
+}
+
+func safetyErrorCode(code string) bool {
+	switch code {
+	case "finalized_reorg", "reorg_too_deep", "no_common_ancestor", "source_inconsistent":
+		return true
+	default:
+		return false
 	}
 }
 

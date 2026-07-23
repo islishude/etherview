@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +58,7 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	t.Setenv("ETHERVIEW_RPC_URLS", "https://rpc.example, wss://ws.example")
 	t.Setenv("ETHERVIEW_API_KEY_PEPPER", strings.Repeat("p", 32))
 	t.Setenv("ETHERVIEW_BACKFILL_WORKERS", "8")
+	t.Setenv("ETHERVIEW_BACKFILL_BATCH_BLOCKS", "128")
 	t.Setenv("ETHERVIEW_MEMPOOL_POLL_INTERVAL", "1500ms")
 	t.Setenv("ETHERVIEW_MEMPOOL_RETENTION", "15m")
 	t.Setenv("ETHERVIEW_MEMPOOL_MAX_TRANSACTIONS", "1234")
@@ -74,7 +76,8 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if len(cfg.RPC.Endpoints) != 2 || cfg.RPC.Endpoints[1].URL != "wss://ws.example" {
 		t.Fatalf("unexpected endpoints: %#v", cfg.RPC.Endpoints)
 	}
-	if cfg.Runtime.BackfillWorkers != 8 || len(cfg.Security.APIKeyPepper) != 32 {
+	if cfg.Runtime.BackfillWorkers != 8 || cfg.Runtime.BackfillBatchBlocks != 128 ||
+		len(cfg.Security.APIKeyPepper) != 32 {
 		t.Fatalf("unexpected runtime/security override: %#v", cfg)
 	}
 	if cfg.Mempool.PollInterval.String() != "1.5s" || cfg.Mempool.Retention.String() != "15m0s" ||
@@ -84,6 +87,125 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if cfg.Maintenance.Interval != 5*time.Minute || cfg.Maintenance.SearchRetentionGenerations != 2500 ||
 		cfg.Maintenance.AdapterDeleteBatch != 55 {
 		t.Fatalf("unexpected maintenance override: %#v", cfg.Maintenance)
+	}
+}
+
+func TestRPCEnvironmentSupportsPurposeAndRateStructuredSecret(t *testing.T) {
+	t.Setenv("ETHERVIEW_RPC_URLS", `[
+		{"name":"live","url":"https://live.example","purposes":["head"],"max_requests_per_second":25},
+		{"name":"history","url":"https://history.example","purposes":["history","state"],"max_requests_per_second":100}
+	]`)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.RPC.Endpoints) != 2 ||
+		cfg.RPC.Endpoints[0].Name != "live" ||
+		cfg.RPC.Endpoints[0].MaxRequests != 25 ||
+		cfg.RPC.Endpoints[1].Name != "history" ||
+		!slices.Equal(cfg.RPC.Endpoints[1].Purposes, []string{"history", "state"}) {
+		t.Fatalf("structured RPC endpoints = %#v", cfg.RPC.Endpoints)
+	}
+}
+
+func TestRPCEnvironmentRejectsEndpointPersistenceAndRateBounds(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name: "endpoint name exceeds durable bound",
+			payload: `[{"name":"` + strings.Repeat("n", 129) +
+				`","url":"https://rpc.example","purposes":["mempool"]}]`,
+			want: "between 1 and 128 trimmed bytes",
+		},
+		{
+			name:    "endpoint name is not canonical",
+			payload: `[{"name":" live ","url":"https://rpc.example","purposes":["head"]}]`,
+			want:    "between 1 and 128 trimmed bytes",
+		},
+		{
+			name: "request rate exceeds nanosecond cadence",
+			payload: `[{"name":"live","url":"https://rpc.example","purposes":["head"],` +
+				`"max_requests_per_second":1000000001}]`,
+			want: "between 0 and 1000000000",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("ETHERVIEW_RPC_URLS", test.payload)
+			_, err := Load("")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error=%v, want %q", err, test.want)
+			}
+		})
+	}
+
+	t.Setenv("ETHERVIEW_RPC_URLS",
+		`[{"name":"live","url":"https://rpc.example","purposes":["head"],`+
+			`"max_requests_per_second":1000000000}]`)
+	if _, err := Load(""); err != nil {
+		t.Fatalf("maximum request rate rejected: %v", err)
+	}
+}
+
+func TestRPCEnvironmentRejectsMalformedStructuredSecretWithoutEchoingIt(t *testing.T) {
+	for _, value := range []string{
+		`[{"name":"rpc","url":"https://user:top-secret@example","purposes":["head"]}`,
+		`[{"name":"rpc","url":"https://user:top-secret@example","purposes":["head"],"unknown":"top-secret"}]`,
+		`[]`,
+	} {
+		t.Run("", func(t *testing.T) {
+			t.Setenv("ETHERVIEW_RPC_URLS", value)
+			_, err := Load("")
+			if err == nil || strings.Contains(err.Error(), "top-secret") {
+				t.Fatalf("malformed structured RPC error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRuntimeWorkerAndBackfillConfigurationIsStrictlyBounded(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Runtime.WorkerCount = maximumRuntimeWorkerCount
+	cfg.Runtime.BackfillWorkers = maximumRuntimeBackfillWorkers
+	cfg.Runtime.BackfillBatchBlocks = maximumRuntimeBackfillBatchBlocks
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("maximum runtime bounds rejected: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		field  string
+		mutate func(*Config)
+	}{
+		{name: "zero worker count", field: "runtime.worker_count", mutate: func(cfg *Config) {
+			cfg.Runtime.WorkerCount = 0
+		}},
+		{name: "excessive worker count", field: "runtime.worker_count", mutate: func(cfg *Config) {
+			cfg.Runtime.WorkerCount = maximumRuntimeWorkerCount + 1
+		}},
+		{name: "zero backfill workers", field: "runtime.backfill_workers", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillWorkers = 0
+		}},
+		{name: "excessive backfill workers", field: "runtime.backfill_workers", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillWorkers = maximumRuntimeBackfillWorkers + 1
+		}},
+		{name: "zero backfill batch", field: "runtime.backfill_batch_blocks", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchBlocks = 0
+		}},
+		{name: "excessive backfill batch", field: "runtime.backfill_batch_blocks", mutate: func(cfg *Config) {
+			cfg.Runtime.BackfillBatchBlocks = maximumRuntimeBackfillBatchBlocks + 1
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("invalid runtime config passed validation: %#v, error=%v", cfg.Runtime, err)
+			}
+		})
 	}
 }
 

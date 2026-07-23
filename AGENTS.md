@@ -96,15 +96,23 @@ in `PLAN.md` and `docs/plans/`, not here.
   failures retain their retry/unavailable/permanent stage semantics.
 - Production `abi@1` is claim- and processor-gated on the exact block's
   `proxy@1` result. Proxy unavailability makes ABI unavailable rather than
-  terminal `unbound`. Late proxy or normalized CREATE/CREATE2 facts request
-  source-deduplicated downstream generations. Queued work is refreshed,
-  active leases remain owned, and completion or expired-lease reclaim consumes
-  the pending generation while atomically removing stale ABI output. Repeating
-  the same source generation must quiesce.
+  terminal `unbound`. The initial proxy result unlocks ABI's already queued
+  initial generation; only a late proxy generation or a successful,
+  non-reverted normalized CREATE/CREATE2 target requests proxy replay. Any
+  non-empty late normalized trace requests ABI replay so its call data is
+  decoded. Downstream requests are source-deduplicated, queued work is
+  refreshed, active leases remain owned, and completion or expired-lease
+  reclaim consumes the pending generation while atomically removing stale ABI
+  output. Repeating the same source generation must quiesce.
 - Block-number fact partitions use fixed 1,000,000-block ranges. Core writes
   must provision and attach the target range inside the chain-locked write
   transaction; DEFAULT partitions are atomic recovery buffers and never
   steady-state storage.
+- Chain-advisory-locked production writes use READ COMMITTED so a process that
+  waited for the prior lock holder receives a fresh statement snapshot. The
+  advisory lock, row locks, and atomic transaction are the serialization
+  protocol; snapshot-wide isolation must not turn normal multi-role startup or
+  lease contention into SQLSTATE 40001 failures.
 - The core checkpoint is derived only from the durable coverage range beginning
   at the persisted configured start. A higher live island never implies
   readiness; authoritative head polling and historical leased backfill remain
@@ -152,6 +160,10 @@ in `PLAN.md` and `docs/plans/`, not here.
   `apikey` query parameter and bounded URL-encoded POST form field are confined
   to the exact Etherscan `/v2/api` compatibility boundary. Conflicting header,
   query, or form credentials are rejected before authentication.
+- Anonymous rate-limit identity trusts `X-Forwarded-For` only when the direct
+  peer matches an explicitly configured trusted-proxy IP or CIDR. Forwarded
+  chains stay bounded and are resolved from the trusted edge toward the first
+  untrusted hop; malformed chains fall back to the direct peer.
 - API key plaintext is revealed only by create/rotate CLI output. PostgreSQL
   stores keyed digests; rotation must atomically persist one replacement and
   revoke the old prefix while preserving its name and quota policy.
@@ -190,7 +202,14 @@ in `PLAN.md` and `docs/plans/`, not here.
   queued job or an active lease.
 - Split-role status and head/reorg replay are PostgreSQL facts. In-process
   trackers, fanout, WebSocket wakes, and future NATS notifications are latency
-  aids and may never become the API source of truth.
+  aids and may never become the API source of truth. One short-lived
+  PostgreSQL reporter lease per chain owns aggregate status/event writes;
+  backfill worker count must not multiply the replay stream, and a lagging
+  replica must not move status backward. A fatal safety report is
+  process-sticky and protected for its active reporter lease, but the lease is
+  an HA election rather than a permanent cluster safety latch: after expiry a
+  healthy peer may assume authority while the halted process remains
+  scrapeable until operator repair and restart.
 - A configured query cache is invalidated from the durable runtime-event relay
   before that event is published to SSE clients. Failed invalidation must not
   advance the relay cursor; invalidators are idempotent because retries are

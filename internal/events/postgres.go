@@ -14,6 +14,11 @@ import (
 
 const DefaultReplayLimit = 256
 
+const (
+	defaultStatusReporterLease = 10 * time.Second
+	maximumStatusReporterLease = time.Hour
+)
+
 var errorCodePattern = regexp.MustCompile(`^[a-z0-9_]*$`)
 
 type PostgresOptions struct {
@@ -37,6 +42,11 @@ type SyncStatus struct {
 	Ready               bool
 	PolledAt            time.Time
 	ErrorCode           string
+	ReporterID          string
+	ReporterLease       time.Duration
+	// SafetyHalt protects the observation for the active reporter lease. It is
+	// not a permanent cluster fence; an expired reporter can be replaced.
+	SafetyHalt bool
 }
 
 type statusEventPayload struct {
@@ -66,9 +76,17 @@ func NewPostgresStore(db *sql.DB, chainID string, options PostgresOptions) (*Pos
 	return &PostgresStore{db: db, chainID: chainID, replayLimit: limit}, nil
 }
 
-// RecordStatus atomically updates the split-role status snapshot and appends a
-// replayable status event. Only a bounded, non-sensitive error code is stored.
+// RecordStatus elects one reporter per chain, then atomically updates the
+// split-role status snapshot and appends a replayable status event. A lagging
+// non-writer returns a zero Event without changing either durable surface.
+// Only a bounded, non-sensitive error code is stored.
 func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Event, error) {
+	if status.ReporterID == "" {
+		status.ReporterID = "legacy"
+	}
+	if status.ReporterLease <= 0 {
+		status.ReporterLease = defaultStatusReporterLease
+	}
 	if err := validateSyncStatus(status); err != nil {
 		return Event{}, err
 	}
@@ -96,6 +114,66 @@ func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Ev
 		return Event{}, fmt.Errorf("begin sync status update: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext('etherview:sync-status:' || $1))`,
+		s.chainID,
+	); err != nil {
+		return Event{}, fmt.Errorf("lock sync status writer election: %w", err)
+	}
+	var reporter string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO sync_runtime_status_writer_leases (
+			chain_id, reporter_id,
+			observed_latest_number, observed_latest_known, safety_halt,
+			expires_at, updated_at
+		) VALUES (
+			$1::numeric, $2,
+			$6::numeric, $5, $7,
+			CASE
+				WHEN $4 <> '' AND NOT $7 THEN clock_timestamp()
+				ELSE clock_timestamp() + ($3 * interval '1 millisecond')
+			END,
+			clock_timestamp()
+		)
+		ON CONFLICT (chain_id) DO UPDATE SET
+			reporter_id = EXCLUDED.reporter_id,
+			observed_latest_number = EXCLUDED.observed_latest_number,
+			observed_latest_known = EXCLUDED.observed_latest_known,
+			safety_halt = EXCLUDED.safety_halt,
+			expires_at = EXCLUDED.expires_at,
+			updated_at = clock_timestamp()
+		WHERE (
+				sync_runtime_status_writer_leases.reporter_id = EXCLUDED.reporter_id
+				AND (
+					NOT sync_runtime_status_writer_leases.safety_halt
+					OR $7
+				)
+		   )
+		   OR sync_runtime_status_writer_leases.expires_at <= clock_timestamp()
+		   OR ($7 AND NOT sync_runtime_status_writer_leases.safety_halt)
+		   OR (
+				NOT sync_runtime_status_writer_leases.safety_halt
+				AND $4 = ''
+				AND $5
+				AND (
+					NOT sync_runtime_status_writer_leases.observed_latest_known
+					OR sync_runtime_status_writer_leases.observed_latest_number < $6::numeric
+				)
+		   )
+		RETURNING reporter_id`,
+		s.chainID, status.ReporterID, status.ReporterLease.Milliseconds(),
+		status.ErrorCode, status.LatestKnown,
+		nullableNumber(status.Latest, status.LatestKnown), status.SafetyHalt,
+	).Scan(&reporter)
+	if err == sql.ErrNoRows {
+		return Event{}, nil
+	}
+	if err != nil {
+		return Event{}, fmt.Errorf("acquire sync status writer lease: %w", err)
+	}
+	if reporter != status.ReporterID {
+		return Event{}, errors.New("sync status writer lease returned an unexpected reporter")
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO sync_runtime_status (
 			chain_id, latest_number, indexed_number, highest_covered_number,
@@ -188,6 +266,7 @@ func (s *PostgresStore) Status(ctx context.Context) (SyncStatus, bool, error) {
 		status.HighestCoveredKnown = true
 	}
 	status.PolledAt = status.PolledAt.UTC()
+	status.SafetyHalt = safetyHaltErrorCode(status.ErrorCode)
 	if err := validateSyncStatus(status); err != nil {
 		return SyncStatus{}, false, fmt.Errorf("stored sync runtime status is invalid: %w", err)
 	}
@@ -328,7 +407,28 @@ func validateSyncStatus(status SyncStatus) error {
 	if len(status.ErrorCode) > 64 || !errorCodePattern.MatchString(status.ErrorCode) {
 		return errors.New("sync error code must be a bounded lowercase identifier")
 	}
+	if len(status.ReporterID) > 128 {
+		return errors.New("sync status reporter ID exceeds 128 bytes")
+	}
+	if status.ReporterLease > maximumStatusReporterLease {
+		return errors.New("sync status reporter lease exceeds one hour")
+	}
+	if status.SafetyHalt != safetyHaltErrorCode(status.ErrorCode) {
+		return errors.New("sync safety halt must match a stable safety error code")
+	}
+	if status.SafetyHalt && status.Ready {
+		return errors.New("sync safety halt cannot be ready")
+	}
 	return nil
+}
+
+func safetyHaltErrorCode(code string) bool {
+	switch code {
+	case "finalized_reorg", "reorg_too_deep", "no_common_ancestor", "source_inconsistent":
+		return true
+	default:
+		return false
+	}
 }
 
 func validChainID(value string) bool {

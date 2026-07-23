@@ -30,18 +30,22 @@ GENERATED_PATHS := \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local
+RUNTIME_FIXTURE_IMAGE ?= etherview-runtime-fixture:local
+RUNTIME_LOADTEST_IMAGE ?= etherview-runtime-loadtest:local
 HELM_CHART ?= deploy/helm/etherview
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check
 
 .PHONY: \
-	check compose-check compose-schema-smoke deployment-check docker-build docker-check \
+	check compose-check compose-runtime-smoke compose-schema-smoke deployment-check \
+	docker-build docker-check docker-image-check \
 	go-build generate generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
-	test-e2e test-integration test-race web-build web-generate web-install web-lint web-test
+	test-e2e test-integration test-load test-race test-soak \
+	web-build web-generate web-install web-lint web-test
 
 go-build: web-build
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
@@ -101,6 +105,16 @@ test-integration:
 	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate status; \
 	ETHERVIEW_TEST_DATABASE_URL="$$INTEGRATION_DATABASE_URL" \
 		$(GO) test -count=1 -tags=integration $(GO_PACKAGES)
+
+test-load:
+	@$(GO) run ./cmd/loadtest
+
+test-soak:
+	@ETHERVIEW_LOAD_RATE=500 \
+		ETHERVIEW_LOAD_DURATION=30m \
+		ETHERVIEW_LOAD_CONCURRENCY=512 \
+		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
+		$(GO) run ./cmd/loadtest
 
 web-install:
 	$(NPM) --prefix web ci
@@ -182,15 +196,24 @@ docker-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
 	$(DOCKER) build --target production --tag "$(IMAGE)" .
 
+docker-image-check:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/runtime-smoke/check-image.sh
+
 compose-check:
 	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-check: Docker Compose v2 is required"; exit 1; }
 	$(DOCKER) compose --profile monolith config --quiet
 	$(DOCKER) compose --profile distributed config --quiet
 	$(DOCKER) compose --profile accelerators config --quiet
+	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
+		--profile monolith config --quiet
+	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
+		--profile distributed config --quiet
+	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
+		--profile distributed --profile runtime-tools config --quiet
 
-# This schema smoke uses a unique project and disposable volume. API and
-# monolith/split-role smoke tests require a deterministic mock RPC and belong
-# to the later runtime/release plans.
+# This focused schema smoke keeps fresh migration compatibility independently runnable;
+# compose-runtime-smoke covers the complete application deployment shapes.
 compose-schema-smoke:
 	@set -eu; \
 	project="etherview-smoke-$$$$"; \
@@ -202,12 +225,20 @@ compose-schema-smoke:
 	$(DOCKER) compose -p "$$project" --profile distributed run --rm --no-deps migration \
 		migrate status --config=/etc/etherview/config.yaml
 
+compose-runtime-smoke: docker-build
+	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-runtime-smoke: Docker Compose v2 is required"; exit 1; }
+	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" RUNTIME_FIXTURE_IMAGE="$(RUNTIME_FIXTURE_IMAGE)" \
+		RUNTIME_LOADTEST_IMAGE="$(RUNTIME_LOADTEST_IMAGE)" \
+		deploy/runtime-smoke/run.sh
+
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }
 	$(HELM) lint "$(HELM_CHART)"
 	$(HELM) lint "$(HELM_CHART)" -f "$(HELM_CHART)/values-distributed.yaml"
+	$(HELM) lint "$(HELM_CHART)" -f "$(HELM_CHART)/values-reference-capacity.yaml"
 	$(HELM) template etherview "$(HELM_CHART)" >/dev/null
 	$(HELM) template etherview "$(HELM_CHART)" -f "$(HELM_CHART)/values-distributed.yaml" >/dev/null
+	$(HELM) template etherview "$(HELM_CHART)" -f "$(HELM_CHART)/values-reference-capacity.yaml" >/dev/null
 	HELM="$(HELM)" "$(HELM_CHART)/tests/render.sh" "$(HELM_CHART)"
 
 deployment-check: docker-check compose-check helm-check

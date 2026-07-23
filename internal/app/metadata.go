@@ -11,9 +11,9 @@ import (
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-func registerMetadataWorker(registry *components.Registry, db *sql.DB, pool *ethrpc.Pool, cfg config.Config, observers ...metadata.FetchObserver) error {
+func registerMetadataWorkers(registry *components.Registry, db *sql.DB, pool *ethrpc.Pool, cfg config.Config, observers ...metadata.FetchObserver) error {
 	if registry == nil {
-		return fmt.Errorf("register metadata worker: nil component registry")
+		return fmt.Errorf("register metadata workers: nil component registry")
 	}
 	repository, err := metadata.NewPostgresRepository(db, strconv.FormatUint(cfg.Chain.ID, 10))
 	if err != nil {
@@ -29,25 +29,29 @@ func registerMetadataWorker(registry *components.Registry, db *sql.DB, pool *eth
 	if err != nil {
 		return fmt.Errorf("configure safe metadata client: %w", err)
 	}
-	workerOptions := metadata.WorkerOptions{
-		WorkerID: runtimeWorkerID("metadata"), LeaseDuration: cfg.Runtime.LeaseDuration,
-		PollInterval: cfg.Runtime.PollInterval,
-	}
-	if len(observers) > 0 {
-		workerOptions.Observer = observers[0]
-	}
-	worker, err := metadata.NewWorker(repository, client, workerOptions)
-	if err != nil {
-		return err
-	}
 	if err := registry.Register(components.RoleMetadata, "42-nft-metadata-discovery", func() (components.Service, error) {
 		return discoverer, nil
 	}); err != nil {
 		return err
 	}
-	return registry.Register(components.RoleMetadata, "45-nft-metadata", func() (components.Service, error) {
-		return worker, nil
-	})
+	return registerWorkerPool(
+		registry,
+		components.RoleMetadata,
+		"45-nft-metadata",
+		"metadata-worker",
+		cfg.Runtime.WorkerCount,
+		func(index int, _ string) (components.Service, error) {
+			workerOptions := metadata.WorkerOptions{
+				WorkerID:      runtimeWorkerID(indexedWorkerName("metadata", index)),
+				LeaseDuration: cfg.Runtime.LeaseDuration,
+				PollInterval:  cfg.Runtime.PollInterval,
+			}
+			if len(observers) > 0 {
+				workerOptions.Observer = observers[0]
+			}
+			return metadata.NewWorker(repository, client, workerOptions)
+		},
+	)
 }
 
 func newMetadataClient(cfg config.Config) (*metadata.Client, error) {

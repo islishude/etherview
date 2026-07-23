@@ -12,6 +12,14 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
+// Multi-statement canonical and coverage writes using this isolation level
+// first take lockChain. READ COMMITTED is part of that protocol: after a
+// process waits for the advisory lock, its next statement must observe the
+// preceding lock holder's commit. Snapshot-wide isolation would instead turn
+// expected multi-role contention into SQLSTATE 40001 or stale duplicate-insert
+// failures.
+const chainWriteIsolation sql.IsolationLevel = sql.LevelReadCommitted
+
 type PostgresRepository struct {
 	db         *sql.DB
 	partitions partitionRangeCache
@@ -106,7 +114,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 		return err
 	}
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
-		Isolation: r.bundleWriteIsolation([]BlockRef{reference}),
+		Isolation: chainWriteIsolation,
 	})
 	if err != nil {
 		return fmt.Errorf("begin canonical commit: %w", err)
@@ -193,7 +201,7 @@ func (r *PostgresRepository) RefreshCanonical(
 		return err
 	}
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
-		Isolation: r.bundleWriteIsolation([]BlockRef{reference}),
+		Isolation: chainWriteIsolation,
 	})
 	if err != nil {
 		return fmt.Errorf("begin canonical refresh: %w", err)
@@ -261,7 +269,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	// statement snapshots fresh so setDerivedCanonicalTx sees any derived fact
 	// that committed while the detach was waiting and marks it orphaned in this
 	// same transaction.
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin reorg: %w", err)
 	}
@@ -462,7 +470,7 @@ func (r *PostgresRepository) UpdateFinality(ctx context.Context, chainID string,
 	if err := ValidateFinality(finality); err != nil {
 		return err
 	}
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin finality update: %w", err)
 	}

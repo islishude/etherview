@@ -29,7 +29,7 @@ runtime keys are:
 | Value | Default Secret key | Use |
 |---|---|---|
 | `databaseURLKey` | `database-url` | PostgreSQL URL; required |
-| `rpcURLsKey` | `rpc-urls` | comma-separated RPC URLs |
+| `rpcURLsKey` | `rpc-urls` | comma-separated all-purpose URLs or a structured JSON endpoint array |
 | `apiKeyPepperKey` | `api-key-pepper` | API-key digest pepper |
 | `natsURLKey` | `nats-url` | optional NATS URL |
 | `redisURLKey` | `redis-url` | optional Redis URL |
@@ -51,6 +51,36 @@ Secret-backed environment variables. The OTLP endpoint is locked to empty for
 the same reason; trace headers are injected only from the optional Secret key
 and must never be written to chart values or logs.
 
+The structured `rpc-urls` JSON form retains each endpoint's `name`, `url`,
+`purposes`, and `max_requests_per_second` fields while keeping the complete
+document in the Secret. Use it when head, history, state, trace, or mempool
+traffic needs a distinct upstream or per-process rate policy.
+
+## Reference HA and capacity profile
+
+`values-reference-capacity.yaml` is a P60 starting profile for the core/API
+route mix. It enables redundant API, sync, enrichment, and maintenance roles,
+two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
+hard hostname-spread constraint with at least two eligible domains. Optional
+trace, verification, and metadata roles remain disabled so their external
+capability budgets can be measured separately. The profile's maximum 18 Pods
+and 12-connection pool cap require up to 216 application PostgreSQL
+connections at steady state. `maxSurge: 0` prevents a configured rollout
+surge, but terminating Pods can overlap replacements outside that count. A
+fully concurrent rollout can therefore require the old and new pools together,
+up to 36 Pods and 432 application connections; otherwise roll roles serially
+and measure the overlap. Reserve migration/operator capacity in addition.
+
+The default chart leaves disruption budgets disabled because blocking a
+single-replica development deployment would be surprising. Enable them only
+after every selected role has enough replicas for the chosen `minAvailable`.
+Role topology spread is also opt-in; the reference profile intentionally
+leaves excess replicas Pending instead of presenting a one-node placement as
+HA. The generated role constraint and the legacy free-form
+`topologySpreadConstraints` input are mutually exclusive.
+The reference profile is not the P70 500 RPS result; see the operations
+runbook for the evidence boundary and tuning formula.
+
 ## Network policy
 
 The default NetworkPolicy admits the HTTP and metrics ports and permits DNS,
@@ -71,6 +101,6 @@ See the [operations runbook](../../../docs/operations.md) for metric staleness,
 alert response, OTLP sampling/shutdown, and identity-bound repair/reindex
 procedures.
 
-`make helm-check` lints both layouts and runs the render regression suite. The
-suite checks role and HPA topology, migration/schema gates, Secret references,
-NetworkPolicy rendering, and invalid-value rejection.
+`make helm-check` lints the layouts and runs the render regression suite. The
+suite checks role, HPA, and disruption-budget topology, migration/schema gates,
+Secret references, NetworkPolicy rendering, and invalid-value rejection.

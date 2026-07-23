@@ -305,10 +305,13 @@ P40, P50, and P60 items may now consume the published enrichment contracts.
   respectively.
 - P20-T03: `abi@1` claim selection and its production processor both enforce
   the exact `proxy@1` dependency. Proxy unavailability propagates as ABI
-  unavailability instead of an `unbound` success. Proxy completion safely
-  removes and requeues an older terminal ABI result; late normalized
-  CREATE/CREATE2 output resets terminal proxy then ABI jobs atomically, never
-  steals active work, and quiesces after one downstream replay.
+  unavailability instead of an `unbound` success. Initial proxy publication
+  unlocks ABI's queued first generation; later proxy generations safely remove
+  and requeue older terminal ABI output. Any non-empty late normalized trace
+  requests ABI replay, while only a successful, non-reverted `CREATE` or
+  `CREATE2` target also requests proxy replay first. These source-deduplicated
+  transitions never steal active work and each source generation quiesces
+  after its bounded downstream requests are consumed.
 - P20-T03: `go test ./internal/enrich ./internal/app -count=1` passed. Targeted
   fixtures and fuzz seeds cover canonical and immutable-argument EIP-1167,
   EIP-1967/beacon resolution, malformed storage, strict EIP-1898 selectors,

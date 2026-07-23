@@ -154,7 +154,9 @@ jobs:
           tags: etherview:local
           cache-from: type=gha,scope=smock-check-${{ runner.os }}-${{ runner.arch }}
           cache-to: type=gha,mode=max,scope=smock-check-${{ runner.os }}-${{ runner.arch }},ignore-error=true
-      - name: Smoke test the production image
-        run: docker run --rm etherview:local version
+      - name: Verify the production image boundary
+        run: make docker-image-check
       - name: Smoke test the PostgreSQL schema lifecycle
         run: make compose-schema-smoke
+      - name: Smoke test monolith and distributed runtime parity
+        run: make compose-runtime-smoke

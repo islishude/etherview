@@ -25,23 +25,9 @@ func TestPartitionRangesAreFixedAlignedAndBounded(t *testing.T) {
 	}
 }
 
-func TestBundleWriteIsolationRefreshesCatalogOnlyForUncachedRanges(t *testing.T) {
-	repository := &PostgresRepository{partitions: newPartitionRangeCache()}
-	initial := BlockRef{Number: 999_999}
-	dynamic := BlockRef{Number: 1_000_000}
-	if got := repository.bundleWriteIsolation([]BlockRef{initial}); got != sql.LevelReadCommitted {
-		t.Fatalf("unchecked initial range isolation = %v, want read committed", got)
-	}
-	if got := repository.bundleWriteIsolation([]BlockRef{dynamic}); got != sql.LevelReadCommitted {
-		t.Fatalf("uncached range isolation = %v, want read committed", got)
-	}
-	repository.partitions.add(0)
-	if got := repository.bundleWriteIsolation([]BlockRef{initial}); got != sql.LevelSerializable {
-		t.Fatalf("committed initial range isolation = %v, want serializable", got)
-	}
-	repository.partitions.add(1_000_000)
-	if got := repository.bundleWriteIsolation([]BlockRef{dynamic}); got != sql.LevelSerializable {
-		t.Fatalf("committed range isolation = %v, want serializable", got)
+func TestChainWritesRefreshSnapshotsAfterAdvisoryLockWait(t *testing.T) {
+	if chainWriteIsolation != sql.LevelReadCommitted {
+		t.Fatalf("chain write isolation = %v, want read committed", chainWriteIsolation)
 	}
 }
 

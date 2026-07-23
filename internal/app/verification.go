@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/etherscan"
+	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -51,8 +53,8 @@ func verificationCompiler(cfg config.Config) (verify.Compiler, error) {
 	}
 }
 
-func verificationWorkerID() string {
-	return runtimeWorkerID("verify")
+func verificationWorkerID(index int) string {
+	return runtimeWorkerID(indexedWorkerName("verify", index))
 }
 
 func publicVerificationService(cfg config.Config, service *verify.Service) *verify.Service {
@@ -60,6 +62,27 @@ func publicVerificationService(cfg config.Config, service *verify.Service) *veri
 		return nil
 	}
 	return service
+}
+
+func verificationCapabilityInterfaces(
+	service *verify.Service,
+	publicService *verify.Service,
+) (
+	httpapi.VerificationReader,
+	httpapi.VerificationSubmitter,
+	etherscan.VerificationService,
+) {
+	var reader httpapi.VerificationReader
+	if service != nil {
+		reader = service
+	}
+	var submitter httpapi.VerificationSubmitter
+	var compatibility etherscan.VerificationService
+	if publicService != nil {
+		submitter = publicService
+		compatibility = publicService
+	}
+	return reader, submitter, compatibility
 }
 
 func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
@@ -78,14 +101,29 @@ func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
 	return client, nil
 }
 
+func sourcifyCapabilityInterface(client *verify.SourcifyClient) httpapi.SourcifyAdapter {
+	if client == nil {
+		return nil
+	}
+	return client
+}
+
 func runtimeWorkerID(kind string) string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
 		host = "unknown-host"
 	}
-	value := fmt.Sprintf("%s-%d-%s", host, os.Getpid(), kind)
-	if len(value) > 128 {
-		value = value[:128]
+	return runtimeWorkerIDForHost(host, os.Getpid(), kind)
+}
+
+func runtimeWorkerIDForHost(host string, pid int, kind string) string {
+	suffix := fmt.Sprintf("-%d-%s", pid, kind)
+	if len(suffix) >= 128 {
+		suffix = suffix[len(suffix)-127:]
 	}
-	return value
+	maximumHostBytes := 128 - len(suffix)
+	if len(host) > maximumHostBytes {
+		host = host[:maximumHostBytes]
+	}
+	return host + suffix
 }

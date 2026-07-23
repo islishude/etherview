@@ -17,12 +17,14 @@ type RateClient struct {
 	now      func() time.Time
 }
 
+const maximumRequestsPerSecond = 1_000_000_000
+
 func NewRateClient(base Caller, requestsPerSecond int) (*RateClient, error) {
 	if base == nil {
 		return nil, errors.New("rate-limited RPC client is nil")
 	}
-	if requestsPerSecond <= 0 {
-		return nil, errors.New("RPC request rate must be positive")
+	if requestsPerSecond <= 0 || requestsPerSecond > maximumRequestsPerSecond {
+		return nil, errors.New("RPC request rate must be between 1 and 1000000000")
 	}
 	return &RateClient{
 		base:     base,

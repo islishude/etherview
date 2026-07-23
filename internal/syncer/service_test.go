@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -82,13 +83,19 @@ func (r *statusRecorder) RecordStatus(_ context.Context, status events.SyncStatu
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.statuses = append(r.statuses, status)
-	return events.Event{}, r.err
+	return events.Event{ID: uint64(len(r.statuses))}, r.err
 }
 
 func (r *statusRecorder) last() events.SyncStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.statuses[len(r.statuses)-1]
+}
+
+func (r *statusRecorder) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.statuses)
 }
 
 func (s *notifyingSource) Head(ctx context.Context) (uint64, error) {
@@ -132,7 +139,7 @@ func TestCycleFillsBoundedGapAndPublishesReadiness(t *testing.T) {
 		Repository: repository,
 	}
 	service := &Service{
-		ChainID: "1", StartBlock: 0, Workers: 2, CycleBatch: 1,
+		ChainID: "1", StartBlock: 0, Workers: 2, BackfillBatchBlocks: 1,
 		Source: source, Repository: repository, Canonicalizer: canonicalizer, Tracker: tracker,
 	}
 	if err := service.Cycle(context.Background()); err != nil {
@@ -188,6 +195,59 @@ func TestCyclePersistsAuthoritativeStatusAndSignalsRelay(t *testing.T) {
 	}
 }
 
+func TestBackfillWorkersDoNotFloodRuntimeStatusLedger(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	repository := store.NewMemoryRepository()
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &statusRecorder{}
+	service := &Service{
+		ChainID: "1", PollInterval: time.Hour,
+		Source: &fakeSource{head: 0, bundles: testChain(1)}, Repository: repository,
+		Canonicalizer: &indexer.Canonicalizer{
+			ChainID: "1", Repository: repository,
+		},
+		Tracker: &Tracker{}, Status: recorder,
+	}
+	service.latest.Store(0)
+	service.latestKnown.Store(true)
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- service.runBackfill(runCtx, nil, "worker-0")
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		coverage, _, err := repository.Coverage(ctx, "1")
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		if coverage.Contiguous != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("backfill worker did not commit its bounded range")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("backfill shutdown error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("backfill worker did not stop")
+	}
+	if got := recorder.count(); got != 0 {
+		t.Fatalf("backfill worker persisted %d status events, want 0", got)
+	}
+}
+
 type failingHeadSource struct{ Source }
 
 func (failingHeadSource) Head(context.Context) (uint64, error) {
@@ -214,6 +274,29 @@ func TestCyclePersistsOnlySanitizedFailureCode(t *testing.T) {
 	}
 	if status.ErrorCode == err.Error() {
 		t.Fatal("raw upstream error was persisted")
+	}
+}
+
+func TestFatalBackfillStatusRetainsSafetyHaltIdentity(t *testing.T) {
+	t.Parallel()
+	repository := store.NewMemoryRepository()
+	if err := repository.ConfigureIndex(t.Context(), "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &statusRecorder{}
+	service := &Service{
+		ChainID: "1", WorkerID: "sync-a", Repository: repository,
+		Tracker: &Tracker{}, Status: recorder,
+	}
+	service.noteRuntimeLane("backfill", indexer.ErrFinalizedReorg)
+	service.noteRuntimeLane("backfill", nil)
+	service.noteRuntimeLane("live", nil)
+	if err := service.recordRuntimeStatus(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	status := recorder.last()
+	if status.ErrorCode != "finalized_reorg" || !status.SafetyHalt || status.Ready {
+		t.Fatalf("fatal backfill status = %+v", status)
 	}
 }
 
@@ -363,7 +446,7 @@ func TestBackfillBoundaryConflictRepairsExistingLiveIslandFromAuthoritativeAnces
 		HeadSource: newBundleHashSource(newNinetyNine, newHundred, newHundredOne),
 	}
 	service := &Service{
-		ChainID: "1", CycleBatch: 1, Source: source, Repository: repository,
+		ChainID: "1", BackfillBatchBlocks: 1, Source: source, Repository: repository,
 		Canonicalizer: canonicalizer, Tracker: &Tracker{},
 	}
 	service.latest.Store(102)
@@ -455,9 +538,60 @@ func TestBlockedHistoryWorkerDoesNotConsumeWakeOrDelayLiveHeadLane(t *testing.T)
 func TestMissingBackfillRangesHandlesUint64Boundary(t *testing.T) {
 	t.Parallel()
 	start := ^uint64(0) - 10
-	ranges := missingBackfillRanges(store.CoreCoverage{ConfiguredStart: start}, ^uint64(0), 256)
+	ranges := missingBackfillRanges(store.CoreCoverage{ConfiguredStart: start}, ^uint64(0), 256, 1)
 	if len(ranges) != 1 || ranges[0] != (store.BlockRange{Start: start, End: ^uint64(0)}) {
 		t.Fatalf("ranges=%+v", ranges)
+	}
+}
+
+func TestMissingBackfillRangesStopsAtCandidateWindow(t *testing.T) {
+	t.Parallel()
+	ranges := missingBackfillRanges(
+		store.CoreCoverage{ConfiguredStart: 0},
+		100_000_000,
+		1,
+		maximumBackfillCandidates+100,
+	)
+	if len(ranges) != maximumBackfillCandidates {
+		t.Fatalf("ranges=%d, want %d", len(ranges), maximumBackfillCandidates)
+	}
+	for index, blockRange := range ranges {
+		want := store.BlockRange{Start: uint64(index), End: uint64(index)}
+		if blockRange != want {
+			t.Fatalf("range[%d]=%+v, want %+v", index, blockRange, want)
+		}
+	}
+}
+
+func TestMissingBackfillRangesUsesConfiguredBatchBlocks(t *testing.T) {
+	t.Parallel()
+	ranges := missingBackfillRanges(store.CoreCoverage{ConfiguredStart: 5}, 100, 7, 2)
+	want := []store.BlockRange{
+		{Start: 5, End: 11},
+		{Start: 12, End: 18},
+	}
+	if !reflect.DeepEqual(ranges, want) {
+		t.Fatalf("ranges=%+v, want %+v", ranges, want)
+	}
+}
+
+func TestMissingBackfillRangesBoundsCandidatesAcrossGaps(t *testing.T) {
+	t.Parallel()
+	coverage := store.CoreCoverage{
+		ConfiguredStart: 10,
+		Ranges: []store.BlockRange{
+			{Start: 12, End: 13},
+			{Start: 16, End: 17},
+		},
+	}
+	ranges := missingBackfillRanges(coverage, 20, 1, 3)
+	want := []store.BlockRange{
+		{Start: 10, End: 10},
+		{Start: 11, End: 11},
+		{Start: 14, End: 14},
+	}
+	if !reflect.DeepEqual(ranges, want) {
+		t.Fatalf("ranges=%+v, want %+v", ranges, want)
 	}
 }
 

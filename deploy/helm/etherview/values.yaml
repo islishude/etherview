@@ -105,6 +105,28 @@ resources:
     cpu: "2"
     memory: 2Gi
 
+deploymentStrategy:
+  maxSurge: "25%"
+  maxUnavailable: "25%"
+
+# Disabled by default because a single-replica development release would make
+# voluntary disruption impossible. HA profiles enable this only after raising
+# every selected role to at least two replicas.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# When enabled, render one component-scoped constraint per selected role.
+# minDomains=2 plus DoNotSchedule prevents an HA replica set from silently
+# collapsing onto one eligible node. This generated constraint is mutually
+# exclusive with the legacy free-form topologySpreadConstraints list.
+roleTopologySpread:
+  enabled: false
+  maxSkew: 1
+  minDomains: 2
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: DoNotSchedule
+
 service:
   type: ClusterIP
   port: 80
@@ -198,6 +220,7 @@ config:
     poll_interval: 2s
     worker_count: 4
     backfill_workers: 4
+    backfill_batch_blocks: 256
     lease_duration: 30s
   mempool:
     poll_interval: 3s

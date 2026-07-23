@@ -14,6 +14,7 @@ import (
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -132,20 +133,41 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
 		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "10-core-sync", "15-pending-mempool"}},
-		{name: "enrich", role: components.RoleEnrich, want: []string{"00-operations-http", "02-durable-metrics", "30-enrichment-outbox", "35-core-enrichment"}},
+		{name: "enrich", role: components.RoleEnrich, want: []string{
+			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
+			"35-core-enrichment-01", "35-core-enrichment-02",
+			"35-core-enrichment-03", "35-core-enrichment-04",
+		}},
 		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "50-role-trace"}},
 		{name: "trace enabled", role: components.RoleTrace, setup: func(cfg *config.Config) {
 			cfg.Features.Trace = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "37-trace-enrichment"}},
+		}, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"37-trace-enrichment-01", "37-trace-enrichment-02",
+			"37-trace-enrichment-03", "37-trace-enrichment-04",
+		}},
 		{name: "verify disabled", role: components.RoleVerify, want: []string{"00-operations-http", "02-durable-metrics", "50-role-verify"}},
 		{name: "verify enabled", role: components.RoleVerify, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "40-contract-verification"}},
+		}, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"40-contract-verification-01", "40-contract-verification-02",
+			"40-contract-verification-03", "40-contract-verification-04",
+		}},
 		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "02-durable-metrics", "50-role-metadata"}},
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery", "45-nft-metadata"}},
-		{name: "maintenance", role: components.RoleMaintenance, want: []string{"00-operations-http", "02-durable-metrics", "45-maintenance", "46-search-catalog-maintenance"}},
+		}, want: []string{
+			"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery",
+			"45-nft-metadata-01", "45-nft-metadata-02",
+			"45-nft-metadata-03", "45-nft-metadata-04",
+		}},
+		{name: "maintenance", role: components.RoleMaintenance, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"45-maintenance-01", "45-maintenance-02",
+			"45-maintenance-03", "45-maintenance-04",
+			"46-search-catalog-maintenance",
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -158,6 +180,47 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				t.Fatalf("role=%s keys=%v want=%v", test.role, got, test.want)
 			}
 		})
+	}
+}
+
+func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Runtime.WorkerCount = 2
+	cfg.Features.Trace = true
+	cfg.Features.Verification = true
+	cfg.Features.NFTMetadata = true
+
+	tests := []struct {
+		role components.Role
+		want []string
+	}{
+		{role: components.RoleEnrich, want: []string{
+			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
+			"35-core-enrichment-01", "35-core-enrichment-02",
+		}},
+		{role: components.RoleTrace, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"37-trace-enrichment-01", "37-trace-enrichment-02",
+		}},
+		{role: components.RoleVerify, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"40-contract-verification-01", "40-contract-verification-02",
+		}},
+		{role: components.RoleMetadata, want: []string{
+			"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery",
+			"45-nft-metadata-01", "45-nft-metadata-02",
+		}},
+		{role: components.RoleMaintenance, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"45-maintenance-01", "45-maintenance-02",
+			"46-search-catalog-maintenance",
+		}},
+	}
+	for _, test := range tests {
+		if got := productionComponentKeys(cfg, []components.Role{test.role}, false); !slices.Equal(got, test.want) {
+			t.Errorf("role=%s keys=%v want=%v", test.role, got, test.want)
+		}
 	}
 }
 
@@ -258,6 +321,63 @@ func TestPublicVerificationServiceHonorsSecuritySwitch(t *testing.T) {
 	}
 }
 
+type appVerificationTargetResolver struct{}
+
+func (appVerificationTargetResolver) ResolveVerificationTarget(
+	context.Context,
+	string,
+) (verify.VerificationTarget, error) {
+	return verify.VerificationTarget{}, nil
+}
+
+func TestDisabledVerificationAndSourcifyRemainAbsentCapabilities(t *testing.T) {
+	t.Parallel()
+	var disabledVerification *verify.Service
+	reader, submitter, compatibility := verificationCapabilityInterfaces(
+		disabledVerification,
+		disabledVerification,
+	)
+	sourcify := sourcifyCapabilityInterface(nil)
+	if reader != nil || submitter != nil || compatibility != nil || sourcify != nil {
+		t.Fatalf(
+			"typed nil leaked across capability interfaces: reader=%T submitter=%T compatibility=%T sourcify=%T",
+			reader,
+			submitter,
+			compatibility,
+			sourcify,
+		)
+	}
+	readOnlyVerification := &verify.Service{}
+	reader, submitter, compatibility = verificationCapabilityInterfaces(readOnlyVerification, nil)
+	if reader == nil || submitter != nil || compatibility != nil {
+		t.Fatalf(
+			"read-only verification capability mismatch: reader=%T submitter=%T compatibility=%T",
+			reader,
+			submitter,
+			compatibility,
+		)
+	}
+
+	handler, err := httpapi.New(httpapi.Options{
+		Config:                config.Default(),
+		Reader:                &appStatusReader{},
+		VerificationReader:    reader,
+		VerificationSubmitter: submitter,
+		VerificationTargets:   appVerificationTargetResolver{},
+		Sourcify:              sourcify,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/config", nil))
+	if recorder.Code != http.StatusOK ||
+		!strings.Contains(recorder.Body.String(), `"verification":false`) ||
+		!strings.Contains(recorder.Body.String(), `"sourcify":false`) {
+		t.Fatalf("config status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestSourcifyClientHonorsFeatureSwitchAndBounds(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
@@ -308,14 +428,15 @@ type appRangeExecutor struct{}
 func (*appRangeExecutor) Repair(context.Context, maintenance.Request) error  { return nil }
 func (*appRangeExecutor) Reindex(context.Context, maintenance.Request) error { return nil }
 
-func TestRegisterMaintenanceWorkerUsesRealDurableWorker(t *testing.T) {
+func TestRegisterMaintenanceWorkersUsesUniqueRealDurableWorkers(t *testing.T) {
 	t.Parallel()
 	registry := components.NewRegistry()
-	if err := registerMaintenanceWorker(
+	if err := registerMaintenanceWorkers(
 		registry,
 		&appMaintenanceRepository{},
 		&appRangeExecutor{},
-		maintenance.WorkerOptions{WorkerID: "app-test"},
+		3,
+		maintenance.WorkerOptions{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -323,14 +444,31 @@ func TestRegisterMaintenanceWorkerUsesRealDurableWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 1 {
+	if len(services) != 3 {
 		t.Fatalf("services=%d", len(services))
 	}
-	if _, ok := services[0].(*maintenance.Worker); !ok {
-		t.Fatalf("maintenance service type=%T", services[0])
+	for index, service := range services {
+		if _, ok := service.(*maintenance.Worker); !ok {
+			t.Fatalf("maintenance service type=%T", service)
+		}
+		wantName := indexedWorkerName("maintenance-worker", index)
+		if service.Name() != wantName {
+			t.Fatalf("maintenance service name=%q, want %q", service.Name(), wantName)
+		}
 	}
-	if services[0].Name() != "maintenance-worker" {
-		t.Fatalf("maintenance service name=%q", services[0].Name())
+}
+
+func TestRuntimeWorkerIDPreservesUniqueIndexedSuffix(t *testing.T) {
+	t.Parallel()
+	host := strings.Repeat("h", 256)
+	first := runtimeWorkerIDForHost(host, 1234, indexedWorkerName("enrich", 0))
+	second := runtimeWorkerIDForHost(host, 1234, indexedWorkerName("enrich", 1))
+	if len(first) != 128 || len(second) != 128 {
+		t.Fatalf("worker ID lengths=%d,%d", len(first), len(second))
+	}
+	if first == second || !strings.HasSuffix(first, "-1234-enrich-01") ||
+		!strings.HasSuffix(second, "-1234-enrich-02") {
+		t.Fatalf("worker IDs lost unique suffix: %q %q", first, second)
 	}
 }
 

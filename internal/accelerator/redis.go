@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -67,12 +68,18 @@ const redisFenceScript = `
 return redis.call('INCR', KEYS[1])
 `
 
+const (
+	minimumRedisRateBackoff = 100 * time.Millisecond
+	maximumRedisRateBackoff = 5 * time.Second
+)
+
 type RedisOptions struct {
 	Namespace        string
 	ChainID          uint64
 	OperationTimeout time.Duration
 	CacheTTL         time.Duration
 	Logger           *slog.Logger
+	circuitNow       func() time.Time
 }
 
 type redisBackend interface {
@@ -109,6 +116,7 @@ type RedisAccelerator struct {
 	logger           *slog.Logger
 	cacheEnabled     atomic.Bool
 	cacheFenced      atomic.Bool
+	rateCircuit      *redisRateCircuit
 }
 
 func NewRedisAccelerator(rawURL string, options RedisOptions) (*RedisAccelerator, error) {
@@ -149,6 +157,7 @@ func newRedisAccelerator(backend redisBackend, options RedisOptions) *RedisAccel
 		operationTimeout: options.OperationTimeout,
 		cacheTTL:         options.CacheTTL,
 		logger:           options.Logger,
+		rateCircuit:      newRedisRateCircuit(options.OperationTimeout, options.circuitNow),
 	}
 	accelerator.cacheEnabled.Store(true)
 	accelerator.cacheFenced.Store(true)
@@ -200,6 +209,9 @@ func (limiter *redisLimiter) Allow(ctx context.Context, key string, limit auth.L
 		return limiter.fallback.Allow(ctx, key, limit)
 	}
 	accelerator := limiter.accelerator
+	if accelerator.rateCircuit != nil && !accelerator.rateCircuit.Allow() {
+		return limiter.fallback.Allow(ctx, key, limit)
+	}
 	digest := sha256.Sum256([]byte(key + "\x00" + strconv.Itoa(limit.Rate) + "\x00" + strconv.Itoa(limit.Burst)))
 	redisKey := accelerator.prefix + ":rate:" + hex.EncodeToString(digest[:])
 	// Retain idle buckets long enough to preserve a full refill without keeping
@@ -213,10 +225,95 @@ func (limiter *redisLimiter) Allow(ctx context.Context, key string, limit auth.L
 	)
 	allowed, retry, parseErr := parseRedisLimitResult(result)
 	if err != nil || parseErr != nil {
+		if accelerator.rateCircuit != nil {
+			if ctx != nil && ctx.Err() != nil {
+				accelerator.rateCircuit.CancelProbe()
+			} else {
+				accelerator.rateCircuit.Fail()
+			}
+		}
 		accelerator.logBypass(ctx, "optional Redis rate limiter unavailable; using process-local limiter", errors.Join(err, parseErr))
 		return limiter.fallback.Allow(ctx, key, limit)
 	}
+	if accelerator.rateCircuit != nil {
+		accelerator.rateCircuit.Succeed()
+	}
 	return allowed, retry
+}
+
+type redisRateCircuit struct {
+	mu        sync.Mutex
+	now       func() time.Time
+	base      time.Duration
+	failures  uint
+	openUntil time.Time
+	probing   bool
+}
+
+func newRedisRateCircuit(operationTimeout time.Duration, now func() time.Time) *redisRateCircuit {
+	if now == nil {
+		now = time.Now
+	}
+	base := max(operationTimeout, minimumRedisRateBackoff)
+	base = min(base, maximumRedisRateBackoff)
+	return &redisRateCircuit{now: now, base: base}
+}
+
+func (circuit *redisRateCircuit) Allow() bool {
+	if circuit == nil {
+		return true
+	}
+	circuit.mu.Lock()
+	defer circuit.mu.Unlock()
+	if circuit.failures == 0 {
+		return true
+	}
+	if circuit.probing || circuit.now().Before(circuit.openUntil) {
+		return false
+	}
+	circuit.probing = true
+	return true
+}
+
+func (circuit *redisRateCircuit) Fail() {
+	if circuit == nil {
+		return
+	}
+	circuit.mu.Lock()
+	defer circuit.mu.Unlock()
+	if circuit.failures < 63 {
+		circuit.failures++
+	}
+	delay := circuit.base
+	for remaining := circuit.failures; remaining > 1 && delay < maximumRedisRateBackoff; remaining-- {
+		if delay > maximumRedisRateBackoff/2 {
+			delay = maximumRedisRateBackoff
+			break
+		}
+		delay *= 2
+	}
+	circuit.openUntil = circuit.now().Add(min(delay, maximumRedisRateBackoff))
+	circuit.probing = false
+}
+
+func (circuit *redisRateCircuit) Succeed() {
+	if circuit == nil {
+		return
+	}
+	circuit.mu.Lock()
+	circuit.failures = 0
+	circuit.openUntil = time.Time{}
+	circuit.probing = false
+	circuit.mu.Unlock()
+}
+
+func (circuit *redisRateCircuit) CancelProbe() {
+	if circuit == nil {
+		return
+	}
+	circuit.mu.Lock()
+	circuit.probing = false
+	circuit.mu.Unlock()
 }
 
 func parseRedisLimitResult(result any) (bool, time.Duration, error) {
@@ -366,6 +463,9 @@ func (accelerator *RedisAccelerator) disableCache(ctx context.Context, err error
 
 func (accelerator *RedisAccelerator) logBypass(ctx context.Context, message string, err error) {
 	if accelerator.logger != nil && err != nil {
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		accelerator.logger.WarnContext(ctx, message, "error_type", fmt.Sprintf("%T", err))
 	}
 }

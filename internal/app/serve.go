@@ -95,6 +95,24 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 	} else {
+		if cfg.Chain.GenesisHash != "" {
+			configuredGenesis, parseErr := ethrpc.ParseHash(cfg.Chain.GenesisHash)
+			if parseErr != nil {
+				return fmt.Errorf("parse configured genesis hash: %w", parseErr)
+			}
+			// API/verify-only processes must be able to participate in a fresh
+			// split deployment without racing the first RPC-backed role. Every
+			// role receives the same server configuration; BindChainIdentity
+			// serializes the exact pair and rejects any discovered mismatch.
+			if err := store.BindChainIdentity(
+				ctx,
+				db,
+				strconv.FormatUint(cfg.Chain.ID, 10),
+				configuredGenesis,
+			); err != nil {
+				return err
+			}
+		}
 		identity, err := store.ReadChainIdentity(ctx, db, strconv.FormatUint(cfg.Chain.ID, 10))
 		if err != nil {
 			return err
@@ -221,6 +239,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 	}
 	publicVerification := publicVerificationService(cfg, verificationService)
+	verificationReader, verificationSubmitter, compatibilityVerification :=
+		verificationCapabilityInterfaces(verificationService, publicVerification)
 	lifecycle := components.NewLifecycle()
 	componentRegistry := components.NewRegistry()
 	for _, role := range roles {
@@ -291,8 +311,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		service := &syncer.Service{
 			ChainID: chainID, StartBlock: cfg.Chain.StartBlock,
 			PollInterval: cfg.Runtime.PollInterval, Workers: cfg.Runtime.BackfillWorkers,
-			WorkerID: runtimeWorkerID("core-backfill"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			Source: coreRPCSource, Repository: repository, Canonicalizer: coreCanonicalizer,
+			BackfillBatchBlocks: uint64(cfg.Runtime.BackfillBatchBlocks),
+			WorkerID:            runtimeWorkerID("core-backfill"),
+			LeaseDuration:       cfg.Runtime.LeaseDuration,
+			Source:              coreRPCSource, Repository: repository, Canonicalizer: coreCanonicalizer,
 			Status: runtimeEvents, EventWake: signalEvents,
 			Tracker: tracker, Observer: registry, Logger: logger,
 		}
@@ -426,7 +448,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		compatibilityBackend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
 			ChainID: cfg.Chain.ID, State: compatibilityState, Price: priceProvider,
-			Verification: publicVerification, VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
+			Verification: compatibilityVerification, VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
 		})
 		if err != nil {
 			return err
@@ -435,6 +457,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
+		sourcifyAdapter := sourcifyCapabilityInterface(sourcify)
 		compatibility := etherscan.Handler{
 			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
 			MaxBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
@@ -460,8 +483,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
-			VerificationReader: verificationService, VerificationSubmitter: publicVerification,
-			VerificationTargets: compatibilityBackend, Sourcify: sourcify,
+			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
+			VerificationTargets: compatibilityBackend, Sourcify: sourcifyAdapter,
 			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
@@ -499,17 +522,21 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return fmt.Errorf("verification compiler sandbox is not ready: %w", err)
 			}
 		}
-		worker, err := verify.NewWorker(verificationRepository, compiler, verify.WorkerOptions{
-			WorkerID: verificationWorkerID(), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-			Public: cfg.Security.PublicVerification, Observer: registry,
-		})
-		if err != nil {
-			return err
-		}
-		if err := componentRegistry.Register(components.RoleVerify, "40-contract-verification", func() (components.Service, error) {
-			return worker, nil
-		}); err != nil {
+		if err := registerWorkerPool(
+			componentRegistry,
+			components.RoleVerify,
+			"40-contract-verification",
+			"contract-verification-worker",
+			cfg.Runtime.WorkerCount,
+			func(index int, serviceName string) (components.Service, error) {
+				return verify.NewWorker(verificationRepository, compiler, verify.WorkerOptions{
+					ServiceName: serviceName, WorkerID: verificationWorkerID(index),
+					LeaseDuration: cfg.Runtime.LeaseDuration,
+					PollInterval:  cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
+					Public: cfg.Security.PublicVerification, Observer: registry,
+				})
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -561,16 +588,21 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		worker, err := enrich.NewWorker(queue, []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}, enrich.WorkerOptions{
-			ID: runtimeWorkerID("enrich"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval, Wake: enrichJobWake, Observer: registry,
-		})
-		if err != nil {
-			return err
-		}
-		if err := componentRegistry.Register(components.RoleEnrich, "35-core-enrichment", func() (components.Service, error) {
-			return worker, nil
-		}); err != nil {
+		processors := []enrich.Processor{proxyProcessor, abiProcessor, tokenProcessor, statsProcessor}
+		if err := registerWorkerPool(
+			componentRegistry,
+			components.RoleEnrich,
+			"35-core-enrichment",
+			"enrichment-worker",
+			cfg.Runtime.WorkerCount,
+			func(index int, _ string) (components.Service, error) {
+				return enrich.NewWorker(queue, processors, enrich.WorkerOptions{
+					ID:            runtimeWorkerID(indexedWorkerName("enrich", index)),
+					LeaseDuration: cfg.Runtime.LeaseDuration,
+					PollInterval:  cfg.Runtime.PollInterval, Wake: enrichJobWake, Observer: registry,
+				})
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -587,16 +619,20 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
-			ID: runtimeWorkerID("trace"), LeaseDuration: cfg.Runtime.LeaseDuration,
-			PollInterval: cfg.Runtime.PollInterval, Wake: traceJobWake, Observer: registry,
-		})
-		if err != nil {
-			return err
-		}
-		if err := componentRegistry.Register(components.RoleTrace, "37-trace-enrichment", func() (components.Service, error) {
-			return worker, nil
-		}); err != nil {
+		if err := registerWorkerPool(
+			componentRegistry,
+			components.RoleTrace,
+			"37-trace-enrichment",
+			"trace-enrichment-worker",
+			cfg.Runtime.WorkerCount,
+			func(index int, _ string) (components.Service, error) {
+				return enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+					ID:            runtimeWorkerID(indexedWorkerName("trace", index)),
+					LeaseDuration: cfg.Runtime.LeaseDuration,
+					PollInterval:  cfg.Runtime.PollInterval, Wake: traceJobWake, Observer: registry,
+				})
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -605,7 +641,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
 			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
 		}
-		if err := registerMetadataWorker(componentRegistry, db, rpcBuild.Pool, cfg, registry); err != nil {
+		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, registry); err != nil {
 			return err
 		}
 	}
@@ -623,8 +659,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		if err := registerMaintenanceWorker(componentRegistry, requestRepository, executor, maintenance.WorkerOptions{
-			ServiceName: "maintenance-worker", WorkerID: runtimeWorkerID("maintenance"),
+		if err := registerMaintenanceWorkers(componentRegistry, requestRepository, executor, cfg.Runtime.WorkerCount, maintenance.WorkerOptions{
 			PollInterval: cfg.Runtime.PollInterval, Observer: registry,
 		}); err != nil {
 			return err
@@ -692,10 +727,15 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 	if limiter == nil {
 		limiter = auth.NewMemoryLimiter(nil)
 	}
+	trustedProxies, err := auth.NewTrustedProxySet(cfg.Security.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("configure trusted proxies: %w", err)
+	}
 	protected := auth.RateMiddleware{
-		Limiter:   limiter,
-		Anonymous: auth.Limit{Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst},
-		Observer:  observer,
+		Limiter:        limiter,
+		Anonymous:      auth.Limit{Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst},
+		Observer:       observer,
+		TrustedProxies: trustedProxies,
 	}.Wrap(next)
 	if cfg.Security.APIKeyPepper != "" {
 		repository, err := auth.NewPostgresRepository(db)
@@ -784,28 +824,28 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			}
 		case components.RoleEnrich:
 			add("30-enrichment-outbox")
-			add("35-core-enrichment")
+			addWorkerComponentKeys(add, "35-core-enrichment", cfg.Runtime.WorkerCount)
 		case components.RoleTrace:
 			if cfg.Features.Trace {
-				add("37-trace-enrichment")
+				addWorkerComponentKeys(add, "37-trace-enrichment", cfg.Runtime.WorkerCount)
 			} else {
 				add("50-role-trace")
 			}
 		case components.RoleVerify:
 			if cfg.Features.Verification {
-				add("40-contract-verification")
+				addWorkerComponentKeys(add, "40-contract-verification", cfg.Runtime.WorkerCount)
 			} else {
 				add("50-role-verify")
 			}
 		case components.RoleMetadata:
 			if cfg.Features.NFTMetadata {
 				add("42-nft-metadata-discovery")
-				add("45-nft-metadata")
+				addWorkerComponentKeys(add, "45-nft-metadata", cfg.Runtime.WorkerCount)
 			} else {
 				add("50-role-metadata")
 			}
 		case components.RoleMaintenance:
-			add("45-maintenance")
+			addWorkerComponentKeys(add, "45-maintenance", cfg.Runtime.WorkerCount)
 			add("46-search-catalog-maintenance")
 		}
 	}

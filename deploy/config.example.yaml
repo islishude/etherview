@@ -27,8 +27,8 @@ database:
 rpc:
   request_timeout: 20s
   batch_size: 100
-  # Supply comma-separated ETHERVIEW_RPC_URLS at runtime to keep credentials
-  # out of checked-in configuration and container images.
+  # Supply comma-separated all-purpose URLs or a structured JSON endpoint array
+  # through ETHERVIEW_RPC_URLS at runtime. Keep every URL in a Secret.
   endpoints: []
 
 runtime:
@@ -36,6 +36,7 @@ runtime:
   poll_interval: 2s
   worker_count: 4
   backfill_workers: 4
+  backfill_batch_blocks: 256
   lease_duration: 30s
 
 mempool:

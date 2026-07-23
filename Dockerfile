@@ -26,6 +26,38 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags="-s -w" -o /out/etherview ./cmd/etherview
 
+# The deterministic JSON-RPC fixture is a test-only target used by the
+# Compose runtime parity smoke. Nothing from this stage enters production.
+FROM golang:1.26.5 AS runtime-fixture-builder
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/runtimefixture ./cmd/runtimefixture
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/runtimefixture ./cmd/runtimefixture
+
+FROM gcr.io/distroless/base-debian13:nonroot AS runtime-fixture
+COPY --from=runtime-fixture-builder --chown=nonroot:nonroot /out/runtimefixture /runtimefixture
+USER 65532:65532
+EXPOSE 8545
+ENTRYPOINT ["/runtimefixture"]
+CMD ["serve"]
+
+# The bounded public-API load driver is another test-only target. It is kept
+# separate from go-builder so smoke runs do not rebuild the embedded SPA and
+# nothing from this stage enters production.
+FROM golang:1.26.5 AS runtime-loadtest-builder
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/loadtest ./cmd/loadtest
+COPY internal/loadtest ./internal/loadtest
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadtest ./cmd/loadtest
+
+FROM gcr.io/distroless/base-debian13:nonroot AS runtime-loadtest
+COPY --from=runtime-loadtest-builder --chown=nonroot:nonroot /out/loadtest /loadtest
+USER 65532:65532
+ENTRYPOINT ["/loadtest"]
+
+# Keep production last so an unqualified `docker build .` still emits the
+# deployable Etherview image rather than a test-only tool.
 FROM gcr.io/distroless/base-debian13:nonroot AS production
 ARG VERSION=dev
 ARG REVISION=unknown
@@ -39,7 +71,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot LICENSE /LICENSE
 COPY --from=go-builder --chown=nonroot:nonroot /out/etherview /etherview
-USER nonroot:nonroot
+USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/etherview"]
 CMD ["serve", "--roles=all"]

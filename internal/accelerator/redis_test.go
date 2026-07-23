@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,6 +108,105 @@ func TestRedisLimiterOutageFallsBackWithoutLoggingBackendText(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "very-secret") {
 		t.Fatalf("Redis error text leaked to logs: %s", logs.String())
+	}
+}
+
+func TestRedisLimiterOutageCircuitBypassesRequestsAndAllowsOneRecoveryProbe(t *testing.T) {
+	t.Parallel()
+	var nowNanos atomic.Int64
+	nowNanos.Store(time.Unix(100, 0).UnixNano())
+	probeStarted := make(chan struct{}, 1)
+	probeRelease := make(chan struct{})
+	evalCalls := 0
+	blocking := false
+	failing := true
+	backend := &fakeRedisBackend{values: make(map[string][]byte)}
+	backend.eval = func(script string, _ []string, _ ...any) (any, error) {
+		if script != redisTokenBucketScript {
+			return nil, errors.New("unexpected script")
+		}
+		evalCalls++
+		if blocking {
+			probeStarted <- struct{}{}
+			<-probeRelease
+		}
+		if failing {
+			return nil, errors.New("backend unavailable")
+		}
+		return []any{int64(1), int64(0)}, nil
+	}
+	accelerator := newRedisAccelerator(backend, RedisOptions{
+		Namespace: "test", ChainID: 1, OperationTimeout: 250 * time.Millisecond, CacheTTL: time.Minute,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		circuitNow: func() time.Time { return time.Unix(0, nowNanos.Load()) },
+	})
+	limiter := accelerator.Limiter(auth.NewMemoryLimiter(func() time.Time {
+		return time.Unix(0, nowNanos.Load())
+	}))
+	limit := auth.Limit{Rate: 10, Burst: 10}
+	if allowed, _ := limiter.Allow(context.Background(), "anonymous:first", limit); !allowed {
+		t.Fatal("initial Redis failure did not use local fallback")
+	}
+
+	var bypasses sync.WaitGroup
+	for index := range 100 {
+		bypasses.Add(1)
+		go func() {
+			defer bypasses.Done()
+			if allowed, _ := limiter.Allow(
+				context.Background(),
+				"anonymous:bypass-"+strconv.Itoa(index),
+				limit,
+			); !allowed {
+				t.Errorf("circuit fallback rejected request %d", index)
+			}
+		}()
+	}
+	bypasses.Wait()
+	backend.mu.Lock()
+	if evalCalls != 1 {
+		t.Fatalf("open circuit called Redis %d times", evalCalls)
+	}
+	blocking = true
+	backend.mu.Unlock()
+
+	nowNanos.Add(int64(250 * time.Millisecond))
+	probeDone := make(chan struct{})
+	go func() {
+		defer close(probeDone)
+		limiter.Allow(context.Background(), "anonymous:probe", limit)
+	}()
+	<-probeStarted
+	var concurrent sync.WaitGroup
+	for index := range 100 {
+		concurrent.Add(1)
+		go func() {
+			defer concurrent.Done()
+			limiter.Allow(context.Background(), "anonymous:concurrent-"+strconv.Itoa(index), limit)
+		}()
+	}
+	concurrent.Wait()
+	close(probeRelease)
+	<-probeDone
+	backend.mu.Lock()
+	if evalCalls != 2 {
+		t.Fatalf("half-open circuit issued %d Redis calls, want 2 total", evalCalls)
+	}
+	blocking = false
+	failing = false
+	backend.mu.Unlock()
+
+	nowNanos.Add(int64(500 * time.Millisecond))
+	if allowed, _ := limiter.Allow(context.Background(), "anonymous:recovery", limit); !allowed {
+		t.Fatal("successful recovery probe was rejected")
+	}
+	if allowed, _ := limiter.Allow(context.Background(), "anonymous:closed", limit); !allowed {
+		t.Fatal("closed circuit request was rejected")
+	}
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if evalCalls != 4 {
+		t.Fatalf("recovered circuit Redis calls=%d want 4", evalCalls)
 	}
 }
 

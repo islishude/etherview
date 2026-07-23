@@ -119,7 +119,13 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	if err != nil {
 		return fmt.Errorf("bind chain identity: %w", err)
 	}
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	// The advisory lock is the serialization boundary for every chain-scoped
+	// writer. Keep READ COMMITTED here so a transaction that waited for another
+	// process to bind the same chain gets a fresh snapshot for the INSERT below.
+	// REPEATABLE READ/SERIALIZABLE would retain the snapshot established by the
+	// blocking lock statement and can spuriously abort concurrent role startup
+	// with SQLSTATE 40001 after the first process commits.
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: chainWriteIsolation})
 	if err != nil {
 		return fmt.Errorf("begin chain identity transaction: %w", err)
 	}
@@ -129,11 +135,23 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	}
 	var existing []byte
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO chains (chain_id, genesis_hash)
-		VALUES ($1::numeric, $2)
-		ON CONFLICT (chain_id) DO UPDATE
-		SET genesis_hash = COALESCE(chains.genesis_hash, EXCLUDED.genesis_hash)
-		RETURNING genesis_hash`, chainID, genesisBytes).Scan(&existing)
+		SELECT genesis_hash
+		FROM chains
+		WHERE chain_id = $1::numeric
+		FOR NO KEY UPDATE`, chainID).Scan(&existing)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		err = tx.QueryRowContext(ctx, `
+			INSERT INTO chains (chain_id, genesis_hash)
+			VALUES ($1::numeric, $2)
+			RETURNING genesis_hash`, chainID, genesisBytes).Scan(&existing)
+	case err == nil && len(existing) == 0:
+		err = tx.QueryRowContext(ctx, `
+			UPDATE chains
+			SET genesis_hash = $2
+			WHERE chain_id = $1::numeric AND genesis_hash IS NULL
+			RETURNING genesis_hash`, chainID, genesisBytes).Scan(&existing)
+	}
 	if err != nil {
 		return fmt.Errorf("persist chain identity: %w", err)
 	}

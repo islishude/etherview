@@ -1,0 +1,124 @@
+x-runtime-smoke-environment: &runtime-smoke-environment
+  ETHERVIEW_RPC_URLS: http://runtime-fixture:8545
+  ETHERVIEW_CHAIN_ID: "1"
+  ETHERVIEW_CHAIN_GENESIS_HASH: "0x0000000000000000000000000000000000000000000000000000000000000100"
+  ETHERVIEW_API_KEY_PEPPER: ""
+  ETHERVIEW_POLL_INTERVAL: 250ms
+  ETHERVIEW_MEMPOOL_POLL_INTERVAL: 500ms
+  ETHERVIEW_MAINTENANCE_INTERVAL: 1m
+  ETHERVIEW_METADATA_IPFS_GATEWAY: ""
+  ETHERVIEW_NATS_URL: ""
+  ETHERVIEW_REDIS_URL: ""
+  ETHERVIEW_S3_ENDPOINT: ""
+  ETHERVIEW_S3_BUCKET: ""
+  ETHERVIEW_S3_PREFIX: runtime-smoke
+  ETHERVIEW_S3_REGION: ""
+  ETHERVIEW_S3_ACCESS_KEY: ""
+  ETHERVIEW_S3_SECRET_KEY: ""
+  ETHERVIEW_S3_SESSION_TOKEN: ""
+  ETHERVIEW_S3_PATH_STYLE: "false"
+  ETHERVIEW_OTLP_TRACE_ENDPOINT: ""
+  ETHERVIEW_OTLP_TRACE_INSECURE: "false"
+  ETHERVIEW_TRACE_SAMPLE_RATIO: "0"
+  # The bounded in-network load phase must measure application behavior rather
+  # than the deliberately conservative anonymous production default.
+  ETHERVIEW_ANONYMOUS_RATE: "1000"
+  ETHERVIEW_ANONYMOUS_BURST: "2000"
+  OTEL_EXPORTER_OTLP_HEADERS: ""
+  ETHERVIEW_FEATURE_TRACE: "true"
+  ETHERVIEW_FEATURE_MEMPOOL: "true"
+  ETHERVIEW_FEATURE_HISTORICAL_STATE: "true"
+  ETHERVIEW_FEATURE_NFT_METADATA: "true"
+  # Public compilers and external interoperability/price services are
+  # deliberately outside this PostgreSQL-only runtime smoke.
+  ETHERVIEW_FEATURE_VERIFICATION: "false"
+  ETHERVIEW_PUBLIC_VERIFICATION: "false"
+  ETHERVIEW_FEATURE_SOURCIFY: "false"
+  ETHERVIEW_FEATURE_PRICING: "false"
+
+x-runtime-fixture-dependency: &runtime-fixture-dependency
+  runtime-fixture:
+    condition: service_healthy
+
+services:
+  runtime-fixture:
+    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-etherview-runtime-fixture:local}
+    build:
+      context: .
+      target: runtime-fixture
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/runtimefixture",
+          "healthcheck",
+          "--url=http://127.0.0.1:8545/health",
+        ]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 1s
+    restart: "no"
+
+  runtime-loadtest:
+    image: ${ETHERVIEW_RUNTIME_LOADTEST_IMAGE:-etherview-runtime-loadtest:local}
+    build:
+      context: .
+      target: runtime-loadtest
+    profiles:
+      - runtime-tools
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  etherview:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+
+  api:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+
+  sync:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+    ports:
+      - target: 9090
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+  enrich:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+    ports:
+      - target: 9090
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+  trace:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+
+  verify:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+
+  metadata:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency
+
+  maintenance:
+    environment: *runtime-smoke-environment
+    depends_on: *runtime-fixture-dependency

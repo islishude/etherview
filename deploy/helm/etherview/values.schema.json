@@ -39,6 +39,9 @@
     "mode",
     "roles",
     "resources",
+    "deploymentStrategy",
+    "podDisruptionBudget",
+    "roleTopologySpread",
     "migration",
     "secrets",
     "externalSecret",
@@ -106,6 +109,42 @@
             "memory": {"type": "string", "minLength": 1}
           }
         }
+      }
+    },
+    "deploymentStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSurge", "maxUnavailable"],
+      "properties": {
+        "maxSurge": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(%?)$"
+        },
+        "maxUnavailable": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(%?)$"
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "minAvailable"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minAvailable": {"type": "integer", "minimum": 1}
+      }
+    },
+    "roleTopologySpread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "maxSkew", "minDomains", "topologyKey", "whenUnsatisfiable"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxSkew": {"type": "integer", "minimum": 1},
+        "minDomains": {"type": "integer", "minimum": 2},
+        "topologyKey": {"type": "string", "minLength": 1},
+        "whenUnsatisfiable": {"const": "DoNotSchedule"}
       }
     },
     "migration": {

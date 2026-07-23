@@ -1,3 +1,9 @@
+{{- if and .Values.roleTopologySpread.enabled .Values.topologySpreadConstraints }}
+{{- fail "roleTopologySpread and topologySpreadConstraints are mutually exclusive" }}
+{{- end }}
+{{- if and (regexMatch "^0%?$" (toString .Values.deploymentStrategy.maxSurge)) (regexMatch "^0%?$" (toString .Values.deploymentStrategy.maxUnavailable)) }}
+{{- fail "deploymentStrategy maxSurge and maxUnavailable cannot both be zero" }}
+{{- end }}
 {{- $root := . }}
 {{- range $roleName, $role := .Values.roles }}
 {{- $enabled := $role.enabled }}
@@ -22,6 +28,9 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $root.Values.deploymentStrategy.maxSurge | quote }}
+      maxUnavailable: {{ $root.Values.deploymentStrategy.maxUnavailable | quote }}
   selector:
     matchLabels:
       {{- include "etherview.selectorLabels" $root | nindent 6 }}
@@ -210,9 +219,21 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $root.Values.topologySpreadConstraints }}
+      {{- if or $root.Values.roleTopologySpread.enabled $root.Values.topologySpreadConstraints }}
       topologySpreadConstraints:
+        {{- if $root.Values.roleTopologySpread.enabled }}
+        - maxSkew: {{ $root.Values.roleTopologySpread.maxSkew }}
+          minDomains: {{ $root.Values.roleTopologySpread.minDomains }}
+          topologyKey: {{ $root.Values.roleTopologySpread.topologyKey | quote }}
+          whenUnsatisfiable: {{ $root.Values.roleTopologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "etherview.selectorLabels" $root | nindent 14 }}
+              app.kubernetes.io/component: {{ $roleName }}
+        {{- end }}
+        {{- with $root.Values.topologySpreadConstraints }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
 {{- end }}
 {{- end }}

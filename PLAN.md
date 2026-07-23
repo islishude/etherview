@@ -22,7 +22,7 @@ batch semantics are not core v1 scope.
 | P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Sandboxed Solidity/Vyper verification, Sourcify, and metadata safety |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
-| P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | in_progress | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
+| P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P70 | [Release](docs/plans/P70-release.md) | planned | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
@@ -56,13 +56,17 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P50 is complete: core and capability explorer pages, exact verification-job
   and published-artifact reads, EIP-6963 wallet discovery, session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
-  bilingual, responsive, security-header, browser, and WCAG coverage. P60
-  remains in progress and P70 remains planned; their release gates are not
-  promoted by P50 completion.
+  bilingual, responsive, security-header, browser, and WCAG coverage.
+- P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
+  split-role deployments, replica failover, bounded capacity controls,
+  disposable accelerators, telemetry, migration safety, and operator tooling
+  pass their targeted runtime, integration, race, Helm, and short-load
+  evidence. P70 remains planned; P60 completion does not promote its security,
+  conformance, long-soak, artifact, or release gates.
 
 ## Global Release Gates
 
-- [ ] Every P00–P60 plan is `done` with reviewable evidence.
+- [x] Every P00–P60 plan is `done` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

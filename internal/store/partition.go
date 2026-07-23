@@ -216,18 +216,6 @@ func (r *PostgresRepository) ensureBundlePartitionsTx(
 	return ranges, nil
 }
 
-func (r *PostgresRepository) bundleWriteIsolation(references []BlockRef) sql.IsolationLevel {
-	for _, reference := range references {
-		lower := reference.Number - reference.Number%DefaultPartitionSpan
-		if !r.partitions.contains(lower) {
-			// A statement snapshot must be refreshed after waiting for a
-			// competing process's partition DDL to commit.
-			return sql.LevelReadCommitted
-		}
-	}
-	return sql.LevelSerializable
-}
-
 func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64) error {
 	if lower%DefaultPartitionSpan != 0 || upper-lower != DefaultPartitionSpan {
 		return errors.New("partition range is not aligned to the fixed span")

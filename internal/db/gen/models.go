@@ -728,6 +728,16 @@ type SyncRuntimeStatus struct {
 	BackfillComplete     bool               `db:"backfill_complete" json:"backfill_complete"`
 }
 
+type SyncRuntimeStatusWriterLease struct {
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ReporterID           string             `db:"reporter_id" json:"reporter_id"`
+	ObservedLatestNumber pgtype.Numeric     `db:"observed_latest_number" json:"observed_latest_number"`
+	ObservedLatestKnown  bool               `db:"observed_latest_known" json:"observed_latest_known"`
+	SafetyHalt           bool               `db:"safety_halt" json:"safety_halt"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type TokenBalanceDelta struct {
 	ChainID      pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber  pgtype.Numeric `db:"block_number" json:"block_number"`

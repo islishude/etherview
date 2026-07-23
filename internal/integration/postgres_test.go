@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -163,6 +164,95 @@ func TestSQLCRuntimeBoundaryReadsChainIdentity(t *testing.T) {
 	}
 	if identity.ChainID != "1" || !identity.GenesisHash.Equal(genesis) {
 		t.Fatalf("chain identity = %+v, want chain 1 genesis %s", identity, genesis)
+	}
+}
+
+func TestConcurrentRoleStartupBindsOneChainIdentityWithoutRetry(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	genesis := testHash(43)
+	start := make(chan struct{})
+	errorsByRole := make(chan error, 12)
+	var roles sync.WaitGroup
+	for range 12 {
+		roles.Add(1)
+		go func() {
+			defer roles.Done()
+			<-start
+			errorsByRole <- store.BindChainIdentity(ctx, db, "1", genesis)
+		}()
+	}
+	close(start)
+	roles.Wait()
+	close(errorsByRole)
+	for err := range errorsByRole {
+		if err != nil {
+			t.Errorf("concurrent chain identity bind: %v", err)
+		}
+	}
+	identity, err := store.ReadChainIdentity(ctx, db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !identity.GenesisHash.Equal(genesis) {
+		t.Fatalf("chain identity = %+v, want genesis %s", identity, genesis)
+	}
+	var beforeXID, afterXID string
+	if err := db.QueryRowContext(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&beforeXID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BindChainIdentity(ctx, db, "1", genesis); err != nil {
+		t.Fatalf("repeat identical chain identity bind: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT xmin::text FROM chains WHERE chain_id = 1`).Scan(&afterXID); err != nil {
+		t.Fatal(err)
+	}
+	if afterXID != beforeXID {
+		t.Fatalf("identical chain identity bind rewrote row: xmin %s -> %s", beforeXID, afterXID)
+	}
+	if err := store.BindChainIdentity(ctx, db, "1", testHash(44)); err == nil ||
+		!strings.Contains(err.Error(), "chain identity mismatch") {
+		t.Fatalf("conflicting concurrent identity boundary error = %v", err)
+	}
+}
+
+func TestConcurrentSyncStartupConfiguresOneCoreCoverageBoundary(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if err := store.BindChainIdentity(ctx, db, "1", testHash(45)); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	errorsByReplica := make(chan error, 12)
+	var replicas sync.WaitGroup
+	for range 12 {
+		replicas.Add(1)
+		go func() {
+			defer replicas.Done()
+			<-start
+			errorsByReplica <- repository.ConfigureIndex(ctx, "1", 0)
+		}()
+	}
+	close(start)
+	replicas.Wait()
+	close(errorsByReplica)
+	for err := range errorsByReplica {
+		if err != nil {
+			t.Errorf("concurrent core index configuration: %v", err)
+		}
+	}
+	coverage, exists, err := repository.Coverage(ctx, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists || coverage.ConfiguredStart != 0 || len(coverage.Ranges) != 0 {
+		t.Fatalf("concurrent core coverage = %+v exists=%t", coverage, exists)
 	}
 }
 

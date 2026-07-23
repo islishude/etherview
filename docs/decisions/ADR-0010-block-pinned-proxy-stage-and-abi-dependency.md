@@ -65,16 +65,22 @@ before proxy discovery makes a verified implementation ABI available.
   complete proxy result permits decoding; an unavailable proxy result makes
   ABI explicitly unavailable, never terminal `unbound`; failed or absent proxy
   state remains retryable and dependency-blocked.
-- Completing or replaying proxy discovery requests a source-deduplicated ABI
-  generation and removes its exact stale output, result, and journal at the
-  safe generation transition. Unowned queued or terminal work is refreshed
-  immediately. A leased job keeps its token while the pending generation is
-  durable; `Finish`/`Retry`, or the first new-generation claim after lease
-  expiry, consumes that request atomically. When normalized Trace arrives after
-  proxy/ABI completion, it uses its own stage generation as the durable source
-  for proxy and then ABI. The absent proxy result keeps ABI blocked until one
-  proxy replay has consumed the new trace targets, and repeating the same
-  source cannot create a replay loop.
+- The initial proxy publication is ABI's claim dependency: it unlocks ABI's
+  already queued first generation without requesting another one. A later
+  proxy generation requests a source-deduplicated ABI generation and removes
+  its exact stale output, result, and journal at the safe generation
+  transition. Unowned queued or terminal work is refreshed immediately. A
+  leased job keeps its token while the pending generation is durable;
+  `Finish`/`Retry`, or the first new-generation claim after lease expiry,
+  consumes that request atomically.
+- A non-empty normalized Trace that arrives after ABI completion uses its own
+  stage generation to request ABI replay so its call data is decoded. It
+  requests proxy replay first only when it contains a successful, non-reverted
+  normalized `CREATE` or `CREATE2` target; ordinary calls and reverted or
+  targetless creations do not change proxy discovery. When proxy replay is
+  required, the absent proxy result keeps ABI blocked until that replay has
+  consumed the new creation targets. Repeating either source generation cannot
+  create a replay loop.
 
 ## Consequences
 
@@ -88,9 +94,10 @@ before proxy discovery makes a verified implementation ABI available.
   the block by placing ambiguous values in standard proxy slots or exposing a
   reverting lookalike beacon. Valid proxies in that block are still persisted,
   so ABI dependency progress is preserved.
-- Trace remains optional and cannot delay the first proxy pass. Late Trace can
-  improve proxy and ABI output through bounded idempotent replay without a
-  permanent replay loop.
+- Trace remains optional and cannot delay the first proxy pass. Any non-empty
+  late Trace can improve ABI output; only successful, non-reverted
+  `CREATE`/`CREATE2` targets also improve proxy output. Both paths use bounded
+  idempotent replay without a permanent replay loop.
 - The stage reuses the existing code/proxy tables. The generic durable queue
   stores replay generations and source identities; a future proxy
   representation or rollback contract requires a new stage version and a

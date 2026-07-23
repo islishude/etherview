@@ -24,6 +24,14 @@ correctness implementation and break the PostgreSQL-only deployment.
   A bounded Redis failure uses the existing process-local token bucket, so the
   degraded quota is per replica but the native and compatibility error
   contracts do not change.
+- Anonymous rate-limit identity uses the direct peer address unless that peer
+  matches an explicitly configured `security.trusted_proxies` IP or CIDR.
+  Only then may a bounded, fully valid `X-Forwarded-For` chain be considered;
+  it is walked from the trusted peer toward the client and stops at the first
+  untrusted hop. Malformed or oversized forwarded chains fall back to the
+  direct peer. The process-local fallback expires inactive identities, and a
+  Redis outage is circuit-broken so repeated requests do not each spend the
+  complete adapter timeout before reaching that fallback.
 - The only Redis response cache is the bounded runtime-status model. A process
   fences a new cache generation before enabling reads. Each durable runtime
   event idempotently advances that generation before relay cursor advancement
@@ -57,6 +65,10 @@ correctness implementation and break the PostgreSQL-only deployment.
 - Optional-service outages can increase PostgreSQL load and make rate limits
   replica-local, but cannot lose work, publish stale stage generations, or
   make an otherwise healthy process unready.
+- A deployment behind an ingress must enumerate only the proxy addresses it
+  controls. Forwarded headers from any other peer are untrusted, while bounded
+  local-bucket retention and Redis backoff prevent hostile identity cardinality
+  or an accelerator outage from creating unbounded process state or latency.
 - Adding another cached API model requires proof that every mutation source is
   covered by an idempotent durable invalidation generation. Adding an
   accelerator as the only copy of data or as a lease/completion witness

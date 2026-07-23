@@ -18,10 +18,11 @@ func (metadataTestCaller) Call(context.Context, string, []any, any) error {
 	return errors.New("unused metadata test RPC")
 }
 
-func TestRegisterMetadataWorkerUsesDurableSafeWorker(t *testing.T) {
+func TestRegisterMetadataWorkersUseUniqueDurableSafeWorkers(t *testing.T) {
 	t.Parallel()
 	registry := components.NewRegistry()
 	cfg := config.Default()
+	cfg.Runtime.WorkerCount = 3
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "state", Client: metadataTestCaller{},
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
@@ -29,24 +30,34 @@ func TestRegisterMetadataWorkerUsesDurableSafeWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := registerMetadataWorker(registry, &sql.DB{}, pool, cfg); err != nil {
+	if err := registerMetadataWorkers(registry, &sql.DB{}, pool, cfg); err != nil {
 		t.Fatal(err)
 	}
 	services, err := registry.Build([]components.Role{components.RoleMetadata})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 2 {
-		t.Fatalf("metadata services = %d, want 2", len(services))
+	if len(services) != 4 {
+		t.Fatalf("metadata services = %d, want 4", len(services))
 	}
 	if _, ok := services[0].(*metadata.SourceDiscoverer); !ok {
 		t.Fatalf("metadata service type = %T", services[0])
 	}
-	if _, ok := services[1].(*metadata.Worker); !ok {
-		t.Fatalf("metadata worker type = %T", services[1])
+	if services[0].Name() != "metadata-source-discovery" {
+		t.Fatalf("metadata discovery name = %q", services[0].Name())
 	}
-	if services[0].Name() != "metadata-source-discovery" || services[1].Name() != "metadata-worker" {
-		t.Fatalf("metadata service names = %q, %q", services[0].Name(), services[1].Name())
+	for index, service := range services[1:] {
+		named, ok := service.(*namedWorkerService)
+		if !ok {
+			t.Fatalf("metadata worker wrapper type = %T", service)
+		}
+		if _, ok := named.worker.(*metadata.Worker); !ok {
+			t.Fatalf("metadata worker type = %T", named.worker)
+		}
+		wantName := indexedWorkerName("metadata-worker", index)
+		if service.Name() != wantName {
+			t.Fatalf("metadata worker name = %q, want %q", service.Name(), wantName)
+		}
 	}
 }
 

@@ -1,0 +1,97 @@
+# Reproducible P60 capacity/HA starting point for the core explorer route mix.
+# It is not a release benchmark result. P70-T04 records the final 500 RPS,
+# 30-minute report on named hardware and a named dataset.
+mode: distributed
+
+roles:
+  api:
+    replicas: 3
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 65
+  sync:
+    replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 70
+  enrich:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+  trace:
+    enabled: false
+  verify:
+    enabled: false
+  metadata:
+    enabled: false
+  maintenance:
+    replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# Replace without a configured surge. Terminating Pods may still overlap
+# replacements; budget up to old+new pools or roll roles serially.
+deploymentStrategy:
+  maxSurge: "0"
+  maxUnavailable: "1"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+roleTopologySpread:
+  enabled: true
+  maxSkew: 1
+  minDomains: 2
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: DoNotSchedule
+
+config:
+  database:
+    # At the maximum replica counts this profile permits 216 application
+    # connections. Reserve additional PostgreSQL slots for migrations and
+    # operators, or place a transaction-pooling proxy in front of PostgreSQL.
+    max_connections: 12
+    min_connections: 2
+    connect_timeout: 5s
+    statement_timeout: 15s
+  rpc:
+    request_timeout: 10s
+    batch_size: 100
+  runtime:
+    poll_interval: 500ms
+    worker_count: 4
+    backfill_workers: 8
+    backfill_batch_blocks: 64
+    lease_duration: 30s
+  observability:
+    metrics_refresh_interval: 5s
+  security:
+    # This high anonymous budget is only for an isolated benchmark ingress.
+    # Production capacity tests should create an API key with an explicit
+    # quota and keep the normal anonymous policy.
+    anonymous_rate: 1000
+    anonymous_burst: 2000
+    trusted_proxies: []
+  adapters:
+    # A failed optional Redis must leave enough p95 budget for PostgreSQL.
+    operation_timeout: 100ms
+    redis_cache_ttl: 15s

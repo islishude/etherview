@@ -372,25 +372,45 @@ func (processor *TraceRPCProcessor) persistTx(
 		"outcome": outcome, "source": source,
 		"transactions": strconv.Itoa(len(transactions)), "frames": strconv.Itoa(frames),
 	}
-	// Trace is optional and never blocks the first proxy/ABI pass. If normalized
-	// CREATE/CREATE2 targets arrive later, reset only terminal downstream jobs
-	// in this transaction. Removing proxy@1's result keeps abi@1 dependency-
-	// blocked until the replay has incorporated those targets.
+	creationTargets := successfulCreationTargets(transactions)
+	details["creation_targets"] = strconv.Itoa(creationTargets)
+	// Trace is optional and never blocks the first proxy/ABI pass. Only a
+	// successful normalized CREATE/CREATE2 target changes proxy discovery.
+	// Any non-empty late trace still refreshes ABI so its call data is decoded;
+	// when proxy replay is needed, requesting it first keeps ABI dependency-
+	// blocked until proxy has incorporated the new targets.
 	if canonical {
-		proxyRequeued, err := resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
-		if err != nil {
-			return StageResult{}, err
-		}
-		details["proxy_requeued"] = strconv.FormatBool(proxyRequeued)
-		if proxyRequeued {
-			abiRequeued, err := resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
+		proxyRequeued := false
+		if creationTargets > 0 {
+			proxyRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
 			if err != nil {
 				return StageResult{}, err
 			}
-			details["abi_requeued"] = strconv.FormatBool(abiRequeued)
 		}
+		details["proxy_requeued"] = strconv.FormatBool(proxyRequeued)
+		abiRequeued := false
+		if frames > 0 {
+			abiRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
+			if err != nil {
+				return StageResult{}, err
+			}
+		}
+		details["abi_requeued"] = strconv.FormatBool(abiRequeued)
 	}
 	return StageResult{State: ResultComplete, Details: details}, nil
+}
+
+func successfulCreationTargets(transactions []traceTransaction) int {
+	targets := 0
+	for _, transaction := range transactions {
+		for _, frame := range transaction.trace.Frames {
+			if (frame.Type == "CREATE" || frame.Type == "CREATE2") &&
+				!frame.Reverted && frame.To != nil {
+				targets++
+			}
+		}
+	}
+	return targets
 }
 
 func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction traceTransaction, frame CallFrame) error {

@@ -1,0 +1,27 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $root := . }}
+{{- range $roleName, $role := .Values.roles }}
+{{- $enabled := $role.enabled }}
+{{- if eq $root.Values.mode "monolith" }}
+{{- $enabled = eq $roleName "all" }}
+{{- else }}
+{{- $enabled = and (ne $roleName "all") $role.enabled }}
+{{- end }}
+{{- if $enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "etherview.fullname" $root }}-{{ $roleName }}
+  labels:
+    {{- include "etherview.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $roleName }}
+spec:
+  minAvailable: {{ $root.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "etherview.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $roleName }}
+{{- end }}
+{{- end }}
+{{- end }}

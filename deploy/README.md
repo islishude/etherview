@@ -27,6 +27,30 @@ at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
 uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
+The reproducible deployment smoke uses a deterministic, test-only execution
+RPC image and two independent PostgreSQL volumes:
+
+```sh
+make docker-image-check
+make compose-runtime-smoke
+```
+
+The runtime target rebuilds the current working tree and runs that same
+production image in monolith and seven-role distributed layouts with isolated
+configuration and PostgreSQL volumes. The distributed
+layout starts two sync and two enrichment replicas, stops one of each, advances
+the fixture to a new block, probes the surviving role-local readiness
+endpoints, and requires the core checkpoint, zero lag, drained outbox, and all
+five exact stage publications to advance before capture. Before the RPC roles
+start, the config-only verification role must bind the fresh database identity;
+after failover, a test-only non-root image runs a bounded public-API load phase
+inside each Compose network. The smoke then compares normalized PostgreSQL
+state (including search generations), API responses, and the embedded SPA.
+Trace, mempool, historical state, and NFT metadata are enabled. Verification,
+Sourcify, and pricing are explicitly disabled: public verification requires an
+approved external compiler sandbox/cache, while Sourcify and pricing require
+separate external-service fixtures.
+
 ## Helm
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
@@ -43,6 +67,8 @@ helm lint deploy/helm/etherview
 helm template etherview deploy/helm/etherview
 helm template etherview deploy/helm/etherview \
   -f deploy/helm/etherview/values-distributed.yaml
+helm template etherview deploy/helm/etherview \
+  -f deploy/helm/etherview/values-reference-capacity.yaml
 ```
 
 The migration is a release-revision Job. Every application Deployment has a
@@ -77,3 +103,8 @@ copies only that binary into a distroless non-root image. The production stage
 contains no Node runtime, package manager, Solidity/Vyper compiler, source tree,
 or shell. Public compiler execution therefore requires a separately approved
 sandbox runtime and must not be added to this image.
+
+`make docker-image-check` enforces that boundary by inspecting the configured
+user, executing the binary as UID/GID 65532 with a read-only filesystem,
+dropped capabilities, and no-new-privileges, and scanning the exported root
+filesystem for build, package-manager, shell, and compiler payloads.

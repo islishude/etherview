@@ -3,10 +3,13 @@ package config
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,7 +22,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const envPrefix = "ETHERVIEW_"
+const (
+	envPrefix = "ETHERVIEW_"
+
+	maximumRuntimeWorkerCount         = 64
+	maximumRuntimeBackfillWorkers     = 64
+	maximumRuntimeBackfillBatchBlocks = 256
+)
 
 var (
 	compilerVersionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
@@ -82,18 +91,19 @@ type RPCConfig struct {
 }
 
 type RPCEndpoint struct {
-	Name        string   `yaml:"name"`
-	URL         string   `yaml:"url"`
-	Purposes    []string `yaml:"purposes"`
-	MaxRequests int      `yaml:"max_requests_per_second"`
+	Name        string   `json:"name" yaml:"name"`
+	URL         string   `json:"url" yaml:"url"`
+	Purposes    []string `json:"purposes" yaml:"purposes"`
+	MaxRequests int      `json:"max_requests_per_second" yaml:"max_requests_per_second"`
 }
 
 type RuntimeConfig struct {
-	Roles           []string      `yaml:"roles"`
-	PollInterval    time.Duration `yaml:"poll_interval"`
-	WorkerCount     int           `yaml:"worker_count"`
-	BackfillWorkers int           `yaml:"backfill_workers"`
-	LeaseDuration   time.Duration `yaml:"lease_duration"`
+	Roles               []string      `yaml:"roles"`
+	PollInterval        time.Duration `yaml:"poll_interval"`
+	WorkerCount         int           `yaml:"worker_count"`
+	BackfillWorkers     int           `yaml:"backfill_workers"`
+	BackfillBatchBlocks int           `yaml:"backfill_batch_blocks"`
+	LeaseDuration       time.Duration `yaml:"lease_duration"`
 }
 
 // MempoolConfig bounds the optional authoritative pending-block poller. The
@@ -247,11 +257,12 @@ func Default() Config {
 			BatchSize:      100,
 		},
 		Runtime: RuntimeConfig{
-			Roles:           []string{"all"},
-			PollInterval:    2 * time.Second,
-			WorkerCount:     4,
-			BackfillWorkers: 4,
-			LeaseDuration:   30 * time.Second,
+			Roles:               []string{"all"},
+			PollInterval:        2 * time.Second,
+			WorkerCount:         4,
+			BackfillWorkers:     4,
+			BackfillBatchBlocks: maximumRuntimeBackfillBatchBlocks,
+			LeaseDuration:       30 * time.Second,
 		},
 		Mempool: MempoolConfig{
 			PollInterval:     3 * time.Second,
@@ -378,8 +389,17 @@ func (c Config) Validate() error {
 		}
 		seenEndpoint[endpoint.Name] = struct{}{}
 	}
-	if c.Runtime.PollInterval <= 0 || c.Runtime.WorkerCount <= 0 || c.Runtime.BackfillWorkers <= 0 || c.Runtime.LeaseDuration <= 0 {
-		errs = append(errs, errors.New("runtime poll_interval, worker_count, backfill_workers, and lease_duration must be positive"))
+	if c.Runtime.PollInterval <= 0 || c.Runtime.LeaseDuration <= 0 {
+		errs = append(errs, errors.New("runtime poll_interval and lease_duration must be positive"))
+	}
+	if c.Runtime.WorkerCount <= 0 || c.Runtime.WorkerCount > maximumRuntimeWorkerCount {
+		errs = append(errs, fmt.Errorf("runtime.worker_count must be between 1 and %d", maximumRuntimeWorkerCount))
+	}
+	if c.Runtime.BackfillWorkers <= 0 || c.Runtime.BackfillWorkers > maximumRuntimeBackfillWorkers {
+		errs = append(errs, fmt.Errorf("runtime.backfill_workers must be between 1 and %d", maximumRuntimeBackfillWorkers))
+	}
+	if c.Runtime.BackfillBatchBlocks <= 0 || c.Runtime.BackfillBatchBlocks > maximumRuntimeBackfillBatchBlocks {
+		errs = append(errs, fmt.Errorf("runtime.backfill_batch_blocks must be between 1 and %d", maximumRuntimeBackfillBatchBlocks))
 	}
 	if c.Mempool.PollInterval < 250*time.Millisecond || c.Mempool.PollInterval > time.Minute {
 		errs = append(errs, errors.New("mempool.poll_interval must be between 250ms and 1m"))
@@ -452,6 +472,14 @@ func (c Config) Validate() error {
 		u, err := url.Parse(origin)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" {
 			errs = append(errs, fmt.Errorf("invalid allowed origin %q", origin))
+		}
+	}
+	for index, trustedProxy := range c.Security.TrustedProxies {
+		if !validCanonicalTrustedProxy(trustedProxy) {
+			errs = append(errs, fmt.Errorf(
+				"security.trusted_proxies[%d] must be a canonical IP address or masked CIDR prefix",
+				index,
+			))
 		}
 	}
 	if c.Verification.MaxInputBytes <= 0 || c.Verification.MaxInputBytes > 64<<20 {
@@ -789,8 +817,9 @@ func unsafeURLPath(value string) bool {
 
 func (e RPCEndpoint) Validate() error {
 	var errs []error
-	if strings.TrimSpace(e.Name) == "" {
-		errs = append(errs, errors.New("name is required"))
+	trimmedName := strings.TrimSpace(e.Name)
+	if trimmedName == "" || trimmedName != e.Name || len(e.Name) > 128 {
+		errs = append(errs, errors.New("name must contain between 1 and 128 trimmed bytes"))
 	}
 	u, err := url.Parse(e.URL)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "ws" && u.Scheme != "wss") {
@@ -805,8 +834,8 @@ func (e RPCEndpoint) Validate() error {
 			errs = append(errs, fmt.Errorf("unsupported purpose %q", purpose))
 		}
 	}
-	if e.MaxRequests < 0 {
-		errs = append(errs, errors.New("max_requests_per_second cannot be negative"))
+	if e.MaxRequests < 0 || e.MaxRequests > 1_000_000_000 {
+		errs = append(errs, errors.New("max_requests_per_second must be between 0 and 1000000000"))
 	}
 	return errors.Join(errs...)
 }
@@ -929,6 +958,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if err := setInt(lookup, "BACKFILL_WORKERS", &cfg.Runtime.BackfillWorkers); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "BACKFILL_BATCH_BLOCKS", &cfg.Runtime.BackfillBatchBlocks); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "MEMPOOL_MAX_TRANSACTIONS", &cfg.Mempool.MaxTransactions); err != nil {
 		return err
 	}
@@ -1036,15 +1068,50 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		return err
 	}
 	if rpcURLs != "" {
-		cfg.RPC.Endpoints = nil
-		for i, raw := range strings.Split(rpcURLs, ",") {
-			raw = strings.TrimSpace(raw)
-			if raw != "" {
-				cfg.RPC.Endpoints = append(cfg.RPC.Endpoints, RPCEndpoint{Name: fmt.Sprintf("env-%d", i+1), URL: raw, Purposes: []string{"all"}})
-			}
+		endpoints, err := parseEnvironmentRPCEndpoints(rpcURLs)
+		if err != nil {
+			return err
 		}
+		cfg.RPC.Endpoints = endpoints
 	}
 	return nil
+}
+
+// parseEnvironmentRPCEndpoints keeps the original comma-separated shorthand
+// while allowing the same Secret value to carry purpose and per-process rate
+// policy. Parse failures never include the raw value because RPC URLs may
+// contain credentials.
+func parseEnvironmentRPCEndpoints(value string) ([]RPCEndpoint, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "[") {
+		decoder := json.NewDecoder(strings.NewReader(value))
+		decoder.DisallowUnknownFields()
+		var endpoints []RPCEndpoint
+		if err := decoder.Decode(&endpoints); err != nil {
+			return nil, errors.New("ETHERVIEW_RPC_URLS contains invalid endpoint JSON")
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return nil, errors.New("ETHERVIEW_RPC_URLS contains invalid endpoint JSON")
+		}
+		if len(endpoints) == 0 {
+			return nil, errors.New("ETHERVIEW_RPC_URLS endpoint JSON must not be empty")
+		}
+		return endpoints, nil
+	}
+	var endpoints []RPCEndpoint
+	for _, raw := range strings.Split(value, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw != "" {
+			endpoints = append(endpoints, RPCEndpoint{
+				Name: fmt.Sprintf("env-%d", len(endpoints)+1), URL: raw, Purposes: []string{"all"},
+			})
+		}
+	}
+	if len(endpoints) == 0 {
+		return nil, errors.New("ETHERVIEW_RPC_URLS must contain at least one endpoint")
+	}
+	return endpoints, nil
 }
 
 func lookupValueOrFile(name string, lookup func(string) (string, bool), readFile func(string) ([]byte, error)) (string, error) {
@@ -1195,6 +1262,18 @@ func validS3Bucket(value string) bool {
 	}
 	// DNS-looking IPv4 addresses are prohibited as S3 bucket names.
 	return net.ParseIP(value) == nil
+}
+
+func validCanonicalTrustedProxy(value string) bool {
+	if value == "" || strings.TrimSpace(value) != value {
+		return false
+	}
+	if address, err := netip.ParseAddr(value); err == nil {
+		return address.Zone() == "" && !address.Is4In6() && address.String() == value
+	}
+	prefix, err := netip.ParsePrefix(value)
+	return err == nil && prefix.Addr().Zone() == "" && !prefix.Addr().Is4In6() &&
+		prefix == prefix.Masked() && prefix.String() == value
 }
 
 func validFixedHex(value string, byteLen int) bool {

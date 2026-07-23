@@ -699,9 +699,17 @@ func (processor *PostgresProxyProcessor) persistTx(
 			}
 		}
 	}
-	abiRequeued, err := resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
-	if err != nil {
-		return StageResult{}, err
+	// The first proxy generation is the ABI claim dependency itself. Publishing
+	// it unlocks the already queued ABI generation, so requesting another
+	// generation here would make durable history depend on whether a late trace
+	// replay superseded this transaction. Only later proxy generations carry
+	// facts that can be newer than ABI's initial view.
+	abiRequeued := false
+	if job.Generation > 1 {
+		abiRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
+		if err != nil {
+			return StageResult{}, err
+		}
 	}
 	details := map[string]string{
 		"outcome": outcome, "candidates": strconv.Itoa(len(detections)),

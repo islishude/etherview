@@ -68,9 +68,10 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 	job := Job{ID: "12", Stage: TraceStage, ChainID: "1", BlockHash: uintWord(12), BlockNumber: 12}
 	txHash1, txHash2 := uintWord(120), uintWord(121)
 	queryCount, insertedFrames := 0, 0
+	var replayStages []string
 	stageWritten, journalWritten := false, false
 	backend := &fakeSQLBackend{
-		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
 			queryCount++
 			switch {
 			case strings.Contains(query, "SELECT EXISTS"):
@@ -82,6 +83,9 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 			case strings.Contains(query, "FOR KEY SHARE"):
 				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM durable_jobs"):
+				if len(arguments) >= 3 {
+					replayStages = append(replayStages, fmt.Sprint(arguments[2].Value))
+				}
 				return emptyReplayTargetRows(), nil
 			default:
 				return nil, fmt.Errorf("unexpected query: %s", query)
@@ -130,14 +134,47 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.State != ResultComplete || result.Details["transactions"] != "2" || result.Details["frames"] != "2" || result.Details["source"] != string(TraceCallTracer) {
+	if result.State != ResultComplete || result.Details["transactions"] != "2" ||
+		result.Details["frames"] != "2" || result.Details["source"] != string(TraceCallTracer) ||
+		result.Details["creation_targets"] != "0" ||
+		result.Details["proxy_requeued"] != "false" ||
+		result.Details["abi_requeued"] != "false" {
 		t.Fatalf("result=%+v", result)
 	}
 	if queryCount != 4 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
 		t.Fatalf("queries=%d frames=%d stage=%v journal=%v first=%v second=%v", queryCount, insertedFrames, stageWritten, journalWritten, first.calls, second.calls)
 	}
+	if !reflect.DeepEqual(replayStages, []string{"abi"}) {
+		t.Fatalf("ordinary CALL replay stages = %v, want ABI only", replayStages)
+	}
 	if first.calls[0].hash != txHash1.String() || first.calls[1].hash != txHash2.String() {
 		t.Fatalf("calls=%+v", first.calls)
+	}
+}
+
+func TestSuccessfulCreationTargetsRejectsCallsAndRevertedCreations(t *testing.T) {
+	t.Parallel()
+	created := Address{19: 1}
+	tests := []struct {
+		name  string
+		frame CallFrame
+		want  int
+	}{
+		{name: "ordinary call", frame: CallFrame{Type: "CALL", To: &created}},
+		{name: "reverted create", frame: CallFrame{Type: "CREATE", To: &created, Reverted: true}},
+		{name: "reverted create2", frame: CallFrame{Type: "CREATE2", To: &created, Reverted: true}},
+		{name: "missing created address", frame: CallFrame{Type: "CREATE"}},
+		{name: "successful create", frame: CallFrame{Type: "CREATE", To: &created}, want: 1},
+		{name: "successful create2", frame: CallFrame{Type: "CREATE2", To: &created}, want: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			transactions := []traceTransaction{{trace: NormalizedTrace{Frames: []CallFrame{test.frame}}}}
+			if got := successfulCreationTargets(transactions); got != test.want {
+				t.Fatalf("successful creation targets = %d, want %d", got, test.want)
+			}
+		})
 	}
 }
 

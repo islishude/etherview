@@ -19,10 +19,13 @@ stage concurrently and would break the PostgreSQL ownership model.
 Core repair and derived reindex are separate operations:
 
 - `repair --stage core` refetches through the normal sticky history endpoint.
-  In a serializable, chain-advisory-locked transaction, PostgreSQL rechecks the
-  exact chain, height, canonical hash, parent, and finalized boundary. It may
-  replace only the bundle facts for that identity. It never changes the
-  canonical mapping, checkpoint, or reorg history.
+  In a READ COMMITTED, chain-advisory-locked transaction, PostgreSQL rechecks
+  the exact chain, height, canonical hash, parent, and finalized boundary.
+  Statement snapshots remain fresh after waiting for another role that holds
+  the same chain lock; the lock, row locks, and one atomic transaction are the
+  serialization protocol. It may replace only the bundle facts for that
+  identity. It never changes the canonical mapping, checkpoint, or reorg
+  history.
 - The canonicalizer refresh entry point validates that the candidate already
   has the exact canonical height/hash and calls only the identity-bound store
   refresh. It must never call the normal `Apply` fork-choice path, including as
