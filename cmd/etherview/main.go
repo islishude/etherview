@@ -12,13 +12,10 @@ import (
 	"github.com/islishude/etherview/internal/observability"
 )
 
-var (
-	version   = "dev"
-	revision  = "unknown"
-	buildDate = "unknown"
-)
-
 func main() {
+	var (
+		version, revision, buildDate = buildMetadata()
+	)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	logger := observability.NewLogger(observability.LoggerOptions{
