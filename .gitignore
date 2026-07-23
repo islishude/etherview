@@ -9,6 +9,7 @@
 /web/dist/
 /web/playwright-report/
 /web/test-results/
+/api/node_modules/
 
 # Local runtime
 /.env

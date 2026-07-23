@@ -19,13 +19,13 @@ injected EIP-1193 wallet for all contract reads and writes.
 
 ## Work Items
 
-| ID | Status | Depends on | Deliverable | Verification |
-|---|---|---|---|---|
-| P50-T01 | done | P00 | React/Vite routing, generated API client, i18n, theme, design primitives | frontend unit/build tests |
-| P50-T02 | done | P40 | Home, blocks/orphans, transactions, addresses, and search pages | Playwright core flows |
-| P50-T03 | in_progress | P20, P30, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages | capability UI tests |
-| P50-T04 | todo | P30, P40 | EIP-6963 discovery and wallet-only contract read/write forms | provider/mismatch tests |
-| P50-T05 | done | P50-T01 | Embedded assets, deep-link fallback, cache headers, CSP, accessibility | binary E2E and a11y tests |
+| ID      | Status      | Depends on    | Deliverable                                                              | Verification              |
+| ------- | ----------- | ------------- | ------------------------------------------------------------------------ | ------------------------- |
+| P50-T01 | done        | P00           | React/Vite routing, generated API client, i18n, theme, design primitives | frontend unit/build tests |
+| P50-T02 | done        | P40           | Home, blocks/orphans, transactions, addresses, and search pages          | Playwright core flows     |
+| P50-T03 | in_progress | P20, P30, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages      | capability UI tests       |
+| P50-T04 | todo        | P30, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
+| P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
 
 ## Acceptance
 
@@ -49,7 +49,7 @@ are changed and reviewed serially.
 - P50-T01: `make toolchain-check` passes the exact Go 1.26.5, Node 24.18.0,
   and npm 11.16.0 repository pins. A clean
   `npm --prefix web ci` followed by
-  `npm --prefix web run check:api`, `npm --prefix web run lint`,
+  `npm --prefix api run check:api`, `npm --prefix web run lint`,
   `npm --prefix web run test`, and `npm --prefix web run build` passes with 8
   test files and 32 tests. Coverage includes typed deep-link/search routing,
   the sole same-origin generated OpenAPI transport, large string quantities,

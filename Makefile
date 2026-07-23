@@ -68,7 +68,7 @@ generate-check:
 			cp -R "$$path" "$$snapshot/$$path"; \
 		done; \
 		$(MAKE) --no-print-directory generate; \
-		$(NPM) --prefix web run check:api; \
+		$(NPM) --prefix api run check:api; \
 		for path in $(GENERATED_PATHS); do \
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
@@ -104,9 +104,10 @@ test-integration:
 
 web-install:
 	$(NPM) --prefix web ci
+	$(NPM) --prefix api ci
 
 web-generate: web-install
-	$(NPM) --prefix web run generate:api
+	$(NPM) --prefix api run generate:api
 
 web-lint: web-install
 	$(NPM) --prefix web run lint

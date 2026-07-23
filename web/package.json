@@ -15,8 +15,6 @@
   },
   "scripts": {
     "build": "tsc -b && vite build",
-    "check:api": "openapi-typescript ../api/openapi.yaml --alphabetize --output src/api/schema.gen.ts --check",
-    "generate:api": "openapi-typescript ../api/openapi.yaml --alphabetize --output src/api/schema.gen.ts",
     "lint": "tsc -b --pretty false",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -47,7 +45,6 @@
     "axe-core": "4.12.1",
     "jsdom": "29.1.1",
     "license-checker-rseidelsohn": "5.0.1",
-    "openapi-typescript": "7.13.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.1.5",

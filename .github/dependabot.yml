@@ -20,8 +20,17 @@ updates:
       time: "02:30"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:30"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
     groups:
-      web-dependencies:
+      api-dependencies:
         patterns: ["*"]
 
   - package-ecosystem: github-actions
