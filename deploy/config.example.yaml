@@ -9,6 +9,18 @@ server:
 chain:
   id: 1
   genesis_hash: "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+  # Optional absolute path to a mounted standard Genesis JSON. When supplied,
+  # its block hash and allocation state root are verified before account import.
+  # Mutually exclusive with genesis_url.
+  genesis_file: ""
+  # Optional public HTTPS URL for a standard Genesis JSON. Credentials, query
+  # parameters, fragments, redirects, non-standard ports, and private network
+  # targets are rejected. Mutually exclusive with genesis_file.
+  genesis_url: ""
+  # Optional lowercase SHA-256 of the exact remote response bytes. This may only
+  # be set with genesis_url; canonical block-zero authentication still applies.
+  genesis_sha256: ""
+  genesis_fetch_timeout: 60s
   start_block: 0
   name: Ethereum
   native_symbol: ETH

@@ -52,6 +52,7 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	t.Setenv("ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "10")
 	t.Setenv("ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "1")
 	t.Setenv("ETHERVIEW_CHAIN_ID", "11155111")
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_FILE", "/var/lib/etherview/genesis.json")
 	t.Setenv("ETHERVIEW_ROLES", "api,sync")
 	t.Setenv("ETHERVIEW_RPC_URLS", "https://rpc.example, wss://ws.example")
 	t.Setenv("ETHERVIEW_API_KEY_PEPPER", strings.Repeat("p", 32))
@@ -71,7 +72,8 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if cfg.Database.URL != "postgres://example/db" ||
 		cfg.Database.ReadURL != "postgres://read-example/db" ||
 		cfg.Database.ReadMaxConnections != 10 || cfg.Database.ReadMinConnections != 1 ||
-		cfg.Chain.ID != 11155111 {
+		cfg.Chain.ID != 11155111 ||
+		cfg.Chain.GenesisFile != "/var/lib/etherview/genesis.json" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if len(cfg.RPC.Endpoints) != 2 || cfg.RPC.Endpoints[1].URL != "wss://ws.example" {
@@ -542,6 +544,224 @@ func TestValidateAggregatesErrorsAndDoesNotRequireGenesisDuringBootstrap(t *test
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("error %q lacks %q", err, fragment)
 		}
+	}
+}
+
+func TestGenesisFileRequiresAbsolutePathAndBlockZeroStart(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Chain.GenesisFile = "genesis.json"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "absolute path") {
+		t.Fatalf("relative genesis file error = %v", err)
+	}
+	cfg.Chain.GenesisFile = "/var/lib/etherview/genesis.json"
+	cfg.Chain.StartBlock = 1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "start_block=0") {
+		t.Fatalf("non-zero start genesis file error = %v", err)
+	}
+	cfg.Chain.StartBlock = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid genesis file config: %v", err)
+	}
+}
+
+func TestGenesisRemoteSourceConfiguration(t *testing.T) {
+	t.Parallel()
+	if Default().Chain.GenesisFetchTimeout != time.Minute {
+		t.Fatalf("default Genesis fetch timeout = %s", Default().Chain.GenesisFetchTimeout)
+	}
+	validDigest := strings.Repeat("a", 64)
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{
+			name: "file and URL",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisFile = "/var/lib/etherview/genesis.json"
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+			},
+			want: "mutually exclusive",
+		},
+		{
+			name: "URL with non-zero start",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+				cfg.Chain.StartBlock = 1
+			},
+			want: "start_block=0",
+		},
+		{
+			name:   "untrimmed URL",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = " https://genesis.example/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "HTTP URL",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "http://genesis.example/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "relative URL",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "opaque URL",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https:genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "credentials",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://user:secret@genesis.example/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "query",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/genesis.json?token=secret" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "empty query",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/genesis.json?" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "fragment",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/genesis.json#fragment" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "empty fragment",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/genesis.json#" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name: "URL above maximum length",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/" +
+					strings.Repeat("a", 4097-len("https://genesis.example/"))
+			},
+			want: "chain.genesis_url",
+		},
+		{
+			name:   "non-standard port",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example:8443/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "empty explicit port",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example:/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "escaped traversal",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/%2e%2e/genesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "escaped traversal separator",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/safe%2f%2e%2e%2fgenesis.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "escaped null",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisURL = "https://genesis.example/genesis%00.json" },
+			want:   "chain.genesis_url",
+		},
+		{
+			name:   "digest without URL",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisSHA256 = validDigest },
+			want:   "chain.genesis_sha256",
+		},
+		{
+			name: "short digest",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+				cfg.Chain.GenesisSHA256 = "abcd"
+			},
+			want: "chain.genesis_sha256",
+		},
+		{
+			name: "uppercase digest",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+				cfg.Chain.GenesisSHA256 = strings.Repeat("A", 64)
+			},
+			want: "chain.genesis_sha256",
+		},
+		{
+			name: "zero digest",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+				cfg.Chain.GenesisSHA256 = strings.Repeat("0", 64)
+			},
+			want: "chain.genesis_sha256",
+		},
+		{
+			name: "non-hex digest",
+			mutate: func(cfg *Config) {
+				cfg.Chain.GenesisURL = "https://genesis.example/genesis.json"
+				cfg.Chain.GenesisSHA256 = strings.Repeat("z", 64)
+			},
+			want: "chain.genesis_sha256",
+		},
+		{
+			name:   "short timeout",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisFetchTimeout = time.Second - 1 },
+			want:   "chain.genesis_fetch_timeout",
+		},
+		{
+			name:   "long timeout",
+			mutate: func(cfg *Config) { cfg.Chain.GenesisFetchTimeout = 5*time.Minute + 1 },
+			want:   "chain.genesis_fetch_timeout",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("invalid Genesis source config passed: %#v error=%v", cfg.Chain, err)
+			}
+		})
+	}
+
+	for _, rawURL := range []string{
+		"https://genesis.example/genesis.json",
+		"https://genesis.example:443/genesis.json",
+	} {
+		cfg := Default()
+		cfg.Chain.GenesisURL = rawURL
+		cfg.Chain.GenesisSHA256 = validDigest
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("valid Genesis URL config %q: %v", rawURL, err)
+		}
+	}
+	for _, timeout := range []time.Duration{time.Second, 5 * time.Minute} {
+		cfg := Default()
+		cfg.Chain.GenesisFetchTimeout = timeout
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("valid Genesis fetch timeout %s: %v", timeout, err)
+		}
+	}
+}
+
+func TestLoadGenesisRemoteSourceEnvironment(t *testing.T) {
+	validDigest := strings.Repeat("a", 64)
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_FILE", "")
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_URL", "https://genesis.example/genesis.json")
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_SHA256", validDigest)
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT", "45s")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Chain.GenesisURL != "https://genesis.example/genesis.json" ||
+		cfg.Chain.GenesisSHA256 != validDigest || cfg.Chain.GenesisFetchTimeout != 45*time.Second {
+		t.Fatalf("Genesis source environment was not applied: %#v", cfg.Chain)
 	}
 }
 

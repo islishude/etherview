@@ -117,6 +117,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/genesis/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Accounts authenticated by the canonical block-zero state root. */
+        get: operations["listGenesisAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/nfts/{address}/{token_id}": {
         parameters: {
             query?: never;
@@ -550,6 +567,20 @@ export interface components {
         };
         /** @enum {string} */
         Finality: "pending" | "latest" | "safe" | "finalized" | "orphan";
+        GenesisAccount: {
+            address: components["schemas"]["Address"];
+            balance: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            code_hash: components["schemas"]["Hash"];
+            nonce: components["schemas"]["Quantity"];
+            storage_root: components["schemas"]["Hash"];
+            /** @enum {string} */
+            type: "eoa" | "contract";
+        };
+        GenesisAccountListResponse: {
+            data: components["schemas"]["GenesisAccount"][];
+            meta: components["schemas"]["Meta"];
+        };
         /** @description A 32-byte hash; responses use normalized lowercase hexadecimal. */
         Hash: string;
         Meta: {
@@ -1088,6 +1119,30 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             503: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listGenesisAccounts: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Genesis allocation accounts ordered by address. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenesisAccountListResponse"];
+                };
+            };
             default: components["responses"]["Error"];
         };
     };

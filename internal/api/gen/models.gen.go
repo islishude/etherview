@@ -60,6 +60,24 @@ func (e Finality) Valid() bool {
 	}
 }
 
+// Defines values for GenesisAccountType.
+const (
+	GenesisAccountTypeContract GenesisAccountType = "contract"
+	GenesisAccountTypeEoa      GenesisAccountType = "eoa"
+)
+
+// Valid indicates whether the value is a known member of the GenesisAccountType enum.
+func (e GenesisAccountType) Valid() bool {
+	switch e {
+	case GenesisAccountTypeContract:
+		return true
+	case GenesisAccountTypeEoa:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchResultKind.
 const (
 	SearchResultKindAddress     SearchResultKind = "address"
@@ -670,6 +688,37 @@ type ErrorResponse struct {
 
 // Finality defines model for Finality.
 type Finality string
+
+// GenesisAccount defines model for GenesisAccount.
+type GenesisAccount struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// Balance A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Balance Quantity `json:"balance"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash Hash `json:"code_hash"`
+
+	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Nonce Quantity `json:"nonce"`
+
+	// StorageRoot A 32-byte hash; responses use normalized lowercase hexadecimal.
+	StorageRoot Hash               `json:"storage_root"`
+	Type        GenesisAccountType `json:"type"`
+}
+
+// GenesisAccountType defines model for GenesisAccount.Type.
+type GenesisAccountType string
+
+// GenesisAccountListResponse defines model for GenesisAccountListResponse.
+type GenesisAccountListResponse struct {
+	Data []GenesisAccount `json:"data"`
+	Meta Meta             `json:"meta"`
+}
 
 // Hash A 32-byte hash; responses use normalized lowercase hexadecimal.
 type Hash = string
@@ -1294,6 +1343,12 @@ type GetVerifiedContractParams struct {
 // StreamHeadEventsParams defines parameters for StreamHeadEvents.
 type StreamHeadEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// ListGenesisAccountsParams defines parameters for ListGenesisAccounts.
+type ListGenesisAccountsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.

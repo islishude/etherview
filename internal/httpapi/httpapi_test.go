@@ -26,6 +26,20 @@ type fakeReader struct {
 	err    error
 }
 
+type fakeGenesisReader struct {
+	items []gen.GenesisAccount
+	next  string
+	err   error
+}
+
+func (reader fakeGenesisReader) GenesisAccounts(
+	context.Context,
+	string,
+	int,
+) ([]gen.GenesisAccount, string, error) {
+	return reader.items, reader.next, reader.err
+}
+
 type readinessOverrideReader struct {
 	fakeReader
 	readiness StatusSnapshot
@@ -109,6 +123,48 @@ func TestStatusUsesStringQuantitiesAndCompleteness(t *testing.T) {
 	}
 	if response.Data.ChainId != "11155111" || response.Data.Lag != "2" || response.Meta.RequestId != "request-1" {
 		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+
+func TestGenesisAccountsExposeTypedPageAndUnavailableBoundary(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Chain.ID = 777
+	account := gen.GenesisAccount{
+		Address: "0x2000000000000000000000000000000000000002",
+		Type:    gen.GenesisAccountTypeContract, Balance: "1000000000000000000", Nonce: "3",
+		CodeHash:    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		StorageRoot: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+		BlockHash:   "0x01ea13d00d2698ff2d67208c43b4f0bfd2051a1b5af8566c395831a57b47a414",
+	}
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{},
+		Genesis:   fakeGenesisReader{items: []gen.GenesisAccount{account}, next: "next"},
+		RequestID: func() string { return "genesis-request" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/genesis/accounts?limit=1", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.GenesisAccountListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Data) != 1 || response.Data[0] != account ||
+		response.Meta.NextCursor == nil || *response.Meta.NextCursor != "next" {
+		t.Fatalf("response=%+v", response)
+	}
+
+	unavailable := testHandler(t, fakeReader{})
+	recorder = httptest.NewRecorder()
+	unavailable.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/genesis/accounts", nil))
+	if recorder.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(recorder.Body.String(), "genesis_state_not_configured") {
+		t.Fatalf("unavailable status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

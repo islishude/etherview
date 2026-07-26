@@ -20,6 +20,7 @@ import {
   useBlockStats,
   useBlocks,
   useChainStatus,
+  useGenesisAccounts,
   useNFTOwnership,
   usePublicConfig,
   useSearchResults,
@@ -317,6 +318,70 @@ export function BlocksPage() {
   );
 }
 
+export function GenesisPage() {
+  const { i18n, t } = useTranslation();
+  const pager = useCursorHistory("genesis");
+  const accounts = useGenesisAccounts(
+    CORE_PAGE_SIZE,
+    pager.cursor,
+    pager.refreshGeneration,
+  );
+  const locale = i18n.resolvedLanguage ?? "en";
+  return (
+    <Page title={t("page.genesis")} description={t("page.genesisDescription")}>
+      <p className="context-note" role="note">{t("context.genesisAuthenticated")}</p>
+      <QueryNotice loading={accounts.isPending} error={accounts.error} onReset={pager.reset} />
+      {accounts.data?.items.length === 0 && (
+        <p className="empty-result" role="status">{t("state.noGenesisAccounts")}</p>
+      )}
+      {accounts.data && accounts.data.items.length > 0 && (
+        <div className="table-scroll" tabIndex={0} aria-label={t("page.genesis")}>
+          <table>
+            <caption className="sr-only">{t("context.genesisAuthenticated")}</caption>
+            <thead>
+              <tr>
+                <th>{t("table.address")}</th>
+                <th>{t("detail.type")}</th>
+                <th>{t("table.balance")}</th>
+                <th>{t("detail.nonce")}</th>
+                <th>{t("detail.codeHash")}</th>
+                <th>{t("detail.storageRoot")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.data.items.map((account) => (
+                <tr key={account.address}>
+                  <td>
+                    <Link to="/address/$address" params={{ address: account.address }}>
+                      <code title={account.address}>{shorten(account.address)}</code>
+                    </Link>
+                  </td>
+                  <td>{t(`accountType.${account.type}`)}</td>
+                  <td>{formatInteger(account.balance, locale)}</td>
+                  <td>{formatInteger(account.nonce, locale)}</td>
+                  <td><code title={account.code_hash}>{shorten(account.code_hash)}</code></td>
+                  <td><code title={account.storage_root}>{shorten(account.storage_root)}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {accounts.data && (
+        <CursorPagination
+          busy={accounts.isFetching}
+          hasNext={Boolean(accounts.data.next_cursor)}
+          hasPrevious={pager.hasPrevious}
+          label={t("pagination.genesis")}
+          onNext={() => pager.next(accounts.data?.next_cursor)}
+          onPrevious={pager.previous}
+          page={pager.page}
+        />
+      )}
+    </Page>
+  );
+}
+
 export function TransactionsPage() {
   const { i18n, t } = useTranslation();
   const pager = useCursorHistory("transactions");
@@ -530,6 +595,11 @@ function BlockDetailPage({ identifier }: { identifier: string }) {
             <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
             <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />
           </DetailList>
+          {block.data.number === "0" && block.data.canonical && (
+            <p className="context-note">
+              <Link to="/genesis">{t("actions.viewGenesisAccounts")}</Link>
+            </p>
+          )}
           <CompletenessPanel completeness={block.data.completeness} />
         </>
       )}

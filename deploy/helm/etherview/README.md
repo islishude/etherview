@@ -78,6 +78,33 @@ The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
 
+## Genesis account state
+
+Choose exactly one of the following authoritative Genesis JSON sources:
+
+- Set `genesisState.existingClaim` to a read-only PVC, with
+  `genesisState.key` naming the file inside the claim. The chart mounts that
+  one file at the absolute `genesisState.mountPath` and supplies the path
+  through `ETHERVIEW_CHAIN_GENESIS_FILE`.
+- Set `genesisState.url` to a public HTTPS URL. The chart supplies it through
+  `ETHERVIEW_CHAIN_GENESIS_URL` without creating a PVC or file mount. An
+  optional `genesisState.sha256` pins the lowercase, non-zero, 64-character
+  SHA-256 digest of the exact response bytes. `genesisState.fetchTimeout`
+  controls the request deadline, defaults to `60s`, and must resolve to a
+  duration from `1s` through `5m`.
+
+Both modes require `config.chain.start_block: 0` and are available only to
+`all` or `sync` application Pods. Migration, API, and worker Pods receive
+neither the source nor its checksum; they consume authenticated imported facts
+from PostgreSQL. The URL must use HTTPS without credentials, query parameters,
+fragments, redirects, or a non-default port. Runtime validation additionally
+rejects private and special-purpose destinations. The default NetworkPolicy
+already permits HTTPS egress on TCP port 443; no HTTP egress is added.
+
+Direct `config.chain.genesis_file`, `config.chain.genesis_url`, and
+`config.chain.genesis_sha256` values are rejected so a rendered ConfigMap
+cannot bypass this role-scoped source configuration.
+
 The structured `rpc-urls` JSON form retains each endpoint's `name`, `url`,
 `purposes`, and `max_requests_per_second` fields while keeping the complete
 document in the Secret. Use it when head, history, state, trace, or mempool

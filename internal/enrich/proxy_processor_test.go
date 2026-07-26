@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -11,6 +12,59 @@ import (
 
 	"github.com/islishude/etherview/internal/ethrpc"
 )
+
+func TestPostgresProxyProcessorLoadsGenesisPredeployCandidatesOnlyAtBlockZero(t *testing.T) {
+	t.Parallel()
+	address := testAddress(30)
+	queries := 0
+	backend := &fakeSQLBackend{query: func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+		if !strings.Contains(query, "FROM genesis_account_observations") {
+			return nil, fmt.Errorf("unexpected query: %s", query)
+		}
+		queries++
+		if len(arguments) != 2 || arguments[0].Value != "777" {
+			t.Fatalf("genesis candidate arguments = %+v", arguments)
+		}
+		return &fakeSQLRows{
+			columns: []string{"address"},
+			values:  [][]driver.Value{{address[:]}},
+		}, nil
+	}}
+	processor := &PostgresProxyProcessor{db: openFakeSQLDB(t, backend)}
+	job := Job{
+		ID: "genesis-proxy", Stage: ProxyStage, ChainID: "777",
+		BlockHash: uintWord(300), BlockNumber: 0,
+	}
+	var candidate proxyCandidate
+	if err := processor.loadGenesisCandidates(t.Context(), job, func(
+		address Address,
+		source string,
+		force bool,
+	) error {
+		candidate = proxyCandidate{
+			address: address, sources: map[string]struct{}{source: {}}, force: force,
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if candidate.address != address || !candidate.force {
+		t.Fatalf("genesis proxy candidate = %+v", candidate)
+	}
+	if _, ok := candidate.sources[proxySourceGenesis]; !ok {
+		t.Fatalf("genesis proxy candidate sources = %+v", candidate.sources)
+	}
+	job.BlockNumber = 1
+	if err := processor.loadGenesisCandidates(t.Context(), job, func(Address, string, bool) error {
+		t.Fatal("non-zero block produced a genesis proxy candidate")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if queries != 1 {
+		t.Fatalf("genesis candidate query count = %d, want 1", queries)
+	}
+}
 
 type proxyRPCCall struct {
 	method    string

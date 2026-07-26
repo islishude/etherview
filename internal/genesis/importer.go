@@ -1,0 +1,696 @@
+// Package genesis authenticates and imports operator-supplied genesis account
+// state after the canonical block-zero core fact becomes available.
+package genesis
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strconv"
+	"time"
+
+	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/ethrpc"
+)
+
+const (
+	maximumDocumentBytes = int64(64 << 20)
+	maximumAccounts      = 500_000
+)
+
+var errBlockZeroPending = errors.New("canonical block zero is not available")
+
+var (
+	errConfiguredGenesisHashMismatch = errors.New(
+		"genesis document block hash does not match configured genesis hash",
+	)
+	errCanonicalGenesisHashMismatch = errors.New(
+		"genesis document block hash does not match canonical block zero",
+	)
+	errCanonicalGenesisRootMismatch = errors.New(
+		"genesis document state root does not match canonical block zero",
+	)
+	errStoredGenesisDigestMismatch = errors.New(
+		"stored completed genesis import conflicts with configured SHA-256",
+	)
+)
+
+// Importer is a long-lived sync-role component. It retries only while block
+// zero has not reached PostgreSQL; malformed or mismatched input fails closed.
+type Importer struct {
+	db           *sql.DB
+	chainID      string
+	chainNumber  uint64
+	expectedHash enrich.Word
+	file         string
+	remote       *remoteSource
+	digest       [32]byte
+	spec         *genesisSpec
+	block        *genesisBlockData
+	queue        *enrich.PostgresJobQueue
+	pollInterval time.Duration
+}
+
+type remoteImportCheckpoint struct {
+	version string
+	state   string
+}
+
+func NewImporter(
+	db *sql.DB,
+	chain config.ChainConfig,
+	queue *enrich.PostgresJobQueue,
+	pollInterval time.Duration,
+) (*Importer, error) {
+	if db == nil {
+		return nil, errors.New("genesis importer database is nil")
+	}
+	if chain.ID == 0 {
+		return nil, errors.New("genesis importer chain ID is zero")
+	}
+	if chain.GenesisFile != "" && chain.GenesisURL != "" {
+		return nil, errors.New("genesis importer file and URL are mutually exclusive")
+	}
+	if (chain.GenesisFile != "" || chain.GenesisURL != "") && chain.StartBlock != 0 {
+		return nil, errors.New("genesis importer requires indexing from block zero")
+	}
+	if pollInterval <= 0 {
+		pollInterval = time.Second
+	}
+	importer := &Importer{
+		db: db, chainID: strconv.FormatUint(chain.ID, 10), chainNumber: chain.ID,
+		file: chain.GenesisFile, queue: queue, pollInterval: pollInterval,
+	}
+	if chain.GenesisHash != "" {
+		configuredHash, err := ethrpc.ParseHash(chain.GenesisHash)
+		if err != nil {
+			return nil, errors.New("genesis importer configured hash is invalid")
+		}
+		decoded, err := configuredHash.Bytes()
+		if err != nil {
+			return nil, errors.New("genesis importer configured hash is invalid")
+		}
+		importer.expectedHash, err = enrich.WordFromBytes(decoded)
+		if err != nil {
+			return nil, errors.New("genesis importer configured hash is invalid")
+		}
+	}
+	if chain.GenesisURL != "" {
+		remote, err := newRemoteSource(
+			chain.GenesisURL,
+			chain.GenesisSHA256,
+			chain.GenesisFetchTimeout,
+		)
+		if err != nil {
+			return nil, err
+		}
+		importer.remote = remote
+		return importer, nil
+	}
+	if chain.GenesisFile == "" {
+		return importer, nil
+	}
+	document, err := readBoundedFile(chain.GenesisFile)
+	if err != nil {
+		return nil, err
+	}
+	if err := importer.prepareDocument(document, sha256.Sum256(document)); err != nil {
+		return nil, err
+	}
+	return importer, nil
+}
+
+func (importer *Importer) prepareDocument(document []byte, digest [sha256.Size]byte) error {
+	spec, block, err := parseDocument(document, importer.chainNumber)
+	if err != nil {
+		return err
+	}
+	if importer.expectedHash != (enrich.Word{}) &&
+		!bytes.Equal(importer.expectedHash[:], block.Hash().Bytes()) {
+		return errConfiguredGenesisHashMismatch
+	}
+	importer.digest = digest
+	importer.spec = spec
+	importer.block = block
+	return nil
+}
+
+func (*Importer) Name() string { return "genesis-state-importer" }
+
+func (importer *Importer) Run(ctx context.Context) error {
+	if importer == nil || importer.db == nil {
+		return errors.New("run nil genesis importer")
+	}
+	if importer.remote != nil {
+		return importer.runRemote(ctx)
+	}
+	if importer.file == "" {
+		if err := importer.markUnavailable(ctx); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return importer.runPrepared(ctx)
+}
+
+func (importer *Importer) runPrepared(ctx context.Context) error {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			_, _, err := importer.importOnce(ctx)
+			if errors.Is(err, errBlockZeroPending) {
+				timer.Reset(importer.pollInterval)
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		}
+	}
+}
+
+func (importer *Importer) runRemote(ctx context.Context) error {
+	for {
+		before, complete, err := importer.completedRemoteImport(ctx, importer.db)
+		if err != nil {
+			return err
+		}
+		if complete {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		if err := importer.waitForCanonicalBlockZero(ctx); err != nil {
+			return err
+		}
+		err = importer.withRemoteSourceLock(ctx, func(conn *sql.Conn) error {
+			after, complete, err := importer.completedRemoteImport(ctx, conn)
+			if err != nil || complete {
+				return err
+			}
+			if after.version != before.version {
+				return concurrentRemoteFailure(after)
+			}
+			document, err := importer.remote.fetch(ctx)
+			if err != nil {
+				return importer.recordRemoteFetchFailure(ctx, conn, err)
+			}
+			if err := importer.prepareDocument(document.Bytes, document.SHA256); err != nil {
+				code := "genesis_remote_document_invalid"
+				if errors.Is(err, errConfiguredGenesisHashMismatch) {
+					code = "genesis_remote_block_hash_mismatch"
+				}
+				return importer.recordRemoteFailure(
+					ctx,
+					conn,
+					remoteFailureFailed,
+					code,
+					remoteFailure(remoteFailureFailed, code),
+				)
+			}
+			_, _, err = importer.importOnceUsing(ctx, conn)
+			if errors.Is(err, errCanonicalGenesisHashMismatch) {
+				return importer.recordRemoteFailure(
+					ctx,
+					conn,
+					remoteFailureFailed,
+					"genesis_remote_block_hash_mismatch",
+					remoteFailure(remoteFailureFailed, "genesis_remote_block_hash_mismatch"),
+				)
+			}
+			if errors.Is(err, errCanonicalGenesisRootMismatch) {
+				return importer.recordRemoteFailure(
+					ctx,
+					conn,
+					remoteFailureFailed,
+					"genesis_remote_state_root_mismatch",
+					remoteFailure(remoteFailureFailed, "genesis_remote_state_root_mismatch"),
+				)
+			}
+			if err != nil {
+				return err
+			}
+			_, complete, err = importer.completedRemoteImport(ctx, conn)
+			if err != nil {
+				return err
+			}
+			if !complete {
+				return errors.New("remote genesis import did not publish a complete identity")
+			}
+			return nil
+		})
+		if errors.Is(err, errBlockZeroPending) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+}
+
+func (importer *Importer) completedRemoteImport(
+	ctx context.Context,
+	queryer interface {
+		QueryRowContext(context.Context, string, ...any) *sql.Row
+	},
+) (remoteImportCheckpoint, bool, error) {
+	var (
+		checkpoint                        remoteImportCheckpoint
+		blockHash, stateRoot, digest, raw []byte
+		canonical                         bool
+	)
+	err := queryer.QueryRowContext(ctx, `
+		SELECT
+		    imported.xmin::text,
+		    imported.state,
+		    imported.block_hash,
+		    imported.state_root,
+		    imported.document_sha256,
+		    canonical.block_hash IS NOT NULL,
+		    block.raw
+		FROM genesis_state_imports AS imported
+		LEFT JOIN canonical_blocks AS canonical
+		  ON canonical.chain_id = imported.chain_id
+		 AND canonical.number = 0
+		 AND canonical.block_hash = imported.block_hash
+		LEFT JOIN blocks AS block
+		  ON block.chain_id = canonical.chain_id
+		 AND block.number = canonical.number
+		 AND block.hash = canonical.block_hash
+		WHERE imported.chain_id = $1::numeric`,
+		importer.chainID,
+	).Scan(
+		&checkpoint.version,
+		&checkpoint.state,
+		&blockHash,
+		&stateRoot,
+		&digest,
+		&canonical,
+		&raw,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteImportCheckpoint{}, false, nil
+	}
+	if err != nil {
+		return remoteImportCheckpoint{}, false, fmt.Errorf("read completed genesis import: %w", err)
+	}
+	if checkpoint.state != "complete" {
+		return checkpoint, false, nil
+	}
+	if !canonical || len(blockHash) != len(enrich.Word{}) ||
+		len(stateRoot) != len(enrich.Word{}) || len(digest) != sha256.Size {
+		return checkpoint, false, errors.New("stored completed genesis import identity is invalid")
+	}
+	canonicalRoot, err := stateRootFromBlock(raw)
+	if err != nil {
+		return checkpoint, false, errors.New("stored completed genesis import canonical state root is invalid")
+	}
+	if !bytes.Equal(stateRoot, canonicalRoot[:]) {
+		return checkpoint, false, errors.New("stored completed genesis import conflicts with canonical block zero state root")
+	}
+	if importer.expectedHash != (enrich.Word{}) &&
+		!bytes.Equal(importer.expectedHash[:], blockHash) {
+		return checkpoint, false, errors.New("stored completed genesis import conflicts with configured genesis hash")
+	}
+	if importer.remote != nil && importer.remote.expectedDigest != nil &&
+		!bytes.Equal(importer.remote.expectedDigest[:], digest) {
+		return checkpoint, false, errStoredGenesisDigestMismatch
+	}
+	return checkpoint, true, nil
+}
+
+func concurrentRemoteFailure(checkpoint remoteImportCheckpoint) error {
+	switch checkpoint.state {
+	case string(remoteFailureFailed):
+		return remoteFailure(remoteFailureFailed, "genesis_remote_failed")
+	case string(remoteFailureUnavailable):
+		return remoteFailure(remoteFailureUnavailable, "genesis_remote_unavailable")
+	default:
+		return remoteFailure(remoteFailureUnavailable, "genesis_remote_state_changed")
+	}
+}
+
+func (importer *Importer) waitForCanonicalBlockZero(ctx context.Context) error {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			var available bool
+			if err := importer.db.QueryRowContext(ctx, `
+				SELECT EXISTS (
+				    SELECT 1
+				    FROM canonical_blocks
+				    WHERE chain_id = $1::numeric AND number = 0
+				)`,
+				importer.chainID,
+			).Scan(&available); err != nil {
+				return fmt.Errorf("wait for canonical block zero: %w", err)
+			}
+			if available {
+				return nil
+			}
+			timer.Reset(importer.pollInterval)
+		}
+	}
+}
+
+func (importer *Importer) withRemoteSourceLock(
+	ctx context.Context,
+	action func(*sql.Conn) error,
+) (result error) {
+	conn, err := importer.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("reserve genesis remote source connection: %w", err)
+	}
+	locked := false
+	defer func() {
+		if locked {
+			unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			var unlocked bool
+			unlockErr := conn.QueryRowContext(unlockCtx,
+				`SELECT pg_advisory_unlock(
+				    hashtext('etherview:genesis-remote-source'),
+				    hashtext($1)
+				)`,
+				importer.chainID,
+			).Scan(&unlocked)
+			cancel()
+			if unlockErr != nil || !unlocked {
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				result = errors.Join(result, errors.New("release genesis remote source lock"))
+			}
+		}
+		if closeErr := conn.Close(); closeErr != nil {
+			result = errors.Join(result, errors.New("close genesis remote source connection"))
+		}
+	}()
+	for !locked {
+		if err := conn.QueryRowContext(ctx,
+			`SELECT pg_try_advisory_lock(
+			    hashtext('etherview:genesis-remote-source'),
+			    hashtext($1)
+			)`,
+			importer.chainID,
+		).Scan(&locked); err != nil {
+			return fmt.Errorf("lock genesis remote source: %w", err)
+		}
+		if !locked {
+			timer := time.NewTimer(importer.pollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return action(conn)
+}
+
+func (importer *Importer) recordRemoteFetchFailure(
+	ctx context.Context,
+	execer interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	},
+	fetchErr error,
+) error {
+	kind, code, ok := remoteErrorDetails(fetchErr)
+	if !ok {
+		kind, code = remoteFailureUnavailable, "genesis_remote_unavailable"
+		fetchErr = remoteFailure(kind, code)
+	}
+	return importer.recordRemoteFailure(ctx, execer, kind, code, fetchErr)
+}
+
+func (importer *Importer) recordRemoteFailure(
+	ctx context.Context,
+	execer interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	},
+	kind remoteFailureKind,
+	code string,
+	cause error,
+) error {
+	if kind != remoteFailureUnavailable && kind != remoteFailureFailed {
+		return errors.New("record genesis remote failure with invalid state")
+	}
+	if _, err := execer.ExecContext(ctx, `
+		INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
+		VALUES ($1::numeric, $2, $3)
+		ON CONFLICT (chain_id) DO UPDATE SET
+		    state = EXCLUDED.state,
+		    block_hash = NULL,
+		    state_root = NULL,
+		    document_sha256 = NULL,
+		    account_count = NULL,
+		    last_error_code = EXCLUDED.last_error_code,
+		    imported_at = NULL,
+		    updated_at = clock_timestamp()
+		WHERE genesis_state_imports.state <> 'complete'`,
+		importer.chainID, string(kind), code,
+	); err != nil {
+		return fmt.Errorf("publish genesis remote source failure: %w", err)
+	}
+	return cause
+}
+
+func (importer *Importer) markUnavailable(ctx context.Context) error {
+	_, err := importer.db.ExecContext(ctx, `
+		INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
+		VALUES ($1::numeric, 'unavailable', 'genesis_file_not_configured')
+		ON CONFLICT (chain_id) DO UPDATE SET
+		    state = 'unavailable',
+		    block_hash = NULL,
+		    state_root = NULL,
+		    document_sha256 = NULL,
+		    account_count = NULL,
+		    last_error_code = 'genesis_file_not_configured',
+		    imported_at = NULL,
+		    updated_at = clock_timestamp()
+		WHERE genesis_state_imports.state <> 'complete'`, importer.chainID)
+	if err != nil {
+		return fmt.Errorf("publish unavailable genesis state: %w", err)
+	}
+	return nil
+}
+
+func (importer *Importer) importOnce(ctx context.Context) (enrich.Word, enrich.Word, error) {
+	return importer.importOnceUsing(ctx, importer.db)
+}
+
+func (importer *Importer) importOnceUsing(
+	ctx context.Context,
+	beginner interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	},
+) (enrich.Word, enrich.Word, error) {
+	tx, err := beginner.BeginTx(ctx, nil)
+	if err != nil {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("begin genesis state import: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext('etherview:genesis-state'), hashtext($1))`,
+		importer.chainID,
+	); err != nil {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("lock genesis state import: %w", err)
+	}
+	var blockHash, raw []byte
+	err = tx.QueryRowContext(ctx, `
+		SELECT block.hash, block.raw
+		FROM canonical_blocks AS canonical
+		JOIN blocks AS block
+		  ON block.chain_id = canonical.chain_id
+		 AND block.number = canonical.number
+		 AND block.hash = canonical.block_hash
+		WHERE canonical.chain_id = $1::numeric AND canonical.number = 0`,
+		importer.chainID,
+	).Scan(&blockHash, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return enrich.Word{}, enrich.Word{}, errBlockZeroPending
+	}
+	if err != nil {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("read canonical block zero: %w", err)
+	}
+	reference, err := enrich.WordFromBytes(blockHash)
+	if err != nil {
+		return enrich.Word{}, enrich.Word{}, errors.New("stored block-zero hash is invalid")
+	}
+	stateRoot, err := stateRootFromBlock(raw)
+	if err != nil {
+		return enrich.Word{}, enrich.Word{}, err
+	}
+	if !bytes.Equal(blockHash, importer.block.Hash().Bytes()) {
+		return enrich.Word{}, enrich.Word{}, errCanonicalGenesisHashMismatch
+	}
+	if !bytes.Equal(stateRoot[:], importer.block.Root().Bytes()) {
+		return enrich.Word{}, enrich.Word{}, errCanonicalGenesisRootMismatch
+	}
+	var existingState string
+	var existingHash, existingRoot, existingDigest []byte
+	err = tx.QueryRowContext(ctx, `
+		SELECT state, block_hash, state_root, document_sha256
+		FROM genesis_state_imports
+		WHERE chain_id = $1::numeric
+		FOR UPDATE`, importer.chainID,
+	).Scan(&existingState, &existingHash, &existingRoot, &existingDigest)
+	if err == nil && existingState == "complete" {
+		if !bytes.Equal(existingHash, blockHash) || !bytes.Equal(existingRoot, stateRoot[:]) {
+			return enrich.Word{}, enrich.Word{}, errors.New("stored genesis import identity conflicts with canonical block zero")
+		}
+		if importer.remote != nil && importer.remote.expectedDigest != nil &&
+			!bytes.Equal(existingDigest, importer.remote.expectedDigest[:]) {
+			return enrich.Word{}, enrich.Word{}, errStoredGenesisDigestMismatch
+		}
+		if err := tx.Commit(); err != nil {
+			return enrich.Word{}, enrich.Word{}, fmt.Errorf("commit existing genesis import: %w", err)
+		}
+		return reference, stateRoot, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("read genesis import state: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO genesis_state_imports (
+		    chain_id, block_hash, state_root, document_sha256, state,
+		    account_count, last_error_code, imported_at, updated_at
+		) VALUES (
+		    $1::numeric, $2, $3, $4, 'complete', $5::numeric,
+		    NULL, clock_timestamp(), clock_timestamp()
+		)
+		ON CONFLICT (chain_id) DO UPDATE SET
+		    block_hash = EXCLUDED.block_hash,
+		    state_root = EXCLUDED.state_root,
+		    document_sha256 = EXCLUDED.document_sha256,
+		    state = EXCLUDED.state,
+		    account_count = EXCLUDED.account_count,
+		    last_error_code = NULL,
+		    imported_at = EXCLUDED.imported_at,
+		    updated_at = EXCLUDED.updated_at
+		WHERE genesis_state_imports.state <> 'complete'`,
+		importer.chainID, blockHash, stateRoot[:], importer.digest[:],
+		strconv.Itoa(len(importer.spec.Alloc)),
+	); err != nil {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis import identity: %w", err)
+	}
+	addresses := make([]address, 0, len(importer.spec.Alloc))
+	for accountAddress := range importer.spec.Alloc {
+		addresses = append(addresses, accountAddress)
+	}
+	sort.Slice(addresses, func(i, j int) bool {
+		return bytes.Compare(addresses[i][:], addresses[j][:]) < 0
+	})
+	for _, accountAddress := range addresses {
+		account := importer.spec.Alloc[accountAddress]
+		storageHash, err := storageRoot(account.Storage)
+		if err != nil {
+			return enrich.Word{}, enrich.Word{}, errors.New("compute genesis account storage root")
+		}
+		code := account.Code
+		if code == nil {
+			code = []byte{}
+		}
+		codeHash := keccakHash(code)
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO genesis_account_observations (
+			    chain_id, address, block_hash, balance, nonce,
+			    code_hash, code, storage_root
+			) VALUES (
+			    $1::numeric, $2, $3, $4::numeric, $5::numeric, $6, $7, $8
+			)`,
+			importer.chainID, accountAddress[:], blockHash, account.Balance.String(),
+			strconv.FormatUint(account.Nonce, 10), codeHash[:], code, storageHash[:],
+		); err != nil {
+			return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis account: %w", err)
+		}
+		if len(code) > 0 {
+			result, err := tx.ExecContext(ctx, `
+				INSERT INTO contract_code_observations AS current (
+				    chain_id, address, block_number, block_hash,
+				    code_hash, code, canonical
+				) VALUES ($1::numeric, $2, 0, $3, $4, $5, TRUE)
+				ON CONFLICT (chain_id, address, block_hash) DO UPDATE SET
+				    code = COALESCE(current.code, EXCLUDED.code),
+				    canonical = TRUE
+				WHERE current.code_hash = EXCLUDED.code_hash
+				  AND (current.code IS NULL OR current.code = EXCLUDED.code)`,
+				importer.chainID, accountAddress[:], blockHash, codeHash[:], code,
+			)
+			if err != nil {
+				return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis code observation: %w", err)
+			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				return enrich.Word{}, enrich.Word{}, fmt.Errorf("count persisted genesis code observation: %w", err)
+			}
+			if affected != 1 {
+				return enrich.Word{}, enrich.Word{}, errors.New("genesis code observation conflicts with an existing exact fact")
+			}
+		}
+	}
+	if err := importer.requestProxyReplay(ctx, tx, reference, stateRoot); err != nil {
+		return enrich.Word{}, enrich.Word{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return enrich.Word{}, enrich.Word{}, fmt.Errorf("commit genesis state import: %w", err)
+	}
+	return reference, stateRoot, nil
+}
+
+func (importer *Importer) requestProxyReplay(
+	ctx context.Context,
+	tx *sql.Tx,
+	blockHash enrich.Word,
+	stateRoot enrich.Word,
+) error {
+	if importer.queue == nil {
+		return nil
+	}
+	_, err := importer.queue.EnqueueTx(ctx, tx, enrich.EnqueueRequest{
+		Stage: enrich.ProxyStage, ChainID: importer.chainID,
+		BlockHash: blockHash, BlockNumber: 0,
+		Replay: enrich.ReplaySource{
+			Kind: "genesis-import",
+			Key:  blockHash.String() + ":" + stateRoot.String(),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("request proxy replay after genesis import: %w", err)
+	}
+	return nil
+}
+
+func readBoundedFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open genesis file: %w", err)
+	}
+	defer file.Close() //nolint:errcheck
+	document, err := io.ReadAll(io.LimitReader(file, maximumDocumentBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read genesis file: %w", err)
+	}
+	if int64(len(document)) > maximumDocumentBytes {
+		return nil, errors.New("genesis file exceeds 67108864 bytes")
+	}
+	return document, nil
+}

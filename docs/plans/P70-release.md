@@ -11,6 +11,7 @@ and user/operator evidence sufficient for a production public release.
 
 - [Architecture](../architecture/overview.md)
 - [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md)
+- [ADR-0019: Authenticated genesis state import](../decisions/ADR-0019-authenticated-genesis-state-import.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -24,6 +25,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T05 | todo | P00–P60 | User/operator/API/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
+| P70-T08 | blocked | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
 
 ## Acceptance
 
@@ -41,13 +43,21 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T07: configuration, Compose, Helm Secret/ExternalSecret wiring,
       effective connection bounds, and API-only capacity accounting have
       regression coverage and pass the applicable repository gates.
+- [ ] P70-T08: an optional bounded Genesis JSON source is authenticated against
+      block zero and exposes exact EOA/predeploy account facts through
+      PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
+      UI; missing input remains explicitly unavailable.
 
 ## Current Blockers
 
-No dependency-plan blocker remains: P00 through P60 are complete. P70-T01
-through P70-T05 are still `todo`, so P70-T06 and the v1 release remain blocked
-on their conformance, security, release-CI, long-capacity, and documentation
-evidence.
+No dependency-plan blocker remains: P00 through P60 are complete. P70-T08's
+local and remote Genesis implementation plus every non-browser gate are
+complete, but its browser acceptance remains unavailable because the managed
+macOS sandbox denies Chromium's MachPort rendezvous. That sole P70-T08 blocker
+clears when `make test-e2e` can run in CI or another environment allowed to
+launch Chromium. P70-T01 through P70-T05 are still `todo`, so P70-T06 and the
+v1 release remain blocked on their conformance, security, release-CI,
+long-capacity, and documentation evidence.
 
 ## Evidence
 
@@ -80,3 +90,58 @@ evidence.
   chain/genesis matching. Both pools used the same PostgreSQL endpoint, so no
   asynchronous replica-lag or reader-outage result is claimed by this scoped
   item.
+- P70-T08 implementation: bounded duplicate-key-safe Genesis JSON parsing uses
+  Ethereum account/storage tries and the execution header through Amsterdam,
+  and requires the configured plus canonical block-zero hash and state root.
+  Migration `0022_genesis_state` persists database-guarded immutable balance,
+  nonce, code, code hash, and storage-root facts without raw slots; exact
+  predeploy code plus its proxy wake commit atomically. Missing input remains a
+  typed unavailable capability. The source is either the existing absolute
+  local file or a mutually exclusive public-HTTPS URL, and both remain limited
+  to indexing from block zero.
+- P70-T08 remote boundary: URL validation rejects credentials, query, fragment,
+  non-443 ports, path traversal, redirects, environment proxies, and any DNS
+  answer in a private or special-use network. Direct verified-IP dialing,
+  identity encoding, the 64 MiB declared/streamed limit, an explicit MIME
+  allowlist, and JSON validation bound the GET. An optional non-zero lowercase
+  SHA-256 authenticates the exact response bytes before JSON validation.
+  Network and hostile-content failures expose only stable redacted states.
+- P70-T08 remote lifecycle: the importer checks immutable completion before any
+  request, waits for canonical block zero, and holds a per-chain PostgreSQL
+  session advisory lock across its second completion check and fetch. HTTP,
+  checksum, and parsing remain outside the import transaction. Successful
+  completion removes the remote dependency; a configured digest is compared
+  directly with the persisted digest. Concurrent replicas fetch once, and
+  checksum or canonical-identity failures commit no account, code, or proxy-job
+  fact.
+- P70-T08 public surfaces: generated Go/TypeScript contracts expose cursor-bound
+  `/api/v1/genesis/accounts` pages with decimal-string quantities. The embedded
+  bilingual SPA exposes `/genesis` and links canonical block zero to it.
+  Compose supports file or remote environment inputs. Helm either mounts the
+  PVC file or injects URL, digest, and timeout only into `all`/`sync` roles; it
+  rejects source conflicts, unmounted inline values, non-zero starts, invalid
+  digests, and out-of-range timeouts.
+- P70-T08 verification: trie/hash/parser, capability API, cursor,
+  proxy-candidate, split-role parity, immutable-observation, remote
+  configuration, SSRF/DNS, proxy, redirect, status, MIME, encoding, size,
+  timeout, checksum-order, and error-redaction tests pass, as do 68
+  browser-component tests. Reference vectors cover fixed roots/hashes,
+  100-account branching, and an Amsterdam genesis header. PostgreSQL 18
+  `make test-integration` verifies file/URL byte-equivalent facts, one fetch for
+  concurrent importers, completed offline restart, persisted-digest conflict,
+  canonical completion reauthentication, and zero partial writes on checksum,
+  block-hash, state-root, or temporary HTTP failure.
+- P70-T08 common gates: `go test ./...`, `make test-race`,
+  `make generate-check`, `make security-check`, `make lint` with a writable
+  lint cache, `make toolchain-check`, `make compose-check`, `make helm-check`,
+  `make license-check`, `make plan-check`, and `git diff --check` pass. The API
+  generator override uses the patched `minimatch`/`brace-expansion` chain;
+  both npm audits report zero vulnerabilities, `govulncheck` reports zero
+  reachable vulnerabilities, and both working-tree and history secret scans
+  are clean.
+- P70-T08 browser boundary: both system Chrome and bundled Playwright Chromium
+  reached the embedded Go server; the non-browser fallback/header case passed,
+  while six cases stopped before page creation because macOS denied Chromium's
+  MachPort rendezvous. No application assertion failed. An unsandboxed rerun
+  was requested and rejected only because workspace approval credits were
+  exhausted, so browser acceptance remains unclaimed.

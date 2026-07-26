@@ -66,14 +66,18 @@ type ServerConfig struct {
 }
 
 type ChainConfig struct {
-	ID             uint64 `yaml:"id"`
-	GenesisHash    string `yaml:"genesis_hash"`
-	StartBlock     uint64 `yaml:"start_block"`
-	Name           string `yaml:"name"`
-	NativeSymbol   string `yaml:"native_symbol"`
-	NativeName     string `yaml:"native_name"`
-	NativeDecimals uint8  `yaml:"native_decimals"`
-	MaxReorgDepth  uint64 `yaml:"max_reorg_depth"`
+	ID                  uint64        `yaml:"id"`
+	GenesisHash         string        `yaml:"genesis_hash"`
+	GenesisFile         string        `yaml:"genesis_file"`
+	GenesisURL          string        `yaml:"genesis_url"`
+	GenesisSHA256       string        `yaml:"genesis_sha256"`
+	GenesisFetchTimeout time.Duration `yaml:"genesis_fetch_timeout"`
+	StartBlock          uint64        `yaml:"start_block"`
+	Name                string        `yaml:"name"`
+	NativeSymbol        string        `yaml:"native_symbol"`
+	NativeName          string        `yaml:"native_name"`
+	NativeDecimals      uint8         `yaml:"native_decimals"`
+	MaxReorgDepth       uint64        `yaml:"max_reorg_depth"`
 }
 
 type DatabaseConfig struct {
@@ -242,12 +246,13 @@ func Default() Config {
 			WriteTimeout:    30 * time.Second,
 		},
 		Chain: ChainConfig{
-			ID:             1,
-			Name:           "Ethereum",
-			NativeSymbol:   "ETH",
-			NativeName:     "Ether",
-			NativeDecimals: 18,
-			MaxReorgDepth:  128,
+			ID:                  1,
+			GenesisFetchTimeout: time.Minute,
+			Name:                "Ethereum",
+			NativeSymbol:        "ETH",
+			NativeName:          "Ether",
+			NativeDecimals:      18,
+			MaxReorgDepth:       128,
 		},
 		Database: DatabaseConfig{
 			MaxConnections:     20,
@@ -368,6 +373,41 @@ func (c Config) Validate() error {
 	}
 	if c.Chain.GenesisHash != "" && !validFixedHex(c.Chain.GenesisHash, 32) {
 		errs = append(errs, errors.New("chain.genesis_hash must be a 32-byte 0x-prefixed hash"))
+	}
+	if c.Chain.GenesisFile != "" && c.Chain.GenesisURL != "" {
+		errs = append(errs, errors.New("chain.genesis_file and chain.genesis_url are mutually exclusive"))
+	}
+	if c.Chain.GenesisFile != "" || c.Chain.GenesisURL != "" {
+		if c.Chain.StartBlock != 0 {
+			errs = append(errs, errors.New("chain genesis source requires chain.start_block=0"))
+		}
+	}
+	if c.Chain.GenesisFile != "" {
+		if !filepath.IsAbs(c.Chain.GenesisFile) {
+			errs = append(errs, errors.New("chain.genesis_file must be an absolute path"))
+		}
+	}
+	if c.Chain.GenesisURL != "" {
+		parsed, err := url.Parse(c.Chain.GenesisURL)
+		if c.Chain.GenesisURL != strings.TrimSpace(c.Chain.GenesisURL) || err != nil ||
+			parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+			parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery ||
+			parsed.Fragment != "" || strings.Contains(c.Chain.GenesisURL, "#") ||
+			len(c.Chain.GenesisURL) > 4096 || strings.HasSuffix(parsed.Host, ":") ||
+			(parsed.Port() != "" && parsed.Port() != "443") ||
+			unsafeURLPath(parsed.EscapedPath()) {
+			errs = append(errs, errors.New("chain.genesis_url must be an absolute HTTPS URL using the default port or 443 without credentials, query, fragment, or path traversal"))
+		}
+	}
+	if c.Chain.GenesisSHA256 != "" {
+		digest, err := decodeNonzeroSHA256(c.Chain.GenesisSHA256)
+		if c.Chain.GenesisURL == "" || err != nil ||
+			c.Chain.GenesisSHA256 != strings.ToLower(c.Chain.GenesisSHA256) || allZero(digest) {
+			errs = append(errs, errors.New("chain.genesis_sha256 must be a non-zero lowercase SHA-256 digest and requires chain.genesis_url"))
+		}
+	}
+	if c.Chain.GenesisFetchTimeout < time.Second || c.Chain.GenesisFetchTimeout > 5*time.Minute {
+		errs = append(errs, errors.New("chain.genesis_fetch_timeout must be between 1s and 5m"))
 	}
 	if c.Chain.NativeSymbol == "" || c.Chain.NativeName == "" {
 		errs = append(errs, errors.New("chain native currency name and symbol are required"))
@@ -831,13 +871,22 @@ func validateObservability(cfg ObservabilityConfig) error {
 }
 
 func unsafeURLPath(value string) bool {
-	for segment := range strings.SplitSeq(value, "/") {
-		decoded, err := url.PathUnescape(segment)
-		if err != nil || decoded == ".." {
+	for {
+		normalized := strings.ReplaceAll(value, `\`, "/")
+		for segment := range strings.SplitSeq(normalized, "/") {
+			if segment == ".." {
+				return true
+			}
+		}
+		decoded, err := url.PathUnescape(value)
+		if err != nil || strings.ContainsRune(decoded, '\x00') {
 			return true
 		}
+		if decoded == value {
+			return false
+		}
+		value = decoded
 	}
-	return false
 }
 
 func (e RPCEndpoint) Validate() error {
@@ -924,6 +973,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	setString(lookup, "SERVER_METRICS_ADDRESS", &cfg.Server.MetricsAddress)
 	setString(lookup, "SERVER_PUBLIC_URL", &cfg.Server.PublicURL)
 	setString(lookup, "CHAIN_GENESIS_HASH", &cfg.Chain.GenesisHash)
+	setString(lookup, "CHAIN_GENESIS_FILE", &cfg.Chain.GenesisFile)
+	setString(lookup, "CHAIN_GENESIS_URL", &cfg.Chain.GenesisURL)
+	setString(lookup, "CHAIN_GENESIS_SHA256", &cfg.Chain.GenesisSHA256)
 	setString(lookup, "CHAIN_NAME", &cfg.Chain.Name)
 	setString(lookup, "CHAIN_NATIVE_SYMBOL", &cfg.Chain.NativeSymbol)
 	setString(lookup, "CHAIN_NATIVE_NAME", &cfg.Chain.NativeName)
@@ -1048,29 +1100,30 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		return err
 	}
 	for name, target := range map[string]*time.Duration{
-		"SERVER_SHUTDOWN_TIMEOUT":    &cfg.Server.ShutdownTimeout,
-		"SERVER_READ_TIMEOUT":        &cfg.Server.ReadTimeout,
-		"SERVER_WRITE_TIMEOUT":       &cfg.Server.WriteTimeout,
-		"DATABASE_CONNECT_TIMEOUT":   &cfg.Database.ConnectTimeout,
-		"DATABASE_STATEMENT_TIMEOUT": &cfg.Database.StatementTimeout,
-		"RPC_REQUEST_TIMEOUT":        &cfg.RPC.RequestTimeout,
-		"POLL_INTERVAL":              &cfg.Runtime.PollInterval,
-		"LEASE_DURATION":             &cfg.Runtime.LeaseDuration,
-		"MEMPOOL_POLL_INTERVAL":      &cfg.Mempool.PollInterval,
-		"MEMPOOL_RETENTION":          &cfg.Mempool.Retention,
-		"MAINTENANCE_INTERVAL":       &cfg.Maintenance.Interval,
-		"METADATA_FETCH_TIMEOUT":     &cfg.Metadata.FetchTimeout,
-		"ADAPTER_FETCH_TIMEOUT":      &cfg.Adapters.FetchTimeout,
-		"ADAPTER_CONNECT_TIMEOUT":    &cfg.Adapters.ConnectTimeout,
-		"ADAPTER_OPERATION_TIMEOUT":  &cfg.Adapters.OperationTimeout,
-		"REDIS_CACHE_TTL":            &cfg.Adapters.RedisCacheTTL,
-		"ADAPTER_PRICE_FRESHNESS":    &cfg.Adapters.PriceFreshness,
-		"ADAPTER_NAME_FRESHNESS":     &cfg.Adapters.NameFreshness,
-		"ADAPTER_FAILURE_TTL":        &cfg.Adapters.FailureTTL,
-		"VERIFICATION_TIMEOUT":       &cfg.Verification.Timeout,
-		"SOURCIFY_TIMEOUT":           &cfg.Sourcify.Timeout,
-		"TRACE_EXPORT_TIMEOUT":       &cfg.Observability.TraceExportTimeout,
-		"METRICS_REFRESH_INTERVAL":   &cfg.Observability.MetricsRefreshInterval,
+		"SERVER_SHUTDOWN_TIMEOUT":     &cfg.Server.ShutdownTimeout,
+		"SERVER_READ_TIMEOUT":         &cfg.Server.ReadTimeout,
+		"SERVER_WRITE_TIMEOUT":        &cfg.Server.WriteTimeout,
+		"DATABASE_CONNECT_TIMEOUT":    &cfg.Database.ConnectTimeout,
+		"DATABASE_STATEMENT_TIMEOUT":  &cfg.Database.StatementTimeout,
+		"RPC_REQUEST_TIMEOUT":         &cfg.RPC.RequestTimeout,
+		"CHAIN_GENESIS_FETCH_TIMEOUT": &cfg.Chain.GenesisFetchTimeout,
+		"POLL_INTERVAL":               &cfg.Runtime.PollInterval,
+		"LEASE_DURATION":              &cfg.Runtime.LeaseDuration,
+		"MEMPOOL_POLL_INTERVAL":       &cfg.Mempool.PollInterval,
+		"MEMPOOL_RETENTION":           &cfg.Mempool.Retention,
+		"MAINTENANCE_INTERVAL":        &cfg.Maintenance.Interval,
+		"METADATA_FETCH_TIMEOUT":      &cfg.Metadata.FetchTimeout,
+		"ADAPTER_FETCH_TIMEOUT":       &cfg.Adapters.FetchTimeout,
+		"ADAPTER_CONNECT_TIMEOUT":     &cfg.Adapters.ConnectTimeout,
+		"ADAPTER_OPERATION_TIMEOUT":   &cfg.Adapters.OperationTimeout,
+		"REDIS_CACHE_TTL":             &cfg.Adapters.RedisCacheTTL,
+		"ADAPTER_PRICE_FRESHNESS":     &cfg.Adapters.PriceFreshness,
+		"ADAPTER_NAME_FRESHNESS":      &cfg.Adapters.NameFreshness,
+		"ADAPTER_FAILURE_TTL":         &cfg.Adapters.FailureTTL,
+		"VERIFICATION_TIMEOUT":        &cfg.Verification.Timeout,
+		"SOURCIFY_TIMEOUT":            &cfg.Sourcify.Timeout,
+		"TRACE_EXPORT_TIMEOUT":        &cfg.Observability.TraceExportTimeout,
+		"METRICS_REFRESH_INTERVAL":    &cfg.Observability.MetricsRefreshInterval,
 	} {
 		if err := setDuration(lookup, name, target); err != nil {
 			return err

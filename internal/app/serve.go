@@ -22,6 +22,7 @@ import (
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
+	genesisstate "github.com/islishude/etherview/internal/genesis"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/maintenance"
@@ -365,6 +366,21 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}); err != nil {
 			return err
 		}
+		genesisQueue, err := enrich.NewPostgresJobQueue(db)
+		if err != nil {
+			return err
+		}
+		genesisImporter, err := genesisstate.NewImporter(
+			db, cfg.Chain, genesisQueue, cfg.Runtime.PollInterval,
+		)
+		if err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleSync, "12-genesis-state", func() (components.Service, error) {
+			return genesisImporter, nil
+		}); err != nil {
+			return err
+		}
 		if cfg.Features.Mempool {
 			poller, err := mempool.NewPoller(mempool.PoolSource{Pool: rpcBuild.Pool}, pendingRepository, mempool.PollerOptions{
 				ChainID: cfg.Chain.ID, PollInterval: cfg.Mempool.PollInterval,
@@ -537,7 +553,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}
 		}
 		handler, err := httpapi.New(httpapi.Options{
-			Config: cfg, Reader: publicReader, Catalog: catalogReader, Web: webui.NewHandler(),
+			Config: cfg, Reader: publicReader, Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
@@ -875,6 +891,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				add("05-new-head-wake")
 			}
 			add("10-core-sync")
+			add("12-genesis-state")
 			if cfg.Features.Mempool {
 				add("15-pending-mempool")
 			}

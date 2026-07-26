@@ -12,6 +12,7 @@ import {
   ContractPage,
   ContractsPage,
   EntityPage,
+  GenesisPage,
   HomePage,
   NotFoundPage,
   SearchPage,
@@ -37,6 +38,11 @@ const blockRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/blocks/$blockID",
   component: BlockRoutePage,
+});
+const genesisRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/genesis",
+  component: GenesisPage,
 });
 const transactionsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -114,6 +120,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   blocksRoute,
   blockRoute,
+  genesisRoute,
   transactionsRoute,
   transactionRoute,
   addressRoute,

@@ -5,6 +5,7 @@ import type {
   AggregateStats,
   BlockSummary,
   CursorPage,
+  GenesisAccount,
   NFTBalance,
   PendingSnapshot,
   SearchResult,
@@ -55,6 +56,30 @@ export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
     },
     retry: false,
     staleTime: 5_000,
+  });
+}
+
+export function useGenesisAccounts(
+  limit = 25,
+  cursor?: string,
+  refreshGeneration = 0,
+) {
+  return useQuery({
+    queryKey: ["genesis-accounts", limit, cursor ?? null, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<GenesisAccount>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/genesis/accounts", {
+          params: { query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
   });
 }
 

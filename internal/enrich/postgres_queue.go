@@ -100,6 +100,17 @@ func (queue *PostgresJobQueue) Enqueue(ctx context.Context, request EnqueueReque
 	return result, nil
 }
 
+// EnqueueTx schedules work in a caller-owned transaction. The caller must
+// commit or roll back tx; this makes a durable source fact and its wake visible
+// atomically.
+func (queue *PostgresJobQueue) EnqueueTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	request EnqueueRequest,
+) (EnqueueResult, error) {
+	return queue.enqueueTx(ctx, tx, request)
+}
+
 // Requeue makes an existing immutable-block job eligible for explicit
 // operator-requested replay. It never steals an active lease.
 func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {

@@ -70,6 +70,28 @@ of the callback. The routing and lag contract is specified in
 
 - Each deployment serves one configured chain and binds it with chain ID plus
   genesis hash. Every RPC endpoint is verified against both.
+- Block-zero RPC ingestion authenticates but cannot enumerate the allocation.
+  The sync role can read the authoritative Genesis JSON from one mutually
+  exclusive server-only source: an absolute `chain.genesis_file` or a
+  `chain.genesis_url`; either requires indexing to start at zero. It computes
+  the block hash, account trie, and per-account storage roots, requires the
+  block hash and state root to match canonical block zero, and atomically
+  stores balances, nonces, code identity, and storage roots. Raw storage slots
+  are discarded. Missing input is a typed unavailable capability, not an empty
+  allocation.
+- Remote Genesis bootstrap is restricted to public HTTPS port 443 with no
+  credentials, query, fragment, path traversal, redirect, proxy, or
+  private/special-use destination. Only identity-encoded, valid JSON within the
+  64 MiB cap is accepted, with a JSON, vendor `+json`, octet-stream, or text
+  media type. An optional explicit non-zero lowercase SHA-256 must match the
+  exact response bytes.
+- Sync replicas hold a per-chain session advisory lock across the remote
+  completion check and fetch, while the HTTP request and parsing remain outside
+  the atomic import transaction. A completed import is the durable source of
+  truth and removes the remote runtime dependency; a configured checksum must
+  match its persisted document digest. Failures expose only stable redacted
+  unavailable or failed states. This source extension changes neither the
+  persistent schema nor the public API.
 - Multi-statement canonical and coverage writes use READ COMMITTED while
   holding the chain-scoped transaction advisory lock. Fresh statement
   snapshots after lock waits, targeted row locks, and one atomic transaction

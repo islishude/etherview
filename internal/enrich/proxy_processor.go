@@ -25,6 +25,7 @@ const (
 	proxySourceTraceCreate = "trace_create"
 	proxySourceUpgrade     = "upgrade_event"
 	proxySourceReplay      = "exact_replay"
+	proxySourceGenesis     = "genesis_allocation"
 )
 
 var (
@@ -204,6 +205,9 @@ func (processor *PostgresProxyProcessor) loadCandidates(ctx context.Context, job
 	if err := processor.loadTraceCandidates(ctx, job, add); err != nil {
 		return nil, false, err
 	}
+	if err := processor.loadGenesisCandidates(ctx, job, add); err != nil {
+		return nil, false, err
+	}
 	if err := processor.loadReplayCandidates(ctx, job, add); err != nil {
 		return nil, false, err
 	}
@@ -228,6 +232,51 @@ func (processor *PostgresProxyProcessor) loadCandidates(ctx context.Context, job
 }
 
 type proxyCandidateAdder func(Address, string, bool) error
+
+func (processor *PostgresProxyProcessor) loadGenesisCandidates(
+	ctx context.Context,
+	job Job,
+	add proxyCandidateAdder,
+) error {
+	if job.BlockNumber != 0 {
+		return nil
+	}
+	rows, err := processor.db.QueryContext(ctx, `
+		SELECT account.address
+		FROM genesis_account_observations AS account
+		JOIN genesis_state_imports AS imported
+		  ON imported.chain_id = account.chain_id
+		 AND imported.block_hash = account.block_hash
+		 AND imported.state = 'complete'
+		WHERE account.chain_id = $1::numeric
+		  AND account.block_hash = $2
+		  AND octet_length(account.code) > 0
+		ORDER BY account.address`,
+		job.ChainID, job.BlockHash[:],
+	)
+	if err != nil {
+		return fmt.Errorf("query genesis proxy candidates: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	for rows.Next() {
+		var addressBytes []byte
+		if err := rows.Scan(&addressBytes); err != nil {
+			return fmt.Errorf("scan genesis proxy candidate: %w", err)
+		}
+		if len(addressBytes) != len(Address{}) {
+			return Permanent(errors.New("stored genesis address is invalid"))
+		}
+		var address Address
+		copy(address[:], addressBytes)
+		if err := add(address, proxySourceGenesis, true); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate genesis proxy candidates: %w", err)
+	}
+	return nil
+}
 
 func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
 	rows, err := processor.db.QueryContext(ctx, `

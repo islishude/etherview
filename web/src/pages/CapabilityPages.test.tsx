@@ -38,6 +38,56 @@ describe("P50 capability pages", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders authenticated genesis accounts with string quantities and cursor paging", async () => {
+    const cursor = "genesis:snapshot+next/page?2";
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      const request = new URL(path, "http://etherview.test");
+      if (path === "/api/v1/config") return configResponse({});
+      if (
+        request.pathname === "/api/v1/genesis/accounts" &&
+        request.searchParams.get("limit") === "25" &&
+        !request.searchParams.get("cursor")
+      ) {
+        return Response.json({
+          data: [{
+            address,
+            type: "contract",
+            balance: "1000000000000000000",
+            nonce: "3",
+            code_hash: codeHash,
+            storage_root: blockHash,
+            block_hash: blockHash,
+          }],
+          meta: { ...meta, next_cursor: cursor },
+        });
+      }
+      if (
+        request.pathname === "/api/v1/genesis/accounts" &&
+        request.searchParams.get("cursor") === cursor
+      ) {
+        return Response.json({ data: [], meta });
+      }
+      return apiError("not_found", 404);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    renderExplorer("/genesis");
+
+    expect(await screen.findByRole("heading", { name: "Genesis accounts" })).toBeVisible();
+    expect(await screen.findByText("1,000,000,000,000,000,000")).toBeVisible();
+    expect(screen.getByText("Contract account")).toBeVisible();
+    expect(screen.getByRole("link", { name: "0x121212…121212" })).toHaveAttribute(
+      "href",
+      `/address/${address}`,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("The authenticated genesis allocation is empty.")).toBeVisible();
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/genesis/accounts?limit=25&cursor=genesis%3Asnapshot%2Bnext%2Fpage%3F2",
+      expect.anything(),
+    );
+  });
+
   it("round-trips token cursors and recovers an invalid canonical snapshot", async () => {
     const cursor = "tokens:snapshot+next/page?2&rank=1";
     let firstPageRequests = 0;
