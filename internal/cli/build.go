@@ -1,11 +1,11 @@
-package main
+package cli
 
 import (
 	"runtime/debug"
 	"strings"
 )
 
-func buildMetadata() (version, revision, buildDate string) {
+func BuildMetadata() (version, revision, buildDate string) {
 	version = "dev"
 	revision = "unknown"
 	buildDate = "unknown"

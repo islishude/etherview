@@ -14,7 +14,7 @@ import (
 
 func main() {
 	var (
-		version, revision, buildDate = buildMetadata()
+		version, revision, buildDate = cli.BuildMetadata()
 	)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
