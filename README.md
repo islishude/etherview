@@ -1,11 +1,70 @@
 # Etherview
 
-Etherview is a production-oriented Ethereum execution-layer explorer written in
-Go. A React single-page application is embedded directly in the Go binary, and
-the same backend components can run as a PostgreSQL-only monolith or as split
-roles.
+Etherview is a pre-release Ethereum execution-layer explorer. It combines a Go
+backend with an embedded React application and runs either as one process or as
+independently scalable roles.
 
-The project is being implemented from the in-repository [plan](PLAN.md). See
-[`AGENTS.md`](AGENTS.md) before contributing and [`docs/testing.md`](docs/testing.md)
-for the validation gates.
+PostgreSQL is the only required external service and remains the source of
+truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 
+## Capabilities
+
+- Reorg-safe block, transaction, receipt, log, withdrawal, and mempool indexing
+- Block-scoped traces, ABI/proxy decoding, tokens, NFTs, balances, and statistics
+- Solidity/Vyper contract verification and optional Sourcify interoperability
+- Native REST/SSE APIs, an Etherscan V2 compatibility subset, and an embedded
+  bilingual explorer
+- API keys, SIWE wallet sessions, optional x402 billing, Prometheus metrics,
+  Compose, and Helm deployments
+
+Consensus-layer browsing, archived blob bodies, MEV accounting, and
+L2-specific batch semantics are outside the v1 core scope.
+
+## Project status
+
+The implementation plans through P65 are complete. P66 billing conformance and
+P70 release evidence are still open, so the repository does not yet claim a
+v1.0.0 production release. [PLAN.md](PLAN.md) is the authoritative status and
+evidence index.
+
+## Quick start
+
+Docker Compose starts PostgreSQL, applies migrations, builds the current tree,
+and serves the monolith on <http://localhost:8080>.
+
+```sh
+cp deploy/compose.env.example .env
+# Set a local password and a compatible execution RPC endpoint in .env.
+docker compose --profile monolith up --build
+```
+
+Use `--profile distributed` for one process per runtime role. Optional
+accelerators are enabled separately with `--profile accelerators`; application
+correctness and readiness do not depend on them. See
+[deploy/README.md](deploy/README.md) for configuration, Secret, read-replica,
+authentication, billing, and deployment details.
+
+## Build and verify
+
+The minimum supported toolchains are Go 1.26.5, Node.js 24.18.0, and npm
+11.16.0; compatible newer stable releases are supported.
+
+```sh
+make toolchain-check
+make go-build
+make test
+```
+
+`make check` runs the common source, race, security, license, generation, and
+deployment gates. Service-backed and long-running suites are explicit targets;
+see [docs/testing.md](docs/testing.md).
+
+## Documentation
+
+- [Architecture](docs/architecture/overview.md)
+- [OpenAPI specification](api/openapi.yaml)
+- [Operations runbook](docs/operations.md)
+- [Helm chart](deploy/helm/etherview/README.md)
+- [Contribution rules](AGENTS.md)
+
+Licensed under [Apache-2.0](LICENSE).
