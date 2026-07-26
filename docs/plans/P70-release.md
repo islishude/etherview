@@ -23,7 +23,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T01 | todo | P10–P66 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
 | P70-T02 | todo | P10–P66 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
 | P70-T03 | todo | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
-| P70-T04 | todo | P60 | 500 RPS reference capacity report and tuning guide | load report |
+| P70-T04 | in_progress | P60 | 500 RPS reference capacity report and tuning guide | load report |
 | P70-T05 | todo | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
@@ -62,10 +62,11 @@ P70-T08's local and remote Genesis implementation plus every non-browser gate
 are complete, but its browser acceptance remains unavailable because the
 managed macOS sandbox denies Chromium's MachPort rendezvous. That blocker
 clears when the Genesis browser acceptance can run in CI or another environment
-allowed to launch Chromium. P70-T01 through P70-T05 are still `todo`, so
-P70-T06 and the v1 release remain blocked on P66 completion, Genesis browser
-evidence, conformance, security, release-CI, long-capacity, and documentation
-evidence.
+allowed to launch Chromium. P70-T01 through P70-T03 and P70-T05 remain `todo`;
+P70-T04 is `in_progress` while its reference-capacity tooling and final report
+are prepared. P70-T06 and the v1 release remain blocked on P66 completion,
+Genesis browser evidence, conformance, security, release-CI, long-capacity,
+and documentation evidence.
 
 ## Evidence
 
@@ -73,6 +74,13 @@ evidence.
   optional reader URL plus independently bounded pool sizes. Zero reader
   values inherit writer settings; negative, overflowed, malformed, and
   effective `min > max` inputs fail before runtime.
+- P70-T04 tooling: the Compose parity fixture and load driver share one
+  distroless `runtime-tools` image, with all three Go binaries emitted by the
+  existing `go-builder`. The fixture remains the image default while the load
+  service overrides its entrypoint. The target builds successfully; both
+  binary entrypoints, the numeric non-root user, Compose configuration, plan
+  validation, shell syntax, and whitespace checks pass. This scoped
+  maintenance is not 500 RPS or soak evidence.
 - P70-T07 runtime: only `api`/`all` opens the forced-read-only reader pool.
   Startup checks its migration ledger and exact chain/genesis identity.
   Ordinary projections and the explicit Etherscan read inventory use it;

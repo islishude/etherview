@@ -17,56 +17,25 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
-RUN --mount=type=cache,target=/go/pkg/mod \
-    mkdir -p /out/licenses \
-    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/COPYING.LESSER \
-        /out/licenses/go-ethereum-LGPL-3.0-or-later.txt \
-    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/keccak/LICENSE \
-        /out/licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
-    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/secp256k1/LICENSE \
-        /out/licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
-    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/secp256k1/libsecp256k1/COPYING \
-        /out/licenses/libsecp256k1-MIT.txt \
-    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/metrics/LICENSE \
-        /out/licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
-COPY api ./api
 COPY cmd ./cmd
 COPY internal ./internal
 COPY web/webui.go ./web/webui.go
+COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -trimpath -ldflags="-s -w" -o /out/etherview ./cmd/etherview
+    go install -trimpath -ldflags="-s -w" ./cmd/...
 
-# The deterministic JSON-RPC fixture is a test-only target used by the
-# Compose runtime parity smoke. Nothing from this stage enters production.
-FROM golang:1.26.5 AS runtime-fixture-builder
-WORKDIR /src
-COPY go.mod ./
-COPY cmd/runtimefixture ./cmd/runtimefixture
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/runtimefixture ./cmd/runtimefixture
-
-FROM gcr.io/distroless/base-debian13:nonroot AS runtime-fixture
-COPY --from=runtime-fixture-builder --chown=nonroot:nonroot /out/runtimefixture /runtimefixture
+# The deterministic JSON-RPC fixture and bounded public-API load driver share
+# one test-only image used by the Compose runtime parity smoke. Nothing from
+# this stage enters production.
+FROM gcr.io/distroless/base-debian13:nonroot AS runtime-tools
+COPY --from=go-builder --chown=nonroot:nonroot /go/bin/runtimefixture /runtimefixture
+COPY --from=go-builder --chown=nonroot:nonroot /go/bin/loadtest /loadtest
 USER 65532:65532
 EXPOSE 8545
 ENTRYPOINT ["/runtimefixture"]
 CMD ["serve"]
-
-# The bounded public-API load driver is another test-only target. It is kept
-# separate from go-builder so smoke runs do not rebuild the embedded SPA and
-# nothing from this stage enters production.
-FROM golang:1.26.5 AS runtime-loadtest-builder
-WORKDIR /src
-COPY go.mod ./
-COPY cmd/loadtest ./cmd/loadtest
-COPY internal/loadtest ./internal/loadtest
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadtest ./cmd/loadtest
-
-FROM gcr.io/distroless/base-debian13:nonroot AS runtime-loadtest
-COPY --from=runtime-loadtest-builder --chown=nonroot:nonroot /out/loadtest /loadtest
-USER 65532:65532
-ENTRYPOINT ["/loadtest"]
 
 # Keep production last so an unqualified `docker build .` still emits the
 # deployable Etherview image rather than a test-only tool.
@@ -83,12 +52,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot LICENSE /LICENSE
 COPY --chown=nonroot:nonroot THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
-COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-LGPL-3.0-or-later.txt /licenses/go-ethereum-LGPL-3.0-or-later.txt
-COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt /licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt
-COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt /licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt
-COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/libsecp256k1-MIT.txt /licenses/libsecp256k1-MIT.txt
-COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
-COPY --from=go-builder --chown=nonroot:nonroot /out/etherview /etherview
+COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/etherview"]

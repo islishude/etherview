@@ -42,10 +42,10 @@ x-runtime-fixture-dependency: &runtime-fixture-dependency
 
 services:
   runtime-fixture:
-    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-etherview-runtime-fixture:local}
+    image: ${ETHERVIEW_RUNTIME_TOOLS_IMAGE:-etherview-runtime-tools:local}
     build:
       context: .
-      target: runtime-fixture
+      target: runtime-tools
     read_only: true
     user: "65532:65532"
     cap_drop:
@@ -67,10 +67,10 @@ services:
     restart: "no"
 
   runtime-loadtest:
-    image: ${ETHERVIEW_RUNTIME_LOADTEST_IMAGE:-etherview-runtime-loadtest:local}
+    image: ${ETHERVIEW_RUNTIME_TOOLS_IMAGE:-etherview-runtime-tools:local}
     build:
       context: .
-      target: runtime-loadtest
+      target: runtime-tools
     profiles:
       - runtime-tools
     read_only: true
@@ -79,6 +79,8 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    entrypoint:
+      - /loadtest
     restart: "no"
 
   etherview:

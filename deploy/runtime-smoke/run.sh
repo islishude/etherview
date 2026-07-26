@@ -5,8 +5,7 @@ script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_directory/../.." && pwd)
 docker_command=${DOCKER:-docker}
 image=${IMAGE:-etherview:local}
-fixture_image=${RUNTIME_FIXTURE_IMAGE:-etherview-runtime-fixture:local}
-loadtest_image=${RUNTIME_LOADTEST_IMAGE:-etherview-runtime-loadtest:local}
+runtime_tools_image=${RUNTIME_TOOLS_IMAGE:-etherview-runtime-tools:local}
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/etherview-runtime-smoke.XXXXXX")
 monolith_project="etherview-runtime-monolith-$$"
 distributed_project="etherview-runtime-distributed-$$"
@@ -52,8 +51,7 @@ fi
 "$docker_command" image inspect "$image" >/dev/null
 
 export ETHERVIEW_IMAGE=$image
-export ETHERVIEW_RUNTIME_FIXTURE_IMAGE=$fixture_image
-export ETHERVIEW_RUNTIME_LOADTEST_IMAGE=$loadtest_image
+export ETHERVIEW_RUNTIME_TOOLS_IMAGE=$runtime_tools_image
 export ETHERVIEW_CONFIG_FILE=$repository_root/deploy/config.example.yaml
 export ETHERVIEW_RPC_URLS=http://runtime-fixture:8545
 export ETHERVIEW_CHAIN_ID=1
@@ -78,7 +76,7 @@ export ETHERVIEW_PORT=0
 export ETHERVIEW_METRICS_PORT=0
 export POSTGRES_PASSWORD=etherview-runtime-smoke
 
-compose --profile monolith --profile runtime-tools build runtime-fixture runtime-loadtest
+compose --profile monolith --profile runtime-tools build runtime-fixture
 
 database_query() {
     project=$1

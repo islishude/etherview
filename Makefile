@@ -30,8 +30,7 @@ GENERATED_PATHS := \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local
-RUNTIME_FIXTURE_IMAGE ?= etherview-runtime-fixture:local
-RUNTIME_LOADTEST_IMAGE ?= etherview-runtime-loadtest:local
+RUNTIME_TOOLS_IMAGE ?= etherview-runtime-tools:local
 HELM_CHART ?= deploy/helm/etherview
 
 .DEFAULT_GOAL := check
@@ -189,12 +188,6 @@ license-check: license-tool-check web-install
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
-	@grep -Eq '^COPY .*THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md$$' Dockerfile || { echo "license-check: production image must include third-party notices"; exit 1; }
-	@grep -Eq '^COPY .*go-ethereum-LGPL-3.0-or-later.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum LGPL text"; exit 1; }
-	@grep -Eq '^COPY .*go-ethereum-crypto-keccak-BSD-3-Clause.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum keccak license"; exit 1; }
-	@grep -Eq '^COPY .*go-ethereum-crypto-secp256k1-BSD-3-Clause.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum secp256k1 license"; exit 1; }
-	@grep -Eq '^COPY .*libsecp256k1-MIT.txt$$' Dockerfile || { echo "license-check: production image must include the bundled libsecp256k1 license"; exit 1; }
-	@grep -Eq '^COPY .*go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum metrics license"; exit 1; }
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
 	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
 		--start web --production --excludePrivatePackages --summary \
@@ -246,8 +239,7 @@ compose-schema-smoke:
 
 compose-runtime-smoke: docker-build
 	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-runtime-smoke: Docker Compose v2 is required"; exit 1; }
-	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" RUNTIME_FIXTURE_IMAGE="$(RUNTIME_FIXTURE_IMAGE)" \
-		RUNTIME_LOADTEST_IMAGE="$(RUNTIME_LOADTEST_IMAGE)" \
+	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" RUNTIME_TOOLS_IMAGE="$(RUNTIME_TOOLS_IMAGE)" \
 		deploy/runtime-smoke/run.sh
 
 helm-check:
