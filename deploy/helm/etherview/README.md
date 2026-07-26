@@ -28,7 +28,8 @@ runtime keys are:
 
 | Value | Default Secret key | Use |
 |---|---|---|
-| `databaseURLKey` | `database-url` | PostgreSQL URL; required |
+| `databaseURLKey` | `database-url` | PostgreSQL writer URL; required for every role and migration |
+| `databaseReadURLKey` | `database-read-url` | optional PostgreSQL reader URL; injected only into `all` and `api` application containers |
 | `rpcURLsKey` | `rpc-urls` | comma-separated all-purpose URLs or a structured JSON endpoint array |
 | `apiKeyPepperKey` | `api-key-pepper` | API-key digest pepper |
 | `natsURLKey` | `nats-url` | optional NATS URL |
@@ -40,16 +41,42 @@ runtime keys are:
 | `otlpTraceHeadersKey` | `otlp-trace-headers` | optional OTLP collector authorization headers |
 
 `externalSecret.enabled` can materialize the same target from a SecretStore or
-ClusterSecretStore. Database, RPC, and pepper remote keys are always included;
-the NATS, Redis, S3, and OTLP entries are emitted only when their remote-key values
-are non-empty. Static S3 access and secret keys must be configured together.
-Inline `config.database.url` and `config.security.api_key_pepper` values are
-rejected by the chart schema. RPC endpoints and NATS/Redis URLs are likewise
-kept empty in the ConfigMap. S3 access keys, secret keys, and session tokens
-are also schema-locked to empty values there; all are supplied through their
-Secret-backed environment variables. The OTLP endpoint is locked to empty for
-the same reason; trace headers are injected only from the optional Secret key
-and must never be written to chart values or logs.
+ClusterSecretStore. Writer database, RPC, and pepper remote keys are always
+included. The reader entry is emitted only when
+`externalSecret.databaseReadURLRemoteKey` is non-empty; NATS, Redis, S3, and
+OTLP entries follow the same optional remote-key rule. Static S3 access and
+secret keys must be configured together. Inline `config.database.url`,
+`config.database.read_url`, and `config.security.api_key_pepper` values are
+rejected by the chart schema. Both database URLs must stay empty in the
+ConfigMap. RPC endpoints and NATS/Redis URLs are likewise kept empty there. S3
+access keys, secret keys, and session tokens are also schema-locked to empty
+values; all are supplied through Secret-backed environment variables. The OTLP
+endpoint is locked to empty for the same reason; trace headers are injected
+only from the optional Secret key and must never be written to chart values or
+logs.
+
+`config.database.read_max_connections` and
+`config.database.read_min_connections` size the optional reader pool. A zero
+value inherits the corresponding writer bound. A reader URL or either non-zero
+reader size enables the pool only in `all` or `api` application containers; an
+empty reader URL uses the writer endpoint. Rendering rejects any writer or
+reader value outside the signed 32-bit range and rejects effective reader
+minimums greater than effective maximums. Account for the writer and reader
+pools separately in the PostgreSQL connection budget.
+
+Secret values injected as environment variables are read only at Pod startup.
+After rotating either database URL in the existing Secret, including a target
+managed by External Secrets, restart the release Deployments:
+
+```sh
+kubectl rollout restart deployment \
+  --namespace etherview \
+  --selector app.kubernetes.io/instance=etherview
+```
+
+The chart intentionally does not compute a Secret checksum because it neither
+renders nor reads Secret contents. Its `checksum/config` annotation continues
+to roll Pods for ConfigMap changes.
 
 The structured `rpc-urls` JSON form retains each endpoint's `name`, `url`,
 `purposes`, and `max_requests_per_second` fields while keeping the complete
@@ -64,12 +91,14 @@ two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
 hard hostname-spread constraint with at least two eligible domains. Optional
 trace, verification, and metadata roles remain disabled so their external
 capability budgets can be measured separately. The profile's maximum 18 Pods
-and 12-connection pool cap require up to 216 application PostgreSQL
-connections at steady state. `maxSurge: 0` prevents a configured rollout
+and 12-connection writer pool cap require up to 216 application PostgreSQL
+connections at steady state. Its maximum 8 API Pods add 96 connections when a
+same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
 surge, but terminating Pods can overlap replacements outside that count. A
 fully concurrent rollout can therefore require the old and new pools together,
-up to 36 Pods and 432 application connections; otherwise roll roles serially
-and measure the overlap. Reserve migration/operator capacity in addition.
+up to 432 connections without a reader or 624 with the same-sized reader;
+otherwise roll roles serially and measure the overlap. Reserve
+migration/operator capacity in addition.
 
 The default chart leaves disruption budgets disabled because blocking a
 single-replica development deployment would be surprising. Enable them only

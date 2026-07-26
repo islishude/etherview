@@ -92,6 +92,14 @@ spec:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.databaseURLKey | quote }}
+            {{- if or (eq $roleName "all") (eq $roleName "api") }}
+            - name: ETHERVIEW_DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.databaseReadURLKey | quote }}
+                  optional: true
+            {{- end }}
             - name: ETHERVIEW_RPC_URLS
               valueFrom:
                 secretKeyRef:

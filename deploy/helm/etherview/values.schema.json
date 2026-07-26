@@ -169,6 +169,7 @@
       "required": [
         "existingSecret",
         "databaseURLKey",
+        "databaseReadURLKey",
         "rpcURLsKey",
         "apiKeyPepperKey",
         "natsURLKey",
@@ -182,6 +183,7 @@
       "properties": {
         "existingSecret": {"type": "string", "minLength": 1, "maxLength": 253},
         "databaseURLKey": {"$ref": "#/$defs/secretKey"},
+        "databaseReadURLKey": {"$ref": "#/$defs/secretKey"},
         "rpcURLsKey": {"$ref": "#/$defs/secretKey"},
         "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
         "natsURLKey": {"$ref": "#/$defs/secretKey"},
@@ -202,6 +204,7 @@
         "refreshInterval",
         "secretStoreRef",
         "databaseURLRemoteKey",
+        "databaseReadURLRemoteKey",
         "rpcURLsRemoteKey",
         "apiKeyPepperRemoteKey",
         "natsURLRemoteKey",
@@ -226,6 +229,7 @@
           }
         },
         "databaseURLRemoteKey": {"type": "string", "minLength": 1},
+        "databaseReadURLRemoteKey": {"type": "string"},
         "rpcURLsRemoteKey": {"type": "string", "minLength": 1},
         "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
         "natsURLRemoteKey": {"type": "string"},
@@ -261,6 +265,32 @@
             "url": {
               "const": "",
               "description": "Database credentials must come from secrets.existingSecret."
+            },
+            "read_url": {
+              "const": "",
+              "description": "Read credentials must come from secrets.existingSecret."
+            },
+            "read_max_connections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "description": "Read pool max connections. 0 inherits database.max_connections."
+            },
+            "read_min_connections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "description": "Read pool min connections. 0 inherits database.min_connections."
+            },
+            "max_connections": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "min_connections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
             }
           }
         },

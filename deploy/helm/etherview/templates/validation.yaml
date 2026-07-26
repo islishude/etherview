@@ -15,3 +15,25 @@
 {{- if and (not (empty $s3Session)) (empty $s3Access) }}
 {{- fail "externalSecret.s3SessionTokenRemoteKey requires the S3 access and secret remote keys" }}
 {{- end }}
+{{- $int32Max := int64 2147483647 }}
+{{- $databaseMax := int64 .Values.config.database.max_connections }}
+{{- $databaseMin := int64 .Values.config.database.min_connections }}
+{{- $readMax := int64 .Values.config.database.read_max_connections }}
+{{- $readMin := int64 .Values.config.database.read_min_connections }}
+{{- if or (lt $databaseMax (int64 1)) (gt $databaseMax $int32Max) (lt $databaseMin (int64 0)) (gt $databaseMin $int32Max) (gt $databaseMin $databaseMax) }}
+{{- fail "config.database writer connection bounds must fit int32 and satisfy 0 <= min_connections <= max_connections" }}
+{{- end }}
+{{- if or (lt $readMax (int64 0)) (gt $readMax $int32Max) (lt $readMin (int64 0)) (gt $readMin $int32Max) }}
+{{- fail "config.database reader connection bounds must be zero or a positive int32 value" }}
+{{- end }}
+{{- $effectiveReadMax := $readMax }}
+{{- if eq $effectiveReadMax (int64 0) }}
+{{- $effectiveReadMax = $databaseMax }}
+{{- end }}
+{{- $effectiveReadMin := $readMin }}
+{{- if eq $effectiveReadMin (int64 0) }}
+{{- $effectiveReadMin = $databaseMin }}
+{{- end }}
+{{- if gt $effectiveReadMin $effectiveReadMax }}
+{{- fail "config.database effective reader min_connections must not exceed effective max_connections" }}
+{{- end }}

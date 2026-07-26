@@ -163,21 +163,29 @@ done
 # Kubernetes Secret containing operator values.
 assert_kind_count "$monolith" Secret 0
 assert_contains "$monolith" "name: ETHERVIEW_DATABASE_URL"
+assert_occurrences "$monolith" "name: ETHERVIEW_DATABASE_READ_URL" 1
 assert_contains "$monolith" "name: ETHERVIEW_OTLP_TRACE_ENDPOINT"
+assert_occurrences "$distributed" "name: ETHERVIEW_DATABASE_READ_URL" 1
 assert_occurrences "$distributed" "name: ETHERVIEW_OTLP_TRACE_ENDPOINT" 7
 assert_contains "$monolith" "name: OTEL_EXPORTER_OTLP_HEADERS"
 assert_occurrences "$distributed" "name: OTEL_EXPORTER_OTLP_HEADERS" 7
 assert_contains "$monolith" 'name: "etherview"'
 assert_contains "$monolith" 'key: "database-url"'
+assert_contains "$monolith" 'key: "database-read-url"'
 assert_contains "$monolith" 'key: "otlp-trace-endpoint"'
 assert_contains "$monolith" 'key: "otlp-trace-headers"'
 assert_contains "$monolith" "url: \"\""
+assert_contains "$monolith" "read_url: \"\""
+assert_contains "$monolith" "read_max_connections: 0"
+assert_contains "$monolith" "read_min_connections: 0"
 assert_contains "$monolith" "api_key_pepper: \"\""
 assert_contains "$monolith" "otlp_trace_endpoint: \"\""
+assert_not_contains "$monolith" "checksum/secret"
 
 external_secret="$temporary_dir/external-secret.yaml"
 "$helm_bin" template etherview "$chart_dir" \
   --set externalSecret.enabled=true \
+  --set-string externalSecret.databaseReadURLRemoteKey=runtime/database-read-url \
   --set-string externalSecret.natsURLRemoteKey=runtime/nats-url \
   --set-string externalSecret.redisURLRemoteKey=runtime/redis-url \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access \
@@ -187,12 +195,18 @@ external_secret="$temporary_dir/external-secret.yaml"
   --set-string externalSecret.otlpTraceHeadersRemoteKey=runtime/otlp-trace-headers \
   >"$external_secret"
 assert_kind_count "$external_secret" ExternalSecret 1
-for remote_key in runtime/nats-url runtime/redis-url runtime/s3-access runtime/s3-secret runtime/s3-session runtime/otlp-trace-endpoint runtime/otlp-trace-headers; do
+for remote_key in runtime/database-read-url runtime/nats-url runtime/redis-url runtime/s3-access runtime/s3-secret runtime/s3-session runtime/otlp-trace-endpoint runtime/otlp-trace-headers; do
   assert_contains "$external_secret" "key: \"$remote_key\""
 done
-for secret_key in nats-url redis-url s3-access-key s3-secret-key s3-session-token otlp-trace-endpoint otlp-trace-headers; do
+for secret_key in database-read-url nats-url redis-url s3-access-key s3-secret-key s3-session-token otlp-trace-endpoint otlp-trace-headers; do
   assert_contains "$external_secret" "secretKey: \"$secret_key\""
 done
+
+external_secret_without_reader="$temporary_dir/external-secret-without-reader.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set externalSecret.enabled=true >"$external_secret_without_reader"
+assert_kind_count "$external_secret_without_reader" ExternalSecret 1
+assert_not_contains "$external_secret_without_reader" 'secretKey: "database-read-url"'
 
 # Default policy carries only DNS, PostgreSQL, and optional HTTPS egress. A
 # release can append accelerator or private endpoint rules without replacing
@@ -233,6 +247,24 @@ expect_render_failure zero-capacity-deployment-strategy \
   --set-string deploymentStrategy.maxUnavailable=0
 expect_render_failure inline-database-secret \
   --set-string config.database.url=postgres://inline.invalid/etherview
+expect_render_failure inline-database-read-secret \
+  --set-string config.database.read_url=postgres://inline-read.invalid/etherview
+expect_render_failure invalid-writer-connection-bounds \
+  --set config.database.max_connections=1 \
+  --set config.database.min_connections=2
+expect_render_failure invalid-effective-reader-inherited-min \
+  --set config.database.read_max_connections=1
+expect_render_failure invalid-effective-reader-inherited-max \
+  --set config.database.read_min_connections=21
+expect_render_failure invalid-explicit-reader-connection-bounds \
+  --set config.database.read_max_connections=2 \
+  --set config.database.read_min_connections=3
+expect_render_failure reader-max-int32-overflow \
+  --set config.database.read_max_connections=2147483648
+expect_render_failure reader-min-int32-overflow \
+  --set config.database.read_min_connections=2147483648
+expect_render_failure writer-max-int32-overflow \
+  --set config.database.max_connections=2147483648
 expect_render_failure inline-rpc-secret \
   --set-string 'config.rpc.endpoints[0].name=inline' \
   --set-string 'config.rpc.endpoints[0].url=https://credential.invalid' \

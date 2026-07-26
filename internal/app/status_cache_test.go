@@ -48,6 +48,11 @@ func TestRedisStatusReaderCachesOnlyBoundedSnapshotAtObservedGeneration(t *testi
 	if err != nil || second != first || fallback.calls != 1 {
 		t.Fatalf("second=%+v calls=%d err=%v", second, fallback.calls, err)
 	}
+	fallback.snapshot.CoreReady = false
+	readiness, err := reader.ReadinessStatus(context.Background())
+	if err != nil || readiness.CoreReady || fallback.calls != 2 {
+		t.Fatalf("readiness=%+v calls=%d err=%v", readiness, fallback.calls, err)
+	}
 }
 
 func TestRedisStatusReaderCorruptCacheFallsBackToPostgreSQL(t *testing.T) {

@@ -77,11 +77,14 @@ type ChainConfig struct {
 }
 
 type DatabaseConfig struct {
-	URL              string        `yaml:"url"`
-	MaxConnections   int32         `yaml:"max_connections"`
-	MinConnections   int32         `yaml:"min_connections"`
-	ConnectTimeout   time.Duration `yaml:"connect_timeout"`
-	StatementTimeout time.Duration `yaml:"statement_timeout"`
+	URL                string        `yaml:"url"`
+	ReadURL            string        `yaml:"read_url"`
+	MaxConnections     int32         `yaml:"max_connections"`
+	MinConnections     int32         `yaml:"min_connections"`
+	ReadMaxConnections int32         `yaml:"read_max_connections"`
+	ReadMinConnections int32         `yaml:"read_min_connections"`
+	ConnectTimeout     time.Duration `yaml:"connect_timeout"`
+	StatementTimeout   time.Duration `yaml:"statement_timeout"`
 }
 
 type RPCConfig struct {
@@ -247,10 +250,12 @@ func Default() Config {
 			MaxReorgDepth:  128,
 		},
 		Database: DatabaseConfig{
-			MaxConnections:   20,
-			MinConnections:   2,
-			ConnectTimeout:   10 * time.Second,
-			StatementTimeout: 30 * time.Second,
+			MaxConnections:     20,
+			MinConnections:     2,
+			ReadMaxConnections: 0,
+			ReadMinConnections: 0,
+			ConnectTimeout:     10 * time.Second,
+			StatementTimeout:   30 * time.Second,
 		},
 		RPC: RPCConfig{
 			RequestTimeout: 20 * time.Second,
@@ -372,6 +377,21 @@ func (c Config) Validate() error {
 	}
 	if c.Database.MaxConnections <= 0 || c.Database.MinConnections < 0 || c.Database.MinConnections > c.Database.MaxConnections {
 		errs = append(errs, errors.New("database connection bounds are invalid"))
+	}
+	if c.Database.ReadMaxConnections < 0 || c.Database.ReadMinConnections < 0 {
+		errs = append(errs, errors.New("database read connection bounds must be non-negative; zero inherits writer bounds"))
+	} else if c.Database.ReadURL != "" || c.Database.ReadMaxConnections != 0 || c.Database.ReadMinConnections != 0 {
+		readMax := c.Database.ReadMaxConnections
+		readMin := c.Database.ReadMinConnections
+		if readMax == 0 {
+			readMax = c.Database.MaxConnections
+		}
+		if readMin == 0 {
+			readMin = c.Database.MinConnections
+		}
+		if readMax <= 0 || readMin < 0 || readMin > readMax {
+			errs = append(errs, errors.New("database read connection bounds are invalid"))
+		}
 	}
 	if c.Database.ConnectTimeout <= 0 || c.Database.StatementTimeout <= 0 {
 		errs = append(errs, errors.New("database timeouts must be positive"))
@@ -603,6 +623,11 @@ func (c Config) ValidateForRoles(roles []string) error {
 		errs = append(errs, errors.New("database.url is required for runnable roles"))
 	} else if u, parseErr := url.Parse(c.Database.URL); parseErr != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
 		errs = append(errs, errors.New("database.url must be an absolute postgres URL"))
+	}
+	if c.Database.ReadURL != "" {
+		if u, parseErr := url.Parse(c.Database.ReadURL); parseErr != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
+			errs = append(errs, errors.New("database.read_url must be an absolute postgres URL"))
+		}
 	}
 	needsRPC := false
 	needsVerificationWorker := false
@@ -888,6 +913,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if secret != "" {
 		cfg.Database.URL = secret
 	}
+	secretRead, err := lookupValueOrFile("DATABASE_READ_URL", lookup, readFile)
+	if err != nil {
+		return err
+	}
+	if secretRead != "" {
+		cfg.Database.ReadURL = secretRead
+	}
 	setString(lookup, "SERVER_ADDRESS", &cfg.Server.Address)
 	setString(lookup, "SERVER_METRICS_ADDRESS", &cfg.Server.MetricsAddress)
 	setString(lookup, "SERVER_PUBLIC_URL", &cfg.Server.PublicURL)
@@ -947,6 +979,12 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		return err
 	}
 	if err := setInt32(lookup, "DATABASE_MIN_CONNECTIONS", &cfg.Database.MinConnections); err != nil {
+		return err
+	}
+	if err := setInt32(lookup, "DATABASE_READ_MAX_CONNECTIONS", &cfg.Database.ReadMaxConnections); err != nil {
+		return err
+	}
+	if err := setInt32(lookup, "DATABASE_READ_MIN_CONNECTIONS", &cfg.Database.ReadMinConnections); err != nil {
 		return err
 	}
 	if err := setInt(lookup, "RPC_BATCH_SIZE", &cfg.RPC.BatchSize); err != nil {

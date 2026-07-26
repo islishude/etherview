@@ -152,12 +152,14 @@ migration:
   # accumulating one object forever for every Helm upgrade.
   ttlSecondsAfterFinished: 86400
 
-# This secret is referenced, never rendered by the chart. The included
-# ExternalSecret always materializes database, RPC, and API-key-pepper keys and
-# adds only the optional accelerator remote keys configured below.
+# This Secret is referenced, never rendered by the chart. The included
+# ExternalSecret always materializes the writer database, RPC, and API-key
+# pepper keys. Reader and accelerator keys are included only when their
+# optional remote-key values below are non-empty.
 secrets:
   existingSecret: etherview
   databaseURLKey: database-url
+  databaseReadURLKey: database-read-url
   rpcURLsKey: rpc-urls
   apiKeyPepperKey: api-key-pepper
   natsURLKey: nats-url
@@ -176,6 +178,8 @@ externalSecret:
     name: cluster-secret-store
     kind: ClusterSecretStore
   databaseURLRemoteKey: etherview/database-url
+  # Set to materialize the optional database-read-url Secret entry.
+  databaseReadURLRemoteKey: ""
   rpcURLsRemoteKey: etherview/rpc-urls
   apiKeyPepperRemoteKey: etherview/api-key-pepper
   # Empty optional remote keys are omitted from the ExternalSecret. Set only
@@ -207,6 +211,13 @@ config:
     max_reorg_depth: 128
   database:
     url: ""
+    # Keep both URLs empty in Helm values. The writer URL and optional reader
+    # URL are injected from secrets.existingSecret. A reader URL or either
+    # non-zero reader size enables an API-only read pool; an empty URL uses the
+    # writer endpoint and zero sizes inherit the writer bounds.
+    read_url: ""
+    read_max_connections: 0
+    read_min_connections: 0
     max_connections: 20
     min_connections: 2
     connect_timeout: 10s

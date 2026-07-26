@@ -36,23 +36,21 @@ func TestNormalizeRoles(t *testing.T) {
 func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretPath := filepath.Join(dir, "database-url")
+	readSecretPath := filepath.Join(dir, "database-read-url")
 	if err := os.WriteFile(secretPath, []byte("postgres://example/db\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(readSecretPath, []byte("postgres://read-example/db\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// This case exercises the file-only input and must not inherit an unrelated
 	// inline value from the caller's environment.
-	inlineDatabaseURL, inlineDatabaseURLSet := os.LookupEnv("ETHERVIEW_DATABASE_URL")
-	if err := os.Unsetenv("ETHERVIEW_DATABASE_URL"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if inlineDatabaseURLSet {
-			_ = os.Setenv("ETHERVIEW_DATABASE_URL", inlineDatabaseURL)
-		} else {
-			_ = os.Unsetenv("ETHERVIEW_DATABASE_URL")
-		}
-	})
+	unsetHostEnvironment(t, "ETHERVIEW_DATABASE_URL")
+	unsetHostEnvironment(t, "ETHERVIEW_DATABASE_READ_URL")
 	t.Setenv("ETHERVIEW_DATABASE_URL_FILE", secretPath)
+	t.Setenv("ETHERVIEW_DATABASE_READ_URL_FILE", readSecretPath)
+	t.Setenv("ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "10")
+	t.Setenv("ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "1")
 	t.Setenv("ETHERVIEW_CHAIN_ID", "11155111")
 	t.Setenv("ETHERVIEW_ROLES", "api,sync")
 	t.Setenv("ETHERVIEW_RPC_URLS", "https://rpc.example, wss://ws.example")
@@ -70,7 +68,10 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Database.URL != "postgres://example/db" || cfg.Chain.ID != 11155111 {
+	if cfg.Database.URL != "postgres://example/db" ||
+		cfg.Database.ReadURL != "postgres://read-example/db" ||
+		cfg.Database.ReadMaxConnections != 10 || cfg.Database.ReadMinConnections != 1 ||
+		cfg.Chain.ID != 11155111 {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if len(cfg.RPC.Endpoints) != 2 || cfg.RPC.Endpoints[1].URL != "wss://ws.example" {
@@ -87,6 +88,33 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if cfg.Maintenance.Interval != 5*time.Minute || cfg.Maintenance.SearchRetentionGenerations != 2500 ||
 		cfg.Maintenance.AdapterDeleteBatch != 55 {
 		t.Fatalf("unexpected maintenance override: %#v", cfg.Maintenance)
+	}
+}
+
+func TestLoadReadDatabaseYAML(t *testing.T) {
+	for _, name := range []string{
+		"ETHERVIEW_DATABASE_READ_URL",
+		"ETHERVIEW_DATABASE_READ_URL_FILE",
+		"ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS",
+		"ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS",
+	} {
+		unsetHostEnvironment(t, name)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`database:
+  read_url: postgres://yaml-reader.example/etherview
+  read_max_connections: 8
+  read_min_connections: 3
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.ReadURL != "postgres://yaml-reader.example/etherview" ||
+		cfg.Database.ReadMaxConnections != 8 || cfg.Database.ReadMinConnections != 3 {
+		t.Fatalf("read database YAML was not applied: %#v", cfg.Database)
 	}
 }
 
@@ -525,6 +553,59 @@ func TestValueAndFileAreMutuallyExclusive(t *testing.T) {
 	}
 }
 
+func TestReadURLAndReadFileAreMutuallyExclusive(t *testing.T) {
+	t.Setenv("ETHERVIEW_DATABASE_READ_URL", "postgres://read-inline")
+	t.Setenv("ETHERVIEW_DATABASE_READ_URL_FILE", "/tmp/ignored")
+	if _, err := Load(""); err == nil {
+		t.Fatal("expected read url mutually-exclusive secret error")
+	}
+}
+
+func TestReadDatabaseConnectionBoundsFallbackToWriterDefaults(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.Database.ReadURL = "postgres://read-replica/etherview"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected read database with fallback defaults to validate: %v", err)
+	}
+}
+
+func TestReadDatabaseConnectionBoundsRejectInvalidConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		readMax int32
+		readMin int32
+	}{
+		{name: "negative maximum", readMax: -1},
+		{name: "negative minimum", readMin: -1},
+		{name: "explicit minimum exceeds maximum", readMax: 1, readMin: 2},
+		{name: "inherited writer minimum exceeds read maximum", readMax: 1, readMin: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Database.URL = "postgres://localhost/etherview"
+			cfg.Database.ReadMaxConnections = test.readMax
+			cfg.Database.ReadMinConnections = test.readMin
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "read connection bounds") {
+				t.Fatalf("unexpected read connection validation result: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateForRolesRejectsMalformedReadDatabaseURL(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.Database.ReadURL = "postgres://"
+	if err := cfg.ValidateForRoles([]string{"api"}); err == nil ||
+		!strings.Contains(err.Error(), "database.read_url must be an absolute postgres URL") {
+		t.Fatalf("unexpected malformed read URL validation result: %v", err)
+	}
+}
+
 func TestValidateForRolesRequiresRuntimeDependencies(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
@@ -768,4 +849,19 @@ func TestProcessCompilerRoleRequiresAbsoluteCache(t *testing.T) {
 	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
 		t.Fatalf("unexpected cache path error: %v", err)
 	}
+}
+
+func unsetHostEnvironment(t *testing.T, name string) {
+	t.Helper()
+	value, set := os.LookupEnv(name)
+	if err := os.Unsetenv(name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if set {
+			_ = os.Setenv(name, value)
+		} else {
+			_ = os.Unsetenv(name)
+		}
+	})
 }

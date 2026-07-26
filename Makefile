@@ -95,6 +95,7 @@ test-race: web-build
 # Integration tests are explicitly skipped when no disposable PostgreSQL URL
 # is supplied. CI always supplies one and exercises both migration actions
 # before running integration-tagged tests.
+test-integration: export INTEGRATION_DATABASE_URL := $(INTEGRATION_DATABASE_URL)
 test-integration:
 	@set -eu; \
 	if [ -z "$$INTEGRATION_DATABASE_URL" ]; then \
@@ -202,6 +203,7 @@ docker-image-check:
 
 compose-check:
 	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-check: Docker Compose v2 is required"; exit 1; }
+	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
 	$(DOCKER) compose --profile monolith config --quiet
 	$(DOCKER) compose --profile distributed config --quiet
 	$(DOCKER) compose --profile accelerators config --quiet
@@ -211,6 +213,12 @@ compose-check:
 		--profile distributed config --quiet
 	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
 		--profile distributed --profile runtime-tools config --quiet
+	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS; \
+		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
+	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 \
+		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved");'
 
 # This focused schema smoke keeps fresh migration compatibility independently runnable;
 # compose-runtime-smoke covers the complete application deployment shapes.

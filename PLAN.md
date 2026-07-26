@@ -23,7 +23,7 @@ batch semantics are not core v1 scope.
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
-| P70 | [Release](docs/plans/P70-release.md) | planned | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P70 | [Release](docs/plans/P70-release.md) | in_progress | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -61,8 +61,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
   pass their targeted runtime, integration, race, Helm, and short-load
-  evidence. P70 remains planned; P60 completion does not promote its security,
-  conformance, long-soak, artifact, or release gates.
+  evidence. P60 completion does not promote P70's security, conformance,
+  long-soak, artifact, or release gates.
+- P70 is in progress: P70-T07 completes the optional API read pool with
+  writer-authoritative routing, fail-closed readiness, deployment wiring, and
+  capacity guidance. Conformance, security, release CI, long-capacity,
+  documentation, and artifact gates remain open.
 
 ## Global Release Gates
 

@@ -101,6 +101,13 @@ type Reader interface {
 	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
 }
 
+// readinessStatusReader lets a cache-decorated Reader bypass its cache for the
+// readiness decision. A cached success must not hide loss of a configured
+// PostgreSQL reader or writer pool.
+type readinessStatusReader interface {
+	ReadinessStatus(context.Context) (StatusSnapshot, error)
+}
+
 type VerificationReader interface {
 	Job(context.Context, string) (verify.VerificationJob, bool, error)
 	VerifiedContract(context.Context, uint64, string, string) (verify.VerifiedContract, bool, error)
@@ -453,7 +460,15 @@ func (h *Handler) ready(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "not_ready", "runtime is not ready", nil)
 		return
 	}
-	status, err := h.reader.Status(r.Context())
+	var (
+		status StatusSnapshot
+		err    error
+	)
+	if reader, ok := h.reader.(readinessStatusReader); ok {
+		status, err = reader.ReadinessStatus(r.Context())
+	} else {
+		status, err = h.reader.Status(r.Context())
+	}
 	if err != nil || !status.CoreReady {
 		writeError(w, r, http.StatusServiceUnavailable, "not_ready", "core index is not ready", nil)
 		return

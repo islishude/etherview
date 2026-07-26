@@ -44,6 +44,14 @@ in `PLAN.md` and `docs/plans/`, not here.
   references, and every NetworkPolicy exception must remain explicit.
 - PostgreSQL is the correctness source for chain data, canonicality, jobs,
   leases, and outbox state. NATS, Redis, and S3 must remain optional.
+- Every process keeps the PostgreSQL writer pool. Only an `api` or `all`
+  process may open the optional reader pool, whose sessions are forced
+  read-only and whose schema plus chain identity must match the writer before
+  serving. Ordinary explorer projections may use the reader; canonicality,
+  authentication, verification, external-call fences, runtime events,
+  operational metrics, and every write remain on the writer. A configured
+  reader failure withdraws API readiness and never silently falls back to the
+  writer.
 - Core block, transaction, receipt, log, and withdrawal ingestion must not wait
   for trace, metadata, verification, pricing, or other enrichment.
 - A successful production enrichment attempt must commit its derived output,

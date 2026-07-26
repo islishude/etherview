@@ -11,6 +11,13 @@ server:
 
 database:
   url: ""
+  # Supply the optional reader URL through ETHERVIEW_DATABASE_READ_URL or its
+  # _FILE variant. A URL or non-zero reader size enables an API-only read pool;
+  # an empty URL uses the writer endpoint and zero sizes inherit writer bounds.
+  # Account for both pools when it is enabled.
+  read_url: ""
+  read_max_connections: 0
+  read_min_connections: 0
   max_connections: 12
   min_connections: 2
   connect_timeout: 5s

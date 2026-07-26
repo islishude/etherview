@@ -37,6 +37,10 @@ import (
 )
 
 func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) error {
+	roles, roleSet, err := componentRoles(roleNames)
+	if err != nil {
+		return err
+	}
 	db, err := openDatabase(ctx, cfg.Database)
 	if err != nil {
 		return err
@@ -45,9 +49,17 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err := store.CheckSchema(ctx, db); err != nil {
 		return err
 	}
-	roles, roleSet, err := componentRoles(roleNames)
-	if err != nil {
-		return err
+	readDB := db
+	if readCfg, useDedicatedReadPool := readDatabaseConfigForRoles(cfg.Database, roleSet); useDedicatedReadPool {
+		dbForRead, err := openReadDatabase(ctx, readCfg)
+		if err != nil {
+			return err
+		}
+		readDB = dbForRead
+		defer dbForRead.Close() //nolint:errcheck
+		if err := checkReadDatabaseSchema(ctx, readDB); err != nil {
+			return err
+		}
 	}
 	logger := b.logger().With(
 		"roles", strings.Join(roleNames, ","), "chain_id", cfg.Chain.ID,
@@ -55,6 +67,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	)
 	registry := observability.NewRegistry(b.Version, strings.Join(roleNames, ","))
 	tracker := &syncer.Tracker{}
+	// Operational backlog snapshots stay writer-backed so every role exports
+	// the same authoritative model even when an API reader is replaying behind.
 	metricSource, err := observability.NewPostgresMetricSource(db, cfg.Chain.ID)
 	if err != nil {
 		return err
@@ -83,7 +97,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}()
 	}
 
-	var rpcBuild *RPCBuild
+	var (
+		rpcBuild         *RPCBuild
+		databaseIdentity store.ChainIdentity
+	)
 	if needsRPCForServe(roleSet, cfg) ||
 		(roleSet[components.RoleAPI] && len(cfg.RPC.Endpoints) > 0) {
 		built, err := buildRPC(ctx, cfg, logger, registry)
@@ -93,6 +110,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		rpcBuild = &built
 		if err := store.BindChainIdentity(ctx, db, built.Identity.ChainID, built.Identity.GenesisHash); err != nil {
 			return err
+		}
+		databaseIdentity = store.ChainIdentity{
+			ChainID: built.Identity.ChainID, GenesisHash: built.Identity.GenesisHash,
 		}
 	} else {
 		if cfg.Chain.GenesisHash != "" {
@@ -119,6 +139,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		if cfg.Chain.GenesisHash != "" && !strings.EqualFold(cfg.Chain.GenesisHash, identity.GenesisHash.String()) {
 			return fmt.Errorf("configured genesis %s does not match database genesis %s", cfg.Chain.GenesisHash, identity.GenesisHash)
+		}
+		databaseIdentity = identity
+	}
+	if readDB != db {
+		if err := validateReadDatabaseIdentity(ctx, readDB, databaseIdentity); err != nil {
+			return err
 		}
 	}
 
@@ -243,11 +269,15 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		verificationCapabilityInterfaces(verificationService, publicVerification)
 	lifecycle := components.NewLifecycle()
 	componentRegistry := components.NewRegistry()
+	var databaseHealth databasePinger = db
+	if readDB != db {
+		databaseHealth = databasePingerGroup{db, readDB}
+	}
 	for _, role := range roles {
 		if err := componentRegistry.Register(role, "00-operations-http", func() (components.Service, error) {
 			return &operationalService{
 				address: cfg.Server.MetricsAddress, shutdownTimeout: cfg.Server.ShutdownTimeout,
-				db: db, registry: registry, lifecycle: lifecycle, logger: logger, telemetry: telemetry,
+				db: databaseHealth, registry: registry, lifecycle: lifecycle, logger: logger, telemetry: telemetry,
 			}, nil
 		}); err != nil {
 			return err
@@ -391,6 +421,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}
 		}
 		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
+			// Canonical state is a correctness fence around external RPC reads
+			// and exact observation writes. It must not inherit replica lag.
 			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
 			nftState, err = state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
 			if err != nil {
@@ -409,7 +441,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return err
 			}
 		}
-		catalogReader, err := catalog.NewPostgres(db, catalog.Options{NFTState: nftState, TraceCache: traceCache, Logger: logger})
+		catalogReader, err := catalog.NewPostgres(readDB, catalog.Options{NFTState: nftState, TraceCache: traceCache, Logger: logger})
 		if err != nil {
 			return err
 		}
@@ -417,7 +449,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if cfg.Features.Trace && (rpcBuild == nil || !traceRPCAvailable(rpcBuild.Pool)) {
 			completeness.Trace = gen.StageStateUnavailable
 		}
-		reader, err := query.NewPostgresReader(db, query.Options{
+		queryOptions := query.Options{
 			ChainID: cfg.Chain.ID, StartBlock: cfg.Chain.StartBlock,
 			RuntimeStatus: func(callbackCtx context.Context) (query.RuntimeStatus, bool, error) {
 				status, exists, err := runtimeEvents.Status(callbackCtx)
@@ -429,15 +461,24 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				}, exists, err
 			},
 			OptionalStages: completeness, NameResolver: nameResolver,
-		})
+		}
+		reader, err := query.NewPostgresReader(readDB, queryOptions)
 		if err != nil {
 			return err
 		}
-		var publicReader httpapi.Reader = reader
+		var baseReader httpapi.Reader = reader
+		if readDB != db && nameResolver != nil {
+			writerSearchReader, err := query.NewPostgresReader(db, queryOptions)
+			if err != nil {
+				return err
+			}
+			baseReader = searchRoutingReader{Reader: reader, search: writerSearchReader}
+		}
+		publicReader := baseReader
 		var compatibilityState etherscan.StateProvider
 		if canonicalState != nil {
 			stateReader := &state.Reader{
-				Base: reader, Pool: rpcBuild.Pool, Completeness: completeness,
+				Base: baseReader, Pool: rpcBuild.Pool, Completeness: completeness,
 				Canonical: canonicalState,
 			}
 			publicReader = stateReader
@@ -446,12 +487,27 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if redisAccelerator != nil {
 			publicReader = redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
 		}
-		compatibilityBackend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{
+		compatibilityOptions := etherscan.PostgresOptions{
 			ChainID: cfg.Chain.ID, State: compatibilityState, Price: priceProvider,
 			Verification: compatibilityVerification, VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
-		})
+		}
+		readCompatibilityBackend, err := etherscan.NewPostgresBackend(readDB, compatibilityOptions)
 		if err != nil {
 			return err
+		}
+		var (
+			compatibilityBackend etherscan.Backend                  = readCompatibilityBackend
+			verificationTargets  httpapi.VerificationTargetResolver = readCompatibilityBackend
+		)
+		if readDB != db {
+			authoritativeBackend, err := etherscan.NewPostgresBackend(db, compatibilityOptions)
+			if err != nil {
+				return err
+			}
+			compatibilityBackend = replicaAwareEtherscanBackend{
+				reader: readCompatibilityBackend, authoritative: authoritativeBackend,
+			}
+			verificationTargets = authoritativeBackend
 		}
 		sourcify, err := sourcifyClient(cfg)
 		if err != nil {
@@ -484,7 +540,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			Config: cfg, Reader: publicReader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
-			VerificationTargets: compatibilityBackend, Sourcify: sourcifyAdapter,
+			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
 			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,

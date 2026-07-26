@@ -67,7 +67,15 @@ roleTopologySpread:
 config:
   database:
     # At the maximum replica counts this profile permits 216 application
-    # connections. Reserve additional PostgreSQL slots for migrations and
+    # writer connections. To enable read/write splitting, keep read_url empty
+    # here and provide database-read-url through secrets.existingSecret. The
+    # separate reader pool is opened only by the maximum 8 API Pods, adding 96
+    # same-sized connections for 312 total; zero sizes inherit writer bounds.
+    # A fully overlapping rollout can therefore need 624 application slots.
+    read_url: ""
+    read_max_connections: 0
+    read_min_connections: 0
+    # Reserve additional PostgreSQL slots for migrations and
     # operators, or place a transaction-pooling proxy in front of PostgreSQL.
     max_connections: 12
     min_connections: 2

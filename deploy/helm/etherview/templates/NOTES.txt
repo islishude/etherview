@@ -3,6 +3,8 @@ Etherview was rendered in {{ .Values.mode }} mode.
 The application expects Secret {{ .Values.secrets.existingSecret | quote }} with
 key {{ .Values.secrets.databaseURLKey | quote }} and, for RPC-consuming roles,
 key {{ .Values.secrets.rpcURLsKey | quote }}.
+Optional API reads use key {{ .Values.secrets.databaseReadURLKey | quote }}.
+Restart the release Deployments after rotating either database URL.
 
 {{- if eq .Values.mode "monolith" }}
 The monolith Service is available inside the cluster at:

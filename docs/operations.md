@@ -53,7 +53,8 @@ and forensics. A failed refresh retains the last successful snapshot. Use
 `etherview_observability_refresh_failures_total`; do not interpret absent or
 stale queue series as zero work.
 
-Every split role and replica exposes the same chain-scoped PostgreSQL snapshot.
+Every split role and replica reads the writer-backed chain-scoped operational
+snapshot.
 Deduplicate current backlog gauges with `max` per deployment and chain; never
 `sum` them, because that multiplies one backlog by the replica count. Worker
 result counters represent work performed by individual processes and should be
@@ -97,26 +98,50 @@ must be measured independently. Its rolling strategy sets `maxSurge: 0` and
 `maxUnavailable: 1`, preventing an intentional surge while the per-role
 disruption budgets retain one available replica.
 
-Budget PostgreSQL connections before raising replicas. `database.max_connections`
-is a per-process pool cap, so the worst-case application budget is:
+Budget PostgreSQL connections before raising replicas.
+`database.max_connections` is the writer-pool cap for every application
+process. A non-empty `database.read_url` or either non-zero reader bound enables
+one additional pool only in an `api` or `all` process. An empty reader URL
+inherits the writer endpoint, and a zero reader bound inherits the corresponding
+writer bound.
+
+For capacity planning, define:
 
 ```text
-sum(maximum replicas for every enabled role) * database.max_connections
+W = database.max_connections
+R = database.read_max_connections, or W when read_max_connections is zero
+P = maximum concurrent application Pods across every enabled role
+A = maximum concurrent Pods containing the api role
+
+steady application connections = P * W + A * R
 ```
 
-The reference Helm profile is therefore `18 * 12 = 216` steady-state
-application connections. Kubernetes may start a replacement while a deleted
-Pod is still terminating, and terminating replicas are not included in
-`maxSurge`. A fully concurrent rollout can therefore overlap all 18 old pools
-with 18 replacements: reserve up to `36 * 12 = 432` application connections,
-or serialize role rollouts and measure their actual termination overlap. Also
-reserve server slots for the migration Job and operator access, or use a
-separately operated transaction-pooling proxy.
+Omit `A * R` when the reader is disabled. The reference distributed Helm
+profile has `P = 18`, `A = 8`, and `W = 12`: it therefore permits 216 writer
+connections. Enabling a same-sized reader gives `R = 12` and adds 96 reader
+connections, for 312 steady-state application connections.
+
+Kubernetes may start a replacement while a deleted Pod is still terminating, and
+terminating replicas are not included in `maxSurge`. A fully concurrent rollout
+can therefore overlap old and replacement pools: reserve up to twice the
+steady-state application budget—432 without the reader or 624 with the
+same-sized reader in the reference profile—or serialize role rollouts and
+measure their actual termination overlap. Also reserve server slots for the
+migration Job and operator access, or use a separately operated
+transaction-pooling proxy.
+
 PostgreSQL remains mandatory: point `database.url` at the deployment's HA
 writer endpoint and test its documented RTO. A database outage withdraws
 readiness; it is never converted into cached success. Migration execution stays
 advisory-locked across failover and must be rerun or checked after the writer
 endpoint is stable.
+
+Reader sessions force read-only transactions and must expose the writer's exact
+migration ledger and configured chain/genesis identity at startup. Once enabled,
+the reader has no automatic writer fallback: its outage withdraws API readiness
+without stopping split sync, worker, verification, or maintenance roles.
+Replica replay must remain bounded and monotonic enough for cursor pagination;
+ordinary read-model results are not promised read-after-write consistency.
 
 `runtime.worker_count` controls durable enrichment, trace, verification,
 metadata, and maintenance workers in each process. `runtime.backfill_workers`

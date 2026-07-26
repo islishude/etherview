@@ -17,6 +17,23 @@ type databasePinger interface {
 	PingContext(context.Context) error
 }
 
+type databasePingerGroup []databasePinger
+
+func (group databasePingerGroup) PingContext(ctx context.Context) error {
+	if len(group) == 0 {
+		return errors.New("database health group is empty")
+	}
+	for index, pinger := range group {
+		if pinger == nil {
+			return fmt.Errorf("database health target %d is nil", index)
+		}
+		if err := pinger.PingContext(ctx); err != nil {
+			return fmt.Errorf("database health target %d: %w", index, err)
+		}
+	}
+	return nil
+}
+
 type operationalService struct {
 	address         string
 	shutdownTimeout time.Duration

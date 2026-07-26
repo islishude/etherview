@@ -22,6 +22,12 @@ optional adapter; those services are intentionally absent from `depends_on`.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
 unreachable; create the configured S3 bucket before expecting trace-cache hits.
+To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env`.
+Reader pool sizes default to the mounted YAML file: either edit
+`database.read_max_connections` and `database.read_min_connections` there or
+export the corresponding `ETHERVIEW_DATABASE_READ_*` variables in the shell
+that invokes Compose. Compose deliberately does not supply numeric defaults,
+so an omitted environment override cannot replace YAML sizing with zero.
 The maintenance component runs one search-catalog and adapter-retention sweep
 at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
@@ -54,13 +60,16 @@ separate external-service fixtures.
 ## Helm
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
-`database-url` and optional `rpc-urls`, `api-key-pepper`, `nats-url`,
-`redis-url`, `s3-access-key`, `s3-secret-key`, `s3-session-token`, and
-`otlp-trace-endpoint` and `otlp-trace-headers` keys. With
+`database-url` and optional `database-read-url`, `rpc-urls`, `api-key-pepper`,
+`nats-url`, `redis-url`, `s3-access-key`, `s3-secret-key`, `s3-session-token`,
+`otlp-trace-endpoint`, and `otlp-trace-headers` keys. The reader key is injected
+only into the monolith or distributed API process. With
 `externalSecret.enabled=true`, the included ExternalSecret materializes the
-database, RPC, and API-key-pepper entries; deployments that also source optional
-adapter credentials externally must add those keys to the target Secret. Secret
-values are never rendered into a ConfigMap or chart defaults.
+writer database, RPC, and API-key-pepper entries. Set
+`externalSecret.databaseReadURLRemoteKey` to materialize the optional reader
+entry; optional adapter entries follow the same non-empty remote-key rule.
+Secret values are never rendered into a ConfigMap or chart defaults, and
+`config.database.read_url` must remain empty.
 
 ```sh
 helm lint deploy/helm/etherview
@@ -78,6 +87,20 @@ layer uses a PostgreSQL advisory lock, so duplicate migration execution remains
 serialized. The default chart runs the monolith; `values-distributed.yaml`
 selects role Deployments and enables HPA, ServiceMonitor, and PrometheusRule
 resources.
+
+Secret-backed environment variables are read only when a Pod starts. After
+rotating the writer or reader URL in an existing Secret (including through an
+ExternalSecret), restart the selected Deployments, for example:
+
+```sh
+kubectl rollout restart deployment \
+  --namespace etherview \
+  --selector app.kubernetes.io/instance=etherview
+```
+
+The chart intentionally does not checksum Secret contents: it does not render
+or read those contents. ConfigMap changes still trigger the existing
+`checksum/config` rollout.
 
 Every role exposes liveness, readiness, and Prometheus metrics on its dedicated
 9090 operations listener; only the API role also exposes the public 8080

@@ -20,7 +20,8 @@ with PostgreSQL liveness. The API probe combines it with durable core-index
 readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
 
-Each role also runs the same PostgreSQL-backed operational metric collector.
+Each role also runs the same writer-backed PostgreSQL operational metric
+collector.
 It reads only partial-indexed active durable-job, verification, and repair
 backlogs, excluding unbounded terminal history, without making metrics a
 correctness dependency; refresh failure retains the last snapshot and exposes
@@ -33,11 +34,11 @@ exporter loss never withdraws readiness. Operator response procedures are in
 the [operations runbook](../operations.md).
 
 ```text
-Execution RPC -> sync/canonicalizer -> PostgreSQL -> durable jobs
-                    |                    |          -> enrich/trace/verify/metadata
-                    |                    -> runtime status/events -> API replica relays
+Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
+                    |                         |       -> enrich/trace/verify/metadata
+                    |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
-PostgreSQL -> query API -> embedded React SPA
+PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
@@ -54,10 +55,16 @@ PostgreSQL stores all correctness-critical facts, canonical mappings, stage
 state, jobs, leases, and outbox records. Optional systems may reduce latency or
 storage pressure but never become the only copy of required state.
 
-The application uses pgx through `database/sql` for the shared runtime pool.
-Generated sqlc/pgx queries enter production through a small bridge that pins
-one stdlib connection for the duration of the callback; this preserves the
-generated query boundary without maintaining a second connection pool.
+Every process uses pgx through `database/sql` for its mandatory writer pool.
+An `api` or `all` process may additionally open a read-only pool against a
+matching PostgreSQL reader endpoint for latency-tolerant projections. Writer
+authority is retained for canonical, authentication, verification,
+runtime-event, and external-call correctness fences; reader startup checks the
+same schema and chain identity, and API readiness fails closed if either pool
+is unavailable. Generated sqlc/pgx queries enter production through a small
+bridge that pins one stdlib connection from the selected pool for the duration
+of the callback. The routing and lag contract is specified in
+[ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md).
 
 ## Chain Correctness
 

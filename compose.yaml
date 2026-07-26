@@ -2,6 +2,11 @@ name: etherview
 
 x-app-environment: &app-environment
   ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
+  ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
+  # Value-less entries are passed through only when the operator sets them.
+  # Omitting them preserves reader-pool sizing from the mounted YAML config.
+  ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS:
+  ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS:
   ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://host.docker.internal:8545}
   ETHERVIEW_CHAIN_ID: ${ETHERVIEW_CHAIN_ID:-1}
   ETHERVIEW_CHAIN_GENESIS_HASH: ${ETHERVIEW_CHAIN_GENESIS_HASH:-}

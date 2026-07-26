@@ -262,6 +262,13 @@ func TestOperationalReadinessTracksSharedLifecycleAndDatabase(t *testing.T) {
 	if recorder := request(); recorder.Code != http.StatusOK {
 		t.Fatalf("ready status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
+	service.db = databasePingerGroup{
+		appPinger{},
+		appPinger{err: errors.New("reader unavailable")},
+	}
+	if recorder := request(); recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unready reader status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
 	service.db = appPinger{err: errors.New("database unavailable")}
 	if recorder := request(); recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unready database status=%d body=%s", recorder.Code, recorder.Body.String())

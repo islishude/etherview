@@ -28,6 +28,16 @@ type statusCache interface {
 	CacheStore(context.Context, string, int64, []byte)
 }
 
+// ReadinessStatus deliberately bypasses Redis. Readiness must exercise the
+// configured PostgreSQL pool even while a previously cached status remains
+// valid.
+func (reader redisStatusReader) ReadinessStatus(ctx context.Context) (httpapi.StatusSnapshot, error) {
+	if reader.Reader == nil {
+		return httpapi.StatusSnapshot{}, errors.New("status cache reader is missing its PostgreSQL fallback")
+	}
+	return reader.Reader.Status(ctx)
+}
+
 func (reader redisStatusReader) Status(ctx context.Context) (httpapi.StatusSnapshot, error) {
 	if reader.Reader == nil {
 		return httpapi.StatusSnapshot{}, errors.New("status cache reader is missing its PostgreSQL fallback")

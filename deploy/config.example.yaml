@@ -19,6 +19,14 @@ chain:
 database:
   # Supply ETHERVIEW_DATABASE_URL or ETHERVIEW_DATABASE_URL_FILE at runtime.
   url: ""
+  # Supply optional replica credentials through
+  # ETHERVIEW_DATABASE_READ_URL or ETHERVIEW_DATABASE_READ_URL_FILE.
+  # A reader URL or either non-zero reader size enables a separate API read-only
+  # pool. An empty URL uses the writer endpoint; zero sizes inherit the writer
+  # bounds. With all three settings empty/zero, reads share the writer pool.
+  read_url: ""
+  read_max_connections: 0
+  read_min_connections: 0
   max_connections: 20
   min_connections: 2
   connect_timeout: 10s

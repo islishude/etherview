@@ -26,6 +26,17 @@ type fakeReader struct {
 	err    error
 }
 
+type readinessOverrideReader struct {
+	fakeReader
+	readiness StatusSnapshot
+	calls     int
+}
+
+func (reader *readinessOverrideReader) ReadinessStatus(context.Context) (StatusSnapshot, error) {
+	reader.calls++
+	return reader.readiness, nil
+}
+
 type panicReader struct{ fakeReader }
 
 func (panicReader) Status(context.Context) (StatusSnapshot, error) {
@@ -123,6 +134,26 @@ func TestReadyRequiresRuntimeLifecycleAndDurableCoreReadiness(t *testing.T) {
 	runtimeReady = true
 	if recorder := request(); recorder.Code != http.StatusOK {
 		t.Fatalf("ready status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestReadyUsesUncachedReadinessStatusWhenProvided(t *testing.T) {
+	t.Parallel()
+	reader := &readinessOverrideReader{
+		fakeReader: fakeReader{status: StatusSnapshot{CoreReady: true}},
+		readiness:  StatusSnapshot{CoreReady: false},
+	}
+	handler, err := New(Options{
+		Config: config.Default(), Reader: reader,
+		RequestID: func() string { return "ready-request" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if recorder.Code != http.StatusServiceUnavailable || reader.calls != 1 {
+		t.Fatalf("status=%d readiness calls=%d body=%s", recorder.Code, reader.calls, recorder.Body.String())
 	}
 }
 
