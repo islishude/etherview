@@ -52,6 +52,7 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	t.Setenv("ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "10")
 	t.Setenv("ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "1")
 	t.Setenv("ETHERVIEW_CHAIN_ID", "11155111")
+	t.Setenv("ETHERVIEW_CHAIN_GENESIS_FILE", "/var/lib/etherview/genesis.json")
 	t.Setenv("ETHERVIEW_ROLES", "api,sync")
 	t.Setenv("ETHERVIEW_RPC_URLS", "https://rpc.example, wss://ws.example")
 	t.Setenv("ETHERVIEW_API_KEY_PEPPER", strings.Repeat("p", 32))
@@ -71,7 +72,8 @@ func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	if cfg.Database.URL != "postgres://example/db" ||
 		cfg.Database.ReadURL != "postgres://read-example/db" ||
 		cfg.Database.ReadMaxConnections != 10 || cfg.Database.ReadMinConnections != 1 ||
-		cfg.Chain.ID != 11155111 {
+		cfg.Chain.ID != 11155111 ||
+		cfg.Chain.GenesisFile != "/var/lib/etherview/genesis.json" {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if len(cfg.RPC.Endpoints) != 2 || cfg.RPC.Endpoints[1].URL != "wss://ws.example" {
@@ -542,6 +544,24 @@ func TestValidateAggregatesErrorsAndDoesNotRequireGenesisDuringBootstrap(t *test
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("error %q lacks %q", err, fragment)
 		}
+	}
+}
+
+func TestGenesisFileRequiresAbsolutePathAndBlockZeroStart(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Chain.GenesisFile = "genesis.json"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "absolute path") {
+		t.Fatalf("relative genesis file error = %v", err)
+	}
+	cfg.Chain.GenesisFile = "/var/lib/etherview/genesis.json"
+	cfg.Chain.StartBlock = 1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "start_block=0") {
+		t.Fatalf("non-zero start genesis file error = %v", err)
+	}
+	cfg.Chain.StartBlock = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid genesis file config: %v", err)
 	}
 }
 

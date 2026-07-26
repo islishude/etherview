@@ -81,6 +81,36 @@ rate-limit pressure. A canonical safety halt is not self-healing: keep the
 process scrapeable, diagnose the named reason, repair the source or database,
 and restart only after the identity boundary is safe.
 
+## Genesis account state
+
+Normal RPC indexing always stores block zero, but the header does not enumerate
+prefunded EOAs or predeploys. To expose those accounts, set the absolute
+server-only `chain.genesis_file` path (or
+`ETHERVIEW_CHAIN_GENESIS_FILE`) while `chain.start_block` is zero and mount the
+chain's authoritative standard Genesis JSON read-only into the monolith or sync
+process. Input is capped at 64 MiB and 500,000 allocation entries.
+
+The importer waits for canonical block zero, computes the Ethereum account
+trie, block hash, code hashes, and storage roots, then requires the computed
+block hash and state root to match the configured/indexed chain. The import is
+one PostgreSQL transaction; mismatch, malformed JSON, duplicate keys, or a
+write failure exposes no partial account set. Raw storage slots are used only
+for root calculation and are not retained. Successful restart is idempotent and
+requests one source-deduplicated block-zero proxy replay. It does not classify
+predeploys as tokens without normal token evidence.
+
+Without a configured file, `/api/v1/genesis/accounts` returns the typed
+`genesis_state` unavailable capability; this must not be interpreted as an
+empty allocation. A successfully authenticated Genesis JSON whose `alloc` is
+actually empty returns an empty successful page.
+
+For Compose, mount the file through an override and set
+`ETHERVIEW_CHAIN_GENESIS_FILE` to the container path. For Helm, place the file
+in a read-only PVC and set `genesisState.existingClaim`,
+`genesisState.key`, and `genesisState.mountPath`; only monolith/sync Pods mount
+it. The generated deployment supplies the path through server-only
+configuration.
+
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm

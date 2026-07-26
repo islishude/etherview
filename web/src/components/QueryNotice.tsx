@@ -113,6 +113,7 @@ function capabilityLabel(value: string, t: Translate): string {
     case "core": return t("capabilityName.core");
     case "trace": return t("capabilityName.trace");
     case "search": return t("capabilityName.search");
+    case "genesis_state": return t("capabilityName.genesisState");
     default: return t("capabilityName.optional");
   }
 }

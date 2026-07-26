@@ -36,6 +36,7 @@
   "type": "object",
   "required": [
     "image",
+    "genesisState",
     "mode",
     "roles",
     "resources",
@@ -62,6 +63,23 @@
         "pullPolicy": {
           "type": "string",
           "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "genesisState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["existingClaim", "key", "mountPath"],
+      "properties": {
+        "existingClaim": {"type": "string"},
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "mountPath": {
+          "type": "string",
+          "pattern": "^/[^/].*"
         }
       }
     },
@@ -258,6 +276,15 @@
         "adapters"
       ],
       "properties": {
+        "chain": {
+          "type": "object",
+          "properties": {
+            "genesis_file": {
+              "const": "",
+              "description": "Use genesisState to mount the Genesis JSON only into sync-bearing Pods."
+            }
+          }
+        },
         "database": {
           "type": "object",
           "required": ["url"],

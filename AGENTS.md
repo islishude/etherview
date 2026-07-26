@@ -83,6 +83,12 @@ in `PLAN.md` and `docs/plans/`, not here.
   the complete block attempt, including discarded fallback work.
 - Store block-scoped facts by block hash. A block number alone is never a stable
   identity, and reorg handling must retain orphan facts.
+- An operator-supplied Genesis JSON is accepted only for indexing from block
+  zero and only after its computed block hash and allocation state root match
+  canonical block zero. Account balance, nonce, code, code hash, and storage
+  root are immutable exact-block facts; raw storage slots are not retained.
+  Missing input is an explicit unavailable capability, never an empty
+  allocation, and genesis code alone does not imply token classification.
 - ABI material is scoped by chain, target address, runtime code hash, exact
   context block hash, and a covering validity range. Source determines
   confidence: verified artifacts are `verified`, verified historical proxy

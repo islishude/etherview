@@ -68,6 +68,7 @@ type ServerConfig struct {
 type ChainConfig struct {
 	ID             uint64 `yaml:"id"`
 	GenesisHash    string `yaml:"genesis_hash"`
+	GenesisFile    string `yaml:"genesis_file"`
 	StartBlock     uint64 `yaml:"start_block"`
 	Name           string `yaml:"name"`
 	NativeSymbol   string `yaml:"native_symbol"`
@@ -368,6 +369,14 @@ func (c Config) Validate() error {
 	}
 	if c.Chain.GenesisHash != "" && !validFixedHex(c.Chain.GenesisHash, 32) {
 		errs = append(errs, errors.New("chain.genesis_hash must be a 32-byte 0x-prefixed hash"))
+	}
+	if c.Chain.GenesisFile != "" {
+		if c.Chain.StartBlock != 0 {
+			errs = append(errs, errors.New("chain.genesis_file requires chain.start_block=0"))
+		}
+		if !filepath.IsAbs(c.Chain.GenesisFile) {
+			errs = append(errs, errors.New("chain.genesis_file must be an absolute path"))
+		}
 	}
 	if c.Chain.NativeSymbol == "" || c.Chain.NativeName == "" {
 		errs = append(errs, errors.New("chain native currency name and symbol are required"))
@@ -924,6 +933,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	setString(lookup, "SERVER_METRICS_ADDRESS", &cfg.Server.MetricsAddress)
 	setString(lookup, "SERVER_PUBLIC_URL", &cfg.Server.PublicURL)
 	setString(lookup, "CHAIN_GENESIS_HASH", &cfg.Chain.GenesisHash)
+	setString(lookup, "CHAIN_GENESIS_FILE", &cfg.Chain.GenesisFile)
 	setString(lookup, "CHAIN_NAME", &cfg.Chain.Name)
 	setString(lookup, "CHAIN_NATIVE_SYMBOL", &cfg.Chain.NativeSymbol)
 	setString(lookup, "CHAIN_NATIVE_NAME", &cfg.Chain.NativeName)

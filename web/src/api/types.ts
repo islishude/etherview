@@ -33,6 +33,7 @@ export interface PendingSnapshot {
   meta: PendingMeta;
 }
 export type AddressSummary = components["schemas"]["AddressSummary"];
+export type GenesisAccount = components["schemas"]["GenesisAccount"];
 export type SearchResult = components["schemas"]["SearchResult"];
 export type TokenContract = components["schemas"]["TokenContract"];
 export type TokenEvent = components["schemas"]["TokenEvent"];

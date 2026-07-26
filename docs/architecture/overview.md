@@ -70,6 +70,13 @@ of the callback. The routing and lag contract is specified in
 
 - Each deployment serves one configured chain and binds it with chain ID plus
   genesis hash. Every RPC endpoint is verified against both.
+- Block-zero RPC ingestion authenticates but cannot enumerate the allocation.
+  When `chain.genesis_file` is configured, the sync role independently computes
+  the Genesis JSON block hash, account trie, and per-account storage roots,
+  requires the block hash and state root to match canonical block zero, and
+  atomically stores balances, nonces, code identity, and storage roots. Raw
+  storage slots are discarded. Missing input is a typed unavailable capability,
+  not an empty allocation.
 - Multi-statement canonical and coverage writes use READ COMMITTED while
   holding the chain-scoped transaction advisory lock. Fresh statement
   snapshots after lock waits, targeted row locks, and one atomic transaction

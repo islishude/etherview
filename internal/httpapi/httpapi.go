@@ -101,6 +101,10 @@ type Reader interface {
 	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
 }
 
+type GenesisReader interface {
+	GenesisAccounts(context.Context, string, int) ([]gen.GenesisAccount, string, error)
+}
+
 // readinessStatusReader lets a cache-decorated Reader bypass its cache for the
 // readiness decision. A cached success must not hide loss of a configured
 // PostgreSQL reader or writer pool.
@@ -131,6 +135,7 @@ type SourcifyAdapter interface {
 type Options struct {
 	Config                config.Config
 	Reader                Reader
+	Genesis               GenesisReader
 	Catalog               catalog.Reader
 	Web                   http.Handler
 	Etherscan             http.Handler
@@ -153,6 +158,7 @@ type Options struct {
 type Handler struct {
 	cfg                   config.Config
 	reader                Reader
+	genesis               GenesisReader
 	catalog               catalog.Reader
 	web                   http.Handler
 	etherscan             http.Handler
@@ -192,6 +198,7 @@ func New(options Options) (*Handler, error) {
 	h := &Handler{
 		cfg:                   options.Config,
 		reader:                options.Reader,
+		genesis:               options.Genesis,
 		catalog:               options.Catalog,
 		web:                   options.Web,
 		etherscan:             options.Etherscan,
@@ -228,6 +235,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/config", h.publicConfig)
 	h.mux.HandleFunc("GET /api/v1/blocks", h.blocks)
 	h.mux.HandleFunc("GET /api/v1/blocks/{id}", h.block)
+	h.mux.HandleFunc("GET /api/v1/genesis/accounts", h.genesisAccounts)
 	h.mux.HandleFunc("GET /api/v1/transactions", h.transactions)
 	h.mux.HandleFunc("GET /api/v1/transactions/{hash}", h.transaction)
 	h.mux.HandleFunc("GET /api/v1/pending", h.pendingTransactions)
@@ -564,6 +572,34 @@ func (h *Handler) block(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.BlockResponse{Data: item, Meta: h.meta(r)})
+}
+
+func (h *Handler) genesisAccounts(w http.ResponseWriter, r *http.Request) {
+	if h.genesis == nil {
+		h.handleReaderError(w, r, NewCapabilityUnavailableError(
+			"genesis_state", "unavailable", "genesis_state_not_configured",
+		))
+		return
+	}
+	limit, ok := parseLimit(w, r, 25, 100)
+	if !ok {
+		return
+	}
+	cursor := r.URL.Query().Get("cursor")
+	if len(cursor) > maximumOpaqueCursorLength {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is too long", nil)
+		return
+	}
+	items, next, err := h.genesis.GenesisAccounts(r.Context(), cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	meta := h.meta(r)
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	writeJSON(w, http.StatusOK, gen.GenesisAccountListResponse{Data: items, Meta: meta})
 }
 
 func (h *Handler) transaction(w http.ResponseWriter, r *http.Request) {

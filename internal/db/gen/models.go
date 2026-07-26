@@ -394,6 +394,30 @@ type ExternalMetadatum struct {
 	IdentityHash        []byte             `db:"identity_hash" json:"identity_hash"`
 }
 
+type GenesisAccountObservation struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address     []byte             `db:"address" json:"address"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	Balance     pgtype.Numeric     `db:"balance" json:"balance"`
+	Nonce       pgtype.Numeric     `db:"nonce" json:"nonce"`
+	CodeHash    []byte             `db:"code_hash" json:"code_hash"`
+	Code        []byte             `db:"code" json:"code"`
+	StorageRoot []byte             `db:"storage_root" json:"storage_root"`
+	ObservedAt  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type GenesisStateImport struct {
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockHash      []byte             `db:"block_hash" json:"block_hash"`
+	StateRoot      []byte             `db:"state_root" json:"state_root"`
+	DocumentSha256 []byte             `db:"document_sha256" json:"document_sha256"`
+	State          string             `db:"state" json:"state"`
+	AccountCount   pgtype.Numeric     `db:"account_count" json:"account_count"`
+	LastErrorCode  *string            `db:"last_error_code" json:"last_error_code"`
+	ImportedAt     pgtype.Timestamptz `db:"imported_at" json:"imported_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type IndexCheckpoint struct {
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Stage             string             `db:"stage" json:"stage"`

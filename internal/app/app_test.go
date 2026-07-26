@@ -129,10 +129,10 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "api with OTLP", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
 		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "20-public-api"}},
-		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "10-core-sync"}},
+		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "10-core-sync", "12-genesis-state"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "10-core-sync", "15-pending-mempool"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "10-core-sync", "12-genesis-state", "15-pending-mempool"}},
 		{name: "enrich", role: components.RoleEnrich, want: []string{
 			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
 			"35-core-enrichment-01", "35-core-enrichment-02",

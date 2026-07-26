@@ -71,6 +71,8 @@ distributed_service="$temporary_dir/distributed-service.yaml"
 distributed_hpa="$temporary_dir/distributed-hpa.yaml"
 monitor_one="$temporary_dir/monitor-one.yaml"
 monitor_two="$temporary_dir/monitor-two.yaml"
+genesis_monolith="$temporary_dir/genesis-monolith.yaml"
+genesis_distributed="$temporary_dir/genesis-distributed.yaml"
 
 "$helm_bin" template etherview "$chart_dir" --namespace explorer >"$monolith"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
@@ -86,6 +88,11 @@ monitor_two="$temporary_dir/monitor-two.yaml"
   --set serviceMonitor.enabled=true --show-only templates/servicemonitor.yaml >"$monitor_one"
 "$helm_bin" template etherview-blue "$chart_dir" --namespace explorer \
   --set serviceMonitor.enabled=true --show-only templates/servicemonitor.yaml >"$monitor_two"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.existingClaim=etherview-genesis >"$genesis_monolith"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set-string genesisState.existingClaim=etherview-genesis >"$genesis_distributed"
 
 assert_kind_count "$monolith" Deployment 1
 assert_kind_count "$monolith" HorizontalPodAutoscaler 0
@@ -99,6 +106,11 @@ assert_occurrences "$monolith" 'args: ["migrate", "status", "--config", "/etc/et
 assert_occurrences "$monolith" 'args: ["migrate", "up", "--config", "/etc/etherview/config.yaml"]' 1
 assert_contains "$monolith" "ttlSecondsAfterFinished: 86400"
 assert_contains "$monolith_service" "app.kubernetes.io/component: all"
+assert_occurrences "$genesis_monolith" "name: ETHERVIEW_CHAIN_GENESIS_FILE" 1
+assert_occurrences "$genesis_monolith" "name: genesis-state" 2
+assert_contains "$genesis_monolith" 'mountPath: "/var/lib/etherview/genesis.json"'
+assert_contains "$genesis_monolith" 'subPath: "genesis.json"'
+assert_contains "$genesis_monolith" 'claimName: "etherview-genesis"'
 
 assert_kind_count "$distributed" Deployment 7
 assert_kind_count "$distributed" HorizontalPodAutoscaler 5
@@ -136,6 +148,8 @@ for role in api enrich trace verify metadata; do
 done
 assert_not_contains "$distributed_hpa" "name: etherview-sync"
 assert_not_contains "$distributed_hpa" "name: etherview-maintenance"
+assert_occurrences "$genesis_distributed" "name: ETHERVIEW_CHAIN_GENESIS_FILE" 1
+assert_occurrences "$genesis_distributed" "name: genesis-state" 2
 
 # The reference profile is an HA/capacity starting point, not a result claim.
 # It runs only core roles, retains one replica through voluntary disruption,
@@ -247,6 +261,14 @@ expect_render_failure zero-capacity-deployment-strategy \
   --set-string deploymentStrategy.maxUnavailable=0
 expect_render_failure inline-database-secret \
   --set-string config.database.url=postgres://inline.invalid/etherview
+expect_render_failure inline-genesis-path \
+  --set-string config.chain.genesis_file=/var/lib/etherview/genesis.json
+expect_render_failure genesis-with-nonzero-start \
+  --set-string genesisState.existingClaim=etherview-genesis \
+  --set config.chain.start_block=1
+expect_render_failure relative-genesis-mount \
+  --set-string genesisState.existingClaim=etherview-genesis \
+  --set-string genesisState.mountPath=genesis.json
 expect_render_failure inline-database-read-secret \
   --set-string config.database.read_url=postgres://inline-read.invalid/etherview
 expect_render_failure invalid-writer-connection-bounds \

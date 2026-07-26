@@ -68,6 +68,23 @@ paths:
                 $ref: "#/components/schemas/BlockResponse"
         default:
           $ref: "#/components/responses/Error"
+  /genesis/accounts:
+    get:
+      operationId: listGenesisAccounts
+      tags: [blocks, addresses]
+      description: Accounts authenticated by the canonical block-zero state root.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Genesis allocation accounts ordered by address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenesisAccountListResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /transactions:
     get:
       operationId: listTransactions
@@ -914,6 +931,32 @@ components:
           type: string
         completeness:
           $ref: "#/components/schemas/Completeness"
+    GenesisAccount:
+      type: object
+      required:
+        - address
+        - type
+        - balance
+        - nonce
+        - code_hash
+        - storage_root
+        - block_hash
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        type:
+          type: string
+          enum: [eoa, contract]
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        storage_root:
+          $ref: "#/components/schemas/Hash"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
     CatalogSnapshot:
       type: object
       required: [chain_id, block_number, block_hash]
@@ -1513,6 +1556,16 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AddressSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    GenesisAccountListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/GenesisAccount"
         meta:
           $ref: "#/components/schemas/Meta"
     TokenResponse:

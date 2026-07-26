@@ -106,6 +106,10 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.rpcURLsKey | quote }}
                   optional: true
+            {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
+            - name: ETHERVIEW_CHAIN_GENESIS_FILE
+              value: {{ $root.Values.genesisState.mountPath | quote }}
+            {{- end }}
             - name: ETHERVIEW_API_KEY_PEPPER
               valueFrom:
                 secretKeyRef:
@@ -208,6 +212,12 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
+            - name: genesis-state
+              mountPath: {{ $root.Values.genesisState.mountPath | quote }}
+              subPath: {{ $root.Values.genesisState.key | quote }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -215,6 +225,11 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
+        - name: genesis-state
+          persistentVolumeClaim:
+            claimName: {{ $root.Values.genesisState.existingClaim | quote }}
+        {{- end }}
       {{- with $root.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

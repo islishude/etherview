@@ -78,6 +78,18 @@ The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
 
+## Genesis account state
+
+Set `genesisState.existingClaim` to a read-only PVC containing the chain's
+authoritative Genesis JSON, with `genesisState.key` naming the file inside the
+claim. The chart mounts that one file at the absolute
+`genesisState.mountPath` only in `all` or `sync` application Pods and supplies
+the path through `ETHERVIEW_CHAIN_GENESIS_FILE`. Migration, API, and worker Pods
+do not mount it; they consume authenticated imported facts from PostgreSQL.
+Enabling the mount requires `config.chain.start_block: 0`. Direct
+`config.chain.genesis_file` values are rejected so a rendered ConfigMap cannot
+claim an unmounted path.
+
 The structured `rpc-urls` JSON form retains each endpoint's `name`, `url`,
 `purposes`, and `max_requests_per_second` fields while keeping the complete
 document in the Secret. Use it when head, history, state, trace, or mempool
