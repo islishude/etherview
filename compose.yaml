@@ -16,6 +16,9 @@ x-app-environment: &app-environment
   ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT: ${ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT:-60s}
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
+  # Value-less feature inputs preserve the mounted YAML defaults when unset.
+  ETHERVIEW_FEATURE_USER_AUTH:
+  ETHERVIEW_FEATURE_X402_BILLING:
   ETHERVIEW_API_KEY_PEPPER: ${ETHERVIEW_API_KEY_PEPPER:-}
   ETHERVIEW_METADATA_IPFS_GATEWAY: ${ETHERVIEW_METADATA_IPFS_GATEWAY:-}
   ETHERVIEW_ADAPTER_NAMESPACE: ${ETHERVIEW_ADAPTER_NAMESPACE:-etherview}
@@ -32,6 +35,16 @@ x-app-environment: &app-environment
   ETHERVIEW_OTLP_TRACE_ENDPOINT: ${ETHERVIEW_OTLP_TRACE_ENDPOINT:-}
   ETHERVIEW_OTLP_TRACE_INSECURE: ${ETHERVIEW_OTLP_TRACE_INSECURE:-false}
   OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+
+x-api-environment: &api-environment
+  <<: *app-environment
+  # Pass this Secret only to API-capable processes when user auth is enabled.
+  # When it is absent from the host/.env, Compose leaves it unset.
+  ETHERVIEW_SESSION_PEPPER:
+  # x402 secrets have the same API-role boundary and remain absent while the
+  # feature is disabled and the operator leaves them unset.
+  ETHERVIEW_X402_FINGERPRINT_PEPPER:
+  ETHERVIEW_X402_FACILITATOR_HEADERS:
 
 x-app: &app
   image: ${ETHERVIEW_IMAGE:-etherview:local}
@@ -85,6 +98,9 @@ services:
   etherview:
     <<: *app
     command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *api-environment
+      ETHERVIEW_ROLES: all
     profiles: ["monolith"]
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
@@ -93,6 +109,9 @@ services:
   api:
     <<: *app
     command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *api-environment
+      ETHERVIEW_ROLES: api
     profiles: ["distributed"]
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
@@ -101,33 +120,51 @@ services:
   sync:
     <<: *app
     command: ["serve", "--roles=sync", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: sync
     profiles: ["distributed"]
 
   enrich:
     <<: *app
     command: ["serve", "--roles=enrich", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: enrich
     profiles: ["distributed"]
 
   trace:
     <<: *app
     command: ["serve", "--roles=trace", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: trace
     profiles: ["distributed"]
 
   verify:
     <<: *app
     command: ["serve", "--roles=verify", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: verify
     profiles: ["distributed"]
 
   metadata:
     <<: *app
     command:
       ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: metadata
     profiles: ["distributed"]
 
   maintenance:
     <<: *app
     command:
       ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *app-environment
+      ETHERVIEW_ROLES: maintenance
     profiles: ["distributed"]
 
   nats:

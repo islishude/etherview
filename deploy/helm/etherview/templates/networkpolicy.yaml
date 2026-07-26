@@ -30,7 +30,41 @@ spec:
         - protocol: TCP
           port: 443
     {{- end }}
+    {{- with .Values.networkPolicy.runtimeHTTPSCIDRs }}
+    - to:
+      {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
     {{- with .Values.networkPolicy.additionalEgress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+{{- end }}
+{{- if and .Values.networkPolicy.enabled .Values.config.features.x402_billing }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "etherview.fullname" . }}-x402-facilitator
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "etherview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ ternary "all" "api" (eq .Values.mode "monolith") }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+      {{- range .Values.config.billing.facilitator_allowed_cidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
 {{- end }}

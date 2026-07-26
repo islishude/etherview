@@ -31,6 +31,64 @@ assert_occurrences() {
   [ "$actual" -eq "$3" ] || fail "$1 occurrence count for '$2' is $actual, want $3"
 }
 
+assert_component_occurrences() {
+  actual=$(
+    awk -v component="$2" -v wanted="$3" '
+      /^---$/ {
+        if (selected) {
+          total += count
+        }
+        selected = 0
+        count = 0
+        next
+      }
+      $0 == "  name: etherview-" component {
+        selected = 1
+      }
+      selected && index($0, wanted) != 0 {
+        count++
+      }
+      END {
+        if (selected) {
+          total += count
+        }
+        print total + 0
+      }
+    ' "$1"
+  )
+  [ "$actual" -eq "$4" ] ||
+    fail "$1 component $2 occurrence count for '$3' is $actual, want $4"
+}
+
+assert_resource_occurrences() {
+  actual=$(
+    awk -v resource="$2" -v wanted="$3" '
+      /^---$/ {
+        if (selected) {
+          total += count
+        }
+        selected = 0
+        count = 0
+        next
+      }
+      $0 == "  name: " resource {
+        selected = 1
+      }
+      selected && index($0, wanted) != 0 {
+        count++
+      }
+      END {
+        if (selected) {
+          total += count
+        }
+        print total + 0
+      }
+    ' "$1"
+  )
+  [ "$actual" -eq "$4" ] ||
+    fail "$1 resource $2 occurrence count for '$3' is $actual, want $4"
+}
+
 assert_contains() {
   grep -F -q -- "$2" "$1" || fail "$1 does not contain '$2'"
 }
@@ -60,6 +118,14 @@ expect_render_failure() {
   shift
   if "$helm_bin" template etherview "$chart_dir" "$@" >"$temporary_dir/$name.out" 2>"$temporary_dir/$name.err"; then
     fail "$name unexpectedly rendered successfully"
+  fi
+}
+
+expect_template_failure() {
+  name=$1
+  shift
+  if "$helm_bin" template etherview "$chart_dir" --skip-schema-validation "$@" >"$temporary_dir/$name.out" 2>"$temporary_dir/$name.err"; then
+    fail "$name unexpectedly rendered successfully without schema validation"
   fi
 }
 
@@ -153,14 +219,20 @@ assert_contains "$distributed" "alert: EtherviewMetricsSnapshotStale"
 assert_contains "$distributed" "alert: EtherviewRepairQueueStalled"
 assert_contains "$distributed" "alert: EtherviewRepairExecutionFailures"
 assert_contains "$distributed" "alert: EtherviewHTTPHandlerPanics"
+assert_contains "$distributed" "alert: EtherviewX402FacilitatorUnavailable"
+assert_contains "$distributed" "alert: EtherviewX402LedgerUnavailable"
+assert_contains "$distributed" "alert: EtherviewX402SettlementReconciliationRequired"
+assert_contains "$distributed" 'sum(increase(etherview_x402_requests_total{etherview_release="etherview",etherview_namespace="explorer",result="verify_unavailable"}[5m]))'
+assert_contains "$distributed" 'sum(increase(etherview_x402_requests_total{etherview_release="etherview",etherview_namespace="explorer",result="ledger_unavailable"}[5m]))'
+assert_contains "$distributed" 'max(etherview_x402_stale_settling_payments{etherview_release="etherview",etherview_namespace="explorer",reason=~"settlement_unknown|unmarked_after_timeout"})'
 assert_contains "$distributed" "targetLabel: etherview_release"
 assert_contains "$distributed" 'replacement: "etherview"'
 assert_contains "$distributed" "targetLabel: etherview_namespace"
 assert_contains "$distributed" 'replacement: "explorer"'
 assert_all_alerts_scoped "$distributed"
-assert_occurrences "$distributed" 'etherview_release: "etherview"' 12
-assert_occurrences "$distributed" 'etherview_namespace: "explorer"' 12
-assert_occurrences "$distributed" 'chain_id: "1"' 12
+assert_occurrences "$distributed" 'etherview_release: "etherview"' 15
+assert_occurrences "$distributed" 'etherview_namespace: "explorer"' 15
+assert_occurrences "$distributed" 'chain_id: "1"' 15
 assert_contains "$monitor_one" "app.kubernetes.io/name: etherview"
 assert_contains "$monitor_one" "app.kubernetes.io/instance: etherview"
 assert_contains "$monitor_one" 'replacement: "etherview"'
@@ -233,11 +305,23 @@ assert_contains "$monolith" "read_min_connections: 0"
 assert_contains "$monolith" "api_key_pepper: \"\""
 assert_contains "$monolith" "otlp_trace_endpoint: \"\""
 assert_not_contains "$monolith" "checksum/secret"
+assert_contains "$monolith" "user_auth: false"
+assert_not_contains "$monolith" "ETHERVIEW_SESSION_PEPPER"
+assert_not_contains "$distributed" "ETHERVIEW_SESSION_PEPPER"
+assert_contains "$monolith" "x402_billing: false"
+assert_not_contains "$monolith" "ETHERVIEW_X402_FINGERPRINT_PEPPER"
+assert_not_contains "$monolith" "ETHERVIEW_X402_FACILITATOR_HEADERS"
+assert_not_contains "$distributed" "ETHERVIEW_X402_FINGERPRINT_PEPPER"
+assert_not_contains "$distributed" "ETHERVIEW_X402_FACILITATOR_HEADERS"
+assert_not_contains "$monolith" "etherview-x402-facilitator"
 
 external_secret="$temporary_dir/external-secret.yaml"
 "$helm_bin" template etherview "$chart_dir" \
   --set externalSecret.enabled=true \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com \
   --set-string externalSecret.databaseReadURLRemoteKey=runtime/database-read-url \
+  --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
   --set-string externalSecret.natsURLRemoteKey=runtime/nats-url \
   --set-string externalSecret.redisURLRemoteKey=runtime/redis-url \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access \
@@ -247,18 +331,153 @@ external_secret="$temporary_dir/external-secret.yaml"
   --set-string externalSecret.otlpTraceHeadersRemoteKey=runtime/otlp-trace-headers \
   >"$external_secret"
 assert_kind_count "$external_secret" ExternalSecret 1
-for remote_key in runtime/database-read-url runtime/nats-url runtime/redis-url runtime/s3-access runtime/s3-secret runtime/s3-session runtime/otlp-trace-endpoint runtime/otlp-trace-headers; do
+for remote_key in runtime/database-read-url runtime/session-pepper runtime/nats-url runtime/redis-url runtime/s3-access runtime/s3-secret runtime/s3-session runtime/otlp-trace-endpoint runtime/otlp-trace-headers; do
   assert_contains "$external_secret" "key: \"$remote_key\""
 done
-for secret_key in database-read-url nats-url redis-url s3-access-key s3-secret-key s3-session-token otlp-trace-endpoint otlp-trace-headers; do
+for secret_key in database-read-url session-pepper nats-url redis-url s3-access-key s3-secret-key s3-session-token otlp-trace-endpoint otlp-trace-headers; do
   assert_contains "$external_secret" "secretKey: \"$secret_key\""
 done
+assert_occurrences "$external_secret" "name: ETHERVIEW_SESSION_PEPPER" 1
+assert_component_occurrences "$external_secret" all "name: ETHERVIEW_SESSION_PEPPER" 1
 
 external_secret_without_reader="$temporary_dir/external-secret-without-reader.yaml"
 "$helm_bin" template etherview "$chart_dir" \
-  --set externalSecret.enabled=true >"$external_secret_without_reader"
+  --set externalSecret.enabled=true \
+  --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
+  --set-string externalSecret.x402FingerprintPepperRemoteKey=runtime/x402-fingerprint \
+  --set-string externalSecret.x402FacilitatorHeadersRemoteKey=runtime/x402-headers \
+  >"$external_secret_without_reader"
 assert_kind_count "$external_secret_without_reader" ExternalSecret 1
 assert_not_contains "$external_secret_without_reader" 'secretKey: "database-read-url"'
+assert_not_contains "$external_secret_without_reader" 'secretKey: "session-pepper"'
+assert_not_contains "$external_secret_without_reader" 'secretKey: "x402-fingerprint-pepper"'
+assert_not_contains "$external_secret_without_reader" 'secretKey: "x402-facilitator-headers"'
+
+auth_monolith="$temporary_dir/auth-monolith.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  >"$auth_monolith"
+assert_occurrences "$auth_monolith" "name: ETHERVIEW_SESSION_PEPPER" 1
+assert_component_occurrences "$auth_monolith" all "name: ETHERVIEW_SESSION_PEPPER" 1
+
+auth_loopback="$temporary_dir/auth-loopback.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=http://localhost:8080 \
+  >"$auth_loopback"
+assert_occurrences "$auth_loopback" "name: ETHERVIEW_SESSION_PEPPER" 1
+
+auth_distributed="$temporary_dir/auth-distributed.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  >"$auth_distributed"
+assert_occurrences "$auth_distributed" "name: ETHERVIEW_SESSION_PEPPER" 1
+assert_component_occurrences "$auth_distributed" api "name: ETHERVIEW_SESSION_PEPPER" 1
+for role in sync enrich trace verify metadata maintenance; do
+  assert_component_occurrences "$auth_distributed" "$role" "name: ETHERVIEW_SESSION_PEPPER" 0
+done
+
+billing_monolith="$temporary_dir/billing-monolith.yaml"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set config.features.x402_billing=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  --set-string config.billing.facilitator_url=https://facilitator.example.com \
+  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
+  --set-string config.billing.network=eip155:84532 \
+  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
+  --set config.billing.asset_decimals=6 \
+  --set-string config.billing.asset_eip712_name=USDC \
+  --set-string config.billing.asset_eip712_version=2 \
+  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
+  --set-string config.billing.routes.listBlocks.access=x402 \
+  --set-string config.billing.routes.listBlocks.amount_atomic=1000 \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
+  >"$billing_monolith"
+assert_kind_count "$billing_monolith" NetworkPolicy 2
+assert_contains "$billing_monolith" "name: etherview-x402-facilitator"
+assert_resource_occurrences "$billing_monolith" etherview-x402-facilitator 'cidr: "203.0.113.0/24"' 1
+assert_resource_occurrences "$billing_monolith" etherview-x402-facilitator "app.kubernetes.io/component: all" 1
+assert_resource_occurrences "$billing_monolith" etherview-x402-facilitator "protocol: TCP" 1
+assert_resource_occurrences "$billing_monolith" etherview-x402-facilitator "port: 443" 1
+assert_resource_occurrences "$billing_monolith" etherview 'cidr: "198.51.100.0/24"' 1
+assert_resource_occurrences "$billing_monolith" etherview 'cidr: "203.0.113.0/24"' 0
+assert_resource_occurrences "$billing_monolith" etherview-x402-facilitator 'cidr: "198.51.100.0/24"' 0
+assert_occurrences "$billing_monolith" "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 1
+assert_occurrences "$billing_monolith" "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
+assert_component_occurrences "$billing_monolith" all "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 1
+assert_component_occurrences "$billing_monolith" all "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
+
+billing_distributed="$temporary_dir/billing-distributed.yaml"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set config.features.x402_billing=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  --set-string config.billing.facilitator_url=https://facilitator.example.com \
+  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
+  --set-string config.billing.network=eip155:84532 \
+  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
+  --set config.billing.asset_decimals=6 \
+  --set-string config.billing.asset_eip712_name=USDC \
+  --set-string config.billing.asset_eip712_version=2 \
+  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
+  --set-string config.billing.routes.listBlocks.access=api_key_or_x402 \
+  --set-string config.billing.routes.listBlocks.amount_atomic=1000 \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
+  >"$billing_distributed"
+assert_kind_count "$billing_distributed" NetworkPolicy 2
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator "app.kubernetes.io/component: api" 1
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator "app.kubernetes.io/component: sync" 0
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator 'cidr: "203.0.113.0/24"' 1
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator "protocol: TCP" 1
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator "port: 443" 1
+assert_resource_occurrences "$billing_distributed" etherview 'cidr: "198.51.100.0/24"' 1
+assert_resource_occurrences "$billing_distributed" etherview 'cidr: "203.0.113.0/24"' 0
+assert_resource_occurrences "$billing_distributed" etherview-x402-facilitator 'cidr: "198.51.100.0/24"' 0
+assert_occurrences "$billing_distributed" "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 1
+assert_occurrences "$billing_distributed" "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
+assert_component_occurrences "$billing_distributed" api "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 1
+assert_component_occurrences "$billing_distributed" api "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
+for role in sync enrich trace verify metadata maintenance; do
+  assert_component_occurrences "$billing_distributed" "$role" "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 0
+  assert_component_occurrences "$billing_distributed" "$role" "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 0
+done
+
+billing_external_secret="$temporary_dir/billing-external-secret.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set externalSecret.enabled=true \
+  --set-string externalSecret.x402FingerprintPepperRemoteKey=runtime/x402-fingerprint \
+  --set-string externalSecret.x402FacilitatorHeadersRemoteKey=runtime/x402-headers \
+  --set config.features.x402_billing=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  --set-string config.billing.facilitator_url=https://facilitator.example.com \
+  --set-string 'config.billing.facilitator_allowed_cidrs[0]=203.0.113.0/24' \
+  --set-string config.billing.network=eip155:84532 \
+  --set-string config.billing.asset=0x1111111111111111111111111111111111111111 \
+  --set config.billing.asset_decimals=6 \
+  --set-string config.billing.asset_eip712_name=USDC \
+  --set-string config.billing.asset_eip712_version=2 \
+  --set-string config.billing.recipient=0x2222222222222222222222222222222222222222 \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=198.51.100.0/24' \
+  >"$billing_external_secret"
+assert_contains "$billing_external_secret" 'secretKey: "x402-fingerprint-pepper"'
+assert_contains "$billing_external_secret" 'secretKey: "x402-facilitator-headers"'
+assert_contains "$billing_external_secret" 'key: "runtime/x402-fingerprint"'
+assert_contains "$billing_external_secret" 'key: "runtime/x402-headers"'
+
+billing_restricted_egress="$temporary_dir/billing-restricted-egress.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":4222}]},{"to":[{"ipBlock":{"cidr":"198.51.100.0/24"}}],"ports":[{"protocol":"TCP","port":8443}]}]' \
+  >"$billing_restricted_egress"
+assert_resource_occurrences "$billing_restricted_egress" etherview "port: 4222" 1
+assert_resource_occurrences "$billing_restricted_egress" etherview 'cidr: 198.51.100.0/24' 1
+assert_resource_occurrences "$billing_restricted_egress" etherview "port: 8443" 1
 
 # Default policy carries only DNS, PostgreSQL, and optional HTTPS egress. A
 # release can append accelerator or private endpoint rules without replacing
@@ -378,10 +597,118 @@ expect_render_failure inline-redis-secret \
   --set-string config.adapters.redis_url=redis://credential.invalid:6379
 expect_render_failure inline-s3-secret \
   --set-string config.adapters.s3_secret_key=inline-secret
+expect_render_failure inline-session-pepper \
+  --set-string config.user_auth.session_pepper=inline-secret
+expect_render_failure inline-x402-fingerprint-pepper \
+  --set-string config.billing.fingerprint_pepper=inline-secret
+expect_render_failure inline-x402-facilitator-headers \
+  --set-string config.billing.facilitator_headers.Authorization=inline-secret
 expect_render_failure inline-otlp-endpoint \
   --set-string config.observability.otlp_trace_endpoint=https://otel.invalid:4318
 expect_render_failure incomplete-s3-external-secret \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access
+expect_render_failure auth-without-public-origin \
+  --set config.features.user_auth=true
+expect_render_failure auth-with-non-root-public-url \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com/nested
+expect_render_failure auth-with-plaintext-public-url \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=http://explorer.example.com
+expect_render_failure auth-with-empty-host \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://:
+expect_render_failure auth-with-nonnumeric-port \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com:bad
+expect_render_failure auth-with-overflow-port \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com:65536
+expect_render_failure auth-with-zero-port \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com:0
+expect_render_failure auth-with-unclosed-ipv6 \
+  --set config.features.user_auth=true \
+  --set-string 'config.server.public_url=https://[::1'
+expect_render_failure auth-with-trailing-dot \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com.
+expect_render_failure external-auth-without-session-pepper \
+  --set externalSecret.enabled=true \
+  --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com
+expect_render_failure billing-without-public-origin \
+  -f "$script_dir/values-x402.yaml" \
+  --set-string config.server.public_url=
+expect_render_failure billing-without-facilitator-cidr \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'config.billing.facilitator_allowed_cidrs=[]'
+expect_render_failure billing-with-network-policy-disabled \
+  -f "$script_dir/values-x402.yaml" \
+  --set networkPolicy.enabled=false
+expect_render_failure billing-with-broad-https \
+  -f "$script_dir/values-x402.yaml" \
+  --set networkPolicy.allowExternalHTTPS=true
+expect_template_failure billing-with-broad-runtime-https \
+  -f "$script_dir/values-x402.yaml" \
+  --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=0.0.0.0/0'
+assert_contains "$temporary_dir/billing-with-broad-runtime-https.err" \
+  "networkPolicy.runtimeHTTPSCIDRs must not contain an internet-wide CIDR"
+expect_template_failure billing-with-facilitator-runtime-overlap \
+  -f "$script_dir/values-x402.yaml" \
+  --set-string 'networkPolicy.runtimeHTTPSCIDRs[0]=203.0.113.0/24'
+assert_contains "$temporary_dir/billing-with-facilitator-runtime-overlap.err" \
+  "networkPolicy.runtimeHTTPSCIDRs must not repeat a facilitator CIDR"
+expect_render_failure billing-with-additional-tcp-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":443}]}]'
+assert_contains "$temporary_dir/billing-with-additional-tcp-443.err" \
+  "/networkPolicy/additionalEgress"
+expect_template_failure billing-template-with-additional-tcp-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":443}]}]'
+assert_contains "$temporary_dir/billing-template-with-additional-tcp-443.err" \
+  "networkPolicy.additionalEgress must explicitly exclude TCP/443"
+expect_render_failure billing-with-additional-empty-to-tcp-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"to":[],"ports":[{"protocol":"TCP","port":443}]}]'
+expect_render_failure billing-with-additional-ipv4-any-tcp-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"to":[{"ipBlock":{"cidr":"0.0.0.0/0"}}],"ports":[{"protocol":"TCP","port":443}]}]'
+expect_render_failure billing-with-additional-ipv6-any-tcp-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"to":[{"ipBlock":{"cidr":"::/0"}}],"ports":[{"protocol":"TCP","port":443}]}]'
+expect_render_failure billing-with-additional-implicit-ports \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"to":[{"ipBlock":{"cidr":"198.51.100.0/24"}}]}]'
+expect_render_failure billing-with-additional-default-protocol-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"port":443}]}]'
+expect_render_failure billing-with-additional-named-tcp-port \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":"https"}]}]'
+expect_render_failure billing-with-additional-tcp-range-spanning-443 \
+  -f "$script_dir/values-x402.yaml" \
+  --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":400,"endPort":500}]}]'
+expect_render_failure billing-with-non-root-facilitator \
+  -f "$script_dir/values-x402.yaml" \
+  --set-string config.billing.facilitator_url=https://facilitator.example.com/nested
+expect_render_failure billing-with-non-443-facilitator \
+  -f "$script_dir/values-x402.yaml" \
+  --set-string config.billing.facilitator_url=https://facilitator.example.com:8443
+expect_render_failure external-billing-without-fingerprint-pepper \
+  -f "$script_dir/values-x402.yaml" \
+  --set externalSecret.enabled=true \
+  --set-string externalSecret.x402FingerprintPepperRemoteKey=
+expect_render_failure invalid-x402-operation \
+  --set-string config.billing.routes.notEligible.access=x402 \
+  --set-string config.billing.routes.notEligible.amount_atomic=1
+expect_render_failure invalid-x402-access \
+  --set-string config.billing.routes.listBlocks.access=free \
+  --set-string config.billing.routes.listBlocks.amount_atomic=1
+expect_render_failure invalid-x402-amount \
+  --set-string config.billing.routes.listBlocks.access=x402 \
+  --set-string config.billing.routes.listBlocks.amount_atomic=01
 expect_render_failure alert-rules-without-scoped-monitor \
   --set prometheusRule.enabled=true \
   --set serviceMonitor.enabled=false

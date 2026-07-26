@@ -17,6 +17,18 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    mkdir -p /out/licenses \
+    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/COPYING.LESSER \
+        /out/licenses/go-ethereum-LGPL-3.0-or-later.txt \
+    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/keccak/LICENSE \
+        /out/licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
+    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/secp256k1/LICENSE \
+        /out/licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
+    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/crypto/secp256k1/libsecp256k1/COPYING \
+        /out/licenses/libsecp256k1-MIT.txt \
+    && cp /go/pkg/mod/github.com/ethereum/go-ethereum@v1.17.2/metrics/LICENSE \
+        /out/licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 COPY api ./api
 COPY cmd ./cmd
 COPY internal ./internal
@@ -65,11 +77,17 @@ ARG CREATED=unknown
 LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.description="Ethereum execution-layer explorer" \
     org.opencontainers.image.source="https://github.com/islishude/etherview" \
-    org.opencontainers.image.licenses="Apache-2.0" \
+    org.opencontainers.image.licenses="Apache-2.0 AND LGPL-3.0-or-later AND BSD-3-Clause AND BSD-2-Clause-FreeBSD AND MIT" \
     org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.revision="${REVISION}" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot LICENSE /LICENSE
+COPY --chown=nonroot:nonroot THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
+COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-LGPL-3.0-or-later.txt /licenses/go-ethereum-LGPL-3.0-or-later.txt
+COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt /licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt
+COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt /licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt
+COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/libsecp256k1-MIT.txt /licenses/libsecp256k1-MIT.txt
+COPY --from=go-builder --chown=nonroot:nonroot /out/licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 COPY --from=go-builder --chown=nonroot:nonroot /out/etherview /etherview
 USER 65532:65532
 EXPOSE 8080 9090

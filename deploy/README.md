@@ -33,6 +33,26 @@ at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
 uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
+Wallet authentication is disabled by default. To enable it, set
+`features.user_auth: true` (or `ETHERVIEW_FEATURE_USER_AUTH=true`), configure
+`server.public_url` as the root public HTTPS origin, and supply an independent
+`ETHERVIEW_SESSION_PEPPER` containing at least 32 random bytes. Plain HTTP is
+accepted only for a loopback development origin. Compose passes the pepper only
+to the monolith `all` process or the split `api` process; migration and worker
+services never receive it. The split services also set `ETHERVIEW_ROLES`
+explicitly so role-scoped Secret loading does not depend on the mounted YAML.
+Do not put the pepper in YAML, browser assets, or an image layer.
+
+x402 billing is also disabled by default. Configure its non-secret facilitator
+origin/CIDRs, network, asset, recipient, and per-operation prices under
+`billing`, then set `features.x402_billing: true` and provide
+`ETHERVIEW_X402_FINGERPRINT_PEPPER` with at least 32 independent random bytes.
+Optional facilitator credentials are a bounded JSON object in
+`ETHERVIEW_X402_FACILITATOR_HEADERS`. Compose passes both values only to the
+monolith `all` or split `api` service; feature-off deployments with the
+variables unset do not pass either Secret. Run `etherview doctor` against the
+final API-role configuration before adding a paid route.
+
 The reproducible deployment smoke uses a deterministic, test-only execution
 RPC image and two independent PostgreSQL volumes:
 
@@ -61,15 +81,32 @@ separate external-service fixtures.
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
 `database-url` and optional `database-read-url`, `rpc-urls`, `api-key-pepper`,
+`session-pepper`, `x402-fingerprint-pepper`, `x402-facilitator-headers`,
 `nats-url`, `redis-url`, `s3-access-key`, `s3-secret-key`, `s3-session-token`,
-`otlp-trace-endpoint`, and `otlp-trace-headers` keys. The reader key is injected
-only into the monolith or distributed API process. With
+`otlp-trace-endpoint`, and `otlp-trace-headers` keys. The
+reader key is injected only into the monolith or distributed API process. The
+session key is required and injected only when `config.features.user_auth` is
+enabled, and only into that same `all` or `api` application container. It is
+absent from migration and schema-init containers. With
 `externalSecret.enabled=true`, the included ExternalSecret materializes the
-writer database, RPC, and API-key-pepper entries. Set
+writer database, RPC, and API-key-pepper entries. An auth-enabled release must
+also set `externalSecret.sessionPepperRemoteKey`; feature-off releases do not
+fetch it. Set
 `externalSecret.databaseReadURLRemoteKey` to materialize the optional reader
 entry; optional adapter entries follow the same non-empty remote-key rule.
 Secret values are never rendered into a ConfigMap or chart defaults, and
-`config.database.read_url` must remain empty.
+`config.database.read_url` must remain empty. `config.user_auth` contains only
+non-secret lifetimes and size limits; an inline session pepper is rejected.
+Auth-enabled Helm releases must set `config.server.public_url` to a root HTTPS
+origin (loopback development is the only HTTP exception).
+
+Billing-enabled releases likewise require the public origin, fingerprint key,
+fixed HTTPS facilitator origin on port 443, and explicit facilitator CIDRs. The fingerprint
+and optional header keys are injected only into the `all`/`api` main container
+and are neither fetched nor injected while billing is off. With External
+Secrets, set `externalSecret.x402FingerprintPepperRemoteKey`; optional headers
+are materialized only when
+`externalSecret.x402FacilitatorHeadersRemoteKey` is non-empty.
 
 ```sh
 helm lint deploy/helm/etherview
@@ -102,6 +139,13 @@ The chart intentionally does not checksum Secret contents: it does not render
 or read those contents. ConfigMap changes still trigger the existing
 `checksum/config` rollout.
 
+Rotating `session-pepper` deliberately invalidates every existing browser
+session. Restart all selected `all`/`api` Deployments promptly after rotation;
+a rolling interval with old and new peppers can reject sessions
+inconsistently, so users should sign in again only after that rollout
+completes. The session pepper is independent of the API-key pepper and must
+never reuse it.
+
 Every role exposes liveness, readiness, and Prometheus metrics on its dedicated
 9090 operations listener; only the API role also exposes the public 8080
 listener. The default NetworkPolicy permits DNS, PostgreSQL on TCP 5432, and HTTPS RPC or
@@ -110,6 +154,22 @@ nonstandard PostgreSQL ports, or an in-cluster OpenTelemetry collector.
 NATS, Redis, and S3-compatible endpoints on non-HTTPS ports likewise require
 explicit `networkPolicy.additionalEgress` entries; the chart never broadens
 egress merely because an optional adapter URL is configured.
+
+x402 billing deliberately conflicts with that default broad HTTPS rule. Set
+`networkPolicy.allowExternalHTTPS=false`; list the explicit, non-facilitator
+RPC and adapter ranges under `networkPolicy.runtimeHTTPSCIDRs`, and the chart
+adds a separate `all`/`api`-only policy permitting the configured facilitator
+CIDRs on TCP/443. The shared runtime list keeps split sync/worker roles able to
+reach their reviewed HTTPS dependencies without granting them facilitator
+access. Rendering fails if NetworkPolicy is disabled, the facilitator CIDR
+list is empty, broad HTTPS remains enabled, the runtime list is internet-wide,
+or a facilitator CIDR is repeated in it. Review the two CIDR sets for any
+broader overlap as part of deployment approval. Because NetworkPolicies are
+additive, billing also rejects `networkPolicy.additionalEgress` rules that omit
+ports or include TCP/443, even when they carry a destination selector;
+explicit non-443 rules remain available for private dependencies. Hostname and
+certificate enforcement remains in the application because Kubernetes
+NetworkPolicy operates only at IP/port scope.
 
 OTLP tracing remains disabled when the optional Secret key is absent. Set
 `config.observability.otlp_trace_insecure=true` only for an explicitly trusted

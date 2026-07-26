@@ -125,6 +125,61 @@ type ApiKey struct {
 	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 }
 
+type AuthChallenge struct {
+	ID         pgtype.UUID        `db:"id" json:"id"`
+	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address    []byte             `db:"address" json:"address"`
+	Message    string             `db:"message" json:"message"`
+	Nonce      string             `db:"nonce" json:"nonce"`
+	IssuedAt   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ConsumedAt pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
+}
+
+type BillingPayment struct {
+	ID                   pgtype.UUID        `db:"id" json:"id"`
+	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Fingerprint          []byte             `db:"fingerprint" json:"fingerprint"`
+	ReservationOwner     pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
+	Method               string             `db:"method" json:"method"`
+	Operation            string             `db:"operation" json:"operation"`
+	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
+	RequirementDigest    []byte             `db:"requirement_digest" json:"requirement_digest"`
+	ProtocolVersion      int16              `db:"protocol_version" json:"protocol_version"`
+	Scheme               string             `db:"scheme" json:"scheme"`
+	Network              string             `db:"network" json:"network"`
+	Asset                []byte             `db:"asset" json:"asset"`
+	AmountAtomic         pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient            []byte             `db:"recipient" json:"recipient"`
+	Payer                []byte             `db:"payer" json:"payer"`
+	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
+	ApiKeyPrefix         *string            `db:"api_key_prefix" json:"api_key_prefix"`
+	FacilitatorDigest    []byte             `db:"facilitator_digest" json:"facilitator_digest"`
+	TransactionHash      []byte             `db:"transaction_hash" json:"transaction_hash"`
+	State                string             `db:"state" json:"state"`
+	FailureCode          *string            `db:"failure_code" json:"failure_code"`
+	ReservationExpiresAt pgtype.Timestamptz `db:"reservation_expires_at" json:"reservation_expires_at"`
+	HandlerStartedAt     pgtype.Timestamptz `db:"handler_started_at" json:"handler_started_at"`
+	VerifiedAt           pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	SettlingAt           pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
+	SettledAt            pgtype.Timestamptz `db:"settled_at" json:"settled_at"`
+	FailedAt             pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	ExpiredAt            pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type BillingPaymentEvent struct {
+	ID              int64              `db:"id" json:"id"`
+	PaymentID       pgtype.UUID        `db:"payment_id" json:"payment_id"`
+	FromState       *string            `db:"from_state" json:"from_state"`
+	ToState         string             `db:"to_state" json:"to_state"`
+	Code            string             `db:"code" json:"code"`
+	Actor           string             `db:"actor" json:"actor"`
+	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
+	OccurredAt      pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+}
+
 type Block struct {
 	ChainID    pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Number     pgtype.Numeric     `db:"number" json:"number"`
@@ -924,6 +979,29 @@ type TransactionalOutbox struct {
 	LastError   *string            `db:"last_error" json:"last_error"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	Generation  int64              `db:"generation" json:"generation"`
+}
+
+type User struct {
+	ID          pgtype.UUID        `db:"id" json:"id"`
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address     []byte             `db:"address" json:"address"`
+	DisplayName *string            `db:"display_name" json:"display_name"`
+	Role        string             `db:"role" json:"role"`
+	Status      string             `db:"status" json:"status"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	LastLoginAt pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
+}
+
+type UserSession struct {
+	ID          pgtype.UUID        `db:"id" json:"id"`
+	UserID      pgtype.UUID        `db:"user_id" json:"user_id"`
+	TokenDigest []byte             `db:"token_digest" json:"token_digest"`
+	CsrfDigest  []byte             `db:"csrf_digest" json:"csrf_digest"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	LastUsedAt  pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
+	RevokedAt   pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 }
 
 type VerificationJob struct {

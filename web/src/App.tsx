@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { router } from "./router";
+import { AuthProvider } from "./auth/AuthProvider";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { WalletProvider } from "./wallet/WalletProvider";
 
@@ -19,7 +20,9 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <WalletProvider>
-          <RouterProvider router={router} />
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
         </WalletProvider>
       </ThemeProvider>
     </QueryClientProvider>

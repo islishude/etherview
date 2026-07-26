@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/islishude/etherview/internal/apiops"
 )
 
 var requestDurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
@@ -33,6 +35,7 @@ type Registry struct {
 	verificationCurrent    map[string]float64
 	repairCurrent          map[pair]float64
 	repairOldestQueued     float64
+	billingSettling        map[pair]float64
 	durableSnapshotReady   bool
 	metricsRefreshFailures uint64
 	metricsLastRefresh     float64
@@ -42,6 +45,7 @@ type Registry struct {
 	metadata               map[string]uint64
 	maintenance            map[pair]uint64
 	rateLimits             map[string]uint64
+	x402Requests           map[pair]uint64
 }
 
 type requestKey struct {
@@ -75,12 +79,14 @@ func NewRegistry(version, role string) *Registry {
 		durableJobs:         make(map[pair]float64),
 		verificationCurrent: make(map[string]float64),
 		repairCurrent:       make(map[pair]float64),
+		billingSettling:     make(map[pair]float64),
 		enrichmentJobs:      make(map[pair]uint64),
 		traceJobs:           make(map[string]uint64),
 		verifyJobs:          make(map[string]uint64),
 		metadata:            make(map[string]uint64),
 		maintenance:         make(map[pair]uint64),
 		rateLimits:          make(map[string]uint64),
+		x402Requests:        make(map[pair]uint64),
 	}
 }
 
@@ -190,6 +196,18 @@ func (registry *Registry) RecordRateLimit(decision string) {
 	registry.increment(registry.rateLimits, boundedRateDecision(decision))
 }
 
+// ObserveX402Request records one terminal process-local billing outcome. Both
+// labels are closed over the static eligible-operation catalog and a fixed
+// result vocabulary; payer, payment, resource, and remote error values cannot
+// become metric labels.
+func (registry *Registry) ObserveX402Request(operation, result string) {
+	registry.incrementPair(
+		registry.x402Requests,
+		boundedBillingOperation(operation),
+		boundedBillingResult(result),
+	)
+}
+
 func (registry *Registry) increment(values map[string]uint64, label string) {
 	registry.mu.Lock()
 	values[safeLabel(label)]++
@@ -258,6 +276,7 @@ func (registry *Registry) Gather() string {
 	writePairGauges(&output, "etherview_durable_jobs", "Active durable PostgreSQL backlog grouped by stage and status.", "stage", "status", registry.durableJobs)
 	writeGaugeMap(&output, "etherview_verification_jobs", "Active verification backlog grouped by status.", "status", registry.verificationCurrent)
 	writePairGauges(&output, "etherview_repair_requests", "Active repair and reindex backlog grouped by operation and status.", "operation", "status", registry.repairCurrent)
+	writePairGauges(&output, "etherview_x402_stale_settling_payments", "Writer-backed x402 settlements requiring operator reconciliation.", "operation", "reason", registry.billingSettling)
 	writeHelp(&output, "etherview_repair_oldest_queued_seconds", "Age of the oldest queued repair or reindex request.", "gauge")
 	if registry.durableSnapshotReady {
 		fmt.Fprintf(&output, "etherview_repair_oldest_queued_seconds %s\n", formatFloat(registry.repairOldestQueued))
@@ -272,6 +291,7 @@ func (registry *Registry) Gather() string {
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
 	writePairCounters(&output, "etherview_maintenance_requests_total", "Repair and reindex executions grouped by operation and result.", "operation", "result", registry.maintenance)
 	writeCounters(&output, "etherview_rate_limit_decisions_total", "Rate limit decisions grouped by outcome.", "decision", registry.rateLimits)
+	writePairCounters(&output, "etherview_x402_requests_total", "x402 request attempts grouped by eligible operation and terminal outcome.", "operation", "result", registry.x402Requests)
 	return output.String()
 }
 
@@ -452,6 +472,35 @@ func boundedRPCResult(value string) string {
 func boundedRateDecision(value string) string {
 	switch strings.TrimSpace(value) {
 	case "allowed", "rejected":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedBillingOperation(value string) string {
+	operation, ok := apiops.Lookup(strings.TrimSpace(value))
+	if !ok || !operation.BillingEligible {
+		return "other"
+	}
+	return string(operation.ID)
+}
+
+func boundedBillingResult(value string) string {
+	switch strings.TrimSpace(value) {
+	case "required", "invalid", "binding_conflict", "replayed",
+		"verify_rejected", "verify_unavailable", "handler_non_success",
+		"handler_failed", "ledger_unavailable", "settle_rejected",
+		"settlement_unknown", "settled":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedBillingSettlingReason(value string) string {
+	switch strings.TrimSpace(value) {
+	case "settlement_unknown", "unmarked_after_timeout":
 		return strings.TrimSpace(value)
 	default:
 		return "other"

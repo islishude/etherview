@@ -23,7 +23,9 @@ batch semantics are not core v1 scope.
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
-| P70 | [Release](docs/plans/P70-release.md) | in_progress | P10–P60 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
+| P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | in_progress | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
+| P70 | [Release](docs/plans/P70-release.md) | in_progress | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -63,6 +65,17 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   pass their targeted runtime, integration, race, Helm, and short-load
   evidence. P60 completion does not promote P70's security, conformance,
   long-soak, artifact, or release gates.
+- P65 is complete: writer-authoritative SIWE challenges, Cookie/Origin/CSRF
+  sessions, user/operator administration, bounded wallet signing, embedded
+  account/admin UX, role-scoped deployment Secrets, and operational/security
+  closure pass unit, race, PostgreSQL, browser, Helm/Compose, image, license,
+  and security evidence.
+- P66 is in progress: the additive ledger, reviewed v2 exact-EVM adapter,
+  replay-fenced capture and settlement middleware, free and administrative
+  APIs, operator reconciliation, optional payer attribution, and embedded
+  account/administrator views plus operational/deployment closure are
+  complete. The payment protocol remains accountless; the explicit opt-in Base
+  Sepolia transaction and reconciliation gate remains open.
 - P70 is in progress: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. Conformance, security, release CI, long-capacity,
@@ -70,7 +83,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Global Release Gates
 
-- [x] Every P00–P60 plan is `done` with reviewable evidence.
+- [ ] Every P00–P66 plan is `done` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

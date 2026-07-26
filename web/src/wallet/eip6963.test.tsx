@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toHex } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { AuthChallenge } from "@/api/auth";
 import {
   assertWalletChain,
   chainsMatch,
@@ -12,6 +15,8 @@ import {
   isContractResult,
   isTransactionHash,
   isUint256Quantity,
+  isWalletSignature,
+  MAX_SIGN_MESSAGE_BYTES,
   normalizeChainID,
   normalizeProviderChainID,
   snapshotProviderDetail,
@@ -28,6 +33,8 @@ const accountA = "0x1111111111111111111111111111111111111111";
 const accountB = "0x2222222222222222222222222222222222222222";
 const target = "0x3333333333333333333333333333333333333333";
 const transactionHash = `0x${"a".repeat(64)}`;
+const walletSignature = `0x${"b".repeat(130)}`;
+const walletChallengeID = "018f3b52-0b3d-7bf1-b65f-6f214827cb43";
 const providerUUID = "00000000-0000-4000-8000-000000000001";
 const secondaryProviderUUID = "00000000-0000-4000-8000-000000000002";
 const requestListeners: EventListener[] = [];
@@ -102,6 +109,8 @@ describe("EIP-6963 wallet boundary", () => {
     expect(isContractResult(`0x${"00".repeat(1024 * 1024 + 1)}`)).toBe(false);
     expect(isTransactionHash(transactionHash)).toBe(true);
     expect(isTransactionHash("0x1234")).toBe(false);
+    expect(isWalletSignature(walletSignature)).toBe(true);
+    expect(isWalletSignature(`0x${"a".repeat(128)}`)).toBe(false);
     expect(isUint256Quantity("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"))
       .toBe(true);
     expect(isUint256Quantity(`0x1${"0".repeat(64)}`)).toBe(false);
@@ -207,6 +216,88 @@ describe("EIP-6963 wallet boundary", () => {
     expect(fake.request.mock.calls.filter(([request]) => request.method === "eth_accounts"))
       .toHaveLength(2);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("signs the exact bounded UTF-8 message and rechecks the same wallet session", async () => {
+    const fake = createFakeProvider();
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
+    await user.click(screen.getByRole("button", { name: "Sign" }));
+    expect(await screen.findByText(walletSignature)).toBeVisible();
+    const challenge = walletSIWEChallenge();
+    expect(fake.request).toHaveBeenCalledWith({
+      method: "personal_sign",
+      params: [toHex(challenge.message), accountA],
+    });
+    expect(
+      fake.request.mock.calls.filter(([request]) => request.method === "eth_chainId"),
+    ).toHaveLength(3);
+    expect(
+      fake.request.mock.calls.filter(([request]) => request.method === "eth_accounts"),
+    ).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Sign oversized" }));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("INVALID_REQUEST");
+    expect(
+      fake.request.mock.calls.filter(([request]) => request.method === "personal_sign"),
+    ).toHaveLength(1);
+  });
+
+  it("discards signatures across ABA revisions and silent account drift", async () => {
+    let resolveSignature: ((value: unknown) => void) | undefined;
+    const delayedSignature = new Promise<unknown>((resolve) => {
+      resolveSignature = resolve;
+    });
+    const fake = createFakeProvider({ personal_sign: () => delayedSignature });
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
+    await user.click(screen.getByRole("button", { name: "Sign" }));
+    await waitFor(() => {
+      expect(
+        fake.request.mock.calls.some(([request]) => request.method === "personal_sign"),
+      ).toBe(true);
+    });
+    act(() => {
+      fake.emit("accountsChanged", [accountB]);
+      fake.emit("accountsChanged", [accountA]);
+    });
+    await act(async () => resolveSignature?.(walletSignature));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("SESSION_CHANGED");
+    expect(screen.queryByText(walletSignature)).not.toBeInTheDocument();
+
+    fake.setResponse("personal_sign", () => {
+      fake.setResponse("eth_accounts", [accountB]);
+      return walletSignature;
+    });
+    await user.click(screen.getByRole("button", { name: "Sign" }));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("ACCOUNT_CHANGED");
+    expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
+  });
+
+  it("rejects malformed signatures and hides provider signing errors", async () => {
+    const fake = createFakeProvider({ personal_sign: "0x1234" });
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
+    await user.click(screen.getByRole("button", { name: "Sign" }));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent(
+      "INVALID_PROVIDER_RESPONSE",
+    );
+
+    fake.setResponse("personal_sign", () =>
+      Promise.reject({ code: 4001, message: "secret signing rejection" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Sign" }));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent("USER_REJECTED");
+    expect(document.body).not.toHaveTextContent("secret signing rejection");
   });
 
   it("rejects reads and writes until a discovered wallet is connected", async () => {
@@ -587,6 +678,10 @@ describe("EIP-6963 wallet boundary", () => {
     expect(await screen.findByTestId("operation-error")).toHaveTextContent(
       "TRANSACTION_OUTCOME_UNKNOWN",
     );
+    expect(screen.getByTestId("context-error")).toHaveTextContent(
+      "TRANSACTION_OUTCOME_UNKNOWN",
+    );
+    expect(screen.getByTestId("active-account")).toHaveTextContent(accountA);
     expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });
 });
@@ -652,6 +747,44 @@ function WalletHarness() {
       >
         Write
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          setOperationError(undefined);
+          void wallet
+            .signSIWEChallenge(walletSIWEChallenge())
+            .then(setResult)
+            .catch((cause: unknown) => {
+              setOperationError(
+                cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+              );
+            });
+        }}
+      >
+        Sign
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setOperationError(undefined);
+          const challenge = walletSIWEChallenge();
+          void wallet
+            .signSIWEChallenge(
+              {
+                ...challenge,
+                message: "x".repeat(MAX_SIGN_MESSAGE_BYTES + 1),
+              },
+            )
+            .then(setResult)
+            .catch((cause: unknown) => {
+              setOperationError(
+                cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+              );
+            });
+        }}
+      >
+        Sign oversized
+      </button>
       {operationError && <span data-testid="operation-error">{operationError}</span>}
       {result && <output>{result}</output>}
     </div>
@@ -659,11 +792,43 @@ function WalletHarness() {
 }
 
 function renderWallet() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(["config"], {
+    chain_id: "1",
+    chain_name: "Wallet Testnet",
+    features: { user_auth: true },
+    native_decimals: 18,
+    native_name: "Ether",
+    native_symbol: "ETH",
+  });
   return render(
-    <WalletProvider>
-      <WalletHarness />
-    </WalletProvider>,
+    <QueryClientProvider client={queryClient}>
+      <WalletProvider>
+        <WalletHarness />
+      </WalletProvider>
+    </QueryClientProvider>,
   );
+}
+
+function walletSIWEChallenge(): AuthChallenge {
+  const origin = new URL(window.location.origin);
+  const expiresAt = "2099-01-01T00:05:00.000Z";
+  return {
+    challenge_id: walletChallengeID,
+    expires_at: expiresAt,
+    message:
+      `${origin.protocol.slice(0, -1)}://${origin.host} wants you to sign in with your Ethereum account:\n` +
+      `${accountA}\n\n\n` +
+      `URI: ${origin.origin}\n` +
+      "Version: 1\n" +
+      "Chain ID: 1\n" +
+      "Nonce: abcdefghijklmnopqrstuvwx\n" +
+      "Issued At: 2026-01-01T00:00:00.000Z\n" +
+      `Expiration Time: ${expiresAt}\n` +
+      `Request ID: ${walletChallengeID}`,
+  };
 }
 
 function providerDetail(
@@ -706,6 +871,7 @@ function createFakeProvider(
     ["eth_accounts", [accountA]],
     ["eth_call", "0x1234"],
     ["eth_sendTransaction", transactionHash],
+    ["personal_sign", walletSignature],
     ...Object.entries(initial),
   ]);
   const listeners = new Map<EIP1193Event, Set<(value: unknown) => void>>();

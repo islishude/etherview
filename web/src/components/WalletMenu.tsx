@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import {
+  authErrorTranslationKey,
+  useAuth,
+} from "@/auth/AuthProvider";
 import { shorten } from "./format";
 import { walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
@@ -8,12 +13,16 @@ import { useWallet } from "@/wallet/WalletProvider";
 export function WalletMenu() {
   const { t } = useTranslation();
   const wallet = useWallet();
+  const auth = useAuth();
   const summaryRef = useRef<HTMLElement | null>(null);
   const focusAfterTransition = useRef(false);
   const focusWithinMenu = useRef(false);
   const wasConnected = useRef(Boolean(wallet.active));
   const errorMessage = wallet.error
     ? t(walletErrorTranslationKey(wallet.error))
+    : undefined;
+  const authErrorMessage = auth.error
+    ? t(authErrorTranslationKey(auth.error))
     : undefined;
 
   useEffect(() => {
@@ -111,9 +120,80 @@ export function WalletMenu() {
           )}
           {wallet.connecting && <p role="status">{t("actions.connecting")}</p>}
           {errorMessage && <p className="form-error">{errorMessage}</p>}
+          {auth.enabled && (
+            <section
+              className="wallet-auth-section"
+              aria-labelledby="wallet-auth-title"
+            >
+              <div className="popover-heading">
+                <strong id="wallet-auth-title">{t("auth.menu.title")}</strong>
+                <span className="quiet">
+                  {auth.session.authenticated
+                    ? t("auth.sessionState.authenticated")
+                    : t("auth.sessionState.anonymous")}
+                </span>
+              </div>
+              {auth.loading ? (
+                <p role="status">{t("auth.sessionState.checking")}</p>
+              ) : auth.session.authenticated && auth.session.user ? (
+                <>
+                  <span className="authenticated-user">
+                    <span className="status-dot success" aria-hidden="true" />
+                    <span>
+                      <strong>
+                        {auth.session.user.display_name ??
+                          shorten(auth.session.user.address, 6, 4)}
+                      </strong>
+                      <small>{t(`auth.role.${auth.session.user.role}`)}</small>
+                    </span>
+                  </span>
+                  <Link
+                    className="button secondary inline-button full"
+                    to="/account"
+                  >
+                    {t("auth.account.open")}
+                  </Link>
+                  <button
+                    className="button secondary full"
+                    disabled={auth.pending}
+                    onClick={() => void auth.logout()}
+                    type="button"
+                  >
+                    {t("auth.sessionActions.logout")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="quiet">{t("auth.menu.walletIsNotLogin")}</p>
+                  <button
+                    className="button primary full"
+                    disabled={auth.pending || !wallet.active}
+                    onClick={() => void auth.login()}
+                    type="button"
+                  >
+                    {auth.pending
+                      ? t("auth.signIn.pending")
+                      : t("auth.signIn.action")}
+                  </button>
+                  <Link
+                    className="button secondary inline-button full"
+                    to="/account"
+                  >
+                    {t("auth.account.open")}
+                  </Link>
+                </>
+              )}
+              {authErrorMessage && (
+                <p className="form-error">{authErrorMessage}</p>
+              )}
+            </section>
+          )}
         </div>
       </details>
       {errorMessage && <span className="sr-only" role="alert">{errorMessage}</span>}
+      {authErrorMessage && (
+        <span className="sr-only" role="alert">{authErrorMessage}</span>
+      )}
     </>
   );
 }

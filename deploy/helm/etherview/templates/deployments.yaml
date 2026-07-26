@@ -126,6 +126,26 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.apiKeyPepperKey | quote }}
                   optional: true
+            {{- if and $root.Values.config.features.user_auth (or (eq $roleName "all") (eq $roleName "api")) }}
+            - name: ETHERVIEW_SESSION_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.sessionPepperKey | quote }}
+            {{- end }}
+            {{- if and $root.Values.config.features.x402_billing (or (eq $roleName "all") (eq $roleName "api")) }}
+            - name: ETHERVIEW_X402_FINGERPRINT_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.x402FingerprintPepperKey | quote }}
+            - name: ETHERVIEW_X402_FACILITATOR_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.x402FacilitatorHeadersKey | quote }}
+                  optional: true
+            {{- end }}
             - name: ETHERVIEW_NATS_URL
               valueFrom:
                 secretKeyRef:

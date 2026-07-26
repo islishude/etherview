@@ -9,6 +9,36 @@ const transactionCursor = "transactions/snapshot?generation=7 + page=2&exact=tru
 const walletAccount = "0x2222222222222222222222222222222222222222";
 const walletTransactionHash = `0x${"d".repeat(64)}`;
 const longWalletName = "W".repeat(128);
+const authChallengeID = "00000000-0000-7000-8000-000000000043";
+const authCurrentUserID = "00000000-0000-7000-8000-000000000041";
+const authTargetUserID = "00000000-0000-7000-8000-000000000042";
+const authCSRFToken = "c".repeat(43);
+const authSignature = `0x${"a".repeat(130)}`;
+const authOrigin = "http://127.0.0.1:4173";
+const authSIWEExpiresAt = "2099-01-01T00:05:00.000Z";
+const authSIWEMessage =
+  "http://127.0.0.1:4173 wants you to sign in with your Ethereum account:\n" +
+  `${walletAccount}\n\n\n` +
+  `URI: ${authOrigin}\n` +
+  "Version: 1\n" +
+  "Chain ID: 1\n" +
+  "Nonce: abcdefghijklmnopqrstuvwx\n" +
+  "Issued At: 2026-01-01T00:00:00.000Z\n" +
+  `Expiration Time: ${authSIWEExpiresAt}\n` +
+  `Request ID: ${authChallengeID}`;
+const authUserCursor = "users/snapshot + page=2";
+const billingPersonalCursor =
+  "personal/ledger + page=2?exact=true/#";
+const billingAdminCursor = "admin/ledger + page=2?exact=true/#";
+const billingPaymentID = "00000000-0000-7000-8000-000000000066";
+const billingHiddenUserID = "00000000-0000-7000-8000-000000000067";
+const billingAdminUserID = "00000000-0000-7000-8000-000000000068";
+const billingAsset = "0x3333333333333333333333333333333333333333";
+const billingRecipient = "0x4444444444444444444444444444444444444444";
+const billingPayer = "0x5555555555555555555555555555555555555555";
+const billingAPIKeyPrefix = "ev_browser-prefix";
+const billingAmount = "340282366920938463463374607431768211455";
+const billingCount = "900719925474099312345";
 
 type WalletMode = "normal" | "reject-connect" | "invalid-call" | "delayed-write";
 
@@ -25,6 +55,23 @@ interface WalletControl {
 }
 
 type WalletWindow = Window & { __etherviewE2EWallet: WalletControl };
+
+interface AuthWalletControl {
+  emit(event: string, value: unknown): void;
+  requests: WalletRequest[];
+}
+
+type AuthWalletWindow = Window & {
+  __etherviewE2EAuthWallet: AuthWalletControl;
+};
+
+interface BrowserAuthRequest {
+  body: string | null;
+  headers: Record<string, string>;
+  method: string;
+  pathname: string;
+  search: string;
+}
 
 test("embedded SPA deep links, language, theme, and keyboard entry remain functional", async ({ page }) => {
   const response = await page.goto("/blocks/1");
@@ -333,6 +380,628 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   expect(externalRequests).toEqual([]);
 });
 
+test("embedded SIWE account, billing, and administrator flows retain the wallet and generated-API boundaries", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const authRequests: BrowserAuthRequest[] = [];
+  let authenticated = false;
+  let currentDisplayName: string | null = "Browser Admin";
+  let targetRole: "user" | "admin" = "user";
+  let targetStatus: "active" | "disabled" = "active";
+
+  const currentUser = () => ({
+    id: authCurrentUserID,
+    chain_id: "1",
+    address: walletAccount,
+    role: "admin",
+    status: "active",
+    display_name: currentDisplayName,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    last_login_at: "2026-01-01T00:00:00Z",
+  });
+  const targetUser = () => ({
+    id: authTargetUserID,
+    chain_id: "1",
+    address,
+    role: targetRole,
+    status: targetStatus,
+    display_name: null,
+    created_at: "2026-01-02T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+    last_login_at: "2026-01-02T00:00:00Z",
+  });
+  const authSession = () => ({
+    authenticated: true,
+    csrf_token: authCSRFToken,
+    expires_at: "2099-01-08T00:00:00Z",
+    user: currentUser(),
+  });
+  const envelope = (data: unknown, meta: Record<string, unknown> = {}) => ({
+    data,
+    meta: {
+      request_id: "embedded-auth-e2e",
+      chain_id: "1",
+      ...meta,
+    },
+  });
+  const record = (request: import("@playwright/test").Request) => {
+    const url = new URL(request.url());
+    authRequests.push({
+      body: request.postData(),
+      headers: request.headers(),
+      method: request.method(),
+      pathname: url.pathname,
+      search: url.search,
+    });
+  };
+
+  await page.route("**/api/v1/config", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: envelope({
+        chain_id: "1",
+        chain_name: "Ethereum",
+        native_symbol: "ETH",
+        native_name: "Ether",
+        native_decimals: 18,
+        features: {
+          trace: true,
+          mempool: true,
+          historical_state: true,
+          verification: false,
+          nft_metadata: true,
+          pricing: false,
+          sourcify: false,
+          user_auth: true,
+          x402_billing: true,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/auth/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    record(request);
+    switch (`${request.method()} ${url.pathname}`) {
+      case "GET /api/v1/auth/session":
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope(
+            authenticated ? authSession() : { authenticated: false },
+          ),
+        });
+        return;
+      case "POST /api/v1/auth/challenge":
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({
+            challenge_id: authChallengeID,
+            message: authSIWEMessage,
+            expires_at: authSIWEExpiresAt,
+          }),
+          status: 201,
+        });
+        return;
+      case "POST /api/v1/auth/verify":
+        authenticated = true;
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope(authSession()),
+          status: 201,
+        });
+        return;
+      case "POST /api/v1/auth/logout":
+        authenticated = false;
+        await route.fulfill({ body: "", status: 204 });
+        return;
+      default:
+        await route.fulfill({ status: 404 });
+    }
+  });
+  await page.route("**/api/v1/users/me", async (route) => {
+    const request = route.request();
+    record(request);
+    const body = request.postDataJSON() as { display_name: string | null };
+    currentDisplayName = body.display_name;
+    await route.fulfill({
+      contentType: "application/json",
+      json: envelope(currentUser()),
+    });
+  });
+  await page.route("**/api/v1/admin/users**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    record(request);
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/v1/admin/users"
+    ) {
+      const cursor = url.searchParams.get("cursor");
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope(
+          cursor === authUserCursor ? [currentUser()] : [targetUser()],
+          cursor === authUserCursor
+            ? {}
+            : { next_cursor: authUserCursor },
+        ),
+      });
+      return;
+    }
+    if (
+      request.method() === "PATCH" &&
+      url.pathname === `/api/v1/admin/users/${authTargetUserID}`
+    ) {
+      const body = request.postDataJSON() as {
+        role?: "user" | "admin";
+        status?: "active" | "disabled";
+      };
+      targetRole = body.role ?? targetRole;
+      targetStatus = body.status ?? targetStatus;
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope(targetUser()),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      url.pathname ===
+        `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope({ revoked_sessions: "3" }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404 });
+  });
+  const billingPayment = (
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    id: billingPaymentID,
+    operation: "getBlock",
+    state: "settled",
+    network: "eip155:84532",
+    asset: billingAsset,
+    amount_atomic: billingAmount,
+    recipient: billingRecipient,
+    payer: billingPayer,
+    transaction_hash: `0x${"6".repeat(64)}`,
+    created_at: "2026-07-25T23:58:00Z",
+    updated_at: "2026-07-26T00:00:00Z",
+    settled_at: "2026-07-26T00:00:00Z",
+    ...overrides,
+  });
+  await page.route("**/api/v1/billing/payments**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    record(request);
+    const cursor = url.searchParams.get("cursor");
+    await route.fulfill({
+      contentType: "application/json",
+      json: envelope(
+        [
+          billingPayment({
+            api_key_prefix: billingAPIKeyPrefix,
+            user_id: billingHiddenUserID,
+          }),
+        ],
+        cursor === billingPersonalCursor
+          ? {}
+          : { next_cursor: billingPersonalCursor },
+      ),
+    });
+  });
+  await page.route("**/api/v1/admin/billing/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    record(request);
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/v1/admin/billing/summary"
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope({
+          amount_atomic: billingAmount,
+          from_time: "2026-07-25T00:00:00Z",
+          payment_count: billingCount,
+          rows: [
+            {
+              amount_atomic: billingAmount,
+              asset: billingAsset,
+              network: "eip155:84532",
+              operation: "getBlock",
+              payment_count: billingCount,
+              state: "settled",
+            },
+          ],
+          to_time: "2026-07-26T00:00:00Z",
+        }),
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/v1/admin/billing/payments"
+    ) {
+      const cursor = url.searchParams.get("cursor");
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope(
+          [
+            billingPayment({
+              api_key_prefix: billingAPIKeyPrefix,
+              failure_code: "settlement_unknown",
+              state: "settling",
+              user_id: billingAdminUserID,
+            }),
+          ],
+          cursor === billingAdminCursor
+            ? {}
+            : { next_cursor: billingAdminCursor },
+        ),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404 });
+  });
+  await page.addInitScript(
+    ({ account, signature }) => {
+      const requests: WalletRequest[] = [];
+      const listeners = new Map<string, Set<(value: unknown) => void>>();
+      const provider = {
+        async request({ method, params }: WalletRequest) {
+          requests.push({ method, params });
+          if (method === "eth_requestAccounts") return [account];
+          if (method === "eth_accounts") return [account];
+          if (method === "eth_chainId") return "0x1";
+          if (method === "personal_sign") return signature;
+          throw new Error(`unexpected wallet method: ${method}`);
+        },
+        on(event: string, listener: (value: unknown) => void) {
+          const current = listeners.get(event) ?? new Set();
+          current.add(listener);
+          listeners.set(event, current);
+        },
+        removeListener(event: string, listener: (value: unknown) => void) {
+          listeners.get(event)?.delete(listener);
+        },
+      };
+      const detail = Object.freeze({
+        info: Object.freeze({
+          uuid: "00000000-0000-4000-8000-000000000065",
+          name: "SIWE E2E Wallet",
+          icon: "data:image/png;base64,",
+          rdns: "org.etherview.siwe-e2e",
+        }),
+        provider,
+      });
+      window.addEventListener("eip6963:requestProvider", () => {
+        window.dispatchEvent(
+          new CustomEvent("eip6963:announceProvider", { detail }),
+        );
+      });
+      (window as AuthWalletWindow).__etherviewE2EAuthWallet = {
+        requests,
+        emit(event, value) {
+          for (const listener of listeners.get(event) ?? []) listener(value);
+        },
+      };
+    },
+    { account: walletAccount, signature: authSignature },
+  );
+
+  const response = await page.goto("/account");
+  expect(response?.status()).toBe(200);
+  await expect(
+    page.getByRole("heading", { name: "Wallet connection" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Wallet disconnected", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Not logged in", { exact: true }).last(),
+  ).toBeVisible();
+
+  await activateInView(page.locator(".wallet-summary"));
+  await activateInView(
+    page.getByRole("button", { name: /SIWE E2E Wallet/ }),
+  );
+  await expect(
+    page.getByText("Wallet connected", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Not logged in", { exact: true }).last(),
+  ).toBeVisible();
+  await page.locator(".wallet-summary").press("Enter");
+
+  await activateInView(page.locator(".auth-action-panel button"));
+  await expect(
+    page.locator(".identity-card").getByText("User authenticated", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const walletRequests = await page.evaluate(
+    () =>
+      (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
+  );
+  expect(
+    walletRequests.filter(({ method }) => method === "personal_sign"),
+  ).toEqual([
+    {
+      method: "personal_sign",
+      params: [
+        `0x${Buffer.from(authSIWEMessage, "utf8").toString("hex")}`,
+        walletAccount,
+      ],
+    },
+  ]);
+
+  const challengeRequest = authRequests.find(
+    ({ pathname }) => pathname === "/api/v1/auth/challenge",
+  );
+  const verifyRequest = authRequests.find(
+    ({ pathname }) => pathname === "/api/v1/auth/verify",
+  );
+  expect(challengeRequest?.body).toBe(
+    JSON.stringify({ address: walletAccount }),
+  );
+  expect(challengeRequest?.headers.origin).toBe(
+    "http://127.0.0.1:4173",
+  );
+  expect(verifyRequest?.body).toBe(
+    JSON.stringify({
+      challenge_id: authChallengeID,
+      signature: authSignature,
+    }),
+  );
+  expect(verifyRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+  expect(
+    await page.evaluate(
+      (token) =>
+        [...Array(localStorage.length).keys()].every(
+          (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
+        ),
+      authCSRFToken,
+    ),
+  ).toBe(true);
+  await expect(page.locator("body")).not.toContainText(authCSRFToken);
+
+  const personalHistory = page.locator(".billing-history-section");
+  await expect(
+    personalHistory.getByRole("heading", { name: "Payment history" }),
+  ).toBeVisible();
+  await expect(
+    personalHistory.getByText(billingAmount, { exact: true }),
+  ).toBeVisible();
+  await expect(personalHistory).not.toContainText(billingHiddenUserID);
+  await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
+  await expect(
+    personalHistory.getByRole("columnheader", { name: "User ID" }),
+  ).toHaveCount(0);
+  await activateInView(
+    personalHistory.getByRole("button", { name: "Next page" }),
+  );
+  await expect(
+    personalHistory.getByText("Page 2", { exact: true }),
+  ).toBeVisible();
+  const personalCursorRequest = authRequests.find(
+    ({ pathname, search }) =>
+      pathname === "/api/v1/billing/payments" &&
+      new URLSearchParams(search).get("cursor") === billingPersonalCursor,
+  );
+  expect(personalCursorRequest).toBeDefined();
+  expect(
+    new URLSearchParams(personalCursorRequest?.search).has("address"),
+  ).toBe(false);
+  expect(
+    new URLSearchParams(personalCursorRequest?.search).has("user_id"),
+  ).toBe(false);
+
+  await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
+  await activateInView(
+    page.getByRole("button", { name: "Save profile" }),
+  );
+  await expect(page.getByRole("status")).toContainText("Profile saved.");
+  const profileRequest = authRequests.find(
+    ({ pathname }) => pathname === "/api/v1/users/me",
+  );
+  expect(profileRequest?.body).toBe(
+    JSON.stringify({ display_name: "Updated Browser Admin" }),
+  );
+  expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+  expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+
+  await activateInView(
+    page
+      .getByRole("navigation", { name: "Primary navigation" })
+      .getByRole("link", { name: "User admin" }),
+  );
+  await expect(
+    page.getByRole("heading", { name: "User administration" }),
+  ).toBeVisible();
+  await expect(page.getByText(address, { exact: true })).toBeVisible();
+  await page
+    .getByRole("combobox", { name: `Role for ${address}` })
+    .selectOption("admin");
+  await page
+    .getByRole("combobox", { name: `Status for ${address}` })
+    .selectOption("disabled");
+  await activateInView(page.getByRole("button", { name: "Save user" }));
+  await expect(page.getByRole("status")).toContainText(
+    "Updated 0x111111…111111.",
+  );
+  await activateInView(
+    page.getByRole("button", { name: "Revoke sessions" }),
+  );
+  await expect(page.getByRole("status")).toContainText(
+    "Revoked 3 session(s) for 0x111111…111111.",
+  );
+  const adminPatchRequest = authRequests.find(
+    ({ method, pathname }) =>
+      method === "PATCH" &&
+      pathname === `/api/v1/admin/users/${authTargetUserID}`,
+  );
+  const adminRevokeRequest = authRequests.find(
+    ({ method, pathname }) =>
+      method === "POST" &&
+      pathname ===
+        `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`,
+  );
+  expect(adminPatchRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+  expect(adminRevokeRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+
+  await activateInView(page.getByRole("button", { name: "Next page" }));
+  await expect(
+    page
+      .getByRole("navigation", {
+        name: "Administrative user pages",
+      })
+      .getByText("Page 2", { exact: true }),
+  ).toBeVisible();
+  const cursorRequest = authRequests.find(({ pathname, search }) => {
+    if (pathname !== "/api/v1/admin/users") return false;
+    return new URLSearchParams(search).get("cursor") === authUserCursor;
+  });
+  expect(cursorRequest).toBeDefined();
+
+  await activateInView(
+    page
+      .getByRole("navigation", { name: "Primary navigation" })
+      .getByRole("link", { name: "Billing admin" }),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Billing administration" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Settlement unknown", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(billingAdminUserID, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(billingAPIKeyPrefix, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(billingAmount, { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(billingCount, { exact: true }).first(),
+  ).toBeVisible();
+
+  await page
+    .getByRole("combobox", { name: "State" })
+    .selectOption("settling");
+  await page
+    .getByRole("combobox", { name: "Operation" })
+    .selectOption("getBlock");
+  await page
+    .getByRole("textbox", { name: "Network" })
+    .fill("eip155:84532");
+  await page
+    .getByRole("textbox", { name: "Asset" })
+    .fill(billingAsset);
+  await activateInView(
+    page.getByRole("button", { name: "Apply filters" }),
+  );
+  await expect
+    .poll(() =>
+      authRequests.some(({ pathname, search }) => {
+        if (pathname !== "/api/v1/admin/billing/payments") return false;
+        const query = new URLSearchParams(search);
+        return (
+          query.get("state") === "settling" &&
+          query.get("operation") === "getBlock" &&
+          query.get("network") === "eip155:84532" &&
+          query.get("asset") === billingAsset
+        );
+      }),
+    )
+    .toBe(true);
+
+  await activateInView(page.getByRole("button", { name: "Next page" }));
+  await expect(
+    page
+      .getByRole("navigation", {
+        name: "Administrative payment ledger pages",
+      })
+      .getByText("Page 2", { exact: true }),
+  ).toBeVisible();
+  const billingCursorRequest = authRequests.find(
+    ({ pathname, search }) =>
+      pathname === "/api/v1/admin/billing/payments" &&
+      new URLSearchParams(search).get("cursor") === billingAdminCursor,
+  );
+  expect(billingCursorRequest).toBeDefined();
+
+  const billingRequests = authRequests.filter(({ pathname }) =>
+    pathname.includes("/billing/"),
+  );
+  expect(billingRequests.length).toBeGreaterThanOrEqual(6);
+  for (const request of billingRequests) {
+    expect(request.method).toBe("GET");
+    expect(request.body).toBeNull();
+    expect(request.headers["payment-signature"]).toBeUndefined();
+    expect(request.headers["x-csrf-token"]).toBeUndefined();
+  }
+  expect(
+    await page.evaluate(
+      (token) =>
+        [...Array(localStorage.length).keys()].every(
+          (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
+        ),
+      authCSRFToken,
+    ),
+  ).toBe(true);
+  await expect(page.locator("body")).not.toContainText(authCSRFToken);
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("heading", { name: "计费管理", level: 1 }),
+  ).toBeVisible();
+  const adminScan = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    adminScan.violations,
+    JSON.stringify(adminScan.violations, null, 2),
+  ).toEqual([]);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  await page.evaluate(() => {
+    (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit(
+      "accountsChanged",
+      ["0x4444444444444444444444444444444444444444"],
+    );
+  });
+  await expect(
+    page.getByRole("heading", { name: "需要已认证的用户会话。" }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        authRequests.filter(
+          ({ method, pathname }) =>
+            method === "POST" && pathname === "/api/v1/auth/logout",
+        ).length,
+    )
+    .toBe(1);
+  const logoutRequest = authRequests.find(
+    ({ method, pathname }) =>
+      method === "POST" && pathname === "/api/v1/auth/logout",
+  );
+  expect(logoutRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+});
+
 test("EIP-6963 contract reads and writes stay inside the selected wallet boundary", async ({
   page,
 }) => {
@@ -520,9 +1189,10 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     { transactionHash: walletTransactionHash },
   );
   await expect(
-    page.getByText(
-      "The wallet changed while the transaction was pending. Its outcome is unknown; check your wallet before retrying.",
-    ),
+    page.locator(".contract-workbench").getByRole("alert").filter({
+      hasText:
+        "The wallet changed while the transaction was pending. Its outcome is unknown; check your wallet before retrying.",
+    }),
   ).toBeVisible();
   await expect(page.getByText(walletTransactionHash, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send transaction" })).toBeEnabled();
@@ -558,7 +1228,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
       message: "secret-wallet-message https://wallet.invalid/?token=private",
     });
   });
-  await expect(page.getByRole("alert")).toContainText("注入式钱包已断开连接。");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "注入式钱包已断开连接。" }),
+  ).toBeVisible();
   await expect(page.locator(".wallet-summary")).toBeFocused();
   await expect(page.getByText(/secret-wallet-message/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "读取合约" })).toBeDisabled();
@@ -582,7 +1254,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     JSON.stringify(disconnectedMenuScan.violations, null, 2),
   ).toEqual([]);
   await activateInView(page.locator(".wallet-option"));
-  await expect(page.getByRole("alert")).toContainText("钱包请求已被拒绝。");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "钱包请求已被拒绝。" }),
+  ).toBeVisible();
   await expect(page.getByText(/secret-wallet-message/)).toHaveCount(0);
 
   await page.evaluate(() => {
@@ -593,7 +1267,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     (window as WalletWindow).__etherviewE2EWallet.setMode("invalid-call");
   });
   await activateInView(page.getByRole("button", { name: "读取合约" }));
-  await expect(page.getByRole("alert")).toContainText("注入式钱包返回了无效响应。");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "注入式钱包返回了无效响应。" }),
+  ).toBeVisible();
 });
 
 test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatch", async ({

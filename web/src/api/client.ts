@@ -61,6 +61,15 @@ export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
   return result.data as T;
 }
 
+export function requireNoContent(result: ClientResult<unknown>): void {
+  if (result.response.status !== 204 || result.error !== undefined) {
+    throw new ApiError(
+      result.response.status,
+      isApiError(result.error) ? result.error : undefined,
+    );
+  }
+}
+
 function sameOrigin(): string {
   if (typeof window === "undefined") return "http://localhost";
   return window.location.origin;

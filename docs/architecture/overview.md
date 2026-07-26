@@ -21,13 +21,14 @@ readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
 
 Each role also runs the same writer-backed PostgreSQL operational metric
-collector.
-It reads only partial-indexed active durable-job, verification, and repair
-backlogs, excluding unbounded terminal history, without making metrics a
-correctness dependency; refresh failure retains the last snapshot and exposes
-its age/failure state. Replicas expose the same chain snapshot, so current
-gauges are deduplicated with `max`, while per-worker result counters aggregate
-with `sum`/`rate`. Optional OTLP/HTTP tracing starts
+collector. It reads only partial-indexed active durable-job, verification,
+repair, and x402 stale-settlement facts, excluding unbounded terminal history,
+without making metrics a correctness dependency; refresh failure retains the
+last snapshot and exposes its age/failure state. Replicas expose the same
+chain snapshot, so current gauges—including
+`etherview_x402_stale_settling_payments`—are deduplicated with `max`, while
+per-process counters such as `etherview_x402_requests_total` aggregate with
+`sum`/`rate` or `sum`/`increase`. Optional OTLP/HTTP tracing starts
 only with an explicit collector endpoint, propagates W3C trace context through
 HTTP, and flushes within the supervisor's bounded shutdown. Collector or
 exporter loss never withdraws readiness. Operator response procedures are in
@@ -365,6 +366,17 @@ size alone is not sufficient justification to weaken those invariants.
   generation window, and deletes one bounded batch of expired adapter
   observations. Cleanup failure emits a stable redacted code and retries with
   bounded backoff without making readiness or core correctness depend on it.
+- The same maintenance-role graph conditionally owns writer-only user-auth
+  cleanup and x402 reservation expiry. Each enabled feature runs one immediate
+  and then periodic chain-scoped batch of at most 1,000 rows; authentication
+  cleanup removes expired challenges and expired or revoked sessions, while
+  billing expiry advances only timed-out `reserved`/`verified` rows and appends
+  their events. Replica sweeps use `SKIP LOCKED` candidate selection.
+  Feature-off processes register neither component. Split maintenance
+  processes load no session pepper, billing fingerprint pepper, or facilitator
+  header Secret, and transient writer failures emit only the stable
+  `user_auth_cleanup_failed` or `x402_billing_expiry_failed` code before a
+  bounded retry.
 - The exact Etherscan V2 module/action, method, parameter, API-key, capability,
   unavailable-action, and wire-difference contract is maintained in the
   [Etherscan V2 compatibility matrix](etherscan-v2-compatibility.md).

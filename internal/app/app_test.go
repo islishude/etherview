@@ -82,6 +82,8 @@ func TestProductionMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 			cfg.Features.Trace = true
 			cfg.Features.Verification = true
 			cfg.Features.NFTMetadata = true
+			cfg.Features.UserAuth = true
+			cfg.Features.X402Billing = true
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
 			return cfg
 		}(), wake: true},
@@ -168,6 +170,50 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			"45-maintenance-03", "45-maintenance-04",
 			"46-search-catalog-maintenance",
 		}},
+		{
+			name: "maintenance with user authentication cleanup",
+			role: components.RoleMaintenance,
+			setup: func(cfg *config.Config) {
+				cfg.Features.UserAuth = true
+			},
+			want: []string{
+				"00-operations-http", "02-durable-metrics",
+				"45-maintenance-01", "45-maintenance-02",
+				"45-maintenance-03", "45-maintenance-04",
+				"46-search-catalog-maintenance",
+				"47-user-auth-cleanup",
+			},
+		},
+		{
+			name: "maintenance with x402 billing expiry",
+			role: components.RoleMaintenance,
+			setup: func(cfg *config.Config) {
+				cfg.Features.X402Billing = true
+			},
+			want: []string{
+				"00-operations-http", "02-durable-metrics",
+				"45-maintenance-01", "45-maintenance-02",
+				"45-maintenance-03", "45-maintenance-04",
+				"46-search-catalog-maintenance",
+				"48-x402-billing-expiry",
+			},
+		},
+		{
+			name: "maintenance with authentication and billing",
+			role: components.RoleMaintenance,
+			setup: func(cfg *config.Config) {
+				cfg.Features.UserAuth = true
+				cfg.Features.X402Billing = true
+			},
+			want: []string{
+				"00-operations-http", "02-durable-metrics",
+				"45-maintenance-01", "45-maintenance-02",
+				"45-maintenance-03", "45-maintenance-04",
+				"46-search-catalog-maintenance",
+				"47-user-auth-cleanup",
+				"48-x402-billing-expiry",
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

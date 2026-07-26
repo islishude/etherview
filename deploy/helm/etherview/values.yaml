@@ -165,14 +165,18 @@ migration:
 
 # This Secret is referenced, never rendered by the chart. The included
 # ExternalSecret always materializes the writer database, RPC, and API-key
-# pepper keys. Reader and accelerator keys are included only when their
-# optional remote-key values below are non-empty.
+# pepper keys. User-session and x402 keys are included only when their feature
+# is enabled; reader and accelerator keys are included only when their optional
+# remote-key values below are non-empty.
 secrets:
   existingSecret: etherview
   databaseURLKey: database-url
   databaseReadURLKey: database-read-url
   rpcURLsKey: rpc-urls
   apiKeyPepperKey: api-key-pepper
+  sessionPepperKey: session-pepper
+  x402FingerprintPepperKey: x402-fingerprint-pepper
+  x402FacilitatorHeadersKey: x402-facilitator-headers
   natsURLKey: nats-url
   redisURLKey: redis-url
   s3AccessKeyKey: s3-access-key
@@ -193,6 +197,14 @@ externalSecret:
   databaseReadURLRemoteKey: ""
   rpcURLsRemoteKey: etherview/rpc-urls
   apiKeyPepperRemoteKey: etherview/api-key-pepper
+  # Required when both externalSecret and config.features.user_auth are
+  # enabled. It is otherwise neither fetched nor injected.
+  sessionPepperRemoteKey: ""
+  # Required when ExternalSecret-managed x402 billing is enabled.
+  x402FingerprintPepperRemoteKey: ""
+  # Optional facilitator credentials; omitted when empty and never fetched
+  # while billing is disabled.
+  x402FacilitatorHeadersRemoteKey: ""
   # Empty optional remote keys are omitted from the ExternalSecret. Set only
   # the accelerators used by this release.
   natsURLRemoteKey: ""
@@ -277,6 +289,8 @@ config:
     sourcify: false
     nft_metadata: false
     pricing: false
+    user_auth: false
+    x402_billing: false
   security:
     public_verification: false
     compiler_sandbox: disabled
@@ -285,6 +299,35 @@ config:
     anonymous_burst: 20
     allowed_origins: []
     trusted_proxies: []
+  # The session pepper has no values key: it is accepted only from the
+  # Secret-backed ETHERVIEW_SESSION_PEPPER environment variable.
+  user_auth:
+    challenge_ttl: 5m
+    session_ttl: 168h
+    last_used_interval: 5m
+    max_message_bytes: 4096
+    max_signature_bytes: 65
+  # Fingerprint and facilitator-header secrets have no values keys and are
+  # accepted only from API-role Secret-backed environment variables.
+  billing:
+    facilitator_url: ""
+    facilitator_allowed_cidrs: []
+    facilitator_timeout: 10s
+    facilitator_max_response_bytes: 1048576
+    network: ""
+    asset: ""
+    asset_decimals: 0
+    asset_eip712_name: ""
+    asset_eip712_version: ""
+    recipient: ""
+    requirement_max_timeout: 60s
+    reservation_ttl: 2m
+    max_payment_header_bytes: 16384
+    max_buffered_response_bytes: 8388608
+    max_captured_header_bytes: 65536
+    coarse_ip_rate: 100
+    coarse_ip_burst: 200
+    routes: {}
   verification:
     max_input_bytes: 5242880
     max_output_bytes: 67108864
@@ -345,6 +388,11 @@ prometheusRule:
 networkPolicy:
   enabled: true
   allowExternalHTTPS: true
+  # Explicit TCP/443 destinations for RPC and adapter traffic when broad HTTPS
+  # is disabled. Keep these ranges disjoint from facilitator_allowed_cidrs.
+  runtimeHTTPSCIDRs: []
+  # When x402 billing is enabled, every entry must list explicit non-TCP/443
+  # ports. Use runtimeHTTPSCIDRs for non-facilitator TCP/443 dependencies.
   additionalEgress: []
 
 nodeSelector: {}

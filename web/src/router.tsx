@@ -22,6 +22,8 @@ import {
   VerifyPage,
 } from "@/pages/pages";
 import { PendingPage } from "@/pages/PendingPage";
+import { AccountPage, AdminUsersPage } from "@/pages/AuthPages";
+import { AdminBillingPage } from "@/pages/BillingPages";
 
 const rootRoute = createRootRoute({
   component: AppShell,
@@ -107,6 +109,21 @@ const statusRoute = createRoute({
   path: "/status",
   component: StatusPage,
 });
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account",
+  component: AccountPage,
+});
+const adminUsersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/users",
+  component: AdminUsersPage,
+});
+const adminBillingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/billing",
+  component: AdminBillingPage,
+});
 const searchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/search",
@@ -133,6 +150,9 @@ const routeTree = rootRoute.addChildren([
   chartsRoute,
   pendingRoute,
   statusRoute,
+  accountRoute,
+  adminUsersRoute,
+  adminBillingRoute,
   searchRoute,
 ]);
 

@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/islishude/etherview/internal/billing"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,6 +20,7 @@ type durableSnapshot struct {
 	jobs                map[pair]uint64
 	verification        map[string]uint64
 	repairs             map[pair]uint64
+	billingSettling     map[pair]uint64
 	repairOldestSeconds float64
 }
 
@@ -50,14 +52,19 @@ func (source *PostgresMetricSource) Snapshot(ctx context.Context) (durableSnapsh
 	var rows []dbgen.OperationalMetricSnapshotRow
 	err := dbaccess.WithQueries(ctx, source.db, func(queries *dbgen.Queries) error {
 		var queryErr error
-		rows, queryErr = queries.OperationalMetricSnapshot(ctx, source.chainID)
+		rows, queryErr = queries.OperationalMetricSnapshot(
+			ctx,
+			source.chainID,
+			billing.SettlementCrashReconcileDelay.Microseconds(),
+		)
 		return queryErr
 	})
 	if err != nil {
 		return durableSnapshot{}, fmt.Errorf("query durable metric snapshot: %w", err)
 	}
 	snapshot := durableSnapshot{
-		jobs: make(map[pair]uint64), verification: make(map[string]uint64), repairs: make(map[pair]uint64),
+		jobs: make(map[pair]uint64), verification: make(map[string]uint64),
+		repairs: make(map[pair]uint64), billingSettling: make(map[pair]uint64),
 	}
 	seenSnapshot := false
 	for _, row := range rows {
@@ -74,6 +81,12 @@ func (source *PostgresMetricSource) Snapshot(ctx context.Context) (durableSnapsh
 		case "repair":
 			key := pair{First: boundedMaintenanceOperation(row.MetricName), Second: boundedJobStatus(row.MetricStatus)}
 			snapshot.repairs[key] += count
+		case "billing":
+			key := pair{
+				First:  boundedBillingOperation(row.MetricName),
+				Second: boundedBillingSettlingReason(row.MetricStatus),
+			}
+			snapshot.billingSettling[key] += count
 		case "snapshot":
 			if seenSnapshot || row.RepairOldestSeconds == nil || *row.RepairOldestSeconds < 0 ||
 				math.IsNaN(*row.RepairOldestSeconds) || math.IsInf(*row.RepairOldestSeconds, 0) {
@@ -186,11 +199,23 @@ func (registry *Registry) replaceDurableSnapshot(snapshot durableSnapshot, colle
 		}
 		repairs[bounded] += float64(count)
 	}
+	billingSettling := make(
+		map[pair]float64,
+		len(snapshot.billingSettling),
+	)
+	for key, count := range snapshot.billingSettling {
+		bounded := pair{
+			First:  boundedBillingOperation(key.First),
+			Second: boundedBillingSettlingReason(key.Second),
+		}
+		billingSettling[bounded] += float64(count)
+	}
 	registry.mu.Lock()
 	registry.durableJobs = jobs
 	registry.jobsPending = pending
 	registry.verificationCurrent = verification
 	registry.repairCurrent = repairs
+	registry.billingSettling = billingSettling
 	registry.repairOldestQueued = snapshot.repairOldestSeconds
 	registry.metricsLastRefresh = float64(collectedAt.Unix())
 	registry.durableSnapshotReady = true

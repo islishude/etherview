@@ -332,6 +332,19 @@ maintenance log code and metrics to choose the next investigation, then inspect
 PostgreSQL under the deployment's controlled operator-access policy if deeper
 forensics are required.
 
+The maintenance role also owns feature-gated PostgreSQL housekeeping. When
+wallet authentication is enabled it deletes at most 1,000 expired challenges
+and at most 1,000 expired or revoked sessions per sweep. When x402 billing is
+enabled it expires at most 1,000 timed-out `reserved` or `verified` payments
+and appends the corresponding ledger events. Both are chain-scoped, select
+candidate rows with `SKIP LOCKED`, use the writer, run once at startup and then
+on `maintenance.interval`, and stop with the shared supervisor. A transient
+failure retains readiness, logs only
+`user_auth_cleanup_failed` or `x402_billing_expiry_failed`, and retries with
+bounded backoff. Disabling a feature registers no corresponding housekeeper.
+The split maintenance role must not receive session, fingerprint, or
+facilitator-header Secrets.
+
 ## API-key and label administration
 
 API-key create and rotate output plaintext exactly once. Capture it directly
@@ -348,3 +361,184 @@ etherview admin api-key list --config /etc/etherview/config.yaml
 Label administration is chain-scoped and accepts only canonical address,
 transaction hash, block hash/height, token, or contract identities. Use
 `admin label list` to verify a change after set/delete.
+
+## Wallet-user authentication administration
+
+Wallet authentication is disabled by default. Apply migration
+`0023_user_auth.sql` while the feature remains off, then configure the root
+public HTTPS origin, enable `features.user_auth`, and inject an independent
+session pepper of at least 32 random bytes only into the `all` or `api` process.
+The migration, sync, enrichment, verification, metadata, and maintenance roles
+must not receive that Secret. Plain HTTP is valid only for a loopback
+development origin.
+
+The first administrator cannot be created from an API key or a connected
+wallet alone. The target wallet must first complete the ordinary SIWE login so
+its chain-scoped user row exists. An operator can then promote that address
+through the PostgreSQL writer:
+
+```sh
+etherview admin user set-role \
+  --config /etc/etherview/config.yaml \
+  --address 0x0000000000000000000000000000000000000001 \
+  --role admin
+```
+
+The existing session observes the new role on its next writer-backed request;
+no new Cookie is required. Use the same writer-only operator path to disable or
+re-enable a user and to revoke all of one user's sessions:
+
+```sh
+etherview admin user set-status \
+  --config /etc/etherview/config.yaml \
+  --address 0x0000000000000000000000000000000000000001 \
+  --status disabled
+etherview admin user set-status \
+  --config /etc/etherview/config.yaml \
+  --address 0x0000000000000000000000000000000000000001 \
+  --status active
+etherview admin user revoke-sessions \
+  --config /etc/etherview/config.yaml \
+  --address 0x0000000000000000000000000000000000000001
+```
+
+Disabling a user atomically revokes active sessions; re-enabling that user does
+not revive them. Role changes keep sessions but take effect on their next
+writer-backed authorization check across every API replica. Command output is
+bounded JSON and never contains session or CSRF material.
+The `admin user` commands force a non-API maintenance configuration before
+environment Secret-file loading. Their runtime operation uses only the
+PostgreSQL writer, and configuration loading never opens session, x402
+fingerprint, or facilitator-header Secret files.
+
+Rotating `ETHERVIEW_SESSION_PEPPER` invalidates every session without changing
+user, role, or audit rows. Roll all `all`/`api` replicas promptly so replicas do
+not temporarily disagree about Cookies, then require every user to sign in
+again. Never reuse the API-key or x402 fingerprint pepper.
+
+For rollback, disable `features.user_auth` and restart the API processes; keep
+the additive tables for audit and a later retry. The feature flag alone does
+not mutate session rows. If a later re-enable must not accept any still-current
+Cookie, rotate the session pepper as part of the rollback before restarting.
+
+## x402 billing rollout and reconciliation
+
+x402 v2 exact-EVM billing is disabled by default. Apply the additive
+`0024_x402_billing.sql` migration with `features.x402_billing: false`, then
+configure the root `server.public_url`, fixed HTTPS `billing.facilitator_url`,
+on its default or explicit port 443, canonical facilitator CIDRs, CAIP-2
+network, asset/EIP-712 fields, recipient,
+and an explicit price for each eligible operation. Keep `billing.routes`
+empty until the deployment and facilitator checks pass. Inject an independent
+32-byte-or-longer `ETHERVIEW_X402_FINGERPRINT_PEPPER` only into `all`/`api`;
+optional facilitator credentials use
+`ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE)` and must never enter YAML, logs,
+browser assets, migration Jobs, init containers, or worker roles.
+
+For Helm, billing requires `networkPolicy.enabled=true`,
+`networkPolicy.allowExternalHTTPS=false`, and at least one
+`billing.facilitator_allowed_cidrs` entry. The chart creates a second egress
+policy selecting only `all` or `api` and allowing only those CIDRs on TCP/443.
+List reviewed non-facilitator HTTPS RPC and adapter destinations under
+`networkPolicy.runtimeHTTPSCIDRs`; that shared policy path keeps split sync and
+worker roles functional without granting them facilitator access. Internet-wide
+runtime CIDRs and exact reuse of a facilitator CIDR fail rendering, and the
+deployment review must also reject broader overlapping ranges. NetworkPolicies
+are additive, so every `networkPolicy.additionalEgress` entry must explicitly
+exclude TCP/443 while billing is enabled; missing port lists, named/default TCP
+ports, and ranges containing 443 fail chart rendering. Explicit non-443 rules
+remain available for private dependencies. The application still pins each
+configured HTTPS origin and validates every DNS answer and dial; NetworkPolicy
+alone does not authenticate a hostname.
+
+Validate the runnable API-role configuration and facilitator `/supported`
+contract before exposing any paid operation:
+
+```sh
+etherview doctor --config /etc/etherview/config.yaml
+```
+
+Roll out with an empty route map first, then enable one staging operation on
+Base Sepolia and exercise the complete `402 -> signed authorization -> settle
+-> PostgreSQL ledger -> transaction` path. Confirm the operation, network,
+asset, amount, recipient, payer, and transaction hash independently before
+expanding the allowlist one operation at a time. A rollback clears
+`billing.routes` first and then disables `features.x402_billing`; retain the
+ledger and event tables as audit history.
+
+A facilitator outage affects paid routes only: they return a stable 503 and
+must not fall through to the handler, while free routes and API-key bypass
+routes retain their ordinary behavior. Investigate
+`EtherviewX402FacilitatorUnavailable` and rerun `doctor`; never broaden egress
+or disable certificate/origin checks as an outage workaround.
+`EtherviewX402LedgerUnavailable` means the writer-backed payment transition
+could not be completed and is critical even if the facilitator is healthy.
+
+`EtherviewX402SettlementReconciliationRequired` is a writer-backed current
+gauge deduplicated across replicas with `max`. It covers an explicit
+`settlement_unknown` immediately and a `settling` row with no failure marker
+once it has remained there longer than the fixed two-minute
+crash-reconciliation delay. Inspect the bounded, non-secret payment and event
+projection:
+
+```sh
+etherview admin billing inspect \
+  --config /etc/etherview/config.yaml \
+  --id 00000000-0000-0000-0000-000000000000
+```
+
+Before reconciling, independently determine whether settlement reached the
+facilitator and chain. Record a confirmed settlement only with its exact
+non-zero transaction hash, or explicitly mark it failed:
+
+```sh
+etherview admin billing reconcile \
+  --config /etc/etherview/config.yaml \
+  --id 00000000-0000-0000-0000-000000000000 \
+  --outcome settled \
+  --transaction-hash 0x0000000000000000000000000000000000000000000000000000000000000001
+
+etherview admin billing reconcile \
+  --config /etc/etherview/config.yaml \
+  --id 00000000-0000-0000-0000-000000000000 \
+  --outcome failed
+```
+
+Do not rerun the handler or automatically retry settlement. Reconciliation
+atomically appends an operator event but never restores or releases the
+discarded old HTTP response; the caller must issue a new request and payment
+authorization if it still needs the resource.
+
+Rotate the fingerprint pepper only through a drain: clear all paid routes,
+wait for `reserved`/`verified` rows to expire, reconcile every `settling` row,
+rotate every `all`/`api` replica together, run `doctor`, and then re-enable one
+route. Old fingerprints cannot be reproduced after rotation. Rotate
+facilitator headers with the same API-replica rollout discipline, although it
+does not invalidate fingerprints. Never reuse the session or API-key pepper.
+
+### Base Sepolia real-payment release gate
+
+Run `make test-x402-testnet` only after the empty-route rollout, `doctor`, and a
+single staging operation have passed. This command is an explicit real charge,
+not a health probe: verify the funded payer, configured recipient, exact atomic
+price, asset domain, target/resource pair, writer database, and Base Sepolia
+RPC before setting `ETHERVIEW_X402_TESTNET_CONFIRM` to
+`BASE_SEPOLIA_REAL_PAYMENT`. The complete required input contract and `0600`
+Secret-file format are documented in [Testing](testing.md#real-x402-base-sepolia-gate).
+
+One invocation creates at most one authorization and never supplies an API key
+or Cookie. Preserve its successful JSON report with the release evidence,
+record the independently verified target deployment image/build digest, and
+compare the transaction hash with the writer ledger and chain receipt. The
+report's `harness_revision` attests only the clean local Go harness build, not
+the remote deployment. The report deliberately excludes all URLs, credentials,
+authorizations, and protected response bodies.
+
+Never automatically rerun a failed invocation.
+`x402_testnet_paid_outcome_unknown` means the authorization may already have
+reached the server; `x402_testnet_paid_reconciliation_incomplete` means the
+facilitator confirmed settlement but ledger, chain, or report evidence did not
+finish. Follow the existing `admin billing inspect` and `reconcile` procedure,
+and accept that the old protected response cannot be recovered. Start a new
+invocation only after the first outcome is conclusively reconciled and an
+operator intentionally approves another real payment.

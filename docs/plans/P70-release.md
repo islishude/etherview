@@ -12,24 +12,26 @@ and user/operator evidence sufficient for a production public release.
 - [Architecture](../architecture/overview.md)
 - [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md)
 - [ADR-0019: Authenticated genesis state import](../decisions/ADR-0019-authenticated-genesis-state-import.md)
+- [ADR-0020: SIWE user sessions](../decisions/ADR-0020-siwe-user-sessions.md)
+- [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
 - [Testing](../testing.md)
 
 ## Work Items
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | todo | P10–P60 | Execution/API/token/proxy/verification conformance matrix | conformance suite |
-| P70-T02 | todo | P10–P60 | Threat model, security audit, dependency and compiler supply-chain review | security gates |
-| P70-T03 | todo | P10–P60 | Monolith/split E2E, migration/rollback, outage, reorg, and soak suite | release CI |
+| P70-T01 | todo | P10–P66 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | todo | P10–P66 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | todo | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
 | P70-T04 | todo | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | todo | P00–P60 | User/operator/API/runbook/upgrade documentation | doc review and link check |
+| P70-T05 | todo | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | blocked | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
 
 ## Acceptance
 
-- [ ] Every P00–P60 plan and root release gate is complete with evidence.
+- [ ] Every P00–P66 plan and root release gate is complete with evidence.
 - [ ] Clean deployment, upgrade, rollback, backup/restore, and repair procedures
       are independently reproducible.
 - [ ] Security findings have no unresolved critical/high issue.
@@ -50,14 +52,20 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-No dependency-plan blocker remains: P00 through P60 are complete. P70-T08's
-local and remote Genesis implementation plus every non-browser gate are
-complete, but its browser acceptance remains unavailable because the managed
-macOS sandbox denies Chromium's MachPort rendezvous. That sole P70-T08 blocker
-clears when `make test-e2e` can run in CI or another environment allowed to
-launch Chromium. P70-T01 through P70-T05 are still `todo`, so P70-T06 and the
-v1 release remain blocked on their conformance, security, release-CI,
-long-capacity, and documentation evidence.
+P00 through P65 are complete, while P66 remains `in_progress`: P66-T08 is
+blocked on operator-provided Base Sepolia funding, payer credentials, a
+compatible staging facilitator and priced route, the matching writer and
+independent RPC endpoint, and the deployed image/build digest needed for live
+settlement and ledger reconciliation evidence.
+
+P70-T08's local and remote Genesis implementation plus every non-browser gate
+are complete, but its browser acceptance remains unavailable because the
+managed macOS sandbox denies Chromium's MachPort rendezvous. That blocker
+clears when the Genesis browser acceptance can run in CI or another environment
+allowed to launch Chromium. P70-T01 through P70-T05 are still `todo`, so
+P70-T06 and the v1 release remain blocked on P66 completion, Genesis browser
+evidence, conformance, security, release-CI, long-capacity, and documentation
+evidence.
 
 ## Evidence
 

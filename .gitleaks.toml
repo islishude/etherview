@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "x402 access-policy enum, not a credential"
+targetRules = ["generic-api-key"]
+regexes = ['''^api_key_or_x402$''']
+
+[[allowlists]]
+description = "Helm x402 facilitator Secret key name, not a credential"
+targetRules = ["generic-api-key"]
+regexes = ['''^x402-facilitator-headers$''']

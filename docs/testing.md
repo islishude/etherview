@@ -26,10 +26,17 @@ until the Makefile target exists.
   explicitly skips when no URL is supplied.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, API-generator and frontend dependency
-  audits, secret scan, and security-focused tests.
+  audits, secret scan, and security-focused tests. Both npm dependency trees
+  must report zero high-severity vulnerabilities; the API generator's
+  transitive parser and glob dependencies are constrained by audited
+  overrides.
 - `make license-check`: Go and production frontend dependency license policy.
 - `make deployment-check`: Docker build checks, Compose profile validation,
-  and Helm lint/render checks.
+  and Helm lint/render checks. The render regression proves x402 secrets are
+  absent while disabled, are injected only into `all`/`api` while enabled, and
+  require a non-empty facilitator CIDR policy with broad HTTPS egress disabled.
+  It also checks release/namespace-scoped x402 process-counter and
+  writer-backed stale-settlement alerts.
 - `make docker-build docker-image-check`: build the production target, run it
   with the numeric non-root identity and hardened runtime flags, and scan its
   exported root filesystem for Node, package-manager, shell, Go, and
@@ -80,6 +87,81 @@ make test-load >artifacts/load.json
 Use `ETHERVIEW_LOAD_API_KEY_FILE` or the process environment
 `ETHERVIEW_LOAD_API_KEY` for an authenticated profile. Never place a key in a
 URL, route argument, report metadata, or command-line value.
+
+## Real x402 Base Sepolia gate
+
+`make test-x402-testnet` is an explicit, one-shot real-payment gate. It is not
+a dependency of `check`, CI, `test`, or `test-integration`. Running it spends
+the configured Base Sepolia token and must never be used as an ordinary
+retrying test. The harness is fixed to payment network `eip155:84532` and
+ledger/RPC chain ID `84532`; there is no mainnet switch or implicit asset
+default.
+
+Every non-secret expectation is required and validated before any Secret file
+is opened:
+
+- `ETHERVIEW_X402_TESTNET_CONFIRM` must equal
+  `BASE_SEPOLIA_REAL_PAYMENT`.
+- `ETHERVIEW_X402_TESTNET_REVISION` is the full 40-character lowercase Git
+  revision of the local harness checkout. The running Go binary must carry that
+  exact clean Git VCS revision; this proves harness provenance, not the
+  revision deployed at the target URL.
+- `ETHERVIEW_X402_TESTNET_TARGET_URL` is the exact HTTPS priced GET to call.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_RESOURCE_URL` is the exact canonical HTTPS
+  resource expected in the x402 requirement, including sorted query defaults.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_OPERATION` is one billing-eligible operation
+  ID whose catalog ServeMux pattern matches both URLs.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_ACCESS` is exactly `x402` or
+  `api_key_or_x402`. The harness supplies neither an API key nor a Cookie.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET`,
+  `ETHERVIEW_X402_TESTNET_EXPECTED_RECIPIENT`, and
+  `ETHERVIEW_X402_TESTNET_EXPECTED_PAYER` are exact non-zero EIP-55 addresses.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_DECIMALS`,
+  `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_EIP712_NAME`, and
+  `ETHERVIEW_X402_TESTNET_EXPECTED_ASSET_EIP712_VERSION` bind the explicit
+  asset domain returned by `/api/v1/billing/config`.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_AMOUNT_ATOMIC` is a canonical positive
+  uint256 decimal string.
+- `ETHERVIEW_X402_TESTNET_EXPECTED_MAX_TIMEOUT_SECONDS` is a canonical decimal
+  integer from 1 through 60.
+- `ETHERVIEW_X402_TESTNET_LEDGER_CHAIN_ID` must explicitly equal `84532`.
+
+The three credential inputs are file-only:
+
+- `ETHERVIEW_X402_TESTNET_PRIVATE_KEY_FILE`
+- `ETHERVIEW_X402_TESTNET_RPC_URL_FILE`
+- `ETHERVIEW_X402_TESTNET_WRITER_DATABASE_URL_FILE`
+
+Use absolute paths to ordinary, non-symlink files with mode `0600`. Generate a
+fresh funded test key through trusted wallet tooling; its file contains exactly
+64 lowercase hexadecimal characters without `0x`, optionally followed by one
+newline. The payer expectation must match that key. The RPC file contains one
+HTTPS Base Sepolia endpoint and the writer file contains one `postgres` or
+`postgresql` URL. Plaintext `..._PRIVATE_KEY`, `..._RPC_URL`, and
+`..._WRITER_DATABASE_URL` environment variables are rejected.
+
+After configuring the staging route and independently checking the price and
+wallet balance, export the public expectations and Secret file paths, then run
+exactly once:
+
+```sh
+make test-x402-testnet
+```
+
+Success prints one bounded JSON report containing the reviewed SDK version,
+`harness_revision`, operation, public payment facts, ledger payment ID,
+transaction hash, protected-response digest, and receipt block evidence. It
+never prints a URL, credential, authorization, facilitator body, protected
+response, or database error. Record the independently verified staging
+image/build digest beside this report; the harness does not infer remote
+deployment provenance from its own Git revision. A failure prints only a
+stable code. Never rerun automatically. In particular,
+`x402_testnet_paid_outcome_unknown` means authorization may have reached the
+server, while `x402_testnet_paid_reconciliation_incomplete` means the
+facilitator confirmed payment but the evidence pass did not finish. Do not
+rerun either target; inspect the ledger, facilitator, and Base Sepolia
+transaction and use the manual reconciliation procedure in the operations
+runbook.
 
 ## Evidence Rules
 

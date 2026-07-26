@@ -185,6 +185,19 @@ in `PLAN.md` and `docs/plans/`, not here.
   `apikey` query parameter and bounded URL-encoded POST form field are confined
   to the exact Etherscan `/v2/api` compatibility boundary. Conflicting header,
   query, or form credentials are rejected before authentication.
+- x402 v2 billing is an explicit operation-ID allowlist over bounded native
+  GETs; free, compatibility, media, streaming, mutating, fallback, and unknown
+  routes cannot become billable. API keys retain their own authentication and
+  quota semantics, while an accountless exact-EVM authorization unlocks only
+  its canonical method/resource/price/network/asset/recipient binding. Raw
+  payment headers never persist. PostgreSQL owns the unique HMAC fingerprint,
+  fenced state, immutable settled facts, and append-only events across API
+  replicas. A response is released only after settlement and ledger commit.
+  Once settlement may have reached the facilitator, an uncertain outcome
+  remains `settling`, is never automatically retried or reclaimed, and
+  requires operator reconciliation without replaying the handler response.
+  Facilitator access uses a fixed HTTPS origin, redirect/proxy rejection,
+  bounded sanitized I/O, and explicit per-dial plus NetworkPolicy CIDRs.
 - Anonymous rate-limit identity trusts `X-Forwarded-For` only when the direct
   peer matches an explicitly configured trusted-proxy IP or CIDR. Forwarded
   chains stay bounded and are resolved from the trusted edge toward the first
@@ -212,10 +225,21 @@ in `PLAN.md` and `docs/plans/`, not here.
   providers never escape that module; EIP-6963 UUID collisions cannot replace
   an existing page-session provider, and the closed RPC allowlist rechecks the
   active account and configured chain before bounded `eth_call` or
-  `eth_sendTransaction`. Calls and results bind one wallet-session revision.
+  `eth_sendTransaction`. The only signing method is `personal_sign`, exposed
+  through a SIWE-only bounded capability that signs the exact server-authored
+  message and applies the same account, chain, provider, and wallet-session
+  revision checks before and after the call. Calls and results bind one
+  wallet-session revision.
   A transaction that reaches the provider without a trustworthy hash or
   matching completion session has an unknown outcome, never a safe-to-retry
   failure. Hostile provider error text is never rendered.
+- Wallet users, SIWE challenges, and Cookie sessions are PostgreSQL writer
+  facts separate from API-key identity and quota policy. Login consumes one
+  server-authored public-origin/chain/address-bound challenge atomically;
+  session and CSRF plaintext never persist. Every authenticated request checks
+  the current writer-backed session and user, and authenticated writes require
+  exact same-origin `Origin` plus a session-bound CSRF token. Reader lag, API
+  keys, browser state, and a connected wallet never grant a user or admin role.
 - Tailwind is a pinned build-time Vite plugin, never a CDN or browser runtime.
   Its Preflight layer stays disabled because the established SPA base styles
   own normalization; shared theme tokens and layout primitives use generated

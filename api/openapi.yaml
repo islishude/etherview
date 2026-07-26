@@ -32,20 +32,255 @@ paths:
                 $ref: "#/components/schemas/PublicConfigResponse"
         default:
           $ref: "#/components/responses/Error"
-  /blocks:
+  /auth/challenge:
+    post:
+      operationId: createAuthChallenge
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthChallengeRequest"
+      responses:
+        "201":
+          description: A short-lived server-authored SIWE message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthChallengeResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/verify:
+    post:
+      operationId: verifyAuthChallenge
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequest"
+      responses:
+        "201":
+          description: Authenticated user session.
+          headers:
+            Set-Cookie:
+              description: HttpOnly SameSite session Cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/session:
     get:
-      operationId: listBlocks
-      tags: [blocks]
+      operationId: getAuthSession
+      tags: [authentication]
+      responses:
+        "200":
+          description: Current authenticated session, or an unauthenticated state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/logout:
+    post:
+      operationId: logoutAuthSession
+      tags: [authentication]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: The current session is revoked and its Cookie is cleared.
+        default:
+          $ref: "#/components/responses/Error"
+  /users/me:
+    patch:
+      operationId: updateCurrentUser
+      tags: [users]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileUpdate"
+      responses:
+        "200":
+          description: Updated current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [users, admin]
+      security:
+        - UserSession: []
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
+          description: Chain-scoped users ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/users/{id}:
+    patch:
+      operationId: updateAdminUser
+      tags: [users, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserUpdate"
+      responses:
+        "200":
+          description: Updated target user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/users/{id}/sessions/revoke:
+    post:
+      operationId: revokeAdminUserSessions
+      tags: [users, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "200":
+          description: All active sessions for the target user are revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionRevocationResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/config:
+    get:
+      operationId: getBillingConfig
+      tags: [billing]
+      responses:
+        "200":
+          description: Public x402 protocol and route-price configuration without facilitator details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingConfigResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /billing/payments:
+    get:
+      operationId: listCurrentUserBillingPayments
+      tags: [billing]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Payments already attributed to the current authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPaymentListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/payments:
+    get:
+      operationId: listAdminBillingPayments
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/BillingStateFilter"
+        - $ref: "#/components/parameters/BillingOperationFilter"
+        - $ref: "#/components/parameters/BillingNetworkFilter"
+        - $ref: "#/components/parameters/BillingAssetFilter"
+        - $ref: "#/components/parameters/BillingFromTime"
+        - $ref: "#/components/parameters/BillingToTime"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Administrator payment ledger view with writer-authoritative filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPaymentListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /admin/billing/summary:
+    get:
+      operationId: getAdminBillingSummary
+      tags: [billing, admin]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/BillingStateFilter"
+        - $ref: "#/components/parameters/BillingOperationFilter"
+        - $ref: "#/components/parameters/BillingNetworkFilter"
+        - $ref: "#/components/parameters/BillingAssetFilter"
+        - $ref: "#/components/parameters/BillingFromTime"
+        - $ref: "#/components/parameters/BillingToTime"
+      responses:
+        "200":
+          description: Administrator billing totals for a bounded interval, defaulting to the last 24 hours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingSummaryResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /blocks:
+    get:
+      operationId: listBlocks
+      tags: [blocks]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
           description: Canonical blocks ordered newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /blocks/{id}:
@@ -53,19 +288,26 @@ paths:
       operationId: getBlock
       tags: [blocks]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: id
           in: path
           required: true
           description: Decimal/hex block number or 32-byte block hash.
           schema:
             type: string
+            format: block-identifier
       responses:
         "200":
           description: Block selected by canonical height or exact hash.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /genesis/accounts:
@@ -90,15 +332,21 @@ paths:
       operationId: listTransactions
       tags: [transactions]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical transactions ordered by block and transaction index, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}:
@@ -106,14 +354,20 @@ paths:
       operationId: getTransaction
       tags: [transactions]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Transaction and current inclusion.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /pending:
@@ -122,15 +376,21 @@ paths:
       tags: [transactions]
       description: Transactions from one immutable, successfully polled pending-block snapshot.
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Pending transactions ordered by first-seen time and hash, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PendingTransactionListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /transactions/{hash}/trace:
@@ -138,14 +398,20 @@ paths:
       operationId: getTransactionTrace
       tags: [transactions, traces]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
           description: Normalized canonical transaction call tree.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionTraceResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}:
@@ -153,14 +419,20 @@ paths:
       operationId: getAddress
       tags: [addresses]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: Address summary at one canonical block.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /addresses/{address}/nfts:
@@ -168,16 +440,22 @@ paths:
       operationId: listAddressNFTBalances
       tags: [addresses, tokens, nfts]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Positive canonical ERC-721/ERC-1155 balances for an owner.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NFTBalanceListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens:
@@ -185,15 +463,21 @@ paths:
       operationId: listTokens
       tags: [tokens]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Discovered token contracts at a stable canonical snapshot.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens/{address}:
@@ -201,14 +485,20 @@ paths:
       operationId: getToken
       tags: [tokens]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: A discovered token contract and metadata state.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /tokens/{address}/transfers:
@@ -216,16 +506,22 @@ paths:
       operationId: listTokenTransfers
       tags: [tokens]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Canonical token events ordered newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenEventListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}:
@@ -233,6 +529,7 @@ paths:
       operationId: getNFTOwner
       tags: [tokens, nfts]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - name: token_id
           in: path
@@ -242,10 +539,15 @@ paths:
       responses:
         "200":
           description: Canonical NFT ownership or balance for one token instance.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NFTOwnershipResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}/media:
@@ -336,6 +638,7 @@ paths:
       operationId: getBlockStats
       tags: [stats]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: from_block
           in: query
           required: true
@@ -349,10 +652,15 @@ paths:
       responses:
         "200":
           description: Complete canonical per-block statistics for a closed range.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlockStatListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /stats/summary:
@@ -360,6 +668,7 @@ paths:
       operationId: getAggregateStats
       tags: [stats]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: from_block
           in: query
           required: true
@@ -373,10 +682,15 @@ paths:
       responses:
         "200":
           description: Canonical aggregate statistics with explicit range completeness.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AggregateStatsResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /search:
@@ -384,22 +698,29 @@ paths:
       operationId: search
       tags: [search]
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: q
           in: query
           required: true
+          x-etherview-trim-space: true
           schema:
             type: string
             minLength: 1
             maxLength: 256
-        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/SearchLimit"
         - $ref: "#/components/parameters/Cursor"
       responses:
         "200":
           description: Ranked, non-auto-redirecting search results.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /events:
@@ -463,7 +784,9 @@ paths:
       tags: [verification]
       security:
         - APIKey: []
+        - X402Payment: []
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: id
           in: path
           required: true
@@ -473,10 +796,15 @@ paths:
       responses:
         "200":
           description: Current verification job state.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerificationJobResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /contracts/{address}/verification:
@@ -485,7 +813,9 @@ paths:
       tags: [contracts, verification]
       security:
         - APIKey: []
+        - X402Payment: []
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
         - name: code_hash
           in: query
@@ -495,10 +825,15 @@ paths:
       responses:
         "200":
           description: Verified contract artifact bound to the requested code hash.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerifiedContractResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /sourcify/contracts/{address}:
@@ -511,15 +846,22 @@ paths:
         verification or publication evidence.
       security:
         - APIKey: []
+        - X402Payment: []
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: Validated Sourcify contract summary.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SourcifyContractResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
   /sourcify/imports:
@@ -597,7 +939,9 @@ paths:
         messages and error bodies are never exposed.
       security:
         - APIKey: []
+        - X402Payment: []
       parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
         - name: verification_id
           in: path
           required: true
@@ -608,10 +952,15 @@ paths:
       responses:
         "200":
           description: Current external verification job state.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SourcifyJobResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
 components:
@@ -620,6 +969,14 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+    UserSession:
+      type: apiKey
+      in: cookie
+      name: etherview_session
+    X402Payment:
+      type: apiKey
+      in: header
+      name: PAYMENT-SIGNATURE
   parameters:
     Cursor:
       name: cursor
@@ -634,6 +991,14 @@ components:
         minimum: 1
         maximum: 100
         default: 25
+    SearchLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     TransactionHash:
       name: hash
       in: path
@@ -646,9 +1011,93 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Address"
+    UserID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+    PaymentSignature:
+      name: PAYMENT-SIGNATURE
+      in: header
+      description: A single x402 v2 exact-EVM payment payload for this canonical resource.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 16384
+    BillingStateFilter:
+      name: state
+      in: query
+      schema:
+        $ref: "#/components/schemas/BillingPaymentState"
+    BillingOperationFilter:
+      name: operation
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    BillingNetworkFilter:
+      name: network
+      in: query
+      schema:
+        type: string
+        pattern: '^eip155:[1-9][0-9]*$'
+        maxLength: 96
+    BillingAssetFilter:
+      name: asset
+      in: query
+      schema:
+        $ref: "#/components/schemas/Address"
+    BillingFromTime:
+      name: from_time
+      in: query
+      description: Inclusive lower time bound. Summary requests default to 24 hours before to_time.
+      schema:
+        type: string
+        format: date-time
+    BillingToTime:
+      name: to_time
+      in: query
+      description: Exclusive upper time bound, defaulting to the current server time.
+      schema:
+        type: string
+        format: date-time
+  headers:
+    PaymentRequired:
+      description: Base64-encoded x402 v2 payment requirements for the canonical resource.
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 16384
+    PaymentResponse:
+      description: Base64-encoded x402 v2 settlement response released only after durable settlement.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 16384
   responses:
     Error:
       description: Machine-readable error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PaymentRequired:
+      description: Payment is required for the selected operation and canonical resource.
+      headers:
+        PAYMENT-REQUIRED:
+          $ref: "#/components/headers/PaymentRequired"
       content:
         application/json:
           schema:
@@ -667,6 +1116,11 @@ components:
       pattern: '^(0|[1-9][0-9]*)$'
       maxLength: 78
       description: A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+    BillingAggregateQuantity:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)$'
+      maxLength: 97
+      description: A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
     Decimal:
       type: string
       pattern: '^(0|[1-9][0-9]*)(\.[0-9]{0,17}[1-9])?$'
@@ -674,8 +1128,287 @@ components:
       description: A canonical non-negative fixed-point decimal with at most 18 fractional digits.
     OpaqueCursor:
       type: string
+      minLength: 1
       maxLength: 1024
       description: A bounded server-issued traversal token that clients must not decode or construct.
+    UserRole:
+      type: string
+      enum: [user, admin]
+    UserStatus:
+      type: string
+      enum: [active, disabled]
+    User:
+      type: object
+      required:
+        - id
+        - chain_id
+        - address
+        - role
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        display_name:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 64
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+    AuthChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+    AuthVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, signature]
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        signature:
+          type: string
+          pattern: '^0x[0-9a-fA-F]{130}$'
+    AuthChallenge:
+      type: object
+      required: [challenge_id, message, expires_at]
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        expires_at:
+          type: string
+          format: date-time
+    AuthSession:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+        user:
+          allOf:
+            - $ref: "#/components/schemas/User"
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+          minLength: 43
+          maxLength: 43
+    UserProfileUpdate:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 64
+    AdminUserUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+    SessionRevocation:
+      type: object
+      required: [revoked_sessions]
+      properties:
+        revoked_sessions:
+          $ref: "#/components/schemas/Quantity"
+    BillingAccess:
+      type: string
+      enum: [x402, api_key_or_x402]
+    BillingPaymentState:
+      type: string
+      enum: [reserved, verified, settling, settled, failed, expired]
+    BillingRoutePrice:
+      type: object
+      additionalProperties: false
+      required: [operation, access, amount_atomic]
+      properties:
+        operation:
+          type: string
+          minLength: 1
+          maxLength: 128
+        access:
+          $ref: "#/components/schemas/BillingAccess"
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+    BillingConfig:
+      type: object
+      additionalProperties: false
+      required: [enabled, x402_version, scheme, routes]
+      properties:
+        enabled:
+          type: boolean
+        x402_version:
+          type: integer
+          enum: [2]
+        scheme:
+          type: string
+          enum: [exact]
+        network:
+          type: string
+          pattern: '^eip155:[1-9][0-9]*$'
+          maxLength: 96
+        asset:
+          $ref: "#/components/schemas/Address"
+        asset_decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+        asset_eip712_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        asset_eip712_version:
+          type: string
+          minLength: 1
+          maxLength: 32
+        recipient:
+          $ref: "#/components/schemas/Address"
+        routes:
+          type: array
+          maxItems: 19
+          items:
+            $ref: "#/components/schemas/BillingRoutePrice"
+    BillingPayment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - operation
+        - state
+        - network
+        - asset
+        - amount_atomic
+        - recipient
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        operation:
+          type: string
+          minLength: 1
+          maxLength: 128
+        state:
+          $ref: "#/components/schemas/BillingPaymentState"
+        network:
+          type: string
+          pattern: '^eip155:[1-9][0-9]*$'
+          maxLength: 96
+        asset:
+          $ref: "#/components/schemas/Address"
+        amount_atomic:
+          $ref: "#/components/schemas/Quantity"
+        recipient:
+          $ref: "#/components/schemas/Address"
+        payer:
+          allOf:
+            - $ref: "#/components/schemas/Address"
+          nullable: true
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        api_key_prefix:
+          type: string
+          minLength: 10
+          maxLength: 10
+          nullable: true
+        transaction_hash:
+          allOf:
+            - $ref: "#/components/schemas/Hash"
+          nullable: true
+        failure_code:
+          type: string
+          minLength: 1
+          maxLength: 128
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: string
+          format: date-time
+          nullable: true
+    BillingSummaryRow:
+      type: object
+      additionalProperties: false
+      required: [state, operation, network, asset, payment_count, amount_atomic]
+      properties:
+        state:
+          $ref: "#/components/schemas/BillingPaymentState"
+        operation:
+          type: string
+          minLength: 1
+          maxLength: 128
+        network:
+          type: string
+          pattern: '^eip155:[1-9][0-9]*$'
+          maxLength: 96
+        asset:
+          $ref: "#/components/schemas/Address"
+        payment_count:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        amount_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+    BillingSummary:
+      type: object
+      additionalProperties: false
+      required: [from_time, to_time, payment_count, amount_atomic, rows]
+      properties:
+        from_time:
+          type: string
+          format: date-time
+        to_time:
+          type: string
+          format: date-time
+        payment_count:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        amount_atomic:
+          $ref: "#/components/schemas/BillingAggregateQuantity"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingSummaryRow"
     Completeness:
       type: object
       required: [core, trace, metadata, state]
@@ -1502,6 +2235,74 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/PublicConfig"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AuthChallengeResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AuthChallenge"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AuthSessionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AuthSession"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/User"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SessionRevocationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SessionRevocation"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingConfigResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingConfig"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingPaymentListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPayment"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BillingSummaryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BillingSummary"
         meta:
           $ref: "#/components/schemas/Meta"
     BlockResponse:

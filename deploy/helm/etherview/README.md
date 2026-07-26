@@ -32,6 +32,9 @@ runtime keys are:
 | `databaseReadURLKey` | `database-read-url` | optional PostgreSQL reader URL; injected only into `all` and `api` application containers |
 | `rpcURLsKey` | `rpc-urls` | comma-separated all-purpose URLs or a structured JSON endpoint array |
 | `apiKeyPepperKey` | `api-key-pepper` | API-key digest pepper |
+| `sessionPepperKey` | `session-pepper` | user-session HMAC pepper; auth-enabled `all`/`api` application containers only |
+| `x402FingerprintPepperKey` | `x402-fingerprint-pepper` | payment-authorization fingerprint pepper; billing-enabled `all`/`api` containers only |
+| `x402FacilitatorHeadersKey` | `x402-facilitator-headers` | optional bounded facilitator-header JSON; billing-enabled `all`/`api` containers only |
 | `natsURLKey` | `nats-url` | optional NATS URL |
 | `redisURLKey` | `redis-url` | optional Redis URL |
 | `s3AccessKeyKey` | `s3-access-key` | optional S3 access key |
@@ -41,8 +44,11 @@ runtime keys are:
 | `otlpTraceHeadersKey` | `otlp-trace-headers` | optional OTLP collector authorization headers |
 
 `externalSecret.enabled` can materialize the same target from a SecretStore or
-ClusterSecretStore. Writer database, RPC, and pepper remote keys are always
-included. The reader entry is emitted only when
+ClusterSecretStore. Writer database, RPC, and API-key-pepper remote keys are
+always included. When `config.features.user_auth=true`,
+`externalSecret.sessionPepperRemoteKey` is required and materializes the
+session pepper; feature-off releases neither fetch nor inject it. The reader
+entry is emitted only when
 `externalSecret.databaseReadURLRemoteKey` is non-empty; NATS, Redis, S3, and
 OTLP entries follow the same optional remote-key rule. Static S3 access and
 secret keys must be configured together. Inline `config.database.url`,
@@ -53,7 +59,32 @@ access keys, secret keys, and session tokens are also schema-locked to empty
 values; all are supplied through Secret-backed environment variables. The OTLP
 endpoint is locked to empty for the same reason; trace headers are injected
 only from the optional Secret key and must never be written to chart values or
-logs.
+logs. `config.user_auth` accepts only the public lifetimes and size bounds; it
+has no pepper field, and schema validation rejects attempts to add one.
+
+When `config.features.x402_billing=true`,
+`externalSecret.x402FingerprintPepperRemoteKey` is required. The optional
+facilitator-header entry is emitted only when
+`externalSecret.x402FacilitatorHeadersRemoteKey` is non-empty; neither entry is
+fetched or injected when billing is disabled. `config.billing` contains only
+public policy and limits. Inline fingerprint peppers or facilitator headers
+are rejected by the chart schema.
+
+User authentication is disabled by default. Before enabling it, set
+`config.server.public_url` to the root public HTTPS origin (plain HTTP is
+permitted only for loopback development) and place at least 32 random pepper
+bytes in the configured Secret key. The chart injects
+`ETHERVIEW_SESSION_PEPPER` only into an enabled `all` or `api` main container.
+Migration Jobs, schema-compatibility init containers, and non-API roles never
+receive it.
+
+x402 billing is disabled by default. Enabling it also requires a root public
+origin, fixed HTTPS facilitator origin on port 443, canonical non-empty facilitator CIDRs,
+network/asset/EIP-712/recipient fields, and an independent 32-byte-or-longer
+fingerprint pepper. The chart injects billing Secrets only into the selected
+`all`/`api` main container. Run
+`etherview doctor --config /etc/etherview/config.yaml` before exposing a
+configured paid operation.
 
 `config.database.read_max_connections` and
 `config.database.read_min_connections` size the optional reader pool. A zero
@@ -77,6 +108,18 @@ kubectl rollout restart deployment \
 The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
+
+Changing the session pepper is a global session revocation. Restart every
+selected `all`/`api` Deployment promptly and wait for that rollout before
+asking users to sign in again; replicas running different pepper versions can
+temporarily disagree about otherwise valid Cookies. Keep the session and
+API-key peppers independent.
+
+Fingerprint-pepper rotation requires draining paid routes first: clear the
+route map, let reservations expire, reconcile all `settling` rows, rotate all
+`all`/`api` replicas together, run `doctor`, and re-enable routes gradually.
+Old handler responses are never recovered by reconciliation. See the
+operations runbook for the unknown-settlement procedure.
 
 ## Genesis account state
 
@@ -145,6 +188,22 @@ PostgreSQL, and HTTPS egress. Add endpoint-specific rules under
 S3-compatible service or PostgreSQL endpoint on another port. Setting
 `networkPolicy.enabled=false` is explicit and removes the policy.
 
+Billing cannot use the broad HTTPS rule. Set
+`networkPolicy.allowExternalHTTPS=false`; put reviewed HTTPS RPC and adapter
+ranges in `networkPolicy.runtimeHTTPSCIDRs`, while billing renders a second
+NetworkPolicy selecting only `all`/`api` and allowing the configured
+facilitator CIDRs on TCP/443. The shared runtime rule preserves HTTPS access
+for split sync and worker roles without granting them the facilitator ranges.
+The chart rejects billing when NetworkPolicy is disabled, facilitator CIDRs
+are empty, broad HTTPS remains enabled, the runtime list contains an
+internet-wide CIDR, or it repeats a facilitator CIDR. Operators must also
+review both lists for broader overlapping ranges. Additive
+`networkPolicy.additionalEgress` entries must explicitly list non-443 ports
+while billing is enabled; an omitted port set, a named/default TCP port, or a
+numeric range containing TCP/443 is rejected even when `to` is restricted.
+The application still pins HTTPS origins and validates DNS/dial destinations
+because NetworkPolicy has no hostname semantics.
+
 When `serviceMonitor.enabled` is set, scrape relabeling adds immutable
 `etherview_release` and `etherview_namespace` target labels. Every bundled
 alert selects both labels, so releases sharing one Prometheus cannot mask or
@@ -159,4 +218,5 @@ procedures.
 
 `make helm-check` lints the layouts and runs the render regression suite. The
 suite checks role, HPA, and disruption-budget topology, migration/schema gates,
-Secret references, NetworkPolicy rendering, and invalid-value rejection.
+feature-off and API-only Secret references, x402 CIDR NetworkPolicy rendering,
+release-scoped x402 alerts, and invalid-value rejection.

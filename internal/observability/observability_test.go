@@ -117,6 +117,12 @@ func TestDurableMetricRefreshRetainsLastPostgresSnapshotOnFailure(t *testing.T) 
 			{First: "reindex", Second: "running"}: 4,
 			{First: "reindex", Second: "done"}:    99,
 		},
+		billingSettling: map[pair]uint64{
+			{First: "listBlocks", Second: "settlement_unknown"}:         2,
+			{First: "getTransaction", Second: "unmarked_after_timeout"}: 1,
+			{First: "hostile-wallet", Second: "hostile-remote-message"}: 3,
+			{First: "getBillingConfig", Second: "settlement_unknown"}:   4,
+		},
 		repairOldestSeconds: 91,
 	}}
 	collector, err := NewDurableCollector(source, registry, DurableCollectorOptions{
@@ -134,6 +140,10 @@ func TestDurableMetricRefreshRetainsLastPostgresSnapshotOnFailure(t *testing.T) 
 		`etherview_verification_jobs{status="running"} 3`,
 		`etherview_repair_requests{operation="reindex",status="running"} 4`,
 		`etherview_repair_oldest_queued_seconds 91`,
+		`etherview_x402_stale_settling_payments{operation="listBlocks",reason="settlement_unknown"} 2`,
+		`etherview_x402_stale_settling_payments{operation="getTransaction",reason="unmarked_after_timeout"} 1`,
+		`etherview_x402_stale_settling_payments{operation="other",reason="other"} 3`,
+		`etherview_x402_stale_settling_payments{operation="other",reason="settlement_unknown"} 4`,
 		`etherview_observability_last_refresh_timestamp_seconds 123`,
 	} {
 		if !strings.Contains(first, expected) {
@@ -149,9 +159,44 @@ func TestDurableMetricRefreshRetainsLastPostgresSnapshotOnFailure(t *testing.T) 
 	collector.refresh(t.Context())
 	second := registry.Gather()
 	if !strings.Contains(second, `etherview_jobs_pending{queue="trace"} 7`) ||
+		!strings.Contains(second, `etherview_x402_stale_settling_payments{operation="listBlocks",reason="settlement_unknown"} 2`) ||
 		!strings.Contains(second, `etherview_observability_refresh_failures_total 1`) ||
 		!strings.Contains(second, `etherview_observability_last_refresh_timestamp_seconds 123`) {
 		t.Fatalf("failed refresh did not retain and mark prior snapshot:\n%s", second)
+	}
+}
+
+func TestX402MetricsUseOnlyClosedLabelsAndSingleExposition(t *testing.T) {
+	registry := NewRegistry("test", "api")
+	registry.ObserveX402Request("listBlocks", "settled")
+	registry.ObserveX402Request("wallet-0x-secret", "https://remote/secret")
+	registry.ObserveX402Request("getBillingConfig", "settled")
+
+	exposition := registry.Gather()
+	for _, expected := range []string{
+		`etherview_x402_requests_total{operation="listBlocks",result="settled"} 1`,
+		`etherview_x402_requests_total{operation="other",result="other"} 1`,
+		`etherview_x402_requests_total{operation="other",result="settled"} 1`,
+	} {
+		if !strings.Contains(exposition, expected) {
+			t.Fatalf("x402 metric missing %q:\n%s", expected, exposition)
+		}
+	}
+	for _, forbidden := range []string{"wallet-0x-secret", "remote/secret", "getBillingConfig"} {
+		if strings.Contains(exposition, forbidden) {
+			t.Fatalf("x402 metric leaked unbounded label %q:\n%s", forbidden, exposition)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	registry.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	body := response.Body.String()
+	if strings.Count(body, "# HELP etherview_x402_requests_total ") != 1 ||
+		strings.Count(body, "# TYPE etherview_x402_requests_total counter") != 1 {
+		t.Fatalf("metric exposition was duplicated:\n%s", body)
 	}
 }
 

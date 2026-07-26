@@ -1,0 +1,24 @@
+config:
+  server:
+    public_url: https://explorer.example.com
+  features:
+    x402_billing: true
+  billing:
+    facilitator_url: https://facilitator.example.com
+    facilitator_allowed_cidrs:
+      - 203.0.113.0/24
+    network: eip155:84532
+    asset: "0x1111111111111111111111111111111111111111"
+    asset_decimals: 6
+    asset_eip712_name: USDC
+    asset_eip712_version: "2"
+    recipient: "0x2222222222222222222222222222222222222222"
+    routes:
+      listBlocks:
+        access: x402
+        amount_atomic: "1000"
+
+networkPolicy:
+  allowExternalHTTPS: false
+  runtimeHTTPSCIDRs:
+    - 198.51.100.0/24

@@ -10,6 +10,8 @@ import {
 } from "react";
 import { getAddress, isAddress, toHex, type Address, type Hex } from "viem";
 
+import type { AuthChallenge } from "@/api/auth";
+import { usePublicConfig } from "@/api/hooks";
 import {
   assertWalletChain,
   EIP6963_ANNOUNCE_EVENT,
@@ -21,6 +23,7 @@ import {
   isContractResult,
   isTransactionHash,
   isUint256Quantity,
+  isWalletSignature,
   normalizeChainID,
   normalizeProviderChainID,
   snapshotProviderDetail,
@@ -28,6 +31,7 @@ import {
   WalletBoundaryError,
   type WalletBoundaryErrorCode,
 } from "./eip6963";
+import { encodeCanonicalSIWEChallenge } from "./siwe";
 
 export interface ContractCall {
   to: Address;
@@ -41,6 +45,7 @@ interface InternalActiveWallet {
   detail: EIP6963ProviderDetail;
   account: Address;
   chainID: string;
+  revision: number;
 }
 
 interface WalletOption {
@@ -54,6 +59,7 @@ interface ActiveWallet {
   name: string;
   account: Address;
   chainID: string;
+  revision: number;
 }
 
 interface WalletContextValue {
@@ -69,6 +75,7 @@ interface WalletContextValue {
     transaction: ContractTransaction,
     expectedChainID: string | undefined,
   ) => Promise<Hex>;
+  signSIWEChallenge: (challenge: AuthChallenge) => Promise<Hex>;
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -76,6 +83,8 @@ const MAX_DISCOVERED_PROVIDERS = 32;
 const MAX_PROVIDER_ACCOUNTS = 256;
 
 export function WalletProvider({ children }: PropsWithChildren) {
+  const publicConfig = usePublicConfig();
+  const configuredChainID = publicConfig.data?.chain_id;
   const [providersByID, setProvidersByID] = useState<Map<string, EIP6963ProviderDetail>>(
     () => new Map(),
   );
@@ -84,10 +93,15 @@ export function WalletProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<WalletBoundaryErrorCode>();
   const activeRef = useRef<InternalActiveWallet | undefined>(undefined);
   const connectionAttemptRef = useRef(0);
+  const walletRevisionRef = useRef(0);
 
   const commitActive = useCallback((next: InternalActiveWallet | undefined) => {
-    activeRef.current = next;
-    setInternalActive(next);
+    walletRevisionRef.current += 1;
+    const committed = next
+      ? { ...next, revision: walletRevisionRef.current }
+      : undefined;
+    activeRef.current = committed;
+    setInternalActive(committed);
   }, []);
 
   const failActiveSession = useCallback(
@@ -95,6 +109,23 @@ export function WalletProvider({ children }: PropsWithChildren) {
       if (activeRef.current !== session) return;
       commitActive(undefined);
       setError(code);
+    },
+    [commitActive],
+  );
+
+  const markTransactionOutcomeUnknown = useCallback(
+    (session: InternalActiveWallet) => {
+      // A provider call may complete after an account/chain ABA transition.
+      // Preserve the newly committed wallet session in that case, but retain
+      // the warning independently of the stale caller so the UI cannot lose
+      // the unknown transaction outcome when its operation context changes.
+      const current = activeRef.current;
+      if (current === session) {
+        commitActive(undefined);
+        setError("TRANSACTION_OUTCOME_UNKNOWN");
+      } else if (current !== undefined) {
+        setError("TRANSACTION_OUTCOME_UNKNOWN");
+      }
     },
     [commitActive],
   );
@@ -224,7 +255,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
           throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
         }
         if (connectionAttemptRef.current !== attempt) return;
-        commitActive({ detail, account: accounts[0]!, chainID });
+        commitActive({ detail, account: accounts[0]!, chainID, revision: 0 });
       } catch (cause) {
         const boundaryError = toWalletBoundaryError(cause);
         if (connectionAttemptRef.current === attempt) {
@@ -346,7 +377,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
           boundaryError.code === "REQUEST_FAILED" ||
           boundaryError.code === "PROVIDER_DISCONNECTED"
         ) {
-          failActiveSession(wallet, "TRANSACTION_OUTCOME_UNKNOWN");
+          markTransactionOutcomeUnknown(wallet);
           throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
         }
         throw boundaryError;
@@ -356,17 +387,43 @@ export function WalletProvider({ children }: PropsWithChildren) {
       } catch (cause) {
         const boundaryError = toWalletBoundaryError(cause);
         if (boundaryError.code === "SESSION_CHANGED") {
+          markTransactionOutcomeUnknown(wallet);
           throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
         }
         throw boundaryError;
       }
       if (!isTransactionHash(result)) {
-        failActiveSession(wallet, "TRANSACTION_OUTCOME_UNKNOWN");
+        markTransactionOutcomeUnknown(wallet);
         throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
       }
       return result;
     },
-    [failActiveSession, requestActiveProvider, requireProvider],
+    [markTransactionOutcomeUnknown, requestActiveProvider, requireProvider],
+  );
+
+  const signSIWEChallenge = useCallback(
+    async (challenge: AuthChallenge) => {
+      const wallet = await requireProvider(configuredChainID);
+      const encodedMessage = encodeCanonicalSIWEChallenge(
+        challenge,
+        wallet.account,
+        configuredChainID,
+      );
+      const result = await requestActiveProvider(wallet, {
+        method: "personal_sign",
+        params: [encodedMessage, wallet.account],
+      });
+      // Re-run the bounded account and chain checks after signing. This catches
+      // silent provider drift as well as event-driven revision changes.
+      assertCompletedWalletOperation(activeRef.current, wallet);
+      const completed = await requireProvider(configuredChainID);
+      assertCompletedWalletOperation(completed, wallet);
+      if (!isWalletSignature(result)) {
+        throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+      }
+      return result;
+    },
+    [configuredChainID, requestActiveProvider, requireProvider],
   );
 
   const disconnect = useCallback(() => {
@@ -392,6 +449,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
             name: internalActive.detail.info.name,
             account: internalActive.account,
             chainID: internalActive.chainID,
+            revision: internalActive.revision,
           }
         : undefined,
       connecting,
@@ -401,6 +459,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       disconnect,
       readContract,
       sendTransaction,
+      signSIWEChallenge,
     }),
     [
       connect,
@@ -412,6 +471,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       providersByID,
       readContract,
       sendTransaction,
+      signSIWEChallenge,
     ],
   );
 

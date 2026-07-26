@@ -33,6 +33,7 @@ import (
 	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/syncer"
+	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/verify"
 	webui "github.com/islishude/etherview/web"
 )
@@ -552,15 +553,32 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return err
 			}
 		}
-		handler, err := httpapi.New(httpapi.Options{
-			Config: cfg, Reader: publicReader, Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
-			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
-			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
-			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
-			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
-			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
-		})
+		var (
+			userAuthenticator  httpapi.UserAuthenticator
+			userAdministration httpapi.UserAdministration
+			userRepository     *userauth.PostgresRepository
+		)
+		if cfg.Features.UserAuth {
+			userRepository, err = userauth.NewPostgresRepository(db, cfg.Chain.ID)
+			if err != nil {
+				return err
+			}
+			userService, err := userauth.NewService(userRepository, userauth.Options{
+				ChainID: cfg.Chain.ID, PublicURL: cfg.Server.PublicURL,
+				ChallengeTTL:  cfg.UserAuth.ChallengeTTL,
+				SessionTTL:    cfg.UserAuth.SessionTTL,
+				TouchInterval: cfg.UserAuth.LastUsedInterval,
+				Pepper:        []byte(cfg.UserAuth.SessionPepper),
+			})
+			if err != nil {
+				return err
+			}
+			userAuthenticator = httpapi.UserAuthAdapter{Service: userService}
+			userAdministration = userRepository
+		}
+		billingDispatcher, billingReader, err := newBillingServices(
+			cfg, db, userRepository, registry, logger,
+		)
 		if err != nil {
 			return err
 		}
@@ -568,7 +586,42 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if redisAccelerator != nil {
 			limiter = redisAccelerator.Limiter(limiter)
 		}
-		publicHandler, err := b.protectPublicAPI(db, cfg, registry, limiter, handler)
+		trustedProxies, err := auth.NewTrustedProxySet(cfg.Security.TrustedProxies)
+		if err != nil {
+			return fmt.Errorf("configure trusted proxies: %w", err)
+		}
+		var quota func(http.Handler) http.Handler
+		if cfg.Features.X402Billing {
+			quota = auth.RateMiddleware{
+				Limiter: limiter,
+				Anonymous: auth.Limit{
+					Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
+				},
+				Observer: registry, TrustedProxies: trustedProxies,
+			}.Wrap
+		}
+		handler, err := httpapi.New(httpapi.Options{
+			Config: cfg, Reader: publicReader, Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
+			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
+			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
+			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
+			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
+			UserAuth: userAuthenticator, UserAdministration: userAdministration,
+			Billing: billingDispatcher, BillingReader: billingReader, Quota: quota,
+			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
+			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
+		})
+		if err != nil {
+			return err
+		}
+		outerLimiter := limiter
+		if cfg.Features.X402Billing {
+			outerLimiter = auth.NewMemoryLimiter(nil)
+			if redisAccelerator != nil {
+				outerLimiter = redisAccelerator.Limiter(outerLimiter)
+			}
+		}
+		publicHandler, err := b.protectPublicAPI(db, cfg, registry, outerLimiter, handler)
 		if err != nil {
 			return err
 		}
@@ -747,6 +800,14 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}); err != nil {
 			return err
 		}
+		// Authentication and billing housekeeping deliberately receives only
+		// the writer pool. The maintenance role does not load the API-only
+		// session, fingerprint, or facilitator-header Secrets.
+		if err := registerAuthBillingHousekeepers(
+			componentRegistry, db, cfg, logger,
+		); err != nil {
+			return err
+		}
 	}
 
 	for _, role := range []components.Role{
@@ -803,12 +864,16 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 	if err != nil {
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
-	protected := auth.RateMiddleware{
-		Limiter:        limiter,
-		Anonymous:      auth.Limit{Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst},
-		Observer:       observer,
-		TrustedProxies: trustedProxies,
-	}.Wrap(next)
+	protected := next
+	if !cfg.Features.X402Billing {
+		protected = auth.RateMiddleware{
+			Limiter: limiter,
+			Anonymous: auth.Limit{
+				Rate: cfg.Security.AnonymousRate, Burst: cfg.Security.AnonymousBurst,
+			},
+			Observer: observer, TrustedProxies: trustedProxies,
+		}.Wrap(protected)
+	}
 	if cfg.Security.APIKeyPepper != "" {
 		repository, err := auth.NewPostgresRepository(db)
 		if err != nil {
@@ -819,6 +884,18 @@ func (b *Backend) protectPublicAPI(db *sql.DB, cfg config.Config, observer auth.
 			MaxCompatibilityFormBodyBytes: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 		}
 		protected = manager.Middleware(false, protected)
+	}
+	if cfg.Features.X402Billing {
+		// The coarse per-peer bucket deliberately precedes API-key parsing. The
+		// handler's inner quota gate preserves the original anonymous/API-key
+		// policy after billing selects a paid versus bypass route.
+		protected = auth.RateMiddleware{
+			Limiter: limiter,
+			Anonymous: auth.Limit{
+				Rate: cfg.Billing.CoarseIPRate, Burst: cfg.Billing.CoarseIPBurst,
+			},
+			Observer: observer, TrustedProxies: trustedProxies,
+		}.Wrap(protected)
 	}
 	return httpapi.NFTMediaSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v2/api" {
@@ -920,6 +997,12 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 		case components.RoleMaintenance:
 			addWorkerComponentKeys(add, "45-maintenance", cfg.Runtime.WorkerCount)
 			add("46-search-catalog-maintenance")
+			if cfg.Features.UserAuth {
+				add("47-user-auth-cleanup")
+			}
+			if cfg.Features.X402Billing {
+				add("48-x402-billing-expiry")
+			}
 		}
 	}
 	keys := make([]string, 0, len(set))
