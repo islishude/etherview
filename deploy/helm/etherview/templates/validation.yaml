@@ -33,6 +33,101 @@
 {{- if and (not (empty $s3Session)) (empty $s3Access) }}
 {{- fail "externalSecret.s3SessionTokenRemoteKey requires the S3 access and secret remote keys" }}
 {{- end }}
+{{- if or .Values.config.features.user_auth .Values.config.features.x402_billing }}
+{{- $publicURL := .Values.config.server.public_url | trim }}
+{{- $secureOrigin := regexMatch "^https://([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]|\\[[0-9A-Fa-f:]+\\])(:[1-9][0-9]{0,4})?/?$" $publicURL }}
+{{- $loopbackOrigin := regexMatch "^http://(localhost|127\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}|\\[::1\\])(:[1-9][0-9]{0,4})?/?$" $publicURL }}
+{{- $portMatch := regexFind ":[1-9][0-9]{0,4}/?$" $publicURL | trimSuffix "/" | trimPrefix ":" }}
+{{- $portValid := or (empty $portMatch) (le (atoi $portMatch) 65535) }}
+{{- if or (not (or $secureOrigin $loopbackOrigin)) (not $portValid) }}
+{{- fail "config.server.public_url must be a root HTTPS origin when user auth or x402 billing is enabled (HTTP is allowed only for loopback development)" }}
+{{- end }}
+{{- end }}
+{{- if .Values.config.features.user_auth }}
+{{- if and .Values.externalSecret.enabled (empty (.Values.externalSecret.sessionPepperRemoteKey | trim)) }}
+{{- fail "externalSecret.sessionPepperRemoteKey is required when ExternalSecret-managed user auth is enabled" }}
+{{- end }}
+{{- end }}
+{{- if .Values.config.features.x402_billing }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when x402 billing is enabled" }}
+{{- end }}
+{{- if .Values.networkPolicy.allowExternalHTTPS }}
+{{- fail "networkPolicy.allowExternalHTTPS must be false when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
+{{- end }}
+{{- $x402AdditionalEgressError := "networkPolicy.additionalEgress must explicitly exclude TCP/443 when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
+{{- range $ruleIndex, $rule := .Values.networkPolicy.additionalEgress }}
+{{- if not (kindIs "map" $rule) }}
+{{- fail (printf "%s (rule %d is invalid)" $x402AdditionalEgressError $ruleIndex) }}
+{{- end }}
+{{- if not (hasKey $rule "ports") }}
+{{- fail (printf "%s (rule %d omits ports)" $x402AdditionalEgressError $ruleIndex) }}
+{{- end }}
+{{- $ports := get $rule "ports" }}
+{{- if or (not (kindIs "slice" $ports)) (eq (len $ports) 0) }}
+{{- fail (printf "%s (rule %d has no explicit ports)" $x402AdditionalEgressError $ruleIndex) }}
+{{- end }}
+{{- range $portIndex, $portRule := $ports }}
+{{- if not (kindIs "map" $portRule) }}
+{{- fail (printf "%s (rule %d port %d is invalid)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- $protocol := "TCP" }}
+{{- if hasKey $portRule "protocol" }}
+{{- $protocol = upper (toString (get $portRule "protocol")) }}
+{{- end }}
+{{- if not (has $protocol (list "TCP" "UDP" "SCTP")) }}
+{{- fail (printf "%s (rule %d port %d has an invalid protocol)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- if eq $protocol "TCP" }}
+{{- if not (hasKey $portRule "port") }}
+{{- fail (printf "%s (rule %d port %d omits the TCP port)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- $startText := toString (get $portRule "port") }}
+{{- if not (regexMatch "^[1-9][0-9]{0,4}$" $startText) }}
+{{- fail (printf "%s (rule %d port %d must use a numeric TCP port)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- $startPort := atoi $startText }}
+{{- if gt $startPort 65535 }}
+{{- fail (printf "%s (rule %d port %d is outside the TCP port range)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- $endPort := $startPort }}
+{{- if hasKey $portRule "endPort" }}
+{{- $endText := toString (get $portRule "endPort") }}
+{{- if not (regexMatch "^[1-9][0-9]{0,4}$" $endText) }}
+{{- fail (printf "%s (rule %d port %d has an invalid TCP endPort)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- $endPort = atoi $endText }}
+{{- if or (gt $endPort 65535) (lt $endPort $startPort) }}
+{{- fail (printf "%s (rule %d port %d has an invalid TCP range)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- end }}
+{{- if and (le $startPort 443) (ge $endPort 443) }}
+{{- fail (printf "%s (rule %d port %d includes TCP/443)" $x402AdditionalEgressError $ruleIndex $portIndex) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if eq (len .Values.config.billing.facilitator_allowed_cidrs) 0 }}
+{{- fail "config.billing.facilitator_allowed_cidrs must contain at least one CIDR when x402 billing is enabled" }}
+{{- end }}
+{{- range $runtimeCIDR := .Values.networkPolicy.runtimeHTTPSCIDRs }}
+{{- if or (eq $runtimeCIDR "0.0.0.0/0") (eq $runtimeCIDR "::/0") }}
+{{- fail "networkPolicy.runtimeHTTPSCIDRs must not contain an internet-wide CIDR when x402 billing is enabled" }}
+{{- end }}
+{{- if has $runtimeCIDR $.Values.config.billing.facilitator_allowed_cidrs }}
+{{- fail "networkPolicy.runtimeHTTPSCIDRs must not repeat a facilitator CIDR; facilitator TCP/443 egress is API/all-only" }}
+{{- end }}
+{{- end }}
+{{- $facilitatorURL := .Values.config.billing.facilitator_url | trim }}
+{{- $facilitatorOrigin := regexMatch "^https://([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]|\\[[0-9A-Fa-f:]+\\])(:[1-9][0-9]{0,4})?/?$" $facilitatorURL }}
+{{- $facilitatorPort := regexFind ":[1-9][0-9]{0,4}/?$" $facilitatorURL | trimSuffix "/" | trimPrefix ":" }}
+{{- if or (not $facilitatorOrigin) (and (not (empty $facilitatorPort)) (ne $facilitatorPort "443")) }}
+{{- fail "config.billing.facilitator_url must be a root HTTPS origin using the default port or explicit :443 when Helm x402 billing is enabled" }}
+{{- end }}
+{{- if and .Values.externalSecret.enabled (empty (.Values.externalSecret.x402FingerprintPepperRemoteKey | trim)) }}
+{{- fail "externalSecret.x402FingerprintPepperRemoteKey is required when ExternalSecret-managed x402 billing is enabled" }}
+{{- end }}
+{{- end }}
 {{- $int32Max := int64 2147483647 }}
 {{- $databaseMax := int64 .Values.config.database.max_connections }}
 {{- $databaseMin := int64 .Values.config.database.min_connections }}

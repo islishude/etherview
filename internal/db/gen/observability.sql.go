@@ -29,6 +29,27 @@ WITH metric_rows AS (
     FROM repair_requests
     WHERE chain_id = $1::numeric
       AND status IN ('queued', 'running')
+    UNION ALL
+    SELECT 'billing'::text,
+           operation,
+           CASE
+               WHEN failure_code = 'settlement_unknown'
+                   THEN 'settlement_unknown'
+               ELSE 'unmarked_after_timeout'
+           END
+    FROM billing_payments
+    WHERE chain_id = $1::numeric
+      AND state = 'settling'
+      AND (
+          failure_code = 'settlement_unknown'
+          OR (
+              failure_code IS NULL
+              AND settling_at <= now() - (
+                  $2::bigint
+                  * interval '1 microsecond'
+              )
+          )
+      )
 ), grouped AS (
     SELECT metric_kind, metric_name, metric_status,
            count(*)::bigint AS metric_count
@@ -60,8 +81,8 @@ type OperationalMetricSnapshotRow struct {
 	RepairOldestSeconds *float64 `db:"repair_oldest_seconds" json:"repair_oldest_seconds"`
 }
 
-func (q *Queries) OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric) ([]OperationalMetricSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, operationalMetricSnapshot, chainID)
+func (q *Queries) OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error) {
+	rows, err := q.db.Query(ctx, operationalMetricSnapshot, chainID, settlementCrashDelayMicroseconds)
 	if err != nil {
 		return nil, err
 	}

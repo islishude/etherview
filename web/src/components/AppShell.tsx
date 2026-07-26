@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { usePublicConfig } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
@@ -13,6 +14,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const publicConfig = usePublicConfig();
+  const auth = useAuth();
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -98,6 +100,27 @@ export function AppShell() {
           <Link activeProps={{ className: "active" }} to="/status">
             {t("nav.status")}
           </Link>
+          {auth.enabled && (
+            <Link activeProps={{ className: "active" }} to="/account">
+              {t("nav.account")}
+            </Link>
+          )}
+          {auth.session.authenticated &&
+            auth.session.user?.role === "admin" && (
+              <>
+                <Link activeProps={{ className: "active" }} to="/admin/users">
+                  {t("nav.adminUsers")}
+                </Link>
+                {publicConfig.data?.features.x402_billing === true && (
+                  <Link
+                    activeProps={{ className: "active" }}
+                    to="/admin/billing"
+                  >
+                    {t("nav.adminBilling")}
+                  </Link>
+                )}
+              </>
+            )}
         </nav>
       </header>
 

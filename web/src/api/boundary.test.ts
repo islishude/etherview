@@ -85,6 +85,8 @@ describe("browser backend boundary", () => {
     expect(publicSurface).not.toMatch(
       /\b(?:EIP1193Provider|EIP6963ProviderDetail|provider|detail|request|removeListener)\b/u,
     );
+    expect(publicSurface).toContain("signSIWEChallenge");
+    expect(publicSurface).not.toMatch(/\bsignMessage\b/u);
     expect(syntax.rawRequestCalls).toBe(1);
     expect(
       [...new Set(syntax.requestProviderCalls.filter((method) => method !== undefined))].sort(),
@@ -127,6 +129,7 @@ const allowedWalletMethods = new Set([
   "eth_chainId",
   "eth_requestAccounts",
   "eth_sendTransaction",
+  "personal_sign",
 ]);
 
 function productionSources(directory: string): string[] {

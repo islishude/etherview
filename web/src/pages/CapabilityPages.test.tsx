@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
 import { makeRouter } from "@/router";
+import { AuthProvider } from "@/auth/AuthProvider";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { WalletProvider } from "@/wallet/WalletProvider";
 
@@ -528,7 +529,9 @@ function renderExplorer(path: string) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <WalletProvider>
-          <RouterProvider router={router} />
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
         </WalletProvider>
       </ThemeProvider>
     </QueryClientProvider>,

@@ -1342,6 +1342,45 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.wallet-auth-section {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.wallet-auth-section p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.authenticated-user {
+  min-width: 0;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.7rem;
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+}
+
+.authenticated-user > span:last-child {
+  min-width: 0;
+  display: grid;
+}
+
+.authenticated-user strong,
+.authenticated-user small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authenticated-user small {
+  color: var(--text-soft);
+}
+
 .wallet-monogram {
   width: 2.1rem;
   height: 2.1rem;
@@ -1424,6 +1463,489 @@ tbody tr:hover {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
+.form-success {
+  padding: 0.8rem;
+  margin: 0;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.identity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.identity-card {
+  min-width: 0;
+  display: grid;
+  gap: 0.7rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.identity-card-heading {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.identity-card h2,
+.identity-card p,
+.identity-card strong {
+  margin: 0;
+}
+
+.identity-card h2 {
+  font-size: 0.85rem;
+}
+
+.identity-card > strong {
+  font-size: 1.25rem;
+}
+
+.identity-card code {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.identity-card p {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.auth-action-panel {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.auth-action-panel h2,
+.auth-action-panel p {
+  margin: 0;
+}
+
+.auth-action-panel h2 {
+  font-size: 1.25rem;
+}
+
+.auth-action-panel p {
+  max-width: 760px;
+  margin-top: 0.45rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.auth-action-panel .button {
+  flex: 0 0 auto;
+}
+
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.profile-panel,
+.session-panel,
+.auth-gate {
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.profile-panel .panel-heading {
+  min-height: 0;
+  padding-bottom: 0.9rem;
+}
+
+.user-state,
+.current-user-label {
+  display: inline-flex;
+  width: max-content;
+  padding: 0.24rem 0.5rem;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.user-state.disabled {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.profile-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 1rem;
+}
+
+.profile-details > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-details > div:nth-child(odd) {
+  padding-right: 0.85rem;
+}
+
+.profile-details dt,
+.admin-user-card dt {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.profile-details dd,
+.admin-user-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-details code {
+  overflow-wrap: anywhere;
+}
+
+.profile-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.profile-form .button {
+  justify-self: start;
+}
+
+.session-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.session-panel h2,
+.session-panel p,
+.auth-gate h2,
+.auth-gate p {
+  margin: 0;
+}
+
+.session-panel h2,
+.auth-gate h2 {
+  font-size: 1.1rem;
+}
+
+.session-panel p,
+.auth-gate p {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.session-panel .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-gate {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.admin-toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-toolbar p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.admin-toolbar-actions,
+.admin-surface-links,
+.billing-filter-actions,
+.billing-ledger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.admin-toolbar-actions a,
+.admin-surface-links a {
+  text-decoration: none;
+}
+
+.admin-surface-links {
+  justify-content: flex-end;
+}
+
+.admin-surface-links > span {
+  padding: 0.65rem 1rem;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.billing-history-section,
+.billing-summary-section,
+.billing-ledger-section {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.billing-section-heading {
+  min-height: 0;
+  align-items: flex-start;
+  padding-bottom: 1rem;
+}
+
+.billing-section-heading > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.billing-section-heading h2,
+.billing-section-heading p {
+  margin: 0;
+}
+
+.billing-section-heading h2 {
+  font-size: 1.2rem;
+}
+
+.billing-section-heading p {
+  max-width: 760px;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.billing-boundary-note {
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--brand);
+}
+
+.billing-filter-form {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.billing-filter-form fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.billing-filter-form legend {
+  padding: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.billing-filter-form fieldset > p {
+  margin: 0.4rem 0 1rem;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.billing-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.billing-filter-actions {
+  justify-content: flex-end;
+}
+
+.billing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.billing-summary-grid > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem;
+}
+
+.billing-summary-grid dt {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.billing-summary-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.billing-table {
+  max-width: 100%;
+  box-shadow: none;
+}
+
+.billing-table table {
+  min-width: 1120px;
+}
+
+.billing-table td {
+  max-width: 20rem;
+  vertical-align: top;
+  font-size: 0.78rem;
+}
+
+.billing-address,
+.billing-hash,
+.billing-quantity {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.billing-quantity {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-state {
+  display: inline-flex;
+  width: max-content;
+  padding: 0.24rem 0.5rem;
+  color: var(--text-soft);
+  background: var(--surface-strong);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.billing-state.settled,
+.billing-state.verified {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+}
+
+.billing-state.failed,
+.billing-state.unknown {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.billing-state.settling,
+.billing-state.reserved {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.billing-empty {
+  padding: 1rem;
+  margin: 0;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.billing-ledger-actions {
+  justify-content: flex-end;
+}
+
+.billing-ledger-actions > span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.admin-user-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-user-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.75fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.admin-user-card > header {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.admin-user-card > header > div {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.admin-user-card > header code {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.admin-user-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.admin-user-card dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.admin-user-controls {
+  min-width: 250px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.admin-user-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.current-user-label {
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
 .contract-form {
   display: grid;
   gap: 0.5rem;
@@ -1498,7 +2020,8 @@ tbody tr:hover {
 }
 
 .range-form label,
-.field-control > span {
+.field-control > span,
+.field-control > label {
   color: var(--text-soft);
   font-size: 0.72rem;
   font-weight: 750;
@@ -1876,8 +2399,22 @@ tbody tr:hover {
   .status-layout,
   .contract-layout,
   .verification-layout,
-  .verification-read-layout {
+  .verification-read-layout,
+  .account-layout {
     grid-template-columns: 1fr;
+  }
+
+  .billing-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-card {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.7fr);
+  }
+
+  .admin-user-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .aggregate-stats-grid {
@@ -2024,6 +2561,49 @@ tbody tr:hover {
   .contract-query-form,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .identity-grid,
+  .profile-details,
+  .admin-user-card,
+  .admin-user-card dl,
+  .admin-user-controls,
+  .billing-filter-grid,
+  .billing-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-action-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-action-panel .button {
+    width: 100%;
+  }
+
+  .admin-user-actions {
+    grid-column: auto;
+  }
+
+  .admin-toolbar,
+  .billing-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-toolbar-actions,
+  .billing-filter-actions,
+  .billing-ledger-actions {
+    justify-content: stretch;
+  }
+
+  .admin-toolbar-actions > *,
+  .billing-filter-actions > *,
+  .billing-ledger-actions > .button,
+  .billing-section-heading > .button {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .range-form label,

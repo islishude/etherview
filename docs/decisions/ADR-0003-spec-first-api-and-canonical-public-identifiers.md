@@ -27,7 +27,8 @@ authoritative empty result.
   consumers receive only bounded display metadata, the selected account, and
   normalized chain ID.
 - The wallet boundary has a closed RPC allowlist: `eth_requestAccounts`,
-  `eth_accounts`, `eth_chainId`, `eth_call`, and `eth_sendTransaction`.
+  `eth_accounts`, `eth_chainId`, `eth_call`, `eth_sendTransaction`, and the
+  SIWE-only `personal_sign`.
   Every contract operation rechecks the selected account and configured chain,
   binds `from` and `chainId` in its call object, bounds calldata/value/results,
   and rejects malformed provider responses without trusting provider-owned
@@ -37,6 +38,16 @@ authoritative empty result.
   hash or changed completion session is an unknown outcome that must be checked
   in the wallet before retrying. Provider error messages and data never reach
   the DOM; stable local codes select bilingual text.
+- `personal_sign` is reachable only through the bounded
+  `signSIWEChallenge(AuthChallenge)` capability defined by ADR-0020. The
+  capability itself reads the generated public configuration and rejects
+  arbitrary messages: the canonical EIP-4361 scheme, authority, URI, chain,
+  EIP-55 address, request ID, and expiration must match the current browser
+  origin, configured chain, selected account, and challenge envelope. Its
+  payload is then the exact server-authored message encoded as UTF-8 hexadecimal
+  plus the exact selected account. It has the same
+  provider/account/chain/session preflight and completion fence as contract
+  operations and cannot be used as a general signing primitive.
 - Successful native responses use `{data,meta}`. Errors use
   `{error:{code,message,details,request_id}}`.
 - Quantities that can exceed JavaScript precision are decimal strings;

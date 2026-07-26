@@ -28,12 +28,14 @@ export const EIP6963_REQUEST_EVENT = "eip6963:requestProvider";
 
 export const MAX_CONTRACT_CALLDATA_BYTES = 128 * 1024;
 export const MAX_CONTRACT_RESULT_BYTES = 1024 * 1024;
+export const MAX_SIGN_MESSAGE_BYTES = 4096;
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const HEX_DATA_PATTERN = /^0x(?:[0-9a-f]{2})*$/iu;
 const HEX_QUANTITY_PATTERN = /^0x(?:0|[1-9a-f][0-9a-f]*)$/iu;
 const TRANSACTION_HASH_PATTERN = /^0x[0-9a-f]{64}$/iu;
+const WALLET_SIGNATURE_PATTERN = /^0x[0-9a-f]{130}$/iu;
 const MAX_UINT256 = (1n << 256n) - 1n;
 
 export function snapshotProviderDetail(value: unknown): EIP6963ProviderDetail | undefined {
@@ -280,6 +282,14 @@ export function isTransactionHash(value: unknown): value is `0x${string}` {
     typeof value === "string" &&
     value.length === 66 &&
     TRANSACTION_HASH_PATTERN.test(value)
+  );
+}
+
+export function isWalletSignature(value: unknown): value is `0x${string}` {
+  return (
+    typeof value === "string" &&
+    value.length === 132 &&
+    WALLET_SIGNATURE_PATTERN.test(value)
   );
 }
 

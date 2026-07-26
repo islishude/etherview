@@ -44,7 +44,7 @@ HELM_CHART ?= deploy/helm/etherview
 	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
-	test-e2e test-integration test-load test-race test-soak \
+	test-e2e test-integration test-load test-race test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test
 
 go-build: web-build
@@ -106,6 +106,11 @@ test-integration:
 	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate status; \
 	ETHERVIEW_TEST_DATABASE_URL="$$INTEGRATION_DATABASE_URL" \
 		$(GO) test -count=1 -tags=integration $(GO_PACKAGES)
+
+# This opt-in target sends exactly one real Base Sepolia payment. It is
+# intentionally absent from check, CI, and the ordinary integration suite.
+test-x402-testnet:
+	$(GO) run ./cmd/x402testnet
 
 test-load:
 	@$(GO) run ./cmd/loadtest
@@ -173,7 +178,7 @@ security-check: security-tool-check web-build
 	fi
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
-	$(GO) test ./internal/auth ./internal/metadata ./internal/verify ./web
+	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
 license-tool-check:
 	@command -v "$(GO_LICENSES)" >/dev/null 2>&1 || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }
@@ -184,7 +189,13 @@ license-check: license-tool-check web-install
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
-	$(GO_LICENSES) check $(GO_PACKAGES) --allowed_licenses=0BSD,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
+	@grep -Eq '^COPY .*THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md$$' Dockerfile || { echo "license-check: production image must include third-party notices"; exit 1; }
+	@grep -Eq '^COPY .*go-ethereum-LGPL-3.0-or-later.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum LGPL text"; exit 1; }
+	@grep -Eq '^COPY .*go-ethereum-crypto-keccak-BSD-3-Clause.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum keccak license"; exit 1; }
+	@grep -Eq '^COPY .*go-ethereum-crypto-secp256k1-BSD-3-Clause.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum secp256k1 license"; exit 1; }
+	@grep -Eq '^COPY .*libsecp256k1-MIT.txt$$' Dockerfile || { echo "license-check: production image must include the bundled libsecp256k1 license"; exit 1; }
+	@grep -Eq '^COPY .*go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt$$' Dockerfile || { echo "license-check: production image must include the go-ethereum metrics license"; exit 1; }
+	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
 	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
 		--start web --production --excludePrivatePackages --summary \
 		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'

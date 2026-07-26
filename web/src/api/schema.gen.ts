@@ -36,6 +36,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/billing/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminBillingPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/billing/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminBillingSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateAdminUser"];
+        trace?: never;
+    };
+    "/admin/users/{id}/sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeAdminUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createAuthChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["logoutAuthSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAuthSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyAuthChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBillingConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCurrentUserBillingPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/blocks": {
         parameters: {
             query?: never;
@@ -395,6 +571,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateCurrentUser"];
+        trace?: never;
+    };
     "/verification/jobs": {
         parameters: {
             query?: never;
@@ -465,6 +657,10 @@ export interface components {
             /** @enum {string} */
             type: "eoa" | "contract" | "delegated_eoa" | "unknown";
         };
+        AdminUserUpdate: {
+            role?: components["schemas"]["UserRole"];
+            status?: components["schemas"]["UserStatus"];
+        };
         AggregateStats: {
             /** @description Weighted TPS across only blocks with an exact parent interval; omitted when the range has no such interval. */
             average_tps?: components["schemas"]["Decimal"];
@@ -499,6 +695,112 @@ export interface components {
             };
             message: string;
             request_id: string;
+        };
+        AuthChallenge: {
+            /** Format: uuid */
+            challenge_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            message: string;
+        };
+        AuthChallengeRequest: {
+            address: components["schemas"]["Address"];
+        };
+        AuthChallengeResponse: {
+            data: components["schemas"]["AuthChallenge"];
+            meta: components["schemas"]["Meta"];
+        };
+        AuthSession: {
+            authenticated: boolean;
+            csrf_token?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            user?: components["schemas"]["User"] | null;
+        };
+        AuthSessionResponse: {
+            data: components["schemas"]["AuthSession"];
+            meta: components["schemas"]["Meta"];
+        };
+        AuthVerifyRequest: {
+            /** Format: uuid */
+            challenge_id: string;
+            signature: string;
+        };
+        /** @enum {string} */
+        BillingAccess: "x402" | "api_key_or_x402";
+        /** @description A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256. */
+        BillingAggregateQuantity: string;
+        BillingConfig: {
+            asset?: components["schemas"]["Address"];
+            asset_decimals?: number;
+            asset_eip712_name?: string;
+            asset_eip712_version?: string;
+            enabled: boolean;
+            network?: string;
+            recipient?: components["schemas"]["Address"];
+            routes: components["schemas"]["BillingRoutePrice"][];
+            /** @enum {string} */
+            scheme: "exact";
+            /** @enum {integer} */
+            x402_version: 2;
+        };
+        BillingConfigResponse: {
+            data: components["schemas"]["BillingConfig"];
+            meta: components["schemas"]["Meta"];
+        };
+        BillingPayment: {
+            amount_atomic: components["schemas"]["Quantity"];
+            api_key_prefix?: string | null;
+            asset: components["schemas"]["Address"];
+            /** Format: date-time */
+            created_at: string;
+            failure_code?: string | null;
+            /** Format: uuid */
+            id: string;
+            network: string;
+            operation: string;
+            payer?: components["schemas"]["Address"] | null;
+            recipient: components["schemas"]["Address"];
+            /** Format: date-time */
+            settled_at?: string | null;
+            state: components["schemas"]["BillingPaymentState"];
+            transaction_hash?: components["schemas"]["Hash"] | null;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: uuid */
+            user_id?: string | null;
+        };
+        BillingPaymentListResponse: {
+            data: components["schemas"]["BillingPayment"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        BillingPaymentState: "reserved" | "verified" | "settling" | "settled" | "failed" | "expired";
+        BillingRoutePrice: {
+            access: components["schemas"]["BillingAccess"];
+            amount_atomic: components["schemas"]["Quantity"];
+            operation: string;
+        };
+        BillingSummary: {
+            amount_atomic: components["schemas"]["BillingAggregateQuantity"];
+            /** Format: date-time */
+            from_time: string;
+            payment_count: components["schemas"]["BillingAggregateQuantity"];
+            rows: components["schemas"]["BillingSummaryRow"][];
+            /** Format: date-time */
+            to_time: string;
+        };
+        BillingSummaryResponse: {
+            data: components["schemas"]["BillingSummary"];
+            meta: components["schemas"]["Meta"];
+        };
+        BillingSummaryRow: {
+            amount_atomic: components["schemas"]["BillingAggregateQuantity"];
+            asset: components["schemas"]["Address"];
+            network: string;
+            operation: string;
+            payment_count: components["schemas"]["BillingAggregateQuantity"];
+            state: components["schemas"]["BillingPaymentState"];
         };
         Block: {
             base_fee_per_gas?: components["schemas"]["Quantity"];
@@ -682,6 +984,13 @@ export interface components {
             label: string;
             rank: number;
         };
+        SessionRevocation: {
+            revoked_sessions: components["schemas"]["Quantity"];
+        };
+        SessionRevocationResponse: {
+            data: components["schemas"]["SessionRevocation"];
+            meta: components["schemas"]["Meta"];
+        };
         SourcifyContract: {
             address: components["schemas"]["Address"];
             chain_id: components["schemas"]["Quantity"];
@@ -862,6 +1171,36 @@ export interface components {
             data: components["schemas"]["TransactionTrace"];
             meta: components["schemas"]["Meta"];
         };
+        User: {
+            address: components["schemas"]["Address"];
+            chain_id: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            created_at: string;
+            display_name?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_login_at?: string;
+            role: components["schemas"]["UserRole"];
+            status: components["schemas"]["UserStatus"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        UserListResponse: {
+            data: components["schemas"]["User"][];
+            meta: components["schemas"]["Meta"];
+        };
+        UserProfileUpdate: {
+            display_name: string | null;
+        };
+        UserResponse: {
+            data: components["schemas"]["User"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        UserRole: "user" | "admin";
+        /** @enum {string} */
+        UserStatus: "active" | "disabled";
         VerificationJob: {
             /** Format: date-time */
             created_at: string;
@@ -941,15 +1280,43 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
+        /** @description Payment is required for the selected operation and canonical resource. */
+        PaymentRequired: {
+            headers: {
+                "PAYMENT-REQUIRED": components["headers"]["PaymentRequired"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
     };
     parameters: {
         Address: components["schemas"]["Address"];
+        BillingAssetFilter: components["schemas"]["Address"];
+        /** @description Inclusive lower time bound. Summary requests default to 24 hours before to_time. */
+        BillingFromTime: string;
+        BillingNetworkFilter: string;
+        BillingOperationFilter: string;
+        BillingStateFilter: components["schemas"]["BillingPaymentState"];
+        /** @description Exclusive upper time bound, defaulting to the current server time. */
+        BillingToTime: string;
+        CSRFToken: string;
         Cursor: components["schemas"]["OpaqueCursor"];
         Limit: number;
+        /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+        PaymentSignature: string;
+        SearchLimit: number;
         TransactionHash: components["schemas"]["Hash"];
+        UserID: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description Base64-encoded x402 v2 payment requirements for the canonical resource. */
+        PaymentRequired: string;
+        /** @description Base64-encoded x402 v2 settlement response released only after durable settlement. */
+        PaymentResponse: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -957,7 +1324,10 @@ export interface operations {
     getAddress: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -968,12 +1338,14 @@ export interface operations {
             /** @description Address summary at one canonical block. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AddressResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -983,7 +1355,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -994,16 +1369,80 @@ export interface operations {
             /** @description Positive canonical ERC-721/ERC-1155 balances for an owner. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["NFTBalanceListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
-    listBlocks: {
+    listAdminBillingPayments: {
+        parameters: {
+            query?: {
+                asset?: components["parameters"]["BillingAssetFilter"];
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Inclusive lower time bound. Summary requests default to 24 hours before to_time. */
+                from_time?: components["parameters"]["BillingFromTime"];
+                limit?: components["parameters"]["Limit"];
+                network?: components["parameters"]["BillingNetworkFilter"];
+                operation?: components["parameters"]["BillingOperationFilter"];
+                state?: components["parameters"]["BillingStateFilter"];
+                /** @description Exclusive upper time bound, defaulting to the current server time. */
+                to_time?: components["parameters"]["BillingToTime"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Administrator payment ledger view with writer-authoritative filters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPaymentListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAdminBillingSummary: {
+        parameters: {
+            query?: {
+                asset?: components["parameters"]["BillingAssetFilter"];
+                /** @description Inclusive lower time bound. Summary requests default to 24 hours before to_time. */
+                from_time?: components["parameters"]["BillingFromTime"];
+                network?: components["parameters"]["BillingNetworkFilter"];
+                operation?: components["parameters"]["BillingOperationFilter"];
+                state?: components["parameters"]["BillingStateFilter"];
+                /** @description Exclusive upper time bound, defaulting to the current server time. */
+                to_time?: components["parameters"]["BillingToTime"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Administrator billing totals for a bounded interval, defaulting to the last 24 hours. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingSummaryResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAdminUsers: {
         parameters: {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
@@ -1015,22 +1454,247 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Chain-scoped users ordered newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAdminUser: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated target user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAdminUserSessions: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All active sessions for the target user are revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRevocationResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAuthChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthChallengeRequest"];
+            };
+        };
+        responses: {
+            /** @description A short-lived server-authored SIWE message. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthChallengeResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    logoutAuthSession: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current session is revoked and its Cookie is cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAuthSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authenticated session, or an unauthenticated state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyAuthChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Authenticated user session. */
+            201: {
+                headers: {
+                    /** @description HttpOnly SameSite session Cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getBillingConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public x402 protocol and route-price configuration without facilitator details. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingConfigResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCurrentUserBillingPayments: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payments already attributed to the current authenticated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingPaymentListResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listBlocks: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
             /** @description Canonical blocks ordered newest first. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["BlockListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
     getBlock: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 /** @description Decimal/hex block number or 32-byte block hash. */
                 id: string;
@@ -1042,12 +1706,14 @@ export interface operations {
             /** @description Block selected by canonical height or exact hash. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["BlockResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1077,7 +1743,10 @@ export interface operations {
             query: {
                 code_hash: components["schemas"]["Hash"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -1088,12 +1757,14 @@ export interface operations {
             /** @description Verified contract artifact bound to the requested code hash. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["VerifiedContractResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1149,7 +1820,10 @@ export interface operations {
     getNFTOwner: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
                 token_id: components["schemas"]["Quantity"];
@@ -1161,12 +1835,14 @@ export interface operations {
             /** @description Canonical NFT ownership or balance for one token instance. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["NFTOwnershipResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1221,7 +1897,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1230,12 +1909,14 @@ export interface operations {
             /** @description Pending transactions ordered by first-seen time and hash, newest first. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PendingTransactionListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1243,10 +1924,13 @@ export interface operations {
         parameters: {
             query: {
                 cursor?: components["parameters"]["Cursor"];
-                limit?: components["parameters"]["Limit"];
+                limit?: components["parameters"]["SearchLimit"];
                 q: string;
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1255,19 +1939,24 @@ export interface operations {
             /** @description Ranked, non-auto-redirecting search results. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
     lookupSourcifyContract: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -1278,12 +1967,14 @@ export interface operations {
             /** @description Validated Sourcify contract summary. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SourcifyContractResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1324,7 +2015,10 @@ export interface operations {
     getSourcifyJob: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 /** @description Sourcify verification ticket ID. */
                 verification_id: string;
@@ -1336,12 +2030,14 @@ export interface operations {
             /** @description Current external verification job state. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SourcifyJobResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1351,7 +2047,10 @@ export interface operations {
                 from_block: components["schemas"]["Quantity"];
                 to_block: components["schemas"]["Quantity"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1360,12 +2059,14 @@ export interface operations {
             /** @description Complete canonical per-block statistics for a closed range. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["BlockStatListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1375,7 +2076,10 @@ export interface operations {
                 from_block: components["schemas"]["Quantity"];
                 to_block: components["schemas"]["Quantity"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1384,12 +2088,14 @@ export interface operations {
             /** @description Canonical aggregate statistics with explicit range completeness. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AggregateStatsResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1420,7 +2126,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1429,19 +2138,24 @@ export interface operations {
             /** @description Discovered token contracts at a stable canonical snapshot. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TokenListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
     getToken: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -1452,12 +2166,14 @@ export interface operations {
             /** @description A discovered token contract and metadata state. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1467,7 +2183,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -1478,12 +2197,14 @@ export interface operations {
             /** @description Canonical token events ordered newest first. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TokenEventListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
@@ -1493,7 +2214,10 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
             };
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1502,19 +2226,24 @@ export interface operations {
             /** @description Canonical transactions ordered by block and transaction index, newest first. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionListResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
     getTransaction: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 hash: components["parameters"]["TransactionHash"];
             };
@@ -1525,19 +2254,24 @@ export interface operations {
             /** @description Transaction and current inclusion. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };
     getTransactionTrace: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 hash: components["parameters"]["TransactionHash"];
             };
@@ -1548,10 +2282,39 @@ export interface operations {
             /** @description Normalized canonical transaction call tree. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionTraceResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    updateCurrentUser: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated current user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
                 };
             };
             default: components["responses"]["Error"];
@@ -1594,7 +2357,10 @@ export interface operations {
     getVerificationJob: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
             path: {
                 id: string;
             };
@@ -1605,12 +2371,14 @@ export interface operations {
             /** @description Current verification job state. */
             200: {
                 headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["VerificationJobResponse"];
                 };
             };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };

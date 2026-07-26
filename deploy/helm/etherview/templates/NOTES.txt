@@ -4,6 +4,22 @@ The application expects Secret {{ .Values.secrets.existingSecret | quote }} with
 key {{ .Values.secrets.databaseURLKey | quote }} and, for RPC-consuming roles,
 key {{ .Values.secrets.rpcURLsKey | quote }}.
 Optional API reads use key {{ .Values.secrets.databaseReadURLKey | quote }}.
+{{- if .Values.config.features.user_auth }}
+User authentication is enabled. The all/api application container also
+requires key {{ .Values.secrets.sessionPepperKey | quote }} with at least 32
+random bytes; migration, init, and worker containers do not receive it.
+{{- end }}
+{{- if .Values.config.features.x402_billing }}
+x402 billing is enabled. The all/api application container requires key
+{{ .Values.secrets.x402FingerprintPepperKey | quote }} with at least 32 random
+bytes and may use optional key
+{{ .Values.secrets.x402FacilitatorHeadersKey | quote }}. Its dedicated
+NetworkPolicy permits only the configured facilitator CIDRs on TCP/443.
+Configure reviewed non-facilitator HTTPS dependencies separately through
+networkPolicy.runtimeHTTPSCIDRs and keep both CIDR sets disjoint.
+Run `etherview doctor --config /etc/etherview/config.yaml` before exposing a
+paid route.
+{{- end }}
 Restart the release Deployments after rotating either database URL.
 
 {{- if eq .Values.mode "monolith" }}

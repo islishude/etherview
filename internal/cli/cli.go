@@ -22,6 +22,12 @@ const usage = `Usage:
   etherview admin api-key <create|rotate|revoke|list> [--config path] [arguments]
   etherview admin label <set|delete|list> [--config path] [arguments]
   etherview admin repair list [--config path] [--limit count] [--format json|table]
+  etherview admin user set-role --address address --role admin|user [--config path]
+  etherview admin user set-status --address address --status active|disabled [--config path]
+  etherview admin user revoke-sessions --address address [--config path]
+  etherview admin billing inspect --id uuid [--config path]
+  etherview admin billing reconcile --id uuid --outcome settled --transaction-hash hash [--config path]
+  etherview admin billing reconcile --id uuid --outcome failed [--config path]
   etherview version
 `
 
@@ -29,6 +35,7 @@ const usage = `Usage:
 // interface narrow makes every command testable without external services.
 type Backend interface {
 	Serve(context.Context, config.Config, []string) error
+	Doctor(context.Context, config.Config, []string) error
 	Migrate(context.Context, config.Config, string) error
 	Repair(context.Context, config.Config, string, []string) error
 	Admin(context.Context, config.Config, string, string, []string) error
@@ -74,7 +81,7 @@ func (p Program) Run(ctx context.Context, args []string) int {
 	case "serve":
 		err = p.runServe(ctx, args[1:])
 	case "doctor":
-		err = p.runDoctor(args[1:], stdout)
+		err = p.runDoctor(ctx, args[1:], stdout)
 	case "migrate":
 		err = p.runMigrate(ctx, args[1:])
 	case "repair", "reindex":
@@ -103,14 +110,19 @@ func (p Program) runServe(ctx context.Context, args []string) error {
 	if fs.NArg() != 0 {
 		return fmt.Errorf("serve: unexpected arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	cfg, err := config.Load(*path)
+	var (
+		cfg config.Config
+		err error
+	)
+	if *rolesFlag == "" {
+		cfg, err = config.Load(*path)
+	} else {
+		cfg, err = config.LoadForRoles(*path, strings.Split(*rolesFlag, ","))
+	}
 	if err != nil {
 		return err
 	}
 	roles := cfg.Runtime.Roles
-	if *rolesFlag != "" {
-		roles = strings.Split(*rolesFlag, ",")
-	}
 	normalized, err := config.NormalizeRoles(roles)
 	if err != nil {
 		return err
@@ -121,7 +133,7 @@ func (p Program) runServe(ctx context.Context, args []string) error {
 	return p.Backend.Serve(ctx, cfg, normalized)
 }
 
-func (p Program) runDoctor(args []string, stdout io.Writer) error {
+func (p Program) runDoctor(ctx context.Context, args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	path := fs.String("config", "", "configuration file")
@@ -140,6 +152,10 @@ func (p Program) runDoctor(args []string, stdout io.Writer) error {
 		return err
 	}
 	roleErr := cfg.ValidateForRoles(roles)
+	checkErr := roleErr
+	if roleErr == nil {
+		checkErr = p.Backend.Doctor(ctx, cfg, roles)
+	}
 	type endpoint struct {
 		Name     string   `json:"name"`
 		Purposes []string `json:"purposes"`
@@ -154,13 +170,13 @@ func (p Program) runDoctor(args []string, stdout io.Writer) error {
 		RPCEndpoints []endpoint `json:"rpc_endpoints"`
 		Errors       []string   `json:"errors,omitempty"`
 	}{
-		Valid:       roleErr == nil,
+		Valid:       checkErr == nil,
 		ChainID:     fmt.Sprint(cfg.Chain.ID),
 		GenesisHash: cfg.Chain.GenesisHash,
 		StartBlock:  fmt.Sprint(cfg.Chain.StartBlock),
 		Roles:       roles,
 		DatabaseSet: strings.TrimSpace(cfg.Database.URL) != "",
-		Errors:      validationMessages(roleErr),
+		Errors:      validationMessages(checkErr),
 	}
 	for _, item := range cfg.RPC.Endpoints {
 		result.RPCEndpoints = append(result.RPCEndpoints, endpoint{Name: item.Name, Purposes: item.Purposes})
@@ -170,7 +186,7 @@ func (p Program) runDoctor(args []string, stdout io.Writer) error {
 	if err := encoder.Encode(result); err != nil {
 		return err
 	}
-	return roleErr
+	return checkErr
 }
 
 func validationMessages(err error) []string {
@@ -217,11 +233,30 @@ func (p Program) runRepair(ctx context.Context, kind string, args []string) erro
 }
 
 func (p Program) runAdmin(ctx context.Context, args []string) error {
-	if len(args) < 2 || (args[0] != "api-key" && args[0] != "label" && args[0] != "repair") {
-		return errors.New("admin requires api-key, label, or repair and an action")
+	if len(args) < 2 ||
+		(args[0] != "api-key" && args[0] != "label" &&
+			args[0] != "repair" && args[0] != "user" &&
+			args[0] != "billing") {
+		return errors.New(
+			"admin requires api-key, label, repair, user, or billing and an action",
+		)
 	}
 	resource, action := args[0], args[1]
-	cfg, rest, err := loadConfigFlag("admin", args[2:])
+	var (
+		cfg  config.Config
+		rest []string
+		err  error
+	)
+	if resource == "billing" || resource == "user" {
+		// User and billing administration need only the writer database.
+		// Loading as a non-API role prevents these commands from opening
+		// session, fingerprint, or facilitator-header Secret files.
+		cfg, rest, err = loadConfigFlagForRoles(
+			"admin", args[2:], []string{"maintenance"},
+		)
+	} else {
+		cfg, rest, err = loadConfigFlag("admin", args[2:])
+	}
 	if err != nil {
 		return err
 	}
@@ -237,6 +272,19 @@ func loadConfigFlag(name string, args []string) (config.Config, []string, error)
 		return config.Config{}, nil, err
 	}
 	cfg, err := config.Load(path)
+	return cfg, rest, err
+}
+
+func loadConfigFlagForRoles(
+	name string,
+	args []string,
+	roles []string,
+) (config.Config, []string, error) {
+	path, rest, err := extractConfigFlag(name, args)
+	if err != nil {
+		return config.Config{}, nil, err
+	}
+	cfg, err := config.LoadForRoles(path, roles)
 	return cfg, rest, err
 }
 

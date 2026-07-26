@@ -35,7 +35,35 @@
         "autoscaling": {"$ref": "#/$defs/autoscaling"}
       }
     },
-    "secretKey": {"type": "string", "minLength": 1, "maxLength": 253}
+    "secretKey": {"type": "string", "minLength": 1, "maxLength": 253},
+    "networkPolicyPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {"type": "string", "enum": ["TCP", "UDP", "SCTP"]},
+        "port": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1, "maximum": 65535},
+            {"type": "string", "minLength": 1, "maxLength": 63}
+          ]
+        },
+        "endPort": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
+    "networkPolicyEgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "ports": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/networkPolicyPort"}
+        }
+      }
+    }
   },
   "type": "object",
   "required": [
@@ -224,6 +252,9 @@
         "databaseReadURLKey",
         "rpcURLsKey",
         "apiKeyPepperKey",
+        "sessionPepperKey",
+        "x402FingerprintPepperKey",
+        "x402FacilitatorHeadersKey",
         "natsURLKey",
         "redisURLKey",
         "s3AccessKeyKey",
@@ -238,6 +269,9 @@
         "databaseReadURLKey": {"$ref": "#/$defs/secretKey"},
         "rpcURLsKey": {"$ref": "#/$defs/secretKey"},
         "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
+        "sessionPepperKey": {"$ref": "#/$defs/secretKey"},
+        "x402FingerprintPepperKey": {"$ref": "#/$defs/secretKey"},
+        "x402FacilitatorHeadersKey": {"$ref": "#/$defs/secretKey"},
         "natsURLKey": {"$ref": "#/$defs/secretKey"},
         "redisURLKey": {"$ref": "#/$defs/secretKey"},
         "s3AccessKeyKey": {"$ref": "#/$defs/secretKey"},
@@ -259,6 +293,9 @@
         "databaseReadURLRemoteKey",
         "rpcURLsRemoteKey",
         "apiKeyPepperRemoteKey",
+        "sessionPepperRemoteKey",
+        "x402FingerprintPepperRemoteKey",
+        "x402FacilitatorHeadersRemoteKey",
         "natsURLRemoteKey",
         "redisURLRemoteKey",
         "s3AccessKeyRemoteKey",
@@ -284,6 +321,9 @@
         "databaseReadURLRemoteKey": {"type": "string"},
         "rpcURLsRemoteKey": {"type": "string", "minLength": 1},
         "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
+        "sessionPepperRemoteKey": {"type": "string"},
+        "x402FingerprintPepperRemoteKey": {"type": "string"},
+        "x402FacilitatorHeadersRemoteKey": {"type": "string"},
         "natsURLRemoteKey": {"type": "string"},
         "redisURLRemoteKey": {"type": "string"},
         "s3AccessKeyRemoteKey": {"type": "string"},
@@ -305,11 +345,24 @@
         "observability",
         "features",
         "security",
+        "user_auth",
+        "billing",
         "verification",
         "sourcify",
         "adapters"
       ],
       "properties": {
+        "server": {
+          "type": "object",
+          "required": ["public_url"],
+          "properties": {
+            "public_url": {
+              "type": "string",
+              "maxLength": 2048,
+              "description": "Root public HTTP(S) origin; required by user authentication and x402 billing."
+            }
+          }
+        },
         "chain": {
           "type": "object",
           "properties": {
@@ -378,6 +431,14 @@
             }
           }
         },
+        "features": {
+          "type": "object",
+          "required": ["user_auth", "x402_billing"],
+          "properties": {
+            "user_auth": {"type": "boolean"},
+            "x402_billing": {"type": "boolean"}
+          }
+        },
         "security": {
           "type": "object",
           "required": ["api_key_pepper"],
@@ -385,6 +446,145 @@
             "api_key_pepper": {
               "const": "",
               "description": "The API-key pepper must come from secrets.existingSecret."
+            }
+          }
+        },
+        "user_auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "challenge_ttl",
+            "session_ttl",
+            "last_used_interval",
+            "max_message_bytes",
+            "max_signature_bytes"
+          ],
+          "properties": {
+            "challenge_ttl": {"type": "string", "minLength": 1},
+            "session_ttl": {"type": "string", "minLength": 1},
+            "last_used_interval": {"type": "string", "minLength": 1},
+            "max_message_bytes": {
+              "type": "integer",
+              "minimum": 512,
+              "maximum": 16384
+            },
+            "max_signature_bytes": {"const": 65}
+          }
+        },
+        "billing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "facilitator_url",
+            "facilitator_allowed_cidrs",
+            "facilitator_timeout",
+            "facilitator_max_response_bytes",
+            "network",
+            "asset",
+            "asset_decimals",
+            "asset_eip712_name",
+            "asset_eip712_version",
+            "recipient",
+            "requirement_max_timeout",
+            "reservation_ttl",
+            "max_payment_header_bytes",
+            "max_buffered_response_bytes",
+            "max_captured_header_bytes",
+            "coarse_ip_rate",
+            "coarse_ip_burst",
+            "routes"
+          ],
+          "properties": {
+            "facilitator_url": {"type": "string", "maxLength": 2048},
+            "facilitator_allowed_cidrs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 3, "maxLength": 64}
+            },
+            "facilitator_timeout": {"type": "string", "minLength": 1},
+            "facilitator_max_response_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "network": {
+              "type": "string",
+              "pattern": "^(|eip155:[1-9][0-9]*)$"
+            },
+            "asset": {
+              "type": "string",
+              "pattern": "^(|0x[0-9A-Fa-f]{40})$"
+            },
+            "asset_decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "asset_eip712_name": {"type": "string", "maxLength": 128},
+            "asset_eip712_version": {"type": "string", "maxLength": 64},
+            "recipient": {
+              "type": "string",
+              "pattern": "^(|0x[0-9A-Fa-f]{40})$"
+            },
+            "requirement_max_timeout": {"type": "string", "minLength": 1},
+            "reservation_ttl": {"type": "string", "minLength": 1},
+            "max_payment_header_bytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 16384
+            },
+            "max_buffered_response_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8388608
+            },
+            "max_captured_header_bytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65536
+            },
+            "coarse_ip_rate": {"type": "integer", "minimum": 1},
+            "coarse_ip_burst": {"type": "integer", "minimum": 1},
+            "routes": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "listBlocks",
+                  "getBlock",
+                  "listTransactions",
+                  "getTransaction",
+                  "listPendingTransactions",
+                  "getTransactionTrace",
+                  "getAddress",
+                  "listAddressNFTBalances",
+                  "listTokens",
+                  "getToken",
+                  "listTokenTransfers",
+                  "getNFTOwner",
+                  "getBlockStats",
+                  "getAggregateStats",
+                  "search",
+                  "getVerificationJob",
+                  "getVerifiedContract",
+                  "lookupSourcifyContract",
+                  "getSourcifyJob"
+                ]
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["access", "amount_atomic"],
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "enum": ["x402", "api_key_or_x402"]
+                  },
+                  "amount_atomic": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,77}$"
+                  }
+                }
+              }
             }
           }
         },
@@ -435,11 +635,24 @@
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "allowExternalHTTPS", "additionalEgress"],
+      "required": [
+        "enabled",
+        "allowExternalHTTPS",
+        "runtimeHTTPSCIDRs",
+        "additionalEgress"
+      ],
       "properties": {
         "enabled": {"type": "boolean"},
         "allowExternalHTTPS": {"type": "boolean"},
-        "additionalEgress": {"type": "array", "items": {"type": "object"}}
+        "runtimeHTTPSCIDRs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 3, "maxLength": 64}
+        },
+        "additionalEgress": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/networkPolicyEgress"}
+        }
       }
     }
   },
@@ -470,6 +683,196 @@
             "properties": {
               "api": {"properties": {"enabled": {"const": true}}}
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"user_auth": {"const": true}},
+                "required": ["user_auth"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["config"]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "server": {
+                "properties": {"public_url": {"minLength": 1}},
+                "required": ["public_url"]
+              }
+            },
+            "required": ["server"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "externalSecret": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          },
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"user_auth": {"const": true}},
+                "required": ["user_auth"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["externalSecret", "config"]
+      },
+      "then": {
+        "properties": {
+          "externalSecret": {
+            "properties": {
+              "sessionPepperRemoteKey": {"minLength": 1}
+            },
+            "required": ["sessionPepperRemoteKey"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"x402_billing": {"const": true}},
+                "required": ["x402_billing"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["config"]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "server": {
+                "properties": {"public_url": {"minLength": 1}},
+                "required": ["public_url"]
+              },
+              "billing": {
+                "properties": {
+                  "facilitator_url": {"minLength": 1},
+                  "facilitator_allowed_cidrs": {"minItems": 1},
+                  "network": {"minLength": 1},
+                  "asset": {"minLength": 42},
+                  "asset_eip712_name": {"minLength": 1},
+                  "asset_eip712_version": {"minLength": 1},
+                  "recipient": {"minLength": 42}
+                }
+              }
+            },
+            "required": ["server", "billing"]
+          },
+          "networkPolicy": {
+            "properties": {
+              "enabled": {"const": true},
+              "allowExternalHTTPS": {"const": false},
+              "additionalEgress": {
+                "items": {
+                  "required": ["ports"],
+                  "properties": {
+                    "ports": {
+                      "minItems": 1,
+                      "items": {
+                        "allOf": [
+                          {
+                            "if": {
+                              "anyOf": [
+                                {"not": {"required": ["protocol"]}},
+                                {
+                                  "properties": {
+                                    "protocol": {"const": "TCP"}
+                                  },
+                                  "required": ["protocol"]
+                                }
+                              ]
+                            },
+                            "then": {
+                              "required": ["port"],
+                              "properties": {
+                                "port": {
+                                  "type": "integer",
+                                  "not": {"const": 443}
+                                }
+                              },
+                              "not": {
+                                "properties": {
+                                  "port": {
+                                    "type": "integer",
+                                    "maximum": 443
+                                  },
+                                  "endPort": {
+                                    "type": "integer",
+                                    "minimum": 443
+                                  }
+                                },
+                                "required": ["port", "endPort"]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "enabled",
+              "allowExternalHTTPS",
+              "runtimeHTTPSCIDRs",
+              "additionalEgress"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "externalSecret": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          },
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"x402_billing": {"const": true}},
+                "required": ["x402_billing"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["externalSecret", "config"]
+      },
+      "then": {
+        "properties": {
+          "externalSecret": {
+            "properties": {
+              "x402FingerprintPepperRemoteKey": {"minLength": 1}
+            },
+            "required": ["x402FingerprintPepperRemoteKey"]
           }
         }
       }

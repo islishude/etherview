@@ -36,6 +36,9 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "Quantity"), "type"), "string")
 	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "Quantity"), "pattern"), `^(0|[1-9][0-9]*)$`)
 	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "Quantity"), "maxLength"), "78")
+	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "BillingAggregateQuantity"), "type"), "string")
+	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "BillingAggregateQuantity"), "pattern"), `^(0|[1-9][0-9]*)$`)
+	assertScalar(t, mappingValue(t, mappingValue(t, schemas, "BillingAggregateQuantity"), "maxLength"), "97")
 
 	address := mappingValue(t, schemas, "Address")
 	assertScalar(t, mappingValue(t, address, "type"), "string")
@@ -77,22 +80,30 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 	t.Helper()
 	for _, operation := range []struct {
-		path   string
-		method string
+		path     string
+		method   string
+		billable bool
 	}{
 		{path: "/verification/jobs", method: "post"},
-		{path: "/verification/jobs/{id}", method: "get"},
-		{path: "/contracts/{address}/verification", method: "get"},
-		{path: "/sourcify/contracts/{address}", method: "get"},
+		{path: "/verification/jobs/{id}", method: "get", billable: true},
+		{path: "/contracts/{address}/verification", method: "get", billable: true},
+		{path: "/sourcify/contracts/{address}", method: "get", billable: true},
 		{path: "/sourcify/imports", method: "post"},
 		{path: "/verification/jobs/{id}/sourcify", method: "post"},
-		{path: "/sourcify/jobs/{verification_id}", method: "get"},
+		{path: "/sourcify/jobs/{verification_id}", method: "get", billable: true},
 	} {
 		security := mappingValue(t, mappingValue(t, mappingValue(t, paths, operation.path), operation.method), "security")
-		if security.Kind != yaml.SequenceNode || len(security.Content) != 1 {
-			t.Fatalf("%s %s must declare exactly one API-key security requirement", operation.method, operation.path)
+		wantRequirements := 1
+		if operation.billable {
+			wantRequirements = 2
+		}
+		if security.Kind != yaml.SequenceNode || len(security.Content) != wantRequirements {
+			t.Fatalf("%s %s must declare %d security requirements", operation.method, operation.path, wantRequirements)
 		}
 		mappingValue(t, security.Content[0], "APIKey")
+		if operation.billable {
+			mappingValue(t, security.Content[1], "X402Payment")
+		}
 	}
 
 	for _, schemaName := range []string{"VerificationSubmission", "SourcifyImportRequest"} {

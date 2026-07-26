@@ -2304,7 +2304,11 @@ function ContractWorkbench({ address }: { address: string }) {
     value: Hex;
     context: string;
   }>();
-  const [error, setError] = useState<{ message: string; context: string }>();
+  const [error, setError] = useState<{
+    message: string;
+    context: string;
+    sticky?: boolean;
+  }>();
   const [pending, setPending] = useState<"read" | "write">();
   const operationSequence = useRef(0);
   const activeOperation = useRef<
@@ -2321,12 +2325,13 @@ function ContractWorkbench({ address }: { address: string }) {
   const ready = Boolean(validAddress && chainReady && expectedChainID);
   const canSubmit = ready && pending === undefined;
   const walletIdentity = wallet.active
-    ? `${wallet.active.uuid}:${wallet.active.account}:${wallet.active.chainID}`
+    ? `${wallet.active.uuid}:${wallet.active.account}:${wallet.active.chainID}:${wallet.active.revision}`
     : "";
   const operationContext = JSON.stringify([address, expectedChainID ?? "", walletIdentity]);
   const latestOperationContext = useRef(operationContext);
   latestOperationContext.current = operationContext;
-  const visibleError = error?.context === operationContext ? error.message : undefined;
+  const visibleError =
+    error && (error.sticky || error.context === operationContext) ? error.message : undefined;
   const visibleResult = result?.context === operationContext ? result : undefined;
 
   const chainMessage = useMemo(() => {
@@ -2442,6 +2447,7 @@ function ContractWorkbench({ address }: { address: string }) {
           setError({
             context: latestOperationContext.current,
             message: t("wallet.errors.transactionOutcomeUnknown"),
+            sticky: true,
           });
           return;
         }
@@ -2449,13 +2455,12 @@ function ContractWorkbench({ address }: { address: string }) {
       }
     } catch (cause) {
       if (activeOperation.current === operation) {
+        const code =
+          cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED";
         setError({
           context: latestOperationContext.current,
-          message: t(
-            walletErrorTranslationKey(
-              cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
-            ),
-          ),
+          message: t(walletErrorTranslationKey(code)),
+          sticky: code === "TRANSACTION_OUTCOME_UNKNOWN",
         });
       }
     } finally {

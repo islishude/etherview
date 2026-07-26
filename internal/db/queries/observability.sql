@@ -16,6 +16,27 @@ WITH metric_rows AS (
     FROM repair_requests
     WHERE chain_id = sqlc.arg(chain_id)::numeric
       AND status IN ('queued', 'running')
+    UNION ALL
+    SELECT 'billing'::text,
+           operation,
+           CASE
+               WHEN failure_code = 'settlement_unknown'
+                   THEN 'settlement_unknown'
+               ELSE 'unmarked_after_timeout'
+           END
+    FROM billing_payments
+    WHERE chain_id = sqlc.arg(chain_id)::numeric
+      AND state = 'settling'
+      AND (
+          failure_code = 'settlement_unknown'
+          OR (
+              failure_code IS NULL
+              AND settling_at <= now() - (
+                  sqlc.arg(settlement_crash_delay_microseconds)::bigint
+                  * interval '1 microsecond'
+              )
+          )
+      )
 ), grouped AS (
     SELECT metric_kind, metric_name, metric_status,
            count(*)::bigint AS metric_count

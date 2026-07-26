@@ -99,6 +99,10 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 		return b.adminLabel(ctx, db, cfg, action, args)
 	case "repair":
 		return b.adminRepair(ctx, db, cfg, action, args)
+	case "user":
+		return b.adminUser(ctx, db, cfg, action, args)
+	case "billing":
+		return b.adminBilling(ctx, db, cfg, action, args)
 	default:
 		return fmt.Errorf("unsupported admin resource %q", resource)
 	}

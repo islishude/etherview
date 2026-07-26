@@ -33,6 +33,84 @@ func (e AddressSummaryType) Valid() bool {
 	}
 }
 
+// Defines values for BillingAccess.
+const (
+	ApiKeyOrX402 BillingAccess = "api_key_or_x402"
+	X402         BillingAccess = "x402"
+)
+
+// Valid indicates whether the value is a known member of the BillingAccess enum.
+func (e BillingAccess) Valid() bool {
+	switch e {
+	case ApiKeyOrX402:
+		return true
+	case X402:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingConfigScheme.
+const (
+	BillingConfigSchemeExact BillingConfigScheme = "exact"
+)
+
+// Valid indicates whether the value is a known member of the BillingConfigScheme enum.
+func (e BillingConfigScheme) Valid() bool {
+	switch e {
+	case BillingConfigSchemeExact:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingConfigX402Version.
+const (
+	BillingConfigX402VersionN2 BillingConfigX402Version = 2
+)
+
+// Valid indicates whether the value is a known member of the BillingConfigX402Version enum.
+func (e BillingConfigX402Version) Valid() bool {
+	switch e {
+	case BillingConfigX402VersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPaymentState.
+const (
+	BillingPaymentStateExpired  BillingPaymentState = "expired"
+	BillingPaymentStateFailed   BillingPaymentState = "failed"
+	BillingPaymentStateReserved BillingPaymentState = "reserved"
+	BillingPaymentStateSettled  BillingPaymentState = "settled"
+	BillingPaymentStateSettling BillingPaymentState = "settling"
+	BillingPaymentStateVerified BillingPaymentState = "verified"
+)
+
+// Valid indicates whether the value is a known member of the BillingPaymentState enum.
+func (e BillingPaymentState) Valid() bool {
+	switch e {
+	case BillingPaymentStateExpired:
+		return true
+	case BillingPaymentStateFailed:
+		return true
+	case BillingPaymentStateReserved:
+		return true
+	case BillingPaymentStateSettled:
+		return true
+	case BillingPaymentStateSettling:
+		return true
+	case BillingPaymentStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Finality.
 const (
 	FinalityFinalized Finality = "finalized"
@@ -224,22 +302,22 @@ func (e StateConfidence) Valid() bool {
 
 // Defines values for TokenContractConfidence.
 const (
-	Guess    TokenContractConfidence = "guess"
-	High     TokenContractConfidence = "high"
-	Inferred TokenContractConfidence = "inferred"
-	Verified TokenContractConfidence = "verified"
+	TokenContractConfidenceGuess    TokenContractConfidence = "guess"
+	TokenContractConfidenceHigh     TokenContractConfidence = "high"
+	TokenContractConfidenceInferred TokenContractConfidence = "inferred"
+	TokenContractConfidenceVerified TokenContractConfidence = "verified"
 )
 
 // Valid indicates whether the value is a known member of the TokenContractConfidence enum.
 func (e TokenContractConfidence) Valid() bool {
 	switch e {
-	case Guess:
+	case TokenContractConfidenceGuess:
 		return true
-	case High:
+	case TokenContractConfidenceHigh:
 		return true
-	case Inferred:
+	case TokenContractConfidenceInferred:
 		return true
-	case Verified:
+	case TokenContractConfidenceVerified:
 		return true
 	default:
 		return false
@@ -318,6 +396,42 @@ func (e TransactionTraceState) Valid() bool {
 	}
 }
 
+// Defines values for UserRole.
+const (
+	UserRoleAdmin UserRole = "admin"
+	UserRoleUser  UserRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserRole enum.
+func (e UserRole) Valid() bool {
+	switch e {
+	case UserRoleAdmin:
+		return true
+	case UserRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserStatus.
+const (
+	Active   UserStatus = "active"
+	Disabled UserStatus = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the UserStatus enum.
+func (e UserStatus) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Disabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VerificationJobStatus.
 const (
 	VerificationJobStatusCancelled VerificationJobStatus = "cancelled"
@@ -347,19 +461,19 @@ func (e VerificationJobStatus) Valid() bool {
 
 // Defines values for VerificationMatch.
 const (
-	Exact        VerificationMatch = "exact"
-	MetadataOnly VerificationMatch = "metadata_only"
-	Mismatch     VerificationMatch = "mismatch"
+	VerificationMatchExact        VerificationMatch = "exact"
+	VerificationMatchMetadataOnly VerificationMatch = "metadata_only"
+	VerificationMatchMismatch     VerificationMatch = "mismatch"
 )
 
 // Valid indicates whether the value is a known member of the VerificationMatch enum.
 func (e VerificationMatch) Valid() bool {
 	switch e {
-	case Exact:
+	case VerificationMatchExact:
 		return true
-	case MetadataOnly:
+	case VerificationMatchMetadataOnly:
 		return true
-	case Mismatch:
+	case VerificationMatchMismatch:
 		return true
 	default:
 		return false
@@ -386,52 +500,52 @@ func (e VerificationSubmissionLanguage) Valid() bool {
 
 // Defines values for VerificationSubmissionLicenseType.
 const (
-	N1  VerificationSubmissionLicenseType = "1"
-	N10 VerificationSubmissionLicenseType = "10"
-	N11 VerificationSubmissionLicenseType = "11"
-	N12 VerificationSubmissionLicenseType = "12"
-	N13 VerificationSubmissionLicenseType = "13"
-	N14 VerificationSubmissionLicenseType = "14"
-	N2  VerificationSubmissionLicenseType = "2"
-	N3  VerificationSubmissionLicenseType = "3"
-	N4  VerificationSubmissionLicenseType = "4"
-	N5  VerificationSubmissionLicenseType = "5"
-	N6  VerificationSubmissionLicenseType = "6"
-	N7  VerificationSubmissionLicenseType = "7"
-	N8  VerificationSubmissionLicenseType = "8"
-	N9  VerificationSubmissionLicenseType = "9"
+	VerificationSubmissionLicenseTypeN1  VerificationSubmissionLicenseType = "1"
+	VerificationSubmissionLicenseTypeN10 VerificationSubmissionLicenseType = "10"
+	VerificationSubmissionLicenseTypeN11 VerificationSubmissionLicenseType = "11"
+	VerificationSubmissionLicenseTypeN12 VerificationSubmissionLicenseType = "12"
+	VerificationSubmissionLicenseTypeN13 VerificationSubmissionLicenseType = "13"
+	VerificationSubmissionLicenseTypeN14 VerificationSubmissionLicenseType = "14"
+	VerificationSubmissionLicenseTypeN2  VerificationSubmissionLicenseType = "2"
+	VerificationSubmissionLicenseTypeN3  VerificationSubmissionLicenseType = "3"
+	VerificationSubmissionLicenseTypeN4  VerificationSubmissionLicenseType = "4"
+	VerificationSubmissionLicenseTypeN5  VerificationSubmissionLicenseType = "5"
+	VerificationSubmissionLicenseTypeN6  VerificationSubmissionLicenseType = "6"
+	VerificationSubmissionLicenseTypeN7  VerificationSubmissionLicenseType = "7"
+	VerificationSubmissionLicenseTypeN8  VerificationSubmissionLicenseType = "8"
+	VerificationSubmissionLicenseTypeN9  VerificationSubmissionLicenseType = "9"
 )
 
 // Valid indicates whether the value is a known member of the VerificationSubmissionLicenseType enum.
 func (e VerificationSubmissionLicenseType) Valid() bool {
 	switch e {
-	case N1:
+	case VerificationSubmissionLicenseTypeN1:
 		return true
-	case N10:
+	case VerificationSubmissionLicenseTypeN10:
 		return true
-	case N11:
+	case VerificationSubmissionLicenseTypeN11:
 		return true
-	case N12:
+	case VerificationSubmissionLicenseTypeN12:
 		return true
-	case N13:
+	case VerificationSubmissionLicenseTypeN13:
 		return true
-	case N14:
+	case VerificationSubmissionLicenseTypeN14:
 		return true
-	case N2:
+	case VerificationSubmissionLicenseTypeN2:
 		return true
-	case N3:
+	case VerificationSubmissionLicenseTypeN3:
 		return true
-	case N4:
+	case VerificationSubmissionLicenseTypeN4:
 		return true
-	case N5:
+	case VerificationSubmissionLicenseTypeN5:
 		return true
-	case N6:
+	case VerificationSubmissionLicenseTypeN6:
 		return true
-	case N7:
+	case VerificationSubmissionLicenseTypeN7:
 		return true
-	case N8:
+	case VerificationSubmissionLicenseTypeN8:
 		return true
-	case N9:
+	case VerificationSubmissionLicenseTypeN9:
 		return true
 	default:
 		return false
@@ -499,6 +613,12 @@ type AddressSummary struct {
 // AddressSummaryType defines model for AddressSummary.Type.
 type AddressSummaryType string
 
+// AdminUserUpdate defines model for AdminUserUpdate.
+type AdminUserUpdate struct {
+	Role   *UserRole   `json:"role,omitempty"`
+	Status *UserStatus `json:"status,omitempty"`
+}
+
 // AggregateStats defines model for AggregateStats.
 type AggregateStats struct {
 	// AverageTps A canonical non-negative fixed-point decimal with at most 18 fractional digits.
@@ -551,6 +671,155 @@ type AggregateStatsCompleteness struct {
 type AggregateStatsResponse struct {
 	Data AggregateStats `json:"data"`
 	Meta Meta           `json:"meta"`
+}
+
+// AuthChallenge defines model for AuthChallenge.
+type AuthChallenge struct {
+	ChallengeId openapi_types.UUID `json:"challenge_id"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	Message     string             `json:"message"`
+}
+
+// AuthChallengeRequest defines model for AuthChallengeRequest.
+type AuthChallengeRequest struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+}
+
+// AuthChallengeResponse defines model for AuthChallengeResponse.
+type AuthChallengeResponse struct {
+	Data AuthChallenge `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
+// AuthSession defines model for AuthSession.
+type AuthSession struct {
+	Authenticated bool       `json:"authenticated"`
+	CsrfToken     *string    `json:"csrf_token,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	User          *User      `json:"user,omitempty"`
+}
+
+// AuthSessionResponse defines model for AuthSessionResponse.
+type AuthSessionResponse struct {
+	Data AuthSession `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+// AuthVerifyRequest defines model for AuthVerifyRequest.
+type AuthVerifyRequest struct {
+	ChallengeId openapi_types.UUID `json:"challenge_id"`
+	Signature   string             `json:"signature"`
+}
+
+// BillingAccess defines model for BillingAccess.
+type BillingAccess string
+
+// BillingAggregateQuantity A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+type BillingAggregateQuantity = string
+
+// BillingConfig defines model for BillingConfig.
+type BillingConfig struct {
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset              *Address `json:"asset,omitempty"`
+	AssetDecimals      *int     `json:"asset_decimals,omitempty"`
+	AssetEip712Name    *string  `json:"asset_eip712_name,omitempty"`
+	AssetEip712Version *string  `json:"asset_eip712_version,omitempty"`
+	Enabled            bool     `json:"enabled"`
+	Network            *string  `json:"network,omitempty"`
+
+	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
+	Recipient   *Address                 `json:"recipient,omitempty"`
+	Routes      []BillingRoutePrice      `json:"routes"`
+	Scheme      BillingConfigScheme      `json:"scheme"`
+	X402Version BillingConfigX402Version `json:"x402_version"`
+}
+
+// BillingConfigScheme defines model for BillingConfig.Scheme.
+type BillingConfigScheme string
+
+// BillingConfigX402Version defines model for BillingConfig.X402Version.
+type BillingConfigX402Version int
+
+// BillingConfigResponse defines model for BillingConfigResponse.
+type BillingConfigResponse struct {
+	Data BillingConfig `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
+// BillingPayment defines model for BillingPayment.
+type BillingPayment struct {
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity `json:"amount_atomic"`
+	ApiKeyPrefix *string  `json:"api_key_prefix,omitempty"`
+
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset       Address            `json:"asset"`
+	CreatedAt   time.Time          `json:"created_at"`
+	FailureCode *string            `json:"failure_code,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	Network     string             `json:"network"`
+	Operation   string             `json:"operation"`
+	Payer       *Address           `json:"payer,omitempty"`
+
+	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
+	Recipient       Address             `json:"recipient"`
+	SettledAt       *time.Time          `json:"settled_at,omitempty"`
+	State           BillingPaymentState `json:"state"`
+	TransactionHash *Hash               `json:"transaction_hash,omitempty"`
+	UpdatedAt       time.Time           `json:"updated_at"`
+	UserId          *openapi_types.UUID `json:"user_id,omitempty"`
+}
+
+// BillingPaymentListResponse defines model for BillingPaymentListResponse.
+type BillingPaymentListResponse struct {
+	Data []BillingPayment `json:"data"`
+	Meta Meta             `json:"meta"`
+}
+
+// BillingPaymentState defines model for BillingPaymentState.
+type BillingPaymentState string
+
+// BillingRoutePrice defines model for BillingRoutePrice.
+type BillingRoutePrice struct {
+	Access BillingAccess `json:"access"`
+
+	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AmountAtomic Quantity `json:"amount_atomic"`
+	Operation    string   `json:"operation"`
+}
+
+// BillingSummary defines model for BillingSummary.
+type BillingSummary struct {
+	// AmountAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	AmountAtomic BillingAggregateQuantity `json:"amount_atomic"`
+	FromTime     time.Time                `json:"from_time"`
+
+	// PaymentCount A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	PaymentCount BillingAggregateQuantity `json:"payment_count"`
+	Rows         []BillingSummaryRow      `json:"rows"`
+	ToTime       time.Time                `json:"to_time"`
+}
+
+// BillingSummaryResponse defines model for BillingSummaryResponse.
+type BillingSummaryResponse struct {
+	Data BillingSummary `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// BillingSummaryRow defines model for BillingSummaryRow.
+type BillingSummaryRow struct {
+	// AmountAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	AmountAtomic BillingAggregateQuantity `json:"amount_atomic"`
+
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset     Address `json:"asset"`
+	Network   string  `json:"network"`
+	Operation string  `json:"operation"`
+
+	// PaymentCount A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
+	PaymentCount BillingAggregateQuantity `json:"payment_count"`
+	State        BillingPaymentState      `json:"state"`
 }
 
 // Block defines model for Block.
@@ -901,6 +1170,18 @@ type SearchResult struct {
 // SearchResultKind defines model for SearchResult.Kind.
 type SearchResultKind string
 
+// SessionRevocation defines model for SessionRevocation.
+type SessionRevocation struct {
+	// RevokedSessions A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	RevokedSessions Quantity `json:"revoked_sessions"`
+}
+
+// SessionRevocationResponse defines model for SessionRevocationResponse.
+type SessionRevocationResponse struct {
+	Data SessionRevocation `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
 // SourcifyContract defines model for SourcifyContract.
 type SourcifyContract struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
@@ -1225,6 +1506,45 @@ type TransactionTraceResponse struct {
 	Meta Meta             `json:"meta"`
 }
 
+// User defines model for User.
+type User struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId     Quantity           `json:"chain_id"`
+	CreatedAt   time.Time          `json:"created_at"`
+	DisplayName *string            `json:"display_name,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	LastLoginAt *time.Time         `json:"last_login_at,omitempty"`
+	Role        UserRole           `json:"role"`
+	Status      UserStatus         `json:"status"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// UserListResponse defines model for UserListResponse.
+type UserListResponse struct {
+	Data []User `json:"data"`
+	Meta Meta   `json:"meta"`
+}
+
+// UserProfileUpdate defines model for UserProfileUpdate.
+type UserProfileUpdate struct {
+	DisplayName *string `json:"display_name"`
+}
+
+// UserResponse defines model for UserResponse.
+type UserResponse struct {
+	Data User `json:"data"`
+	Meta Meta `json:"meta"`
+}
+
+// UserRole defines model for UserRole.
+type UserRole string
+
+// UserStatus defines model for UserStatus.
+type UserStatus string
+
 // VerificationJob defines model for VerificationJob.
 type VerificationJob struct {
 	CreatedAt     time.Time             `json:"created_at"`
@@ -1311,20 +1631,119 @@ type VerifiedContractResponse struct {
 	Meta Meta             `json:"meta"`
 }
 
+// BillingAssetFilter A 20-byte address; responses use the EIP-55 checksum form.
+type BillingAssetFilter = Address
+
+// BillingFromTime defines model for BillingFromTime.
+type BillingFromTime = time.Time
+
+// BillingNetworkFilter defines model for BillingNetworkFilter.
+type BillingNetworkFilter = string
+
+// BillingOperationFilter defines model for BillingOperationFilter.
+type BillingOperationFilter = string
+
+// BillingStateFilter defines model for BillingStateFilter.
+type BillingStateFilter = BillingPaymentState
+
+// BillingToTime defines model for BillingToTime.
+type BillingToTime = time.Time
+
+// CSRFToken defines model for CSRFToken.
+type CSRFToken = string
+
 // Cursor A bounded server-issued traversal token that clients must not decode or construct.
 type Cursor = OpaqueCursor
 
 // Limit defines model for Limit.
 type Limit = int
 
+// PaymentSignature defines model for PaymentSignature.
+type PaymentSignature = string
+
+// SearchLimit defines model for SearchLimit.
+type SearchLimit = int
+
 // TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 type TransactionHash = Hash
+
+// UserID defines model for UserID.
+type UserID = openapi_types.UUID
 
 // Error defines model for Error.
 type Error = ErrorResponse
 
+// PaymentRequired defines model for PaymentRequired.
+type PaymentRequired = ErrorResponse
+
+// GetAddressParams defines parameters for GetAddress.
+type GetAddressParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
 // ListAddressNFTBalancesParams defines parameters for ListAddressNFTBalances.
 type ListAddressNFTBalancesParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAdminBillingPaymentsParams defines parameters for ListAdminBillingPayments.
+type ListAdminBillingPaymentsParams struct {
+	State     *BillingStateFilter     `form:"state,omitempty" json:"state,omitempty"`
+	Operation *BillingOperationFilter `form:"operation,omitempty" json:"operation,omitempty"`
+	Network   *BillingNetworkFilter   `form:"network,omitempty" json:"network,omitempty"`
+	Asset     *BillingAssetFilter     `form:"asset,omitempty" json:"asset,omitempty"`
+
+	// FromTime Inclusive lower time bound. Summary requests default to 24 hours before to_time.
+	FromTime *BillingFromTime `form:"from_time,omitempty" json:"from_time,omitempty"`
+
+	// ToTime Exclusive upper time bound, defaulting to the current server time.
+	ToTime *BillingToTime `form:"to_time,omitempty" json:"to_time,omitempty"`
+	Cursor *Cursor        `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit         `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAdminBillingSummaryParams defines parameters for GetAdminBillingSummary.
+type GetAdminBillingSummaryParams struct {
+	State     *BillingStateFilter     `form:"state,omitempty" json:"state,omitempty"`
+	Operation *BillingOperationFilter `form:"operation,omitempty" json:"operation,omitempty"`
+	Network   *BillingNetworkFilter   `form:"network,omitempty" json:"network,omitempty"`
+	Asset     *BillingAssetFilter     `form:"asset,omitempty" json:"asset,omitempty"`
+
+	// FromTime Inclusive lower time bound. Summary requests default to 24 hours before to_time.
+	FromTime *BillingFromTime `form:"from_time,omitempty" json:"from_time,omitempty"`
+
+	// ToTime Exclusive upper time bound, defaulting to the current server time.
+	ToTime *BillingToTime `form:"to_time,omitempty" json:"to_time,omitempty"`
+}
+
+// ListAdminUsersParams defines parameters for ListAdminUsers.
+type ListAdminUsersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// UpdateAdminUserParams defines parameters for UpdateAdminUser.
+type UpdateAdminUserParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// RevokeAdminUserSessionsParams defines parameters for RevokeAdminUserSessions.
+type RevokeAdminUserSessionsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// LogoutAuthSessionParams defines parameters for LogoutAuthSession.
+type LogoutAuthSessionParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// ListCurrentUserBillingPaymentsParams defines parameters for ListCurrentUserBillingPayments.
+type ListCurrentUserBillingPaymentsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
@@ -1333,11 +1752,23 @@ type ListAddressNFTBalancesParams struct {
 type ListBlocksParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetBlockParams defines parameters for GetBlock.
+type GetBlockParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetVerifiedContractParams defines parameters for GetVerifiedContract.
 type GetVerifiedContractParams struct {
 	CodeHash Hash `form:"code_hash" json:"code_hash"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // StreamHeadEventsParams defines parameters for StreamHeadEvents.
@@ -1351,51 +1782,131 @@ type ListGenesisAccountsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetNFTOwnerParams defines parameters for GetNFTOwner.
+type GetNFTOwnerParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.
 type ListPendingTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // SearchParams defines parameters for Search.
 type SearchParams struct {
-	Q      string  `form:"q" json:"q"`
-	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Q      string       `form:"q" json:"q"`
+	Limit  *SearchLimit `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// LookupSourcifyContractParams defines parameters for LookupSourcifyContract.
+type LookupSourcifyContractParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetSourcifyJobParams defines parameters for GetSourcifyJob.
+type GetSourcifyJobParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetBlockStatsParams defines parameters for GetBlockStats.
 type GetBlockStatsParams struct {
 	FromBlock Quantity `form:"from_block" json:"from_block"`
 	ToBlock   Quantity `form:"to_block" json:"to_block"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // GetAggregateStatsParams defines parameters for GetAggregateStats.
 type GetAggregateStatsParams struct {
 	FromBlock Quantity `form:"from_block" json:"from_block"`
 	ToBlock   Quantity `form:"to_block" json:"to_block"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTokensParams defines parameters for ListTokens.
 type ListTokensParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetTokenParams defines parameters for GetToken.
+type GetTokenParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTokenTransfersParams defines parameters for ListTokenTransfers.
 type ListTokenTransfersParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
 // ListTransactionsParams defines parameters for ListTransactions.
 type ListTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
+
+// GetTransactionParams defines parameters for GetTransaction.
+type GetTransactionParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetTransactionTraceParams defines parameters for GetTransactionTrace.
+type GetTransactionTraceParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// UpdateCurrentUserParams defines parameters for UpdateCurrentUser.
+type UpdateCurrentUserParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// GetVerificationJobParams defines parameters for GetVerificationJob.
+type GetVerificationJobParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// UpdateAdminUserJSONRequestBody defines body for UpdateAdminUser for application/json ContentType.
+type UpdateAdminUserJSONRequestBody = AdminUserUpdate
+
+// CreateAuthChallengeJSONRequestBody defines body for CreateAuthChallenge for application/json ContentType.
+type CreateAuthChallengeJSONRequestBody = AuthChallengeRequest
+
+// VerifyAuthChallengeJSONRequestBody defines body for VerifyAuthChallenge for application/json ContentType.
+type VerifyAuthChallengeJSONRequestBody = AuthVerifyRequest
 
 // ImportSourcifyContractJSONRequestBody defines body for ImportSourcifyContract for application/json ContentType.
 type ImportSourcifyContractJSONRequestBody = SourcifyImportRequest
+
+// UpdateCurrentUserJSONRequestBody defines body for UpdateCurrentUser for application/json ContentType.
+type UpdateCurrentUserJSONRequestBody = UserProfileUpdate
 
 // SubmitVerificationJobJSONRequestBody defines body for SubmitVerificationJob for application/json ContentType.
 type SubmitVerificationJobJSONRequestBody = VerificationSubmission

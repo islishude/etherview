@@ -22,7 +22,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/auth"
+	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -30,6 +32,7 @@ import (
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/observability"
+	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/verify"
 	"golang.org/x/crypto/sha3"
 )
@@ -148,6 +151,11 @@ type Options struct {
 	VerificationSubmitter VerificationSubmitter
 	VerificationTargets   VerificationTargetResolver
 	Sourcify              SourcifyAdapter
+	UserAuth              UserAuthenticator
+	UserAdministration    UserAdministration
+	Billing               *billing.HTTPDispatcher
+	BillingReader         BillingReader
+	Quota                 func(http.Handler) http.Handler
 	Logger                *slog.Logger
 	RequestID             func() string
 	Now                   func() time.Time
@@ -171,12 +179,19 @@ type Handler struct {
 	verificationSubmitter VerificationSubmitter
 	verificationTargets   VerificationTargetResolver
 	sourcify              SourcifyAdapter
+	userAuth              UserAuthenticator
+	userAdministration    UserAdministration
+	billing               *billing.HTTPDispatcher
+	billingReader         BillingReader
+	authOrigin            string
+	authSecureCookie      bool
 	logger                *slog.Logger
 	requestID             func() string
 	now                   func() time.Time
 	runtimeReady          func() bool
 	maxVerificationBody   int64
 	mux                   *http.ServeMux
+	quotaMux              http.Handler
 }
 
 func New(options Options) (*Handler, error) {
@@ -211,6 +226,10 @@ func New(options Options) (*Handler, error) {
 		verificationSubmitter: options.VerificationSubmitter,
 		verificationTargets:   options.VerificationTargets,
 		sourcify:              options.Sourcify,
+		userAuth:              options.UserAuth,
+		userAdministration:    options.UserAdministration,
+		billing:               options.Billing,
+		billingReader:         options.BillingReader,
 		logger:                options.Logger,
 		requestID:             options.RequestID,
 		now:                   options.Now,
@@ -221,7 +240,31 @@ func New(options Options) (*Handler, error) {
 	if h.maxVerificationBody <= 0 {
 		h.maxVerificationBody = 6 << 20
 	}
+	if h.cfg.Features.UserAuth && (h.userAuth == nil || h.userAdministration == nil) {
+		return nil, errors.New("enabled user authentication requires writer services")
+	}
+	if h.cfg.Features.UserAuth && h.billingReader == nil {
+		return nil, errors.New("enabled user authentication requires a writer-backed billing reader")
+	}
+	if h.cfg.Features.X402Billing && h.billing == nil {
+		return nil, errors.New("enabled x402 billing requires a writer-backed dispatcher")
+	}
+	if h.cfg.Features.UserAuth {
+		origin, err := userauth.CanonicalPublicOrigin(h.cfg.Server.PublicURL)
+		if err != nil {
+			return nil, fmt.Errorf("configure user authentication origin: %w", err)
+		}
+		h.authOrigin = origin
+		h.authSecureCookie = strings.HasPrefix(origin, "https://")
+	}
 	h.routes()
+	h.quotaMux = h.mux
+	if options.Quota != nil {
+		h.quotaMux = options.Quota(h.mux)
+		if h.quotaMux == nil {
+			return nil, errors.New("httpapi quota wrapper returned nil")
+		}
+	}
 	return h, nil
 }
 
@@ -233,39 +276,51 @@ func (h *Handler) routes() {
 	}
 	h.mux.HandleFunc("GET /api/v1/status", h.status)
 	h.mux.HandleFunc("GET /api/v1/config", h.publicConfig)
-	h.mux.HandleFunc("GET /api/v1/blocks", h.blocks)
-	h.mux.HandleFunc("GET /api/v1/blocks/{id}", h.block)
 	h.mux.HandleFunc("GET /api/v1/genesis/accounts", h.genesisAccounts)
-	h.mux.HandleFunc("GET /api/v1/transactions", h.transactions)
-	h.mux.HandleFunc("GET /api/v1/transactions/{hash}", h.transaction)
-	h.mux.HandleFunc("GET /api/v1/pending", h.pendingTransactions)
+	h.mux.HandleFunc("POST /api/v1/auth/challenge", h.createAuthChallenge)
+	h.mux.HandleFunc("POST /api/v1/auth/verify", h.verifyAuthChallenge)
+	h.mux.HandleFunc("GET /api/v1/auth/session", h.authSession)
+	h.mux.HandleFunc("POST /api/v1/auth/logout", h.logoutAuthSession)
+	h.mux.HandleFunc("PATCH /api/v1/users/me", h.updateCurrentUser)
+	h.mux.HandleFunc("GET /api/v1/admin/users", h.listAdminUsers)
+	h.mux.HandleFunc("PATCH /api/v1/admin/users/{id}", h.updateAdminUser)
+	h.mux.HandleFunc("POST /api/v1/admin/users/{id}/sessions/revoke", h.revokeAdminUserSessions)
+	h.mux.HandleFunc("GET /api/v1/billing/config", h.billingConfig)
+	h.mux.HandleFunc("GET /api/v1/billing/payments", h.listCurrentUserBillingPayments)
+	h.mux.HandleFunc("GET /api/v1/admin/billing/payments", h.listAdminBillingPayments)
+	h.mux.HandleFunc("GET /api/v1/admin/billing/summary", h.adminBillingSummary)
+	h.handleBillable("listBlocks", h.blocks)
+	h.handleBillable("getBlock", h.block)
+	h.handleBillable("listTransactions", h.transactions)
+	h.handleBillable("getTransaction", h.transaction)
+	h.handleBillable("listPendingTransactions", h.pendingTransactions)
 	if h.catalog != nil {
-		h.mux.HandleFunc("GET /api/v1/transactions/{hash}/trace", h.transactionTrace)
+		h.handleBillable("getTransactionTrace", h.transactionTrace)
 	}
-	h.mux.HandleFunc("GET /api/v1/addresses/{address}", h.address)
+	h.handleBillable("getAddress", h.address)
 	if h.catalog != nil {
-		h.mux.HandleFunc("GET /api/v1/addresses/{address}/nfts", h.nftBalances)
-		h.mux.HandleFunc("GET /api/v1/tokens", h.tokens)
-		h.mux.HandleFunc("GET /api/v1/tokens/{address}", h.token)
-		h.mux.HandleFunc("GET /api/v1/tokens/{address}/transfers", h.tokenTransfers)
-		h.mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}", h.nftOwner)
-		h.mux.HandleFunc("GET /api/v1/stats/blocks", h.blockStats)
-		h.mux.HandleFunc("GET /api/v1/stats/summary", h.aggregateStats)
+		h.handleBillable("listAddressNFTBalances", h.nftBalances)
+		h.handleBillable("listTokens", h.tokens)
+		h.handleBillable("getToken", h.token)
+		h.handleBillable("listTokenTransfers", h.tokenTransfers)
+		h.handleBillable("getNFTOwner", h.nftOwner)
+		h.handleBillable("getBlockStats", h.blockStats)
+		h.handleBillable("getAggregateStats", h.aggregateStats)
 	}
 	// The route remains present when external metadata is disabled so clients
 	// receive a typed capability state instead of a misleading route-level 404.
 	h.mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}/media", h.nftMedia)
-	h.mux.HandleFunc("GET /api/v1/search", h.search)
+	h.handleBillable("search", h.search)
 	// Capability routes remain present when their backing service is disabled so
 	// clients receive a typed unavailable response instead of mistaking a 404
 	// for an empty or unsupported API surface.
 	h.mux.HandleFunc("POST /api/v1/verification/jobs", h.submitVerification)
-	h.mux.HandleFunc("GET /api/v1/verification/jobs/{id}", h.verificationJob)
-	h.mux.HandleFunc("GET /api/v1/contracts/{address}/verification", h.verifiedContract)
-	h.mux.HandleFunc("GET /api/v1/sourcify/contracts/{address}", h.lookupSourcifyContract)
+	h.handleBillable("getVerificationJob", h.verificationJob)
+	h.handleBillable("getVerifiedContract", h.verifiedContract)
+	h.handleBillable("lookupSourcifyContract", h.lookupSourcifyContract)
 	h.mux.HandleFunc("POST /api/v1/sourcify/imports", h.importSourcifyContract)
 	h.mux.HandleFunc("POST /api/v1/verification/jobs/{id}/sourcify", h.uploadVerificationJobToSourcify)
-	h.mux.HandleFunc("GET /api/v1/sourcify/jobs/{verification_id}", h.sourcifyJob)
+	h.handleBillable("getSourcifyJob", h.sourcifyJob)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -275,6 +330,26 @@ func (h *Handler) routes() {
 	if h.web != nil {
 		h.mux.Handle("/", h.web)
 	}
+}
+
+func (h *Handler) handleBillable(operation string, handler http.HandlerFunc) {
+	spec, ok := apiops.Lookup(operation)
+	if !ok || !spec.BillingEligible {
+		panic("httpapi billable operation is absent from the catalog: " + operation)
+	}
+	h.mux.Handle(spec.MuxPattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		identity := auth.IdentityFrom(r.Context())
+		billingIdentity := billing.APIKeyIdentity{
+			Authenticated: identity.Authenticated,
+			Prefix:        identity.Prefix,
+		}
+		if r.Method != spec.Method || h.billing == nil ||
+			h.billing.Access(operation, billingIdentity) != billing.AccessPaid {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		h.billing.ServePaid(w, r, spec, billingIdentity, handler)
+	}))
 }
 
 type webRoutePatternProvider interface {
@@ -314,13 +389,20 @@ func (h *Handler) preflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestedMethod := strings.ToUpper(strings.TrimSpace(r.Header.Get("Access-Control-Request-Method")))
-	if requestedMethod != http.MethodGet && requestedMethod != http.MethodPost && requestedMethod != http.MethodHead {
+	if requestedMethod != http.MethodGet && requestedMethod != http.MethodPost &&
+		requestedMethod != http.MethodPatch && requestedMethod != http.MethodHead {
 		writeError(w, r, http.StatusBadRequest, "method_not_allowed", "requested CORS method is not allowed", nil)
 		return
 	}
-	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Request-ID, Last-Event-ID")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PATCH, OPTIONS")
+	w.Header().Set(
+		"Access-Control-Allow-Headers",
+		"Content-Type, X-API-Key, X-Request-ID, Last-Event-ID, X-CSRF-Token, Payment-Signature",
+	)
 	w.Header().Set("Access-Control-Max-Age", "600")
+	addVary(w.Header(), "Origin")
+	addVary(w.Header(), "Access-Control-Request-Method")
+	addVary(w.Header(), "Access-Control-Request-Headers")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -390,7 +472,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if origin := r.Header.Get("Origin"); origin != "" && contains(h.cfg.Security.AllowedOrigins, origin) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, Payment-Required, Payment-Response")
+		addVary(w.Header(), "Origin")
 	}
 	ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
 	defer func() {
@@ -418,10 +501,63 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	request := r.WithContext(ctx)
 	if request.Method == http.MethodOptions {
+		if billing.PaymentHeaderPresent(request.Header) {
+			writeError(w, request, http.StatusBadRequest, "unexpected_payment_header", "payment authorization is not accepted for this request", nil)
+			return
+		}
 		h.preflight(w, request)
 		return
 	}
-	h.mux.ServeHTTP(w, request)
+	spec, catalogMatch := h.matchedOperation(request)
+	identity := auth.IdentityFrom(request.Context())
+	billingIdentity := billing.APIKeyIdentity{
+		Authenticated: identity.Authenticated,
+		Prefix:        identity.Prefix,
+	}
+	access := billing.AccessFree
+	if catalogMatch && h.billing != nil {
+		access = h.billing.Access(string(spec.ID), billingIdentity)
+	}
+	if billing.PaymentHeaderPresent(request.Header) && access != billing.AccessPaid {
+		writeError(w, request, http.StatusBadRequest, "unexpected_payment_header", "payment authorization is not accepted for this request", nil)
+		return
+	}
+	if access == billing.AccessPaid {
+		if suppliedAPIKey(request) && !identity.Authenticated {
+			writeError(w, request, http.StatusUnauthorized, "invalid_api_key", "authentication failed", nil)
+			return
+		}
+		h.mux.ServeHTTP(w, request)
+		return
+	}
+	// Price discovery must remain available after the original explorer quota
+	// is exhausted. The outer coarse per-peer limiter still bounds this free
+	// endpoint when x402 is enabled.
+	if request.Method == http.MethodGet &&
+		request.URL.Path == "/api/v1/billing/config" {
+		h.mux.ServeHTTP(w, request)
+		return
+	}
+	h.quotaMux.ServeHTTP(w, request)
+}
+
+func (h *Handler) matchedOperation(request *http.Request) (apiops.Spec, bool) {
+	_, pattern := h.mux.Handler(request)
+	for _, spec := range apiops.All() {
+		if spec.MuxPattern == pattern && request.Method == spec.Method {
+			return spec, true
+		}
+	}
+	return apiops.Spec{}, false
+}
+
+func suppliedAPIKey(request *http.Request) bool {
+	for _, value := range request.Header.Values("X-API-Key") {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type compatibilityPanicResponse struct {
@@ -526,6 +662,8 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"sourcify":         h.sourcify != nil,
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
+		"user_auth":        h.cfg.Features.UserAuth,
+		"x402_billing":     h.cfg.Features.X402Billing,
 	}
 	data := gen.PublicConfig{
 		ChainId:        quantity(h.cfg.Chain.ID),
@@ -1487,6 +1625,12 @@ func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
 	if auth.IdentityFrom(r.Context()).Authenticated {
 		return true
 	}
+	if operation, ok := billing.PaidOperationFrom(r.Context()); ok {
+		spec, exists := apiops.Lookup(operation)
+		if exists && spec.BillingEligible && spec.MuxPattern == r.Pattern {
+			return true
+		}
+	}
 	writeError(w, r, http.StatusUnauthorized, "api_key_required", "an API key is required", nil)
 	return false
 }
@@ -1909,6 +2053,18 @@ func saturatingSub(left, right uint64) uint64 {
 
 func contains(values []string, value string) bool {
 	return slices.Contains(values, value)
+}
+
+func addVary(header http.Header, value string) {
+	values := header.Values("Vary")
+	for _, existing := range values {
+		for token := range strings.SplitSeq(existing, ",") {
+			if strings.EqualFold(strings.TrimSpace(token), value) {
+				return
+			}
+		}
+	}
+	header.Add("Vary", value)
 }
 
 // EncodeCursor provides a stable, versioned opaque cursor helper for stores.

@@ -98,6 +98,8 @@ features:
   sourcify: false
   nft_metadata: false
   pricing: false
+  user_auth: false
+  x402_billing: false
 
 security:
   public_verification: false
@@ -109,6 +111,41 @@ security:
   anonymous_burst: 20
   allowed_origins: []
   trusted_proxies: []
+
+# Wallet authentication requires server.public_url to be a root HTTPS origin.
+# Plain HTTP is accepted only for a loopback development origin. Supply the
+# session pepper through ETHERVIEW_SESSION_PEPPER(_FILE), never through YAML.
+user_auth:
+  challenge_ttl: 5m
+  session_ttl: 168h
+  last_used_interval: 5m
+  max_message_bytes: 4096
+  max_signature_bytes: 65
+
+# x402 v2 exact-EVM billing is disabled until explicitly enabled and at least
+# one eligible operation is listed below. The facilitator is a fixed HTTPS
+# origin whose DNS answers must remain inside these canonical CIDRs. Supply
+# ETHERVIEW_X402_FINGERPRINT_PEPPER(_FILE) and optional
+# ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE) only to all/api processes.
+billing:
+  facilitator_url: ""
+  facilitator_allowed_cidrs: []
+  facilitator_timeout: 10s
+  facilitator_max_response_bytes: 1048576
+  network: ""
+  asset: ""
+  asset_decimals: 0
+  asset_eip712_name: ""
+  asset_eip712_version: ""
+  recipient: ""
+  requirement_max_timeout: 60s
+  reservation_ttl: 2m
+  max_payment_header_bytes: 16384
+  max_buffered_response_bytes: 8388608
+  max_captured_header_bytes: 65536
+  coarse_ip_rate: 100
+  coarse_ip_burst: 200
+  routes: {}
 
 verification:
   max_input_bytes: 5242880

@@ -2,13 +2,16 @@
 package config
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -19,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/islishude/etherview/internal/apiops"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,6 +57,8 @@ type Config struct {
 	Security      SecurityConfig      `yaml:"security"`
 	Verification  VerificationConfig  `yaml:"verification"`
 	Sourcify      SourcifyConfig      `yaml:"sourcify"`
+	UserAuth      UserAuthConfig      `yaml:"user_auth"`
+	Billing       BillingConfig       `yaml:"billing"`
 	Adapters      AdapterConfig       `yaml:"adapters"`
 }
 
@@ -161,6 +167,8 @@ type FeatureConfig struct {
 	Sourcify        bool `yaml:"sourcify"`
 	NFTMetadata     bool `yaml:"nft_metadata"`
 	Pricing         bool `yaml:"pricing"`
+	UserAuth        bool `yaml:"user_auth"`
+	X402Billing     bool `yaml:"x402_billing"`
 }
 
 type SecurityConfig struct {
@@ -204,6 +212,48 @@ type SourcifyConfig struct {
 	Timeout          time.Duration `yaml:"timeout"`
 	MaxRequestBytes  int           `yaml:"max_request_bytes"`
 	MaxResponseBytes int64         `yaml:"max_response_bytes"`
+}
+
+// UserAuthConfig bounds server-created EIP-4361 challenges and absolute,
+// non-sliding Cookie sessions. SessionPepper is populated only from the
+// API-role Secret environment and is intentionally not a YAML field.
+type UserAuthConfig struct {
+	ChallengeTTL      time.Duration `yaml:"challenge_ttl"`
+	SessionTTL        time.Duration `yaml:"session_ttl"`
+	LastUsedInterval  time.Duration `yaml:"last_used_interval"`
+	MaxMessageBytes   int           `yaml:"max_message_bytes"`
+	MaxSignatureBytes int           `yaml:"max_signature_bytes"`
+	SessionPepper     string        `yaml:"-"`
+}
+
+type BillingRouteConfig struct {
+	Access       string `yaml:"access"`
+	AmountAtomic string `yaml:"amount_atomic"`
+}
+
+// BillingConfig describes the local x402 policy. FingerprintPepper and
+// FacilitatorHeaders are Secret-only values and are never accepted from YAML.
+type BillingConfig struct {
+	FacilitatorURL              string                        `yaml:"facilitator_url"`
+	FacilitatorAllowedCIDRs     []string                      `yaml:"facilitator_allowed_cidrs"`
+	FacilitatorTimeout          time.Duration                 `yaml:"facilitator_timeout"`
+	FacilitatorMaxResponseBytes int64                         `yaml:"facilitator_max_response_bytes"`
+	Network                     string                        `yaml:"network"`
+	Asset                       string                        `yaml:"asset"`
+	AssetDecimals               uint8                         `yaml:"asset_decimals"`
+	AssetEIP712Name             string                        `yaml:"asset_eip712_name"`
+	AssetEIP712Version          string                        `yaml:"asset_eip712_version"`
+	Recipient                   string                        `yaml:"recipient"`
+	RequirementMaxTimeout       time.Duration                 `yaml:"requirement_max_timeout"`
+	ReservationTTL              time.Duration                 `yaml:"reservation_ttl"`
+	MaxPaymentHeaderBytes       int                           `yaml:"max_payment_header_bytes"`
+	MaxBufferedResponseBytes    int64                         `yaml:"max_buffered_response_bytes"`
+	MaxCapturedHeaderBytes      int                           `yaml:"max_captured_header_bytes"`
+	CoarseIPRate                int                           `yaml:"coarse_ip_rate"`
+	CoarseIPBurst               int                           `yaml:"coarse_ip_burst"`
+	Routes                      map[string]BillingRouteConfig `yaml:"routes"`
+	FingerprintPepper           string                        `yaml:"-"`
+	FacilitatorHeaders          map[string]string             `yaml:"-"`
 }
 
 // AdapterConfig contains optional accelerators. No correctness path may require
@@ -321,23 +371,69 @@ func Default() Config {
 			MaxRequestBytes:  5 << 20,
 			MaxResponseBytes: 32 << 20,
 		},
+		UserAuth: UserAuthConfig{
+			ChallengeTTL:      5 * time.Minute,
+			SessionTTL:        7 * 24 * time.Hour,
+			LastUsedInterval:  5 * time.Minute,
+			MaxMessageBytes:   4096,
+			MaxSignatureBytes: 65,
+		},
+		Billing: BillingConfig{
+			FacilitatorTimeout:          10 * time.Second,
+			FacilitatorMaxResponseBytes: 1 << 20,
+			RequirementMaxTimeout:       60 * time.Second,
+			ReservationTTL:              2 * time.Minute,
+			MaxPaymentHeaderBytes:       16 << 10,
+			MaxBufferedResponseBytes:    8 << 20,
+			MaxCapturedHeaderBytes:      64 << 10,
+			CoarseIPRate:                100,
+			CoarseIPBurst:               200,
+			Routes:                      map[string]BillingRouteConfig{},
+		},
 	}
 }
 
 // Load reads an optional YAML file, overlays supported ETHERVIEW_ environment
 // variables, and validates the resulting configuration.
 func Load(path string) (Config, error) {
+	return load(path, nil)
+}
+
+// LoadForRoles loads configuration with an explicit final runtime-role
+// selection. It exists for the serve --roles boundary so role-scoped Secret
+// files are never opened according to a lower-precedence YAML or environment
+// role value before the CLI override is applied.
+func LoadForRoles(path string, roles []string) (Config, error) {
+	normalized, err := NormalizeRoles(roles)
+	if err != nil {
+		return Config{}, err
+	}
+	return load(path, normalized)
+}
+
+func load(path string, forcedRoles []string) (Config, error) {
 	cfg := Default()
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return Config{}, fmt.Errorf("read config: %w", err)
 		}
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&cfg); err != nil {
+			return Config{}, fmt.Errorf("decode config: %w", err)
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			if err == nil {
+				err = errors.New("multiple YAML documents are not allowed")
+			}
 			return Config{}, fmt.Errorf("decode config: %w", err)
 		}
 	}
-	if err := applyEnvironment(&cfg, os.LookupEnv, os.ReadFile); err != nil {
+	if err := applyEnvironmentForRoles(
+		&cfg, os.LookupEnv, os.ReadFile, forcedRoles,
+	); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {
@@ -363,9 +459,8 @@ func (c Config) Validate() error {
 		errs = append(errs, errors.New("server timeouts must be positive"))
 	}
 	if c.Server.PublicURL != "" {
-		u, err := url.Parse(c.Server.PublicURL)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			errs = append(errs, errors.New("server.public_url must be an absolute URL"))
+		if err := validatePublicOrigin(c.Server.PublicURL); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	if c.Chain.ID == 0 {
@@ -566,6 +661,12 @@ func (c Config) Validate() error {
 	if err := validateSourcifyConfig(c.Sourcify); err != nil {
 		errs = append(errs, err)
 	}
+	if err := validateUserAuthConfig(c); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validateBillingConfig(c); err != nil {
+		errs = append(errs, err)
+	}
 	if !validAdapterNamespace(c.Adapters.Namespace) {
 		errs = append(errs, errors.New("adapters.namespace must contain 1 to 63 ASCII letters, digits, dots, underscores, or hyphens"))
 	}
@@ -672,6 +773,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 	needsRPC := false
 	needsVerificationWorker := false
 	needsVerificationReadAuth := false
+	needsAPI := false
 	for _, role := range normalized {
 		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
 			needsRPC = true
@@ -681,6 +783,9 @@ func (c Config) ValidateForRoles(roles []string) error {
 		}
 		if role == "api" && c.Features.Verification {
 			needsVerificationReadAuth = true
+		}
+		if role == "api" {
+			needsAPI = true
 		}
 	}
 	if needsRPC && len(c.RPC.Endpoints) == 0 {
@@ -708,7 +813,216 @@ func (c Config) ValidateForRoles(roles []string) error {
 	if needsVerificationReadAuth && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("API role verification reads require API key authentication"))
 	}
+	if needsAPI && c.Features.UserAuth && len(c.UserAuth.SessionPepper) < 32 {
+		errs = append(errs, errors.New("API role user authentication requires a session pepper of at least 32 bytes"))
+	}
+	if needsAPI && c.Features.X402Billing {
+		if len(c.Billing.FingerprintPepper) < 32 {
+			errs = append(errs, errors.New("API role x402 billing requires a fingerprint pepper of at least 32 bytes"))
+		}
+		if len(c.Billing.FacilitatorAllowedCIDRs) == 0 {
+			errs = append(errs, errors.New("API role x402 billing requires facilitator_allowed_cidrs"))
+		}
+	}
 	return errors.Join(errs...)
+}
+
+func validatePublicOrigin(raw string) error {
+	parsed, err := url.Parse(raw)
+	if raw == "" || raw != strings.TrimSpace(raw) || err != nil || parsed == nil ||
+		parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" ||
+		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
+		(parsed.Path != "" && parsed.Path != "/") {
+		return errors.New("server.public_url must be an absolute HTTP(S) origin without credentials, query, or fragment")
+	}
+	host := parsed.Hostname()
+	if strings.HasSuffix(host, ".") || strings.Contains(host, "%") ||
+		strings.HasSuffix(parsed.Host, ":") {
+		return errors.New("server.public_url host is invalid")
+	}
+	for index := range len(host) {
+		if host[index] > 0x7f {
+			return errors.New("server.public_url host must be ASCII")
+		}
+	}
+	if port := parsed.Port(); port != "" {
+		number, parseErr := strconv.ParseUint(port, 10, 16)
+		if parseErr != nil || number == 0 {
+			return errors.New("server.public_url port must be between 1 and 65535")
+		}
+	}
+	switch parsed.Scheme {
+	case "https":
+	case "http":
+		if !isLoopbackHostname(host) {
+			return errors.New("server.public_url may use HTTP only for a loopback development origin")
+		}
+	default:
+		return errors.New("server.public_url must use HTTP or HTTPS")
+	}
+	return nil
+}
+
+func isLoopbackHostname(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address, err := netip.ParseAddr(host)
+	return err == nil && address.IsLoopback()
+}
+
+func validateUserAuthConfig(cfg Config) error {
+	var errs []error
+	if cfg.UserAuth.ChallengeTTL < time.Minute || cfg.UserAuth.ChallengeTTL > 30*time.Minute {
+		errs = append(errs, errors.New("user_auth.challenge_ttl must be between 1m and 30m"))
+	}
+	if cfg.UserAuth.SessionTTL < time.Hour || cfg.UserAuth.SessionTTL > 31*24*time.Hour {
+		errs = append(errs, errors.New("user_auth.session_ttl must be between 1h and 744h"))
+	}
+	if cfg.UserAuth.LastUsedInterval < time.Minute || cfg.UserAuth.LastUsedInterval > time.Hour {
+		errs = append(errs, errors.New("user_auth.last_used_interval must be between 1m and 1h"))
+	}
+	if cfg.UserAuth.MaxMessageBytes < 512 || cfg.UserAuth.MaxMessageBytes > 16<<10 {
+		errs = append(errs, errors.New("user_auth.max_message_bytes must be between 512 and 16384"))
+	}
+	if cfg.UserAuth.MaxSignatureBytes != 65 {
+		errs = append(errs, errors.New("user_auth.max_signature_bytes must be exactly 65"))
+	}
+	if cfg.UserAuth.SessionPepper != "" && len(cfg.UserAuth.SessionPepper) < 32 {
+		errs = append(errs, errors.New("user_auth session pepper must contain at least 32 bytes"))
+	}
+	if cfg.Features.UserAuth {
+		if cfg.Server.PublicURL == "" {
+			errs = append(errs, errors.New("features.user_auth requires server.public_url"))
+		}
+		if cfg.Chain.ID > uint64(math.MaxInt) {
+			errs = append(errs, errors.New("features.user_auth requires chain.id to fit in int"))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+var (
+	caip2EVMNetworkPattern = regexp.MustCompile(`^eip155:[1-9][0-9]*$`)
+	decimalAtomicPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
+	httpHeaderNamePattern  = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+	maximumBillingAtomic   = new(big.Int).Sub(
+		new(big.Int).Lsh(big.NewInt(1), 256),
+		big.NewInt(1),
+	)
+)
+
+func validateBillingConfig(cfg Config) error {
+	var errs []error
+	billing := cfg.Billing
+	if billing.FacilitatorTimeout < 100*time.Millisecond || billing.FacilitatorTimeout > time.Minute {
+		errs = append(errs, errors.New("billing.facilitator_timeout must be between 100ms and 1m"))
+	}
+	if billing.FacilitatorMaxResponseBytes < 1 || billing.FacilitatorMaxResponseBytes > 1<<20 {
+		errs = append(errs, errors.New("billing.facilitator_max_response_bytes must be between 1 and 1048576"))
+	}
+	if billing.RequirementMaxTimeout < time.Second || billing.RequirementMaxTimeout > 5*time.Minute ||
+		billing.RequirementMaxTimeout%time.Second != 0 {
+		errs = append(errs, errors.New("billing.requirement_max_timeout must be a whole number of seconds between 1s and 5m"))
+	}
+	if billing.ReservationTTL < 10*time.Second || billing.ReservationTTL > 10*time.Minute {
+		errs = append(errs, errors.New("billing.reservation_ttl must be between 10s and 10m"))
+	}
+	if billing.MaxPaymentHeaderBytes < 1024 || billing.MaxPaymentHeaderBytes > 16<<10 {
+		errs = append(errs, errors.New("billing.max_payment_header_bytes must be between 1024 and 16384"))
+	}
+	if billing.MaxBufferedResponseBytes < 1 || billing.MaxBufferedResponseBytes > 8<<20 {
+		errs = append(errs, errors.New("billing.max_buffered_response_bytes must be between 1 and 8388608"))
+	}
+	if billing.MaxCapturedHeaderBytes < 1024 || billing.MaxCapturedHeaderBytes > 64<<10 {
+		errs = append(errs, errors.New("billing.max_captured_header_bytes must be between 1024 and 65536"))
+	}
+	if billing.CoarseIPRate <= 0 || billing.CoarseIPBurst < billing.CoarseIPRate {
+		errs = append(errs, errors.New("billing coarse IP rate must be positive and burst must be at least rate"))
+	}
+	if billing.FingerprintPepper != "" && len(billing.FingerprintPepper) < 32 {
+		errs = append(errs, errors.New("billing fingerprint pepper must contain at least 32 bytes"))
+	}
+	for name, value := range billing.FacilitatorHeaders {
+		canonical := http.CanonicalHeaderKey(name)
+		if !httpHeaderNamePattern.MatchString(name) || canonical != name || value == "" ||
+			strings.ContainsAny(value, "\r\n") || forbiddenFacilitatorHeader(canonical) {
+			errs = append(errs, errors.New("billing facilitator headers contain an invalid or forbidden entry"))
+			break
+		}
+	}
+	for index, raw := range billing.FacilitatorAllowedCIDRs {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil || prefix.Masked() != prefix || prefix.String() != raw {
+			errs = append(errs, fmt.Errorf("billing.facilitator_allowed_cidrs[%d] must be a canonical masked CIDR prefix", index))
+		}
+	}
+	if len(billing.Routes) > 0 && !cfg.Features.X402Billing {
+		errs = append(errs, errors.New("billing.routes requires features.x402_billing"))
+	}
+	for operationID, route := range billing.Routes {
+		operation, ok := apiops.Lookup(operationID)
+		if !ok || !operation.BillingEligible {
+			errs = append(errs, fmt.Errorf("billing route operation %q is not eligible", operationID))
+		}
+		if route.Access != "x402" && route.Access != "api_key_or_x402" {
+			errs = append(errs, fmt.Errorf("billing route %q access must be x402 or api_key_or_x402", operationID))
+		}
+		if !decimalAtomicPattern.MatchString(route.AmountAtomic) {
+			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must be a canonical positive integer", operationID))
+		} else if len(route.AmountAtomic) > 78 {
+			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must fit in uint256", operationID))
+		} else if amount, ok := new(big.Int).SetString(route.AmountAtomic, 10); !ok ||
+			amount.Cmp(maximumBillingAtomic) > 0 {
+			errs = append(errs, fmt.Errorf("billing route %q amount_atomic must fit in uint256", operationID))
+		}
+	}
+	if !cfg.Features.X402Billing {
+		return errors.Join(errs...)
+	}
+	if cfg.Server.PublicURL == "" {
+		errs = append(errs, errors.New("features.x402_billing requires server.public_url"))
+	}
+	if err := validateHTTPSOrigin("billing.facilitator_url", billing.FacilitatorURL); err != nil {
+		errs = append(errs, err)
+	}
+	if !caip2EVMNetworkPattern.MatchString(billing.Network) {
+		errs = append(errs, errors.New("billing.network must be a canonical eip155 CAIP-2 network"))
+	}
+	if !validFixedHex(billing.Asset, 20) {
+		errs = append(errs, errors.New("billing.asset must be a 20-byte 0x-prefixed address"))
+	}
+	if !validFixedHex(billing.Recipient, 20) {
+		errs = append(errs, errors.New("billing.recipient must be a 20-byte 0x-prefixed address"))
+	}
+	if value := billing.AssetEIP712Name; value == "" || value != strings.TrimSpace(value) || len(value) > 128 {
+		errs = append(errs, errors.New("billing.asset_eip712_name must contain between 1 and 128 trimmed bytes"))
+	}
+	if value := billing.AssetEIP712Version; value == "" || value != strings.TrimSpace(value) || len(value) > 32 {
+		errs = append(errs, errors.New("billing.asset_eip712_version must contain between 1 and 32 trimmed bytes"))
+	}
+	return errors.Join(errs...)
+}
+
+func validateHTTPSOrigin(name, raw string) error {
+	parsed, err := url.Parse(raw)
+	if raw == "" || raw != strings.TrimSpace(raw) || err != nil || parsed == nil ||
+		parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+		parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery ||
+		parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return fmt.Errorf("%s must be an absolute HTTPS origin without credentials, path, query, or fragment", name)
+	}
+	return nil
+}
+
+func forbiddenFacilitatorHeader(name string) bool {
+	switch name {
+	case "Host", "Connection", "Content-Length", "Transfer-Encoding",
+		"Proxy-Authorization", "Proxy-Authenticate", "Trailer", "Upgrade":
+		return true
+	default:
+		return strings.HasPrefix(strings.ToLower(name), "payment-")
+	}
 }
 
 func validateCompilerAllowlist(cfg VerificationConfig) error {
@@ -955,6 +1269,32 @@ func NormalizeRoles(input []string) ([]string, error) {
 }
 
 func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error)) error {
+	return applyEnvironmentForRoles(cfg, lookup, readFile, nil)
+}
+
+func applyEnvironmentForRoles(
+	cfg *Config,
+	lookup func(string) (string, bool),
+	readFile func(string) ([]byte, error),
+	forcedRoles []string,
+) error {
+	if err := setBool(lookup, "FEATURE_USER_AUTH", &cfg.Features.UserAuth); err != nil {
+		return err
+	}
+	if err := setBool(lookup, "FEATURE_X402_BILLING", &cfg.Features.X402Billing); err != nil {
+		return err
+	}
+	if forcedRoles != nil {
+		cfg.Runtime.Roles = slices.Clone(forcedRoles)
+	} else if value, ok := lookup(envPrefix + "ROLES"); ok {
+		cfg.Runtime.Roles = strings.Split(value, ",")
+	}
+	roles, err := NormalizeRoles(cfg.Runtime.Roles)
+	if err != nil {
+		return err
+	}
+	apiRole := slices.Contains(roles, "api")
+
 	secret, err := lookupValueOrFile("DATABASE_URL", lookup, readFile)
 	if err != nil {
 		return err
@@ -986,12 +1326,47 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if pepper != "" {
 		cfg.Security.APIKeyPepper = pepper
 	}
+	if apiRole && cfg.Features.UserAuth {
+		sessionPepper, err := lookupValueOrFile("SESSION_PEPPER", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		if sessionPepper != "" {
+			cfg.UserAuth.SessionPepper = sessionPepper
+		}
+	}
+	if apiRole && cfg.Features.X402Billing {
+		fingerprintPepper, err := lookupValueOrFile("X402_FINGERPRINT_PEPPER", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		if fingerprintPepper != "" {
+			cfg.Billing.FingerprintPepper = fingerprintPepper
+		}
+		headersJSON, err := lookupValueOrFile("X402_FACILITATOR_HEADERS", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		if headersJSON != "" {
+			headers, err := parseSecretHeaders(headersJSON)
+			if err != nil {
+				return err
+			}
+			cfg.Billing.FacilitatorHeaders = headers
+		}
+	}
 	setString(lookup, "COMPILER_SANDBOX", &cfg.Security.CompilerSandbox)
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
 	setString(lookup, "SOURCIFY_BASE_URL", &cfg.Sourcify.BaseURL)
 	setString(lookup, "OBSERVABILITY_ENVIRONMENT", &cfg.Observability.Environment)
 	setString(lookup, "OTLP_TRACE_ENDPOINT", &cfg.Observability.OTLPTraceEndpoint)
+	setString(lookup, "X402_FACILITATOR_URL", &cfg.Billing.FacilitatorURL)
+	setString(lookup, "X402_NETWORK", &cfg.Billing.Network)
+	setString(lookup, "X402_ASSET", &cfg.Billing.Asset)
+	setString(lookup, "X402_ASSET_EIP712_NAME", &cfg.Billing.AssetEIP712Name)
+	setString(lookup, "X402_ASSET_EIP712_VERSION", &cfg.Billing.AssetEIP712Version)
+	setString(lookup, "X402_RECIPIENT", &cfg.Billing.Recipient)
 	for name, target := range map[string]*string{
 		"NATS_URL":         &cfg.Adapters.NATSURL,
 		"REDIS_URL":        &cfg.Adapters.RedisURL,
@@ -1025,6 +1400,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		return err
 	}
 	if err := setUint8(lookup, "CHAIN_NATIVE_DECIMALS", &cfg.Chain.NativeDecimals); err != nil {
+		return err
+	}
+	if err := setUint8(lookup, "X402_ASSET_DECIMALS", &cfg.Billing.AssetDecimals); err != nil {
 		return err
 	}
 	if err := setInt32(lookup, "DATABASE_MAX_CONNECTIONS", &cfg.Database.MaxConnections); err != nil {
@@ -1093,37 +1471,61 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if err := setInt(lookup, "SOURCIFY_MAX_REQUEST_BYTES", &cfg.Sourcify.MaxRequestBytes); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "X402_MAX_PAYMENT_HEADER_BYTES", &cfg.Billing.MaxPaymentHeaderBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "X402_MAX_CAPTURED_HEADER_BYTES", &cfg.Billing.MaxCapturedHeaderBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "X402_COARSE_IP_RATE", &cfg.Billing.CoarseIPRate); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "X402_COARSE_IP_BURST", &cfg.Billing.CoarseIPBurst); err != nil {
+		return err
+	}
 	if err := setInt64(lookup, "SOURCIFY_MAX_RESPONSE_BYTES", &cfg.Sourcify.MaxResponseBytes); err != nil {
+		return err
+	}
+	if err := setInt64(lookup, "X402_FACILITATOR_MAX_RESPONSE_BYTES", &cfg.Billing.FacilitatorMaxResponseBytes); err != nil {
+		return err
+	}
+	if err := setInt64(lookup, "X402_MAX_BUFFERED_RESPONSE_BYTES", &cfg.Billing.MaxBufferedResponseBytes); err != nil {
 		return err
 	}
 	if err := setFloat64(lookup, "TRACE_SAMPLE_RATIO", &cfg.Observability.TraceSampleRatio); err != nil {
 		return err
 	}
 	for name, target := range map[string]*time.Duration{
-		"SERVER_SHUTDOWN_TIMEOUT":     &cfg.Server.ShutdownTimeout,
-		"SERVER_READ_TIMEOUT":         &cfg.Server.ReadTimeout,
-		"SERVER_WRITE_TIMEOUT":        &cfg.Server.WriteTimeout,
-		"DATABASE_CONNECT_TIMEOUT":    &cfg.Database.ConnectTimeout,
-		"DATABASE_STATEMENT_TIMEOUT":  &cfg.Database.StatementTimeout,
-		"RPC_REQUEST_TIMEOUT":         &cfg.RPC.RequestTimeout,
-		"CHAIN_GENESIS_FETCH_TIMEOUT": &cfg.Chain.GenesisFetchTimeout,
-		"POLL_INTERVAL":               &cfg.Runtime.PollInterval,
-		"LEASE_DURATION":              &cfg.Runtime.LeaseDuration,
-		"MEMPOOL_POLL_INTERVAL":       &cfg.Mempool.PollInterval,
-		"MEMPOOL_RETENTION":           &cfg.Mempool.Retention,
-		"MAINTENANCE_INTERVAL":        &cfg.Maintenance.Interval,
-		"METADATA_FETCH_TIMEOUT":      &cfg.Metadata.FetchTimeout,
-		"ADAPTER_FETCH_TIMEOUT":       &cfg.Adapters.FetchTimeout,
-		"ADAPTER_CONNECT_TIMEOUT":     &cfg.Adapters.ConnectTimeout,
-		"ADAPTER_OPERATION_TIMEOUT":   &cfg.Adapters.OperationTimeout,
-		"REDIS_CACHE_TTL":             &cfg.Adapters.RedisCacheTTL,
-		"ADAPTER_PRICE_FRESHNESS":     &cfg.Adapters.PriceFreshness,
-		"ADAPTER_NAME_FRESHNESS":      &cfg.Adapters.NameFreshness,
-		"ADAPTER_FAILURE_TTL":         &cfg.Adapters.FailureTTL,
-		"VERIFICATION_TIMEOUT":        &cfg.Verification.Timeout,
-		"SOURCIFY_TIMEOUT":            &cfg.Sourcify.Timeout,
-		"TRACE_EXPORT_TIMEOUT":        &cfg.Observability.TraceExportTimeout,
-		"METRICS_REFRESH_INTERVAL":    &cfg.Observability.MetricsRefreshInterval,
+		"SERVER_SHUTDOWN_TIMEOUT":      &cfg.Server.ShutdownTimeout,
+		"SERVER_READ_TIMEOUT":          &cfg.Server.ReadTimeout,
+		"SERVER_WRITE_TIMEOUT":         &cfg.Server.WriteTimeout,
+		"DATABASE_CONNECT_TIMEOUT":     &cfg.Database.ConnectTimeout,
+		"DATABASE_STATEMENT_TIMEOUT":   &cfg.Database.StatementTimeout,
+		"RPC_REQUEST_TIMEOUT":          &cfg.RPC.RequestTimeout,
+		"CHAIN_GENESIS_FETCH_TIMEOUT":  &cfg.Chain.GenesisFetchTimeout,
+		"POLL_INTERVAL":                &cfg.Runtime.PollInterval,
+		"LEASE_DURATION":               &cfg.Runtime.LeaseDuration,
+		"MEMPOOL_POLL_INTERVAL":        &cfg.Mempool.PollInterval,
+		"MEMPOOL_RETENTION":            &cfg.Mempool.Retention,
+		"MAINTENANCE_INTERVAL":         &cfg.Maintenance.Interval,
+		"METADATA_FETCH_TIMEOUT":       &cfg.Metadata.FetchTimeout,
+		"ADAPTER_FETCH_TIMEOUT":        &cfg.Adapters.FetchTimeout,
+		"ADAPTER_CONNECT_TIMEOUT":      &cfg.Adapters.ConnectTimeout,
+		"ADAPTER_OPERATION_TIMEOUT":    &cfg.Adapters.OperationTimeout,
+		"REDIS_CACHE_TTL":              &cfg.Adapters.RedisCacheTTL,
+		"ADAPTER_PRICE_FRESHNESS":      &cfg.Adapters.PriceFreshness,
+		"ADAPTER_NAME_FRESHNESS":       &cfg.Adapters.NameFreshness,
+		"ADAPTER_FAILURE_TTL":          &cfg.Adapters.FailureTTL,
+		"VERIFICATION_TIMEOUT":         &cfg.Verification.Timeout,
+		"SOURCIFY_TIMEOUT":             &cfg.Sourcify.Timeout,
+		"TRACE_EXPORT_TIMEOUT":         &cfg.Observability.TraceExportTimeout,
+		"METRICS_REFRESH_INTERVAL":     &cfg.Observability.MetricsRefreshInterval,
+		"USER_AUTH_CHALLENGE_TTL":      &cfg.UserAuth.ChallengeTTL,
+		"USER_AUTH_SESSION_TTL":        &cfg.UserAuth.SessionTTL,
+		"USER_AUTH_LAST_USED_INTERVAL": &cfg.UserAuth.LastUsedInterval,
+		"X402_FACILITATOR_TIMEOUT":     &cfg.Billing.FacilitatorTimeout,
+		"X402_REQUIREMENT_MAX_TIMEOUT": &cfg.Billing.RequirementMaxTimeout,
+		"X402_RESERVATION_TTL":         &cfg.Billing.ReservationTTL,
 	} {
 		if err := setDuration(lookup, name, target); err != nil {
 			return err
@@ -1137,6 +1539,8 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		"FEATURE_SOURCIFY":         &cfg.Features.Sourcify,
 		"FEATURE_NFT_METADATA":     &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":          &cfg.Features.Pricing,
+		"FEATURE_USER_AUTH":        &cfg.Features.UserAuth,
+		"FEATURE_X402_BILLING":     &cfg.Features.X402Billing,
 		"PUBLIC_VERIFICATION":      &cfg.Security.PublicVerification,
 		"S3_PATH_STYLE":            &cfg.Adapters.S3PathStyle,
 		"OTLP_TRACE_INSECURE":      &cfg.Observability.OTLPTraceInsecure,
@@ -1151,8 +1555,8 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 	if value, ok := lookup(envPrefix + "TRUSTED_PROXIES"); ok {
 		cfg.Security.TrustedProxies = splitCSV(value)
 	}
-	if value, ok := lookup(envPrefix + "ROLES"); ok {
-		cfg.Runtime.Roles = strings.Split(value, ",")
+	if value, ok := lookup(envPrefix + "X402_FACILITATOR_ALLOWED_CIDRS"); ok {
+		cfg.Billing.FacilitatorAllowedCIDRs = splitCSV(value)
 	}
 	rpcURLs, err := lookupValueOrFile("RPC_URLS", lookup, readFile)
 	if err != nil {
@@ -1166,6 +1570,45 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool), readFile 
 		cfg.RPC.Endpoints = endpoints
 	}
 	return nil
+}
+
+func parseSecretHeaders(value string) (map[string]string, error) {
+	if len(value) > 16<<10 {
+		return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS exceeds 16384 bytes")
+	}
+	decoder := json.NewDecoder(strings.NewReader(value))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS must be a JSON object of string values")
+	}
+	headers := make(map[string]string)
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		key, ok := keyToken.(string)
+		if err != nil || !ok {
+			return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS must be a JSON object of string values")
+		}
+		if _, exists := headers[key]; exists {
+			return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS contains a duplicate header")
+		}
+		var headerValue string
+		if err := decoder.Decode(&headerValue); err != nil {
+			return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS must be a JSON object of string values")
+		}
+		headers[key] = headerValue
+		if len(headers) > 32 {
+			return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS contains too many headers")
+		}
+	}
+	token, err = decoder.Token()
+	if err != nil || token != json.Delim('}') {
+		return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS must be a JSON object of string values")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("ETHERVIEW_X402_FACILITATOR_HEADERS contains trailing JSON")
+	}
+	return headers, nil
 }
 
 // parseEnvironmentRPCEndpoints keeps the original comma-separated shorthand

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -216,6 +217,176 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 	if !strings.Contains(afterSecondFailure, `etherview_durable_jobs{stage="trace",status="queued"} 1`) ||
 		!strings.Contains(afterSecondFailure, `etherview_verification_jobs{status="running"} 1`) {
 		t.Fatalf("failed refresh cleared the last PostgreSQL snapshot:\n%s", afterSecondFailure)
+	}
+}
+
+func TestX402SettlingMetricIsChainScopedAgedAndClearedByReconciliation(
+	t *testing.T,
+) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(
+		ctx,
+		`INSERT INTO chains (chain_id) VALUES (1), (2)`,
+	); err != nil {
+		t.Fatalf("insert billing metric fixture chains: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO billing_payments (
+			id, chain_id, fingerprint, reservation_owner, method, operation,
+			resource_digest, requirement_digest, protocol_version, scheme,
+			network, asset, amount_atomic, recipient, payer, facilitator_digest,
+			state, failure_code, reservation_expires_at, handler_started_at,
+			verified_at, settling_at, created_at, updated_at
+		) VALUES
+			(
+				'00000000-0000-4000-8000-000000000101', 1,
+				decode(repeat('a1', 32), 'hex'),
+				'00000000-0000-4000-8000-000000000201', 'GET', 'listBlocks',
+				decode(repeat('b1', 32), 'hex'), decode(repeat('c1', 32), 'hex'),
+				2, 'exact', 'eip155:1', decode(repeat('11', 20), 'hex'), 1,
+				decode(repeat('22', 20), 'hex'), decode(repeat('33', 20), 'hex'),
+				decode(repeat('d1', 32), 'hex'),
+				'settling', 'settlement_unknown', now() + interval '1 hour',
+				now() - interval '20 seconds', now() - interval '20 seconds',
+				now() - interval '10 seconds', now() - interval '10 minutes',
+				now() - interval '10 seconds'
+			),
+			(
+				'00000000-0000-4000-8000-000000000102', 1,
+				decode(repeat('a2', 32), 'hex'),
+				'00000000-0000-4000-8000-000000000202', 'GET', 'getTransaction',
+				decode(repeat('b2', 32), 'hex'), decode(repeat('c2', 32), 'hex'),
+				2, 'exact', 'eip155:1', decode(repeat('11', 20), 'hex'), 1,
+				decode(repeat('22', 20), 'hex'), decode(repeat('33', 20), 'hex'),
+				decode(repeat('d2', 32), 'hex'),
+				'settling', NULL, now() + interval '1 hour',
+				now() - interval '4 minutes', now() - interval '4 minutes',
+				now() - interval '3 minutes', now() - interval '10 minutes',
+				now() - interval '3 minutes'
+			),
+			(
+				'00000000-0000-4000-8000-000000000103', 1,
+				decode(repeat('a3', 32), 'hex'),
+				'00000000-0000-4000-8000-000000000203', 'GET', 'search',
+				decode(repeat('b3', 32), 'hex'), decode(repeat('c3', 32), 'hex'),
+				2, 'exact', 'eip155:1', decode(repeat('11', 20), 'hex'), 1,
+				decode(repeat('22', 20), 'hex'), decode(repeat('33', 20), 'hex'),
+				decode(repeat('d3', 32), 'hex'),
+				'settling', NULL, now() + interval '1 hour',
+				now() - interval '40 seconds', now() - interval '40 seconds',
+				now() - interval '30 seconds', now() - interval '10 minutes',
+				now() - interval '30 seconds'
+			),
+			(
+				'00000000-0000-4000-8000-000000000104', 2,
+				decode(repeat('a4', 32), 'hex'),
+				'00000000-0000-4000-8000-000000000204', 'GET', 'listTransactions',
+				decode(repeat('b4', 32), 'hex'), decode(repeat('c4', 32), 'hex'),
+				2, 'exact', 'eip155:2', decode(repeat('11', 20), 'hex'), 1,
+				decode(repeat('22', 20), 'hex'), decode(repeat('33', 20), 'hex'),
+				decode(repeat('d4', 32), 'hex'),
+				'settling', 'settlement_unknown', now() + interval '1 hour',
+				now() - interval '20 seconds', now() - interval '20 seconds',
+				now() - interval '10 seconds', now() - interval '10 minutes',
+				now() - interval '10 seconds'
+			)`); err != nil {
+		t.Fatalf("insert billing metric fixtures: %v", err)
+	}
+
+	var (
+		indexValid     bool
+		indexPredicate string
+	)
+	if err := db.QueryRowContext(ctx, `
+		SELECT index_state.indisvalid,
+		       pg_get_expr(index_state.indpred, index_state.indrelid)
+		FROM pg_index AS index_state
+		JOIN pg_class AS index_relation
+		  ON index_relation.oid = index_state.indexrelid
+		WHERE index_relation.relnamespace = current_schema()::regnamespace
+		  AND index_relation.relname = 'billing_payments_settling_metrics_idx'`).
+		Scan(&indexValid, &indexPredicate); err != nil {
+		t.Fatalf("read billing settling metric index: %v", err)
+	}
+	if !indexValid || !strings.Contains(indexPredicate, "settling") {
+		t.Fatalf(
+			"billing settling index valid=%t predicate=%q",
+			indexValid,
+			indexPredicate,
+		)
+	}
+
+	source, err := observability.NewPostgresMetricSource(db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := observability.NewRegistry("integration", "api")
+	collector, err := observability.NewDurableCollector(
+		source,
+		registry,
+		observability.DurableCollectorOptions{
+			Interval: 25 * time.Millisecond,
+			Timeout:  20 * time.Millisecond,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- collector.Run(runCtx) }()
+	t.Cleanup(func() {
+		stop()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("billing metric collector did not stop")
+		}
+	})
+
+	initial := waitForMetrics(t, registry, func(metrics string) bool {
+		return strings.Contains(
+			metrics,
+			`etherview_x402_stale_settling_payments{operation="listBlocks",reason="settlement_unknown"} 1`,
+		) && strings.Contains(
+			metrics,
+			`etherview_x402_stale_settling_payments{operation="getTransaction",reason="unmarked_after_timeout"} 1`,
+		)
+	})
+	if strings.Contains(initial, `operation="search"`) ||
+		strings.Contains(initial, `operation="listTransactions"`) {
+		t.Fatalf("fresh or other-chain settlement leaked into metrics:\n%s", initial)
+	}
+
+	ledger, err := billing.NewPostgresLedger(db, 1, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationAt := time.Now().UTC().Add(time.Second)
+	for _, id := range []string{
+		"00000000-0000-4000-8000-000000000101",
+		"00000000-0000-4000-8000-000000000102",
+	} {
+		if _, err := ledger.ReconcileFailed(ctx, id, operationAt); err != nil {
+			t.Fatalf("reconcile billing metric fixture %s: %v", id, err)
+		}
+	}
+	afterReconcile := waitForMetrics(t, registry, func(metrics string) bool {
+		return !strings.Contains(
+			metrics,
+			"etherview_x402_stale_settling_payments{",
+		)
+	})
+	if strings.Contains(
+		afterReconcile,
+		"etherview_x402_stale_settling_payments{",
+	) {
+		t.Fatalf(
+			"reconciled settlements remained in metrics:\n%s",
+			afterReconcile,
+		)
 	}
 }
 

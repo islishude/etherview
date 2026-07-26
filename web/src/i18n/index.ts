@@ -17,6 +17,9 @@ const resources = {
         more: "More explorer pages",
         pending: "Pending",
         status: "Sync status",
+        account: "Account",
+        adminUsers: "User admin",
+        adminBilling: "Billing admin",
       },
       actions: {
         search: "Search",
@@ -357,6 +360,235 @@ const resources = {
           requestFailed: "The wallet request failed.",
         },
       },
+      auth: {
+        account: {
+          title: "Account",
+          description:
+            "Wallet connection and Etherview login are separate states. A wallet identity change ends the local authenticated session.",
+          identityStatus: "Wallet and user authentication status",
+          open: "Open account",
+        },
+        walletState: {
+          title: "Wallet connection",
+          connected: "Wallet connected",
+          disconnected: "Wallet disconnected",
+          correctChain: "Connected to configured chain {{chain}}.",
+          wrongChain:
+            "Switch to configured chain {{expected}} before signing in (currently {{actual}}).",
+          connectHint: "Use the wallet menu in the header to choose an injected wallet.",
+        },
+        sessionState: {
+          title: "Etherview user session",
+          checking: "Checking the writer-backed session…",
+          authenticated: "User authenticated",
+          anonymous: "Not logged in",
+          walletMatches: "The connected wallet matches this authenticated user.",
+          independent:
+            "This server session is authenticated; wallet connection is shown separately.",
+          loginHint:
+            "Connecting a wallet does not log you in. Sign the server-authored message to create a user session.",
+        },
+        signIn: {
+          eyebrow: "SIWE authentication",
+          title: "Sign in with the connected wallet",
+          description:
+            "Etherview requests one bounded personal_sign signature for the exact server-authored message. No transaction or general signing capability is exposed.",
+          pending: "Waiting for wallet…",
+          action: "Sign in with Ethereum",
+        },
+        profile: {
+          title: "Profile",
+          displayName: "Display name",
+          displayNameHint:
+            "Optional; 64 Unicode characters and 256 UTF-8 bytes maximum. Clear the field to remove it.",
+          invalidDisplayName:
+            "Use at most 64 Unicode characters and 256 UTF-8 bytes, without control characters.",
+          saved: "Profile saved.",
+          save: "Save profile",
+          noDisplayName: "No display name",
+        },
+        sessionActions: {
+          title: "Session controls",
+          description:
+            "The session has a fixed expiry. Logging out revokes it across API replicas.",
+          logout: "Log out",
+        },
+        menu: {
+          title: "User session",
+          walletIsNotLogin:
+            "A connected wallet is not an authenticated Etherview user.",
+        },
+        admin: {
+          title: "User administration",
+          description:
+            "Review chain-scoped users, change roles or status, and revoke all active sessions through the writer-backed boundary.",
+          openUsers: "Manage users",
+          authenticationRequired: "Log in before opening user administration.",
+          adminRequired: "The current user does not have the administrator role.",
+          page: "User page {{page}}",
+          refresh: "Refresh users",
+          loading: "Loading users…",
+          loadFailed: "User list is unavailable",
+          loadFailedDetail:
+            "The writer-backed administrator query failed. No cached authority was inferred.",
+          empty: "No users are present on this page.",
+          userList: "Administrative user list",
+          pagination: "Administrative user pages",
+          updated: "Updated {{address}}.",
+          revoked: "Revoked {{count}} session(s) for {{address}}.",
+          you: "You",
+          roleFor: "Role for {{address}}",
+          statusFor: "Status for {{address}}",
+          saveUser: "Save user",
+          revokeSessions: "Revoke sessions",
+        },
+        fields: {
+          address: "Wallet address",
+          role: "Role",
+          status: "Status",
+          expiresAt: "Session expires",
+          lastLogin: "Last login",
+          createdAt: "Created",
+        },
+        role: {
+          user: "User",
+          admin: "Administrator",
+        },
+        status: {
+          active: "Active",
+          disabled: "Disabled",
+        },
+        unavailable: {
+          title: "User authentication is disabled",
+          description:
+            "This deployment has not enabled wallet-backed user sessions. Explorer and wallet contract features remain available independently.",
+        },
+        errors: {
+          unavailable: "User authentication is temporarily unavailable.",
+          authenticationRequired: "An authenticated user session is required.",
+          invalidResponse: "The authentication service returned an invalid response.",
+          walletChanged: "The wallet identity changed; sign in again.",
+          challengeInvalid: "The sign-in challenge is invalid.",
+          challengeExpired: "The sign-in challenge expired; request a new one.",
+          challengeConsumed: "The sign-in challenge was already used; request a new one.",
+          signatureInvalid: "The wallet signature did not match the challenge.",
+          disabled: "This user is disabled.",
+          originInvalid: "The browser origin was rejected.",
+          csrfInvalid: "The session write token is invalid; sign in again.",
+          adminRequired: "Administrator access is required.",
+          userNotFound: "The requested user was not found.",
+          invalidRequest: "The authentication request is invalid.",
+        },
+      },
+      billing: {
+        personal: {
+          eyebrow: "Cookie-session history",
+          title: "Payment history",
+          description:
+            "Payments attributed to this authenticated Etherview user are read from the writer-backed ledger.",
+          sessionBoundary:
+            "This view follows the HttpOnly Cookie session, not the currently connected wallet.",
+          loading: "Loading your payment history…",
+          loadFailed: "Payment history is unavailable",
+          loadFailedDetail:
+            "The authenticated ledger query failed. No wallet address or browser cache was used as a fallback.",
+          empty: "No payments are attributed to this user on this page.",
+          tableLabel: "Personal payment history",
+          tableDescription:
+            "Payments attributed to the current Cookie-authenticated user. Administrator and API-key attribution fields are intentionally hidden.",
+          pagination: "Personal payment history pages",
+        },
+        admin: {
+          title: "Billing administration",
+          description:
+            "Inspect the writer-authoritative x402 ledger and bounded aggregate summary. Settlement-unknown rows remain fenced for operator reconciliation.",
+          authenticationRequired:
+            "Log in before opening billing administration.",
+          adminRequired:
+            "The current user does not have the administrator role.",
+          authUnavailable:
+            "Billing administration requires wallet-backed user authentication in this deployment.",
+          adminNavigation: "Administrator views",
+          openBilling: "Billing ledger",
+          defaultWindow: "Defaults to the last 24 hours",
+          summaryTitle: "Billing summary",
+          summaryDescription:
+            "Totals are exact decimal strings. With no time filters, the server selects a writer-authoritative 24-hour window.",
+          summaryLoading: "Loading the billing summary…",
+          summaryFailed: "Billing summary is unavailable",
+          summaryFailedDetail:
+            "The writer-backed aggregate query failed. Existing totals are not inferred from the visible page.",
+          summaryEmpty: "No aggregate groups matched this interval.",
+          summaryTableLabel: "Billing summary groups",
+          summaryTableDescription:
+            "Exact payment counts and atomic amounts grouped by operation, state, network, and asset.",
+          ledgerTitle: "Payment ledger",
+          ledgerDescription:
+            "Each row is a durable payment fence. A settling row marked settlement unknown cannot be replayed automatically.",
+          ledgerLoading: "Loading payment ledger…",
+          ledgerFailed: "Payment ledger is unavailable",
+          ledgerFailedDetail:
+            "The writer-backed administrator ledger query failed. No stale authority is displayed.",
+          ledgerEmpty: "No payments matched these filters on this page.",
+          tableLabel: "Administrative payment ledger",
+          tableDescription:
+            "Writer-authoritative x402 payment records, including nullable user and API-key attribution.",
+          pagination: "Administrative payment ledger pages",
+        },
+        actions: {
+          refresh: "Refresh history",
+          refreshSummary: "Refresh summary",
+          refreshLedger: "Refresh ledger",
+        },
+        filters: {
+          title: "Ledger filters",
+          description:
+            "Filters apply to both the ledger and summary. Time ranges must be ordered and no longer than 31 days.",
+          anyState: "Any state",
+          anyOperation: "Any eligible operation",
+          fromTime: "From time",
+          toTime: "To time",
+          apply: "Apply filters",
+          clear: "Clear filters",
+          invalidNetwork:
+            "Network must use the eip155:<positive chain ID> form and fit within 96 characters.",
+          invalidAsset:
+            "Asset must be a 20-byte 0x-prefixed hexadecimal address.",
+          invalidOperation: "Select one of the eligible operation IDs.",
+          invalidState: "Select a recognized payment state.",
+          invalidTime: "Enter a valid date and time.",
+          invalidOrder: "From time must be earlier than to time.",
+          rangeTooLong: "The summary interval cannot exceed 31 days.",
+        },
+        fields: {
+          operation: "Operation",
+          state: "State",
+          network: "Network",
+          asset: "Asset",
+          paymentCount: "Payment count",
+          amountAtomic: "Atomic amount",
+          payer: "Payer",
+          recipient: "Recipient",
+          userID: "User ID",
+          apiKeyPrefix: "API-key prefix",
+          transactionHash: "Transaction hash",
+          createdAt: "Created",
+        },
+        states: {
+          reserved: "Reserved",
+          verified: "Verified",
+          settling: "Settling",
+          settled: "Settled",
+          failed: "Failed",
+          expired: "Expired",
+          settlementUnknown: "Settlement unknown",
+        },
+        unavailable: {
+          title: "x402 billing is disabled",
+          description:
+            "This deployment has not enabled request billing. Explorer, account, and wallet features remain available independently.",
+        },
+      },
       capability: {
         foundation: "Interface foundation ready",
         pendingApi: "This view activates when its versioned API capability is available.",
@@ -509,6 +741,9 @@ const resources = {
         more: "更多浏览器页面",
         pending: "待处理交易",
         status: "同步状态",
+        account: "账户",
+        adminUsers: "用户管理",
+        adminBilling: "计费管理",
       },
       actions: {
         search: "搜索",
@@ -844,6 +1079,228 @@ const resources = {
           invalidRequest: "合约请求无效。",
           userRejected: "钱包请求已被拒绝。",
           requestFailed: "钱包请求失败。",
+        },
+      },
+      auth: {
+        account: {
+          title: "账户",
+          description:
+            "钱包连接与 Etherview 登录是两个独立状态；钱包身份变化会立即结束本地认证会话。",
+          identityStatus: "钱包与用户认证状态",
+          open: "打开账户",
+        },
+        walletState: {
+          title: "钱包连接",
+          connected: "钱包已连接",
+          disconnected: "钱包未连接",
+          correctChain: "已连接到配置链 {{chain}}。",
+          wrongChain:
+            "登录前请切换到配置链 {{expected}}（当前为 {{actual}}）。",
+          connectHint: "请使用页头的钱包菜单选择注入式钱包。",
+        },
+        sessionState: {
+          title: "Etherview 用户会话",
+          checking: "正在检查 writer 权威会话…",
+          authenticated: "用户已登录",
+          anonymous: "用户未登录",
+          walletMatches: "当前连接的钱包与已登录用户一致。",
+          independent: "服务端会话已认证；钱包连接状态在旁边独立显示。",
+          loginHint:
+            "连接钱包并不等于登录；请签署服务端生成的消息以创建用户会话。",
+        },
+        signIn: {
+          eyebrow: "SIWE 认证",
+          title: "使用已连接的钱包登录",
+          description:
+            "Etherview 仅为服务端生成的精确消息请求一次受限 personal_sign 签名，不开放交易或通用签名能力。",
+          pending: "等待钱包确认…",
+          action: "使用以太坊登录",
+        },
+        profile: {
+          title: "个人资料",
+          displayName: "显示名称",
+          displayNameHint:
+            "可选；最多 64 个 Unicode 字符和 256 个 UTF-8 字节。清空字段即可移除。",
+          invalidDisplayName:
+            "最多使用 64 个 Unicode 字符和 256 个 UTF-8 字节，且不能包含控制字符。",
+          saved: "个人资料已保存。",
+          save: "保存资料",
+          noDisplayName: "未设置显示名称",
+        },
+        sessionActions: {
+          title: "会话控制",
+          description: "会话采用固定过期时间；退出会在所有 API 副本上撤销会话。",
+          logout: "退出登录",
+        },
+        menu: {
+          title: "用户会话",
+          walletIsNotLogin: "钱包已连接并不表示已登录 Etherview 用户。",
+        },
+        admin: {
+          title: "用户管理",
+          description:
+            "通过 writer 权威边界查看当前链用户、修改角色或状态，并撤销全部活动会话。",
+          openUsers: "管理用户",
+          authenticationRequired: "请先登录再打开用户管理。",
+          adminRequired: "当前用户没有管理员角色。",
+          page: "用户第 {{page}} 页",
+          refresh: "刷新用户",
+          loading: "正在加载用户…",
+          loadFailed: "用户列表不可用",
+          loadFailedDetail:
+            "writer 权威管理员查询失败；不会据此使用缓存权限。",
+          empty: "本页没有用户。",
+          userList: "管理员用户列表",
+          pagination: "管理员用户分页",
+          updated: "已更新 {{address}}。",
+          revoked: "已为 {{address}} 撤销 {{count}} 个会话。",
+          you: "你",
+          roleFor: "{{address}} 的角色",
+          statusFor: "{{address}} 的状态",
+          saveUser: "保存用户",
+          revokeSessions: "撤销会话",
+        },
+        fields: {
+          address: "钱包地址",
+          role: "角色",
+          status: "状态",
+          expiresAt: "会话过期时间",
+          lastLogin: "最近登录",
+          createdAt: "创建时间",
+        },
+        role: {
+          user: "普通用户",
+          admin: "管理员",
+        },
+        status: {
+          active: "启用",
+          disabled: "禁用",
+        },
+        unavailable: {
+          title: "用户认证已关闭",
+          description:
+            "当前部署未启用钱包用户会话；区块浏览和钱包合约功能仍可独立使用。",
+        },
+        errors: {
+          unavailable: "用户认证暂时不可用。",
+          authenticationRequired: "需要已认证的用户会话。",
+          invalidResponse: "认证服务返回了无效响应。",
+          walletChanged: "钱包身份已变化，请重新登录。",
+          challengeInvalid: "登录 challenge 无效。",
+          challengeExpired: "登录 challenge 已过期，请重新获取。",
+          challengeConsumed: "登录 challenge 已使用，请重新获取。",
+          signatureInvalid: "钱包签名与 challenge 不匹配。",
+          disabled: "该用户已被禁用。",
+          originInvalid: "浏览器 Origin 被拒绝。",
+          csrfInvalid: "会话写入令牌无效，请重新登录。",
+          adminRequired: "需要管理员权限。",
+          userNotFound: "未找到目标用户。",
+          invalidRequest: "认证请求无效。",
+        },
+      },
+      billing: {
+        personal: {
+          eyebrow: "Cookie 会话历史",
+          title: "付款历史",
+          description:
+            "这里展示 writer 权威账本中已关联到当前 Etherview 登录用户的付款。",
+          sessionBoundary:
+            "此视图仅跟随 HttpOnly Cookie 会话，与当前连接的钱包无关。",
+          loading: "正在加载你的付款历史…",
+          loadFailed: "付款历史不可用",
+          loadFailedDetail:
+            "认证账本查询失败；不会使用钱包地址或浏览器缓存作为回退。",
+          empty: "本页没有关联到该用户的付款。",
+          tableLabel: "个人付款历史",
+          tableDescription:
+            "关联到当前 Cookie 认证用户的付款；管理员与 API Key 归属字段会被明确隐藏。",
+          pagination: "个人付款历史分页",
+        },
+        admin: {
+          title: "计费管理",
+          description:
+            "查看 writer 权威的 x402 账本与有界汇总；结算未知记录会保持围栏状态，等待 operator 人工对账。",
+          authenticationRequired: "请先登录再打开计费管理。",
+          adminRequired: "当前用户没有管理员角色。",
+          authUnavailable: "当前部署必须启用钱包用户认证后才能使用计费管理。",
+          adminNavigation: "管理员视图",
+          openBilling: "计费账本",
+          defaultWindow: "默认最近 24 小时",
+          summaryTitle: "计费汇总",
+          summaryDescription:
+            "总数和金额均为精确十进制字符串；未指定时间时，由服务端选择 writer 权威的 24 小时窗口。",
+          summaryLoading: "正在加载计费汇总…",
+          summaryFailed: "计费汇总不可用",
+          summaryFailedDetail:
+            "writer 权威汇总查询失败；不会根据当前可见页面推断总计。",
+          summaryEmpty: "该时间范围没有匹配的汇总分组。",
+          summaryTableLabel: "计费汇总分组",
+          summaryTableDescription:
+            "按操作、状态、网络和资产分组的精确付款计数与原子金额。",
+          ledgerTitle: "付款账本",
+          ledgerDescription:
+            "每一行都是持久付款围栏；标记为结算未知的 settling 记录不能自动重放。",
+          ledgerLoading: "正在加载付款账本…",
+          ledgerFailed: "付款账本不可用",
+          ledgerFailedDetail:
+            "writer 权威管理员账本查询失败；不会展示过期权限数据。",
+          ledgerEmpty: "本页没有符合筛选条件的付款。",
+          tableLabel: "管理员付款账本",
+          tableDescription:
+            "writer 权威的 x402 付款记录，包含可空的用户和 API Key 归属。",
+          pagination: "管理员付款账本分页",
+        },
+        actions: {
+          refresh: "刷新历史",
+          refreshSummary: "刷新汇总",
+          refreshLedger: "刷新账本",
+        },
+        filters: {
+          title: "账本筛选",
+          description:
+            "筛选同时用于账本与汇总；时间范围必须有序且不能超过 31 天。",
+          anyState: "任意状态",
+          anyOperation: "任意可计费操作",
+          fromTime: "开始时间",
+          toTime: "结束时间",
+          apply: "应用筛选",
+          clear: "清除筛选",
+          invalidNetwork:
+            "网络必须使用 eip155:<正整数链 ID> 格式，且不超过 96 个字符。",
+          invalidAsset: "资产必须是 20 字节、以 0x 开头的十六进制地址。",
+          invalidOperation: "请选择一个可计费 operation ID。",
+          invalidState: "请选择有效的付款状态。",
+          invalidTime: "请输入有效的日期和时间。",
+          invalidOrder: "开始时间必须早于结束时间。",
+          rangeTooLong: "汇总时间范围不能超过 31 天。",
+        },
+        fields: {
+          operation: "操作",
+          state: "状态",
+          network: "网络",
+          asset: "资产",
+          paymentCount: "付款计数",
+          amountAtomic: "原子金额",
+          payer: "付款方",
+          recipient: "收款方",
+          userID: "用户 ID",
+          apiKeyPrefix: "API Key 前缀",
+          transactionHash: "交易哈希",
+          createdAt: "创建时间",
+        },
+        states: {
+          reserved: "已预留",
+          verified: "已验证",
+          settling: "结算中",
+          settled: "已结算",
+          failed: "失败",
+          expired: "已过期",
+          settlementUnknown: "结算结果未知",
+        },
+        unavailable: {
+          title: "x402 计费已关闭",
+          description:
+            "当前部署未启用按请求计费；区块浏览、账户和钱包功能仍可独立使用。",
         },
       },
       capability: {

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,18 +18,29 @@ import (
 type fakeBackend struct {
 	served        bool
 	roles         []string
+	doctorCalled  bool
+	doctorRoles   []string
+	doctorErr     error
+	doctorContext context.Context
 	migrate       string
 	repairKind    string
 	repairArgs    []string
 	adminResource string
 	adminAction   string
 	adminArgs     []string
+	adminConfig   config.Config
 }
 
 func (f *fakeBackend) Serve(_ context.Context, _ config.Config, roles []string) error {
 	f.served = true
 	f.roles = roles
 	return nil
+}
+func (f *fakeBackend) Doctor(ctx context.Context, _ config.Config, roles []string) error {
+	f.doctorCalled = true
+	f.doctorRoles = append([]string(nil), roles...)
+	f.doctorContext = ctx
+	return f.doctorErr
 }
 func (f *fakeBackend) Migrate(_ context.Context, _ config.Config, action string) error {
 	f.migrate = action
@@ -38,10 +51,11 @@ func (f *fakeBackend) Repair(_ context.Context, _ config.Config, kind string, ar
 	f.repairArgs = append([]string(nil), args...)
 	return nil
 }
-func (f *fakeBackend) Admin(_ context.Context, _ config.Config, resource, action string, args []string) error {
+func (f *fakeBackend) Admin(_ context.Context, cfg config.Config, resource, action string, args []string) error {
 	f.adminResource = resource
 	f.adminAction = action
 	f.adminArgs = append([]string(nil), args...)
+	f.adminConfig = cfg
 	return nil
 }
 
@@ -84,6 +98,53 @@ rpc:
 	}
 }
 
+func TestServeRoleOverridePrecedesRoleScopedSecretLoading(t *testing.T) {
+	unsetCLIEnvironment(t, "ETHERVIEW_SESSION_PEPPER")
+	t.Setenv("ETHERVIEW_FEATURE_USER_AUTH", "true")
+	t.Setenv("ETHERVIEW_SESSION_PEPPER_FILE", "/does/not/exist/session")
+	t.Setenv("ETHERVIEW_ROLES", "all")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+runtime:
+  roles: [all]
+features:
+  user_auth: true
+server:
+  public_url: https://explorer.example
+database:
+  url: postgres://localhost/etherview
+rpc:
+  endpoints:
+    - name: primary
+      url: http://localhost:8545
+      purposes: [all]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := &fakeBackend{}
+	var stderr bytes.Buffer
+	program := Program{Backend: backend, Stdout: &bytes.Buffer{}, Stderr: &stderr}
+	if code := program.Run(
+		context.Background(),
+		[]string{"serve", "--config", path, "--roles", "sync"},
+	); code != 0 {
+		t.Fatalf("sync code=%d stderr=%s", code, stderr.String())
+	}
+	if !backend.served || strings.Join(backend.roles, ",") != "sync" {
+		t.Fatalf("served=%v roles=%v", backend.served, backend.roles)
+	}
+
+	stderr.Reset()
+	if code := program.Run(
+		context.Background(),
+		[]string{"serve", "--config", path, "--roles", "api"},
+	); code != 1 || !strings.Contains(stderr.String(), "SESSION_PEPPER_FILE") {
+		t.Fatalf("api code=%d stderr=%s", code, stderr.String())
+	}
+}
+
 func TestDoctorRedactsURLs(t *testing.T) {
 	t.Setenv("ETHERVIEW_DATABASE_URL", "postgres://user:secret@localhost/db")
 	t.Setenv("ETHERVIEW_RPC_URLS", "https://user:secret@rpc.example")
@@ -97,12 +158,28 @@ func TestDoctorRedactsURLs(t *testing.T) {
 	}
 }
 
+func unsetCLIEnvironment(t *testing.T, name string) {
+	t.Helper()
+	previous, present := os.LookupEnv(name)
+	if err := os.Unsetenv(name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if present {
+			_ = os.Setenv(name, previous)
+			return
+		}
+		_ = os.Unsetenv(name)
+	})
+}
+
 func TestDoctorReportsRunnableRoleValidationFailure(t *testing.T) {
 	t.Setenv("ETHERVIEW_DATABASE_URL", "")
 	t.Setenv("ETHERVIEW_RPC_URLS", "")
 	t.Setenv("ETHERVIEW_ROLES", "all")
 	var stdout, stderr bytes.Buffer
-	program := Program{Backend: &fakeBackend{}, Stdout: &stdout, Stderr: &stderr}
+	backend := &fakeBackend{}
+	program := Program{Backend: backend, Stdout: &stdout, Stderr: &stderr}
 	if code := program.Run(context.Background(), []string{"doctor"}); code != 1 {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -121,6 +198,49 @@ func TestDoctorReportsRunnableRoleValidationFailure(t *testing.T) {
 	if !strings.Contains(stderr.String(), "database.url is required") ||
 		!strings.Contains(stderr.String(), "at least one rpc endpoint is required") {
 		t.Fatalf("doctor stderr = %q", stderr.String())
+	}
+	if backend.doctorCalled {
+		t.Fatal("doctor backend ran before runnable-role validation succeeded")
+	}
+}
+
+func TestDoctorIncludesBackendCapabilityFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+runtime:
+  roles: [api]
+database:
+  url: postgres://localhost/etherview
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	type contextKey string
+	const key contextKey = "doctor"
+	ctx := context.WithValue(context.Background(), key, "present")
+	backend := &fakeBackend{doctorErr: errors.New("x402_facilitator_unavailable")}
+	var stdout, stderr bytes.Buffer
+	program := Program{Backend: backend, Stdout: &stdout, Stderr: &stderr}
+	if code := program.Run(ctx, []string{"doctor", "--config", path}); code != 1 {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	var report struct {
+		Valid  bool     `json:"valid"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode doctor report: %v", err)
+	}
+	if report.Valid || strings.Join(report.Errors, ",") != "x402_facilitator_unavailable" {
+		t.Fatalf("doctor report = %+v", report)
+	}
+	if !backend.doctorCalled || strings.Join(backend.doctorRoles, ",") != "api" ||
+		backend.doctorContext.Value(key) != "present" {
+		t.Fatalf(
+			"called=%v roles=%v context=%v",
+			backend.doctorCalled,
+			backend.doctorRoles,
+			backend.doctorContext,
+		)
 	}
 }
 
@@ -213,6 +333,123 @@ func TestOperationalCommandsParseConfigAndForwardArguments(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "admin user set role",
+			args: []string{
+				"admin", "user", "set-role",
+				"--address", "0x0000000000000000000000000000000000000001",
+				"--config", path, "--role", "admin",
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "user" || backend.adminAction != "set-role" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--address 0x0000000000000000000000000000000000000001 --role admin" {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
+		{
+			name: "admin user set status",
+			args: []string{
+				"admin", "user", "set-status", "--status", "disabled",
+				"--config=" + path,
+				"--address", "0x0000000000000000000000000000000000000001",
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "user" || backend.adminAction != "set-status" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--status disabled --address 0x0000000000000000000000000000000000000001" {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
+		{
+			name: "admin user revoke sessions",
+			args: []string{
+				"admin", "user", "revoke-sessions",
+				"--address=0x0000000000000000000000000000000000000001",
+				"--config", path,
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "user" ||
+					backend.adminAction != "revoke-sessions" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--address=0x0000000000000000000000000000000000000001" {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
+		{
+			name: "admin billing inspect",
+			args: []string{
+				"admin", "billing", "inspect",
+				"--id", "00000000-0000-4000-8000-000000000001",
+				"--config", path,
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "billing" ||
+					backend.adminAction != "inspect" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--id 00000000-0000-4000-8000-000000000001" {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
+		{
+			name: "admin billing reconcile settled",
+			args: []string{
+				"admin", "billing", "reconcile",
+				"--id=00000000-0000-4000-8000-000000000001",
+				"--outcome", "settled",
+				"--transaction-hash", "0x" + strings.Repeat("11", 32),
+				"--config=" + path,
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "billing" ||
+					backend.adminAction != "reconcile" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--id=00000000-0000-4000-8000-000000000001 "+
+							"--outcome settled --transaction-hash 0x"+
+							strings.Repeat("11", 32) {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
+		{
+			name: "admin billing reconcile failed",
+			args: []string{
+				"admin", "billing", "reconcile",
+				"--outcome=failed",
+				"--id", "00000000-0000-4000-8000-000000000001",
+				"--config", path,
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "billing" ||
+					backend.adminAction != "reconcile" ||
+					strings.Join(backend.adminArgs, " ") !=
+						"--outcome=failed --id 00000000-0000-4000-8000-000000000001" {
+					t.Fatalf(
+						"admin resource=%q action=%q args=%v",
+						backend.adminResource, backend.adminAction, backend.adminArgs,
+					)
+				}
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -223,6 +460,105 @@ func TestOperationalCommandsParseConfigAndForwardArguments(t *testing.T) {
 				t.Fatalf("code=%d stderr=%s", code, stderr.String())
 			}
 			test.assert(t, backend)
+		})
+	}
+}
+
+func TestAdminUserAndBillingUseNonAPIRoleSecretLoading(t *testing.T) {
+	unsetCLIEnvironment(t, "ETHERVIEW_SESSION_PEPPER")
+	unsetCLIEnvironment(t, "ETHERVIEW_X402_FINGERPRINT_PEPPER")
+	unsetCLIEnvironment(t, "ETHERVIEW_X402_FACILITATOR_HEADERS")
+	t.Setenv("ETHERVIEW_FEATURE_USER_AUTH", "true")
+	t.Setenv("ETHERVIEW_FEATURE_X402_BILLING", "true")
+	t.Setenv("ETHERVIEW_SESSION_PEPPER_FILE", "/does/not/exist/session")
+	t.Setenv(
+		"ETHERVIEW_X402_FINGERPRINT_PEPPER_FILE",
+		"/does/not/exist/fingerprint",
+	)
+	t.Setenv(
+		"ETHERVIEW_X402_FACILITATOR_HEADERS_FILE",
+		"/does/not/exist/facilitator-headers",
+	)
+	t.Setenv("ETHERVIEW_ROLES", "all")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+server:
+  public_url: https://explorer.example
+database:
+  url: postgres://localhost/etherview
+features:
+  user_auth: true
+  x402_billing: true
+billing:
+  facilitator_url: https://facilitator.example
+  facilitator_allowed_cidrs: [203.0.113.0/24]
+  network: eip155:84532
+  asset: "0x1111111111111111111111111111111111111111"
+  asset_decimals: 6
+  asset_eip712_name: USDC
+  asset_eip712_version: "2"
+  recipient: "0x2222222222222222222222222222222222222222"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name     string
+		resource string
+		action   string
+		args     []string
+	}{
+		{
+			name: "user", resource: "user", action: "set-role",
+			args: []string{
+				"admin", "user", "set-role",
+				"--address", "0x0000000000000000000000000000000000000001",
+				"--role", "admin", "--config", path,
+			},
+		},
+		{
+			name: "billing", resource: "billing", action: "inspect",
+			args: []string{
+				"admin", "billing", "inspect",
+				"--id", "00000000-0000-4000-8000-000000000001",
+				"--config", path,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backend := &fakeBackend{}
+			var stderr bytes.Buffer
+			program := Program{
+				Backend: backend, Stdout: io.Discard, Stderr: &stderr,
+			}
+			if code := program.Run(
+				context.Background(), test.args,
+			); code != 0 {
+				t.Fatalf("code=%d stderr=%s", code, stderr.String())
+			}
+			if backend.adminResource != test.resource ||
+				backend.adminAction != test.action {
+				t.Fatalf(
+					"admin resource=%q action=%q",
+					backend.adminResource, backend.adminAction,
+				)
+			}
+			if !slices.Equal(
+				backend.adminConfig.Runtime.Roles,
+				[]string{"maintenance"},
+			) {
+				t.Fatalf(
+					"admin runtime roles=%v",
+					backend.adminConfig.Runtime.Roles,
+				)
+			}
+			if backend.adminConfig.UserAuth.SessionPepper != "" ||
+				backend.adminConfig.Billing.FingerprintPepper != "" ||
+				len(backend.adminConfig.Billing.FacilitatorHeaders) != 0 {
+				t.Fatal("admin command loaded API-only authentication or billing secrets")
+			}
 		})
 	}
 }
