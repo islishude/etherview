@@ -6,6 +6,21 @@
 {{- if and .Values.genesisState.existingClaim (ne (int64 .Values.config.chain.start_block) (int64 0)) }}
 {{- fail "genesisState.existingClaim requires config.chain.start_block=0" }}
 {{- end }}
+{{- $genesisClaim := .Values.genesisState.existingClaim | trim }}
+{{- $genesisURL := .Values.genesisState.url | trim }}
+{{- $genesisSHA256 := .Values.genesisState.sha256 | trim }}
+{{- if and (not (empty $genesisClaim)) (not (empty $genesisURL)) }}
+{{- fail "genesisState.existingClaim and genesisState.url are mutually exclusive" }}
+{{- end }}
+{{- if and (not (empty $genesisURL)) (ne (int64 .Values.config.chain.start_block) (int64 0)) }}
+{{- fail "genesisState.url requires config.chain.start_block=0" }}
+{{- end }}
+{{- if and (not (empty $genesisSHA256)) (empty $genesisURL) }}
+{{- fail "genesisState.sha256 requires genesisState.url" }}
+{{- end }}
+{{- if and (not (empty $genesisURL)) (regexMatch "(?i)/(%2e|\\.){1,2}(/|$)" $genesisURL) }}
+{{- fail "genesisState.url must not contain path traversal segments" }}
+{{- end }}
 {{- if and .Values.prometheusRule.enabled (not .Values.serviceMonitor.enabled) }}
 {{- fail "prometheusRule.enabled requires serviceMonitor.enabled so every alert is release-scoped" }}
 {{- end }}

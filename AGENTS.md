@@ -85,10 +85,21 @@ in `PLAN.md` and `docs/plans/`, not here.
   identity, and reorg handling must retain orphan facts.
 - An operator-supplied Genesis JSON is accepted only for indexing from block
   zero and only after its computed block hash and allocation state root match
-  canonical block zero. Account balance, nonce, code, code hash, and storage
-  root are immutable exact-block facts; raw storage slots are not retained.
-  Missing input is an explicit unavailable capability, never an empty
-  allocation, and genesis code alone does not imply token classification.
+  canonical block zero. Its source is either an absolute local file or a
+  mutually exclusive remote URL. Remote bootstrap is limited to public HTTPS
+  on port 443 with no credentials, query, fragment, path traversal, redirect,
+  environment proxy, or private/special-use address; identity-encoded input is
+  capped at 64 MiB and must be valid JSON with an explicitly allowed JSON,
+  vendor-JSON, octet-stream, or text media type. The remote-only optional digest is an
+  explicit non-zero lowercase SHA-256 and must match the exact response bytes
+  and any completed durable import. Account balance, nonce, code, code hash,
+  and storage root are immutable exact-block facts; raw storage slots are not
+  retained. Multiple sync replicas serialize the one-time remote fetch with a
+  chain-scoped session advisory lock, and no HTTP call occurs inside the import
+  transaction. Completed imports never depend on the remote service. Missing
+  input is an explicit unavailable capability, never an empty allocation;
+  hostile-boundary failures expose only stable redacted states, and genesis
+  code alone does not imply token classification.
 - ABI material is scoped by chain, target address, runtime code hash, exact
   context block hash, and a covering validity range. Source determines
   confidence: verified artifacts are `verified`, verified historical proxy

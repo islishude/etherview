@@ -110,6 +110,16 @@ spec:
             - name: ETHERVIEW_CHAIN_GENESIS_FILE
               value: {{ $root.Values.genesisState.mountPath | quote }}
             {{- end }}
+            {{- if and $root.Values.genesisState.url (or (eq $roleName "all") (eq $roleName "sync")) }}
+            - name: ETHERVIEW_CHAIN_GENESIS_URL
+              value: {{ $root.Values.genesisState.url | quote }}
+            {{- if $root.Values.genesisState.sha256 }}
+            - name: ETHERVIEW_CHAIN_GENESIS_SHA256
+              value: {{ $root.Values.genesisState.sha256 | quote }}
+            {{- end }}
+            - name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT
+              value: {{ $root.Values.genesisState.fetchTimeout | quote }}
+            {{- end }}
             - name: ETHERVIEW_API_KEY_PEPPER
               valueFrom:
                 secretKeyRef:

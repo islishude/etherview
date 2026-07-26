@@ -84,32 +84,66 @@ and restart only after the identity boundary is safe.
 ## Genesis account state
 
 Normal RPC indexing always stores block zero, but the header does not enumerate
-prefunded EOAs or predeploys. To expose those accounts, set the absolute
-server-only `chain.genesis_file` path (or
-`ETHERVIEW_CHAIN_GENESIS_FILE`) while `chain.start_block` is zero and mount the
-chain's authoritative standard Genesis JSON read-only into the monolith or sync
-process. Input is capped at 64 MiB and 500,000 allocation entries.
+prefunded EOAs or predeploys. To expose those accounts while
+`chain.start_block` is zero, configure exactly one server-only source:
 
-The importer waits for canonical block zero, computes the Ethereum account
-trie, block hash, code hashes, and storage roots, then requires the computed
-block hash and state root to match the configured/indexed chain. The import is
-one PostgreSQL transaction; mismatch, malformed JSON, duplicate keys, or a
-write failure exposes no partial account set. Raw storage slots are used only
-for root calculation and are not retained. Successful restart is idempotent and
-requests one source-deduplicated block-zero proxy replay. It does not classify
-predeploys as tokens without normal token evidence.
+- Set the absolute `chain.genesis_file` path (or
+  `ETHERVIEW_CHAIN_GENESIS_FILE`) and mount the chain's authoritative standard
+  Genesis JSON read-only into the monolith or sync process.
+- Set `chain.genesis_url` (or `ETHERVIEW_CHAIN_GENESIS_URL`) to fetch it once
+  from a public HTTPS URL. The URL must use port 443 and cannot contain
+  credentials, a query, a fragment, or path-traversal segments. Redirects,
+  environment proxies, and private or special-use destinations are rejected.
 
-Without a configured file, `/api/v1/genesis/accounts` returns the typed
+Both sources are capped at 64 MiB and 500,000 allocation entries. A remote
+response must use identity encoding and contain valid JSON. Its media type must
+be JSON, vendor `+json`, `application/octet-stream`, or `text/plain`.
+Optionally set `chain.genesis_sha256` (or
+`ETHERVIEW_CHAIN_GENESIS_SHA256`) to the non-zero lowercase SHA-256 digest of
+the exact response bytes. The digest is strict; HTTP checksum headers and
+sidecar files are ignored. `chain.genesis_fetch_timeout` controls only the
+remote bootstrap request, defaults to 60 seconds, and accepts values from one
+second through five minutes. Its environment equivalent is
+`ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT`.
+
+The local file is read and parsed when the importer is constructed, then waits
+for canonical block zero; the remote source is fetched only after canonical
+block zero is present and the per-chain lock is held. The importer computes the
+Ethereum account trie, block hash, code hashes, and storage roots, then requires
+the computed block hash and state root to match the configured/indexed chain.
+The import is one PostgreSQL transaction; mismatch, malformed JSON, duplicate
+keys, or a write failure exposes no partial account set. Raw storage slots are
+used only for root calculation and are not retained. The first successful
+import, including a late import, atomically requests one source-deduplicated
+block-zero proxy replay; completed restarts do not request it again. Genesis
+code does not classify predeploys as tokens without normal token evidence.
+
+Multiple sync replicas serialize an initial remote fetch with a per-chain
+PostgreSQL session advisory lock and recheck completion after acquiring it.
+Network I/O, checksum verification, and parsing occur outside the import
+transaction. Once a complete import exists, restarts read it without contacting
+the remote service; an explicitly configured checksum must still match the
+persisted document digest. Transport failures, timeouts, HTTP 429, and 5xx
+responses expose a stable redacted unavailable state. Other non-success status,
+checksum, invalid-content, and chain-identity failures expose a stable redacted
+failed state. Neither response bodies, URLs, nor nested network errors are
+published.
+
+Without a configured source, `/api/v1/genesis/accounts` returns the typed
 `genesis_state` unavailable capability; this must not be interpreted as an
 empty allocation. A successfully authenticated Genesis JSON whose `alloc` is
 actually empty returns an empty successful page.
 
 For Compose, mount the file through an override and set
-`ETHERVIEW_CHAIN_GENESIS_FILE` to the container path. For Helm, place the file
-in a read-only PVC and set `genesisState.existingClaim`,
-`genesisState.key`, and `genesisState.mountPath`; only monolith/sync Pods mount
-it. The generated deployment supplies the path through server-only
-configuration.
+`ETHERVIEW_CHAIN_GENESIS_FILE` to the container path, or set the remote URL,
+optional checksum, and timeout environment variables without mounting a file.
+For Helm, either place the file in a read-only PVC and set
+`genesisState.existingClaim`, `genesisState.key`, and
+`genesisState.mountPath`, or configure the mutually exclusive remote source
+fields `genesisState.url`, `genesisState.sha256`, and
+`genesisState.fetchTimeout`. Only monolith/sync Pods receive Genesis source
+configuration. The remote source adds no database migration, public API change,
+or SPA protocol change.
 
 ## Capacity, HA, and failover
 

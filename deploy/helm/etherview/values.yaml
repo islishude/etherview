@@ -7,13 +7,16 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
-# Optional read-only PVC containing the authoritative Genesis JSON. It is
-# mounted only into monolith/sync Pods; API and worker Pods read imported facts
-# from PostgreSQL.
+# Optional authoritative Genesis JSON source. Configure either a read-only PVC
+# or a public HTTPS URL. Source settings are exposed only to monolith/sync Pods;
+# API and worker Pods read imported facts from PostgreSQL.
 genesisState:
   existingClaim: ""
   key: genesis.json
   mountPath: /var/lib/etherview/genesis.json
+  url: ""
+  sha256: ""
+  fetchTimeout: 60s
 
 # monolith runs only the `all` deployment. distributed runs every enabled
 # non-all role from the same image and component implementations.
@@ -214,6 +217,11 @@ config:
     # Absolute path to an operator-mounted Genesis JSON, or empty to expose the
     # genesis-account capability as unavailable.
     genesis_file: ""
+    # Remote Genesis inputs are injected only into sync-bearing Pods from
+    # genesisState. Keep these ConfigMap values empty.
+    genesis_url: ""
+    genesis_sha256: ""
+    genesis_fetch_timeout: 60s
     start_block: 0
     name: Ethereum
     native_symbol: ETH

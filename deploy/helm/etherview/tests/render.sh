@@ -73,6 +73,9 @@ monitor_one="$temporary_dir/monitor-one.yaml"
 monitor_two="$temporary_dir/monitor-two.yaml"
 genesis_monolith="$temporary_dir/genesis-monolith.yaml"
 genesis_distributed="$temporary_dir/genesis-distributed.yaml"
+genesis_url_monolith="$temporary_dir/genesis-url-monolith.yaml"
+genesis_url_distributed="$temporary_dir/genesis-url-distributed.yaml"
+genesis_url_without_sha="$temporary_dir/genesis-url-without-sha.yaml"
 
 "$helm_bin" template etherview "$chart_dir" --namespace explorer >"$monolith"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
@@ -93,6 +96,23 @@ genesis_distributed="$temporary_dir/genesis-distributed.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   -f "$chart_dir/values-distributed.yaml" \
   --set-string genesisState.existingClaim=etherview-genesis >"$genesis_distributed"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set-string genesisState.sha256=1111111111111111111111111111111111111111111111111111111111111111 \
+  --set-string genesisState.fetchTimeout=90s >"$genesis_url_monolith"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set-string genesisState.sha256=1111111111111111111111111111111111111111111111111111111111111111 \
+  --set-string genesisState.fetchTimeout=90s >"$genesis_url_distributed"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.url=https://genesis.example/network.json >"$genesis_url_without_sha"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.fetchTimeout=1s >"$temporary_dir/genesis-timeout-minimum.yaml"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.fetchTimeout=1.5s >"$temporary_dir/genesis-timeout-fractional.yaml"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string genesisState.fetchTimeout=5m >"$temporary_dir/genesis-timeout-maximum.yaml"
 
 assert_kind_count "$monolith" Deployment 1
 assert_kind_count "$monolith" HorizontalPodAutoscaler 0
@@ -111,6 +131,18 @@ assert_occurrences "$genesis_monolith" "name: genesis-state" 2
 assert_contains "$genesis_monolith" 'mountPath: "/var/lib/etherview/genesis.json"'
 assert_contains "$genesis_monolith" 'subPath: "genesis.json"'
 assert_contains "$genesis_monolith" 'claimName: "etherview-genesis"'
+assert_occurrences "$genesis_url_monolith" "name: ETHERVIEW_CHAIN_GENESIS_URL" 1
+assert_occurrences "$genesis_url_monolith" "name: ETHERVIEW_CHAIN_GENESIS_SHA256" 1
+assert_occurrences "$genesis_url_monolith" "name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT" 1
+assert_contains "$genesis_url_monolith" 'value: "https://genesis.example/network.json"'
+assert_contains "$genesis_url_monolith" 'value: "1111111111111111111111111111111111111111111111111111111111111111"'
+assert_contains "$genesis_url_monolith" 'value: "90s"'
+assert_not_contains "$genesis_url_monolith" "name: ETHERVIEW_CHAIN_GENESIS_FILE"
+assert_not_contains "$genesis_url_monolith" "name: genesis-state"
+assert_not_contains "$genesis_url_monolith" "claimName:"
+assert_occurrences "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_URL" 1
+assert_occurrences "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT" 1
+assert_not_contains "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_SHA256"
 
 assert_kind_count "$distributed" Deployment 7
 assert_kind_count "$distributed" HorizontalPodAutoscaler 5
@@ -150,6 +182,12 @@ assert_not_contains "$distributed_hpa" "name: etherview-sync"
 assert_not_contains "$distributed_hpa" "name: etherview-maintenance"
 assert_occurrences "$genesis_distributed" "name: ETHERVIEW_CHAIN_GENESIS_FILE" 1
 assert_occurrences "$genesis_distributed" "name: genesis-state" 2
+assert_occurrences "$genesis_url_distributed" "name: ETHERVIEW_CHAIN_GENESIS_URL" 1
+assert_occurrences "$genesis_url_distributed" "name: ETHERVIEW_CHAIN_GENESIS_SHA256" 1
+assert_occurrences "$genesis_url_distributed" "name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT" 1
+assert_not_contains "$genesis_url_distributed" "name: ETHERVIEW_CHAIN_GENESIS_FILE"
+assert_not_contains "$genesis_url_distributed" "name: genesis-state"
+assert_not_contains "$genesis_url_distributed" "claimName:"
 
 # The reference profile is an HA/capacity starting point, not a result claim.
 # It runs only core roles, retains one replica through voluntary disruption,
@@ -263,9 +301,54 @@ expect_render_failure inline-database-secret \
   --set-string config.database.url=postgres://inline.invalid/etherview
 expect_render_failure inline-genesis-path \
   --set-string config.chain.genesis_file=/var/lib/etherview/genesis.json
+expect_render_failure inline-genesis-url \
+  --set-string config.chain.genesis_url=https://genesis.example/network.json
+expect_render_failure inline-genesis-sha256 \
+  --set-string config.chain.genesis_sha256=1111111111111111111111111111111111111111111111111111111111111111
 expect_render_failure genesis-with-nonzero-start \
   --set-string genesisState.existingClaim=etherview-genesis \
   --set config.chain.start_block=1
+expect_render_failure genesis-source-conflict \
+  --set-string genesisState.existingClaim=etherview-genesis \
+  --set-string genesisState.url=https://genesis.example/network.json
+expect_render_failure genesis-url-with-nonzero-start \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set config.chain.start_block=1
+expect_render_failure genesis-sha-without-url \
+  --set-string genesisState.sha256=1111111111111111111111111111111111111111111111111111111111111111
+expect_render_failure zero-genesis-sha \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set-string genesisState.sha256=0000000000000000000000000000000000000000000000000000000000000000
+expect_render_failure uppercase-genesis-sha \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set-string genesisState.sha256=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+expect_render_failure short-genesis-sha \
+  --set-string genesisState.url=https://genesis.example/network.json \
+  --set-string genesisState.sha256=111111111111111111111111111111111111111111111111111111111111111
+expect_render_failure insecure-genesis-url \
+  --set-string genesisState.url=http://genesis.example/network.json
+expect_render_failure genesis-url-with-query \
+  --set-string 'genesisState.url=https://genesis.example/network.json?token=secret'
+expect_render_failure genesis-url-with-fragment \
+  --set-string 'genesisState.url=https://genesis.example/network.json#sha256'
+expect_render_failure genesis-url-with-userinfo \
+  --set-string genesisState.url=https://user:pass@genesis.example/network.json
+expect_render_failure genesis-url-with-nondefault-port \
+  --set-string genesisState.url=https://genesis.example:8443/network.json
+expect_render_failure genesis-url-with-traversal \
+  --set-string genesisState.url=https://genesis.example/../network.json
+expect_render_failure invalid-genesis-fetch-timeout \
+  --set-string genesisState.fetchTimeout=soon
+expect_render_failure short-genesis-fetch-timeout \
+  --set-string genesisState.fetchTimeout=999ms
+expect_render_failure zero-genesis-fetch-timeout \
+  --set-string genesisState.fetchTimeout=0s
+expect_render_failure long-genesis-fetch-timeout \
+  --set-string genesisState.fetchTimeout=5m1s
+expect_render_failure above-maximum-genesis-fetch-timeout \
+  --set-string genesisState.fetchTimeout=300.1s
+expect_render_failure invalid-inline-genesis-fetch-timeout \
+  --set-string config.chain.genesis_fetch_timeout=6m
 expect_render_failure relative-genesis-mount \
   --set-string genesisState.existingClaim=etherview-genesis \
   --set-string genesisState.mountPath=genesis.json

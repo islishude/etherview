@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/islishude/etherview/internal/config"
 )
@@ -31,6 +32,42 @@ func TestNewImporterRejectsGenesisFileAboveBlockZero(t *testing.T) {
 	}, nil, 0)
 	if err == nil || err.Error() != "genesis importer requires indexing from block zero" {
 		t.Fatalf("NewImporter error = %v", err)
+	}
+}
+
+func TestNewImporterRejectsAmbiguousOrNonzeroRemoteSource(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		chain config.ChainConfig
+		want  string
+	}{
+		{
+			name: "file and URL",
+			chain: config.ChainConfig{
+				ID: 777, GenesisFile: "/tmp/genesis.json",
+				GenesisURL: "https://genesis.example/genesis.json",
+			},
+			want: "genesis importer file and URL are mutually exclusive",
+		},
+		{
+			name: "remote above block zero",
+			chain: config.ChainConfig{
+				ID: 777, StartBlock: 1,
+				GenesisURL:          "https://genesis.example/genesis.json",
+				GenesisFetchTimeout: time.Second,
+			},
+			want: "genesis importer requires indexing from block zero",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewImporter(&sql.DB{}, test.chain, nil, 0)
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("NewImporter error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 
