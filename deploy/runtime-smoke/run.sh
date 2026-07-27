@@ -433,20 +433,25 @@ capture_api() {
         while [ "$pending_attempt" -lt 15 ]; do
             if pending=$(curl --silent --show-error --max-time 5 "$base_url/api/v1/pending?limit=10"); then
                 if printf '%s' "$pending" | jq -e 'type=="object" and has("data") and (.data|type=="array")' >/dev/null 2>&1; then
-                    break
+                    if printf '%s' "$pending" | jq -e --arg hash "$runtime_pending_hash" \
+                        '.data | length == 1 and .[0].hash == $hash' >/dev/null; then
+                        break
+                    fi
                 fi
-                pending=""
             fi
+            pending=""
             pending_attempt=$((pending_attempt + 1))
             sleep 1
         done
         if [ -z "$pending" ]; then
             echo "compose-runtime-smoke: /api/v1/pending unavailable after retry, recording null state for output parity" >&2
             printf '%s\t%s\n' "pending" "null" >>"$output"
+        elif ! printf '%s' "$pending" | jq -e --arg hash "$runtime_pending_hash" \
+            '.data | length == 1 and .[0].hash == $hash' >/dev/null; then
+            echo "compose-runtime-smoke: /api/v1/pending did not expose expected hash after retry" >&2
+            return 1
         else
             printf '%s\t%s\n' "pending" "$(printf '%s' "$pending" | jq -cS 'del(.meta.request_id, .meta.snapshot_at, .meta.expires_at, .meta.snapshot_id, .meta.next_cursor) | .data |= map(del(.first_seen_at, .last_seen_at, .expires_at))')" >>"$output"
-            printf '%s' "$pending" | jq -e --arg hash "$runtime_pending_hash" \
-                '.data | length == 1 and .[0].hash == $hash' >/dev/null
         fi
     else
         printf '%s\t%s\n' "pending" "disabled" >>"$output"
