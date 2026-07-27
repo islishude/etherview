@@ -98,10 +98,10 @@ conformance, security, release-CI, long-capacity, and documentation evidence.
   optional reader URL plus independently bounded pool sizes. Zero reader
   values inherit writer settings; negative, overflowed, malformed, and
   effective `min > max` inputs fail before runtime.
-- P70-T04 tooling: the Compose parity fixture and load driver share one
-  distroless `runtime-tools` image, with all three Go binaries emitted by the
-  existing `go-builder`. The fixture remains the image default while the load
-  service overrides its entrypoint. The target builds successfully; both
+- P70-T04 tooling: the Compose parity runtime-fixture container and load driver
+  share one runtime-tools image, with loadtest emitted by the existing
+  `go-builder`. The anvil fixture is supplied by the configured image while the
+  load service overrides its entrypoint. The target builds successfully; both
   binary entrypoints, the numeric non-root user, Compose configuration, plan
   validation, shell syntax, and whitespace checks pass. This scoped
   maintenance is not 500 RPS or soak evidence.

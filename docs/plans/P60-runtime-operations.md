@@ -39,14 +39,15 @@ deployments, observable health, safe migrations, and operator repair tooling.
       and is withdrawn before shutdown cancellation.
 - [x] P60-T01: component failure or an unexpected clean exit cancels peers;
       graceful draining has a shared timeout and reports stuck component names.
-- [x] P60-T03: the PostgreSQL-only monolith exercises the deterministic
-      fixture's enabled trace, mempool, historical-state, and NFT-metadata
+- [x] P60-T03: the PostgreSQL-only monolith exercises the anvil-backed
+      deterministic fixture's enabled trace, mempool, historical-state, and
+      NFT-metadata
       semantics through the production binary. Public verification, Sourcify,
       pricing, and optional accelerators are explicitly disabled in this
       profile and are not claimed by its evidence.
 - [x] P60-T03: monolith and seven-role deployments produce the same normalized
       correctness-bearing PostgreSQL projection, seven selected public API
-      responses, and embedded SPA shell on the deterministic fixture. The
+      responses, and embedded SPA shell on the anvil-backed fixture. The
       split deployment remains ready and advances after one of two sync and
       one of two enrichment replicas are stopped.
 - [x] NATS, Redis, or S3 loss degrades acceleration but cannot lose correctness.
@@ -231,7 +232,7 @@ owned by P70 and is not implied by P60 completion.
 - P60-T03: both runtime shapes pass the in-network 40 RPS short profile with
   120/120 successful requests, zero errors, zero core lag, ready core, and
   complete backfill. The final distributed report records 40.31 successful
-  requests/second and p95 2.95 ms on the deterministic local fixture.
+  requests/second and p95 2.95 ms on the anvil-backed local fixture.
 - P60-T06: configuration and runtime tests cover explicit worker,
   historical-backfill, batch, endpoint-name, and per-endpoint RPC-rate bounds.
   Migration `0021_sync_status_writer_lease` plus PostgreSQL integration tests

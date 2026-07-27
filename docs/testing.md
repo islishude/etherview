@@ -44,12 +44,12 @@ until the Makefile target exists.
 - `make compose-schema-smoke`: migrate a disposable PostgreSQL Compose volume
   and then verify exact schema compatibility through `migrate status`.
 - `make compose-runtime-smoke`: rebuild the current working tree's production
-  image, then use one deterministic execution-RPC fixture and two fresh
+  image, then use one anvil-backed deterministic fixture and two fresh
   PostgreSQL volumes to run it first as a monolith and then as all seven split
   roles. The distributed run uses two sync and two enrichment replicas. It
   first starts the config-only verification role
   against the fresh database, then starts the RPC-backed roles, stops one sync
-  and one enrichment replica, advances a new deterministic head, probes both
+  and one enrichment replica, mines a new deterministic head, probes both
   surviving role-local readiness endpoints, and requires the checkpoint, zero
   lag, exact stage publications, and outbox delivery to catch up. A bounded
   in-network public-API load phase must pass in both layouts. The target then

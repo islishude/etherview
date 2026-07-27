@@ -53,8 +53,8 @@ monolith `all` or split `api` service; feature-off deployments with the
 variables unset do not pass either Secret. Run `etherview doctor` against the
 final API-role configuration before adding a paid route.
 
-The reproducible deployment smoke uses a deterministic, test-only execution
-RPC image and two independent PostgreSQL volumes:
+The reproducible deployment smoke uses a deterministic anvil fixture container
+and two independent PostgreSQL volumes:
 
 ```sh
 make docker-image-check
@@ -64,8 +64,8 @@ make compose-runtime-smoke
 The runtime target rebuilds the current working tree and runs that same
 production image in monolith and seven-role distributed layouts with isolated
 configuration and PostgreSQL volumes. The distributed
-layout starts two sync and two enrichment replicas, stops one of each, advances
-the fixture to a new block, probes the surviving role-local readiness
+layout starts two sync and two enrichment replicas, stops one of each, mines a new
+anvil block, probes the surviving role-local readiness
 endpoints, and requires the core checkpoint, zero lag, drained outbox, and all
 five exact stage publications to advance before capture. Before the RPC roles
 start, the config-only verification role must bind the fresh database identity;
@@ -76,6 +76,10 @@ Trace, mempool, historical state, and NFT metadata are enabled. Verification,
 Sourcify, and pricing are explicitly disabled: public verification requires an
 approved external compiler sandbox/cache, while Sourcify and pricing require
 separate external-service fixtures.
+
+For anvil configuration, override `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to pin or
+test an alternate Foundry image tag, and set `ANVIL_ARGS` for extra local node
+flags.
 
 ## Helm
 

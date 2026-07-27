@@ -542,3 +542,12 @@ finish. Follow the existing `admin billing inspect` and `reconcile` procedure,
 and accept that the old protected response cannot be recovered. Start a new
 invocation only after the first outcome is conclusively reconciled and an
 operator intentionally approves another real payment.
+
+### Runtime smoke verification fixture (development only)
+
+The runtime parity smoke target uses anvil from `ETHERVIEW_RUNTIME_FIXTURE_IMAGE`
+as its deterministic chain fixture source. Do not rely on hardcoded chain or
+block hashes in manual checks; capture identity from `eth_getBlockByNumber('0x0')`
+at runtime and reuse the captured hash.
+Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
+defaults) and keep these test-only overrides out of production runbooks.

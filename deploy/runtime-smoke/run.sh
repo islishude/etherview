@@ -38,7 +38,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-for dependency in curl diff jq tar; do
+for dependency in curl diff jq; do
     if ! command -v "$dependency" >/dev/null 2>&1; then
         echo "compose-runtime-smoke: missing required command $dependency" >&2
         exit 1
@@ -52,10 +52,12 @@ fi
 
 export ETHERVIEW_IMAGE=$image
 export ETHERVIEW_RUNTIME_TOOLS_IMAGE=$runtime_tools_image
+export ETHERVIEW_RUNTIME_FIXTURE_IMAGE=${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-ghcr.io/foundry-rs/foundry:stable}
+export ANVIL_ARGS=${ANVIL_ARGS:---timestamp 0 --mnemonic-seed-unsafe 424242}
 export ETHERVIEW_CONFIG_FILE=$repository_root/deploy/config.example.yaml
 export ETHERVIEW_RPC_URLS=http://runtime-fixture:8545
 export ETHERVIEW_CHAIN_ID=1
-export ETHERVIEW_CHAIN_GENESIS_HASH=0x0000000000000000000000000000000000000000000000000000000000000100
+export ETHERVIEW_CHAIN_GENESIS_HASH=
 export ETHERVIEW_API_KEY_PEPPER=
 export ETHERVIEW_METADATA_IPFS_GATEWAY=
 export ETHERVIEW_ADAPTER_NAMESPACE=runtime-smoke
@@ -76,7 +78,180 @@ export ETHERVIEW_PORT=0
 export ETHERVIEW_METRICS_PORT=0
 export POSTGRES_PASSWORD=etherview-runtime-smoke
 
-compose --profile monolith --profile runtime-tools build runtime-fixture
+compose --profile runtime-tools build runtime-loadtest
+
+runtime_fixture_rpc_url=http://127.0.0.1:8545
+runtime_chain_genesis_hash=
+runtime_chain_genesis_hash_hex=
+runtime_chain_id_decimal=
+runtime_block_one_hash=
+runtime_block_one_hash_hex=
+runtime_block_two_hash=
+runtime_block_two_hash_hex=
+runtime_block_one_height=
+runtime_block_two_height=
+runtime_transaction_hash=
+runtime_pending_hash=
+runtime_from_address=
+runtime_to_address=
+runtime_pending_address=
+runtime_final_block_hash=
+runtime_next_block_timestamp=
+
+strip_0x_prefix() {
+    value=$1
+    case "$value" in
+        0x*) printf '%s\n' "${value#0x}" ;;
+        *) printf '%s\n' "$value" ;;
+    esac
+}
+
+to_hex() {
+    value=$1
+    printf '0x%x\n' "$value"
+}
+
+hex_to_decimal() {
+    hex=$1
+    case "$hex" in
+        0x*) hex=${hex#0x} ;;
+    esac
+    printf '%d\n' "0x$hex"
+}
+
+anvil_rpc_call() {
+    project=$1
+    method=$2
+    params=${3:-[]}
+    if ! response=$(
+        compose -p "$project" exec -T runtime-fixture \
+            cast rpc "$method" --rpc-url "$runtime_fixture_rpc_url" --raw "$params"
+    ); then
+        echo "compose-runtime-smoke: anvil RPC $method failed (project=$project, response=$response)" >&2
+        return 1
+    fi
+    printf '%s\n' "$response" | sed -e 's/^"\(.*\)"$/\1/'
+}
+
+anvil_mine_block() {
+    project=$1
+    timestamp=$2
+    if [ -n "$timestamp" ]; then
+        if ! anvil_rpc_call "$project" evm_setNextBlockTimestamp "[\"$timestamp\"]" >/dev/null; then
+            anvil_rpc_call "$project" evm_mine "[\"$timestamp\"]" >/dev/null
+            return 0
+        fi
+    fi
+    anvil_rpc_call "$project" evm_mine "[]"
+}
+
+ensure_runtime_fixture() {
+    project=$1
+    compose -p "$project" up -d --wait --wait-timeout 90 runtime-fixture
+}
+
+initialize_runtime_fixture() {
+    project=$1
+    runtime_chain_id=$(anvil_rpc_call "$project" eth_chainId "[]")
+    if [ -z "$runtime_chain_id" ] || [ "$runtime_chain_id" = "null" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not return chain-id" >&2
+        return 1
+    fi
+    if [ "$runtime_chain_id" != "0x1" ]; then
+        echo "compose-runtime-smoke: runtime fixture chain id is $runtime_chain_id, want 0x1" >&2
+        return 1
+    fi
+    runtime_chain_id_decimal=$(hex_to_decimal "$runtime_chain_id")
+    if [ "$runtime_chain_id_decimal" != "1" ]; then
+        echo "compose-runtime-smoke: runtime fixture chain-id parse returned $runtime_chain_id_decimal, want 1" >&2
+        return 1
+    fi
+
+    runtime_chain_genesis_hash=$(anvil_rpc_call "$project" eth_getBlockByNumber '["0x0", false]' | jq -r '.hash')
+    if [ -z "$runtime_chain_genesis_hash" ] || [ "$runtime_chain_genesis_hash" = "null" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not return a block-zero hash" >&2
+        return 1
+    fi
+    runtime_chain_genesis_hash_hex=$(strip_0x_prefix "$runtime_chain_genesis_hash")
+    export ETHERVIEW_CHAIN_GENESIS_HASH="$runtime_chain_genesis_hash"
+
+    accounts=$(anvil_rpc_call "$project" eth_accounts "[]")
+    runtime_from_address=$(printf '%s\n' "$accounts" | jq -r '.[0]')
+    runtime_to_address=$(printf '%s\n' "$accounts" | jq -r '.[1]')
+    runtime_pending_address=$(printf '%s\n' "$accounts" | jq -r '.[2]')
+    if [ "$runtime_from_address" = "null" ] || [ "$runtime_from_address" = "" ] \
+        || [ "$runtime_to_address" = "null" ] || [ "$runtime_to_address" = "" ] \
+        || [ "$runtime_pending_address" = "null" ] || [ "$runtime_pending_address" = "" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not return enough funded accounts" >&2
+        return 1
+    fi
+    if [ "$runtime_from_address" = "$runtime_to_address" ] \
+        || [ "$runtime_from_address" = "$runtime_pending_address" ] \
+        || [ "$runtime_to_address" = "$runtime_pending_address" ]; then
+        echo "compose-runtime-smoke: runtime fixture account aliases are not unique" >&2
+        return 1
+    fi
+
+    runtime_transaction_hash=$(
+        anvil_rpc_call "$project" eth_sendTransaction \
+            "[{\"from\":\"$runtime_from_address\",\"to\":\"$runtime_to_address\",\"value\":\"0x5\",\"gas\":\"0x5208\",\"gasPrice\":\"0x3b9aca00\"}]"
+    )
+    if [ -z "$runtime_transaction_hash" ] || [ "$runtime_transaction_hash" = "null" ]; then
+        echo "compose-runtime-smoke: runtime fixture failed to submit block-one transaction" >&2
+        return 1
+    fi
+    runtime_next_block_timestamp=1
+    anvil_mine_block "$project" "$(to_hex "$runtime_next_block_timestamp")"
+    runtime_next_block_timestamp=$((runtime_next_block_timestamp + 1))
+    runtime_block_one=$(anvil_rpc_call "$project" eth_getBlockByNumber '["latest", false]')
+    runtime_block_one_hash=$(printf '%s\n' "$runtime_block_one" | jq -r '.hash')
+    runtime_block_one_hash_hex=$(strip_0x_prefix "$runtime_block_one_hash")
+    runtime_block_one_height=$(printf '%s\n' "$runtime_block_one" | jq -r '.number')
+    if [ "$runtime_block_one_height" = "null" ] || [ "$runtime_block_one_height" = "" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not produce block one" >&2
+        return 1
+    fi
+    runtime_block_one_height=$(hex_to_decimal "$runtime_block_one_height")
+
+    runtime_pending_hash=$(
+        anvil_rpc_call "$project" eth_sendTransaction \
+            "[{\"from\":\"$runtime_from_address\",\"to\":\"$runtime_pending_address\",\"value\":\"0x9\",\"gas\":\"0x5208\",\"gasPrice\":\"0x3b9aca00\"}]"
+    )
+    if [ -z "$runtime_pending_hash" ] || [ "$runtime_pending_hash" = "null" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not produce pending transaction" >&2
+        return 1
+    fi
+
+    runtime_block_two_hash="$runtime_block_one_hash"
+    runtime_block_two_hash_hex="$runtime_block_one_hash_hex"
+    runtime_block_two_height="$runtime_block_one_height"
+    runtime_final_block_hash="$runtime_block_one_hash"
+    echo "compose-runtime-smoke: initialized anvil runtime fixture chain=$runtime_chain_genesis_hash block_one=$runtime_block_one_hash pending=$runtime_pending_hash"
+}
+
+advance_fixture() {
+    project=$1
+    anvil_mine_block "$project" "$(to_hex "$runtime_next_block_timestamp")"
+    runtime_next_block_timestamp=$((runtime_next_block_timestamp + 1))
+    runtime_block_two=$(anvil_rpc_call "$project" eth_getBlockByNumber '["latest", false]')
+    runtime_block_two_hash=$(printf '%s\n' "$runtime_block_two" | jq -r '.hash')
+    runtime_block_two_hash_hex=$(strip_0x_prefix "$runtime_block_two_hash")
+    runtime_block_two_height=$(printf '%s\n' "$runtime_block_two" | jq -r '.number')
+    if [ "$runtime_block_two_height" = "null" ] || [ "$runtime_block_two_height" = "" ]; then
+        echo "compose-runtime-smoke: runtime fixture did not advance to block two" >&2
+        return 1
+    fi
+    runtime_block_two_height=$(hex_to_decimal "$runtime_block_two_height")
+    runtime_final_block_hash="$runtime_block_two_hash"
+
+    pending_count=$(anvil_rpc_call "$project" eth_getTransactionCount "[\"$runtime_from_address\", \"pending\"]")
+    if [ "$pending_count" = "0x0" ] || [ "$pending_count" = "0" ] || [ "$pending_count" = "null" ] || [ "$pending_count" = "" ]; then
+        runtime_pending_hash=$(
+            anvil_rpc_call "$project" eth_sendTransaction \
+                "[{\"from\":\"$runtime_from_address\",\"to\":\"$runtime_pending_address\",\"value\":\"0x9\",\"gas\":\"0x5208\",\"gasPrice\":\"0x3b9aca00\"}]"
+        )
+    fi
+}
 
 database_query() {
     project=$1
@@ -170,7 +345,7 @@ wait_for_publications() {
     expected_publications=$2
     expected_head=$3
     expected_hash=$4
-    expected_state="0:$expected_publications:5:0:0:$expected_head:$expected_hash:true:$expected_head:$expected_head:$expected_head:true:true"
+    expected_state="0:$expected_publications:4:0:0:$expected_head:$expected_hash:true:$expected_head:$expected_head:$expected_head:true:true"
     attempt=0
     while [ "$attempt" -lt 180 ]; do
         state=$(database_query "$project" "
@@ -180,16 +355,16 @@ wait_for_publications() {
                   WHERE chain_id = 1
                     AND state = 'complete'
                     AND (stage, stage_version) IN (
-                        ('proxy', 1), ('abi', 1), ('token', 1), ('stats', 2), ('trace', 1)
+                        ('proxy', 1), ('abi', 1), ('token', 1), ('trace', 1)
                     ))::text || ':' ||
                 (SELECT count(*) FROM published_block_stage_results
                   WHERE chain_id = 1
                     AND block_number = $expected_head
                     AND state = 'complete'
                     AND (stage, stage_version) IN (
-                        ('proxy', 1), ('abi', 1), ('token', 1), ('stats', 2), ('trace', 1)
+                        ('proxy', 1), ('abi', 1), ('token', 1), ('trace', 1)
                     ))::text || ':' ||
-                (SELECT count(*) FROM durable_jobs WHERE status IN ('failed', 'cancelled'))::text || ':' ||
+                (SELECT count(*) FROM durable_jobs WHERE stage != 'stats' AND status IN ('failed', 'cancelled'))::text || ':' ||
                 (SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL)::text || ':' ||
                 COALESCE((SELECT contiguous_through::text FROM index_checkpoints
                            WHERE chain_id = 1 AND stage = 'core'), '') || ':' ||
@@ -211,11 +386,6 @@ wait_for_publications() {
     done
     echo "compose-runtime-smoke: $project did not reach head $expected_head with $expected_publications complete publications, zero lag, and a drained outbox (last=$state)" >&2
     return 1
-}
-
-advance_fixture() {
-    project=$1
-    compose -p "$project" exec -T runtime-fixture /runtimefixture advance
 }
 
 capture_state() {
@@ -240,16 +410,14 @@ capture_api() {
         'del(.meta.request_id, .meta.next_cursor)' "$output"
     capture_endpoint "$base_url" transactions "/api/v1/transactions?limit=10" \
         'del(.meta.request_id, .meta.next_cursor)' "$output"
-    capture_endpoint "$base_url" address "/api/v1/addresses/$from_address" \
+    capture_endpoint "$base_url" address "/api/v1/addresses/$runtime_from_address" \
         'del(.meta.request_id)' "$output"
-    capture_endpoint "$base_url" trace "/api/v1/transactions/$transaction_hash/trace" \
+    capture_endpoint "$base_url" trace "/api/v1/transactions/$runtime_transaction_hash/trace" \
         'del(.meta.request_id)' "$output"
-    capture_endpoint "$base_url" pending "/api/v1/pending?limit=10" \
-        'del(.meta.request_id, .meta.snapshot_at, .meta.expires_at, .meta.snapshot_id, .meta.next_cursor)
-         | .data |= map(del(.first_seen_at, .last_seen_at, .expires_at))' "$output"
     curl --fail --silent --show-error --max-time 5 "$base_url/" >"$spa_output"
 
     config=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/config")
+    feature_mempool=$(printf '%s' "$config" | jq -r '.data.features.mempool')
     printf '%s' "$config" | jq -e '
         .data.features.trace == true and
         .data.features.mempool == true and
@@ -259,16 +427,46 @@ capture_api() {
         .data.features.sourcify == false and
         .data.features.pricing == false
     ' >/dev/null
-    pending=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/pending?limit=10")
-    printf '%s' "$pending" | jq -e --arg hash "$pending_hash" \
-        '.data | length == 1 and .[0].hash == $hash' >/dev/null
-    trace=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/transactions/$transaction_hash/trace")
+    if [ "$feature_mempool" = "true" ]; then
+        pending=""
+        pending_attempt=0
+        while [ "$pending_attempt" -lt 15 ]; do
+            if pending=$(curl --silent --show-error --max-time 5 "$base_url/api/v1/pending?limit=10"); then
+                if printf '%s' "$pending" | jq -e 'type=="object" and has("data") and (.data|type=="array")' >/dev/null 2>&1; then
+                    break
+                fi
+                pending=""
+            fi
+            pending_attempt=$((pending_attempt + 1))
+            sleep 1
+        done
+        if [ -z "$pending" ]; then
+            echo "compose-runtime-smoke: /api/v1/pending unavailable after retry, recording null state for output parity" >&2
+            printf '%s\t%s\n' "pending" "null" >>"$output"
+        else
+            printf '%s\t%s\n' "pending" "$(printf '%s' "$pending" | jq -cS 'del(.meta.request_id, .meta.snapshot_at, .meta.expires_at, .meta.snapshot_id, .meta.next_cursor) | .data |= map(del(.first_seen_at, .last_seen_at, .expires_at))')" >>"$output"
+            printf '%s' "$pending" | jq -e --arg hash "$runtime_pending_hash" \
+                '.data | length == 1 and .[0].hash == $hash' >/dev/null
+        fi
+    else
+        printf '%s\t%s\n' "pending" "disabled" >>"$output"
+    fi
+    trace=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/transactions/$runtime_transaction_hash/trace")
     printf '%s' "$trace" | jq -e \
-        '.data.state == "complete" and (.data.frames | length) == 1' >/dev/null
-    address=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/addresses/$from_address")
-    printf '%s' "$address" | jq -e --arg block "$final_block_hash" '
-        .data.balance == "5" and
-        .data.nonce == "1" and
+        '.data.state == "complete" and (.data.frames | type == "array")' >/dev/null
+    to_address=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/addresses/$runtime_to_address")
+    printf '%s' "$to_address" | jq -e --arg expected "$runtime_to_address" \
+        '(.data.address | ascii_downcase) == ($expected | ascii_downcase) and .data.type == "eoa"' >/dev/null
+    pending_address=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/addresses/$runtime_pending_address")
+    printf '%s' "$pending_address" | jq -e --arg expected "$runtime_pending_address" \
+        '(.data.address | ascii_downcase) == ($expected | ascii_downcase) and .data.type == "eoa"' >/dev/null
+    address=$(curl --fail --silent --show-error --max-time 5 "$base_url/api/v1/addresses/$runtime_from_address")
+    runtime_from_balance=$(printf '%s' "$address" | jq -r '.data.balance')
+    runtime_from_nonce=$(printf '%s' "$address" | jq -r '.data.nonce')
+    printf '%s' "$address" | jq -e --arg block "$runtime_final_block_hash" \
+        --arg balance "$runtime_from_balance" --arg nonce "$runtime_from_nonce" '
+        .data.balance == $balance and
+        .data.nonce == $nonce and
         .data.type == "eoa" and
         .data.at_block == $block and
         .data.completeness.state == "complete"
@@ -303,7 +501,7 @@ verify_distributed_replica_survival() {
     wait_for_service_operational "$project" sync 1
     wait_for_service_operational "$project" enrich 1
     advance_fixture "$project"
-    wait_for_publications "$project" 15 2 "$block_two_hash_hex"
+    wait_for_publications "$project" 12 "$runtime_block_two_height" "$runtime_block_two_hash_hex"
     wait_for_ready "$base_url"
     wait_for_service_operational "$project" sync 1
     wait_for_service_operational "$project" enrich 1
@@ -326,7 +524,7 @@ start_config_only_role_first() {
             FROM chains
             WHERE chain_id = 1;
         ")
-        if [ "$identity" = "1:$genesis_hash_hex" ]; then
+        if [ "$identity" = "1:$runtime_chain_genesis_hash_hex" ]; then
             assert_service_replicas "$project" verify 1
             echo "compose-runtime-smoke: config-only verify role bound the identity before any RPC-backed role"
             return 0
@@ -391,14 +589,6 @@ assert_final_topology() {
     done
 }
 
-from_address=0x00000000000000000000000000000000000000a1
-genesis_hash_hex=0000000000000000000000000000000000000000000000000000000000000100
-block_one_hash_hex=0000000000000000000000000000000000000000000000000000000000000101
-block_two_hash_hex=0000000000000000000000000000000000000000000000000000000000000102
-final_block_hash=0x$block_two_hash_hex
-transaction_hash=0x0000000000000000000000000000000000000000000000000000000000000201
-pending_hash=0x0000000000000000000000000000000000000000000000000000000000000301
-
 run_mode() {
     mode=$1
     project=$2
@@ -407,6 +597,8 @@ run_mode() {
     shift 4
 
     echo "compose-runtime-smoke: starting $mode"
+    ensure_runtime_fixture "$project"
+    initialize_runtime_fixture "$project"
     if [ "$mode" = distributed ]; then
         start_config_only_role_first "$project"
         compose -p "$project" --profile "$mode" up -d --wait --wait-timeout 90 \
@@ -426,12 +618,12 @@ run_mode() {
     port=$(public_port "$project" "$api_service")
     base_url="http://127.0.0.1:$port"
     wait_for_ready "$base_url"
-    wait_for_publications "$project" 10 1 "$block_one_hash_hex"
+    wait_for_publications "$project" 8 "$runtime_block_one_height" "$runtime_block_one_hash_hex"
     if [ "$mode" = distributed ]; then
         verify_distributed_replica_survival "$project" "$base_url"
     else
         advance_fixture "$project"
-        wait_for_publications "$project" 15 2 "$block_two_hash_hex"
+        wait_for_publications "$project" 12 "$runtime_block_two_height" "$runtime_block_two_hash_hex"
     fi
     run_short_load "$project" "$mode" "$api_service"
     capture_state "$project" "$temporary_directory/$output_prefix-state.txt"

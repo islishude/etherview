@@ -1,7 +1,6 @@
 x-runtime-smoke-environment: &runtime-smoke-environment
   ETHERVIEW_RPC_URLS: http://runtime-fixture:8545
   ETHERVIEW_CHAIN_ID: "1"
-  ETHERVIEW_CHAIN_GENESIS_HASH: "0x0000000000000000000000000000000000000000000000000000000000000100"
   ETHERVIEW_API_KEY_PEPPER: ""
   ETHERVIEW_POLL_INTERVAL: 250ms
   ETHERVIEW_MEMPOOL_POLL_INTERVAL: 500ms
@@ -42,10 +41,9 @@ x-runtime-fixture-dependency: &runtime-fixture-dependency
 
 services:
   runtime-fixture:
-    image: ${ETHERVIEW_RUNTIME_TOOLS_IMAGE:-etherview-runtime-tools:local}
-    build:
-      context: .
-      target: runtime-tools
+    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-ghcr.io/foundry-rs/foundry:stable}
+    environment:
+      ANVIL_ARGS: ${ANVIL_ARGS:-}
     read_only: true
     user: "65532:65532"
     cap_drop:
@@ -53,17 +51,14 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test:
-        [
-          "CMD",
-          "/runtimefixture",
-          "healthcheck",
-          "--url=http://127.0.0.1:8545/health",
-        ]
+      test: ["CMD", "cast", "block-number"]
       interval: 1s
       timeout: 2s
       retries: 30
       start_period: 1s
+    entrypoint: ["sh", "-c"]
+    command:
+      - "anvil --host 0.0.0.0 --port 8545 --chain-id 1 --no-mining ${ANVIL_ARGS}"
     restart: "no"
 
   runtime-loadtest:

@@ -34,16 +34,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && cp "$geth_module_dir/crypto/secp256k1/libsecp256k1/COPYING" /licenses/libsecp256k1-MIT.txt \
     && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 
-# The deterministic JSON-RPC fixture and bounded public-API load driver share
-# one test-only image used by the Compose runtime parity smoke. Nothing from
-# this stage enters production.
+# The bounded public-API load driver uses a dedicated runtime-tools image. Nothing
+# from this stage enters production.
 FROM gcr.io/distroless/base-debian13:nonroot AS runtime-tools
-COPY --from=go-builder --chown=nonroot:nonroot /go/bin/runtimefixture /runtimefixture
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/loadtest /loadtest
 USER 65532:65532
-EXPOSE 8545
-ENTRYPOINT ["/runtimefixture"]
-CMD ["serve"]
+ENTRYPOINT ["/loadtest"]
+CMD []
 
 # Keep production last so an unqualified `docker build .` still emits the
 # deployable Etherview image rather than a test-only tool.
