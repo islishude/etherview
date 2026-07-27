@@ -497,7 +497,7 @@ size alone is not sufficient justification to weaken those invariants.
   instead of overwriting a block fact. Token and proxy exact-state calls share
   one sanitized capability classifier, so unsupported or pruned EIP-1898 state
   is `unavailable` and transient transport failures remain retryable.
-- Pending transactions come from one validated pending-block response and are
+- Pending transactions come from validated `txpool_content` responses (pending + queued pools) and are
   published as an immutable, expiring PostgreSQL snapshot. A cursor is bound
   to that snapshot; timeout, method absence, or a failed poll is reported as
   unavailable rather than an empty snapshot.
