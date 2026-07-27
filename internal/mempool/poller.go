@@ -20,7 +20,7 @@ import (
 const maximumUint256Bits = 256
 
 type Source interface {
-	PendingBlock(context.Context) (json.RawMessage, string, error)
+	PendingTransactions(context.Context) (json.RawMessage, string, error)
 }
 
 type SourceError struct {
@@ -31,16 +31,16 @@ type SourceError struct {
 
 func (err SourceError) Error() string {
 	if err.Code == "" {
-		return "pending RPC request failed"
+		return "mempool RPC request failed"
 	}
-	return "pending RPC request failed: " + err.Code
+	return "mempool RPC request failed: " + err.Code
 }
 
 func (err SourceError) Unwrap() error { return err.Cause }
 
 type PoolSource struct{ Pool *ethrpc.Pool }
 
-func (source PoolSource) PendingBlock(ctx context.Context) (json.RawMessage, string, error) {
+func (source PoolSource) PendingTransactions(ctx context.Context) (json.RawMessage, string, error) {
 	if source.Pool == nil {
 		return nil, "", SourceError{State: StateUnavailable, Code: "endpoint_unavailable"}
 	}
@@ -48,8 +48,8 @@ func (source PoolSource) PendingBlock(ctx context.Context) (json.RawMessage, str
 	if err != nil {
 		return nil, "", SourceError{State: StateUnavailable, Code: "endpoint_unavailable", Cause: err}
 	}
-	var block json.RawMessage
-	err = endpoint.CallContext(ctx, &block, "eth_getBlockByNumber", "pending", true)
+	var content json.RawMessage
+	err = endpoint.CallContext(ctx, &content, "txpool_content")
 	if err != nil {
 		source.Pool.ReportFailure(endpoint.Name)
 		state, code := StateFailed, "rpc_request_failed"
@@ -62,12 +62,12 @@ func (source PoolSource) PendingBlock(ctx context.Context) (json.RawMessage, str
 			Cause: ethrpc.SanitizeError(err),
 		}
 	}
-	if len(block) == 0 || strings.EqualFold(strings.TrimSpace(string(block)), "null") {
+	if len(content) == 0 || strings.EqualFold(strings.TrimSpace(string(content)), "null") {
 		source.Pool.ReportFailure(endpoint.Name)
 		return nil, endpoint.Name, SourceError{State: StateFailed, Code: "null_snapshot"}
 	}
 	source.Pool.ReportSuccess(endpoint.Name)
-	return block, endpoint.Name, nil
+	return content, endpoint.Name, nil
 }
 
 type PollerOptions struct {
@@ -117,7 +117,7 @@ func (poller *Poller) Run(ctx context.Context) error {
 	for {
 		if err := poller.Cycle(ctx); err != nil && ctx.Err() == nil {
 			poller.options.Logger.WarnContext(ctx, "mempool poll failed; core synchronization remains active",
-				"error_code", pollErrorCode(err))
+				"error_code", pollErrorCode(err), "error_msg", err.Error())
 		}
 		timer := time.NewTimer(poller.options.PollInterval)
 		select {
@@ -130,7 +130,7 @@ func (poller *Poller) Run(ctx context.Context) error {
 }
 
 func (poller *Poller) Cycle(ctx context.Context) error {
-	block, endpoint, err := poller.source.PendingBlock(ctx)
+	rawContent, endpoint, err := poller.source.PendingTransactions(ctx)
 	observedAt := poller.options.Now().UTC()
 	if err != nil {
 		failure := sourceFailure(err, endpoint, observedAt)
@@ -139,7 +139,7 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 		}
 		return err
 	}
-	snapshot, err := buildSnapshot(block, endpoint, poller.options, observedAt)
+	snapshot, err := buildSnapshot(rawContent, endpoint, poller.options, observedAt)
 	if err != nil {
 		failure := Failure{
 			State: StateFailed, Endpoint: endpoint, Code: "invalid_snapshot",
@@ -157,7 +157,7 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 }
 
 func sourceFailure(err error, endpoint string, observedAt time.Time) Failure {
-	state, code, message := StateFailed, "rpc_request_failed", "pending RPC request failed"
+	state, code, message := StateFailed, "rpc_request_failed", "txpool RPC request failed"
 	if sourceErr, ok := errors.AsType[SourceError](err); ok {
 		state = sourceErr.State
 		code = sourceErr.Code
@@ -166,17 +166,16 @@ func sourceFailure(err error, endpoint string, observedAt time.Time) Failure {
 	case "endpoint_unavailable":
 		message = "no HTTP RPC endpoint is available for mempool polling"
 	case "method_not_supported":
-		message = "pending block RPC is not supported by the selected endpoint"
+		message = "txpool_content RPC is not supported by the selected endpoint"
 	case "null_snapshot":
-		message = "pending block RPC returned a null snapshot"
+		message = "txpool_content RPC returned a null snapshot"
 	}
 	return Failure{State: state, Endpoint: endpoint, Code: code, Message: message, ObservedAt: observedAt}
 }
 
-type pendingBlockProjection struct {
-	Hash         *common.Hash      `json:"hash"`
-	Number       *hexutil.Big      `json:"number"`
-	Transactions []json.RawMessage `json:"transactions"`
+type pendingTxpoolProjection struct {
+	Pending map[string]map[string]json.RawMessage `json:"pending"`
+	Queued  map[string]map[string]json.RawMessage `json:"queued"`
 }
 
 type pendingTransactionProjection struct {
@@ -192,46 +191,45 @@ type pendingTransactionProjection struct {
 	Type                 *hexutil.Uint64 `json:"type"`
 }
 
-func buildSnapshot(rawBlock json.RawMessage, endpoint string, options PollerOptions, observedAt time.Time) (Snapshot, error) {
-	if len(rawBlock) == 0 || strings.EqualFold(strings.TrimSpace(string(rawBlock)), "null") {
-		return Snapshot{}, errors.New("pending block is null")
+func buildSnapshot(rawContent json.RawMessage, endpoint string, options PollerOptions, observedAt time.Time) (Snapshot, error) {
+	if len(rawContent) == 0 || strings.EqualFold(strings.TrimSpace(string(rawContent)), "null") {
+		return Snapshot{}, errors.New("txpool snapshot is null")
 	}
-	if len(rawBlock) > options.MaxResponseBytes {
-		return Snapshot{}, fmt.Errorf("pending snapshot has %d bytes, limit is %d", len(rawBlock), options.MaxResponseBytes)
+	if len(rawContent) > options.MaxResponseBytes {
+		return Snapshot{}, fmt.Errorf("txpool snapshot has %d bytes, limit is %d", len(rawContent), options.MaxResponseBytes)
 	}
-	var block pendingBlockProjection
-	if err := json.Unmarshal(rawBlock, &block); err != nil {
-		return Snapshot{}, fmt.Errorf("decode pending snapshot: %w", err)
-	}
-	if block.Hash != nil || block.Number != nil {
-		return Snapshot{}, errors.New("pending block has a mined block identity")
+	var content pendingTxpoolProjection
+	if err := json.Unmarshal(rawContent, &content); err != nil {
+		return Snapshot{}, fmt.Errorf("decode txpool snapshot: %w", err)
 	}
 	if endpoint == "" || len(endpoint) > 128 {
-		return Snapshot{}, errors.New("pending endpoint name is invalid")
+		return Snapshot{}, errors.New("mempool endpoint name is invalid")
 	}
-	if len(block.Transactions) > options.MaxTransactions {
-		return Snapshot{}, fmt.Errorf("pending snapshot has %d transactions, limit is %d", len(block.Transactions), options.MaxTransactions)
+	transactions := collectTxpoolTransactions(content.Pending)
+	transactions = append(transactions, collectTxpoolTransactions(content.Queued)...)
+	if len(transactions) > options.MaxTransactions {
+		return Snapshot{}, fmt.Errorf("txpool snapshot has %d transactions, limit is %d", len(transactions), options.MaxTransactions)
 	}
-	transactions := make([]Transaction, 0, len(block.Transactions))
-	seen := make(map[string]struct{}, len(block.Transactions))
-	for index, rawTransaction := range block.Transactions {
+	parsed := make([]Transaction, 0, len(transactions))
+	seen := make(map[string]struct{}, len(transactions))
+	for index, rawTransaction := range transactions {
 		if len(rawTransaction) == 0 || rawTransaction[0] != '{' {
-			return Snapshot{}, fmt.Errorf("pending transaction %d is hash-only", index)
+			return Snapshot{}, fmt.Errorf("txpool transaction %d is hash-only", index)
 		}
 		transaction, err := pendingTransaction(rawTransaction, options.ChainID, endpoint, observedAt, observedAt.Add(options.Retention))
 		if err != nil {
-			return Snapshot{}, fmt.Errorf("pending transaction %d: %w", index, err)
+			return Snapshot{}, fmt.Errorf("txpool transaction %d: %w", index, err)
 		}
 		key := strings.ToLower(transaction.Hash)
 		if _, duplicate := seen[key]; duplicate {
-			return Snapshot{}, fmt.Errorf("pending transaction %d duplicates hash %s", index, key)
+			return Snapshot{}, fmt.Errorf("txpool transaction %d duplicates hash %s", index, key)
 		}
 		seen[key] = struct{}{}
-		transactions = append(transactions, transaction)
+		parsed = append(parsed, transaction)
 	}
 	return Snapshot{
 		Endpoint: endpoint, ObservedAt: observedAt, ExpiresAt: observedAt.Add(options.Retention),
-		Transactions: transactions,
+		Transactions: parsed,
 	}, nil
 }
 
@@ -352,6 +350,19 @@ func boundedMessage(message string) string {
 		message = message[:1024]
 	}
 	return message
+}
+
+func collectTxpoolTransactions(pools map[string]map[string]json.RawMessage) []json.RawMessage {
+	if len(pools) == 0 {
+		return nil
+	}
+	transactions := make([]json.RawMessage, 0)
+	for _, byAddress := range pools {
+		for _, byNonce := range byAddress {
+			transactions = append(transactions, byNonce)
+		}
+	}
+	return transactions
 }
 
 func pollErrorCode(err error) string {

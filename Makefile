@@ -260,3 +260,9 @@ helm-check:
 deployment-check: docker-check compose-check helm-check
 
 check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
+
+run-preview:
+	@$(DOCKER) compose -f compose.preview.yaml up --build --wait
+
+stop-preview:
+	@$(DOCKER) compose -f compose.preview.yaml down --volumes --remove-orphans

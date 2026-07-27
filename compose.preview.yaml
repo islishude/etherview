@@ -1,0 +1,93 @@
+name: etherview-preview
+
+x-etherview-app-env: &etherview-app-env
+  ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
+  ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://reth:8545}
+  ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
+  ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
+  ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
+  ETHERVIEW_SESSION_PEPPER: "31025a24be4f4fd21b1783aeb2931eabaaaba9401a6c9e1b294eb2d41e34bc5c"
+
+x-etherview-service: &etherview-service
+  image: ${ETHERVIEW_IMAGE:-etherview:local}
+  build:
+    context: .
+    target: production
+  environment: *etherview-app-env
+  volumes:
+    - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+    - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: etherview
+      POSTGRES_USER: etherview
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-etherview-dev-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etherview -d etherview"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+  reth:
+    image: ${RETH_IMAGE:-ghcr.io/paradigmxyz/reth:latest}
+    command:
+      - node
+      - --dev
+      - --chain=${RETH_CHAIN:-/config/genesis.json}
+      - --dev.block-time=5s
+      - --datadir=/rethdata
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,debug,txpool
+      - --http.corsdomain=*
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3
+      - --ws.origins=*
+      - --disable-auth-server
+    volumes:
+      - reth-data:/rethdata
+      - ${RETH_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+    ports:
+      - "${RETH_HTTP_PORT:-8545}:8545"
+      - "${RETH_WS_PORT:-8546}:8546"
+    restart: unless-stopped
+
+  migration:
+    <<: *etherview-service
+    command: ["migrate", "up", "--config=/etc/etherview/config.yaml"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  etherview:
+    <<: *etherview-service
+    command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: all
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      reth:
+        condition: service_started
+    ports:
+      - "${ETHERVIEW_PORT:-8080}:8080"
+      - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  reth-data:

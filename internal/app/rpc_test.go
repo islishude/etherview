@@ -135,6 +135,29 @@ func TestBuildRPCExcludesUnavailableEndpointOnlyFromHistoryPool(t *testing.T) {
 	}
 }
 
+func TestBuildRPCDropsUnavailableMempoolPurpose(t *testing.T) {
+	t.Parallel()
+	server := newTxpoolProbeServer(t, false)
+	built, err := buildRPC(context.Background(), config.Config{
+		Chain: config.ChainConfig{ID: 1, StartBlock: 64},
+		RPC: config.RPCConfig{
+			RequestTimeout: time.Second,
+			Endpoints: []config.RPCEndpoint{{
+				Name: "txpool-head", URL: server.URL, Purposes: []string{"head", "mempool"},
+			}},
+		},
+	}, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := built.Pool.Names(ethrpc.PurposeMempool); len(got) != 0 {
+		t.Fatalf("mempool endpoints = %v", got)
+	}
+	if got := built.Pool.Names(ethrpc.PurposeHead); !slices.Equal(got, []string{"txpool-head"}) {
+		t.Fatalf("head endpoints = %v", got)
+	}
+}
+
 func TestBuildRPCFailsExplicitlyWhenOnlyHTTPPurposeIsUnavailableHistory(t *testing.T) {
 	t.Parallel()
 	server := newHistoryProbeServer(t, false)
@@ -216,6 +239,64 @@ func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server
 			result = []any{}
 		case "eth_getBalance":
 			result = "0x0"
+		default:
+			t.Errorf("unexpected RPC method %q", envelope.Method)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": envelope.ID, "result": result,
+		})
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newTxpoolProbeServer(t *testing.T, hasTxPool bool) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var envelope struct {
+			JSONRPC string            `json:"jsonrpc"`
+			ID      uint64            `json:"id"`
+			Method  string            `json:"method"`
+			Params  []json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var result any
+		switch envelope.Method {
+		case "eth_chainId":
+			result = "0x1"
+		case "eth_getBlockByNumber":
+			var tag string
+			if len(envelope.Params) == 0 || json.Unmarshal(envelope.Params[0], &tag) != nil {
+				t.Errorf("invalid block tag params: %s", envelope.Params)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			switch tag {
+			case "0x0", "safe", "finalized":
+				result = probeHeaderJSON(t, 0)
+			case "0x40":
+				result = probeHeaderJSON(t, 64)
+			default:
+				t.Errorf("unexpected block tag %q", tag)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		case "eth_getBlockReceipts":
+			result = []any{}
+		case "eth_getBalance":
+			result = "0x0"
+		case "rpc_modules":
+			modules := map[string]string{"debug": "debug"}
+			if hasTxPool {
+				modules["txpool"] = "txpool"
+			}
+			result = modules
 		default:
 			t.Errorf("unexpected RPC method %q", envelope.Method)
 			writer.WriteHeader(http.StatusBadRequest)

@@ -102,6 +102,14 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 				"start_block", cfg.Chain.StartBlock,
 			)
 		}
+		if endpoint.Supports(ethrpc.PurposeMempool) &&
+			report.Status(ethrpc.CapabilityTxPool) == ethrpc.AvailabilityUnavailable {
+			delete(endpoint.Purposes, ethrpc.PurposeMempool)
+			logger.WarnContext(ctx, "disabled unavailable RPC mempool purpose",
+				"rpc", item.Name,
+				"error_code", string(ethrpc.CapabilityTxPool),
+			)
+		}
 		if hasEnabledRPCPurpose(endpoint.Purposes) {
 			endpoints = append(endpoints, endpoint)
 		}

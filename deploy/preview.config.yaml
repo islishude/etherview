@@ -1,0 +1,159 @@
+server:
+  address: 0.0.0.0:8080
+  metrics_address: 0.0.0.0:9090
+  public_url: https://explorer.example.com
+  shutdown_timeout: 20s
+  read_timeout: 15s
+  write_timeout: 30s
+
+chain:
+  id: 48815
+  genesis_file: /config/genesis.json
+  genesis_hash: ""
+  genesis_url: ""
+  genesis_sha256: ""
+  genesis_fetch_timeout: 60s
+  start_block: 0
+  name: Ethereum Preview
+  native_symbol: ETH
+  native_name: Ether
+  native_decimals: 18
+  max_reorg_depth: 128
+
+database:
+  url: ""
+  read_url: ""
+  read_max_connections: 0
+  read_min_connections: 0
+  max_connections: 20
+  min_connections: 2
+  connect_timeout: 10s
+  statement_timeout: 30s
+
+rpc:
+  request_timeout: 20s
+  batch_size: 100
+  endpoints: []
+
+runtime:
+  roles: [all]
+  poll_interval: 2s
+  worker_count: 4
+  backfill_workers: 4
+  backfill_batch_blocks: 256
+  lease_duration: 30s
+
+mempool:
+  poll_interval: 3s
+  retention: 10m
+  max_transactions: 50000
+  max_response_bytes: 16777216
+
+maintenance:
+  interval: 15m
+  search_retention_generations: 100000
+  adapter_delete_batch: 1000
+
+observability:
+  environment: production
+  otlp_trace_endpoint: ""
+  otlp_trace_insecure: false
+  trace_sample_ratio: 0.1
+  trace_export_timeout: 5s
+  metrics_refresh_interval: 15s
+
+metadata:
+  fetch_timeout: 10s
+  max_document_bytes: 2097152
+  max_redirects: 3
+  ipfs_gateway: ""
+
+features:
+  trace: true
+  mempool: true
+  historical_state: true
+  verification: false
+  sourcify: false
+  nft_metadata: false
+  pricing: false
+  user_auth: true
+  x402_billing: false
+
+security:
+  public_verification: false
+  compiler_sandbox: disabled
+  api_key_pepper: "31025a24be4f4fd21b1783aeb2931eabaaaba9401a6c9e1b294eb2d41e34bc5c"
+  anonymous_rate: 5
+  anonymous_burst: 20
+  allowed_origins: []
+  trusted_proxies: []
+
+user_auth:
+  challenge_ttl: 5m
+  session_ttl: 168h
+  last_used_interval: 5m
+  max_message_bytes: 4096
+  max_signature_bytes: 65
+
+billing:
+  facilitator_url: ""
+  facilitator_allowed_cidrs: []
+  facilitator_timeout: 10s
+  facilitator_max_response_bytes: 1048576
+  network: ""
+  asset: ""
+  asset_decimals: 0
+  asset_eip712_name: ""
+  asset_eip712_version: ""
+  recipient: ""
+  requirement_max_timeout: 60s
+  reservation_ttl: 2m
+  max_payment_header_bytes: 16384
+  max_buffered_response_bytes: 8388608
+  max_captured_header_bytes: 65536
+  coarse_ip_rate: 100
+  coarse_ip_burst: 200
+  routes: {}
+
+verification:
+  max_input_bytes: 5242880
+  max_output_bytes: 67108864
+  timeout: 2m
+  cache_directory: /var/lib/etherview/compilers
+  container_runtime: docker
+  container_memory: 512m
+  container_cpus: "1"
+  container_pids: 64
+  images: {}
+  artifacts: {}
+
+sourcify:
+  base_url: https://sourcify.dev/server
+  timeout: 20s
+  max_request_bytes: 5242880
+  max_response_bytes: 33554432
+
+adapters:
+  namespace: etherview
+  nats_url: ""
+  redis_url: ""
+  connect_timeout: 2s
+  operation_timeout: 500ms
+  redis_cache_ttl: 30s
+  s3_endpoint: ""
+  s3_bucket: ""
+  s3_prefix: etherview
+  s3_region: ""
+  s3_access_key: ""
+  s3_secret_key: ""
+  s3_session_token: ""
+  s3_path_style: false
+  s3_max_object_bytes: 16777216
+  price_base_url: ""
+  name_base_url: ""
+  fetch_timeout: 5s
+  max_response_bytes: 1048576
+  max_redirects: 2
+  price_freshness: 5m
+  name_freshness: 24h
+  failure_ttl: "30s"

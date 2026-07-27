@@ -119,7 +119,7 @@ type RuntimeConfig struct {
 	LeaseDuration       time.Duration `yaml:"lease_duration"`
 }
 
-// MempoolConfig bounds the optional authoritative pending-block poller. The
+// MempoolConfig bounds the optional authoritative txpool-backed pending-transaction poller. The
 // retained PostgreSQL snapshots, rather than an in-process cache, are served by
 // API-only processes.
 type MempoolConfig struct {
