@@ -10,9 +10,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
-func outboxRow(id int64, topic string, hash Word, block uint64, attempts int64) driver.Rows {
+func outboxRow(id int64, topic string, hash common.Hash, block uint64, attempts int64) driver.Rows {
 	payload, _ := json.Marshal(coreOutboxPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
 		columns: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"},

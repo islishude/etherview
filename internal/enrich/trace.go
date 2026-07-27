@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ErrTraceLimit = errors.New("trace exceeds configured limit")
@@ -60,8 +62,8 @@ type CallFrame struct {
 	ParentIndex    int
 	TraceAddress   []uint32
 	Type           string
-	From           *Address
-	To             *Address
+	From           *common.Address
+	To             *common.Address
 	Value          string
 	Gas            string
 	GasUsed        string
@@ -269,14 +271,14 @@ type pendingTraceFrame struct {
 }
 
 type TraceIdentity struct {
-	BlockHash        Word
+	BlockHash        common.Hash
 	BlockNumber      uint64
-	TransactionHash  Word
+	TransactionHash  common.Hash
 	TransactionIndex uint64
 }
 
 func (identity TraceIdentity) validate() error {
-	if identity.BlockHash.IsZero() || identity.TransactionHash.IsZero() {
+	if identity.BlockHash == (common.Hash{}) || identity.TransactionHash == (common.Hash{}) {
 		return errors.New("trace identity requires non-zero block and transaction hashes")
 	}
 	return nil
@@ -539,7 +541,7 @@ func validateTraceFrameAddresses(frame CallFrame) error {
 	return nil
 }
 
-func optionalTraceAddress(value string) (*Address, error) {
+func optionalTraceAddress(value string) (*common.Address, error) {
 	if value == "" || value == "0x" {
 		return nil, nil
 	}

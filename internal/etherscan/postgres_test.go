@@ -7,12 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -30,6 +34,32 @@ func TestNewPostgresBackendValidatesConfiguration(t *testing.T) {
 	db := fakeDatabase(t)
 	if _, err := NewPostgresBackend(db, PostgresOptions{}); err == nil {
 		t.Fatal("zero chain ID was accepted")
+	}
+}
+
+func TestStoredBlockProjectionAcceptsNonStringFormatExtension(t *testing.T) {
+	t.Parallel()
+	raw := testBlockJSON(2, 3, 1, 100, testSender)
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["format"] = map[string]any{"vendor": 1}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := decodeStoredBlockProjection(
+		raw,
+		common.HexToHash(testHash(3)),
+		big.NewInt(2),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Number == nil || projection.Number.ToInt().Uint64() != 2 ||
+		projection.Hash == nil || *projection.Hash != common.HexToHash(testHash(3)) {
+		t.Fatalf("projection = %#v", projection)
 	}
 }
 
@@ -91,7 +121,7 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 				testTransactionJSON(10, 3, 7, 1, testRecipient),
 				testReceiptJSON(10, 3, 7, 1, "0x1", ""),
 				testBlockJSON(10, 3, 2, 100, testSender),
-				"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
+				"10", testHashBytes(3), int64(1), testTransactionHashBytes(7, testRecipient), "12",
 			}},
 			check: func(arguments []driver.NamedValue) error {
 				want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2"}
@@ -123,7 +153,7 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"blockNumber":"10","timeStamp":"100","hash":"` + testHash(7) + `","nonce":"15","blockHash":"` + testHash(3) + `","transactionIndex":"1","from":"0x52908400098527886E0F7030069857D2E4169EE7","to":"0xde709f2102306220921060314715629080e2fb77","value":"16","gas":"21000","gasPrice":"2000000000","isError":"0","txreceipt_status":"1","input":"0xdeadbeef00","contractAddress":"","cumulativeGasUsed":"42000","gasUsed":"21000","confirmations":"3","methodId":"0xdeadbeef","functionName":""}`
+	want := `{"blockNumber":"10","timeStamp":"100","hash":"` + testTransactionHash(7, testRecipient).Hex() + `","nonce":"15","blockHash":"` + testHash(3) + `","transactionIndex":"1","from":"` + testTransactionSender().Hex() + `","to":"0xde709f2102306220921060314715629080e2fb77","value":"16","gas":"21000","gasPrice":"2000000000","isError":"0","txreceipt_status":"1","input":"0xdeadbeef00","contractAddress":"","cumulativeGasUsed":"42000","gasUsed":"21000","confirmations":"3","methodId":"0xdeadbeef","functionName":""}`
 	if string(encoded) != want {
 		t.Fatalf("transaction JSON\n got: %s\nwant: %s", encoded, want)
 	}
@@ -139,7 +169,7 @@ func TestAccountTransactionsRejectRawIdentityMismatch(t *testing.T) {
 			rows: [][]driver.Value{{
 				testTransactionJSON(10, 3, 99, 1, testRecipient),
 				testReceiptJSON(10, 3, 7, 1, "0x1", ""), testBlockJSON(10, 3, 2, 100, testSender),
-				"10", testHashBytes(3), int64(1), testHashBytes(7), "12",
+				"10", testHashBytes(3), int64(1), testTransactionHashBytes(7, testRecipient), "12",
 			}},
 		},
 	)
@@ -184,13 +214,13 @@ func TestMinedUnclesAreExplicitlyUnavailable(t *testing.T) {
 
 func TestTransactionStatusUsesCanonicalReceipt(t *testing.T) {
 	t.Parallel()
-	row := []driver.Value{testReceiptJSON(10, 3, 7, 1, "0x0", ""), testHashBytes(7), testHashBytes(3), "10", int64(1)}
+	row := []driver.Value{testReceiptJSON(10, 3, 7, 1, "0x0", ""), testTransactionHashBytes(7, testRecipient), testHashBytes(3), "10", int64(1)}
 	db := fakeDatabase(t,
 		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]driver.Value{row}},
 		sqlExpectation{contains: "JOIN canonical_blocks AS canonical", columns: fakeColumns(5), rows: [][]driver.Value{row}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
-	values := url.Values{"txhash": {testHash(7)}}
+	values := url.Values{"txhash": {testTransactionHash(7, testRecipient).Hex()}}
 	status, err := backend.Execute(context.Background(), Request{Module: "transaction", Action: "getstatus", Values: values})
 	if err != nil || status != (transactionErrorStatus{IsError: "1", ErrDescription: "execution failed"}) {
 		t.Fatalf("status=%#v error=%v", status, err)
@@ -214,7 +244,7 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 				testReceiptJSON(10, 3, 7, 1, "0x1", ""),
 				testTransactionJSON(10, 3, 7, 1, testRecipient),
 				testBlockJSON(10, 3, 2, 100, testSender),
-				"10", testHashBytes(3), int64(4), int64(1), testHashBytes(7), testAddressBytes(testContract),
+				"10", testHashBytes(3), int64(4), int64(1), testTransactionHashBytes(7, testRecipient), testAddressBytes(testContract),
 			}},
 			check: func(arguments []driver.NamedValue) error {
 				if len(arguments) != 8 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
@@ -396,21 +426,22 @@ func TestVerifiedContractRejectsMismatchedStoredCodeHash(t *testing.T) {
 
 func TestContractCreationPreservesInputOrderAndChecksums(t *testing.T) {
 	t.Parallel()
+	created := crypto.CreateAddress(testTransactionSender(), 15).Hex()
 	db := fakeDatabase(t, sqlExpectation{
 		contains: "trace.call_type IN ('CREATE', 'CREATE2')", columns: fakeColumns(13),
 		rows: [][]driver.Value{{
-			"top_level", testReceiptJSON(10, 3, 7, 1, "0x1", testContract),
-			testTransactionJSON(10, 3, 7, 1, ""), testHashBytes(7), testHashBytes(3),
+			"top_level", testReceiptJSON(10, 3, 7, 1, "0x1", created),
+			testTransactionJSON(10, 3, 7, 1, ""), testTransactionHashBytes(7, ""), testHashBytes(3),
 			"10", "100", int64(1), nil, nil, nil, nil, nil,
 		}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
-	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getcontractcreation", Values: url.Values{"contractaddresses": {testContract}}})
+	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getcontractcreation", Values: url.Values{"contractaddresses": {created}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	items := result.([]contractCreationResult)
-	if len(items) != 1 || items[0].ContractAddress != testContract || items[0].ContractCreator != "0x52908400098527886E0F7030069857D2E4169EE7" || items[0].TxHash != testHash(7) || items[0].BlockNumber != "10" || items[0].Timestamp != "100" || items[0].ContractFactory != "" || items[0].CreationBytecode != "0xdeadbeef00" {
+	if len(items) != 1 || items[0].ContractAddress != created || items[0].ContractCreator != testTransactionSender().Hex() || items[0].TxHash != testTransactionHash(7, "").Hex() || items[0].BlockNumber != "10" || items[0].Timestamp != "100" || items[0].ContractFactory != "" || items[0].CreationBytecode != "0xdeadbeef00" {
 		t.Fatalf("items=%+v", items)
 	}
 }
@@ -421,7 +452,7 @@ func TestContractCreationIncludesFactoryCreateFacts(t *testing.T) {
 		contains: "trace.created_address = $2", columns: fakeColumns(13),
 		rows: [][]driver.Value{{
 			"trace", nil, testTransactionJSON(10, 3, 7, 1, testRecipient),
-			testHashBytes(7), testHashBytes(3), "10", "100", int64(1),
+			testTransactionHashBytes(7, testRecipient), testHashBytes(3), "10", "100", int64(1),
 			"0.2", int64(2), "CREATE2", testAddressBytes(testRecipient), []byte{0x60, 0x00, 0xff},
 		}},
 	})
@@ -434,7 +465,7 @@ func TestContractCreationIncludesFactoryCreateFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	items := result.([]contractCreationResult)
-	if len(items) != 1 || items[0].ContractCreator != "0x52908400098527886E0F7030069857D2E4169EE7" ||
+	if len(items) != 1 || items[0].ContractCreator != testTransactionSender().Hex() ||
 		items[0].ContractFactory != testRecipient || items[0].CreationBytecode != "0x6000ff" ||
 		items[0].BlockNumber != "10" || items[0].Timestamp != "100" {
 		t.Fatalf("items=%+v", items)
@@ -526,11 +557,7 @@ func testAddressBytes(value string) []byte {
 	if err != nil {
 		panic(err)
 	}
-	result, err := address.Bytes()
-	if err != nil {
-		panic(err)
-	}
-	return result
+	return address.Bytes()
 }
 
 func testBlockJSON(number uint64, hash, parent byte, timestamp uint64, miner string) []byte {
@@ -542,24 +569,33 @@ func testBlockJSON(number uint64, hash, parent byte, timestamp uint64, miner str
 }
 
 func testTransactionJSON(blockNumber uint64, blockHash, transactionHash byte, index uint64, to string) []byte {
-	var recipient any
-	if to != "" {
-		recipient = to
+	transaction := testSignedTransaction(transactionHash, to)
+	encoded, err := transaction.MarshalJSON()
+	if err != nil {
+		panic(err)
 	}
-	return mustJSON(map[string]any{
-		"hash": testHash(transactionHash), "blockHash": testHash(blockHash),
-		"blockNumber": fmt.Sprintf("0x%x", blockNumber), "transactionIndex": fmt.Sprintf("0x%x", index),
-		"from": testSender, "to": recipient, "nonce": "0xf", "gas": "0x5208",
-		"gasPrice": "0x77359400", "value": "0x10", "input": "0xdeadbeef00", "type": "0x2",
-	})
+	var value map[string]any
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		panic(err)
+	}
+	value["blockHash"] = testHash(blockHash)
+	value["blockNumber"] = fmt.Sprintf("0x%x", blockNumber)
+	value["transactionIndex"] = fmt.Sprintf("0x%x", index)
+	value["from"] = testTransactionSender().Hex()
+	return mustJSON(value)
 }
 
 func testReceiptJSON(blockNumber uint64, blockHash, transactionHash byte, index uint64, status, contract string) []byte {
+	to := testRecipient
+	if contract != "" {
+		to = ""
+	}
 	value := map[string]any{
-		"transactionHash": testHash(transactionHash), "transactionIndex": fmt.Sprintf("0x%x", index),
+		"transactionHash": testTransactionHash(transactionHash, to).Hex(), "transactionIndex": fmt.Sprintf("0x%x", index),
 		"blockHash": testHash(blockHash), "blockNumber": fmt.Sprintf("0x%x", blockNumber),
 		"cumulativeGasUsed": "0xa410", "gasUsed": "0x5208", "effectiveGasPrice": "0x77359400",
-		"logs": []any{}, "logsBloom": "0x", "status": status,
+		"logs": []any{}, "logsBloom": "0x" + strings.Repeat("00", types.BloomByteLength), "status": status,
+		"type": "0x0", "contractAddress": nil,
 	}
 	if contract != "" {
 		value["contractAddress"] = contract
@@ -570,9 +606,46 @@ func testReceiptJSON(blockNumber uint64, blockHash, transactionHash byte, index 
 func testLogJSON(blockNumber uint64, blockHash, transactionHash byte, transactionIndex, logIndex uint64, address string, topics []string) []byte {
 	return mustJSON(map[string]any{
 		"removed": false, "blockHash": testHash(blockHash), "blockNumber": fmt.Sprintf("0x%x", blockNumber),
-		"transactionHash": testHash(transactionHash), "transactionIndex": fmt.Sprintf("0x%x", transactionIndex),
+		"transactionHash": testTransactionHash(transactionHash, testRecipient).Hex(), "transactionIndex": fmt.Sprintf("0x%x", transactionIndex),
 		"logIndex": fmt.Sprintf("0x%x", logIndex), "address": address, "topics": topics, "data": "0x1234",
 	})
+}
+
+func testSignedTransaction(seed byte, recipient string) *types.Transaction {
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		panic(err)
+	}
+	var to *common.Address
+	if recipient != "" {
+		address := common.HexToAddress(recipient)
+		to = &address
+	}
+	transaction := types.NewTx(&types.LegacyTx{
+		Nonce: uint64(seed) + 8, GasPrice: big.NewInt(2_000_000_000),
+		Gas: 21_000, To: to, Value: big.NewInt(16), Data: []byte{0xde, 0xad, 0xbe, 0xef, 0},
+	})
+	signed, err := types.SignTx(transaction, types.LatestSignerForChainID(big.NewInt(1)), key)
+	if err != nil {
+		panic(err)
+	}
+	return signed
+}
+
+func testTransactionHash(seed byte, recipient string) common.Hash {
+	return testSignedTransaction(seed, recipient).Hash()
+}
+
+func testTransactionHashBytes(seed byte, recipient string) []byte {
+	return testTransactionHash(seed, recipient).Bytes()
+}
+
+func testTransactionSender() common.Address {
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		panic(err)
+	}
+	return crypto.PubkeyToAddress(key.PublicKey)
 }
 
 func mustJSON(value any) []byte {

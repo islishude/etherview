@@ -5,32 +5,45 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
 
-type traceStageCaller struct {
+type traceStageService struct {
 	calls int
 	raw   json.RawMessage
 	err   error
 }
 
-func (caller *traceStageCaller) Call(_ context.Context, _ string, _ []any, result any) error {
-	caller.calls++
-	if caller.err != nil {
-		return caller.err
+func (service *traceStageService) TraceTransaction(
+	_ context.Context,
+	_ common.Hash,
+	_ map[string]any,
+) (json.RawMessage, error) {
+	service.calls++
+	if service.err != nil {
+		return nil, service.err
 	}
-	destination, ok := result.(*json.RawMessage)
-	if !ok {
-		return errors.New("trace stage fixture received an invalid result destination")
+	return append(json.RawMessage(nil), service.raw...), nil
+}
+
+func (service *traceStageService) Transaction(
+	_ context.Context,
+	_ common.Hash,
+) (json.RawMessage, error) {
+	service.calls++
+	if service.err != nil {
+		return nil, service.err
 	}
-	*destination = append((*destination)[:0], caller.raw...)
-	return nil
+	return append(json.RawMessage(nil), service.raw...), nil
 }
 
 func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
@@ -54,26 +67,25 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 		},
 		{
 			name: "pruned_history", debug: ethrpc.AvailabilityAvailable, parity: ethrpc.AvailabilityUnavailable,
-			rpcError:  &ethrpc.RPCError{Code: -32000, Message: "historical state pruned"},
-			wantState: enrich.ResultUnavailable, wantError: "JSON-RPC error -32000: historical state pruned", wantRPCCall: 1,
+			rpcError:  &integrationRPCError{code: -32000, message: "historical state pruned"},
+			wantState: enrich.ResultUnavailable, wantError: "trace RPC capability unavailable", wantRPCCall: 1,
 		},
 		{
 			name: "timeout", debug: ethrpc.AvailabilityAvailable, parity: ethrpc.AvailabilityUnavailable,
 			rpcError:  context.DeadlineExceeded,
-			wantState: enrich.ResultFailed, wantError: context.DeadlineExceeded.Error(), wantRPCCall: 1,
+			wantState: enrich.ResultFailed, wantError: "JSON-RPC error code -32000", wantRPCCall: 1,
 		},
 		{
 			name: "empty_trace_transaction", debug: ethrpc.AvailabilityUnavailable, parity: ethrpc.AvailabilityAvailable,
 			raw:         json.RawMessage(`[]`),
 			wantState:   enrich.ResultFailed,
-			wantError:   "normalize trace_transaction 0x000000000000000000000000000000000000000000000000000000000000fde8: trace_transaction returned no transaction root frame",
+			wantError:   "empty_trace_transaction",
 			wantRPCCall: 1,
 		},
 		{
 			name: "whole_block_frame_budget", debug: ethrpc.AvailabilityAvailable, parity: ethrpc.AvailabilityUnavailable,
-			wantState: enrich.ResultFailed,
-			wantError: "account callTracer transaction " + testHash(65_001).String() +
-				": trace exceeds configured limit: block frame count",
+			wantState:   enrich.ResultFailed,
+			wantError:   "whole_block_frame_budget",
 			wantRPCCall: 2,
 			configure:   func(limits *enrich.TraceLimits) { limits.MaxBlockFrames = 1 },
 			twoTx:       true, assertEmpty: true,
@@ -88,10 +100,7 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bundle := testBundle(0, testHash(64_000), testHash(0), testHash(65_000), "trace-terminal")
-			if test.twoTx {
-				appendTraceStageTransaction(&bundle)
-			}
+			bundle := traceStageBundle(t, test.twoTx)
 			commitCanonical(t, ctx, repository, bundle)
 			reference := mustBlockRef(t, bundle)
 			blockHash, err := enrich.ParseWord(reference.Hash.String())
@@ -101,11 +110,15 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 
 			raw := test.raw
 			if test.twoTx {
-				raw = traceStageCallTracerResponse(t, bundle.Block.Transactions[0].Transaction)
+				raw = traceStageCallTracerResponse(t, bundle.Block.Transactions()[0])
 			}
-			caller := &traceStageCaller{raw: raw, err: test.rpcError}
+			service := &traceStageService{raw: raw, err: test.rpcError}
+			client := newIntegrationRPCClientServices(t, map[string]any{
+				"debug": service,
+				"trace": service,
+			})
 			pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-				Name: "trace-contract", Client: caller,
+				Name: "trace-contract", Client: client,
 				Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 				Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 					ethrpc.CapabilityDebugTrace: test.debug, ethrpc.CapabilityParityTrace: test.parity,
@@ -145,9 +158,22 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 				t.Fatalf("process trace job=%t err=%v", processed, err)
 			}
 			assertEnrichmentJobTerminal(t, ctx, db, enqueued.Job.ID, "failed", 1)
-			assertStageResult(t, ctx, db, enqueued.Job, test.wantState, test.wantError, map[string]string{})
-			if caller.calls != test.wantRPCCall {
-				t.Fatalf("RPC calls=%d, want %d", caller.calls, test.wantRPCCall)
+			wantError := test.wantError
+			switch wantError {
+			case "empty_trace_transaction":
+				wantError = fmt.Sprintf(
+					"normalize trace_transaction %s: trace_transaction returned no transaction root frame",
+					bundle.Block.Transactions()[0].Hash(),
+				)
+			case "whole_block_frame_budget":
+				wantError = fmt.Sprintf(
+					"account callTracer transaction %s: trace exceeds configured limit: block frame count",
+					bundle.Block.Transactions()[1].Hash(),
+				)
+			}
+			assertStageResult(t, ctx, db, enqueued.Job, test.wantState, wantError, map[string]string{})
+			if service.calls != test.wantRPCCall {
+				t.Fatalf("RPC calls=%d, want %d", service.calls, test.wantRPCCall)
 			}
 			if test.assertEmpty {
 				assertRowCount(t, ctx, db, `
@@ -161,35 +187,52 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 	}
 }
 
-func appendTraceStageTransaction(bundle *ethrpc.Bundle) {
-	first := bundle.Block.Transactions[0].Transaction
-	second := *first
-	secondHash := testHash(65_001)
-	secondIndex := ethrpc.QuantityFromUint64(1)
-	second.Hash = secondHash
-	second.TransactionIndex = &secondIndex
-	second.Nonce = ethrpc.QuantityFromUint64(1)
-	bundle.Block.Transactions = append(bundle.Block.Transactions, ethrpc.TransactionRef{Hash: secondHash, Transaction: &second})
-
-	secondReceipt := bundle.Receipts[0]
-	secondReceipt.TransactionHash = secondHash
-	secondReceipt.TransactionIndex = secondIndex
-	secondReceipt.Logs = nil
-	cumulativeGas := ethrpc.QuantityFromUint64(42_000)
-	secondReceipt.CumulativeGasUsed = cumulativeGas
-	bundle.Receipts = append(bundle.Receipts, secondReceipt)
-	bundle.Block.GasUsed = cumulativeGas
+func traceStageBundle(t *testing.T, twoTransactions bool) chainbundle.Bundle {
+	t.Helper()
+	transactionCount := 1
+	if twoTransactions {
+		transactionCount = 2
+	}
+	transactions := make([]integrationTransactionOptions, transactionCount)
+	for index := range transactions {
+		destination := testAddress(uint64(2 + index))
+		transactions[index] = integrationTransactionOptions{
+			Type: types.DynamicFeeTxType,
+			To:   &destination,
+			Data: []byte{byte(index)},
+		}
+	}
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number:       0,
+		ParentHash:   testHash(0),
+		ExtraData:    []byte("trace-terminal"),
+		Transactions: transactions,
+		Withdrawals:  []*types.Withdrawal{},
+		RawExtra:     map[string]any{"integrationVariant": "trace-terminal"},
+	})
+	if err != nil {
+		t.Fatalf("build trace stage bundle: %v", err)
+	}
+	registerFixtureIdentities(testHash(64_000), bundle.Block.Hash(), testHash(65_000), bundle.Block.Transactions()[0].Hash())
+	if twoTransactions {
+		registerFixtureHash(testHash(65_001), bundle.Block.Transactions()[1].Hash())
+	}
+	return bundle
 }
 
-func traceStageCallTracerResponse(t *testing.T, transaction *ethrpc.Transaction) json.RawMessage {
+func traceStageCallTracerResponse(t *testing.T, transaction *types.Transaction) json.RawMessage {
 	t.Helper()
-	if transaction == nil || transaction.To == nil {
+	if transaction == nil || transaction.To() == nil {
 		t.Fatal("trace block budget fixture requires a call transaction")
 	}
+	from, err := types.Sender(types.LatestSignerForChainID(transaction.ChainId()), transaction)
+	if err != nil {
+		t.Fatalf("recover trace fixture sender: %v", err)
+	}
 	encoded, err := json.Marshal(map[string]any{
-		"type": "CALL", "from": transaction.From.String(), "to": transaction.To.String(),
-		"value": transaction.Value.String(), "gas": "0x5208", "gasUsed": "0x5208",
-		"input": transaction.Input.String(), "output": "0x",
+		"type": "CALL", "from": from.String(), "to": transaction.To().String(),
+		"value": fmt.Sprintf("0x%x", transaction.Value()), "gas": "0x5208", "gasUsed": "0x5208",
+		"input": fmt.Sprintf("0x%x", transaction.Data()), "output": "0x",
 	})
 	if err != nil {
 		t.Fatal(err)

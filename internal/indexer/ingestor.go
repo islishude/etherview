@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -17,7 +19,11 @@ type Ingestor struct {
 	Canonicalizer *Canonicalizer
 }
 
-func (i *Ingestor) ByNumber(ctx context.Context, purpose ethrpc.Purpose, number ethrpc.Quantity) (ApplyResult, error) {
+func (i *Ingestor) ByNumber(
+	ctx context.Context,
+	purpose ethrpc.Purpose,
+	number uint64,
+) (ApplyResult, error) {
 	if i == nil || i.Pool == nil || i.Canonicalizer == nil {
 		return ApplyResult{}, errors.New("indexer ingestor is not fully configured")
 	}
@@ -47,9 +53,9 @@ type PoolBundleSource struct {
 	Purpose ethrpc.Purpose
 }
 
-func (s *PoolBundleSource) BundleByHash(ctx context.Context, hash ethrpc.Hash) (ethrpc.Bundle, bool, error) {
+func (s *PoolBundleSource) BundleByHash(ctx context.Context, hash common.Hash) (chainbundle.Bundle, bool, error) {
 	if s == nil || s.Pool == nil {
-		return ethrpc.Bundle{}, false, errors.New("RPC bundle source has no pool")
+		return chainbundle.Bundle{}, false, errors.New("RPC bundle source has no pool")
 	}
 	purpose := s.Purpose
 	if purpose == "" {
@@ -57,12 +63,12 @@ func (s *PoolBundleSource) BundleByHash(ctx context.Context, hash ethrpc.Hash) (
 	}
 	endpoint, err := s.Pool.Acquire(purpose)
 	if err != nil {
-		return ethrpc.Bundle{}, false, err
+		return chainbundle.Bundle{}, false, err
 	}
 	bundle, err := s.Fetcher.ByHash(ctx, endpoint, hash)
 	if err != nil {
 		s.Pool.ReportFailure(endpoint.Name)
-		return ethrpc.Bundle{}, false, err
+		return chainbundle.Bundle{}, false, err
 	}
 	s.Pool.ReportSuccess(endpoint.Name)
 	return bundle, true, nil

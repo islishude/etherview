@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -69,8 +70,8 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	if err != nil {
 		return EnqueueResult{}, err
 	}
-	address, _ := request.Token.Bytes()
-	blockHash, _ := request.BlockHash.Bytes()
+	address := request.Token.Bytes()
+	blockHash := request.BlockHash.Bytes()
 
 	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
@@ -348,8 +349,8 @@ type queryRower interface {
 }
 
 func queryCurrent(ctx context.Context, queryer queryRower, request NFTRequest) (Current, error) {
-	address, _ := request.Token.Bytes()
-	hash, _ := request.BlockHash.Bytes()
+	address := request.Token.Bytes()
+	hash := request.BlockHash.Bytes()
 	var current Current
 	if err := queryer.QueryRowContext(ctx, currentMetadataResourceSQL,
 		request.ChainID, request.resourceKey(), address, request.TokenID,
@@ -361,8 +362,8 @@ func queryCurrent(ctx context.Context, queryer queryRower, request NFTRequest) (
 }
 
 func lockCurrent(ctx context.Context, tx *sql.Tx, request NFTRequest) (Current, error) {
-	address, _ := request.Token.Bytes()
-	hash, _ := request.BlockHash.Bytes()
+	address := request.Token.Bytes()
+	hash := request.BlockHash.Bytes()
 	var matches bool
 	err := tx.QueryRowContext(ctx, lockMetadataResourceSQL,
 		request.ChainID, request.resourceKey(), address, request.TokenID,
@@ -470,8 +471,8 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 
 func encodePayload(request NFTRequest) ([]byte, error) {
 	payload, err := json.Marshal(durablePayload{
-		ChainID: request.ChainID, ResourceKey: request.resourceKey(), Token: strings.ToLower(request.Token.String()), TokenID: request.TokenID,
-		BlockNumber: strconv.FormatUint(request.BlockNumber, 10), BlockHash: strings.ToLower(request.BlockHash.String()),
+		ChainID: request.ChainID, ResourceKey: request.resourceKey(), Token: strings.ToLower(request.Token.Hex()), TokenID: request.TokenID,
+		BlockNumber: strconv.FormatUint(request.BlockNumber, 10), BlockHash: strings.ToLower(request.BlockHash.Hex()),
 		SourceURI: request.SourceURI,
 	})
 	if err != nil {
@@ -517,8 +518,8 @@ func decodePayload(payload []byte, maxAttempts int64) (NFTRequest, error) {
 }
 
 func sameRequest(left, right NFTRequest) bool {
-	return left.ChainID == right.ChainID && left.Token.Equal(right.Token) && left.TokenID == right.TokenID &&
-		left.BlockNumber == right.BlockNumber && left.BlockHash.Equal(right.BlockHash) && left.SourceURI == right.SourceURI
+	return left.ChainID == right.ChainID && left.Token == right.Token && left.TokenID == right.TokenID &&
+		left.BlockNumber == right.BlockNumber && left.BlockHash == right.BlockHash && left.SourceURI == right.SourceURI
 }
 
 func randomToken(source io.Reader) (string, error) {
@@ -557,9 +558,8 @@ func requireOne(result sql.Result) error {
 	return nil
 }
 
-func mustHashBytes(hash ethrpc.Hash) []byte {
-	value, _ := hash.Bytes()
-	return value
+func mustHashBytes(hash common.Hash) []byte {
+	return hash.Bytes()
 }
 
 func hashString(outcome Outcome) any {

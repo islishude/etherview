@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const tokenABI = `[
@@ -65,7 +67,7 @@ func TestABIRegistryDecodesCalldataLogAndRevertWithConfidence(t *testing.T) {
 		t.Fatalf("arguments=%+v", decoded.Arguments)
 	}
 
-	topics := []Word{SignatureHash("Transfer(address,address,uint256)"), addressWord(testAddress(1)), addressWord(testAddress(2))}
+	topics := []common.Hash{SignatureHash("Transfer(address,address,uint256)"), addressWord(testAddress(1)), addressWord(testAddress(2))}
 	logResult := registry.DecodeLog(identity, topics, wordBytes(uintWord(99)))
 	if logResult.Status != DecodeDecoded || logResult.Arguments[2].Value != "99" || logResult.Arguments[0].Hashed {
 		t.Fatalf("log=%+v", logResult)
@@ -111,7 +113,7 @@ func TestABIRegistryHashesIndexedDynamicValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	hashed := SignatureHash("hello")
-	result := registry.DecodeLog(identity, []Word{SignatureHash("Message(string)"), hashed}, nil)
+	result := registry.DecodeLog(identity, []common.Hash{SignatureHash("Message(string)"), hashed}, nil)
 	if result.Status != DecodeDecoded || !result.Arguments[0].Hashed || result.Arguments[0].Value != hashed.String() {
 		t.Fatalf("result=%+v", result)
 	}
@@ -298,9 +300,9 @@ func FuzzABIRegistryBoundedMalformed(f *testing.F) {
 		}
 		_ = registry.DecodeCalldata(identity, payload)
 		_ = registry.DecodeRevert(identity, payload)
-		var topic Word
+		var topic common.Hash
 		copy(topic[:], payload)
-		_ = registry.DecodeLog(identity, []Word{topic}, payload)
+		_ = registry.DecodeLog(identity, []common.Hash{topic}, payload)
 	})
 }
 
@@ -377,20 +379,20 @@ func encodeAliasedNestedDynamicBytes(outer, inner int, value []byte) []byte {
 	return append(result, bytes.Repeat([]byte{0}, paddedLength(len(value))-len(value))...)
 }
 
-func testAddress(last byte) Address {
-	var address Address
+func testAddress(last byte) common.Address {
+	var address common.Address
 	address[19] = last
 	return address
 }
 
-func addressWord(address Address) Word {
-	var word Word
+func addressWord(address common.Address) common.Hash {
+	var word common.Hash
 	copy(word[12:], address[:])
 	return word
 }
 
-func uintWord(value uint64) Word {
-	var word Word
+func uintWord(value uint64) common.Hash {
+	var word common.Hash
 	for index := range 8 {
 		word[31-index] = byte(value)
 		value >>= 8

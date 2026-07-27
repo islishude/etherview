@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/etherscan"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
-	"golang.org/x/crypto/sha3"
 )
 
 func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
@@ -28,14 +29,26 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 		t.Fatalf("create core PostgreSQL repository: %v", err)
 	}
 	genesis := testBundle(0, testHash(7_100), testHash(0), testHash(8_100), "verification-genesis")
-	contractBlock := testBundle(1, testHash(7_101), testHash(7_100), testHash(8_101), "verification-contract")
-	address := testAddress(710)
+	address := integrationContractAddress(0)
 	creationBytecode := []byte{0x60, 0x01}
 	constructorArguments := []byte{0xaa, 0xbb}
 	creationInput := append(append([]byte(nil), creationBytecode...), constructorArguments...)
-	contractBlock.Block.Transactions[0].Transaction.To = nil
-	contractBlock.Block.Transactions[0].Transaction.Input = ethrpc.DataFromBytes(creationInput)
-	contractBlock.Receipts[0].ContractAddress = &address
+	contractBlock, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     1,
+		ParentHash: genesis.Block.Hash(),
+		ExtraData:  []byte("verification-contract"),
+		Transactions: []integrationTransactionOptions{{
+			Type:             types.DynamicFeeTxType,
+			ContractCreation: true,
+			Data:             creationInput,
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "verification-contract"},
+	})
+	if err != nil {
+		t.Fatalf("build verification contract block: %v", err)
+	}
+	registerFixtureIdentities(testHash(7_101), contractBlock.Block.Hash(), testHash(8_101), contractBlock.Block.Transactions()[0].Hash())
 	commitCanonical(t, ctx, coreRepository, genesis)
 	commitCanonical(t, ctx, coreRepository, contractBlock)
 
@@ -93,8 +106,8 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 	wantCodeHash := "0x" + hex.EncodeToString(codeHash)
 	if job.Status != verify.JobQueued || job.Request.ChainID != 1 || job.Request.Address != strings.ToLower(address.String()) ||
 		job.Request.CodeHash != wantCodeHash || job.Request.AtBlockHash != testHash(7_101).String() ||
-		job.Request.CreationBytecode != ethrpc.DataFromBytes(creationBytecode).String() ||
-		job.Request.RuntimeBytecode != ethrpc.DataFromBytes(runtimeBytecode).String() ||
+		job.Request.CreationBytecode != hexutil.Encode(creationBytecode) ||
+		job.Request.RuntimeBytecode != hexutil.Encode(runtimeBytecode) ||
 		job.Request.ConstructorArgs != hex.EncodeToString(constructorArguments) || job.Request.LicenseType != "3" {
 		t.Fatalf("durable verification job = %+v", job)
 	}
@@ -109,7 +122,5 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 }
 
 func keccak256(value []byte) []byte {
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(value)
-	return hasher.Sum(nil)
+	return crypto.Keccak256(value)
 }

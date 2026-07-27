@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 func (r *MemoryRepository) ConfigureIndex(_ context.Context, chainID string, configuredStart uint64) error {
@@ -75,7 +76,7 @@ func (r *MemoryRepository) Coverage(_ context.Context, chainID string) (CoreCove
 func (r *MemoryRepository) CommitCanonicalSegment(
 	_ context.Context,
 	chainID string,
-	bundles []ethrpc.Bundle,
+	bundles []chainbundle.Bundle,
 ) (CoreCoverage, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
@@ -100,7 +101,7 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && (!existing.Hash.Equal(reference.Hash) || !existing.ParentHash.Equal(reference.ParentHash)) {
+		if exists && (existing.Hash != reference.Hash || existing.ParentHash != reference.ParentHash) {
 			return CoreCoverage{}, fmt.Errorf("%w: height %d already maps to another canonical identity", ErrConflict, reference.Number)
 		}
 	}
@@ -109,7 +110,7 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && !first.ParentHash.Equal(lower.Hash) {
+		if exists && first.ParentHash != lower.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: segment parent does not match lower canonical boundary", ErrConflict)
 		}
 	}
@@ -118,7 +119,7 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && !upper.ParentHash.Equal(last.Hash) {
+		if exists && upper.ParentHash != last.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: upper canonical boundary does not descend from segment", ErrConflict)
 		}
 	}
@@ -126,9 +127,9 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(copies))
+	nextBlocks := make(map[string]chainbundle.Bundle, len(chain.blocks)+len(copies))
 	maps.Copy(nextBlocks, chain.blocks)
-	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(references))
+	nextCanonical := make(map[uint64]common.Hash, len(chain.canonical)+len(references))
 	maps.Copy(nextCanonical, chain.canonical)
 	for index, reference := range references {
 		nextBlocks[memoryHashKey(reference.Hash)] = copies[index]
@@ -182,7 +183,7 @@ func (r *MemoryRepository) ReplaceHighestCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	if !exists || tip.Number != replacement.Range.End || !tip.Hash.Equal(replacement.Detached[0].Hash) {
+	if !exists || tip.Number != replacement.Range.End || tip.Hash != replacement.Detached[0].Hash {
 		return CoreCoverage{}, fmt.Errorf("%w: replacement range is not the canonical tip", ErrConflict)
 	}
 	for _, detached := range replacement.Detached {
@@ -222,9 +223,9 @@ func (r *MemoryRepository) ReplaceHighestCanonicalSegment(
 		}
 	}
 
-	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(copies))
+	nextBlocks := make(map[string]chainbundle.Bundle, len(chain.blocks)+len(copies))
 	maps.Copy(nextBlocks, chain.blocks)
-	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(attached))
+	nextCanonical := make(map[uint64]common.Hash, len(chain.canonical)+len(attached))
 	maps.Copy(nextCanonical, chain.canonical)
 	for _, detached := range replacement.Detached {
 		delete(nextCanonical, detached.Number)
@@ -440,5 +441,5 @@ func sameLeaseOwner(left, right BackfillLease) bool {
 }
 
 func sameBlockIdentity(left, right BlockRef) bool {
-	return left.Number == right.Number && left.Hash.Equal(right.Hash) && left.ParentHash.Equal(right.ParentHash)
+	return left.Number == right.Number && left.Hash == right.Hash && left.ParentHash == right.ParentHash
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 const MaxBackfillRangeBlocks uint64 = 256
@@ -50,13 +50,13 @@ type SparseCanonicalReplacement struct {
 	Range    BlockRange
 	Ancestor *BlockRef
 	Detached []BlockRef
-	Attached []ethrpc.Bundle
+	Attached []chainbundle.Bundle
 	Reason   string
 }
 
 func validateSparseCanonicalReplacement(
 	replacement SparseCanonicalReplacement,
-) ([]BlockRef, []ethrpc.Bundle, error) {
+) ([]BlockRef, []chainbundle.Bundle, error) {
 	if replacement.Range.End < replacement.Range.Start {
 		return nil, nil, errors.New("sparse canonical replacement range is invalid")
 	}
@@ -88,14 +88,14 @@ func validateSparseCanonicalReplacement(
 			if next.Number >= reference.Number {
 				return nil, nil, errors.New("sparse detached branch is not strictly height-descending")
 			}
-			if next.Number+1 == reference.Number && !reference.ParentHash.Equal(next.Hash) {
+			if next.Number+1 == reference.Number && reference.ParentHash != next.Hash {
 				return nil, nil, errors.New("sparse detached branch is not internally continuous")
 			}
 		}
 	}
 	if replacement.Ancestor != nil {
 		lowest := replacement.Detached[len(replacement.Detached)-1]
-		if lowest.Number == replacement.Ancestor.Number+1 && !lowest.ParentHash.Equal(replacement.Ancestor.Hash) {
+		if lowest.Number == replacement.Ancestor.Number+1 && lowest.ParentHash != replacement.Ancestor.Hash {
 			return nil, nil, errors.New("lowest sparse detached block does not descend from the ancestor")
 		}
 	}
@@ -119,7 +119,7 @@ func validateSparseCanonicalReplacement(
 			return nil, nil, errors.New("sparse replacement ancestor height overflows")
 		}
 		expectedAttachedStart = replacement.Ancestor.Number + 1
-		if !attached[0].ParentHash.Equal(replacement.Ancestor.Hash) {
+		if attached[0].ParentHash != replacement.Ancestor.Hash {
 			return nil, nil, errors.New("sparse attached branch does not descend from the ancestor")
 		}
 	}
@@ -133,14 +133,14 @@ func validateSparseCanonicalReplacement(
 	return attached, copies, nil
 }
 
-func validateCanonicalSegment(bundles []ethrpc.Bundle) ([]BlockRef, []ethrpc.Bundle, error) {
+func validateCanonicalSegment(bundles []chainbundle.Bundle) ([]BlockRef, []chainbundle.Bundle, error) {
 	if len(bundles) == 0 {
 		return nil, nil, errors.New("canonical segment is empty")
 	}
 	references := make([]BlockRef, len(bundles))
-	copies := make([]ethrpc.Bundle, len(bundles))
+	copies := make([]chainbundle.Bundle, len(bundles))
 	for index, bundle := range bundles {
-		if err := ethrpc.ValidateBundle(bundle); err != nil {
+		if err := chainbundle.Validate(bundle); err != nil {
 			return nil, nil, fmt.Errorf("canonical segment block %d: %w", index, err)
 		}
 		reference, err := RefFromBundle(bundle)
@@ -150,7 +150,7 @@ func validateCanonicalSegment(bundles []ethrpc.Bundle) ([]BlockRef, []ethrpc.Bun
 		if index > 0 {
 			previous := references[index-1]
 			if previous.Number == math.MaxUint64 || reference.Number != previous.Number+1 ||
-				!reference.ParentHash.Equal(previous.Hash) {
+				reference.ParentHash != previous.Hash {
 				return nil, nil, fmt.Errorf("%w: canonical segment block %d does not descend from block %d", ErrConflict, reference.Number, previous.Number)
 			}
 		}
@@ -215,7 +215,7 @@ func coverageRangesFromRefs(references []BlockRef, configuredStart uint64) ([]Bl
 			return nil, fmt.Errorf("%w: multiple canonical hashes at height %d", ErrConflict, reference.Number)
 		}
 		continues := previous != nil && previous.Number != math.MaxUint64 &&
-			reference.Number == previous.Number+1 && reference.ParentHash.Equal(previous.Hash)
+			reference.Number == previous.Number+1 && reference.ParentHash == previous.Hash
 		if !continues {
 			ranges = append(ranges, BlockRange{Start: reference.Number, End: reference.Number})
 		} else {

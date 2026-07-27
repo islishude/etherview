@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type testStateProvider struct {
@@ -44,8 +46,8 @@ func (provider *testStateProvider) ERC20TotalSupply(_ context.Context, contract 
 func TestNativeBalanceActionsUseAuthoritativeStateProvider(t *testing.T) {
 	t.Parallel()
 	provider := &testStateProvider{native: map[string]string{
-		testSender:    "123",
-		testRecipient: "456",
+		common.HexToAddress(testSender).Hex():    "123",
+		common.HexToAddress(testRecipient).Hex(): "456",
 	}}
 	backend := testPostgresBackend(t, fakeDatabase(t), PostgresOptions{ChainID: 1, State: provider})
 
@@ -66,7 +68,10 @@ func TestNativeBalanceActionsUseAuthoritativeStateProvider(t *testing.T) {
 	if string(encoded) != want {
 		t.Fatalf("multiple=%s want=%s", encoded, want)
 	}
-	wantCalls := [][]string{{testSender}, {testSender, testRecipient}}
+	wantCalls := [][]string{
+		{common.HexToAddress(testSender).Hex()},
+		{common.HexToAddress(testSender).Hex(), common.HexToAddress(testRecipient).Hex()},
+	}
 	if !reflect.DeepEqual(provider.nativeCalls, wantCalls) {
 		t.Fatalf("native calls=%v want=%v", provider.nativeCalls, wantCalls)
 	}

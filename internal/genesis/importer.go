@@ -16,9 +16,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/enrich"
-	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 const (
@@ -49,12 +52,12 @@ type Importer struct {
 	db           *sql.DB
 	chainID      string
 	chainNumber  uint64
-	expectedHash enrich.Word
+	expectedHash common.Hash
 	file         string
 	remote       *remoteSource
 	digest       [32]byte
-	spec         *genesisSpec
-	block        *genesisBlockData
+	spec         *core.Genesis
+	block        *types.Block
 	queue        *enrich.PostgresJobQueue
 	pollInterval time.Duration
 }
@@ -90,18 +93,11 @@ func NewImporter(
 		file: chain.GenesisFile, queue: queue, pollInterval: pollInterval,
 	}
 	if chain.GenesisHash != "" {
-		configuredHash, err := ethrpc.ParseHash(chain.GenesisHash)
+		configuredHash, err := parseHashText(chain.GenesisHash)
 		if err != nil {
 			return nil, errors.New("genesis importer configured hash is invalid")
 		}
-		decoded, err := configuredHash.Bytes()
-		if err != nil {
-			return nil, errors.New("genesis importer configured hash is invalid")
-		}
-		importer.expectedHash, err = enrich.WordFromBytes(decoded)
-		if err != nil {
-			return nil, errors.New("genesis importer configured hash is invalid")
-		}
+		importer.expectedHash = configuredHash
 	}
 	if chain.GenesisURL != "" {
 		remote, err := newRemoteSource(
@@ -133,7 +129,7 @@ func (importer *Importer) prepareDocument(document []byte, digest [sha256.Size]b
 	if err != nil {
 		return err
 	}
-	if importer.expectedHash != (enrich.Word{}) &&
+	if importer.expectedHash != (common.Hash{}) &&
 		!bytes.Equal(importer.expectedHash[:], block.Hash().Bytes()) {
 		return errConfiguredGenesisHashMismatch
 	}
@@ -313,8 +309,8 @@ func (importer *Importer) completedRemoteImport(
 	if checkpoint.state != "complete" {
 		return checkpoint, false, nil
 	}
-	if !canonical || len(blockHash) != len(enrich.Word{}) ||
-		len(stateRoot) != len(enrich.Word{}) || len(digest) != sha256.Size {
+	if !canonical || len(blockHash) != common.HashLength ||
+		len(stateRoot) != common.HashLength || len(digest) != sha256.Size {
 		return checkpoint, false, errors.New("stored completed genesis import identity is invalid")
 	}
 	canonicalRoot, err := stateRootFromBlock(raw)
@@ -324,7 +320,7 @@ func (importer *Importer) completedRemoteImport(
 	if !bytes.Equal(stateRoot, canonicalRoot[:]) {
 		return checkpoint, false, errors.New("stored completed genesis import conflicts with canonical block zero state root")
 	}
-	if importer.expectedHash != (enrich.Word{}) &&
+	if importer.expectedHash != (common.Hash{}) &&
 		!bytes.Equal(importer.expectedHash[:], blockHash) {
 		return checkpoint, false, errors.New("stored completed genesis import conflicts with configured genesis hash")
 	}
@@ -493,7 +489,7 @@ func (importer *Importer) markUnavailable(ctx context.Context) error {
 	return nil
 }
 
-func (importer *Importer) importOnce(ctx context.Context) (enrich.Word, enrich.Word, error) {
+func (importer *Importer) importOnce(ctx context.Context) (common.Hash, common.Hash, error) {
 	return importer.importOnceUsing(ctx, importer.db)
 }
 
@@ -502,17 +498,17 @@ func (importer *Importer) importOnceUsing(
 	beginner interface {
 		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	},
-) (enrich.Word, enrich.Word, error) {
+) (common.Hash, common.Hash, error) {
 	tx, err := beginner.BeginTx(ctx, nil)
 	if err != nil {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("begin genesis state import: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("begin genesis state import: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx,
 		`SELECT pg_advisory_xact_lock(hashtext('etherview:genesis-state'), hashtext($1))`,
 		importer.chainID,
 	); err != nil {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("lock genesis state import: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("lock genesis state import: %w", err)
 	}
 	var blockHash, raw []byte
 	err = tx.QueryRowContext(ctx, `
@@ -526,24 +522,24 @@ func (importer *Importer) importOnceUsing(
 		importer.chainID,
 	).Scan(&blockHash, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return enrich.Word{}, enrich.Word{}, errBlockZeroPending
+		return common.Hash{}, common.Hash{}, errBlockZeroPending
 	}
 	if err != nil {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("read canonical block zero: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("read canonical block zero: %w", err)
 	}
-	reference, err := enrich.WordFromBytes(blockHash)
-	if err != nil {
-		return enrich.Word{}, enrich.Word{}, errors.New("stored block-zero hash is invalid")
+	if len(blockHash) != common.HashLength {
+		return common.Hash{}, common.Hash{}, errors.New("stored block-zero hash is invalid")
 	}
+	reference := common.BytesToHash(blockHash)
 	stateRoot, err := stateRootFromBlock(raw)
 	if err != nil {
-		return enrich.Word{}, enrich.Word{}, err
+		return common.Hash{}, common.Hash{}, err
 	}
 	if !bytes.Equal(blockHash, importer.block.Hash().Bytes()) {
-		return enrich.Word{}, enrich.Word{}, errCanonicalGenesisHashMismatch
+		return common.Hash{}, common.Hash{}, errCanonicalGenesisHashMismatch
 	}
 	if !bytes.Equal(stateRoot[:], importer.block.Root().Bytes()) {
-		return enrich.Word{}, enrich.Word{}, errCanonicalGenesisRootMismatch
+		return common.Hash{}, common.Hash{}, errCanonicalGenesisRootMismatch
 	}
 	var existingState string
 	var existingHash, existingRoot, existingDigest []byte
@@ -555,19 +551,19 @@ func (importer *Importer) importOnceUsing(
 	).Scan(&existingState, &existingHash, &existingRoot, &existingDigest)
 	if err == nil && existingState == "complete" {
 		if !bytes.Equal(existingHash, blockHash) || !bytes.Equal(existingRoot, stateRoot[:]) {
-			return enrich.Word{}, enrich.Word{}, errors.New("stored genesis import identity conflicts with canonical block zero")
+			return common.Hash{}, common.Hash{}, errors.New("stored genesis import identity conflicts with canonical block zero")
 		}
 		if importer.remote != nil && importer.remote.expectedDigest != nil &&
 			!bytes.Equal(existingDigest, importer.remote.expectedDigest[:]) {
-			return enrich.Word{}, enrich.Word{}, errStoredGenesisDigestMismatch
+			return common.Hash{}, common.Hash{}, errStoredGenesisDigestMismatch
 		}
 		if err := tx.Commit(); err != nil {
-			return enrich.Word{}, enrich.Word{}, fmt.Errorf("commit existing genesis import: %w", err)
+			return common.Hash{}, common.Hash{}, fmt.Errorf("commit existing genesis import: %w", err)
 		}
 		return reference, stateRoot, nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("read genesis import state: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("read genesis import state: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO genesis_state_imports (
@@ -590,9 +586,9 @@ func (importer *Importer) importOnceUsing(
 		importer.chainID, blockHash, stateRoot[:], importer.digest[:],
 		strconv.Itoa(len(importer.spec.Alloc)),
 	); err != nil {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis import identity: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis import identity: %w", err)
 	}
-	addresses := make([]address, 0, len(importer.spec.Alloc))
+	addresses := make([]common.Address, 0, len(importer.spec.Alloc))
 	for accountAddress := range importer.spec.Alloc {
 		addresses = append(addresses, accountAddress)
 	}
@@ -603,13 +599,13 @@ func (importer *Importer) importOnceUsing(
 		account := importer.spec.Alloc[accountAddress]
 		storageHash, err := storageRoot(account.Storage)
 		if err != nil {
-			return enrich.Word{}, enrich.Word{}, errors.New("compute genesis account storage root")
+			return common.Hash{}, common.Hash{}, errors.New("compute genesis account storage root")
 		}
 		code := account.Code
 		if code == nil {
 			code = []byte{}
 		}
-		codeHash := keccakHash(code)
+		codeHash := crypto.Keccak256Hash(code)
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO genesis_account_observations (
 			    chain_id, address, block_hash, balance, nonce,
@@ -620,7 +616,7 @@ func (importer *Importer) importOnceUsing(
 			importer.chainID, accountAddress[:], blockHash, account.Balance.String(),
 			strconv.FormatUint(account.Nonce, 10), codeHash[:], code, storageHash[:],
 		); err != nil {
-			return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis account: %w", err)
+			return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis account: %w", err)
 		}
 		if len(code) > 0 {
 			result, err := tx.ExecContext(ctx, `
@@ -636,22 +632,22 @@ func (importer *Importer) importOnceUsing(
 				importer.chainID, accountAddress[:], blockHash, codeHash[:], code,
 			)
 			if err != nil {
-				return enrich.Word{}, enrich.Word{}, fmt.Errorf("persist genesis code observation: %w", err)
+				return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis code observation: %w", err)
 			}
 			affected, err := result.RowsAffected()
 			if err != nil {
-				return enrich.Word{}, enrich.Word{}, fmt.Errorf("count persisted genesis code observation: %w", err)
+				return common.Hash{}, common.Hash{}, fmt.Errorf("count persisted genesis code observation: %w", err)
 			}
 			if affected != 1 {
-				return enrich.Word{}, enrich.Word{}, errors.New("genesis code observation conflicts with an existing exact fact")
+				return common.Hash{}, common.Hash{}, errors.New("genesis code observation conflicts with an existing exact fact")
 			}
 		}
 	}
 	if err := importer.requestProxyReplay(ctx, tx, reference, stateRoot); err != nil {
-		return enrich.Word{}, enrich.Word{}, err
+		return common.Hash{}, common.Hash{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return enrich.Word{}, enrich.Word{}, fmt.Errorf("commit genesis state import: %w", err)
+		return common.Hash{}, common.Hash{}, fmt.Errorf("commit genesis state import: %w", err)
 	}
 	return reference, stateRoot, nil
 }
@@ -659,8 +655,8 @@ func (importer *Importer) importOnceUsing(
 func (importer *Importer) requestProxyReplay(
 	ctx context.Context,
 	tx *sql.Tx,
-	blockHash enrich.Word,
-	stateRoot enrich.Word,
+	blockHash common.Hash,
+	stateRoot common.Hash,
 ) error {
 	if importer.queue == nil {
 		return nil

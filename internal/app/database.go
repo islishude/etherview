@@ -122,7 +122,7 @@ func validateReadDatabaseIdentity(
 		return fmt.Errorf("validate read database chain identity: %w", err)
 	}
 	if readerIdentity.ChainID != writerIdentity.ChainID ||
-		!readerIdentity.GenesisHash.Equal(writerIdentity.GenesisHash) {
+		readerIdentity.GenesisHash != writerIdentity.GenesisHash {
 		return errors.New("read database chain identity does not match writer")
 	}
 	return nil

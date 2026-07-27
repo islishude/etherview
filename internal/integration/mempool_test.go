@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -141,39 +144,52 @@ func TestMempoolSnapshotsRemainCursorStableAndExposeFailures(t *testing.T) {
 
 func mustHashBytes(t *testing.T, value string) []byte {
 	t.Helper()
-	hash, err := ethrpc.ParseHash(value)
-	if err != nil {
-		t.Fatal(err)
+	if !common.IsHexHash(value) {
+		t.Fatalf("invalid hash %q", value)
 	}
-	decoded, err := hash.Bytes()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return decoded
+	return common.HexToHash(value).Bytes()
 }
 
 func mempoolIntegrationTransaction(t *testing.T, value uint64, firstSeen, expires time.Time) mempool.Transaction {
 	t.Helper()
-	hash := testHash(1_000 + value)
-	from := testAddress(value)
 	to := testAddress(value + 100)
-	txType := ethrpc.QuantityFromUint64(2)
-	chainID := ethrpc.QuantityFromUint64(1)
-	wire := ethrpc.Transaction{
-		Hash: hash, Type: &txType, From: from, To: &to,
-		Nonce: ethrpc.QuantityFromUint64(value), Gas: ethrpc.QuantityFromUint64(21_000),
-		Value: ethrpc.QuantityFromUint64(value * 10), Input: ethrpc.Data("0x"), ChainID: &chainID,
-		Extra: map[string]json.RawMessage{"futurePendingField": json.RawMessage(fmt.Sprintf("%d", value))},
+	chainID := big.NewInt(1)
+	unsigned := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     value,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       21_000,
+		To:        &to,
+		Value:     new(big.Int).SetUint64(value * 10),
+		Data:      []byte{},
+	})
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
 	}
-	raw, err := json.Marshal(wire)
+	wire, err := types.SignTx(unsigned, types.LatestSignerForChainID(chainID), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := crypto.PubkeyToAddress(key.PublicKey)
+	fields, err := marshalIntegrationFields(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setIntegrationJSON(fields, "from", from)
+	setIntegrationJSON(fields, "futurePendingField", value)
+	raw, err := json.Marshal(fields)
 	if err != nil {
 		t.Fatal(err)
 	}
 	toString := to.String()
 	typeString := "2"
+	maxFee, priorityFee := "2", "1"
 	return mempool.Transaction{
-		Hash: hash.String(), From: from.String(), To: &toString,
+		Hash: wire.Hash().String(), From: from.String(), To: &toString,
 		Nonce: fmt.Sprint(value), Value: fmt.Sprint(value * 10), Gas: "21000", Type: &typeString,
+		MaxFeePerGas: &maxFee, MaxPriorityFeePerGas: &priorityFee,
 		Input: "0x", Raw: raw, FirstSeenAt: firstSeen, LastSeenAt: firstSeen,
 		ExpiresAt: expires, Endpoint: "pending-a",
 	}

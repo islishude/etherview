@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -189,7 +190,7 @@ func makeSettledBillingPaymentRow(row *dbgen.BillingPayment) {
 
 func testReserveInput() ReserveInput {
 	var fingerprint, resource, requirement, facilitator Digest
-	var asset, recipient Address
+	var asset, recipient common.Address
 	for index := range fingerprint {
 		fingerprint[index] = byte(index + 1)
 		resource[index] = byte(index + 2)

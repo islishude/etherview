@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/apiops"
@@ -34,7 +35,6 @@ import (
 	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/verify"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -1703,19 +1703,7 @@ func checksumAddress(value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	lower := strings.ToLower(address.String()[2:])
-	hasher := sha3.NewLegacyKeccak256()
-	if _, err := hasher.Write([]byte(lower)); err != nil {
-		return "", fmt.Errorf("hash address: %w", err)
-	}
-	digest := hex.EncodeToString(hasher.Sum(nil))
-	checksummed := []byte(lower)
-	for index := range checksummed {
-		if checksummed[index] >= 'a' && checksummed[index] <= 'f' && digest[index] >= '8' {
-			checksummed[index] -= 'a' - 'A'
-		}
-	}
-	return "0x" + string(checksummed), nil
+	return common.Address(address).Hex(), nil
 }
 
 func (h *Handler) handleReaderError(w http.ResponseWriter, r *http.Request, err error) {

@@ -7,16 +7,18 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -162,7 +164,7 @@ func TestSQLCRuntimeBoundaryReadsChainIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read chain identity through sqlc: %v", err)
 	}
-	if identity.ChainID != "1" || !identity.GenesisHash.Equal(genesis) {
+	if identity.ChainID != "1" || identity.GenesisHash != genesis {
 		t.Fatalf("chain identity = %+v, want chain 1 genesis %s", identity, genesis)
 	}
 }
@@ -195,7 +197,7 @@ func TestConcurrentRoleStartupBindsOneChainIdentityWithoutRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !identity.GenesisHash.Equal(genesis) {
+	if identity.GenesisHash != genesis {
 		t.Fatalf("chain identity = %+v, want genesis %s", identity, genesis)
 	}
 	var beforeXID, afterXID string
@@ -303,6 +305,7 @@ func newMigratedPostgres(t *testing.T) *sql.DB {
 
 func newIsolatedPostgres(t *testing.T) *sql.DB {
 	t.Helper()
+	resetFixtureHashes()
 	rawURL := strings.TrimSpace(os.Getenv(testDatabaseEnvironment))
 	if rawURL == "" {
 		t.Skipf("%s is not set", testDatabaseEnvironment)
@@ -381,96 +384,96 @@ func quoteIdentifier(identifier string) string {
 	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
-func testHash(value uint64) ethrpc.Hash {
-	hash, err := ethrpc.ParseHash(fmt.Sprintf("0x%064x", value))
-	if err != nil {
-		panic(err)
-	}
-	return hash
+var fixtureHashes = struct {
+	sync.Mutex
+	forward map[common.Hash]common.Hash
+	reverse map[common.Hash]common.Hash
+}{
+	forward: make(map[common.Hash]common.Hash),
+	reverse: make(map[common.Hash]common.Hash),
 }
 
-func testAddress(value uint64) ethrpc.Address {
-	address, err := ethrpc.ParseAddress(fmt.Sprintf("0x%040x", value))
-	if err != nil {
-		panic(err)
-	}
-	return address
+func resetFixtureHashes() {
+	fixtureHashes.Lock()
+	clear(fixtureHashes.forward)
+	clear(fixtureHashes.reverse)
+	fixtureHashes.Unlock()
 }
 
-func testBundle(number uint64, blockHash, parentHash, transactionHash ethrpc.Hash, variant string) ethrpc.Bundle {
-	blockNumber := ethrpc.QuantityFromUint64(number)
-	transactionIndex := ethrpc.QuantityFromUint64(0)
-	transactionType := ethrpc.QuantityFromUint64(2)
-	status := ethrpc.QuantityFromUint64(1)
-	gasUsed := ethrpc.QuantityFromUint64(21_000)
-	zeroHash := testHash(0)
-	from := testAddress(1)
-	to := testAddress(2)
-	logAddress := testAddress(3)
-	logIndex := ethrpc.QuantityFromUint64(0)
-	withdrawalAddress := testAddress(4)
-	block := ethrpc.Block{
-		Number:           &blockNumber,
-		Hash:             &blockHash,
-		ParentHash:       parentHash,
-		Sha3Uncles:       zeroHash,
-		TransactionsRoot: zeroHash,
-		StateRoot:        zeroHash,
-		ReceiptsRoot:     zeroHash,
-		ExtraData:        ethrpc.DataFromBytes([]byte(variant)),
-		GasLimit:         ethrpc.QuantityFromUint64(30_000_000),
-		GasUsed:          gasUsed,
-		Timestamp:        ethrpc.QuantityFromUint64(1_700_000_000 + number),
-		Uncles:           []ethrpc.Hash{},
-		Extra: map[string]json.RawMessage{
-			"integrationVariant": json.RawMessage(fmt.Sprintf("%q", variant)),
-		},
-		Withdrawals: []ethrpc.Withdrawal{{
-			Index:          ethrpc.QuantityFromUint64(number),
-			ValidatorIndex: ethrpc.QuantityFromUint64(number + 100),
-			Address:        withdrawalAddress,
-			Amount:         ethrpc.QuantityFromUint64(32_000_000_000),
+func testHash(value uint64) common.Hash {
+	symbolic := common.BigToHash(new(big.Int).SetUint64(value))
+	fixtureHashes.Lock()
+	defer fixtureHashes.Unlock()
+	if actual, ok := fixtureHashes.forward[symbolic]; ok {
+		return actual
+	}
+	return symbolic
+}
+
+func testAddress(value uint64) common.Address {
+	return common.BigToAddress(new(big.Int).SetUint64(value))
+}
+
+// testBundle retains the historical numeric seeds at call sites while making
+// go-ethereum authoritative for every real block and transaction identity.
+// The alias table lets later testHash(seed) assertions resolve the identity
+// computed from the signed transaction and header.
+func testBundle(number uint64, blockSeed, parentHash, transactionSeed common.Hash, variant string) chainbundle.Bundle {
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     number,
+		ParentHash: parentHash,
+		ExtraData:  []byte(variant),
+		Coinbase:   testAddress(1),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType,
+			Data: append(
+				append([]byte(fmt.Sprintf("%s:%d:", variant, number)), transactionSeed.Bytes()...),
+				blockSeed.Bytes()...,
+			),
+			Logs: []*types.Log{{
+				Address: testAddress(3),
+				Topics:  []common.Hash{testHash(9_000)},
+				Data:    []byte(variant),
+			}},
 		}},
+		Withdrawals: []*types.Withdrawal{{
+			Index:     number,
+			Validator: number + 100,
+			Address:   testAddress(4),
+			Amount:    32_000_000_000,
+		}},
+		RawExtra: map[string]any{"integrationVariant": variant},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("build integration bundle %q: %v", variant, err))
 	}
-	transaction := &ethrpc.Transaction{
-		Hash:             transactionHash,
-		Type:             &transactionType,
-		BlockHash:        &blockHash,
-		BlockNumber:      &blockNumber,
-		TransactionIndex: &transactionIndex,
-		From:             from,
-		To:               &to,
-		Nonce:            ethrpc.QuantityFromUint64(number),
-		Gas:              ethrpc.QuantityFromUint64(21_000),
-		Value:            ethrpc.QuantityFromUint64(1),
-		Input:            ethrpc.DataFromBytes([]byte(variant)),
-	}
-	block.Transactions = []ethrpc.TransactionRef{{Hash: transactionHash, Transaction: transaction}}
-	log := ethrpc.Log{
-		LogIndex:         &logIndex,
-		TransactionIndex: &transactionIndex,
-		TransactionHash:  &transactionHash,
-		BlockHash:        &blockHash,
-		BlockNumber:      &blockNumber,
-		Address:          logAddress,
-		Data:             ethrpc.DataFromBytes([]byte(variant)),
-		Topics:           []ethrpc.Hash{testHash(9_000)},
-	}
-	receipt := ethrpc.Receipt{
-		TransactionHash:   transactionHash,
-		TransactionIndex:  transactionIndex,
-		BlockHash:         blockHash,
-		BlockNumber:       blockNumber,
-		CumulativeGasUsed: gasUsed,
-		GasUsed:           &gasUsed,
-		Logs:              []ethrpc.Log{log},
-		LogsBloom:         ethrpc.Data("0x"),
-		Status:            &status,
-	}
-	return ethrpc.Bundle{Block: block, Receipts: []ethrpc.Receipt{receipt}}
+	registerFixtureIdentities(
+		blockSeed,
+		bundle.Block.Hash(),
+		transactionSeed,
+		bundle.Block.Transactions()[0].Hash(),
+	)
+	return bundle
 }
 
-func mustBlockRef(t *testing.T, bundle ethrpc.Bundle) store.BlockRef {
+func registerFixtureIdentities(
+	blockSeed, actualBlockHash, transactionSeed, actualTransactionHash common.Hash,
+) {
+	fixtureHashes.Lock()
+	if symbolic, ok := fixtureHashes.reverse[blockSeed]; ok {
+		blockSeed = symbolic
+	}
+	if symbolic, ok := fixtureHashes.reverse[transactionSeed]; ok {
+		transactionSeed = symbolic
+	}
+	fixtureHashes.forward[blockSeed] = actualBlockHash
+	fixtureHashes.reverse[actualBlockHash] = blockSeed
+	fixtureHashes.forward[transactionSeed] = actualTransactionHash
+	fixtureHashes.reverse[actualTransactionHash] = transactionSeed
+	fixtureHashes.Unlock()
+}
+
+func mustBlockRef(t *testing.T, bundle chainbundle.Bundle) store.BlockRef {
 	t.Helper()
 	reference, err := store.RefFromBundle(bundle)
 	if err != nil {
@@ -479,11 +482,23 @@ func mustBlockRef(t *testing.T, bundle ethrpc.Bundle) store.BlockRef {
 	return reference
 }
 
-func mustBytes(t *testing.T, value interface{ Bytes() ([]byte, error) }) []byte {
+func mustBytes(t *testing.T, value any) []byte {
 	t.Helper()
-	encoded, err := value.Bytes()
-	if err != nil {
-		t.Fatalf("decode hex value: %v", err)
+	switch value := value.(type) {
+	case common.Hash:
+		return value.Bytes()
+	case common.Address:
+		return value.Bytes()
+	case interface{ Bytes() []byte }:
+		return value.Bytes()
+	case interface{ Bytes() ([]byte, error) }:
+		encoded, err := value.Bytes()
+		if err != nil {
+			t.Fatalf("decode hex value: %v", err)
+		}
+		return encoded
+	default:
+		t.Fatalf("unsupported byte value %T", value)
+		return nil
 	}
-	return encoded
 }

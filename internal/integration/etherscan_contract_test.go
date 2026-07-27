@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -112,6 +113,11 @@ func TestEtherscanContractCreationIncludesFactoryTraceFacts(t *testing.T) {
 	createdAt := testBundle(1, testHash(17_001), testHash(17_000), testHash(18_001), "factory-create")
 	commitCanonical(t, ctx, repository, genesis)
 	commitCanonical(t, ctx, repository, createdAt)
+	transaction := createdAt.Block.Transactions()[0]
+	creator, err := types.Sender(types.LatestSignerForChainID(transaction.ChainId()), transaction)
+	if err != nil {
+		t.Fatalf("recover contract creator: %v", err)
+	}
 
 	created := testAddress(1_700)
 	factory := testAddress(2)
@@ -150,7 +156,7 @@ func TestEtherscanContractCreationIncludesFactoryTraceFacts(t *testing.T) {
 		t.Fatalf("decode factory contract creation: %v", err)
 	}
 	if len(rows) != 1 || !strings.EqualFold(rows[0]["contractAddress"], created.String()) ||
-		!strings.EqualFold(rows[0]["contractCreator"], testAddress(1).String()) ||
+		!strings.EqualFold(rows[0]["contractCreator"], creator.String()) ||
 		!strings.EqualFold(rows[0]["contractFactory"], factory.String()) ||
 		rows[0]["txHash"] != testHash(18_001).String() ||
 		rows[0]["blockNumber"] != "1" || rows[0]["timestamp"] != "1700000001" ||

@@ -1,430 +1,319 @@
 package ethrpc
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"errors"
-	"fmt"
+	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"slices"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
 
-type fakeCaller struct {
-	mu      sync.Mutex
-	call    func(method string, params []any, result any) error
-	batch   func(elements []BatchElem) error
-	methods []string
-}
-
-func (f *fakeCaller) Call(_ context.Context, method string, params []any, result any) error {
-	f.mu.Lock()
-	f.methods = append(f.methods, method)
-	f.mu.Unlock()
-	return f.call(method, params, result)
-}
-
-func (f *fakeCaller) BatchCall(_ context.Context, elements []BatchElem) error {
-	if f.batch == nil {
-		return errors.New("unexpected batch call")
-	}
-	return f.batch(elements)
-}
-
-func (f *fakeCaller) called(method string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Contains(f.methods, method)
-}
-
-func TestPoolSelectsOnlyPurposeEligibleEndpoints(t *testing.T) {
+func TestPoolSelectsPurposeAndSkipsCoolingOrUnavailableHistory(t *testing.T) {
 	t.Parallel()
-	noop := &fakeCaller{call: func(string, []any, any) error { return nil }}
+	client := rpc.DialInProc(rpc.NewServer())
+	t.Cleanup(client.Close)
+	now := time.Unix(100, 0)
 	pool, err := NewPool([]Endpoint{
-		{Name: "head", Purposes: map[Purpose]bool{PurposeHead: true}, Client: noop},
-		{Name: "archive", Purposes: map[Purpose]bool{PurposeHistory: true, PurposeState: true}, Client: noop},
-	}, PoolOptions{})
+		{Name: "one", Purposes: map[Purpose]bool{PurposeHead: true}, Client: client},
+		{
+			Name: "pruned",
+			Purposes: map[Purpose]bool{
+				PurposeHead:    true,
+				PurposeHistory: true,
+			},
+			Client: client,
+			Capabilities: CapabilityReport{Methods: map[string]Availability{
+				CapabilityHistoricalData: AvailabilityUnavailable,
+			}},
+		},
+		{
+			Name:     "archive",
+			Purposes: map[Purpose]bool{PurposeHistory: true, PurposeState: true},
+			Client:   client,
+		},
+	}, PoolOptions{Now: func() time.Time { return now }, FailureCooldown: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint, err := pool.Acquire(PurposeState)
+	if got := pool.Names(PurposeHistory); !slices.Equal(got, []string{"archive"}) {
+		t.Fatalf("history endpoints = %v", got)
+	}
+	first, err := pool.Acquire(PurposeHead)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if endpoint.Name != "archive" {
-		t.Fatalf("endpoint = %q", endpoint.Name)
+	pool.ReportFailure(first.Name)
+	second, err := pool.Acquire(PurposeHead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Name == second.Name {
+		t.Fatalf("cooling endpoint %q was selected", first.Name)
+	}
+	state, err := pool.Acquire(PurposeState)
+	if err != nil || state.Name != "archive" {
+		t.Fatalf("state endpoint = %#v, %v", state, err)
 	}
 	if _, err := pool.Acquire(PurposeTrace); err == nil {
 		t.Fatal("Acquire(trace) succeeded without a trace endpoint")
 	}
 }
 
-func TestPoolSkipsCoolingEndpoint(t *testing.T) {
+func TestProbeEndpointUsesGethHeadersAndPurposeCapabilities(t *testing.T) {
 	t.Parallel()
-	now := time.Unix(100, 0)
-	noop := &fakeCaller{call: func(string, []any, any) error { return nil }}
-	pool, err := NewPool([]Endpoint{
-		{Name: "one", Purposes: map[Purpose]bool{PurposeHead: true}, Client: noop},
-		{Name: "two", Purposes: map[Purpose]bool{PurposeHead: true}, Client: noop},
-	}, PoolOptions{Now: func() time.Time { return now }, FailureCooldown: time.Minute})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, _ := pool.Acquire(PurposeHead)
-	pool.ReportFailure(first.Name)
-	second, _ := pool.Acquire(PurposeHead)
-	if second.Name == first.Name {
-		t.Fatalf("cooling endpoint %q was selected while another was healthy", first.Name)
-	}
-}
-
-func TestPoolExcludesEndpointFromHistoryWhenProbeMarkedItUnavailable(t *testing.T) {
-	t.Parallel()
-	noop := &fakeCaller{call: func(string, []any, any) error { return nil }}
-	pool, err := NewPool([]Endpoint{{
-		Name: "pruned",
-		Purposes: map[Purpose]bool{
-			PurposeHead:    true,
-			PurposeHistory: true,
-		},
-		Client: noop,
-		Capabilities: CapabilityReport{Methods: map[string]Availability{
-			CapabilityHistoricalData: AvailabilityUnavailable,
-		}},
-	}}, PoolOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if names := pool.Names(PurposeHistory); len(names) != 0 {
-		t.Fatalf("history pool contains unavailable endpoint: %v", names)
-	}
-	if names := pool.Names(PurposeHead); len(names) != 1 || names[0] != "pruned" {
-		t.Fatalf("unrelated head purpose was removed: %v", names)
-	}
-	head, err := pool.Acquire(PurposeHead)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if head.Supports(PurposeHistory) {
-		t.Fatal("endpoint acquired for head still advertises unavailable history")
-	}
-	if _, err := pool.Acquire(PurposeHistory); err == nil {
-		t.Fatal("Acquire(history) succeeded with only an unavailable history endpoint")
-	}
-}
-
-func TestPoolSkipsHistoryOnlyUnavailableEndpointWhenAlternativeExists(t *testing.T) {
-	t.Parallel()
-	noop := &fakeCaller{call: func(string, []any, any) error { return nil }}
-	pool, err := NewPool([]Endpoint{
-		{
-			Name: "pruned", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: noop,
-			Capabilities: CapabilityReport{Methods: map[string]Availability{
-				CapabilityHistoricalData: AvailabilityUnavailable,
-			}},
-		},
-		{
-			Name: "archive", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: noop,
-			Capabilities: CapabilityReport{Methods: map[string]Availability{
-				CapabilityHistoricalData: AvailabilityAvailable,
-			}},
-		},
-	}, PoolOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if names := pool.Names(PurposeHistory); len(names) != 1 || names[0] != "archive" {
-		t.Fatalf("history endpoints = %v", names)
-	}
-}
-
-func TestProbeEndpointChecksIdentityAndPurposeCapabilities(t *testing.T) {
-	t.Parallel()
-	genesisHash := testHash(1)
-	caller := &fakeCaller{call: func(method string, params []any, result any) error {
-		switch method {
+	genesis := mustFixture(t, testfixture.Options{Number: 0, ExtraData: []byte("genesis")})
+	history := mustFixture(t, testfixture.Options{
+		Number: 64, ParentHash: common.Hash{31: 0x10}, ExtraData: []byte("history"),
+	})
+	var methods []string
+	server := newSingleRPCServer(t, func(request testRequest) (json.RawMessage, *testRPCError) {
+		methods = append(methods, request.Method)
+		switch request.Method {
 		case "eth_chainId":
-			return assignJSON(result, "0x1")
+			return json.RawMessage(`"0x1"`), nil
 		case "eth_getBlockByNumber":
-			return assignJSON(result, map[string]any{"number": params[0], "hash": genesisHash})
+			var tag string
+			_ = json.Unmarshal(request.Params[0], &tag)
+			switch tag {
+			case "0x0", "safe", "finalized":
+				return genesis.RawBlock, nil
+			case "0x40":
+				return history.RawBlock, nil
+			default:
+				t.Fatalf("unexpected tag %q", tag)
+			}
 		case "eth_getBlockReceipts":
-			return assignJSON(result, []any{})
+			return json.RawMessage("[]"), nil
 		default:
-			return fmt.Errorf("unexpected method %s", method)
+			t.Fatalf("unexpected method %q", request.Method)
 		}
-	}}
+		return nil, nil
+	})
+	client := mustClient(t, server.URL)
 	endpoint := &Endpoint{
 		Name:     "history",
+		Purposes: map[Purpose]bool{PurposeHead: true, PurposeHistory: true},
+		Client:   client,
+	}
+	report, err := ProbeEndpoint(t.Context(), endpoint, ProbeOptions{
+		Expected: &ChainIdentity{
+			ChainID:     "1",
+			GenesisHash: genesis.Block.Hash(),
+		},
+		StartBlock: 64,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.GenesisHash != genesis.Block.Hash() ||
+		report.Status(CapabilityHistoricalData) != AvailabilityAvailable ||
+		report.Status(CapabilityBlockReceipts) != AvailabilityAvailable ||
+		report.Status(CapabilitySafeTag) != AvailabilityAvailable ||
+		report.Status(CapabilityFinalizedTag) != AvailabilityAvailable {
+		t.Fatalf("capability report = %+v", report)
+	}
+	if slices.Contains(methods, "eth_getBalance") || slices.Contains(methods, "rpc_modules") {
+		t.Fatalf("probe called outside configured purposes: %v", methods)
+	}
+}
+
+func TestProbeClassifiesPrunedHistoryWithoutRetainingProviderMessage(t *testing.T) {
+	t.Parallel()
+	const providerSecret = "provider-secret"
+	genesis := mustFixture(t, testfixture.Options{Number: 0})
+	server := newSingleRPCServer(t, func(request testRequest) (json.RawMessage, *testRPCError) {
+		switch request.Method {
+		case "eth_chainId":
+			return json.RawMessage(`"0x1"`), nil
+		case "eth_getBlockByNumber":
+			var tag string
+			_ = json.Unmarshal(request.Params[0], &tag)
+			if tag == "0x0" {
+				return genesis.RawBlock, nil
+			}
+			return nil, &testRPCError{Code: -32000, Message: "history pruned " + providerSecret}
+		case "eth_getBlockReceipts":
+			return json.RawMessage("[]"), nil
+		default:
+			t.Fatalf("unexpected method %q", request.Method)
+		}
+		return nil, nil
+	})
+	client := mustClient(t, server.URL)
+	report, err := ProbeEndpoint(t.Context(), &Endpoint{
+		Name:     "history",
 		Purposes: map[Purpose]bool{PurposeHistory: true},
-		Client:   caller,
-	}
-	report, err := ProbeEndpoint(context.Background(), endpoint, ProbeOptions{
-		Expected:   &ChainIdentity{ChainID: "1", GenesisHash: genesisHash},
-		StartBlock: QuantityFromUint64(0),
+		Client:   client,
+	}, ProbeOptions{
+		Expected:   &ChainIdentity{ChainID: "1", GenesisHash: genesis.Block.Hash()},
+		StartBlock: 64,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status(CapabilityHistoricalData) != AvailabilityAvailable || report.Status(CapabilityBlockReceipts) != AvailabilityAvailable {
-		t.Fatalf("capabilities = %+v", report.Methods)
+	issue := report.HistoryUnavailable
+	if issue == nil || issue.Kind != HistoryPrunedResult ||
+		!errors.Is(issue, ErrHistoryUnavailable) || !errors.Is(issue, ErrHistoryPruned) {
+		t.Fatalf("history issue = %#v", issue)
 	}
-	if caller.called("rpc_modules") || caller.called("eth_getBalance") {
-		t.Fatalf("probe called methods outside endpoint purposes: %v", caller.methods)
-	}
-}
-
-func TestProbeEndpointRejectsWrongGenesis(t *testing.T) {
-	t.Parallel()
-	caller := &fakeCaller{call: func(method string, _ []any, result any) error {
-		switch method {
-		case "eth_chainId":
-			return assignJSON(result, "0x1")
-		case "eth_getBlockByNumber":
-			return assignJSON(result, map[string]any{"number": "0x0", "hash": testHash(2)})
-		default:
-			return nil
-		}
-	}}
-	endpoint := &Endpoint{Name: "wrong", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller}
-	_, err := ProbeEndpoint(context.Background(), endpoint, ProbeOptions{Expected: &ChainIdentity{ChainID: "1", GenesisHash: testHash(1)}})
-	var mismatch *IdentityMismatchError
-	if !errors.As(err, &mismatch) || mismatch.Field != "genesis_hash" {
-		t.Fatalf("error = %v", err)
+	if stringsContain(issue.Error(), providerSecret) {
+		t.Fatalf("history issue leaked provider message: %v", issue)
 	}
 }
 
-func TestProbeEndpointRejectsWrongChainID(t *testing.T) {
+func TestFetcherFallsBackToBoundedGethBatchReceipts(t *testing.T) {
 	t.Parallel()
-	caller := &fakeCaller{call: func(method string, _ []any, result any) error {
-		switch method {
-		case "eth_chainId":
-			return assignJSON(result, "0x2")
-		case "eth_getBlockByNumber":
-			return assignJSON(result, map[string]any{"number": "0x0", "hash": testHash(1)})
-		default:
-			return fmt.Errorf("unexpected method %s", method)
-		}
-	}}
-	endpoint := &Endpoint{Name: "wrong", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller}
-	_, err := ProbeEndpoint(context.Background(), endpoint, ProbeOptions{
-		Expected: &ChainIdentity{ChainID: "1", GenesisHash: testHash(1)},
+	expected := mustFixture(t, testfixture.Options{
+		Number:           1,
+		ExtraData:        []byte("fetch"),
+		TransactionTypes: []uint8{types.LegacyTxType, types.DynamicFeeTxType},
 	})
-	var mismatch *IdentityMismatchError
-	if !errors.As(err, &mismatch) || mismatch.Field != "chain_id" || mismatch.Actual != "2" {
-		t.Fatalf("error = %v", err)
+	var batchCalls atomic.Int64
+	receiptsByHash := make(map[string]json.RawMessage, len(expected.RawReceipts))
+	for index, transaction := range expected.Block.Transactions() {
+		receiptsByHash[transaction.Hash().Hex()] = expected.RawReceipts[index]
 	}
-}
-
-func TestProbeEndpointClassifiesUnavailableAndPrunedHistory(t *testing.T) {
-	t.Parallel()
-	start := QuantityFromUint64(64)
-	tests := []struct {
-		name       string
-		historyErr error
-		nullResult bool
-		wantKind   HistoryUnavailableKind
-		wantPruned bool
-	}{
-		{name: "null", nullResult: true, wantKind: HistoryUnavailableResult},
-		{
-			name: "explicit-pruned",
-			historyErr: &RPCError{
-				Code: -32000, Message: "requested historical data has been pruned",
-			},
-			wantKind: HistoryPrunedResult, wantPruned: true,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			caller := historyProbeCaller(start, func(result any) error {
-				if test.nullResult {
-					return assignJSON(result, nil)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := ioReadAll(request)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+			batchCalls.Add(1)
+			var requests []testRequest
+			if err := json.Unmarshal(body, &requests); err != nil {
+				t.Error(err)
+				return
+			}
+			responses := make([]map[string]json.RawMessage, len(requests))
+			for index := range requests {
+				var hash string
+				if err := json.Unmarshal(requests[index].Params[0], &hash); err != nil {
+					t.Error(err)
+					return
 				}
-				return test.historyErr
-			})
-			report, err := ProbeEndpoint(context.Background(), &Endpoint{
-				Name: "history", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller,
-			}, ProbeOptions{
-				Expected:   &ChainIdentity{ChainID: "1", GenesisHash: testHash(1)},
-				StartBlock: start,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			issue := report.HistoryUnavailable
-			if report.Status(CapabilityHistoricalData) != AvailabilityUnavailable || issue == nil {
-				t.Fatalf("report = %+v", report)
-			}
-			if issue.Kind != test.wantKind || issue.StartBlock != start ||
-				!errors.Is(issue, ErrHistoryUnavailable) || errors.Is(issue, ErrHistoryPruned) != test.wantPruned {
-				t.Fatalf("history issue = %#v, error = %v", issue, issue)
-			}
-		})
-	}
-}
-
-func TestProbeEndpointClassifiesUnavailableGenesisWhenConfiguredStartIsZero(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct {
-		name       string
-		genesisErr error
-		nullResult bool
-		wantPruned bool
-	}{
-		{name: "null", nullResult: true},
-		{
-			name: "pruned", genesisErr: &RPCError{
-				Code: -32000, Message: "genesis history is pruned",
-			}, wantPruned: true,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			caller := &fakeCaller{call: func(method string, _ []any, result any) error {
-				switch method {
-				case "eth_chainId":
-					return assignJSON(result, "0x1")
-				case "eth_getBlockByNumber":
-					if test.nullResult {
-						return assignJSON(result, nil)
-					}
-					return test.genesisErr
-				default:
-					return fmt.Errorf("unexpected method %s", method)
+				receipt, exists := receiptsByHash[hash]
+				if !exists {
+					t.Errorf("unknown receipt hash %q", hash)
+					return
 				}
-			}}
-			report, err := ProbeEndpoint(context.Background(), &Endpoint{
-				Name: "history", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller,
-			}, ProbeOptions{Expected: &ChainIdentity{ChainID: "1"}})
-			var issue *HistoryUnavailableError
-			if !errors.As(err, &issue) || !errors.Is(err, ErrHistoryUnavailable) ||
-				errors.Is(err, ErrHistoryPruned) != test.wantPruned {
-				t.Fatalf("error = %v", err)
+				responses[len(requests)-1-index] = response(requests[index].ID, receipt)
 			}
-			if report.Status(CapabilityHistoricalData) != AvailabilityUnavailable ||
-				report.HistoryUnavailable == nil || report.HistoryUnavailable.StartBlock != QuantityFromUint64(0) {
-				t.Fatalf("report = %+v", report)
-			}
-		})
-	}
-}
-
-func TestProbeEndpointLeavesTransientHistoryFailuresUnknown(t *testing.T) {
-	t.Parallel()
-	start := QuantityFromUint64(64)
-	for _, test := range []struct {
-		name string
-		err  error
-	}{
-		{name: "deadline", err: context.DeadlineExceeded},
-		{name: "throttled", err: &HTTPStatusError{StatusCode: http.StatusTooManyRequests}},
-		{name: "server-error", err: &HTTPStatusError{StatusCode: http.StatusServiceUnavailable}},
-		{name: "generic", err: errors.New("temporary pruned-cache lookup timeout")},
-		{name: "rpc-retry", err: &RPCError{Code: -32000, Message: "history pruning in progress; retry later"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			report, err := ProbeEndpoint(context.Background(), &Endpoint{
-				Name: "history", Purposes: map[Purpose]bool{PurposeHistory: true},
-				Client: historyProbeCaller(start, func(any) error { return test.err }),
-			}, ProbeOptions{
-				Expected:   &ChainIdentity{ChainID: "1", GenesisHash: testHash(1)},
-				StartBlock: start,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if report.Status(CapabilityHistoricalData) != AvailabilityUnknown || report.HistoryUnavailable != nil {
-				t.Fatalf("transient error %T was misclassified: %+v", test.err, report)
-			}
-		})
-	}
-}
-
-func historyProbeCaller(start Quantity, historical func(any) error) *fakeCaller {
-	return &fakeCaller{call: func(method string, params []any, result any) error {
-		switch method {
-		case "eth_chainId":
-			return assignJSON(result, "0x1")
+			writeBatch(t, writer, responses)
+			return
+		}
+		var envelope testRequest
+		if err := json.Unmarshal(body, &envelope); err != nil {
+			t.Error(err)
+			return
+		}
+		switch envelope.Method {
 		case "eth_getBlockByNumber":
-			if len(params) == 0 || params[0] == "0x0" {
-				return assignJSON(result, map[string]any{"number": "0x0", "hash": testHash(1)})
-			}
-			if params[0] != start.String() {
-				return fmt.Errorf("unexpected historical block %v", params[0])
-			}
-			return historical(result)
-		case "eth_getBlockReceipts":
-			return assignJSON(result, []any{})
+			writeResult(t, writer, envelope.ID, expected.RawBlock)
+		case CapabilityBlockReceipts:
+			writeRPCError(t, writer, envelope.ID, -32601, "method not found")
 		default:
-			return fmt.Errorf("unexpected method %s", method)
+			t.Errorf("unexpected method %q", envelope.Method)
 		}
-	}}
-}
-
-func TestFetcherFallsBackToBatchReceiptsOnMethodNotFound(t *testing.T) {
-	t.Parallel()
-	bundle := testBundle(1, testHash(2), testHash(1), 2)
-	caller := &fakeCaller{}
-	caller.call = func(method string, _ []any, result any) error {
-		switch method {
-		case "eth_getBlockByNumber":
-			return assignJSON(result, bundle.Block)
-		case "eth_getBlockReceipts":
-			return &RPCError{Code: -32601, Message: "method not found"}
-		default:
-			return fmt.Errorf("unexpected call %s", method)
-		}
-	}
-	caller.batch = func(elements []BatchElem) error {
-		if len(elements) != len(bundle.Receipts) {
-			return fmt.Errorf("batch size = %d", len(elements))
-		}
-		for index := range elements {
-			if err := assignJSON(elements[index].Result, bundle.Receipts[index]); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	endpoint := &Endpoint{Name: "rpc-a", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller}
-	fetched, err := (Fetcher{}).ByNumber(context.Background(), endpoint, QuantityFromUint64(1))
+	}))
+	t.Cleanup(server.Close)
+	client := mustClient(t, server.URL)
+	endpoint := &Endpoint{Name: "rpc-a", Client: client, Purposes: map[Purpose]bool{PurposeHistory: true}}
+	fetched, err := (Fetcher{ReceiptBatchSize: 1}).ByNumber(t.Context(), endpoint, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fetched.Receipts) != 2 {
-		t.Fatalf("receipt count = %d", len(fetched.Receipts))
+	if err := chainbundle.Validate(fetched); err != nil {
+		t.Fatal(err)
+	}
+	if fetched.Block.Hash() != expected.Block.Hash() || len(fetched.Receipts) != 2 || batchCalls.Load() != 2 {
+		t.Fatalf("fetched hash=%s receipts=%d batches=%d", fetched.Block.Hash(), len(fetched.Receipts), batchCalls.Load())
 	}
 }
 
-func TestFetcherDoesNotMaskTransientBlockReceiptFailure(t *testing.T) {
+func TestFetcherUnknownTransactionTypeFailsBeforeReceiptFetch(t *testing.T) {
 	t.Parallel()
-	bundle := testBundle(1, testHash(2), testHash(1), 0)
-	caller := &fakeCaller{call: func(method string, _ []any, result any) error {
-		switch method {
+	expected := mustFixture(t, testfixture.Options{
+		Number:           1,
+		TransactionTypes: []uint8{types.LegacyTxType},
+	})
+	rawBlock := mutateRPCBlockTransaction(t, expected.RawBlock, func(fields map[string]json.RawMessage) {
+		fields["type"] = json.RawMessage(`"0x7f"`)
+	})
+	var receiptCalls atomic.Int64
+	server := newSingleRPCServer(t, func(request testRequest) (json.RawMessage, *testRPCError) {
+		switch request.Method {
 		case "eth_getBlockByNumber":
-			return assignJSON(result, bundle.Block)
-		case "eth_getBlockReceipts":
-			return errors.New("upstream timeout")
+			return rawBlock, nil
+		case CapabilityBlockReceipts, "eth_getTransactionReceipt":
+			receiptCalls.Add(1)
+			return nil, &testRPCError{Code: -32000, Message: "must not be called"}
 		default:
-			return nil
+			t.Fatalf("unexpected method %q", request.Method)
 		}
-	}}
-	endpoint := &Endpoint{Name: "rpc-a", Purposes: map[Purpose]bool{PurposeHistory: true}, Client: caller}
-	_, err := (Fetcher{}).ByNumber(context.Background(), endpoint, QuantityFromUint64(1))
-	if err == nil || !caller.called("eth_getBlockReceipts") {
-		t.Fatalf("error = %v", err)
+		return nil, nil
+	})
+	client := mustClient(t, server.URL)
+	fetched, err := (Fetcher{}).ByNumber(t.Context(), &Endpoint{
+		Name: "rpc-a", Client: client, Purposes: map[Purpose]bool{PurposeHistory: true},
+	}, 1)
+	if !errors.Is(err, chainbundle.ErrUnsupportedTransactionType) || !chainbundle.IsPermanent(err) {
+		t.Fatalf("Fetcher.ByNumber() error = %v", err)
+	}
+	if fetched.Block != nil || fetched.RawBlock != nil || receiptCalls.Load() != 0 {
+		t.Fatalf("Fetcher exposed partial data or fetched receipts: %#v calls=%d", fetched, receiptCalls.Load())
 	}
 }
 
-func TestCapabilityReportCloneDoesNotAlias(t *testing.T) {
+func TestFetcherRetainsAndValidatesRawUncleHeaders(t *testing.T) {
+	t.Parallel()
+	rawBlock, rawUncle, blockHash := blockAndUncleFixture(t, 8)
+	server := newSingleRPCServer(t, func(request testRequest) (json.RawMessage, *testRPCError) {
+		switch request.Method {
+		case "eth_getBlockByNumber":
+			return rawBlock, nil
+		case "eth_getUncleByBlockHashAndIndex":
+			return rawUncle, nil
+		case CapabilityBlockReceipts:
+			return json.RawMessage("[]"), nil
+		default:
+			t.Fatalf("unexpected method %q", request.Method)
+		}
+		return nil, nil
+	})
+	client := mustClient(t, server.URL)
+	fetched, err := (Fetcher{}).ByNumber(t.Context(), &Endpoint{
+		Name: "pow", Client: client, Purposes: map[Purpose]bool{PurposeHistory: true},
+	}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched.Block.Hash() != blockHash || len(fetched.Block.Uncles()) != 1 || len(fetched.RawUncles) != 1 {
+		t.Fatalf("fetched uncle bundle = hash:%s uncles:%d raw:%d", fetched.Block.Hash(), len(fetched.Block.Uncles()), len(fetched.RawUncles))
+	}
+	if err := chainbundle.Validate(fetched); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapabilityReportCloneAndChainIDNormalization(t *testing.T) {
 	t.Parallel()
 	report := CapabilityReport{
 		Methods: map[string]Availability{"x": AvailabilityAvailable},
 		HistoryUnavailable: &HistoryUnavailableError{
-			Kind: HistoryPrunedResult, StartBlock: QuantityFromUint64(7),
+			Kind: HistoryPrunedResult, StartBlock: 7,
 		},
 		Warnings: []string{"a"},
 	}
@@ -433,7 +322,173 @@ func TestCapabilityReportCloneDoesNotAlias(t *testing.T) {
 	clone.HistoryUnavailable.Kind = HistoryUnavailableResult
 	clone.Warnings[0] = "b"
 	if report.Methods["x"] != AvailabilityAvailable ||
-		report.HistoryUnavailable.Kind != HistoryPrunedResult || report.Warnings[0] != "a" {
+		report.HistoryUnavailable.Kind != HistoryPrunedResult ||
+		report.Warnings[0] != "a" {
 		t.Fatalf("clone mutated original: %+v", report)
 	}
+	if value, err := NormalizeChainID("0x2a"); err != nil || value != "42" {
+		t.Fatalf("NormalizeChainID() = %q, %v", value, err)
+	}
+}
+
+type testRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func newSingleRPCServer(
+	t *testing.T,
+	handle func(testRequest) (json.RawMessage, *testRPCError),
+) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var raw json.RawMessage
+		if err := json.NewDecoder(request.Body).Decode(&raw); err != nil {
+			t.Error(err)
+			return
+		}
+		if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
+			var requests []testRequest
+			if err := json.Unmarshal(raw, &requests); err != nil {
+				t.Error(err)
+				return
+			}
+			responses := make([]map[string]json.RawMessage, len(requests))
+			for index := range requests {
+				result, rpcErr := handle(requests[index])
+				if rpcErr != nil {
+					responses[index] = errorResponse(requests[index].ID, rpcErr.Code, rpcErr.Message)
+				} else {
+					responses[index] = response(requests[index].ID, result)
+				}
+			}
+			writeBatch(t, writer, responses)
+			return
+		}
+		var envelope testRequest
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			t.Error(err)
+			return
+		}
+		result, rpcErr := handle(envelope)
+		if rpcErr != nil {
+			writeRPCError(t, writer, envelope.ID, rpcErr.Code, rpcErr.Message)
+			return
+		}
+		writeResult(t, writer, envelope.ID, result)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func writeRPCError(t *testing.T, writer http.ResponseWriter, id json.RawMessage, code int, message string) {
+	t.Helper()
+	payload := errorResponse(id, code, message)
+	if err := json.NewEncoder(writer).Encode(payload); err != nil {
+		t.Error(err)
+	}
+}
+
+func errorResponse(id json.RawMessage, code int, message string) map[string]json.RawMessage {
+	errorData, _ := json.Marshal(map[string]any{"code": code, "message": message})
+	return map[string]json.RawMessage{
+		"jsonrpc": json.RawMessage(`"2.0"`),
+		"id":      id,
+		"error":   errorData,
+	}
+}
+
+func mustClient(t *testing.T, endpoint string) *rpc.Client {
+	t.Helper()
+	client, err := NewClient(t.Context(), endpoint, ClientOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Close)
+	return client
+}
+
+func mustFixture(t *testing.T, options testfixture.Options) chainbundle.Bundle {
+	t.Helper()
+	bundle, err := testfixture.New(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle
+}
+
+func ioReadAll(request *http.Request) ([]byte, error) {
+	defer request.Body.Close() //nolint:errcheck
+	var buffer bytes.Buffer
+	_, err := buffer.ReadFrom(request.Body)
+	return buffer.Bytes(), err
+}
+
+func mutateRPCBlockTransaction(
+	t *testing.T,
+	raw json.RawMessage,
+	mutate func(map[string]json.RawMessage),
+) json.RawMessage {
+	t.Helper()
+	var block map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &block); err != nil {
+		t.Fatal(err)
+	}
+	var transactions []json.RawMessage
+	if err := json.Unmarshal(block["transactions"], &transactions); err != nil {
+		t.Fatal(err)
+	}
+	var transaction map[string]json.RawMessage
+	if err := json.Unmarshal(transactions[0], &transaction); err != nil {
+		t.Fatal(err)
+	}
+	mutate(transaction)
+	transactions[0] = mustRPCJSON(t, transaction)
+	block["transactions"] = mustRPCJSON(t, transactions)
+	return mustRPCJSON(t, block)
+}
+
+func blockAndUncleFixture(t *testing.T, number uint64) (json.RawMessage, json.RawMessage, common.Hash) {
+	t.Helper()
+	base := mustFixture(t, testfixture.Options{Number: number, ExtraData: []byte("main")})
+	var header types.Header
+	if err := json.Unmarshal(base.RawBlock, &header); err != nil {
+		t.Fatal(err)
+	}
+	uncle := &types.Header{
+		ParentHash:  common.Hash{31: 0x11},
+		UncleHash:   types.EmptyUncleHash,
+		Coinbase:    common.Address{19: 0x12},
+		Root:        common.Hash{31: 0x13},
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+		Difficulty:  big.NewInt(1),
+		Number:      new(big.Int).SetUint64(number - 1),
+		GasLimit:    30_000_000,
+		Time:        1_700_000_000 + number - 1,
+		Extra:       []byte("uncle"),
+	}
+	rawUncle := mustRPCJSON(t, uncle)
+	header.UncleHash = types.CalcUncleHash([]*types.Header{uncle})
+	rawHeader := mustRPCJSON(t, &header)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawHeader, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["transactions"] = json.RawMessage("[]")
+	fields["uncles"] = mustRPCJSON(t, []common.Hash{uncle.Hash()})
+	return mustRPCJSON(t, fields), rawUncle, header.Hash()
+}
+
+func mustRPCJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func stringsContain(value, fragment string) bool {
+	return bytes.Contains([]byte(value), []byte(fragment))
 }

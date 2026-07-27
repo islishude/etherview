@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -91,7 +93,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	ancestor := mustBlockRef(t, genesis)
 	replacementRef := mustBlockRef(t, replacement)
 	if err := repository.ApplyReorg(ctx, "1", store.Reorg{
-		Ancestor: ancestor, Detached: []store.BlockRef{reference}, Attached: []ethrpc.Bundle{replacement},
+		Ancestor: ancestor, Detached: []store.BlockRef{reference}, Attached: []chainbundle.Bundle{replacement},
 		Checkpoint: store.NewCoreCheckpoint(replacementRef), Reason: "ABI fork isolation fixture",
 	}); err != nil {
 		t.Fatalf("apply ABI fixture reorg: %v", err)
@@ -108,25 +110,37 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	}
 }
 
-func abiFixtureBundle(t *testing.T, direct, proxy, recipient, caller ethrpc.Address) ethrpc.Bundle {
+func abiFixtureBundle(t *testing.T, direct, proxy, recipient, caller common.Address) chainbundle.Bundle {
 	t.Helper()
-	block := testBundle(1, testHash(70_001), testHash(70_000), testHash(71_001), "abi-block")
-	transaction := block.Block.Transactions[0].Transaction
-	transaction.To = &direct
-	transaction.Input = ethrpc.DataFromBytes(abiTransferCalldata(t, recipient, 17))
-	log := &block.Receipts[0].Logs[0]
-	log.Address = proxy
 	transferTopic := enrich.SignatureHash("Transfer(address,address,uint256)")
-	log.Topics = []ethrpc.Hash{
-		mustRPCWord(t, transferTopic[:]),
-		mustRPCWord(t, abiAddressWord(t, caller)),
-		mustRPCWord(t, abiAddressWord(t, recipient)),
+	block, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     1,
+		ParentHash: testHash(70_000),
+		ExtraData:  []byte("abi-block"),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType,
+			To:   &direct,
+			Data: abiTransferCalldata(t, recipient, 17),
+			Logs: []*types.Log{{
+				Address: proxy,
+				Topics: []common.Hash{
+					mustRPCWord(t, transferTopic[:]),
+					mustRPCWord(t, abiAddressWord(t, caller)),
+					mustRPCWord(t, abiAddressWord(t, recipient)),
+				},
+				Data: abiUintWord(17),
+			}},
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "abi-block"},
+	})
+	if err != nil {
+		t.Fatalf("build ABI fixture bundle: %v", err)
 	}
-	log.Data = ethrpc.DataFromBytes(abiUintWord(17))
 	return block
 }
 
-func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef, address ethrpc.Address, codeHash ethrpc.Hash) {
+func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef, address common.Address, codeHash common.Hash) {
 	t.Helper()
 	execFixture(t, ctx, db, `
 		INSERT INTO contract_code_observations (
@@ -135,7 +149,7 @@ func insertABICodeObservation(t *testing.T, ctx context.Context, db *sql.DB, blo
 		mustBytes(t, address), fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, codeHash), []byte{0x60, 0x00})
 }
 
-func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *sql.DB, address ethrpc.Address, codeHash ethrpc.Hash) {
+func insertABIVerifiedContract(t *testing.T, ctx context.Context, db *sql.DB, address common.Address, codeHash common.Hash) {
 	t.Helper()
 	insertVerifiedContractFixture(
 		t, ctx, db, mustBytes(t, address), mustBytes(t, codeHash), 0, nil,
@@ -148,10 +162,10 @@ func insertABIProxyObservation(
 	ctx context.Context,
 	db *sql.DB,
 	block store.BlockRef,
-	proxy ethrpc.Address,
-	proxyCode ethrpc.Hash,
-	implementation ethrpc.Address,
-	implementationCode ethrpc.Hash,
+	proxy common.Address,
+	proxyCode common.Hash,
+	implementation common.Address,
+	implementationCode common.Hash,
 ) {
 	t.Helper()
 	execFixture(t, ctx, db, `
@@ -194,11 +208,11 @@ func insertABITrace(
 	ctx context.Context,
 	db *sql.DB,
 	block store.BlockRef,
-	bundle ethrpc.Bundle,
-	target, recipient, caller ethrpc.Address,
+	bundle chainbundle.Bundle,
+	target, recipient, caller common.Address,
 ) {
 	t.Helper()
-	transaction := bundle.Block.Transactions[0].Transaction
+	transaction := bundle.Block.Transactions()[0]
 	selector := enrich.SignatureSelector("Unauthorized(address)")
 	revert := append(append([]byte(nil), selector[:]...), abiAddressWord(t, caller)...)
 	execFixture(t, ctx, db, `
@@ -209,7 +223,7 @@ func insertABITrace(
 		) VALUES (
 			1, $1::numeric, $2, $3, 0, '0', 0, 'call', $4, $5, 0, 100000,
 			50000, $6, $7, 'execution reverted', TRUE, TRUE
-		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash),
+		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash()),
 		mustBytes(t, caller), mustBytes(t, target), abiTransferCalldata(t, recipient, 19), revert)
 
 	builtinSelector := enrich.SignatureSelector("Error(string)")
@@ -225,7 +239,7 @@ func insertABITrace(
 		) VALUES (
 			1, $1::numeric, $2, $3, 0, '1', 1, 'call', $4, $5, 0, 100000,
 			50000, NULL, $6, 'execution reverted', TRUE, TRUE
-		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash),
+		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash()),
 		mustBytes(t, caller), mustBytes(t, target), builtin)
 }
 
@@ -246,11 +260,11 @@ func assertABIBinding(
 	ctx context.Context,
 	db *sql.DB,
 	block store.BlockRef,
-	target ethrpc.Address,
-	codeHash ethrpc.Hash,
+	target common.Address,
+	codeHash common.Hash,
 	source, confidence string,
-	sourceAddress ethrpc.Address,
-	sourceCodeHash ethrpc.Hash,
+	sourceAddress common.Address,
+	sourceCodeHash common.Hash,
 ) {
 	t.Helper()
 	var gotConfidence, from, to string
@@ -311,8 +325,8 @@ func assertSignatureGuessCannotBeVerified(
 	ctx context.Context,
 	db *sql.DB,
 	block store.BlockRef,
-	target ethrpc.Address,
-	codeHash ethrpc.Hash,
+	target common.Address,
+	codeHash common.Hash,
 ) {
 	t.Helper()
 	_, err := db.ExecContext(ctx, `
@@ -329,7 +343,7 @@ func assertSignatureGuessCannotBeVerified(
 	}
 }
 
-func abiTransferCalldata(t *testing.T, recipient ethrpc.Address, amount uint64) []byte {
+func abiTransferCalldata(t *testing.T, recipient common.Address, amount uint64) []byte {
 	t.Helper()
 	selector := enrich.SignatureSelector("transfer(address,uint256)")
 	result := append([]byte(nil), selector[:]...)
@@ -337,7 +351,7 @@ func abiTransferCalldata(t *testing.T, recipient ethrpc.Address, amount uint64) 
 	return append(result, abiUintWord(amount)...)
 }
 
-func abiAddressWord(t *testing.T, address ethrpc.Address) []byte {
+func abiAddressWord(t *testing.T, address common.Address) []byte {
 	t.Helper()
 	result := make([]byte, 32)
 	copy(result[12:], mustBytes(t, address))
@@ -353,11 +367,10 @@ func abiUintWord(value uint64) []byte {
 	return result
 }
 
-func mustRPCWord(t *testing.T, value []byte) ethrpc.Hash {
+func mustRPCWord(t *testing.T, value []byte) common.Hash {
 	t.Helper()
-	word, err := ethrpc.ParseHash("0x" + hex.EncodeToString(value))
-	if err != nil {
-		t.Fatal(err)
+	if len(value) != common.HashLength {
+		t.Fatalf("RPC word length=%d, want %d (%s)", len(value), common.HashLength, hex.EncodeToString(value))
 	}
-	return word
+	return common.BytesToHash(value)
 }

@@ -4,13 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
 	"time"
 
-	"github.com/islishude/etherview/internal/billing"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -20,8 +24,13 @@ const (
 	maxChainRPCResponseHeaderBytes = int64(64 << 10)
 	expectedSettlementCallBytes    = 4 + 9*32
 	maxSettlementInputBytes        = 64 << 10
-	erc20TransferTopic             = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 )
+
+var erc20TransferTopic = common.HexToHash(
+	"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+)
+
+var errInvalidChainResponse = errors.New("invalid settlement chain response")
 
 type ChainOptions struct {
 	RPCURL               string
@@ -43,41 +52,22 @@ type ChainEvidence struct {
 }
 
 type settlementChain interface {
-	chainID(context.Context) (string, error)
-	transaction(context.Context, string) (*chainTransaction, error)
-	receipt(context.Context, string) (*chainReceipt, error)
+	chainID(context.Context) (*big.Int, error)
+	transaction(
+		context.Context,
+		common.Hash,
+	) (*types.Transaction, bool, error)
+	receipt(context.Context, common.Hash) (*types.Receipt, error)
+	header(context.Context, common.Hash) (*types.Header, error)
+	includedTransaction(
+		context.Context,
+		common.Hash,
+		uint,
+	) (*types.Transaction, error)
 }
 
 type rpcSettlementChain struct {
-	caller ethrpc.Caller
-}
-
-type chainTransaction struct {
-	Hash        string  `json:"hash"`
-	BlockHash   *string `json:"blockHash"`
-	BlockNumber *string `json:"blockNumber"`
-	ChainID     string  `json:"chainId"`
-	To          *string `json:"to"`
-	Input       string  `json:"input"`
-	Value       string  `json:"value"`
-}
-
-type chainReceipt struct {
-	TransactionHash string     `json:"transactionHash"`
-	BlockHash       string     `json:"blockHash"`
-	BlockNumber     string     `json:"blockNumber"`
-	Status          string     `json:"status"`
-	Logs            []chainLog `json:"logs"`
-}
-
-type chainLog struct {
-	Address         string   `json:"address"`
-	Topics          []string `json:"topics"`
-	Data            string   `json:"data"`
-	BlockHash       string   `json:"blockHash"`
-	BlockNumber     string   `json:"blockNumber"`
-	TransactionHash string   `json:"transactionHash"`
-	Removed         bool     `json:"removed"`
+	client *ethclient.Client
 }
 
 // CheckChain performs the mandatory independent Base Sepolia check before any
@@ -90,10 +80,11 @@ func CheckChain(
 	if chainID != baseSepoliaChainID {
 		return boundaryError("chain_configuration_invalid")
 	}
-	chain, err := newRPCSettlementChain(rpcURL)
+	chain, err := newRPCSettlementChain(ctx, rpcURL)
 	if err != nil {
 		return err
 	}
+	defer chain.close()
 	return checkChainID(ctx, chain, chainID)
 }
 
@@ -109,20 +100,25 @@ func VerifyChain(
 	if !ok {
 		return ChainEvidence{}, boundaryError("chain_configuration_invalid")
 	}
-	chain, err := newRPCSettlementChain(options.RPCURL)
+	chain, err := newRPCSettlementChain(ctx, options.RPCURL)
 	if err != nil {
 		return ChainEvidence{}, err
 	}
+	defer chain.close()
 	return verifyChain(ctx, chain, expected)
 }
 
-func newRPCSettlementChain(rawURL string) (settlementChain, error) {
+func newRPCSettlementChain(
+	ctx context.Context,
+	rawURL string,
+) (*rpcSettlementChain, error) {
 	if !validChainRPCURL(rawURL) {
 		return nil, boundaryError("chain_configuration_invalid")
 	}
-	caller, err := ethrpc.NewHTTPClient(
+	client, err := ethrpc.NewClient(
+		ctx,
 		rawURL,
-		ethrpc.HTTPClientOptions{
+		ethrpc.ClientOptions{
 			HTTPClient:       newChainHTTPClient(),
 			MaxResponseBytes: maxChainRPCResponseBytes,
 		},
@@ -130,7 +126,7 @@ func newRPCSettlementChain(rawURL string) (settlementChain, error) {
 	if err != nil {
 		return nil, boundaryError("chain_configuration_invalid")
 	}
-	return &rpcSettlementChain{caller: caller}, nil
+	return &rpcSettlementChain{client: ethclient.NewClient(client)}, nil
 }
 
 func validChainRPCURL(raw string) bool {
@@ -169,12 +165,14 @@ func checkChainID(
 	if chain == nil {
 		return boundaryError("chain_configuration_invalid")
 	}
-	raw, err := chain.chainID(ctx)
+	chainID, err := chain.chainID(ctx)
 	if err != nil {
+		if errors.Is(err, errInvalidChainResponse) {
+			return boundaryError("chain_response_invalid")
+		}
 		return boundaryError("chain_unavailable")
 	}
-	chainID, ok := parseHexQuantity(raw)
-	if !ok || !chainID.IsUint64() {
+	if chainID == nil || chainID.Sign() < 0 || !chainID.IsUint64() {
 		return boundaryError("chain_response_invalid")
 	}
 	if chainID.Uint64() != expected || expected != baseSepoliaChainID {
@@ -191,82 +189,107 @@ func verifyChain(
 	if err := checkChainID(ctx, chain, expected.chainID); err != nil {
 		return ChainEvidence{}, err
 	}
-	transaction, err := chain.transaction(ctx, expected.transactionHashText)
+	transaction, pending, err := chain.transaction(
+		ctx,
+		expected.transactionHash,
+	)
 	if err != nil {
+		if errors.Is(err, errInvalidChainResponse) {
+			return ChainEvidence{}, boundaryError("chain_response_invalid")
+		}
 		return ChainEvidence{}, boundaryError("chain_unavailable")
 	}
 	if transaction == nil {
 		return ChainEvidence{}, boundaryError("chain_transaction_not_found")
 	}
-	transactionHash, ok := parseTransactionHash(transaction.Hash)
-	if !ok || transactionHash != expected.transactionHash {
+	if transaction.Type() > types.SetCodeTxType {
+		return ChainEvidence{}, boundaryError("chain_response_invalid")
+	}
+	transactionHash := transaction.Hash()
+	if transactionHash != expected.transactionHash {
 		return ChainEvidence{}, boundaryError("chain_transaction_mismatch")
 	}
-	if transaction.To == nil {
-		return ChainEvidence{}, boundaryError("chain_transaction_mismatch")
-	}
-	transactionTo, toOK := parseRPCAddress(*transaction.To)
-	transactionValue, valueOK := parseHexQuantity(transaction.Value)
-	input, inputOK := decodeVariableRPCData(
-		transaction.Input,
-		maxSettlementInputBytes,
-	)
-	if !toOK || transactionTo != expected.asset ||
-		!valueOK || transactionValue.Sign() != 0 ||
-		!inputOK || len(input) < expected.callDataPrefixBytes ||
+	transactionTo := transaction.To()
+	transactionValue := transaction.Value()
+	input := transaction.Data()
+	if transactionTo == nil || transactionValue == nil ||
+		*transactionTo != expected.asset ||
+		transactionValue.Sign() != 0 ||
+		len(input) > maxSettlementInputBytes ||
+		len(input) < expected.callDataPrefixBytes ||
 		sha256.Sum256(input[:expected.callDataPrefixBytes]) !=
 			expected.callDataPrefixDigest {
 		return ChainEvidence{}, boundaryError("chain_transaction_mismatch")
 	}
-	if transaction.BlockHash == nil || transaction.BlockNumber == nil {
+	if pending {
 		return ChainEvidence{}, boundaryError("chain_transaction_pending")
 	}
-	blockHash, ok := parseTransactionHash(*transaction.BlockHash)
-	if !ok {
-		return ChainEvidence{}, boundaryError("chain_response_invalid")
-	}
-	blockNumber, ok := parseHexQuantity(*transaction.BlockNumber)
-	if !ok || !blockNumber.IsUint64() {
-		return ChainEvidence{}, boundaryError("chain_response_invalid")
-	}
-	transactionChainID, ok := parseHexQuantity(transaction.ChainID)
-	if !ok || !transactionChainID.IsUint64() ||
+	transactionChainID := transaction.ChainId()
+	if transactionChainID == nil ||
+		!transactionChainID.IsUint64() ||
 		transactionChainID.Uint64() != expected.chainID {
 		return ChainEvidence{}, boundaryError("chain_transaction_mismatch")
 	}
 
-	receipt, err := chain.receipt(ctx, expected.transactionHashText)
+	receipt, err := chain.receipt(ctx, expected.transactionHash)
 	if err != nil {
+		if errors.Is(err, errInvalidChainResponse) {
+			return ChainEvidence{}, boundaryError("chain_response_invalid")
+		}
 		return ChainEvidence{}, boundaryError("chain_unavailable")
 	}
 	if receipt == nil {
 		return ChainEvidence{}, boundaryError("chain_receipt_not_found")
 	}
-	if receipt.Status != "0x1" {
-		if status, valid := parseHexQuantity(receipt.Status); valid &&
-			status.Sign() == 0 {
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		if receipt.Status == types.ReceiptStatusFailed {
 			return ChainEvidence{}, boundaryError("chain_receipt_failed")
 		}
 		return ChainEvidence{}, boundaryError("chain_response_invalid")
 	}
-	receiptTransactionHash, transactionOK := parseTransactionHash(
-		receipt.TransactionHash,
+	if receipt.Type != transaction.Type() ||
+		receipt.TxHash != expected.transactionHash ||
+		receipt.BlockHash == (common.Hash{}) ||
+		receipt.BlockNumber == nil ||
+		receipt.BlockNumber.Sign() < 0 ||
+		!receipt.BlockNumber.IsUint64() {
+		return ChainEvidence{}, boundaryError("chain_receipt_mismatch")
+	}
+	header, err := chain.header(ctx, receipt.BlockHash)
+	if err != nil {
+		if errors.Is(err, errInvalidChainResponse) {
+			return ChainEvidence{}, boundaryError("chain_response_invalid")
+		}
+		return ChainEvidence{}, boundaryError("chain_unavailable")
+	}
+	if header == nil || header.Number == nil ||
+		header.Number.Sign() < 0 ||
+		header.Hash() != receipt.BlockHash ||
+		header.Number.Cmp(receipt.BlockNumber) != 0 {
+		return ChainEvidence{}, boundaryError("chain_receipt_mismatch")
+	}
+	includedTransaction, err := chain.includedTransaction(
+		ctx,
+		receipt.BlockHash,
+		receipt.TransactionIndex,
 	)
-	receiptBlockHash, blockOK := parseTransactionHash(receipt.BlockHash)
-	receiptBlockNumber, numberOK := parseHexQuantity(receipt.BlockNumber)
-	if !transactionOK || receiptTransactionHash != expected.transactionHash ||
-		!blockOK || receiptBlockHash != blockHash ||
-		!numberOK || !receiptBlockNumber.IsUint64() ||
-		receiptBlockNumber.Uint64() != blockNumber.Uint64() {
+	if err != nil {
+		if errors.Is(err, errInvalidChainResponse) {
+			return ChainEvidence{}, boundaryError("chain_response_invalid")
+		}
+		return ChainEvidence{}, boundaryError("chain_unavailable")
+	}
+	if includedTransaction == nil ||
+		includedTransaction.Hash() != expected.transactionHash {
 		return ChainEvidence{}, boundaryError("chain_receipt_mismatch")
 	}
 
 	transferCount, total, ok := matchingTransferTotal(
 		receipt,
 		expected,
-		receiptTransactionHash,
-		receiptBlockHash,
-		receiptBlockNumber,
+		receipt.TxHash,
+		receipt.BlockHash,
+		receipt.BlockNumber.Uint64(),
 	)
 	if !ok {
 		return ChainEvidence{}, boundaryError("chain_response_invalid")
@@ -276,20 +299,19 @@ func verifyChain(
 	}
 	return ChainEvidence{
 		TransactionHash: canonicalHash(expected.transactionHash),
-		BlockHash:       canonicalHash(blockHash),
-		BlockNumber:     blockNumber.String(),
+		BlockHash:       canonicalHash(receipt.BlockHash),
+		BlockNumber:     receipt.BlockNumber.String(),
 		TransferCount:   transferCount,
 	}, nil
 }
 
 type chainExpectation struct {
 	chainID              uint64
-	transactionHash      billing.TransactionHash
-	transactionHashText  string
-	asset                billing.Address
+	transactionHash      common.Hash
+	asset                common.Address
 	amount               *big.Int
-	recipient            billing.Address
-	payer                billing.Address
+	recipient            common.Address
+	payer                common.Address
 	callDataPrefixBytes  int
 	callDataPrefixDigest [sha256.Size]byte
 }
@@ -327,7 +349,6 @@ func parseChainExpectation(
 	return chainExpectation{
 		chainID:              options.ChainID,
 		transactionHash:      transactionHash,
-		transactionHashText:  canonicalHash(transactionHash),
 		asset:                asset,
 		amount:               amount,
 		recipient:            recipient,
@@ -338,32 +359,22 @@ func parseChainExpectation(
 }
 
 func matchingTransferTotal(
-	receipt *chainReceipt,
+	receipt *types.Receipt,
 	expected chainExpectation,
-	transactionHash billing.TransactionHash,
-	blockHash billing.TransactionHash,
-	blockNumber *big.Int,
+	transactionHash common.Hash,
+	blockHash common.Hash,
+	blockNumber uint64,
 ) (int, *big.Int, bool) {
 	total := new(big.Int)
 	count := 0
 	for _, log := range receipt.Logs {
-		asset, validAsset := parseRPCAddress(log.Address)
-		if !validAsset || log.Removed ||
-			!validLogData(log.Data) ||
-			!validLogTopics(log.Topics) {
+		if log == nil || log.Removed ||
+			log.TxHash != transactionHash ||
+			log.BlockHash != blockHash ||
+			log.BlockNumber != blockNumber {
 			return 0, nil, false
 		}
-		logTransactionHash, transactionOK := parseTransactionHash(
-			log.TransactionHash,
-		)
-		logBlockHash, blockOK := parseTransactionHash(log.BlockHash)
-		logBlockNumber, numberOK := parseHexQuantity(log.BlockNumber)
-		if !transactionOK || logTransactionHash != transactionHash ||
-			!blockOK || logBlockHash != blockHash ||
-			!numberOK || logBlockNumber.Cmp(blockNumber) != 0 {
-			return 0, nil, false
-		}
-		if asset != expected.asset {
+		if log.Address != expected.asset {
 			continue
 		}
 		if len(log.Topics) == 0 ||
@@ -397,139 +408,105 @@ func matchingTransferTotal(
 	return count, total, true
 }
 
-func validLogTopics(topics []string) bool {
-	for _, topic := range topics {
-		if _, ok := decodeFixedHex(topic, 32); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func validLogData(value string) bool {
-	if len(value) < 2 || value[:2] != "0x" || (len(value)-2)%2 != 0 {
-		return false
-	}
-	decoded, err := hex.DecodeString(value[2:])
-	return err == nil && hex.EncodeToString(decoded) == value[2:]
-}
-
-func parseAddressTopic(value string) (billing.Address, bool) {
-	var result billing.Address
-	decoded, ok := decodeFixedHex(value, 32)
-	if !ok {
-		return result, false
-	}
-	for _, prefix := range decoded[:12] {
+func parseAddressTopic(value common.Hash) (common.Address, bool) {
+	var result common.Address
+	for _, prefix := range value[:12] {
 		if prefix != 0 {
 			return result, false
 		}
 	}
-	copy(result[:], decoded[12:])
+	copy(result[:], value[12:])
 	return result, true
 }
 
-func parseRPCAddress(value string) (billing.Address, bool) {
-	var result billing.Address
-	decoded, ok := decodeFixedHex(value, len(result))
-	if !ok {
-		return result, false
-	}
-	copy(result[:], decoded)
-	return result, true
-}
-
-func parseDataWord(value string) (*big.Int, bool) {
-	decoded, ok := decodeFixedHex(value, 32)
-	if !ok {
+func parseDataWord(value []byte) (*big.Int, bool) {
+	if len(value) != common.HashLength {
 		return nil, false
 	}
-	return new(big.Int).SetBytes(decoded), true
+	return new(big.Int).SetBytes(value), true
 }
 
-func decodeFixedHex(value string, size int) ([]byte, bool) {
-	if len(value) != 2+size*2 || value[:2] != "0x" {
-		return nil, false
-	}
-	decoded, err := hex.DecodeString(value[2:])
-	return decoded, err == nil &&
-		len(decoded) == size &&
-		hex.EncodeToString(decoded) == value[2:]
-}
-
-func decodeVariableRPCData(value string, maximumBytes int) ([]byte, bool) {
-	if len(value) < 2 || value[:2] != "0x" ||
-		len(value[2:])%2 != 0 ||
-		len(value[2:])/2 > maximumBytes {
-		return nil, false
-	}
-	decoded, err := hex.DecodeString(value[2:])
-	return decoded, err == nil &&
-		hex.EncodeToString(decoded) == value[2:]
-}
-
-func parseHexQuantity(value string) (*big.Int, bool) {
-	// JSON-RPC QUANTITY is the shortest lowercase hexadecimal representation:
-	// zero is 0x0 and every non-zero value has no leading zero.
-	if len(value) < 3 || value[:2] != "0x" ||
-		(len(value) > 3 && value[2] == '0') {
-		return nil, false
-	}
-	for _, character := range value[2:] {
-		if (character < '0' || character > '9') &&
-			(character < 'a' || character > 'f') {
-			return nil, false
-		}
-	}
-	result, ok := new(big.Int).SetString(value[2:], 16)
-	if !ok || result.Sign() < 0 || result.Cmp(maximumTestnetUint256) > 0 {
-		return nil, false
-	}
-	return result, true
-}
-
-func canonicalHash(value billing.TransactionHash) string {
-	return "0x" + hex.EncodeToString(value[:])
+func canonicalHash(value common.Hash) string {
+	return value.Hex()
 }
 
 func (chain *rpcSettlementChain) chainID(
 	ctx context.Context,
-) (string, error) {
-	var result string
-	if err := chain.caller.Call(ctx, "eth_chainId", nil, &result); err != nil {
-		return "", err
-	}
-	return result, nil
+) (*big.Int, error) {
+	chainID, err := chain.client.ChainID(ctx)
+	return chainID, normalizeChainRPCError(err)
 }
 
 func (chain *rpcSettlementChain) transaction(
 	ctx context.Context,
-	transactionHash string,
-) (*chainTransaction, error) {
-	var result *chainTransaction
-	if err := chain.caller.Call(
+	transactionHash common.Hash,
+) (*types.Transaction, bool, error) {
+	transaction, pending, err := chain.client.TransactionByHash(
 		ctx,
-		"eth_getTransactionByHash",
-		[]any{transactionHash},
-		&result,
-	); err != nil {
-		return nil, err
+		transactionHash,
+	)
+	if errors.Is(err, ethereum.NotFound) {
+		return nil, false, nil
 	}
-	return result, nil
+	return transaction, pending, normalizeChainRPCError(err)
 }
 
 func (chain *rpcSettlementChain) receipt(
 	ctx context.Context,
-	transactionHash string,
-) (*chainReceipt, error) {
-	var result *chainReceipt
-	if err := chain.caller.Call(
+	transactionHash common.Hash,
+) (*types.Receipt, error) {
+	receipt, err := chain.client.TransactionReceipt(
 		ctx,
-		"eth_getTransactionReceipt",
-		[]any{transactionHash},
-		&result,
-	); err != nil {
-		return nil, err
+		transactionHash,
+	)
+	if errors.Is(err, ethereum.NotFound) {
+		return nil, nil
 	}
-	return result, nil
+	return receipt, normalizeChainRPCError(err)
+}
+
+func (chain *rpcSettlementChain) header(
+	ctx context.Context,
+	blockHash common.Hash,
+) (*types.Header, error) {
+	header, err := chain.client.HeaderByHash(ctx, blockHash)
+	if errors.Is(err, ethereum.NotFound) {
+		return nil, nil
+	}
+	return header, normalizeChainRPCError(err)
+}
+
+func (chain *rpcSettlementChain) includedTransaction(
+	ctx context.Context,
+	blockHash common.Hash,
+	index uint,
+) (*types.Transaction, error) {
+	transaction, err := chain.client.TransactionInBlock(
+		ctx,
+		blockHash,
+		index,
+	)
+	if errors.Is(err, ethereum.NotFound) {
+		return nil, nil
+	}
+	return transaction, normalizeChainRPCError(err)
+}
+
+func (chain *rpcSettlementChain) close() {
+	chain.client.Close()
+}
+
+func normalizeChainRPCError(err error) error {
+	if err == nil ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ethrpc.ErrTransport) {
+		return err
+	}
+	var rpcError rpc.Error
+	var httpError rpc.HTTPError
+	if errors.As(err, &rpcError) || errors.As(err, &httpError) {
+		return ethrpc.SanitizeError(err)
+	}
+	return errInvalidChainResponse
 }

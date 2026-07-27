@@ -13,7 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/catalog"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
@@ -44,11 +47,11 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 			if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis}); err != nil {
+			if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis}); err != nil {
 				t.Fatalf("commit covered genesis: %v", err)
 			}
-			oldBranch := make([]ethrpc.Bundle, depth)
-			newBranch := make([]ethrpc.Bundle, depth)
+			oldBranch := make([]chainbundle.Bundle, depth)
+			newBranch := make([]chainbundle.Bundle, depth)
 			oldAmounts, newAmounts := make([]uint64, depth), make([]uint64, depth)
 			oldParent, newParent := testHash(10_000), testHash(10_000)
 			for index := range depth {
@@ -61,10 +64,11 @@ func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 				newBranch[index] = derivedTokenBundle(
 					t, height, newHash, newParent, testHash(21_000+height), "journal-new", contract, from, recipient, newAmounts[index],
 				)
-				if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldBranch[index]}); err != nil {
+				if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{oldBranch[index]}); err != nil {
 					t.Fatalf("commit covered block %d: %v", height, err)
 				}
-				oldParent, newParent = oldHash, newHash
+				oldParent = oldBranch[index].Block.Hash()
+				newParent = newBranch[index].Block.Hash()
 				published.process(t, ctx, oldBranch[index])
 				assertDerivedBlockState(t, ctx, db, oldBranch[index], true)
 			}
@@ -114,7 +118,7 @@ func TestStaleDerivedJobsPersistOnlyNonCanonicalJournals(t *testing.T) {
 	replacement := derivedTokenBundle(t, 1, testHash(40_001), testHash(30_000), testHash(41_001), "stale-new", contract, from, recipient, 9)
 	commitCanonical(t, ctx, repository, genesis)
 	commitCanonical(t, ctx, repository, stale)
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{stale}, []ethrpc.Bundle{replacement}, "make enrichment job stale")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{stale}, []chainbundle.Bundle{replacement}, "make enrichment job stale")
 
 	processDerivedBlock(t, ctx, newDerivedProcessors(t, db), stale)
 	blockHash, _ := stale.BlockHash()
@@ -147,7 +151,7 @@ func TestDerivedJournalFailureRollsBackEveryProductionStage(t *testing.T) {
 			if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis, block}); err != nil {
+			if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis, block}); err != nil {
 				t.Fatalf("commit covered rollback branch: %v", err)
 			}
 			execFixture(t, ctx, db, `
@@ -214,7 +218,7 @@ func newDerivedProcessors(t *testing.T, db *sql.DB) derivedProcessors {
 		t.Fatal(err)
 	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "derived-trace", Client: derivedTraceCaller{db: db},
+		Name: "derived-trace", Client: newIntegrationRPCClient(t, "debug", &derivedTraceService{db: db}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
@@ -255,7 +259,7 @@ func newDerivedPublicationHarness(
 func (harness *derivedPublicationHarness) process(
 	t *testing.T,
 	ctx context.Context,
-	block ethrpc.Bundle,
+	block chainbundle.Bundle,
 ) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
@@ -293,50 +297,34 @@ func (harness *derivedPublicationHarness) process(
 	}
 }
 
-type derivedTraceCaller struct{ db *sql.DB }
+type derivedTraceService struct{ db *sql.DB }
 
-func (caller derivedTraceCaller) Call(ctx context.Context, method string, params []any, result any) error {
-	if method != "debug_traceTransaction" {
-		return fmt.Errorf("unexpected derived trace method %q", method)
+func (service *derivedTraceService) TraceTransaction(
+	ctx context.Context,
+	hash common.Hash,
+	_ map[string]any,
+) (json.RawMessage, error) {
+	if service.db == nil {
+		return nil, errors.New("derived trace caller is not configured")
 	}
-	if caller.db == nil || len(params) == 0 {
-		return errors.New("derived trace caller is not configured")
-	}
-	hashText, ok := params[0].(string)
-	if !ok {
-		return errors.New("derived trace transaction hash is invalid")
-	}
-	hash, err := ethrpc.ParseHash(hashText)
-	if err != nil {
-		return err
-	}
-	hashBytes, err := hash.Bytes()
-	if err != nil {
-		return err
-	}
-	var input string
-	if err := caller.db.QueryRowContext(ctx, `
-		SELECT raw->>'input'
+	var from, to, value, gas, input string
+	if err := service.db.QueryRowContext(ctx, `
+		SELECT raw->>'from', raw->>'to', raw->>'value', raw->>'gas', raw->>'input'
 		FROM transactions
-		WHERE chain_id = 1 AND hash = $1`, hashBytes).Scan(&input); err != nil {
-		return fmt.Errorf("read derived trace transaction input: %w", err)
-	}
-	destination, ok := result.(*json.RawMessage)
-	if !ok {
-		return errors.New("derived trace result is not raw JSON")
+		WHERE chain_id = 1 AND hash = $1`, hash.Bytes()).Scan(&from, &to, &value, &gas, &input); err != nil {
+		return nil, fmt.Errorf("read derived trace transaction input: %w", err)
 	}
 	encoded, err := json.Marshal(map[string]any{
-		"type": "CALL", "from": testAddress(1).String(), "to": testAddress(2).String(),
-		"value": "0x1", "gas": "0x5208", "gasUsed": "0x100", "input": input, "output": "0x",
+		"type": "CALL", "from": from, "to": to,
+		"value": value, "gas": gas, "gasUsed": "0x100", "input": input, "output": "0x",
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	*destination = encoded
-	return nil
+	return encoded, nil
 }
 
-func processDerivedBlock(t *testing.T, ctx context.Context, processors derivedProcessors, block ethrpc.Bundle) {
+func processDerivedBlock(t *testing.T, ctx context.Context, processors derivedProcessors, block chainbundle.Bundle) {
 	t.Helper()
 	for _, entry := range []struct {
 		stage   enrich.StageID
@@ -356,7 +344,7 @@ func processDerivedBlock(t *testing.T, ctx context.Context, processors derivedPr
 	}
 }
 
-func derivedJob(t *testing.T, block ethrpc.Bundle, stage enrich.StageID) enrich.Job {
+func derivedJob(t *testing.T, block chainbundle.Bundle, stage enrich.StageID) enrich.Job {
 	t.Helper()
 	reference := mustBlockRef(t, block)
 	word, err := enrich.ParseWord(reference.Hash.String())
@@ -372,45 +360,55 @@ func derivedJob(t *testing.T, block ethrpc.Bundle, stage enrich.StageID) enrich.
 func derivedTokenBundle(
 	t *testing.T,
 	number uint64,
-	blockHash, parentHash, transactionHash ethrpc.Hash,
+	blockHash, parentHash, transactionHash common.Hash,
 	variant string,
-	contract, from, to ethrpc.Address,
+	contract, from, to common.Address,
 	amount uint64,
-) ethrpc.Bundle {
+) chainbundle.Bundle {
 	t.Helper()
-	bundle := testBundle(number, blockHash, parentHash, transactionHash, variant)
-	transfer, err := ethrpc.ParseHash(transferTopic)
-	if err != nil {
-		t.Fatal(err)
-	}
 	amountWord := make([]byte, 32)
 	binary.BigEndian.PutUint64(amountWord[24:], amount)
-	bundle.Receipts[0].Logs[0].Address = contract
-	bundle.Receipts[0].Logs[0].Topics = []ethrpc.Hash{
-		transfer, derivedAddressTopic(t, from), derivedAddressTopic(t, to),
+	destination := testAddress(2)
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     number,
+		ParentHash: parentHash,
+		ExtraData:  []byte(variant),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType,
+			To:   &destination,
+			Data: append([]byte(variant), transactionHash.Bytes()...),
+			Logs: []*types.Log{{
+				Address: contract,
+				Topics: []common.Hash{
+					common.HexToHash(transferTopic), derivedAddressTopic(t, from), derivedAddressTopic(t, to),
+				},
+				Data: amountWord,
+			}},
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": variant},
+	})
+	if err != nil {
+		t.Fatalf("build derived token bundle: %v", err)
 	}
-	bundle.Receipts[0].Logs[0].Data = ethrpc.DataFromBytes(amountWord)
+	registerFixtureIdentities(blockHash, bundle.Block.Hash(), transactionHash, bundle.Block.Transactions()[0].Hash())
 	return bundle
 }
 
-func derivedAddressTopic(t *testing.T, address ethrpc.Address) ethrpc.Hash {
+func derivedAddressTopic(t *testing.T, address common.Address) common.Hash {
 	t.Helper()
 	addressBytes := mustBytes(t, address)
 	word := make([]byte, 32)
 	copy(word[12:], addressBytes)
-	result, err := ethrpc.ParseHash(ethrpc.DataFromBytes(word).String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return result
+	return common.BytesToHash(word)
 }
 
 func applyDerivedReorg(
 	t *testing.T,
 	ctx context.Context,
 	repository *store.PostgresRepository,
-	ancestor ethrpc.Bundle,
-	detached, attached []ethrpc.Bundle,
+	ancestor chainbundle.Bundle,
+	detached, attached []chainbundle.Bundle,
 	reason string,
 ) {
 	t.Helper()
@@ -427,7 +425,7 @@ func applyDerivedReorg(
 	}
 }
 
-func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, block ethrpc.Bundle, canonical bool) {
+func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle, canonical bool) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
 	blockHash := mustBytes(t, reference.Hash)
@@ -508,8 +506,8 @@ func assertOrphanQueriesUnavailable(
 	t *testing.T,
 	ctx context.Context,
 	reader *catalog.Postgres,
-	contract ethrpc.Address,
-	orphan ethrpc.Bundle,
+	contract common.Address,
+	orphan chainbundle.Bundle,
 ) {
 	t.Helper()
 	if _, err := reader.TokenEvents(ctx, catalog.TokenEventRequest{ChainID: "1", TokenAddress: contract.String()}); !errors.Is(err, catalog.ErrUnavailable) {
@@ -519,7 +517,7 @@ func assertOrphanQueriesUnavailable(
 	if _, err := reader.BlockStats(ctx, catalog.BlockStatsRequest{ChainID: "1", FromBlock: "1", ToBlock: fmt.Sprint(reference.Number)}); !errors.Is(err, catalog.ErrUnavailable) {
 		t.Fatalf("stats query after reorg error = %v, want unavailable instead of orphan rows", err)
 	}
-	transactionHash := orphan.Block.Transactions[0].Hash
+	transactionHash := orphan.Block.Transactions()[0].Hash()
 	if _, err := reader.TransactionTrace(ctx, "1", transactionHash.String()); !errors.Is(err, catalog.ErrNotFound) {
 		t.Fatalf("trace query after reorg error = %v, want not found for orphan transaction", err)
 	}
@@ -530,8 +528,8 @@ func assertDerivedQueriesUseBranch(
 	ctx context.Context,
 	db *sql.DB,
 	reader *catalog.Postgres,
-	contract, recipient ethrpc.Address,
-	active, orphan []ethrpc.Bundle,
+	contract, recipient common.Address,
+	active, orphan []chainbundle.Bundle,
 	wantDelta uint64,
 ) {
 	t.Helper()
@@ -563,12 +561,12 @@ func assertDerivedQueriesUseBranch(
 			t.Fatalf("stats query returned orphan block %s; active=%v", stat.BlockHash, activeHashes)
 		}
 	}
-	activeTransaction := active[len(active)-1].Block.Transactions[0].Hash
+	activeTransaction := active[len(active)-1].Block.Transactions()[0].Hash()
 	trace, err := reader.TransactionTrace(ctx, "1", activeTransaction.String())
 	if err != nil || len(trace.Frames) != 1 || !activeHashes[trace.BlockHash] {
 		t.Fatalf("canonical trace = %+v, error=%v", trace, err)
 	}
-	orphanTransaction := orphan[len(orphan)-1].Block.Transactions[0].Hash
+	orphanTransaction := orphan[len(orphan)-1].Block.Transactions()[0].Hash()
 	if _, err := reader.TransactionTrace(ctx, "1", orphanTransaction.String()); !errors.Is(err, catalog.ErrNotFound) {
 		t.Fatalf("orphan trace error = %v, want not found", err)
 	}

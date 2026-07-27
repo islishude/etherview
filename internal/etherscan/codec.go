@@ -1,15 +1,14 @@
 package etherscan
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"golang.org/x/crypto/sha3"
 )
 
 func decodeRawObject(raw []byte, destination any) error {
@@ -30,66 +29,38 @@ func decodeRawObject(raw []byte, destination any) error {
 	return nil
 }
 
-func decimalQuantity(quantity ethrpc.Quantity) (string, error) {
-	value, err := quantity.Big()
-	if err != nil {
-		return "", err
-	}
-	return value.String(), nil
+func checksumAddress(address common.Address) (string, error) {
+	return address.Hex(), nil
 }
 
-func checksumAddress(address ethrpc.Address) (string, error) {
-	lower := strings.ToLower(address.String()[2:])
-	hasher := sha3.NewLegacyKeccak256()
-	if _, err := hasher.Write([]byte(lower)); err != nil {
-		return "", fmt.Errorf("hash address: %w", err)
-	}
-	digest := hex.EncodeToString(hasher.Sum(nil))
-	checksummed := []byte(lower)
-	for index := range checksummed {
-		if checksummed[index] >= 'a' && checksummed[index] <= 'f' && digest[index] >= '8' {
-			checksummed[index] -= 'a' - 'A'
-		}
-	}
-	return "0x" + string(checksummed), nil
-}
-
-func parseAddressParameter(raw, name string) (ethrpc.Address, []byte, error) {
+func parseAddressParameter(raw, name string) (common.Address, []byte, error) {
 	address, err := ethrpc.ParseAddress(strings.TrimSpace(raw))
 	if err != nil {
-		return "", nil, invalidParameter("%s is not a valid address", name)
+		return common.Address{}, nil, invalidParameter("%s is not a valid address", name)
 	}
-	bytes, err := address.Bytes()
-	if err != nil {
-		return "", nil, invalidParameter("%s is not a valid address", name)
-	}
-	return address, bytes, nil
+	return address, address.Bytes(), nil
 }
 
-func parseHashParameter(raw, name string) (ethrpc.Hash, []byte, error) {
+func parseHashParameter(raw, name string) (common.Hash, []byte, error) {
 	hash, err := ethrpc.ParseHash(strings.TrimSpace(raw))
 	if err != nil {
-		return "", nil, invalidParameter("%s is not a valid hash", name)
+		return common.Hash{}, nil, invalidParameter("%s is not a valid hash", name)
 	}
-	bytes, err := hash.Bytes()
-	if err != nil {
-		return "", nil, invalidParameter("%s is not a valid hash", name)
-	}
-	return hash, bytes, nil
+	return hash, hash.Bytes(), nil
 }
 
-func hashFromBytes(raw []byte) (ethrpc.Hash, error) {
-	if len(raw) != 32 {
-		return "", fmt.Errorf("database hash has %d bytes, expected 32", len(raw))
+func hashFromBytes(raw []byte) (common.Hash, error) {
+	if len(raw) != common.HashLength {
+		return common.Hash{}, fmt.Errorf("database hash has %d bytes, expected 32", len(raw))
 	}
-	return ethrpc.ParseHash("0x" + hex.EncodeToString(raw))
+	return common.BytesToHash(raw), nil
 }
 
-func addressFromBytes(raw []byte) (ethrpc.Address, error) {
-	if len(raw) != 20 {
-		return "", fmt.Errorf("database address has %d bytes, expected 20", len(raw))
+func addressFromBytes(raw []byte) (common.Address, error) {
+	if len(raw) != common.AddressLength {
+		return common.Address{}, fmt.Errorf("database address has %d bytes, expected 20", len(raw))
 	}
-	return ethrpc.ParseAddress("0x" + hex.EncodeToString(raw))
+	return common.BytesToAddress(raw), nil
 }
 
 func compactJSON(raw []byte) (string, error) {

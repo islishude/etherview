@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -26,9 +27,9 @@ type transactionCursor struct {
 type transactionRecord struct {
 	Model       gen.Transaction
 	BlockNumber uint64
-	BlockHash   ethrpc.Hash
+	BlockHash   common.Hash
 	Index       uint64
-	Hash        ethrpc.Hash
+	Hash        common.Hash
 }
 
 func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string, limit int) ([]gen.Transaction, string, error) {
@@ -148,14 +149,11 @@ func (r *PostgresReader) validateTransactionCursor(ctx context.Context, tx *sql.
 	if err != nil {
 		return fmt.Errorf("%w: invalid transaction boundary hash", ErrInvalidCursor)
 	}
-	snapshotBytes, _ := snapshotHash.Bytes()
-	beforeBlockBytes, _ := beforeBlockHash.Bytes()
-	beforeTxBytes, _ := beforeTxHash.Bytes()
 	var valid bool
 	if err := tx.QueryRowContext(ctx, validateTransactionCursorSQL,
-		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotBytes,
-		strconv.FormatUint(cursor.BeforeBlockNumber, 10), beforeBlockBytes,
-		cursor.BeforeTxIndex, beforeTxBytes,
+		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
+		strconv.FormatUint(cursor.BeforeBlockNumber, 10), beforeBlockHash.Bytes(),
+		cursor.BeforeTxIndex, beforeTxHash.Bytes(),
 	).Scan(&valid); err != nil {
 		return fmt.Errorf("validate transaction cursor: %w", err)
 	}

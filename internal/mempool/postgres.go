@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -403,11 +405,10 @@ func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapsho
 		if parseErr != nil {
 			return nil, ErrInvalidCursor
 		}
-		hashBytes, _ := hash.Bytes()
 		rows, err = tx.QueryContext(ctx, selectSQL+`
 			AND (pending.first_seen_at, pending.tx_hash) < ($3, $4)
 			ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-			LIMIT $5`, repository.chain, snapshotID, cursor.BeforeFirstSeen, hashBytes, limit)
+			LIMIT $5`, repository.chain, snapshotID, cursor.BeforeFirstSeen, hash.Bytes(), limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query pending transaction page: %w", err)
@@ -475,15 +476,8 @@ func (repository *Postgres) decodeStoredTransaction(
 	if firstSeen.IsZero() || lastSeen.Before(firstSeen) || !expires.After(lastSeen) {
 		return Transaction{}, fmt.Errorf("%w: invalid pending observation timestamps", ErrCorruptData)
 	}
-	input := ethrpc.DataFromBytes(inputBytes).String()
-	var wire ethrpc.Transaction
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		return Transaction{}, fmt.Errorf("%w: decode raw pending transaction", ErrCorruptData)
-	}
-	normalized, err := pendingTransaction(
-		ethrpc.TransactionRef{Hash: wire.Hash, Transaction: &wire}, repository.chainID,
-		snapshot.Endpoint, firstSeen, snapshot.ExpiresAt,
-	)
+	input := hexutil.Encode(inputBytes)
+	normalized, err := pendingTransaction(raw, repository.chainID, snapshot.Endpoint, firstSeen, snapshot.ExpiresAt)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("%w: %v", ErrCorruptData, err)
 	}
@@ -514,25 +508,25 @@ func transactionStorageValues(transaction Transaction) (transactionValues, error
 	if err != nil {
 		return transactionValues{}, errors.New("invalid transaction hash")
 	}
-	hashBytes, _ := hash.Bytes()
+	hashBytes := hash.Bytes()
 	from, err := ethrpc.ParseAddress(transaction.From)
 	if err != nil {
 		return transactionValues{}, errors.New("invalid transaction sender")
 	}
-	fromBytes, _ := from.Bytes()
+	fromBytes := from.Bytes()
 	var toBytes []byte
 	if transaction.To != nil {
 		to, err := ethrpc.ParseAddress(*transaction.To)
 		if err != nil {
 			return transactionValues{}, errors.New("invalid transaction recipient")
 		}
-		toBytes, _ = to.Bytes()
+		toBytes = to.Bytes()
 	}
 	input, err := ethrpc.ParseData(transaction.Input)
 	if err != nil {
 		return transactionValues{}, errors.New("invalid transaction input")
 	}
-	inputBytes, _ := input.Bytes()
+	inputBytes := []byte(input)
 	return transactionValues{hash: hashBytes, from: fromBytes, to: toBytes, input: inputBytes}, nil
 }
 
@@ -618,21 +612,17 @@ func decodePendingCursor(encoded string) (pendingCursor, error) {
 }
 
 func fixedHash(value []byte) (string, error) {
-	if len(value) != 32 {
+	if len(value) != common.HashLength {
 		return "", fmt.Errorf("%w: pending hash has %d bytes", ErrCorruptData, len(value))
 	}
-	return ethrpc.DataFromBytes(value).String(), nil
+	return common.BytesToHash(value).Hex(), nil
 }
 
 func fixedAddress(value []byte) (string, error) {
-	if len(value) != 20 {
+	if len(value) != common.AddressLength {
 		return "", fmt.Errorf("%w: pending address has %d bytes", ErrCorruptData, len(value))
 	}
-	address, err := ethrpc.ParseAddress(ethrpc.DataFromBytes(value).String())
-	if err != nil {
-		return "", fmt.Errorf("%w: pending address is invalid", ErrCorruptData)
-	}
-	checksummed, err := checksumAddress(address)
+	checksummed, err := checksumAddress(common.BytesToAddress(value))
 	if err != nil {
 		return "", fmt.Errorf("%w: pending address is invalid", ErrCorruptData)
 	}

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 )
 
@@ -228,9 +229,9 @@ func createCLIUnknownBillingPayment(
 		resourceDigest    billing.Digest
 		requirementDigest billing.Digest
 		facilitatorDigest billing.Digest
-		asset             billing.Address
-		recipient         billing.Address
-		payer             billing.Address
+		asset             common.Address
+		recipient         common.Address
+		payer             common.Address
 	)
 	fingerprint[31] = identity
 	resourceDigest[31] = identity + 1

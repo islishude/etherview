@@ -13,7 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/catalog"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -39,8 +43,8 @@ func TestExactNFTObservationsRejectConcurrentConflictsAndPreserveIdenticalWrites
 		ChainID: "1", BlockNumber: fmt.Sprint(reference.Number), BlockHash: reference.Hash.String(),
 	}
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
-	newReconciler := func(caller ethrpc.Caller) *state.NFTReconciler {
-		reconciler, reconcileErr := state.NewNFTReconciler(db, newNFTStatePool(t, caller), canonical)
+	newReconciler := func(service any) *state.NFTReconciler {
+		reconciler, reconcileErr := state.NewNFTReconciler(db, newNFTStatePool(t, service), canonical)
 		if reconcileErr != nil {
 			t.Fatal(reconcileErr)
 		}
@@ -215,7 +219,7 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 		t.Fatalf("old-tip token observation=%+v error=%v", current, err)
 	}
 
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{oldTip}, []ethrpc.Bundle{replacement}, "token observation reorg")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{oldTip}, []chainbundle.Bundle{replacement}, "token observation reorg")
 	markTokenStageComplete(t, ctx, db, replacement)
 	current, err = reader.TokenContract(ctx, "1", contract.String())
 	if err != nil || current.Name == nil || *current.Name != "Genesis observation" || current.ObservedBlockNumber != "0" {
@@ -278,7 +282,7 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 		t.Fatalf("cached reconciliation made %d RPC calls", failing.calls)
 	}
 
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{replacement}, []ethrpc.Bundle{thirdTip}, "orphan exact NFT observations")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{thirdTip}, "orphan exact NFT observations")
 	if _, err := cached.Owner(ctx, snapshot, erc721.String(), "42"); !errors.Is(err, httpapi.ErrUnavailable) {
 		t.Fatalf("orphan cached owner error=%v, want unavailable after fresh RPC failure", err)
 	}
@@ -288,7 +292,7 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM erc721_owner_reconciliations WHERE block_hash = $1`, 1, mustBytes(t, reference.Hash))
 }
 
-func markTokenStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block ethrpc.Bundle) {
+func markTokenStageComplete(t *testing.T, ctx context.Context, db *sql.DB, block chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, block)
 	if _, err := db.ExecContext(ctx, `
@@ -329,9 +333,9 @@ func insertTokenObservation(
 	t *testing.T,
 	ctx context.Context,
 	db *sql.DB,
-	block ethrpc.Bundle,
-	contract ethrpc.Address,
-	codeHash ethrpc.Hash,
+	block chainbundle.Bundle,
+	contract common.Address,
+	codeHash common.Hash,
 	name string,
 ) {
 	t.Helper()
@@ -352,7 +356,7 @@ func insertTokenObservation(
 }
 
 type exactNFTCaller struct {
-	owner          ethrpc.Address
+	owner          common.Address
 	erc1155Balance string
 	err            error
 	calls          int
@@ -374,14 +378,18 @@ func newGatedExactNFTCaller(delegate *exactNFTCaller) *gatedExactNFTCaller {
 	}
 }
 
-func (caller *gatedExactNFTCaller) Call(ctx context.Context, method string, params []any, result any) error {
+func (caller *gatedExactNFTCaller) Call(
+	ctx context.Context,
+	request map[string]any,
+	selector rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
 	caller.once.Do(func() { close(caller.started) })
 	select {
 	case <-caller.release:
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
-	return caller.delegate.Call(ctx, method, params, result)
+	return caller.delegate.Call(ctx, request, selector)
 }
 
 func (caller *gatedExactNFTCaller) waitUntilStarted(t *testing.T, ctx context.Context) {
@@ -395,51 +403,53 @@ func (caller *gatedExactNFTCaller) waitUntilStarted(t *testing.T, ctx context.Co
 
 func (caller *gatedExactNFTCaller) releaseCall() { close(caller.release) }
 
-func (caller *exactNFTCaller) Call(_ context.Context, method string, params []any, result any) error {
+func (caller *exactNFTCaller) Call(
+	_ context.Context,
+	request map[string]any,
+	selector rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
 	caller.calls++
 	if caller.err != nil {
-		return caller.err
+		return nil, caller.err
 	}
-	if method != "eth_call" || len(params) != 2 {
-		return fmt.Errorf("unexpected exact NFT call %q %#v", method, params)
+	if selector.BlockHash == nil || !selector.RequireCanonical {
+		return nil, fmt.Errorf("unexpected exact NFT selector %#v", selector)
 	}
-	selector, ok := params[1].(map[string]any)
+	caller.selectors = append(caller.selectors, map[string]any{
+		"blockHash":        selector.BlockHash.String(),
+		"requireCanonical": selector.RequireCanonical,
+	})
+	inputText, ok := request["data"].(string)
 	if !ok {
-		return fmt.Errorf("unexpected exact NFT selector %#v", params[1])
+		return nil, errors.New("exact NFT calldata is not a hex string")
 	}
-	caller.selectors = append(caller.selectors, selector)
-	request := params[0].(map[string]any)
-	data, err := ethrpc.ParseData(request["data"].(string))
+	input, err := hexutil.Decode(inputText)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	input, _ := data.Bytes()
+	if len(input) < 4 {
+		return nil, errors.New("exact NFT calldata is too short")
+	}
 	output := make([]byte, 32)
 	switch fmt.Sprintf("%x", input[:4]) {
 	case "6352211e":
-		ownerBytes, _ := caller.owner.Bytes()
-		copy(output[12:], ownerBytes)
+		copy(output[12:], caller.owner.Bytes())
 	case "00fdd58e":
 		balance, ok := new(big.Int).SetString(caller.erc1155Balance, 10)
 		if !ok {
-			return errors.New("invalid fixture ERC-1155 balance")
+			return nil, errors.New("invalid fixture ERC-1155 balance")
 		}
 		balance.FillBytes(output)
 	default:
-		return fmt.Errorf("unexpected exact NFT selector 0x%x", input[:4])
+		return nil, fmt.Errorf("unexpected exact NFT selector 0x%x", input[:4])
 	}
-	destination, ok := result.(*ethrpc.Data)
-	if !ok {
-		return fmt.Errorf("unexpected exact NFT result %T", result)
-	}
-	*destination = ethrpc.DataFromBytes(output)
-	return nil
+	return hexutil.Bytes(output), nil
 }
 
-func newNFTStatePool(t *testing.T, caller ethrpc.Caller) *ethrpc.Pool {
+func newNFTStatePool(t *testing.T, service any) *ethrpc.Pool {
 	t.Helper()
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "exact-nft-state", Client: caller,
+		Name: "exact-nft-state", Client: newIntegrationRPCClient(t, "eth", service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {

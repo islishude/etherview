@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/store"
@@ -230,7 +231,7 @@ func writeX402TestnetSettledPayment(
 	options LedgerOptions,
 	identity byte,
 	observedAt time.Time,
-	transactionHash billing.TransactionHash,
+	transactionHash common.Hash,
 	apiKeyPrefix *string,
 ) billing.Payment {
 	t.Helper()
@@ -409,15 +410,15 @@ func x402TestnetDigest(identity byte) billing.Digest {
 	return digest
 }
 
-func x402TestnetTransactionHash(identity byte) billing.TransactionHash {
-	var transactionHash billing.TransactionHash
+func x402TestnetTransactionHash(identity byte) common.Hash {
+	var transactionHash common.Hash
 	transactionHash[0] = 0xa5
 	transactionHash[len(transactionHash)-1] = identity
 	return transactionHash
 }
 
 func x402TestnetTransactionHashString(
-	transactionHash billing.TransactionHash,
+	transactionHash common.Hash,
 ) string {
 	return "0x" + hex.EncodeToString(transactionHash[:])
 }

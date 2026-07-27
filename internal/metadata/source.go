@@ -11,6 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -23,10 +26,10 @@ const (
 
 type NFTSourceCandidate struct {
 	ChainID     string
-	Token       ethrpc.Address
+	Token       common.Address
 	TokenID     string
 	BlockNumber uint64
-	BlockHash   ethrpc.Hash
+	BlockHash   common.Hash
 	Standard    NFTStandard
 }
 
@@ -161,7 +164,7 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 	if err != nil {
 		return false, nil
 	}
-	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, endpoint.Client, candidate)
+	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, endpoint, candidate)
 	if retry {
 		discoverer.pool.ReportFailure(endpoint.Name)
 		return false, nil
@@ -200,7 +203,7 @@ var (
 	erc1155URISelector     = []byte{0x0e, 0x89, 0x34, 0x1c}
 )
 
-func discoverNFTSource(ctx context.Context, caller ethrpc.Caller, candidate NFTSourceCandidate) (string, string, bool) {
+func discoverNFTSource(ctx context.Context, endpoint *ethrpc.Endpoint, candidate NFTSourceCandidate) (string, string, bool) {
 	tokenID, _ := new(big.Int).SetString(candidate.TokenID, 10)
 	input := make([]byte, 36)
 	if candidate.Standard == NFTStandardERC1155 {
@@ -209,10 +212,10 @@ func discoverNFTSource(ctx context.Context, caller ethrpc.Caller, candidate NFTS
 		copy(input, erc721TokenURISelector)
 	}
 	tokenID.FillBytes(input[4:])
-	call := map[string]any{"to": candidate.Token.String(), "data": ethrpc.DataFromBytes(input).String()}
-	selector := map[string]any{"blockHash": candidate.BlockHash.String(), "requireCanonical": true}
-	var encoded ethrpc.Data
-	if err := caller.Call(ctx, "eth_call", []any{call, selector}, &encoded); err != nil {
+	call := map[string]any{"to": candidate.Token, "data": hexutil.Bytes(input)}
+	selector := rpc.BlockNumberOrHashWithHash(candidate.BlockHash, true)
+	var encoded hexutil.Bytes
+	if err := endpoint.CallContext(ctx, &encoded, "eth_call", call, selector); err != nil {
 		if sourceExecutionReverted(err) {
 			return "", "token_uri_unavailable", false
 		}
@@ -221,11 +224,7 @@ func discoverNFTSource(ctx context.Context, caller ethrpc.Caller, candidate NFTS
 		}
 		return "", "", true
 	}
-	output, err := encoded.Bytes()
-	if err != nil {
-		return "", "token_uri_invalid", false
-	}
-	sourceURI, ok := decodeSourceString(output, MaxSourceURIBytes)
+	sourceURI, ok := decodeSourceString(encoded, MaxSourceURIBytes)
 	if !ok || strings.TrimSpace(sourceURI) == "" {
 		return "", "token_uri_invalid", false
 	}
@@ -281,24 +280,24 @@ func decodeSourceString(output []byte, maximum int) (string, bool) {
 }
 
 func sourceExecutionReverted(err error) bool {
-	var rpcError *ethrpc.RPCError
+	var rpcError rpc.Error
 	if !errors.As(err, &rpcError) {
 		return false
 	}
-	message := strings.ToLower(rpcError.Message)
-	return rpcError.Code == 3 || strings.Contains(message, "execution reverted") || strings.Contains(message, "revert")
+	message := strings.ToLower(rpcError.Error())
+	return rpcError.ErrorCode() == 3 || strings.Contains(message, "execution reverted") || strings.Contains(message, "revert")
 }
 
 func sourceExactStateUnavailable(err error) bool {
 	if ethrpc.IsMethodNotFound(err) {
 		return true
 	}
-	var rpcError *ethrpc.RPCError
+	var rpcError rpc.Error
 	if !errors.As(err, &rpcError) {
 		return false
 	}
-	message := strings.ToLower(rpcError.Message)
-	return rpcError.Code == -32602 || strings.Contains(message, "eip-1898") ||
+	message := strings.ToLower(rpcError.Error())
+	return rpcError.ErrorCode() == -32602 || strings.Contains(message, "eip-1898") ||
 		strings.Contains(message, "block hash") || strings.Contains(message, "missing trie") ||
 		strings.Contains(message, "historical state") || strings.Contains(message, "pruned") ||
 		strings.Contains(message, "header not found") || strings.Contains(message, "state is not available")

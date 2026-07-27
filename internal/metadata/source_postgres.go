@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ErrExactNFTSourceConflict = errors.New("exact NFT metadata source observation conflicts with persisted block fact")
@@ -30,14 +30,14 @@ func (repository *PostgresRepository) NextNFTSource(ctx context.Context) (NFTSou
 	if err != nil {
 		return NFTSourceCandidate{}, false, fmt.Errorf("select NFT metadata source candidate: %w", err)
 	}
-	address, err := ethrpc.ParseAddress(ethrpc.DataFromBytes(addressBytes).String())
-	if err != nil {
+	if len(addressBytes) != common.AddressLength {
 		return NFTSourceCandidate{}, false, errors.New("decode NFT metadata source address")
 	}
-	hash, err := ethrpc.ParseHash(ethrpc.DataFromBytes(hashBytes).String())
-	if err != nil {
+	address := common.BytesToAddress(addressBytes)
+	if len(hashBytes) != common.HashLength {
 		return NFTSourceCandidate{}, false, errors.New("decode NFT metadata source block hash")
 	}
+	hash := common.BytesToHash(hashBytes)
 	height, err := parseSourceBlockNumber(blockNumber)
 	if err != nil {
 		return NFTSourceCandidate{}, false, err
@@ -82,7 +82,7 @@ func (repository *PostgresRepository) RecordNFTSource(ctx context.Context, obser
 	if observation.Candidate.ChainID != repository.chainID {
 		return errors.New("NFT metadata source chain differs from repository chain")
 	}
-	address, _ := observation.Candidate.Token.Bytes()
+	address := observation.Candidate.Token.Bytes()
 	hash := mustHashBytes(observation.Candidate.BlockHash)
 	var inserted int
 	err := repository.db.QueryRowContext(ctx, insertNFTSourceSQL,

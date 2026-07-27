@@ -7,13 +7,15 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/api/gen"
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 type rowScanner interface {
@@ -23,7 +25,22 @@ type rowScanner interface {
 type blockRecord struct {
 	Model  gen.Block
 	Number uint64
-	Hash   ethrpc.Hash
+	Hash   common.Hash
+}
+
+// storedBlockProjection is a persistence/public-contract adapter. It keeps
+// presence information that types.Header cannot represent after decoding a
+// malformed partial object, while every Ethereum scalar uses geth types.
+type storedBlockProjection struct {
+	Number        *hexutil.Big      `json:"number"`
+	Hash          *common.Hash      `json:"hash"`
+	ParentHash    *common.Hash      `json:"parentHash"`
+	Timestamp     *hexutil.Uint64   `json:"timestamp"`
+	Miner         *common.Address   `json:"miner"`
+	Transactions  []json.RawMessage `json:"transactions"`
+	GasUsed       *hexutil.Uint64   `json:"gasUsed"`
+	GasLimit      *hexutil.Uint64   `json:"gasLimit"`
+	BaseFeePerGas *hexutil.Big      `json:"baseFeePerGas"`
 }
 
 func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blockRecord, error) {
@@ -45,31 +62,28 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 	if err != nil {
 		return blockRecord{}, err
 	}
-	var wire ethrpc.Block
-	if err := decodeRawObject(raw, &wire); err != nil {
+	var wire storedBlockProjection
+	if err := decodeStoredBlockProjection(raw, &wire); err != nil {
 		return blockRecord{}, fmt.Errorf("decode block raw JSON: %w", err)
 	}
-	if wire.Number == nil || wire.Hash == nil {
+	if wire.Number == nil || wire.Hash == nil || wire.ParentHash == nil || wire.Timestamp == nil {
 		return blockRecord{}, errors.New("stored block raw JSON has a null number or hash")
 	}
-	wireNumber, err := wire.Number.Uint64()
-	if err != nil || wireNumber != number {
+	wireNumber := wire.Number.ToInt()
+	if !wireNumber.IsUint64() || wireNumber.Uint64() != number {
 		return blockRecord{}, errors.New("stored block raw number does not match indexed identity")
 	}
-	if !wire.Hash.Equal(hash) {
+	if *wire.Hash != hash {
 		return blockRecord{}, errors.New("stored block raw hash does not match indexed identity")
 	}
-	if _, err := ethrpc.ParseHash(wire.ParentHash.String()); err != nil {
-		return blockRecord{}, fmt.Errorf("stored block raw parent hash is invalid: %w", err)
-	}
-	timestamp, err := quantityTime(wire.Timestamp)
+	timestamp, err := quantityTime(uint64(*wire.Timestamp))
 	if err != nil {
 		return blockRecord{}, fmt.Errorf("decode block timestamp: %w", err)
 	}
 	model := gen.Block{
-		Hash:             strings.ToLower(hash.String()),
+		Hash:             strings.ToLower(hash.Hex()),
 		Number:           strconv.FormatUint(number, 10),
-		ParentHash:       strings.ToLower(wire.ParentHash.String()),
+		ParentHash:       strings.ToLower(wire.ParentHash.Hex()),
 		Timestamp:        timestamp,
 		TransactionCount: len(wire.Transactions),
 		Canonical:        canonical,
@@ -80,34 +94,41 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 		return blockRecord{}, err
 	}
 	if wire.Miner != nil {
-		miner, err := ChecksumAddress(wire.Miner.String())
+		miner, err := ChecksumAddress(wire.Miner.Hex())
 		if err != nil {
 			return blockRecord{}, fmt.Errorf("checksum block miner: %w", err)
 		}
 		model.Miner = &miner
 	}
-	if wire.GasUsed != "" {
-		value, err := decimalQuantity(wire.GasUsed)
-		if err != nil {
-			return blockRecord{}, fmt.Errorf("decode block gas used: %w", err)
-		}
+	if wire.GasUsed != nil {
+		value := strconv.FormatUint(uint64(*wire.GasUsed), 10)
 		model.GasUsed = &value
 	}
-	if wire.GasLimit != "" {
-		value, err := decimalQuantity(wire.GasLimit)
-		if err != nil {
-			return blockRecord{}, fmt.Errorf("decode block gas limit: %w", err)
-		}
+	if wire.GasLimit != nil {
+		value := strconv.FormatUint(uint64(*wire.GasLimit), 10)
 		model.GasLimit = &value
 	}
 	if wire.BaseFeePerGas != nil {
-		value, err := decimalQuantity(*wire.BaseFeePerGas)
-		if err != nil {
-			return blockRecord{}, fmt.Errorf("decode block base fee: %w", err)
-		}
+		value := wire.BaseFeePerGas.ToInt().String()
 		model.BaseFeePerGas = &value
 	}
 	return blockRecord{Model: model, Number: number, Hash: hash}, nil
+}
+
+func decodeStoredBlockProjection(raw []byte, destination *storedBlockProjection) error {
+	if err := decodeRawObject(raw, destination); err != nil {
+		return err
+	}
+	if destination.Number != nil &&
+		destination.Hash != nil &&
+		destination.Timestamp != nil {
+		return nil
+	}
+	bundle, err := chainbundle.DecodeStoredBlock(raw)
+	if err != nil {
+		return err
+	}
+	return decodeRawObject(bundle.RawBlock, destination)
 }
 
 func (r *PostgresReader) transactionModel(
@@ -134,121 +155,74 @@ func (r *PostgresReader) transactionModel(
 	if err != nil {
 		return gen.Transaction{}, err
 	}
-	var wire ethrpc.Transaction
-	if err := decodeRawObject(transactionJSON, &wire); err != nil {
+	wire, sender, err := chainbundle.DecodeTransaction(
+		transactionJSON, blockHash, blockNumber, uint64(transactionIndex),
+	)
+	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("decode transaction raw JSON: %w", err)
 	}
-	if !wire.Hash.Equal(transactionHash) {
+	if wire.Hash() != transactionHash {
 		return gen.Transaction{}, errors.New("stored transaction raw hash does not match indexed identity")
 	}
-	if wire.BlockHash == nil || !wire.BlockHash.Equal(blockHash) {
-		return gen.Transaction{}, errors.New("stored transaction raw block hash does not match inclusion")
-	}
-	if wire.BlockNumber == nil {
-		return gen.Transaction{}, errors.New("stored transaction raw block number is null")
-	}
-	wireBlockNumber, err := wire.BlockNumber.Uint64()
-	if err != nil || wireBlockNumber != blockNumber {
-		return gen.Transaction{}, errors.New("stored transaction raw block number does not match inclusion")
-	}
-	if wire.TransactionIndex == nil {
-		return gen.Transaction{}, errors.New("stored transaction raw index is null")
-	}
-	wireIndex, err := wire.TransactionIndex.Uint64()
-	if err != nil || wireIndex != uint64(transactionIndex) {
-		return gen.Transaction{}, errors.New("stored transaction raw index does not match inclusion")
-	}
-	from, err := ChecksumAddress(wire.From.String())
+	from, err := ChecksumAddress(sender.Hex())
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("checksum transaction sender: %w", err)
 	}
-	if _, err := ethrpc.ParseData(wire.Input.String()); err != nil {
-		return gen.Transaction{}, fmt.Errorf("decode transaction input: %w", err)
-	}
 	model := gen.Transaction{
-		Hash:             strings.ToLower(transactionHash.String()),
-		BlockHash:        new(strings.ToLower(blockHash.String())),
+		Hash:             strings.ToLower(transactionHash.Hex()),
+		BlockHash:        new(strings.ToLower(blockHash.Hex())),
 		BlockNumber:      new(strconv.FormatUint(blockNumber, 10)),
 		Canonical:        canonical,
 		Completeness:     r.completeness,
 		From:             from,
-		Input:            wire.Input.String(),
+		Input:            hexutil.Encode(wire.Data()),
 		TransactionIndex: new(int(transactionIndex)),
 	}
 	model.Finality, err = classifyFinality(canonical, blockNumber, safeHeight, finalizedHeight)
 	if err != nil {
 		return gen.Transaction{}, err
 	}
-	if wire.To != nil {
-		to, err := ChecksumAddress(wire.To.String())
+	if wire.To() != nil {
+		to, err := ChecksumAddress(wire.To().Hex())
 		if err != nil {
 			return gen.Transaction{}, fmt.Errorf("checksum transaction recipient: %w", err)
 		}
 		model.To = &to
 	}
-	if model.Nonce, err = decimalQuantity(wire.Nonce); err != nil {
-		return gen.Transaction{}, fmt.Errorf("decode transaction nonce: %w", err)
-	}
-	if model.Value, err = decimalQuantity(wire.Value); err != nil {
-		return gen.Transaction{}, fmt.Errorf("decode transaction value: %w", err)
-	}
-	if model.Gas, err = decimalQuantity(wire.Gas); err != nil {
-		return gen.Transaction{}, fmt.Errorf("decode transaction gas: %w", err)
-	}
-	if wire.GasPrice != nil {
-		value, err := decimalQuantity(*wire.GasPrice)
-		if err != nil {
-			return gen.Transaction{}, fmt.Errorf("decode transaction gas price: %w", err)
-		}
+	model.Nonce = strconv.FormatUint(wire.Nonce(), 10)
+	model.Value = wire.Value().String()
+	model.Gas = strconv.FormatUint(wire.Gas(), 10)
+	switch wire.Type() {
+	case types.LegacyTxType, types.AccessListTxType:
+		value := wire.GasPrice().String()
 		model.GasPrice = &value
-	}
-	if wire.MaxFeePerGas != nil {
-		value, err := decimalQuantity(*wire.MaxFeePerGas)
-		if err != nil {
-			return gen.Transaction{}, fmt.Errorf("decode transaction max fee: %w", err)
-		}
+	default:
+		value := wire.GasFeeCap().String()
 		model.MaxFeePerGas = &value
-	}
-	if wire.MaxPriorityFeePerGas != nil {
-		value, err := decimalQuantity(*wire.MaxPriorityFeePerGas)
-		if err != nil {
-			return gen.Transaction{}, fmt.Errorf("decode transaction priority fee: %w", err)
-		}
+		value = wire.GasTipCap().String()
 		model.MaxPriorityFeePerGas = &value
 	}
-	if wire.Type != nil {
-		value, err := decimalQuantity(*wire.Type)
-		if err != nil {
-			return gen.Transaction{}, fmt.Errorf("decode transaction type: %w", err)
-		}
+	if transactionTypePresent(transactionJSON) {
+		value := strconv.FormatUint(uint64(wire.Type()), 10)
 		model.Type = &value
 	}
 
-	var receipt ethrpc.Receipt
-	if err := decodeRawObject(receiptJSON, &receipt); err != nil {
+	firstLogIndex, err := receiptFirstLogIndex(receiptJSON)
+	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("decode receipt raw JSON: %w", err)
 	}
-	if !receipt.TransactionHash.Equal(transactionHash) || !receipt.BlockHash.Equal(blockHash) {
-		return gen.Transaction{}, errors.New("stored receipt raw identity does not match transaction inclusion")
-	}
-	receiptBlockNumber, err := receipt.BlockNumber.Uint64()
-	if err != nil || receiptBlockNumber != blockNumber {
-		return gen.Transaction{}, errors.New("stored receipt raw block number does not match transaction inclusion")
-	}
-	receiptIndex, err := receipt.TransactionIndex.Uint64()
-	if err != nil || receiptIndex != uint64(transactionIndex) {
-		return gen.Transaction{}, errors.New("stored receipt raw index does not match transaction inclusion")
+	receipt, _, _, err := chainbundle.DecodeStoredReceipt(
+		receiptJSON, wire, blockHash, blockNumber, uint64(transactionIndex), firstLogIndex,
+	)
+	if err != nil {
+		return gen.Transaction{}, fmt.Errorf("decode receipt raw JSON: %w", err)
 	}
 	status := gen.TransactionStatusUnknown
-	if receipt.Status != nil {
-		statusValue, err := receipt.Status.Big()
-		if err != nil {
-			return gen.Transaction{}, fmt.Errorf("decode receipt status: %w", err)
-		}
-		switch {
-		case statusValue.Sign() == 0:
+	if len(receipt.PostState) == 0 {
+		switch receipt.Status {
+		case types.ReceiptStatusFailed:
 			status = gen.TransactionStatusFailed
-		case statusValue.Cmp(big.NewInt(1)) == 0:
+		case types.ReceiptStatusSuccessful:
 			status = gen.TransactionStatusSuccess
 		}
 	}
@@ -274,23 +248,35 @@ func decodeRawObject(raw []byte, destination any) error {
 	return nil
 }
 
-func decimalQuantity(quantity ethrpc.Quantity) (string, error) {
-	value, err := quantity.Big()
-	if err != nil {
-		return "", err
-	}
-	return value.String(), nil
+func transactionTypePresent(raw []byte) bool {
+	var fields map[string]json.RawMessage
+	return json.Unmarshal(raw, &fields) == nil && len(fields["type"]) != 0 &&
+		!strings.EqualFold(strings.TrimSpace(string(fields["type"])), "null")
 }
 
-func quantityTime(quantity ethrpc.Quantity) (time.Time, error) {
-	value, err := quantity.Big()
-	if err != nil {
-		return time.Time{}, err
+func receiptFirstLogIndex(raw []byte) (uint64, error) {
+	var projection struct {
+		Logs []struct {
+			Index *hexutil.Uint64 `json:"logIndex"`
+		} `json:"logs"`
 	}
-	if value.Sign() < 0 || !value.IsInt64() {
-		return time.Time{}, fmt.Errorf("timestamp %s is outside time.Time Unix range", value)
+	if err := decodeRawObject(raw, &projection); err != nil {
+		return 0, err
 	}
-	return time.Unix(value.Int64(), 0).UTC(), nil
+	if len(projection.Logs) == 0 {
+		return 0, nil
+	}
+	if projection.Logs[0].Index == nil {
+		return 0, errors.New("stored receipt first log index is null")
+	}
+	return uint64(*projection.Logs[0].Index), nil
+}
+
+func quantityTime(value uint64) (time.Time, error) {
+	if value > math.MaxInt64 {
+		return time.Time{}, fmt.Errorf("timestamp %d is outside time.Time Unix range", value)
+	}
+	return time.Unix(int64(value), 0).UTC(), nil
 }
 
 func classifyFinality(canonical bool, number uint64, safeHeight, finalizedHeight sql.NullString) (gen.Finality, error) {

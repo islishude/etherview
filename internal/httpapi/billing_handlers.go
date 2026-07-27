@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/apiops"
@@ -621,16 +622,12 @@ func (h *Handler) handleBillingFailure(
 	)
 }
 
-func billingAddressModel(value billing.Address) (gen.Address, error) {
-	checksummed, err := checksumAddress("0x" + hex.EncodeToString(value[:]))
-	if err != nil {
-		return "", errors.New("billing address is invalid")
-	}
-	return gen.Address(checksummed), nil
+func billingAddressModel(value common.Address) (gen.Address, error) {
+	return gen.Address(value.Hex()), nil
 }
 
-func parseBillingAddress(value string) (billing.Address, bool) {
-	var address billing.Address
+func parseBillingAddress(value string) (common.Address, bool) {
+	var address common.Address
 	if !addressPattern.MatchString(value) {
 		return address, false
 	}

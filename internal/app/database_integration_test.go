@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
@@ -128,7 +129,7 @@ func postgresErrorCode(err *pgconn.PgError) string {
 	return err.Code
 }
 
-func mustIntegrationHash(t *testing.T, value string) ethrpc.Hash {
+func mustIntegrationHash(t *testing.T, value string) common.Hash {
 	t.Helper()
 	hash, err := ethrpc.ParseHash(value)
 	if err != nil {

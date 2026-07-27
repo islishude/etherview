@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/adapters"
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/metadata"
@@ -231,7 +231,7 @@ func TestCanonicalDetachWaitsForNameSuccessAndThenOrphansIt(t *testing.T) {
 	genesis := testBundle(0, testHash(972), testHash(0), testHash(9_720), "name-first-genesis")
 	oldOne := testBundle(1, testHash(973), testHash(972), testHash(9_721), "name-first-old")
 	newOne := testBundle(1, testHash(974), testHash(972), testHash(9_722), "name-first-new")
-	for _, bundle := range []ethrpc.Bundle{genesis, oldOne} {
+	for _, bundle := range []chainbundle.Bundle{genesis, oldOne} {
 		commitCanonical(t, ctx, repository, bundle)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
@@ -283,7 +283,7 @@ func TestCanonicalDetachWaitsForNameSuccessAndThenOrphansIt(t *testing.T) {
 	go func() {
 		reorgDone <- repository.ApplyReorg(ctx, "1", store.Reorg{
 			Ancestor: ancestor, Detached: []store.BlockRef{detached},
-			Attached: []ethrpc.Bundle{newOne}, Checkpoint: store.NewCoreCheckpoint(newTip),
+			Attached: []chainbundle.Bundle{newOne}, Checkpoint: store.NewCoreCheckpoint(newTip),
 			Reason: "name consistency lock test",
 		})
 	}()
@@ -347,7 +347,7 @@ func TestSparseCanonicalReplacementWaitsForNameSuccessAndThenOrphansIt(t *testin
 	genesis := testBundle(0, testHash(975), testHash(0), testHash(9_750), "sparse-name-genesis")
 	oldTwo := testBundle(2, testHash(976), testHash(9_751), testHash(9_752), "sparse-name-old")
 	newTwo := testBundle(2, testHash(977), testHash(9_751), testHash(9_753), "sparse-name-new")
-	for _, segment := range [][]ethrpc.Bundle{{genesis}, {oldTwo}} {
+	for _, segment := range [][]chainbundle.Bundle{{genesis}, {oldTwo}} {
 		if _, err := repository.CommitCanonicalSegment(ctx, "1", segment); err != nil {
 			t.Fatal(err)
 		}
@@ -399,7 +399,7 @@ func TestSparseCanonicalReplacementWaitsForNameSuccessAndThenOrphansIt(t *testin
 	go func() {
 		_, replaceErr := repository.ReplaceHighestCanonicalSegment(ctx, "1", store.SparseCanonicalReplacement{
 			Range: store.BlockRange{Start: 2, End: 2}, Detached: []store.BlockRef{detached},
-			Attached: []ethrpc.Bundle{newTwo}, Reason: "sparse name consistency lock test",
+			Attached: []chainbundle.Bundle{newTwo}, Reason: "sparse name consistency lock test",
 		})
 		replacementDone <- replaceErr
 	}()

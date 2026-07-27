@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/billing"
@@ -62,11 +63,11 @@ type ledgerExpectation struct {
 	resourceDigest    [32]byte
 	requirementDigest [32]byte
 	network           string
-	asset             billing.Address
+	asset             common.Address
 	amountAtomic      string
 	amount            pgtype.Numeric
-	recipient         billing.Address
-	payer             billing.Address
+	recipient         common.Address
+	payer             common.Address
 }
 
 type ledgerVerificationStore interface {
@@ -330,18 +331,18 @@ func parseLedgerExpectation(
 	}, true
 }
 
-func parseExpectedAddress(value string) (billing.Address, bool) {
+func parseExpectedAddress(value string) (common.Address, bool) {
 	// Operator expectations use their exact EIP-55 representation. RPC wire
 	// addresses are parsed separately because Ethereum JSON-RPC DATA is
 	// canonical lowercase hexadecimal.
 	if _, ok := canonicalAddress(value); !ok {
-		return billing.Address{}, false
+		return common.Address{}, false
 	}
 	return parseAddress(value)
 }
 
-func parseAddress(value string) (billing.Address, bool) {
-	var result billing.Address
+func parseAddress(value string) (common.Address, bool) {
+	var result common.Address
 	if len(value) != 42 || value[:2] != "0x" {
 		return result, false
 	}
@@ -350,14 +351,14 @@ func parseAddress(value string) (billing.Address, bool) {
 		return result, false
 	}
 	copy(result[:], decoded)
-	var zero billing.Address
+	var zero common.Address
 	return result, result != zero
 }
 
-func parseTransactionHash(value string) (billing.TransactionHash, bool) {
+func parseTransactionHash(value string) (common.Hash, bool) {
 	// x402 settlement and JSON-RPC hashes share the canonical lowercase DATA
 	// form; accepting another spelling would weaken exact reconciliation.
-	var result billing.TransactionHash
+	var result common.Hash
 	if len(value) != 66 || value[:2] != "0x" {
 		return result, false
 	}
@@ -367,7 +368,7 @@ func parseTransactionHash(value string) (billing.TransactionHash, bool) {
 		return result, false
 	}
 	copy(result[:], decoded)
-	var zero billing.TransactionHash
+	var zero common.Hash
 	return result, result != zero
 }
 
@@ -386,7 +387,7 @@ func matchesLedgerPayment(
 	paymentID string,
 	expected ledgerExpectation,
 	fence time.Time,
-	transactionHash billing.TransactionHash,
+	transactionHash common.Hash,
 ) bool {
 	return payment.ID == paymentID &&
 		payment.ChainID == expected.chainID &&
@@ -415,7 +416,7 @@ func zeroDigest(value [32]byte) bool {
 func matchesSettledEventChain(
 	events []billing.PaymentEvent,
 	paymentID string,
-	transactionHash billing.TransactionHash,
+	transactionHash common.Hash,
 ) bool {
 	expected := [...]struct {
 		from *billing.State

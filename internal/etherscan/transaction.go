@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
-
-	"github.com/islishude/etherview/internal/ethrpc"
+	"strconv"
 )
 
 func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Values, receiptOnly bool) (any, error) {
@@ -52,41 +51,28 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	if !ok || blockNumber.Sign() < 0 {
 		return nil, errors.New("stored receipt block number is invalid")
 	}
-	if !indexedHash.Equal(hash) {
+	if indexedHash != hash {
 		return nil, errors.New("stored receipt hash does not match requested transaction")
 	}
-	var receipt ethrpc.Receipt
-	if err := decodeRawObject(raw, &receipt); err != nil {
+	receipt, statusPresent, err := decodeStandaloneReceipt(
+		raw, indexedHash, indexedBlockHash, blockNumber, transactionIndex,
+	)
+	if err != nil {
 		return nil, fmt.Errorf("decode receipt raw JSON: %w", err)
 	}
-	if !receipt.TransactionHash.Equal(indexedHash) || !receipt.BlockHash.Equal(indexedBlockHash) {
-		return nil, errors.New("stored receipt raw identity does not match indexed row")
-	}
-	wireBlock, err := receipt.BlockNumber.Big()
-	if err != nil || wireBlock.Cmp(blockNumber) != 0 {
-		return nil, errors.New("stored receipt raw block number does not match indexed row")
-	}
-	wireIndex, err := receipt.TransactionIndex.Uint64()
-	if err != nil || wireIndex != uint64(transactionIndex) {
-		return nil, errors.New("stored receipt raw index does not match indexed row")
-	}
-	if receipt.Status == nil {
+	if !statusPresent {
 		return nil, ErrStatusUnavailable
 	}
-	status, err := receipt.Status.Big()
-	if err != nil {
-		return nil, fmt.Errorf("decode receipt status: %w", err)
-	}
-	if status.Sign() != 0 && status.Cmp(big.NewInt(1)) != 0 {
+	if receipt.Status != 0 && receipt.Status != 1 {
 		return nil, errors.New("stored receipt status is neither zero nor one")
 	}
-	statusText := status.String()
+	statusText := strconv.FormatUint(receipt.Status, 10)
 	var result any
 	if receiptOnly {
 		result = transactionReceiptStatus{Status: statusText}
 	} else {
 		statusResult := transactionErrorStatus{IsError: "0"}
-		if status.Sign() == 0 {
+		if receipt.Status == 0 {
 			statusResult.IsError = "1"
 			statusResult.ErrDescription = "execution failed"
 		}

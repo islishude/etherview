@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
@@ -61,29 +62,22 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 			TLSHandshakeTimeout:   10 * time.Second,
 			ResponseHeaderTimeout: cfg.RPC.RequestTimeout,
 		}
-		client, err := ethrpc.NewHTTPClient(item.URL, ethrpc.HTTPClientOptions{
-			HTTPClient: &http.Client{Transport: transport, Timeout: cfg.RPC.RequestTimeout},
+		client, err := ethrpc.NewClient(ctx, item.URL, ethrpc.ClientOptions{
+			HTTPClient:        &http.Client{Transport: transport, Timeout: cfg.RPC.RequestTimeout},
+			RequestsPerSecond: item.MaxRequests,
 		})
 		if err != nil {
 			return RPCBuild{}, fmt.Errorf("configure RPC endpoint %q: %w", item.Name, err)
 		}
-		var caller ethrpc.Caller = client
-		if item.MaxRequests > 0 {
-			limited, err := ethrpc.NewRateClient(client, item.MaxRequests)
-			if err != nil {
-				return RPCBuild{}, fmt.Errorf("rate limit RPC endpoint %q: %w", item.Name, err)
-			}
-			caller = limited
-		}
-		endpoint := ethrpc.Endpoint{Name: item.Name, Client: caller, Purposes: rpcPurposes(item.Purposes)}
+		endpoint := ethrpc.Endpoint{Name: item.Name, Client: client, Purposes: rpcPurposes(item.Purposes)}
 		report, err := ethrpc.ProbeEndpoint(ctx, &endpoint, ethrpc.ProbeOptions{
 			Expected:   &expected,
-			StartBlock: ethrpc.QuantityFromUint64(cfg.Chain.StartBlock),
+			StartBlock: cfg.Chain.StartBlock,
 		})
 		if err != nil {
 			return RPCBuild{}, fmt.Errorf("probe RPC endpoint %q: %w", item.Name, err)
 		}
-		if expected.GenesisHash == "" {
+		if expected.GenesisHash == (common.Hash{}) {
 			expected.GenesisHash = report.GenesisHash
 		}
 		endpoint.Capabilities = report
@@ -95,7 +89,7 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 			if issue == nil {
 				issue = &ethrpc.HistoryUnavailableError{
 					Kind:       ethrpc.HistoryUnavailableResult,
-					StartBlock: ethrpc.QuantityFromUint64(cfg.Chain.StartBlock),
+					StartBlock: cfg.Chain.StartBlock,
 				}
 			}
 			if firstHistoryUnavailable == nil || issue.Kind == ethrpc.HistoryPrunedResult {

@@ -78,8 +78,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   Sepolia transaction and reconciliation gate remains open.
 - P70 is in progress: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
-  capacity guidance. Conformance, security, release CI, long-capacity,
-  documentation, and artifact gates remain open.
+  capacity guidance. P70-T09 has implemented direct reviewed go-ethereum
+  ownership for recognized Ethereum protocol semantics under raw-first RPC,
+  transport, persistence, and public-contract adapters; its focused,
+  PostgreSQL, generation, security, license, Helm, Compose, ordinary, and race
+  gates pass, while Docker image/runtime and aggregate common-gate evidence is
+  blocked on an environment with buildx access. Conformance, security,
+  release CI, long-capacity, documentation, P70-T09 final verification, and
+  artifact gates remain open.
 
 ## Global Release Gates
 

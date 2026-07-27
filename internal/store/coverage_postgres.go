@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string, configuredStart uint64) error {
@@ -101,7 +101,7 @@ func (r *PostgresRepository) Coverage(ctx context.Context, chainID string) (Core
 func (r *PostgresRepository) CommitCanonicalSegment(
 	ctx context.Context,
 	chainID string,
-	bundles []ethrpc.Bundle,
+	bundles []chainbundle.Bundle,
 ) (CoreCoverage, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
@@ -136,7 +136,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && (!existing.Hash.Equal(reference.Hash) || !existing.ParentHash.Equal(reference.ParentHash)) {
+		if exists && (existing.Hash != reference.Hash || existing.ParentHash != reference.ParentHash) {
 			return CoreCoverage{}, fmt.Errorf("%w: height %d already maps to another canonical identity", ErrConflict, reference.Number)
 		}
 		newCanonical[index] = !exists
@@ -146,7 +146,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && !first.ParentHash.Equal(lower.Hash) {
+		if exists && first.ParentHash != lower.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: segment parent does not match lower canonical boundary", ErrConflict)
 		}
 	}
@@ -155,7 +155,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 		if err != nil {
 			return CoreCoverage{}, err
 		}
-		if exists && !upper.ParentHash.Equal(last.Hash) {
+		if exists && upper.ParentHash != last.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: upper canonical boundary does not descend from segment", ErrConflict)
 		}
 	}
@@ -259,7 +259,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err != nil {
 		return CoreCoverage{}, err
 	}
-	if !exists || tip.Number != replacement.Range.End || !tip.Hash.Equal(replacement.Detached[0].Hash) {
+	if !exists || tip.Number != replacement.Range.End || tip.Hash != replacement.Detached[0].Hash {
 		return CoreCoverage{}, fmt.Errorf("%w: replacement range is not the canonical tip", ErrConflict)
 	}
 	for _, detached := range replacement.Detached {

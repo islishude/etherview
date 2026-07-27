@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
@@ -192,7 +193,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 		t.Fatalf("duplicate canonical outbox generation=%d published=%t err=%v", originalOutboxGeneration, originalPublished, err)
 	}
 
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{original}, []ethrpc.Bundle{replacement}, "detach replay fixture")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{original}, []chainbundle.Bundle{replacement}, "detach replay fixture")
 	tokenProcessor, err := enrich.NewPostgresTokenProcessor(db)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +210,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 		Status: "succeeded", Requested: 1, Claimed: 1, Completed: 1,
 	})
 
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{replacement}, []ethrpc.Bundle{original}, "reattach exact old hash")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{original}, "reattach exact old hash")
 	for attempts := 0; attempts < 6; attempts++ {
 		dispatched, err := dispatcher.DispatchOne(ctx)
 		if err != nil || dispatched.State != enrich.OutboxPublished {
@@ -323,9 +324,9 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	}
 	tracePool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "active-abi-create",
-		Client: proxyTraceCaller{
+		Client: newIntegrationRPCClient(t, "debug", &proxyTraceService{
 			block: block, created: testAddress(805),
-		},
+		}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,

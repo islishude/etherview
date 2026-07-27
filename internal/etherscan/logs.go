@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 var topicOperatorPattern = regexp.MustCompile(`^topic([0-3])_([0-3])_opr$`)
@@ -133,7 +133,7 @@ func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, e
 		}
 		placeholder := firstPlaceholder + len(filters)
 		condition := fmt.Sprintf("lower(log.raw->'topics'->>%d) = $%d", index, placeholder)
-		argument := any(strings.ToLower(hash.String()))
+		argument := any(strings.ToLower(hash.Hex()))
 		if index == 0 {
 			condition = fmt.Sprintf("log.topic0 = $%d", placeholder)
 			argument = bytes
@@ -216,77 +216,39 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 		return logEntry{}, err
 	}
 
-	var wireLog ethrpc.Log
-	if err := decodeRawObject(logJSON, &wireLog); err != nil {
+	wireLog, err := decodeStoredLog(
+		logJSON, transactionHash, blockHash, blockNumber, transactionIndex, logIndex,
+	)
+	if err != nil {
 		return logEntry{}, fmt.Errorf("decode log raw JSON: %w", err)
 	}
-	if wireLog.Removed || wireLog.BlockHash == nil || wireLog.TransactionHash == nil || wireLog.BlockNumber == nil || wireLog.LogIndex == nil || wireLog.TransactionIndex == nil {
-		return logEntry{}, errors.New("canonical log raw JSON has removed or null identity fields")
-	}
-	if !wireLog.BlockHash.Equal(blockHash) || !wireLog.TransactionHash.Equal(transactionHash) || !wireLog.Address.Equal(indexedAddress) {
+	if wireLog.Address != indexedAddress {
 		return logEntry{}, errors.New("stored log raw identity does not match indexed row")
 	}
-	wireBlockNumber, err := wireLog.BlockNumber.Big()
-	if err != nil || wireBlockNumber.Cmp(blockNumber) != 0 {
-		return logEntry{}, errors.New("stored log raw block number does not match indexed row")
-	}
-	wireLogIndex, err := wireLog.LogIndex.Uint64()
-	if err != nil || wireLogIndex != uint64(logIndex) {
-		return logEntry{}, errors.New("stored log raw index does not match indexed row")
-	}
-	wireTransactionIndex, err := wireLog.TransactionIndex.Uint64()
-	if err != nil || wireTransactionIndex != uint64(transactionIndex) {
-		return logEntry{}, errors.New("stored log raw transaction index does not match indexed row")
-	}
 
-	var receipt ethrpc.Receipt
-	if err := decodeRawObject(receiptJSON, &receipt); err != nil {
-		return logEntry{}, fmt.Errorf("decode log receipt raw JSON: %w", err)
-	}
-	if !receipt.TransactionHash.Equal(transactionHash) || !receipt.BlockHash.Equal(blockHash) {
-		return logEntry{}, errors.New("stored log receipt identity does not match indexed row")
-	}
-	receiptBlock, err := receipt.BlockNumber.Big()
-	if err != nil || receiptBlock.Cmp(blockNumber) != 0 {
-		return logEntry{}, errors.New("stored log receipt block does not match indexed row")
-	}
-	receiptIndex, err := receipt.TransactionIndex.Uint64()
-	if err != nil || receiptIndex != uint64(transactionIndex) {
-		return logEntry{}, errors.New("stored log receipt index does not match indexed row")
-	}
-	if receipt.GasUsed == nil {
-		return logEntry{}, errors.New("stored log receipt gas used is null")
-	}
-
-	var transaction ethrpc.Transaction
-	if err := decodeRawObject(transactionJSON, &transaction); err != nil {
+	transaction, _, err := decodeStoredTransaction(transactionJSON, blockHash, blockNumber, transactionIndex)
+	if err != nil {
 		return logEntry{}, fmt.Errorf("decode log transaction raw JSON: %w", err)
 	}
-	if !transaction.Hash.Equal(transactionHash) || transaction.BlockHash == nil || !transaction.BlockHash.Equal(blockHash) {
+	if transaction.Hash() != transactionHash {
 		return logEntry{}, errors.New("stored log transaction identity does not match indexed row")
 	}
-	if transaction.BlockNumber == nil || transaction.TransactionIndex == nil {
-		return logEntry{}, errors.New("stored log transaction inclusion fields are null")
-	}
-	transactionBlock, err := transaction.BlockNumber.Big()
-	if err != nil || transactionBlock.Cmp(blockNumber) != 0 {
-		return logEntry{}, errors.New("stored log transaction block does not match indexed row")
-	}
-	indexedTransactionIndex, err := transaction.TransactionIndex.Uint64()
-	if err != nil || indexedTransactionIndex != uint64(transactionIndex) {
-		return logEntry{}, errors.New("stored log transaction index does not match indexed row")
+
+	receipt, err := decodeStoredReceiptWithBlockContext(
+		receiptJSON,
+		blockJSON,
+		transaction,
+		blockHash,
+		blockNumber,
+		transactionIndex,
+	)
+	if err != nil {
+		return logEntry{}, fmt.Errorf("decode log receipt raw JSON: %w", err)
 	}
 
-	var block ethrpc.Block
-	if err := decodeRawObject(blockJSON, &block); err != nil {
+	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
+	if err != nil {
 		return logEntry{}, fmt.Errorf("decode log block raw JSON: %w", err)
-	}
-	if block.Number == nil || block.Hash == nil || !block.Hash.Equal(blockHash) {
-		return logEntry{}, errors.New("stored log block identity does not match indexed row")
-	}
-	indexedBlockNumber, err := block.Number.Big()
-	if err != nil || indexedBlockNumber.Cmp(blockNumber) != 0 {
-		return logEntry{}, errors.New("stored log block number does not match indexed row")
 	}
 
 	address, err := checksumAddress(wireLog.Address)
@@ -294,34 +256,22 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 		return logEntry{}, fmt.Errorf("checksum log address: %w", err)
 	}
 	result := logEntry{
-		Address: address, Topics: make([]string, len(wireLog.Topics)), Data: wireLog.Data.String(),
-		BlockNumber: "0x" + blockNumber.Text(16), BlockHash: strings.ToLower(blockHash.String()),
+		Address: address, Topics: make([]string, len(wireLog.Topics)), Data: hexutil.Encode(wireLog.Data),
+		BlockNumber: "0x" + blockNumber.Text(16), BlockHash: strings.ToLower(blockHash.Hex()),
 		LogIndex:         "0x" + strconv.FormatInt(logIndex, 16),
-		TransactionHash:  strings.ToLower(transactionHash.String()),
+		TransactionHash:  strings.ToLower(transactionHash.Hex()),
 		TransactionIndex: "0x" + strconv.FormatInt(transactionIndex, 16),
 	}
 	for index, topic := range wireLog.Topics {
-		result.Topics[index] = strings.ToLower(topic.String())
+		result.Topics[index] = strings.ToLower(topic.Hex())
 	}
-	if _, err = block.Timestamp.Big(); err != nil {
-		return logEntry{}, fmt.Errorf("decode log block timestamp: %w", err)
+	result.TimeStamp = hexutil.EncodeUint64(uint64(*block.Timestamp))
+	result.GasUsed = hexutil.EncodeUint64(receipt.GasUsed)
+	gasPrice, err := effectiveGasPrice(transaction, receipt)
+	if err != nil {
+		return logEntry{}, err
 	}
-	result.TimeStamp = block.Timestamp.String()
-	if _, err = receipt.GasUsed.Big(); err != nil {
-		return logEntry{}, fmt.Errorf("decode log receipt gas used: %w", err)
-	}
-	result.GasUsed = receipt.GasUsed.String()
-	gasPrice := receipt.EffectiveGasPrice
-	if gasPrice == nil {
-		gasPrice = transaction.GasPrice
-	}
-	if gasPrice == nil {
-		return logEntry{}, errors.New("stored log transaction has no effective gas price")
-	}
-	if _, err = gasPrice.Big(); err != nil {
-		return logEntry{}, fmt.Errorf("decode log gas price: %w", err)
-	}
-	result.GasPrice = gasPrice.String()
+	result.GasPrice = hexutil.EncodeBig(gasPrice)
 	return result, nil
 }
 

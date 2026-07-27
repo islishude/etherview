@@ -44,7 +44,14 @@ container_created=true
 for required_path in \
     LICENSE \
     THIRD_PARTY_NOTICES.md \
-    etherview
+    etherview \
+    licenses/go-ethereum-LGPL-3.0-or-later.txt \
+    licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt \
+    licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
+    licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
+    licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
+    licenses/holiman-bloomfilter-MIT.txt \
+    licenses/libsecp256k1-MIT.txt
 do
     if ! grep -Eq "^${required_path}$" "$temporary_directory/rootfs.txt"; then
         echo "docker-image-check: production image is missing /$required_path" >&2

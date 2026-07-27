@@ -69,8 +69,7 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 
 func TestStatsJournalFailureRollsBackStageTransaction(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "journal-failure", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(701), BlockNumber: 7}
-	raw := []byte(fmt.Sprintf(`{"number":"0x7","hash":%q,"timestamp":"0x64","gasUsed":"0x5208","gasLimit":"0x1c9c380"}`, job.BlockHash.String()))
+	job, raw := statsTestJobAndRaw(t, "journal-failure", 7, 100, nil, nil)
 	journalFailure := errors.New("journal trigger rejected write")
 	var derivedWrites, stageWrites, journalWrites, commits, rollbacks atomic.Int64
 	backend := &fakeSQLBackend{

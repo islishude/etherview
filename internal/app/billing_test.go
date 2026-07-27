@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/islishude/etherview/internal/billing"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/userauth"
 )
@@ -100,7 +100,7 @@ func TestBillingResolverIsControlledOnlyByUserAuthFeature(t *testing.T) {
 
 func TestBillingUserResolverAssociatesActiveAndDisabledUsers(t *testing.T) {
 	t.Parallel()
-	var payer billing.Address
+	var payer common.Address
 	payer[0] = 0xab
 	payer[19] = 0xcd
 	const expectedAddress = "0xab000000000000000000000000000000000000cd"
@@ -129,7 +129,7 @@ func TestBillingUserResolverAssociatesActiveAndDisabledUsers(t *testing.T) {
 
 func TestBillingUserResolverTreatsMissingAsAccountlessAndFailsClosed(t *testing.T) {
 	t.Parallel()
-	var payer billing.Address
+	var payer common.Address
 
 	missing := &stubBillingUserLookup{err: userauth.ErrUserNotFound}
 	userID, found, err := (billingUserResolver{repository: missing}).

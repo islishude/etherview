@@ -11,16 +11,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/query"
-	"golang.org/x/crypto/sha3"
 )
 
 type CanonicalRef struct {
 	Number uint64
-	Hash   ethrpc.Hash
+	Hash   common.Hash
 }
 
 type CapabilityError struct{ Code string }
@@ -69,15 +72,11 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 
 func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference CanonicalRef) (bool, error) {
 	var canonical bool
-	hash, err := reference.Hash.Bytes()
-	if err != nil {
-		return false, err
-	}
-	err = s.DB.QueryRowContext(ctx, `
+	err := s.DB.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM canonical_blocks
 			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-		)`, s.ChainID, fmt.Sprint(reference.Number), hash).Scan(&canonical)
+		)`, s.ChainID, fmt.Sprint(reference.Number), reference.Hash.Bytes()).Scan(&canonical)
 	return canonical, err
 }
 
@@ -130,31 +129,22 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 	if err != nil {
 		return gen.AddressSummary{}, CapabilityError{Code: "endpoint_unavailable"}
 	}
-	selector := map[string]any{"blockHash": reference.Hash.String(), "requireCanonical": true}
-	var balance, nonce ethrpc.Quantity
-	var code ethrpc.Data
-	elements := []ethrpc.BatchElem{
-		{Method: "eth_getBalance", Params: []any{address.String(), selector}, Result: &balance},
-		{Method: "eth_getTransactionCount", Params: []any{address.String(), selector}, Result: &nonce},
-		{Method: "eth_getCode", Params: []any{address.String(), selector}, Result: &code},
+	selector := rpc.BlockNumberOrHashWithHash(reference.Hash, true)
+	var balance, nonce hexutil.Big
+	var code hexutil.Bytes
+	elements := []rpc.BatchElem{
+		{Method: "eth_getBalance", Args: []any{address, selector}, Result: &balance},
+		{Method: "eth_getTransactionCount", Args: []any{address, selector}, Result: &nonce},
+		{Method: "eth_getCode", Args: []any{address, selector}, Result: &code},
 	}
-	if batch, ok := endpoint.Client.(ethrpc.BatchCaller); ok {
-		if err := batch.BatchCall(ctx, elements); err != nil {
+	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
+		r.Pool.ReportFailure(endpoint.Name)
+		return gen.AddressSummary{}, stateUnavailable(err)
+	}
+	for _, element := range elements {
+		if element.Error != nil {
 			r.Pool.ReportFailure(endpoint.Name)
-			return gen.AddressSummary{}, stateUnavailable(err)
-		}
-		for _, element := range elements {
-			if element.Error != nil {
-				r.Pool.ReportFailure(endpoint.Name)
-				return gen.AddressSummary{}, stateUnavailable(element.Error)
-			}
-		}
-	} else {
-		for _, element := range elements {
-			if err := endpoint.Client.Call(ctx, element.Method, element.Params, element.Result); err != nil {
-				r.Pool.ReportFailure(endpoint.Name)
-				return gen.AddressSummary{}, stateUnavailable(err)
-			}
+			return gen.AddressSummary{}, stateUnavailable(element.Error)
 		}
 	}
 	canonical, err := r.Canonical.IsCanonical(ctx, reference)
@@ -173,10 +163,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 	if err != nil {
 		return gen.AddressSummary{}, CapabilityError{Code: "malformed_response"}
 	}
-	if _, err := ethrpc.ParseData(code.String()); err != nil {
-		return gen.AddressSummary{}, CapabilityError{Code: "malformed_response"}
-	}
-	checksummed, err := query.ChecksumAddress(address.String())
+	checksummed, err := query.ChecksumAddress(address.Hex())
 	if err != nil {
 		return gen.AddressSummary{}, err
 	}
@@ -194,7 +181,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		completeness.Metadata = gen.StageStateUnavailable
 	}
 	return gen.AddressSummary{
-		Address: checksummed, AtBlock: strings.ToLower(reference.Hash.String()),
+		Address: checksummed, AtBlock: strings.ToLower(reference.Hash.Hex()),
 		Balance: balanceDecimal, Nonce: nonceDecimal, Type: accountType,
 		CodeHash: codeHash, Completeness: completeness,
 	}, nil
@@ -204,11 +191,8 @@ func stateUnavailable(error) error {
 	return CapabilityError{Code: "rpc_failure"}
 }
 
-func classifyCode(code ethrpc.Data) (gen.AddressSummaryType, *string, error) {
-	bytes, err := code.Bytes()
-	if err != nil {
-		return "", nil, err
-	}
+func classifyCode(code hexutil.Bytes) (gen.AddressSummaryType, *string, error) {
+	bytes := []byte(code)
 	if len(bytes) == 0 {
 		return gen.AddressSummaryTypeEoa, nil, nil
 	}
@@ -216,23 +200,17 @@ func classifyCode(code ethrpc.Data) (gen.AddressSummaryType, *string, error) {
 	if len(bytes) == 23 && bytes[0] == 0xef && bytes[1] == 0x01 && bytes[2] == 0x00 {
 		typeValue = gen.AddressSummaryTypeDelegatedEoa
 	}
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(bytes)
-	hash := ethrpc.DataFromBytes(hasher.Sum(nil)).String()
+	hash := crypto.Keccak256Hash(bytes).Hex()
 	return typeValue, &hash, nil
 }
 
-func decimal(value ethrpc.Quantity) (string, error) {
-	integer, err := value.Big()
-	if err != nil {
-		return "", err
-	}
-	return integer.String(), nil
+func decimal(value hexutil.Big) (string, error) {
+	return value.ToInt().String(), nil
 }
 
-func bytesHash(value []byte) (ethrpc.Hash, error) {
-	if len(value) != 32 {
-		return "", fmt.Errorf("canonical hash has %d bytes, expected 32", len(value))
+func bytesHash(value []byte) (common.Hash, error) {
+	if len(value) != common.HashLength {
+		return common.Hash{}, fmt.Errorf("canonical hash has %d bytes, expected 32", len(value))
 	}
-	return ethrpc.ParseHash(ethrpc.DataFromBytes(value).String())
+	return common.BytesToHash(value), nil
 }

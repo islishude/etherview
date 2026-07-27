@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/sha3"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -107,26 +107,10 @@ func lowerHex(value []byte, size int) (string, error) {
 }
 
 func checksumAddressBytes(address []byte) (string, error) {
-	if len(address) != 20 {
+	if len(address) != common.AddressLength {
 		return "", ErrCorruptData
 	}
-	lower := hex.EncodeToString(address)
-	digest := sha3.NewLegacyKeccak256()
-	_, _ = digest.Write([]byte(lower))
-	hashed := digest.Sum(nil)
-	result := []byte(lower)
-	for index, character := range result {
-		nibble := hashed[index/2]
-		if index%2 == 0 {
-			nibble >>= 4
-		} else {
-			nibble &= 0x0f
-		}
-		if character >= 'a' && character <= 'f' && nibble >= 8 {
-			result[index] -= 'a' - 'A'
-		}
-	}
-	return "0x" + string(result), nil
+	return common.BytesToAddress(address).Hex(), nil
 }
 
 func checksumInputAddress(value string) ([]byte, string, error) {

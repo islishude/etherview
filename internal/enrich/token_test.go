@@ -3,6 +3,8 @@ package enrich
 import (
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 func TestParseERC20AndERC721Transfers(t *testing.T) {
@@ -11,7 +13,7 @@ func TestParseERC20AndERC721Transfers(t *testing.T) {
 	from, to := testAddress(1), testAddress(2)
 	erc20 := ParseTokenLog(TokenLog{
 		Contract: contract,
-		Topics:   []Word{topicTransfer, addressWord(from), addressWord(to)},
+		Topics:   []common.Hash{topicTransfer, addressWord(from), addressWord(to)},
 		Data:     wordBytes(uintWord(500)),
 		LogIndex: 7,
 	})
@@ -20,7 +22,7 @@ func TestParseERC20AndERC721Transfers(t *testing.T) {
 	}
 	erc721 := ParseTokenLog(TokenLog{
 		Contract: contract,
-		Topics:   []Word{topicTransfer, addressWord(Address{}), addressWord(to), uintWord(42)},
+		Topics:   []common.Hash{topicTransfer, addressWord(common.Address{}), addressWord(to), uintWord(42)},
 		LogIndex: 8,
 	})
 	if erc721.Status != TokenParsed || erc721.Events[0].Standard != TokenERC721 || erc721.Events[0].Kind != TokenMint || erc721.Events[0].TokenID != "42" || erc721.Events[0].Amount != "1" {
@@ -31,14 +33,14 @@ func TestParseERC20AndERC721Transfers(t *testing.T) {
 func TestParseERC1155SingleAndBatch(t *testing.T) {
 	t.Parallel()
 	operator, from, to := testAddress(3), testAddress(4), testAddress(5)
-	topics := []Word{topicTransferSingle, addressWord(operator), addressWord(from), addressWord(to)}
+	topics := []common.Hash{topicTransferSingle, addressWord(operator), addressWord(from), addressWord(to)}
 	singleData := append(wordBytes(uintWord(10)), wordBytes(uintWord(3))...)
 	single := ParseTokenLog(TokenLog{Contract: testAddress(9), Topics: topics, Data: singleData, LogIndex: 11})
 	if single.Status != TokenParsed || single.Events[0].Standard != TokenERC1155 || single.Events[0].TokenID != "10" || single.Events[0].Amount != "3" {
 		t.Fatalf("single=%+v", single)
 	}
 
-	batchTopics := append([]Word(nil), topics...)
+	batchTopics := append([]common.Hash(nil), topics...)
 	batchTopics[0] = topicTransferBatch
 	batchData := encodeUintArrayPair([]uint64{10, 11}, []uint64{3, 4})
 	batch := ParseTokenLog(TokenLog{Contract: testAddress(9), Topics: batchTopics, Data: batchData, LogIndex: 12})
@@ -55,7 +57,7 @@ func TestParseERC1155SingleAndBatch(t *testing.T) {
 func TestParseERC1155BatchUsesArrayLimitNotArgumentLimit(t *testing.T) {
 	t.Parallel()
 	operator, from, to := testAddress(3), testAddress(4), testAddress(5)
-	topics := []Word{topicTransferBatch, addressWord(operator), addressWord(from), addressWord(to)}
+	topics := []common.Hash{topicTransferBatch, addressWord(operator), addressWord(from), addressWord(to)}
 	values := make([]uint64, 257)
 	for index := range values {
 		values[index] = uint64(index + 1)
@@ -78,19 +80,19 @@ func TestParseERC1155BatchMintAndBurn(t *testing.T) {
 	data := encodeUintArrayPair([]uint64{10, 11}, []uint64{3, 4})
 	tests := []struct {
 		name string
-		from Address
-		to   Address
+		from common.Address
+		to   common.Address
 		kind TokenEventKind
 	}{
-		{name: "batch mint", from: Address{}, to: holder, kind: TokenMint},
-		{name: "batch burn", from: holder, to: Address{}, kind: TokenBurn},
+		{name: "batch mint", from: common.Address{}, to: holder, kind: TokenMint},
+		{name: "batch burn", from: holder, to: common.Address{}, kind: TokenBurn},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			result := ParseTokenLog(TokenLog{
 				Contract: testAddress(9),
-				Topics: []Word{
+				Topics: []common.Hash{
 					topicTransferBatch, addressWord(operator), addressWord(test.from), addressWord(test.to),
 				},
 				Data: data, LogIndex: 12,
@@ -110,7 +112,7 @@ func TestParseERC1155BatchMintAndBurn(t *testing.T) {
 func TestTokenMalformedKnownEventIsNotUnknownOrPartial(t *testing.T) {
 	t.Parallel()
 	result := ParseTokenLog(TokenLog{
-		Topics: []Word{topicTransfer, addressWord(testAddress(1)), addressWord(testAddress(2))},
+		Topics: []common.Hash{topicTransfer, addressWord(testAddress(1)), addressWord(testAddress(2))},
 		Data:   []byte{1},
 	})
 	if result.Status != TokenMalformed || len(result.Events) != 0 {
@@ -118,7 +120,7 @@ func TestTokenMalformedKnownEventIsNotUnknownOrPartial(t *testing.T) {
 	}
 	invalidBool := uintWord(2)
 	result = ParseTokenLog(TokenLog{
-		Topics: []Word{topicApprovalForAll, addressWord(testAddress(1)), addressWord(testAddress(2))},
+		Topics: []common.Hash{topicApprovalForAll, addressWord(testAddress(1)), addressWord(testAddress(2))},
 		Data:   wordBytes(invalidBool),
 	})
 	if result.Status != TokenMalformed {
@@ -133,9 +135,9 @@ func FuzzParseTokenLogDoesNotPanic(f *testing.F) {
 		if len(topicBytes) > 128 || len(data) > 2048 {
 			t.Skip()
 		}
-		var topic Word
+		var topic common.Hash
 		copy(topic[:], topicBytes)
-		_ = ParseTokenLog(TokenLog{Topics: []Word{topic}, Data: data})
+		_ = ParseTokenLog(TokenLog{Topics: []common.Hash{topic}, Data: data})
 	})
 }
 
@@ -153,7 +155,7 @@ func encodeUintArrayPair(left, right []uint64) []byte {
 	return result
 }
 
-func wordBytes(word Word) []byte { return append([]byte(nil), word[:]...) }
+func wordBytes(word common.Hash) []byte { return append([]byte(nil), word[:]...) }
 
 func selectorBytes(signature string) []byte {
 	selector := SignatureSelector(signature)

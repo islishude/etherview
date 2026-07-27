@@ -3,77 +3,113 @@ package x402testnet
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
+	"math/big"
 	"net/http"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 const testBlockHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 type fakeSettlementChain struct {
-	chainIDResult     string
-	transactionResult *chainTransaction
-	receiptResult     *chainReceipt
-	chainIDErr        error
-	transactionErr    error
-	receiptErr        error
-	chainIDCalls      int
-	transactionCalls  int
-	receiptCalls      int
+	chainIDResult      *big.Int
+	transactionResult  *types.Transaction
+	transactionPending bool
+	receiptResult      *types.Receipt
+	headerResult       *types.Header
+	includedResult     *types.Transaction
+	chainIDErr         error
+	transactionErr     error
+	receiptErr         error
+	headerErr          error
+	includedErr        error
+	chainIDCalls       int
+	transactionCalls   int
+	receiptCalls       int
+	headerCalls        int
+	includedCalls      int
 }
 
 func (chain *fakeSettlementChain) chainID(
 	context.Context,
-) (string, error) {
+) (*big.Int, error) {
 	chain.chainIDCalls++
 	return chain.chainIDResult, chain.chainIDErr
 }
 
 func (chain *fakeSettlementChain) transaction(
 	context.Context,
-	string,
-) (*chainTransaction, error) {
+	common.Hash,
+) (*types.Transaction, bool, error) {
 	chain.transactionCalls++
-	return chain.transactionResult, chain.transactionErr
+	return chain.transactionResult,
+		chain.transactionPending,
+		chain.transactionErr
 }
 
 func (chain *fakeSettlementChain) receipt(
 	context.Context,
-	string,
-) (*chainReceipt, error) {
+	common.Hash,
+) (*types.Receipt, error) {
 	chain.receiptCalls++
 	return chain.receiptResult, chain.receiptErr
+}
+
+func (chain *fakeSettlementChain) header(
+	context.Context,
+	common.Hash,
+) (*types.Header, error) {
+	chain.headerCalls++
+	return chain.headerResult, chain.headerErr
+}
+
+func (chain *fakeSettlementChain) includedTransaction(
+	context.Context,
+	common.Hash,
+	uint,
+) (*types.Transaction, error) {
+	chain.includedCalls++
+	return chain.includedResult, chain.includedErr
 }
 
 func TestCheckChainIDRequiresBaseSepolia(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
-		result   string
+		result   *big.Int
 		expected uint64
 		rpcErr   error
 		wantCode string
 	}{
 		{
-			name: "base sepolia", result: "0x14a34",
+			name: "base sepolia", result: new(big.Int).SetUint64(
+				baseSepoliaChainID,
+			),
 			expected: baseSepoliaChainID,
 		},
 		{
-			name: "wrong chain", result: "0x1",
+			name: "wrong chain", result: big.NewInt(1),
 			expected: baseSepoliaChainID, wantCode: "chain_id_mismatch",
 		},
 		{
-			name: "non canonical response", result: "0x014a34",
+			name: "missing response", result: nil,
 			expected: baseSepoliaChainID, wantCode: "chain_response_invalid",
 		},
 		{
-			name: "uppercase response", result: "0xA",
+			name: "negative response", result: big.NewInt(-1),
 			expected: baseSepoliaChainID, wantCode: "chain_response_invalid",
 		},
 		{
-			name: "rpc secret is redacted", result: "0x14a34",
+			name:     "oversized response",
+			result:   new(big.Int).Lsh(big.NewInt(1), 65),
+			expected: baseSepoliaChainID, wantCode: "chain_response_invalid",
+		},
+		{
+			name:     "rpc secret is redacted",
+			result:   new(big.Int).SetUint64(baseSepoliaChainID),
 			expected: baseSepoliaChainID,
 			rpcErr:   errors.New("https://secret@rpc.invalid/token"),
 			wantCode: "chain_unavailable",
@@ -99,60 +135,46 @@ func TestCheckChainIDRequiresBaseSepolia(t *testing.T) {
 	}
 }
 
-func TestRPCWireHexRequiresCanonicalLowercase(t *testing.T) {
+func TestGethTransactionRejectsUnsupportedType(t *testing.T) {
 	t.Parallel()
-	if quantity, ok := parseHexQuantity("0xa"); !ok ||
-		quantity.Uint64() != 10 {
-		t.Fatal("canonical lowercase quantity was rejected")
-	}
-	if _, ok := parseHexQuantity("0xA"); ok {
-		t.Fatal("uppercase quantity was accepted")
-	}
-	if _, ok := parseTransactionHash(
-		"0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-	); ok {
-		t.Fatal("uppercase transaction hash was accepted")
-	}
-	if _, ok := parseRPCAddress(
-		"0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-	); ok {
-		t.Fatal("uppercase RPC address was accepted")
-	}
-	if _, ok := decodeFixedHex(
-		"0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-		32,
-	); ok {
-		t.Fatal("uppercase RPC data word was accepted")
+	var transaction types.Transaction
+	err := transaction.UnmarshalJSON([]byte(`{"type":"0x7f"}`))
+	if !errors.Is(err, types.ErrTxTypeNotSupported) {
+		t.Fatalf("UnmarshalJSON() error = %v", err)
 	}
 }
 
 func TestVerifyChainAcceptsSuccessfulReceiptAndAggregateTransfers(t *testing.T) {
 	t.Parallel()
-	expected := validChainExpectation(t)
 	chain := validFakeChain()
-	chain.receiptResult.Logs = []chainLog{
-		transferLog("400", testPayer, testRecipient),
-		transferLog("600", testPayer, testRecipient),
-		transferLog("7", testRecipient, testPayer),
+	expected := validChainExpectation(t, chain.transactionResult)
+	chain.receiptResult.Logs = []*types.Log{
+		transferLog("400", testPayer, testRecipient, expected.transactionHash),
+		transferLog("600", testPayer, testRecipient, expected.transactionHash),
+		transferLog("7", testRecipient, testPayer, expected.transactionHash),
 	}
 	evidence, err := verifyChain(context.Background(), chain, expected)
 	if err != nil {
 		t.Fatalf("verifyChain() error = %v", err)
 	}
-	if evidence.TransactionHash != testTxHash ||
-		evidence.BlockHash != testBlockHash ||
+	if evidence.TransactionHash != canonicalHash(expected.transactionHash) ||
+		evidence.BlockHash != canonicalHash(chain.headerResult.Hash()) ||
 		evidence.BlockNumber != "16" ||
 		evidence.TransferCount != 2 {
 		t.Fatalf("unexpected evidence: %+v", evidence)
 	}
 	if chain.chainIDCalls != 1 ||
 		chain.transactionCalls != 1 ||
-		chain.receiptCalls != 1 {
+		chain.receiptCalls != 1 ||
+		chain.headerCalls != 1 ||
+		chain.includedCalls != 1 {
 		t.Fatalf(
-			"unexpected calls: chain=%d tx=%d receipt=%d",
+			"unexpected calls: chain=%d tx=%d receipt=%d header=%d included=%d",
 			chain.chainIDCalls,
 			chain.transactionCalls,
 			chain.receiptCalls,
+			chain.headerCalls,
+			chain.includedCalls,
 		)
 	}
 }
@@ -160,96 +182,214 @@ func TestVerifyChainAcceptsSuccessfulReceiptAndAggregateTransfers(t *testing.T) 
 func TestVerifyChainRejectsFailedReceiptAndTransferMismatch(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		mutate   func(*fakeSettlementChain)
-		wantCode string
+		name             string
+		mutate           func(*testing.T, *fakeSettlementChain)
+		alignTransaction bool
+		wantCode         string
 	}{
 		{
 			name: "failed receipt",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.receiptResult.Status = "0x0"
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Status = types.ReceiptStatusFailed
 			},
 			wantCode: "chain_receipt_failed",
 		},
 		{
+			name: "invalid receipt status",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Status = 2
+			},
+			wantCode: "chain_response_invalid",
+		},
+		{
 			name: "amount mismatch",
-			mutate: func(chain *fakeSettlementChain) {
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
 				chain.receiptResult.Logs[0].Data = dataWord("999")
 			},
 			wantCode: "chain_transfer_mismatch",
 		},
 		{
 			name: "recipient mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.receiptResult.Logs[0].Topics[2] = addressTopic(testPayer)
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Logs[0].Topics[2] =
+					addressTopic(testPayer)
 			},
 			wantCode: "chain_transfer_mismatch",
 		},
 		{
 			name: "transaction mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.transactionResult.Hash = testBlockHash
-			},
-			wantCode: "chain_transaction_mismatch",
-		},
-		{
-			name: "settlement target mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				wrong := testRecipient
-				chain.transactionResult.To = &wrong
-			},
-			wantCode: "chain_transaction_mismatch",
-		},
-		{
-			name: "settlement value mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.transactionResult.Value = "0x1"
-			},
-			wantCode: "chain_transaction_mismatch",
-		},
-		{
-			name: "settlement calldata mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				input, ok := decodeVariableRPCData(
-					chain.transactionResult.Input,
-					maxSettlementInputBytes,
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testAsset),
+					new(big.Int),
+					settlementInput(),
+					baseSepoliaChainID,
+					2,
 				)
-				if !ok {
-					t.Fatal("decode test calldata")
-				}
-				input[4] ^= 0xff
-				chain.transactionResult.Input =
-					"0x" + hex.EncodeToString(input)
 			},
 			wantCode: "chain_transaction_mismatch",
 		},
 		{
-			name: "receipt block mismatch",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.receiptResult.BlockNumber = "0x11"
-			},
-			wantCode: "chain_receipt_mismatch",
-		},
-		{
-			name: "pending transaction",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.transactionResult.BlockHash = nil
-			},
-			wantCode: "chain_transaction_pending",
-		},
-		{
-			name: "uppercase log address",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.receiptResult.Logs[0].Address =
-					"0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+			name: "unsupported transaction type response",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionErr = normalizeChainRPCError(
+					types.ErrTxTypeNotSupported,
+				)
 			},
 			wantCode: "chain_response_invalid",
 		},
 		{
-			name: "uppercase log topic",
-			mutate: func(chain *fakeSettlementChain) {
-				chain.receiptResult.Logs[0].Topics[0] =
-					"0xDDF252AD1BE2C89B69C2B068FC378DAA952BA7F163C4A11628F55A4DF523B3EF"
+			name: "settlement target mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testRecipient),
+					new(big.Int),
+					settlementInput(),
+					baseSepoliaChainID,
+					1,
+				)
+			},
+			alignTransaction: true,
+			wantCode:         "chain_transaction_mismatch",
+		},
+		{
+			name: "settlement value mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testAsset),
+					big.NewInt(1),
+					settlementInput(),
+					baseSepoliaChainID,
+					1,
+				)
+			},
+			alignTransaction: true,
+			wantCode:         "chain_transaction_mismatch",
+		},
+		{
+			name: "settlement calldata mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				input := chain.transactionResult.Data()
+				input[4] ^= 0xff
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testAsset),
+					new(big.Int),
+					input,
+					baseSepoliaChainID,
+					1,
+				)
+			},
+			alignTransaction: true,
+			wantCode:         "chain_transaction_mismatch",
+		},
+		{
+			name: "settlement calldata oversized",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testAsset),
+					new(big.Int),
+					make([]byte, maxSettlementInputBytes+1),
+					baseSepoliaChainID,
+					1,
+				)
+			},
+			alignTransaction: true,
+			wantCode:         "chain_transaction_mismatch",
+		},
+		{
+			name: "transaction chain mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionResult = testTransaction(
+					common.HexToAddress(testAsset),
+					new(big.Int),
+					settlementInput(),
+					1,
+					1,
+				)
+			},
+			alignTransaction: true,
+			wantCode:         "chain_transaction_mismatch",
+		},
+		{
+			name: "receipt block number missing",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.BlockNumber = nil
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "receipt block mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.BlockNumber = big.NewInt(17)
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "receipt hash mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.TxHash =
+					common.HexToHash(testBlockHash)
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "header hash mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.headerResult = &types.Header{
+					Number: big.NewInt(16),
+					Time:   1,
+				}
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "included transaction mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.includedResult = testTransaction(
+					common.HexToAddress(testAsset),
+					new(big.Int),
+					settlementInput(),
+					baseSepoliaChainID,
+					2,
+				)
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "receipt type mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Type = types.LegacyTxType
+			},
+			wantCode: "chain_receipt_mismatch",
+		},
+		{
+			name: "malformed receipt response",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptErr = normalizeChainRPCError(
+					errors.New("missing required receipt field"),
+				)
+			},
+			wantCode: "chain_response_invalid",
+		},
+		{
+			name: "pending transaction",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.transactionPending = true
+			},
+			wantCode: "chain_transaction_pending",
+		},
+		{
+			name: "nil log",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Logs[0] = nil
+			},
+			wantCode: "chain_response_invalid",
+		},
+		{
+			name: "log block mismatch",
+			mutate: func(_ *testing.T, chain *fakeSettlementChain) {
+				chain.receiptResult.Logs[0].BlockHash =
+					common.HexToHash(testTxHash)
 			},
 			wantCode: "chain_response_invalid",
 		},
@@ -259,11 +399,15 @@ func TestVerifyChainRejectsFailedReceiptAndTransferMismatch(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			chain := validFakeChain()
-			test.mutate(chain)
+			expected := validChainExpectation(t, chain.transactionResult)
+			test.mutate(t, chain)
+			if test.alignTransaction {
+				alignExpectedTransaction(&expected, chain)
+			}
 			_, err := verifyChain(
 				context.Background(),
 				chain,
-				validChainExpectation(t),
+				expected,
 			)
 			if got := ErrorCode(err); got != test.wantCode {
 				t.Fatalf("ErrorCode() = %q, want %q", got, test.wantCode)
@@ -272,14 +416,32 @@ func TestVerifyChainRejectsFailedReceiptAndTransferMismatch(t *testing.T) {
 	}
 }
 
+func alignExpectedTransaction(
+	expected *chainExpectation,
+	chain *fakeSettlementChain,
+) {
+	transactionHash := chain.transactionResult.Hash()
+	expected.transactionHash = transactionHash
+	chain.receiptResult.TxHash = transactionHash
+	chain.includedResult = chain.transactionResult
+	for _, log := range chain.receiptResult.Logs {
+		if log != nil {
+			log.TxHash = transactionHash
+		}
+	}
+}
+
 func TestVerifyChainRejectsMalformedTransferLog(t *testing.T) {
 	t.Parallel()
 	chain := validFakeChain()
-	chain.receiptResult.Logs[0].Topics[1] = "0x01"
+	expected := validChainExpectation(t, chain.transactionResult)
+	topic := addressTopic(testPayer)
+	topic[0] = 1
+	chain.receiptResult.Logs[0].Topics[1] = topic
 	_, err := verifyChain(
 		context.Background(),
 		chain,
-		validChainExpectation(t),
+		expected,
 	)
 	if got := ErrorCode(err); got != "chain_response_invalid" {
 		t.Fatalf("ErrorCode() = %q", got)
@@ -331,14 +493,22 @@ func TestChainHTTPClientIsRestricted(t *testing.T) {
 	}
 }
 
-func validChainExpectation(t *testing.T) chainExpectation {
+func validChainExpectation(
+	t *testing.T,
+	transaction *types.Transaction,
+) chainExpectation {
 	t.Helper()
 	callData := testSettlementCallData()
 	result, ok := parseChainExpectation(ChainOptions{
 		RPCURL:  "https://rpc.example/v1/token",
-		ChainID: baseSepoliaChainID, TransactionHash: testTxHash,
-		Asset: testAsset, AmountAtomic: "1000",
-		Recipient: testRecipient, Payer: testPayer,
+		ChainID: baseSepoliaChainID,
+		TransactionHash: canonicalHash(
+			transaction.Hash(),
+		),
+		Asset:                testAsset,
+		AmountAtomic:         "1000",
+		Recipient:            testRecipient,
+		Payer:                testPayer,
 		CallDataPrefixBytes:  len(callData),
 		CallDataPrefixSHA256: sha256.Sum256(callData),
 	})
@@ -349,26 +519,67 @@ func validChainExpectation(t *testing.T) chainExpectation {
 }
 
 func validFakeChain() *fakeSettlementChain {
-	blockHash := testBlockHash
-	blockNumber := "0x10"
-	to := testAsset
-	input := append(testSettlementCallData(), 0xde, 0xad, 0xbe, 0xef)
+	transaction := testTransaction(
+		common.HexToAddress(testAsset),
+		new(big.Int),
+		settlementInput(),
+		baseSepoliaChainID,
+		1,
+	)
+	transactionHash := transaction.Hash()
+	header := testHeader()
+	blockHash := header.Hash()
 	return &fakeSettlementChain{
-		chainIDResult: "0x14a34",
-		transactionResult: &chainTransaction{
-			Hash: testTxHash, BlockHash: &blockHash,
-			BlockNumber: &blockNumber, ChainID: "0x14a34",
-			To: &to, Value: "0x0",
-			Input: "0x" + hex.EncodeToString(input),
-		},
-		receiptResult: &chainReceipt{
-			TransactionHash: testTxHash, BlockHash: testBlockHash,
-			BlockNumber: "0x10", Status: "0x1",
-			Logs: []chainLog{
-				transferLog("1000", testPayer, testRecipient),
+		chainIDResult:     new(big.Int).SetUint64(baseSepoliaChainID),
+		transactionResult: transaction,
+		headerResult:      header,
+		includedResult:    transaction,
+		receiptResult: &types.Receipt{
+			Type:        transaction.Type(),
+			Status:      types.ReceiptStatusSuccessful,
+			TxHash:      transactionHash,
+			BlockHash:   blockHash,
+			BlockNumber: big.NewInt(16),
+			Logs: []*types.Log{
+				transferLog(
+					"1000",
+					testPayer,
+					testRecipient,
+					transactionHash,
+				),
 			},
 		},
 	}
+}
+
+func testTransaction(
+	to common.Address,
+	value *big.Int,
+	input []byte,
+	chainID uint64,
+	nonce uint64,
+) *types.Transaction {
+	return types.NewTx(&types.DynamicFeeTx{
+		ChainID:   new(big.Int).SetUint64(chainID),
+		Nonce:     nonce,
+		GasTipCap: big.NewInt(1),
+		GasFeeCap: big.NewInt(2),
+		Gas:       500_000,
+		To:        &to,
+		Value:     new(big.Int).Set(value),
+		Data:      append([]byte(nil), input...),
+	})
+}
+
+func settlementInput() []byte {
+	return append(
+		testSettlementCallData(),
+		0xde, 0xad, 0xbe, 0xef,
+	)
+}
+
+func testHeader() *types.Header {
+	return &types.Header{Number: big.NewInt(16)}
 }
 
 func testSettlementCallData() []byte {
@@ -379,28 +590,35 @@ func testSettlementCallData() []byte {
 	return result
 }
 
-func transferLog(amount, from, to string) chainLog {
-	return chainLog{
-		Address: testAsset,
-		Topics: []string{
+func transferLog(
+	amount string,
+	from string,
+	to string,
+	transactionHash common.Hash,
+) *types.Log {
+	return &types.Log{
+		Address: common.HexToAddress(testAsset),
+		Topics: []common.Hash{
 			erc20TransferTopic,
 			addressTopic(from),
 			addressTopic(to),
 		},
-		Data:      dataWord(amount),
-		BlockHash: testBlockHash, BlockNumber: "0x10",
-		TransactionHash: testTxHash,
+		Data:        dataWord(amount),
+		BlockHash:   testHeader().Hash(),
+		BlockNumber: 16,
+		TxHash:      transactionHash,
 	}
 }
 
-func addressTopic(address string) string {
-	return "0x000000000000000000000000" + address[2:]
+func addressTopic(address string) common.Hash {
+	return common.BytesToHash(common.HexToAddress(address).Bytes())
 }
 
-func dataWord(amount string) string {
+func dataWord(amount string) []byte {
 	value, ok := parseAmount(amount)
 	if !ok {
 		panic("invalid test amount")
 	}
-	return fmt.Sprintf("0x%064x", value)
+	result := make([]byte, common.HashLength)
+	return value.FillBytes(result)
 }

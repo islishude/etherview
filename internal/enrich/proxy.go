@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type ProxyKind string
@@ -27,7 +29,7 @@ var (
 )
 
 type MinimalProxy struct {
-	Implementation Address
+	Implementation common.Address
 	Exact          bool
 	TrailingData   []byte
 }
@@ -35,38 +37,37 @@ type MinimalProxy struct {
 // DetectEIP1167 recognizes the canonical 45-byte runtime and clones that append
 // immutable arguments. Prefix-only lookalikes are rejected.
 func DetectEIP1167(code []byte) (MinimalProxy, bool) {
-	minimum := len(minimalProxyPrefix) + len(Address{}) + len(minimalProxySuffix)
+	minimum := len(minimalProxyPrefix) + common.AddressLength + len(minimalProxySuffix)
 	if len(code) < minimum || !bytes.Equal(code[:len(minimalProxyPrefix)], minimalProxyPrefix) {
 		return MinimalProxy{}, false
 	}
 	addressStart := len(minimalProxyPrefix)
-	suffixStart := addressStart + len(Address{})
+	suffixStart := addressStart + common.AddressLength
 	if !bytes.Equal(code[suffixStart:suffixStart+len(minimalProxySuffix)], minimalProxySuffix) {
 		return MinimalProxy{}, false
 	}
-	var implementation Address
-	copy(implementation[:], code[addressStart:suffixStart])
+	implementation := common.BytesToAddress(code[addressStart:suffixStart])
 	trailing := append([]byte(nil), code[suffixStart+len(minimalProxySuffix):]...)
 	return MinimalProxy{Implementation: implementation, Exact: len(trailing) == 0, TrailingData: trailing}, true
 }
 
 type ProxyReference struct {
 	Kind       ProxyKind
-	Target     Address
-	Slot       Word
+	Target     common.Address
+	Slot       common.Hash
 	Confidence Confidence
 }
 
 // ParseEIP1967Storage returns independent implementation and beacon evidence.
 // A zero storage word means that evidence is absent.
-func ParseEIP1967Storage(implementationWord, beaconWord Word) ([]ProxyReference, error) {
+func ParseEIP1967Storage(implementationWord, beaconWord common.Hash) ([]ProxyReference, error) {
 	var references []ProxyReference
-	if !implementationWord.IsZero() {
+	if implementationWord != (common.Hash{}) {
 		implementation, err := AddressFromWord(implementationWord)
 		if err != nil {
 			return nil, fmt.Errorf("implementation slot: %w", err)
 		}
-		if implementation != (Address{}) {
+		if implementation != (common.Address{}) {
 			references = append(references, ProxyReference{
 				Kind:       ProxyEIP1967,
 				Target:     implementation,
@@ -75,12 +76,12 @@ func ParseEIP1967Storage(implementationWord, beaconWord Word) ([]ProxyReference,
 			})
 		}
 	}
-	if !beaconWord.IsZero() {
+	if beaconWord != (common.Hash{}) {
 		beacon, err := AddressFromWord(beaconWord)
 		if err != nil {
 			return nil, fmt.Errorf("beacon slot: %w", err)
 		}
-		if beacon != (Address{}) {
+		if beacon != (common.Address{}) {
 			references = append(references, ProxyReference{
 				Kind:       ProxyBeacon,
 				Target:     beacon,
@@ -93,40 +94,40 @@ func ParseEIP1967Storage(implementationWord, beaconWord Word) ([]ProxyReference,
 }
 
 // ParseBeaconImplementation decodes the standard implementation() return.
-func ParseBeaconImplementation(data []byte) (Address, error) {
+func ParseBeaconImplementation(data []byte) (common.Address, error) {
 	if len(data) != 32 {
-		return Address{}, fmt.Errorf("beacon implementation response is %d bytes; want 32", len(data))
+		return common.Address{}, fmt.Errorf("beacon implementation response is %d bytes; want 32", len(data))
 	}
 	word, _ := WordFromBytes(data)
 	address, err := AddressFromWord(word)
 	if err != nil {
-		return Address{}, err
+		return common.Address{}, err
 	}
-	if address == (Address{}) {
-		return Address{}, errors.New("beacon returned the zero implementation address")
+	if address == (common.Address{}) {
+		return common.Address{}, errors.New("beacon returned the zero implementation address")
 	}
 	return address, nil
 }
 
 type ProxyObservation struct {
 	BlockNumber uint64
-	Proxy       Address
-	CodeHash    Word
+	Proxy       common.Address
+	CodeHash    common.Hash
 	Reference   ProxyReference
 }
 
 type ProxyVersion struct {
 	FromBlock    uint64
 	ThroughBlock *uint64
-	Proxy        Address
-	CodeHash     Word
+	Proxy        common.Address
+	CodeHash     common.Hash
 	Reference    ProxyReference
 }
 
 // ApplyProxyObservation updates an append-only block-range timeline. Repeating
 // the same observation is idempotent; a changed target closes the prior range.
 func ApplyProxyObservation(versions []ProxyVersion, observation ProxyObservation) ([]ProxyVersion, bool, error) {
-	if observation.Proxy == (Address{}) || observation.CodeHash.IsZero() || observation.Reference.Target == (Address{}) {
+	if observation.Proxy == (common.Address{}) || observation.CodeHash == (common.Hash{}) || observation.Reference.Target == (common.Address{}) {
 		return nil, false, errors.New("proxy observation is missing proxy, code hash, or target")
 	}
 	if observation.Reference.Kind == "" {
@@ -169,7 +170,7 @@ func ApplyProxyObservation(versions []ProxyVersion, observation ProxyObservation
 	return updated, true, nil
 }
 
-func mustWord(value string) Word {
+func mustWord(value string) common.Hash {
 	decoded := mustHex(value)
 	word, err := WordFromBytes(decoded)
 	if err != nil {

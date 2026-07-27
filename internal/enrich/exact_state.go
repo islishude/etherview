@@ -2,10 +2,12 @@ package enrich
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -20,16 +22,26 @@ func exactStateRPCError(ctx context.Context, method string, err error) error {
 	if ethrpc.IsMethodNotFound(err) {
 		return Unavailable(fmt.Errorf("%s with an EIP-1898 block hash is unavailable", method))
 	}
-	if rpcError, ok := errors.AsType[*ethrpc.RPCError](err); ok {
-		message := strings.ToLower(rpcError.Message)
-		if rpcError.Code == -32602 || strings.Contains(message, "eip-1898") ||
+	var typeError *json.UnmarshalTypeError
+	if errors.As(err, &typeError) {
+		if method == "eth_getCode" {
+			return Permanent(errors.New("eth_getCode returned invalid bytecode"))
+		}
+		return Permanent(fmt.Errorf("%s returned malformed RPC data", method))
+	}
+	if rpcError, ok := errors.AsType[rpc.Error](err); ok {
+		message := strings.ToLower(rpcError.Error())
+		if rpcError.ErrorCode() == -32602 || strings.Contains(message, "eip-1898") ||
 			strings.Contains(message, "block hash") || strings.Contains(message, "missing trie") ||
 			strings.Contains(message, "historical state") || strings.Contains(message, "pruned") ||
 			strings.Contains(message, "header not found") || strings.Contains(message, "state is not available") {
 			return Unavailable(fmt.Errorf("%s cannot serve the exact block-hash state", method))
 		}
 	}
-	return exactStateRetryableError{method: method, cause: err}
+	return exactStateRetryableError{
+		method: method,
+		cause:  ethrpc.SanitizeError(err),
+	}
 }
 
 type exactStateRetryableError struct {

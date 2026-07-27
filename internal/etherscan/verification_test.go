@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/verify"
-	"golang.org/x/crypto/sha3"
 )
 
 type fakeVerificationService struct {
@@ -316,7 +316,5 @@ func TestProxyVerificationRemainsExplicitlyUnavailable(t *testing.T) {
 }
 
 func testRuntimeCodeHash(code []byte) []byte {
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(code)
-	return hasher.Sum(nil)
+	return crypto.Keccak256(code)
 }

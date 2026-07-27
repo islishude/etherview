@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -75,7 +76,7 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	}
 	assertBillingEventCount(t, db, paymentID, 1)
 
-	var payer Address
+	var payer common.Address
 	payer[19] = 9
 	verifiedAt := input.ObservedAt.Add(time.Second)
 	verified, err := ledger.MarkVerified(t.Context(), VerifiedInput{
@@ -122,7 +123,7 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	var prematureHash TransactionHash
+	var prematureHash common.Hash
 	prematureHash[31] = 6
 	if _, err := ledger.ReconcileSettled(
 		t.Context(), paymentID, prematureHash, verifiedAt.Add(2500*time.Millisecond),
@@ -156,7 +157,7 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 		replayed.Owner != "" {
 		t.Fatalf("unknown replay=%+v error=%v", replayed, err)
 	}
-	var transactionHash TransactionHash
+	var transactionHash common.Hash
 	transactionHash[31] = 7
 	settled, err := ledger.ReconcileSettled(
 		t.Context(), paymentID, transactionHash, verifiedAt.Add(4*time.Second),
@@ -215,7 +216,7 @@ func TestPostgresBillingCrashWindowReconciliationIsStaleAndFenced(t *testing.T) 
 		t, ledger, 31, nil,
 	)
 	freshAt := failedSettlingAt.Add(SettlementCrashReconcileDelay - time.Nanosecond)
-	var transactionHash TransactionHash
+	var transactionHash common.Hash
 	transactionHash[31] = 0xa1
 	if _, err := ledger.ReconcileSettled(
 		t.Context(), failedReservation.Payment.ID, transactionHash, freshAt,
@@ -347,7 +348,7 @@ func TestPostgresBillingListsPaginationFiltersAndSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID := uuid.NewString()
-	var userAddress Address
+	var userAddress common.Address
 	userAddress[19] = testReserveInput().Fingerprint[0]
 	insertBillingUser(t, db, userID, userAddress)
 
@@ -374,7 +375,7 @@ func TestPostgresBillingListsPaginationFiltersAndSummary(t *testing.T) {
 			created = append(created, payment)
 			continue
 		}
-		var hash TransactionHash
+		var hash common.Hash
 		hash[31] = byte(index + 1)
 		payment, transitionErr := ledger.MarkSettled(
 			t.Context(), reservation.Payment.ID, reservation.Owner, hash,
@@ -469,7 +470,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	}
 	verify := func(
 		payment reservedPayment,
-		payer Address,
+		payer common.Address,
 		userID *string,
 	) (Payment, error) {
 		return ledger.MarkVerified(t.Context(), VerifiedInput{
@@ -482,7 +483,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	}
 
 	activeID, disabledID := uuid.NewString(), uuid.NewString()
-	var activeAddress, disabledAddress Address
+	var activeAddress, disabledAddress common.Address
 	activeAddress[19], disabledAddress[19] = 0xa1, 0xa2
 	insertBillingUserRecord(
 		t, db, activeID, 11155111, activeAddress, "active",
@@ -503,7 +504,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 		t.Fatalf("disabled attribution=%+v error=%v", disabledPayment, err)
 	}
 
-	var accountlessPayer Address
+	var accountlessPayer common.Address
 	accountlessPayer[19] = 0xa3
 	accountless, err := verify(reserve(72), accountlessPayer, nil)
 	if err != nil || accountless.UserID != nil ||
@@ -512,7 +513,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	}
 
 	mismatchedID := uuid.NewString()
-	var mismatchedUserAddress, actualPayer Address
+	var mismatchedUserAddress, actualPayer common.Address
 	mismatchedUserAddress[19], actualPayer[19] = 0xa4, 0xa5
 	insertBillingUserRecord(
 		t, db, mismatchedID, 11155111, mismatchedUserAddress, "active",
@@ -532,7 +533,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	}
 
 	crossChainID := uuid.NewString()
-	var crossChainPayer Address
+	var crossChainPayer common.Address
 	crossChainPayer[19] = 0xa6
 	insertBillingUserRecord(
 		t, db, crossChainID, 999, crossChainPayer, "active",
@@ -551,7 +552,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 		t.Fatalf("cross-chain row=%+v error=%v", crossChainRow, err)
 	}
 
-	var historicalPayer Address
+	var historicalPayer common.Address
 	historicalPayer[19] = 0xa7
 	historicalReservation := reserve(75)
 	historical, err := verify(historicalReservation, historicalPayer, nil)
@@ -572,7 +573,7 @@ func TestPostgresBillingUserAttributionIsExactOptionalAndNotBackfilled(t *testin
 	); err != nil {
 		t.Fatal(err)
 	}
-	var transactionHash TransactionHash
+	var transactionHash common.Hash
 	transactionHash[31] = 0xa7
 	if _, err := ledger.MarkSettled(
 		t.Context(), historical.ID, historicalReservation.reservation.Owner,
@@ -626,7 +627,7 @@ func TestPostgresBillingFailureAndExpiryAreTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payer Address
+	var payer common.Address
 	payer[0] = 3
 	if _, err := ledger.MarkVerified(t.Context(), VerifiedInput{
 		PaymentID: reserved.Payment.ID, Owner: reserved.Owner, Payer: payer,
@@ -748,7 +749,7 @@ func createSettlingPaymentFromInput(
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payer Address
+	var payer common.Address
 	payer[19] = input.Fingerprint[0]
 	verifiedAt := input.ObservedAt.Add(time.Second)
 	if _, err := ledger.MarkVerified(t.Context(), VerifiedInput{
@@ -779,7 +780,7 @@ func insertBillingUser(
 	t *testing.T,
 	db *sql.DB,
 	userID string,
-	address Address,
+	address common.Address,
 ) {
 	t.Helper()
 	insertBillingUserRecord(t, db, userID, 11155111, address, "active")
@@ -790,7 +791,7 @@ func insertBillingUserRecord(
 	db *sql.DB,
 	userID string,
 	chainID uint64,
-	address Address,
+	address common.Address,
 	status string,
 ) {
 	t.Helper()

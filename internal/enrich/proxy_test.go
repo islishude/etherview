@@ -1,6 +1,10 @@
 package enrich
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 func TestDetectEIP1167AndImmutableArgs(t *testing.T) {
 	t.Parallel()
@@ -83,7 +87,7 @@ func FuzzDetectEIP1167IsBoundedAndExact(f *testing.F) {
 		if !ok {
 			return
 		}
-		minimum := len(minimalProxyPrefix) + len(Address{}) + len(minimalProxySuffix)
+		minimum := len(minimalProxyPrefix) + len(common.Address{}) + len(minimalProxySuffix)
 		if len(code) < minimum || detected.Exact != (len(code) == minimum) ||
 			len(detected.TrailingData) != len(code)-minimum {
 			t.Fatalf("accepted inconsistent minimal proxy: code=%x detected=%+v", code, detected)

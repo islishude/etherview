@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -137,7 +139,7 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 	if err != nil {
 		return StageResult{}, Permanent(err)
 	}
-	identities := make(map[Address]ABIIdentity)
+	identities := make(map[common.Address]ABIIdentity)
 	bindingsCount, invalidSignatures := 0, 0
 	for _, address := range uniqueABIAddresses(observations) {
 		identity, codeRange, found, err := resolveABICodeIdentity(ctx, tx, job, address)
@@ -219,11 +221,11 @@ func proxyDependencyState(ctx context.Context, tx *sql.Tx, job Job) (ResultState
 
 type abiObservation struct {
 	objectKind      string
-	transactionHash Word
+	transactionHash common.Hash
 	objectIndex     string
-	target          Address
+	target          common.Address
 	input           []byte
-	topics          []Word
+	topics          []common.Hash
 	data            []byte
 }
 
@@ -267,24 +269,19 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 		if err != nil {
 			return nil, Permanent(fmt.Errorf("stored transaction hash: %w", err))
 		}
-		var wire ethrpc.Transaction
+		var wire types.Transaction
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return nil, Permanent(fmt.Errorf("decode stored transaction: %w", err))
 		}
-		if err := validateABITransactionIdentity(wire, job, transactionHash); err != nil {
+		if err := validateABITransactionIdentity(&wire, raw, job, transactionHash); err != nil {
 			return nil, Permanent(err)
 		}
-		if wire.To == nil {
+		to := wire.To()
+		if to == nil {
 			continue
 		}
-		target, err := ParseAddress(wire.To.String())
-		if err != nil {
-			return nil, Permanent(fmt.Errorf("decode transaction target: %w", err))
-		}
-		input, err := wire.Input.Bytes()
-		if err != nil {
-			return nil, Permanent(fmt.Errorf("decode transaction calldata: %w", err))
-		}
+		target := *to
+		input := wire.Data()
 		result = append(result, abiObservation{
 			objectKind: abiObjectTransactionCalldata, transactionHash: transactionHash,
 			target: target, input: input,
@@ -296,19 +293,50 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 	return result, nil
 }
 
-func validateABITransactionIdentity(wire ethrpc.Transaction, job Job, transactionHash Word) error {
-	if wire.Hash.String() != transactionHash.String() || wire.BlockHash == nil || wire.BlockNumber == nil {
+func validateABITransactionIdentity(
+	wire *types.Transaction,
+	raw json.RawMessage,
+	job Job,
+	transactionHash common.Hash,
+) error {
+	if wire == nil || wire.Hash() != transactionHash {
 		return errors.New("stored transaction raw identity is incomplete")
 	}
-	blockHash, err := wire.BlockHash.Bytes()
-	if err != nil || !equalBytes(blockHash, job.BlockHash[:]) {
+	blockHash, blockNumber, err := storedTransactionInclusion(raw)
+	if err != nil || blockHash != job.BlockHash {
 		return errors.New("stored transaction block hash mismatch")
 	}
-	blockNumber, err := wire.BlockNumber.Uint64()
-	if err != nil || blockNumber != job.BlockNumber {
+	if blockNumber != job.BlockNumber {
 		return errors.New("stored transaction block number mismatch")
 	}
 	return nil
+}
+
+func storedTransactionInclusion(
+	raw json.RawMessage,
+) (common.Hash, uint64, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return common.Hash{}, 0, err
+	}
+	var hashText, numberText string
+	if err := json.Unmarshal(fields["blockHash"], &hashText); err != nil {
+		return common.Hash{}, 0, err
+	}
+	if err := json.Unmarshal(fields["blockNumber"], &numberText); err != nil {
+		return common.Hash{}, 0, err
+	}
+	hash, err := ethrpc.ParseHash(hashText)
+	if err != nil {
+		return common.Hash{}, 0, err
+	}
+	number, err := ethrpc.ParseQuantity(numberText)
+	if err != nil || !number.IsUint64() {
+		return common.Hash{}, 0, errors.New(
+			"stored transaction block number is invalid",
+		)
+	}
+	return hash, number.Uint64(), nil
 }
 
 func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
@@ -335,29 +363,19 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 		if err != nil {
 			return nil, Permanent(fmt.Errorf("stored ABI log transaction hash: %w", err))
 		}
-		if len(addressBytes) != 20 {
+		if len(addressBytes) != common.AddressLength {
 			return nil, Permanent(errors.New("stored ABI log address is not 20 bytes"))
 		}
-		var target Address
-		copy(target[:], addressBytes)
-		var wire ethrpc.Log
+		target := common.BytesToAddress(addressBytes)
+		var wire types.Log
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return nil, Permanent(fmt.Errorf("decode stored ABI log: %w", err))
 		}
 		if err := validateABILogIdentity(wire, job, uint64(logIndex), transactionHash, target); err != nil {
 			return nil, Permanent(err)
 		}
-		data, err := wire.Data.Bytes()
-		if err != nil {
-			return nil, Permanent(fmt.Errorf("decode ABI log data: %w", err))
-		}
-		topics := make([]Word, len(wire.Topics))
-		for index := range wire.Topics {
-			topics[index], err = ParseWord(wire.Topics[index].String())
-			if err != nil {
-				return nil, Permanent(fmt.Errorf("decode ABI log topic %d: %w", index, err))
-			}
-		}
+		data := common.CopyBytes(wire.Data)
+		topics := append([]common.Hash(nil), wire.Topics...)
 		result = append(result, abiObservation{
 			objectKind: abiObjectLog, transactionHash: transactionHash,
 			objectIndex: strconv.FormatInt(logIndex, 10), target: target, topics: topics, data: data,
@@ -369,20 +387,21 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 	return result, nil
 }
 
-func validateABILogIdentity(wire ethrpc.Log, job Job, logIndex uint64, transactionHash Word, target Address) error {
-	if wire.LogIndex == nil || wire.TransactionHash == nil || wire.BlockHash == nil || wire.BlockNumber == nil {
-		return errors.New("stored ABI log raw identity is incomplete")
-	}
-	wireIndex, err := wire.LogIndex.Uint64()
-	if err != nil || wireIndex != logIndex || wire.TransactionHash.String() != transactionHash.String() || wire.Address.String() != target.String() {
+func validateABILogIdentity(
+	wire types.Log,
+	job Job,
+	logIndex uint64,
+	transactionHash common.Hash,
+	target common.Address,
+) error {
+	if uint64(wire.Index) != logIndex || wire.TxHash != transactionHash ||
+		wire.Address != target {
 		return errors.New("stored ABI log identity mismatch")
 	}
-	blockHash, err := wire.BlockHash.Bytes()
-	if err != nil || !equalBytes(blockHash, job.BlockHash[:]) {
+	if wire.BlockHash != job.BlockHash {
 		return errors.New("stored ABI log block hash mismatch")
 	}
-	blockNumber, err := wire.BlockNumber.Uint64()
-	if err != nil || blockNumber != job.BlockNumber {
+	if wire.BlockNumber != job.BlockNumber {
 		return errors.New("stored ABI log block number mismatch")
 	}
 	return nil
@@ -413,15 +432,14 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 		// The normalized transaction root deliberately uses the empty trace
 		// path. Child paths are non-empty, but emptiness alone is not an invalid
 		// identity.
-		if len(targetBytes) != 20 {
+		if len(targetBytes) != common.AddressLength {
 			return nil, Permanent(errors.New("stored ABI trace identity is invalid"))
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
 		if err != nil {
 			return nil, Permanent(fmt.Errorf("stored ABI trace transaction hash: %w", err))
 		}
-		var target Address
-		copy(target[:], targetBytes)
+		target := common.BytesToAddress(targetBytes)
 		if len(input) > 0 {
 			result = append(result, abiObservation{
 				objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
@@ -441,9 +459,9 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	return result, nil
 }
 
-func uniqueABIAddresses(observations []abiObservation) []Address {
-	seen := make(map[Address]struct{})
-	result := make([]Address, 0)
+func uniqueABIAddresses(observations []abiObservation) []common.Address {
+	seen := make(map[common.Address]struct{})
+	result := make([]common.Address, 0)
 	for _, observation := range observations {
 		if _, exists := seen[observation.target]; exists {
 			continue
@@ -454,7 +472,7 @@ func uniqueABIAddresses(observations []abiObservation) []Address {
 	return result
 }
 
-func observationsForAddress(observations []abiObservation, address Address) []abiObservation {
+func observationsForAddress(observations []abiObservation, address common.Address) []abiObservation {
 	result := make([]abiObservation, 0)
 	for _, observation := range observations {
 		if observation.target == address {
@@ -469,7 +487,7 @@ type abiBlockRange struct {
 	to   *uint64
 }
 
-func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address Address) (ABIIdentity, abiBlockRange, bool, error) {
+func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address common.Address) (ABIIdentity, abiBlockRange, bool, error) {
 	var blockNumberText string
 	var codeHashBytes []byte
 	err := tx.QueryRowContext(ctx, `
@@ -490,7 +508,7 @@ func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address Ad
 		return ABIIdentity{}, abiBlockRange{}, false, Permanent(fmt.Errorf("decode ABI code range start: %w", err))
 	}
 	codeHash, err := WordFromBytes(codeHashBytes)
-	if err != nil || codeHash.IsZero() {
+	if err != nil || codeHash == (common.Hash{}) {
 		return ABIIdentity{}, abiBlockRange{}, false, Permanent(errors.New("stored ABI code hash is invalid"))
 	}
 	var next sql.NullString
@@ -563,8 +581,8 @@ func loadVerifiedABIBinding(
 	ctx context.Context,
 	tx *sql.Tx,
 	target ABIIdentity,
-	sourceAddress Address,
-	sourceCodeHash Word,
+	sourceAddress common.Address,
+	sourceCodeHash common.Hash,
 	baseRange abiBlockRange,
 	source ABISource,
 ) (persistedABIBinding, bool, error) {
@@ -620,13 +638,12 @@ func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, co
 	if err != nil {
 		return persistedABIBinding{}, false, fmt.Errorf("query historical proxy implementation: %w", err)
 	}
-	if len(implementationAddressBytes) != 20 {
+	if len(implementationAddressBytes) != common.AddressLength {
 		return persistedABIBinding{}, false, Permanent(errors.New("stored proxy implementation address is invalid"))
 	}
-	var implementationAddress Address
-	copy(implementationAddress[:], implementationAddressBytes)
+	implementationAddress := common.BytesToAddress(implementationAddressBytes)
 	implementationCodeHash, err := WordFromBytes(implementationCodeHashBytes)
-	if err != nil || implementationCodeHash.IsZero() {
+	if err != nil || implementationCodeHash == (common.Hash{}) {
 		return persistedABIBinding{}, false, Permanent(errors.New("stored proxy implementation code hash is invalid"))
 	}
 	from, err := strconv.ParseUint(fromText, 10, 64)

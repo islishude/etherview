@@ -6,12 +6,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/big"
 	"net/url"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/etherscan"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -31,10 +35,10 @@ func TestEtherscanCoreCoverageDistinguishesGapsFromAuthoritativeResults(t *testi
 	block0 := etherscanCoverageBundle(0, testHash(30_000), testHash(0), testHash(31_000))
 	block1 := etherscanCoverageBundle(1, testHash(30_001), testHash(30_000), testHash(31_001))
 	block2 := etherscanCoverageBundle(2, testHash(30_002), testHash(30_001), testHash(31_002))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{block0}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block0}); err != nil {
 		t.Fatalf("commit genesis coverage island: %v", err)
 	}
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{block2}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block2}); err != nil {
 		t.Fatalf("commit live coverage island: %v", err)
 	}
 
@@ -82,7 +86,7 @@ func TestEtherscanCoreCoverageDistinguishesGapsFromAuthoritativeResults(t *testi
 		t.Fatalf("single-block tip island countdown error = %v, want estimate unavailable", err)
 	}
 
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{block1}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block1}); err != nil {
 		t.Fatalf("fill core coverage gap: %v", err)
 	}
 
@@ -152,13 +156,32 @@ func TestEtherscanCoreCoverageDistinguishesGapsFromAuthoritativeResults(t *testi
 	}
 }
 
-func etherscanCoverageBundle(number uint64, blockHash, parentHash, transactionHash ethrpc.Hash) ethrpc.Bundle {
-	bundle := testBundle(number, blockHash, parentHash, transactionHash, "etherscan-coverage")
+func etherscanCoverageBundle(number uint64, blockHash, parentHash, transactionHash common.Hash) chainbundle.Bundle {
 	miner := testAddress(1)
-	gasPrice := ethrpc.QuantityFromUint64(2_000_000_000)
-	bundle.Block.Miner = &miner
-	bundle.Block.Transactions[0].Transaction.GasPrice = &gasPrice
-	bundle.Receipts[0].EffectiveGasPrice = &gasPrice
+	gasPrice := big.NewInt(2_000_000_000)
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     number,
+		ParentHash: parentHash,
+		ExtraData:  []byte("etherscan-coverage"),
+		Coinbase:   miner,
+		Transactions: []integrationTransactionOptions{{
+			Type:     types.LegacyTxType,
+			To:       &miner,
+			GasPrice: gasPrice,
+			Data:     transactionHash.Bytes(),
+			Logs: []*types.Log{{
+				Address: testAddress(3),
+				Topics:  []common.Hash{testHash(9_000)},
+				Data:    []byte("etherscan-coverage"),
+			}},
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "etherscan-coverage"},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("build Etherscan coverage bundle: %v", err))
+	}
+	registerFixtureIdentities(blockHash, bundle.Block.Hash(), transactionHash, bundle.Block.Transactions()[0].Hash())
 	return bundle
 }
 

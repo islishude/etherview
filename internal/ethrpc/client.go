@@ -5,256 +5,364 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
-	"sync/atomic"
+	"sync"
+	"time"
+
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const defaultMaxResponseBytes int64 = 32 << 20
+const (
+	defaultMaxResponseBytes  int64 = 32 << 20
+	maximumRequestsPerSecond       = 1_000_000_000
+)
 
-type Caller interface {
-	Call(ctx context.Context, method string, params []any, result any) error
+var (
+	ErrInvalidResponse  = errors.New("invalid JSON-RPC response")
+	ErrResponseTooLarge = errors.New("JSON-RPC response exceeds configured size limit")
+	ErrTransport        = errors.New("JSON-RPC transport is unavailable")
+)
+
+type ClientOptions struct {
+	HTTPClient        *http.Client
+	MaxResponseBytes  int64
+	RequestsPerSecond int
 }
 
-type BatchCaller interface {
-	Caller
-	BatchCall(ctx context.Context, elements []BatchElem) error
-}
-
-type BatchElem struct {
-	Method string
-	Params []any
-	Result any
-	Error  error
-}
-
-type RPCError struct {
-	Code    int
-	Message string
-	Data    json.RawMessage
-}
-
-func (e *RPCError) Error() string {
-	if e == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("JSON-RPC error %d: %s", e.Code, e.Message)
-}
-
-func IsMethodNotFound(err error) bool {
-	var rpcErr *RPCError
-	return errors.As(err, &rpcErr) && rpcErr.Code == -32601
-}
-
-type HTTPStatusError struct{ StatusCode int }
-
-func (e *HTTPStatusError) Error() string {
-	return fmt.Sprintf("JSON-RPC HTTP status %d", e.StatusCode)
-}
-
-func (e *HTTPStatusError) Retryable() bool {
-	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= 500
-}
-
-type ProtocolError struct{ Message string }
-
-func (e *ProtocolError) Error() string { return "JSON-RPC protocol error: " + e.Message }
-
-type HTTPClient struct {
-	endpoint         string
-	httpClient       *http.Client
-	maxResponseBytes int64
-	nextID           atomic.Uint64
-}
-
-type HTTPClientOptions struct {
-	HTTPClient       *http.Client
-	MaxResponseBytes int64
-}
-
-func NewHTTPClient(endpoint string, options HTTPClientOptions) (*HTTPClient, error) {
+// NewClient constructs the upstream go-ethereum RPC client and installs the
+// application transport boundary beneath it. No endpoint, request parameter,
+// response body, or nested upstream error is retained in boundary errors.
+func NewClient(ctx context.Context, endpoint string, options ClientOptions) (*rpc.Client, error) {
 	if endpoint == "" {
 		return nil, errors.New("JSON-RPC endpoint is empty")
 	}
-	client := options.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
+	parsedEndpoint, err := url.ParseRequestURI(endpoint)
+	if err != nil || parsedEndpoint.Host == "" ||
+		parsedEndpoint.Scheme != "http" && parsedEndpoint.Scheme != "https" {
+		return nil, errors.New("JSON-RPC endpoint is invalid")
 	}
 	maxResponseBytes := options.MaxResponseBytes
 	if maxResponseBytes <= 0 {
 		maxResponseBytes = defaultMaxResponseBytes
 	}
-	return &HTTPClient{
-		endpoint:         endpoint,
-		httpClient:       client,
+	if options.RequestsPerSecond < 0 || options.RequestsPerSecond > maximumRequestsPerSecond {
+		return nil, errors.New("RPC request rate must be between 1 and 1000000000, or zero to disable limiting")
+	}
+	baseClient := options.HTTPClient
+	if baseClient == nil {
+		baseClient = http.DefaultClient
+	}
+	clientCopy := *baseClient
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	next := baseClient.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	guard := &guardedRoundTripper{
+		next:             next,
 		maxResponseBytes: maxResponseBytes,
-	}, nil
+		endpoint:         parsedEndpoint,
+	}
+	if options.RequestsPerSecond > 0 {
+		guard.limiter = newRequestLimiter(options.RequestsPerSecond)
+	}
+	clientCopy.Transport = guard
+	// rpc.Client and net/http use this credential-free URL in their own error
+	// wrappers. The guarded transport substitutes the real endpoint only on the
+	// outbound clone, so even local/network failures cannot echo URL secrets.
+	safeEndpoint := parsedEndpoint.Scheme + "://rpc.endpoint.invalid"
+	return rpc.DialOptions(ctx, safeEndpoint, rpc.WithHTTPClient(&clientCopy))
 }
 
-func (c *HTTPClient) Call(ctx context.Context, method string, params []any, result any) error {
-	if result == nil {
-		return errors.New("JSON-RPC result destination is nil")
+func IsMethodNotFound(err error) bool {
+	var rpcErr rpc.Error
+	return errors.As(err, &rpcErr) && rpcErr.ErrorCode() == -32601
+}
+
+func IsRetryableHTTP(err error) bool {
+	var status rpc.HTTPError
+	if !errors.As(err, &status) {
+		return false
 	}
-	id := c.nextID.Add(1)
-	request := rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: nonNilParams(params)}
-	var response rpcResponse
-	if err := c.roundTrip(ctx, request, &response); err != nil {
+	return status.StatusCode == http.StatusTooManyRequests || status.StatusCode >= 500
+}
+
+type guardedRoundTripper struct {
+	next             http.RoundTripper
+	maxResponseBytes int64
+	limiter          *requestLimiter
+	endpoint         *url.URL
+}
+
+func (transport *guardedRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport == nil || transport.next == nil {
+		scrubRequestURL(request)
+		return nil, ErrTransport
+	}
+	expected, batch, err := requestIDs(request)
+	if err != nil {
+		scrubRequestURL(request)
+		return nil, ErrInvalidResponse
+	}
+	if transport.limiter != nil {
+		if err := transport.limiter.acquire(request.Context()); err != nil {
+			scrubRequestURL(request)
+			return nil, err
+		}
+	}
+	outbound := request.Clone(request.Context())
+	outbound.URL = cloneURL(transport.endpoint)
+	outbound.Host = transport.endpoint.Host
+	if transport.endpoint.User != nil {
+		password, _ := transport.endpoint.User.Password()
+		outbound.SetBasicAuth(transport.endpoint.User.Username(), password)
+	}
+	response, err := transport.next.RoundTrip(outbound)
+	if err != nil {
+		scrubRequestURL(request)
+		if contextErr := request.Context().Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return nil, ErrTransport
+	}
+	if response == nil {
+		scrubRequestURL(request)
+		return nil, ErrTransport
+	}
+	response.Request = request
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		drainAndClose(response.Body, 4<<10)
+		response.Body = io.NopCloser(bytes.NewReader(nil))
+		response.ContentLength = 0
+		response.Status = strconv.Itoa(response.StatusCode)
+		if statusText := http.StatusText(response.StatusCode); statusText != "" {
+			response.Status += " " + statusText
+		}
+		return response, nil
+	}
+	body, readErr := readBoundedResponse(response.Body, transport.maxResponseBytes)
+	if readErr != nil {
+		scrubRequestURL(request)
+		return nil, readErr
+	}
+	if err := validateResponse(body, expected, batch); err != nil {
+		scrubRequestURL(request)
+		return nil, err
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	response.ContentLength = int64(len(body))
+	return response, nil
+}
+
+func requestIDs(request *http.Request) (map[string]struct{}, bool, error) {
+	if request == nil || request.GetBody == nil {
+		return nil, false, ErrInvalidResponse
+	}
+	body, err := request.GetBody()
+	if err != nil {
+		return nil, false, ErrInvalidResponse
+	}
+	defer body.Close() //nolint:errcheck
+	data, err := io.ReadAll(io.LimitReader(body, 8<<20))
+	if err != nil {
+		return nil, false, ErrInvalidResponse
+	}
+	raw, err := oneJSONValue(data)
+	if err != nil {
+		return nil, false, err
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, false, ErrInvalidResponse
+	}
+	if trimmed[0] == '[' {
+		var requests []map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &requests); err != nil || len(requests) == 0 {
+			return nil, true, ErrInvalidResponse
+		}
+		ids := make(map[string]struct{}, len(requests))
+		for _, envelope := range requests {
+			id, ok := envelope["id"]
+			if !ok || isNullJSON(id) {
+				return nil, true, ErrInvalidResponse
+			}
+			key := string(bytes.TrimSpace(id))
+			if _, duplicate := ids[key]; duplicate {
+				return nil, true, ErrInvalidResponse
+			}
+			ids[key] = struct{}{}
+		}
+		return ids, true, nil
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &envelope); err != nil {
+		return nil, false, ErrInvalidResponse
+	}
+	id, ok := envelope["id"]
+	if !ok || isNullJSON(id) {
+		return nil, false, ErrInvalidResponse
+	}
+	return map[string]struct{}{string(bytes.TrimSpace(id)): {}}, false, nil
+}
+
+func validateResponse(body []byte, expected map[string]struct{}, batch bool) error {
+	raw, err := oneJSONValue(body)
+	if err != nil {
 		return err
 	}
-	if response.JSONRPC != "2.0" {
-		return &ProtocolError{Message: "response has an invalid jsonrpc version"}
-	}
-	responseID, err := parseResponseID(response.ID)
-	if err != nil || responseID != id {
-		return &ProtocolError{Message: "response ID does not match request"}
-	}
-	if response.Error != nil {
-		return response.Error
-	}
-	if response.Result == nil {
-		return &ProtocolError{Message: "response contains neither result nor error"}
-	}
-	if err := json.Unmarshal(response.Result, result); err != nil {
-		return fmt.Errorf("decode JSON-RPC result for %s: %w", method, err)
-	}
-	return nil
-}
-
-func (c *HTTPClient) BatchCall(ctx context.Context, elements []BatchElem) error {
-	if len(elements) == 0 {
+	if batch {
+		var responses []json.RawMessage
+		if err := json.Unmarshal(raw, &responses); err != nil || len(responses) != len(expected) {
+			return ErrInvalidResponse
+		}
+		seen := make(map[string]struct{}, len(responses))
+		for _, response := range responses {
+			id, err := validateResponseEnvelope(response)
+			if err != nil {
+				return err
+			}
+			if _, exists := expected[id]; !exists {
+				return ErrInvalidResponse
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return ErrInvalidResponse
+			}
+			seen[id] = struct{}{}
+		}
+		if len(seen) != len(expected) {
+			return ErrInvalidResponse
+		}
 		return nil
 	}
-	requests := make([]rpcRequest, len(elements))
-	byID := make(map[uint64]int, len(elements))
-	for index := range elements {
-		if elements[index].Result == nil {
-			return fmt.Errorf("batch element %d has a nil result destination", index)
-		}
-		elements[index].Error = nil
-		id := c.nextID.Add(1)
-		requests[index] = rpcRequest{
-			JSONRPC: "2.0",
-			ID:      id,
-			Method:  elements[index].Method,
-			Params:  nonNilParams(elements[index].Params),
-		}
-		byID[id] = index
-	}
-	var responses []rpcResponse
-	if err := c.roundTrip(ctx, requests, &responses); err != nil {
+	id, err := validateResponseEnvelope(raw)
+	if err != nil {
 		return err
 	}
-	if len(responses) != len(requests) {
-		return &ProtocolError{Message: fmt.Sprintf("batch response count %d does not match request count %d", len(responses), len(requests))}
-	}
-	seen := make(map[uint64]struct{}, len(responses))
-	for _, response := range responses {
-		if response.JSONRPC != "2.0" {
-			return &ProtocolError{Message: "batch response has an invalid jsonrpc version"}
-		}
-		id, err := parseResponseID(response.ID)
-		if err != nil {
-			return &ProtocolError{Message: "batch response has an invalid ID"}
-		}
-		index, exists := byID[id]
-		if !exists {
-			return &ProtocolError{Message: "batch response contains an unknown ID"}
-		}
-		if _, duplicate := seen[id]; duplicate {
-			return &ProtocolError{Message: "batch response contains a duplicate ID"}
-		}
-		seen[id] = struct{}{}
-		if response.Error != nil {
-			elements[index].Error = response.Error
-			continue
-		}
-		if response.Result == nil {
-			return &ProtocolError{Message: "batch response contains neither result nor error"}
-		}
-		if err := json.Unmarshal(response.Result, elements[index].Result); err != nil {
-			return fmt.Errorf("decode JSON-RPC batch result for %s: %w", elements[index].Method, err)
-		}
+	if _, exists := expected[id]; !exists || len(expected) != 1 {
+		return ErrInvalidResponse
 	}
 	return nil
 }
 
-func (c *HTTPClient) roundTrip(ctx context.Context, payload any, destination any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("encode JSON-RPC request: %w", err)
+func validateResponseEnvelope(raw json.RawMessage) (string, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil || envelope == nil {
+		return "", ErrInvalidResponse
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create JSON-RPC request: %w", err)
+	var version string
+	if err := json.Unmarshal(envelope["jsonrpc"], &version); err != nil || version != "2.0" {
+		return "", ErrInvalidResponse
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/json")
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return fmt.Errorf("send JSON-RPC request: %w", err)
+	id, exists := envelope["id"]
+	if !exists || isNullJSON(id) {
+		return "", ErrInvalidResponse
 	}
-	defer response.Body.Close() //nolint:errcheck
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-		return &HTTPStatusError{StatusCode: response.StatusCode}
+	_, hasResult := envelope["result"]
+	errorValue, hasError := envelope["error"]
+	if hasResult == hasError || hasError && isNullJSON(errorValue) {
+		return "", ErrInvalidResponse
 	}
-	limited := io.LimitReader(response.Body, c.maxResponseBytes+1)
-	responseBody, err := io.ReadAll(limited)
-	if err != nil {
-		return fmt.Errorf("read JSON-RPC response: %w", err)
-	}
-	if int64(len(responseBody)) > c.maxResponseBytes {
-		return &ProtocolError{Message: "response exceeds configured size limit"}
-	}
-	decoder := json.NewDecoder(bytes.NewReader(responseBody))
+	return string(bytes.TrimSpace(id)), nil
+}
+
+func oneJSONValue(data []byte) (json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	if err := decoder.Decode(destination); err != nil {
-		return fmt.Errorf("decode JSON-RPC response envelope: %w", err)
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		return nil, ErrInvalidResponse
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return &ProtocolError{Message: "response contains multiple JSON values"}
-		}
-		return fmt.Errorf("decode trailing JSON-RPC response data: %w", err)
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, ErrInvalidResponse
 	}
-	return nil
+	return raw, nil
 }
 
-type rpcRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      uint64 `json:"id"`
-	Method  string `json:"method"`
-	Params  []any  `json:"params"`
+func readBoundedResponse(body io.ReadCloser, maximum int64) ([]byte, error) {
+	if body == nil {
+		return nil, ErrInvalidResponse
+	}
+	defer body.Close() //nolint:errcheck
+	data, err := io.ReadAll(io.LimitReader(body, maximum+1))
+	if err != nil {
+		return nil, ErrTransport
+	}
+	if int64(len(data)) > maximum {
+		return nil, ErrResponseTooLarge
+	}
+	return data, nil
 }
 
-type rpcResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  json.RawMessage `json:"result"`
-	Error   *RPCError       `json:"error"`
+func drainAndClose(body io.ReadCloser, maximum int64) {
+	if body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, maximum))
+	_ = body.Close()
 }
 
-func parseResponseID(raw json.RawMessage) (uint64, error) {
-	if len(raw) == 0 {
-		return 0, errors.New("missing ID")
+func scrubRequestURL(request *http.Request) {
+	if request == nil {
+		return
 	}
-	var number json.Number
-	if err := json.Unmarshal(raw, &number); err == nil {
-		return strconv.ParseUint(number.String(), 10, 64)
-	}
-	var text string
-	if err := json.Unmarshal(raw, &text); err != nil {
-		return 0, err
-	}
-	return strconv.ParseUint(text, 10, 64)
+	request.URL = &url.URL{Scheme: "rpc", Host: "endpoint"}
 }
 
-func nonNilParams(params []any) []any {
-	if params == nil {
-		return []any{}
+func cloneURL(input *url.URL) *url.URL {
+	if input == nil {
+		return &url.URL{}
 	}
-	return params
+	copy := *input
+	if input.User != nil {
+		user := *input.User
+		copy.User = &user
+	}
+	return &copy
+}
+
+func isNullJSON(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
+type requestLimiter struct {
+	interval time.Duration
+	mu       sync.Mutex
+	next     time.Time
+	now      func() time.Time
+}
+
+func newRequestLimiter(requestsPerSecond int) *requestLimiter {
+	return &requestLimiter{
+		interval: time.Second / time.Duration(requestsPerSecond),
+		now:      time.Now,
+	}
+}
+
+func (limiter *requestLimiter) acquire(ctx context.Context) error {
+	limiter.mu.Lock()
+	now := limiter.now()
+	waitUntil := limiter.next
+	if waitUntil.Before(now) {
+		waitUntil = now
+	}
+	limiter.next = waitUntil.Add(limiter.interval)
+	limiter.mu.Unlock()
+	wait := time.Until(waitUntil)
+	if wait <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

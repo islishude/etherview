@@ -4,16 +4,44 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-type sourceCallerFunc func(context.Context, string, []any, any) error
+type sourceRPC struct {
+	call     map[string]any
+	selector rpc.BlockNumberOrHash
+	result   []byte
+	err      error
+}
 
-func (caller sourceCallerFunc) Call(ctx context.Context, method string, params []any, result any) error {
-	return caller(ctx, method, params, result)
+func (service *sourceRPC) Call(_ context.Context, call map[string]any, selector rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	service.call = call
+	service.selector = selector
+	if service.err != nil {
+		return nil, service.err
+	}
+	return hexutil.Bytes(service.result), nil
+}
+
+func newSourceRPCClient(t *testing.T, service *sourceRPC) *rpc.Client {
+	t.Helper()
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", service); err != nil {
+		t.Fatal(err)
+	}
+	client := rpc.DialInProc(server)
+	t.Cleanup(func() {
+		client.Close()
+		server.Stop()
+	})
+	return client
 }
 
 type fakeSourceRepository struct {
@@ -46,22 +74,8 @@ func TestSourceDiscovererUsesOneExactStateCallAndEnqueuesURI(t *testing.T) {
 	t.Parallel()
 	candidate := sourceCandidate(t, NFTStandardERC721)
 	repository := &fakeSourceRepository{candidate: candidate, found: true, canonical: true}
-	caller := sourceCallerFunc(func(_ context.Context, method string, params []any, result any) error {
-		if method != "eth_call" || len(params) != 2 {
-			t.Fatalf("RPC call = %s %#v", method, params)
-		}
-		call, ok := params[0].(map[string]any)
-		if !ok || call["to"] != candidate.Token.String() || !strings.HasPrefix(call["data"].(string), "0xc87b56dd") {
-			t.Fatalf("RPC call payload = %#v", params[0])
-		}
-		selector, ok := params[1].(map[string]any)
-		if !ok || selector["blockHash"] != candidate.BlockHash.String() || selector["requireCanonical"] != true {
-			t.Fatalf("RPC selector = %#v", params[1])
-		}
-		*(result.(*ethrpc.Data)) = ethrpc.DataFromBytes(encodeSourceString("ipfs://bafybeigdyrzt1234567890/42.json"))
-		return nil
-	})
-	discoverer := newTestSourceDiscoverer(t, repository, caller)
+	service := &sourceRPC{result: encodeSourceString("ipfs://bafybeigdyrzt1234567890/42.json")}
+	discoverer := newTestSourceDiscoverer(t, repository, newSourceRPCClient(t, service))
 	processed, err := discoverer.ProcessOnce(t.Context())
 	if err != nil || !processed {
 		t.Fatalf("processed=%t err=%v", processed, err)
@@ -72,6 +86,13 @@ func TestSourceDiscovererUsesOneExactStateCallAndEnqueuesURI(t *testing.T) {
 	if len(repository.observations) != 1 || repository.observations[0].State != NFTSourceFound {
 		t.Fatalf("source observations = %+v", repository.observations)
 	}
+	if service.call["to"] != candidate.Token.Hex() || !strings.HasPrefix(service.call["data"].(string), "0xc87b56dd") {
+		t.Fatalf("RPC call payload = %#v", service.call)
+	}
+	wantSelector := rpc.BlockNumberOrHashWithHash(candidate.BlockHash, true)
+	if !reflect.DeepEqual(service.selector, wantSelector) {
+		t.Fatalf("RPC selector = %#v, want %#v", service.selector, wantSelector)
+	}
 }
 
 func TestSourceDiscovererExpandsERC1155IDAndPersistsPermanentGaps(t *testing.T) {
@@ -79,11 +100,8 @@ func TestSourceDiscovererExpandsERC1155IDAndPersistsPermanentGaps(t *testing.T) 
 	t.Run("template", func(t *testing.T) {
 		candidate := sourceCandidate(t, NFTStandardERC1155)
 		repository := &fakeSourceRepository{candidate: candidate, found: true, canonical: true}
-		caller := sourceCallerFunc(func(_ context.Context, _ string, _ []any, result any) error {
-			*(result.(*ethrpc.Data)) = ethrpc.DataFromBytes(encodeSourceString("https://example.invalid/{id}.json"))
-			return nil
-		})
-		processed, err := newTestSourceDiscoverer(t, repository, caller).ProcessOnce(t.Context())
+		service := &sourceRPC{result: encodeSourceString("https://example.invalid/{id}.json")}
+		processed, err := newTestSourceDiscoverer(t, repository, newSourceRPCClient(t, service)).ProcessOnce(t.Context())
 		if err != nil || !processed {
 			t.Fatalf("processed=%t err=%v", processed, err)
 		}
@@ -95,10 +113,8 @@ func TestSourceDiscovererExpandsERC1155IDAndPersistsPermanentGaps(t *testing.T) 
 
 	t.Run("revert", func(t *testing.T) {
 		repository := &fakeSourceRepository{candidate: sourceCandidate(t, NFTStandardERC721), found: true, canonical: true}
-		caller := sourceCallerFunc(func(context.Context, string, []any, any) error {
-			return &ethrpc.RPCError{Code: 3, Message: "execution reverted with secret"}
-		})
-		processed, err := newTestSourceDiscoverer(t, repository, caller).ProcessOnce(t.Context())
+		service := &sourceRPC{err: &sourceRPCError{code: 3, message: "execution reverted with secret"}}
+		processed, err := newTestSourceDiscoverer(t, repository, newSourceRPCClient(t, service)).ProcessOnce(t.Context())
 		if err != nil || !processed {
 			t.Fatalf("processed=%t err=%v", processed, err)
 		}
@@ -110,18 +126,26 @@ func TestSourceDiscovererExpandsERC1155IDAndPersistsPermanentGaps(t *testing.T) 
 
 	t.Run("transient", func(t *testing.T) {
 		repository := &fakeSourceRepository{candidate: sourceCandidate(t, NFTStandardERC721), found: true, canonical: true}
-		caller := sourceCallerFunc(func(context.Context, string, []any, any) error { return errors.New("secret transport failure") })
-		processed, err := newTestSourceDiscoverer(t, repository, caller).ProcessOnce(t.Context())
+		service := &sourceRPC{err: errors.New("secret transport failure")}
+		processed, err := newTestSourceDiscoverer(t, repository, newSourceRPCClient(t, service)).ProcessOnce(t.Context())
 		if err != nil || processed || len(repository.observations) != 0 || len(repository.requests) != 0 {
 			t.Fatalf("processed=%t err=%v requests=%+v observations=%+v", processed, err, repository.requests, repository.observations)
 		}
 	})
 }
 
-func newTestSourceDiscoverer(t *testing.T, repository NFTSourceRepository, caller ethrpc.Caller) *SourceDiscoverer {
+type sourceRPCError struct {
+	code    int
+	message string
+}
+
+func (err *sourceRPCError) Error() string  { return err.message }
+func (err *sourceRPCError) ErrorCode() int { return err.code }
+
+func newTestSourceDiscoverer(t *testing.T, repository NFTSourceRepository, client *rpc.Client) *SourceDiscoverer {
 	t.Helper()
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "state", Client: caller, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+		Name: "state", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -135,16 +159,10 @@ func newTestSourceDiscoverer(t *testing.T, repository NFTSourceRepository, calle
 
 func sourceCandidate(t *testing.T, standard NFTStandard) NFTSourceCandidate {
 	t.Helper()
-	address, err := ethrpc.ParseAddress("0x1111111111111111111111111111111111111111")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hash, err := ethrpc.ParseHash("0x" + strings.Repeat("22", 32))
-	if err != nil {
-		t.Fatal(err)
-	}
 	return NFTSourceCandidate{
-		ChainID: "1", Token: address, TokenID: "42", BlockNumber: 7, BlockHash: hash, Standard: standard,
+		ChainID: "1", Token: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		TokenID: "42", BlockNumber: 7, BlockHash: common.HexToHash("0x" + strings.Repeat("22", 32)),
+		Standard: standard,
 	}
 }
 

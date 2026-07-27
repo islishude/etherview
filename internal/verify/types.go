@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/crypto/sha3"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Language string
@@ -113,9 +113,7 @@ func (r Request) Validate(maxInputBytes int) error {
 }
 
 func keccak256Bytes(value []byte) []byte {
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(value)
-	return hasher.Sum(nil)
+	return crypto.Keccak256(value)
 }
 
 type MatchKind string

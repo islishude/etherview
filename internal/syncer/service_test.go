@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/indexer"
@@ -20,7 +23,7 @@ import (
 type fakeSource struct {
 	mu       sync.Mutex
 	head     uint64
-	bundles  map[uint64]ethrpc.Bundle
+	bundles  map[uint64]chainbundle.Bundle
 	calls    []uint64
 	purposes []ethrpc.Purpose
 }
@@ -32,24 +35,31 @@ type notifyingSource struct {
 
 type bundleHashSource struct {
 	mu      sync.Mutex
-	bundles map[string]ethrpc.Bundle
+	bundles map[common.Hash]chainbundle.Bundle
 	calls   int
 }
 
-func newBundleHashSource(bundles ...ethrpc.Bundle) *bundleHashSource {
-	source := &bundleHashSource{bundles: make(map[string]ethrpc.Bundle, len(bundles))}
+func newBundleHashSource(
+	bundles ...chainbundle.Bundle,
+) *bundleHashSource {
+	source := &bundleHashSource{
+		bundles: make(map[common.Hash]chainbundle.Bundle, len(bundles)),
+	}
 	for _, bundle := range bundles {
 		hash, _ := bundle.BlockHash()
-		source.bundles[strings.ToLower(hash.String())] = bundle
+		source.bundles[hash] = bundle
 	}
 	return source
 }
 
-func (s *bundleHashSource) BundleByHash(_ context.Context, hash ethrpc.Hash) (ethrpc.Bundle, bool, error) {
+func (s *bundleHashSource) BundleByHash(
+	_ context.Context,
+	hash common.Hash,
+) (chainbundle.Bundle, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
-	bundle, exists := s.bundles[strings.ToLower(hash.String())]
+	bundle, exists := s.bundles[hash]
 	return bundle, exists, nil
 }
 
@@ -113,14 +123,18 @@ func (s *fakeSource) Head(context.Context) (uint64, error) {
 	return s.head, nil
 }
 
-func (s *fakeSource) BundleByNumber(_ context.Context, purpose ethrpc.Purpose, number uint64) (ethrpc.Bundle, error) {
+func (s *fakeSource) BundleByNumber(
+	_ context.Context,
+	purpose ethrpc.Purpose,
+	number uint64,
+) (chainbundle.Bundle, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, number)
 	s.purposes = append(s.purposes, purpose)
 	bundle, ok := s.bundles[number]
 	if !ok {
-		return ethrpc.Bundle{}, errors.New("missing fixture")
+		return chainbundle.Bundle{}, errors.New("missing fixture")
 	}
 	return bundle, nil
 }
@@ -393,11 +407,27 @@ func TestLiveHeadRepairsShallowForkBeforeCreatingDisconnectedIsland(t *testing.T
 		t.Fatal(err)
 	}
 	ancestor, _ := store.RefFromBundle(oldChain[98])
-	newNinetyNine := testBundle(99, testHash(209), ancestor.Hash)
-	newHundred := testBundle(100, testHash(210), testHash(209))
-	newHundredOne := testBundle(101, testHash(211), testHash(210))
-	newHundredTwo := testBundle(102, testHash(212), testHash(211))
-	source := &fakeSource{head: 102, bundles: map[uint64]ethrpc.Bundle{102: newHundredTwo}}
+	newNinetyNine := testBundle(99, ancestor.Hash, 209)
+	newHundred := testBundle(
+		100,
+		mustSyncTestRef(newNinetyNine).Hash,
+		210,
+	)
+	newHundredOne := testBundle(
+		101,
+		mustSyncTestRef(newHundred).Hash,
+		211,
+	)
+	newHundredTwo := testBundle(
+		102,
+		mustSyncTestRef(newHundredOne).Hash,
+		212,
+	)
+	newHundredTwoRef := mustSyncTestRef(newHundredTwo)
+	source := &fakeSource{
+		head:    102,
+		bundles: map[uint64]chainbundle.Bundle{102: newHundredTwo},
+	}
 	canonicalizer := &indexer.Canonicalizer{
 		ChainID: "1", StartBlock: 0, MaxReorgDepth: 128, Repository: repository,
 		HeadSource: newBundleHashSource(newNinetyNine, newHundred, newHundredOne),
@@ -411,7 +441,8 @@ func TestLiveHeadRepairsShallowForkBeforeCreatingDisconnectedIsland(t *testing.T
 	}
 	coverage, _, err := repository.Coverage(ctx, "1")
 	if err != nil || len(coverage.Ranges) != 1 || coverage.Ranges[0] != (store.BlockRange{Start: 0, End: 102}) ||
-		coverage.Contiguous == nil || !coverage.Contiguous.Hash.Equal(testHash(212)) {
+		coverage.Contiguous == nil ||
+		coverage.Contiguous.Hash != newHundredTwoRef.Hash {
 		t.Fatalf("coverage=%+v error=%v", coverage, err)
 	}
 	if len(source.purposes) != 1 || source.purposes[0] != ethrpc.PurposeHead {
@@ -431,14 +462,31 @@ func TestBackfillBoundaryConflictRepairsExistingLiveIslandFromAuthoritativeAnces
 		t.Fatal(err)
 	}
 	ancestor, _ := store.RefFromBundle(oldChain[98])
-	newNinetyNine := testBundle(99, testHash(209), ancestor.Hash)
-	newHundred := testBundle(100, testHash(210), testHash(209))
-	newHundredOne := testBundle(101, testHash(211), testHash(210))
-	newHundredTwo := testBundle(102, testHash(212), testHash(211))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{newHundredTwo}); err != nil {
+	newNinetyNine := testBundle(99, ancestor.Hash, 209)
+	newHundred := testBundle(
+		100,
+		mustSyncTestRef(newNinetyNine).Hash,
+		210,
+	)
+	newHundredOne := testBundle(
+		101,
+		mustSyncTestRef(newHundred).Hash,
+		211,
+	)
+	newHundredTwo := testBundle(
+		102,
+		mustSyncTestRef(newHundredOne).Hash,
+		212,
+	)
+	newHundredTwoRef := mustSyncTestRef(newHundredTwo)
+	if _, err := repository.CommitCanonicalSegment(
+		ctx,
+		"1",
+		[]chainbundle.Bundle{newHundredTwo},
+	); err != nil {
 		t.Fatal(err)
 	}
-	source := &fakeSource{head: 102, bundles: map[uint64]ethrpc.Bundle{
+	source := &fakeSource{head: 102, bundles: map[uint64]chainbundle.Bundle{
 		101: newHundredOne, 102: newHundredTwo,
 	}}
 	canonicalizer := &indexer.Canonicalizer{
@@ -457,7 +505,8 @@ func TestBackfillBoundaryConflictRepairsExistingLiveIslandFromAuthoritativeAnces
 	}
 	coverage, _, err := repository.Coverage(ctx, "1")
 	if err != nil || len(coverage.Ranges) != 1 || coverage.Ranges[0] != (store.BlockRange{Start: 0, End: 102}) ||
-		coverage.Contiguous == nil || !coverage.Contiguous.Hash.Equal(testHash(212)) {
+		coverage.Contiguous == nil ||
+		coverage.Contiguous.Hash != newHundredTwoRef.Hash {
 		t.Fatalf("coverage=%+v error=%v", coverage, err)
 	}
 	if len(source.purposes) != 2 || source.purposes[0] != ethrpc.PurposeHistory || source.purposes[1] != ethrpc.PurposeHead {
@@ -466,7 +515,7 @@ func TestBackfillBoundaryConflictRepairsExistingLiveIslandFromAuthoritativeAnces
 }
 
 type blockingHistorySource struct {
-	bundle         ethrpc.Bundle
+	bundle         chainbundle.Bundle
 	headCalls      chan struct{}
 	historyStarted chan struct{}
 }
@@ -484,7 +533,7 @@ func (s *blockingHistorySource) BundleByNumber(
 	ctx context.Context,
 	purpose ethrpc.Purpose,
 	_ uint64,
-) (ethrpc.Bundle, error) {
+) (chainbundle.Bundle, error) {
 	if purpose == ethrpc.PurposeHead {
 		return s.bundle, nil
 	}
@@ -493,7 +542,7 @@ func (s *blockingHistorySource) BundleByNumber(
 	default:
 	}
 	<-ctx.Done()
-	return ethrpc.Bundle{}, ctx.Err()
+	return chainbundle.Bundle{}, ctx.Err()
 }
 
 func (*blockingHistorySource) Finality(context.Context) (*store.BlockRef, *store.BlockRef, error) {
@@ -653,8 +702,12 @@ func (source fatalHeadSource) Head(context.Context) (uint64, error) {
 	return 0, source.err
 }
 
-func (fatalHeadSource) BundleByNumber(context.Context, ethrpc.Purpose, uint64) (ethrpc.Bundle, error) {
-	return ethrpc.Bundle{}, errors.New("unexpected bundle request")
+func (fatalHeadSource) BundleByNumber(
+	context.Context,
+	ethrpc.Purpose,
+	uint64,
+) (chainbundle.Bundle, error) {
+	return chainbundle.Bundle{}, errors.New("unexpected bundle request")
 }
 
 func (fatalHeadSource) Finality(context.Context) (*store.BlockRef, *store.BlockRef, error) {
@@ -673,9 +726,13 @@ func (observer *recordingSyncObserver) RecordSyncHalt(reason string) {
 
 type cancelSource struct{ fakeSource }
 
-func (*cancelSource) BundleByNumber(ctx context.Context, _ ethrpc.Purpose, _ uint64) (ethrpc.Bundle, error) {
+func (*cancelSource) BundleByNumber(
+	ctx context.Context,
+	_ ethrpc.Purpose,
+	_ uint64,
+) (chainbundle.Bundle, error) {
 	<-ctx.Done()
-	return ethrpc.Bundle{}, ctx.Err()
+	return chainbundle.Bundle{}, ctx.Err()
 }
 
 func TestSyncRangeCancellationDoesNotDeadlockDispatcher(t *testing.T) {
@@ -763,46 +820,57 @@ func waitForHeadCall(t *testing.T, calls <-chan struct{}) {
 	}
 }
 
-func testChain(length int) map[uint64]ethrpc.Bundle {
-	bundles := make(map[uint64]ethrpc.Bundle, length)
-	parent := testHash(0)
+func testChain(length int) map[uint64]chainbundle.Bundle {
+	bundles := make(map[uint64]chainbundle.Bundle, length)
+	var parent common.Hash
 	for index := range length {
-		hash := testHash(byte(index + 1))
-		bundles[uint64(index)] = testBundle(uint64(index), hash, parent)
-		parent = hash
+		bundles[uint64(index)] = testBundle(
+			uint64(index),
+			parent,
+			byte(index+1),
+		)
+		parent = mustSyncTestRef(bundles[uint64(index)]).Hash
 	}
 	return bundles
 }
 
-func syncTestChain(length int, firstHash byte) []ethrpc.Bundle {
-	chain := make([]ethrpc.Bundle, length)
-	parent := testHash(0)
+func syncTestChain(
+	length int,
+	firstExtraData byte,
+) []chainbundle.Bundle {
+	chain := make([]chainbundle.Bundle, length)
+	var parent common.Hash
 	for index := range length {
-		hash := testHash(firstHash + byte(index))
-		chain[index] = testBundle(uint64(index), hash, parent)
-		parent = hash
+		chain[index] = testBundle(
+			uint64(index),
+			parent,
+			firstExtraData+byte(index),
+		)
+		parent = mustSyncTestRef(chain[index]).Hash
 	}
 	return chain
 }
 
-func testBundle(number uint64, hash, parent ethrpc.Hash) ethrpc.Bundle {
-	quantity := ethrpc.QuantityFromUint64(number)
-	zero := testHash(0)
-	return ethrpc.Bundle{Block: ethrpc.Block{
-		Number: &quantity, Hash: &hash, ParentHash: parent,
-		Sha3Uncles: zero, TransactionsRoot: zero, StateRoot: zero, ReceiptsRoot: zero,
-		ExtraData: "0x", GasLimit: ethrpc.QuantityFromUint64(30_000_000),
-		GasUsed: ethrpc.QuantityFromUint64(0), Timestamp: ethrpc.QuantityFromUint64(1_700_000_000 + number),
-		Transactions: []ethrpc.TransactionRef{}, Uncles: []ethrpc.Hash{},
-	}}
-}
-
-func testHash(value byte) ethrpc.Hash {
-	bytes := make([]byte, 32)
-	bytes[31] = value
-	parsed, err := ethrpc.ParseHash(ethrpc.DataFromBytes(bytes).String())
+func testBundle(
+	number uint64,
+	parent common.Hash,
+	extraData byte,
+) chainbundle.Bundle {
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:     number,
+		ParentHash: parent,
+		ExtraData:  []byte{extraData},
+	})
 	if err != nil {
 		panic(err)
 	}
-	return parsed
+	return bundle
+}
+
+func mustSyncTestRef(bundle chainbundle.Bundle) store.BlockRef {
+	reference, err := store.RefFromBundle(bundle)
+	if err != nil {
+		panic(err)
+	}
+	return reference
 }

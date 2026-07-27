@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -49,9 +51,9 @@ func (processor *TraceRPCProcessor) ProcessLease(
 
 type traceTransaction struct {
 	index uint64
-	hash  Word
-	from  Address
-	to    *Address
+	hash  common.Hash
+	from  common.Address
+	to    *common.Address
 	value string
 	input []byte
 	trace NormalizedTrace
@@ -178,7 +180,7 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 		if err != nil {
 			return nil, false, Permanent(fmt.Errorf("trace transaction from address: %w", err))
 		}
-		var to *Address
+		var to *common.Address
 		if toText.Valid {
 			address, err := ParseAddress(toText.String)
 			if err != nil {
@@ -227,18 +229,18 @@ func (processor *TraceRPCProcessor) fetch(ctx context.Context, endpoint *ethrpc.
 
 func (processor *TraceRPCProcessor) fetchCallTracer(
 	ctx context.Context,
-	caller ethrpc.Caller,
+	caller rpcCaller,
 	transactions []traceTransaction,
 	budget *traceBlockBudget,
 ) error {
 	for index := range transactions {
 		var raw json.RawMessage
-		err := caller.Call(ctx, "debug_traceTransaction", []any{
+		err := caller.CallContext(ctx, &raw, "debug_traceTransaction",
 			transactions[index].hash.String(),
 			map[string]any{"tracer": "callTracer", "tracerConfig": map[string]any{"onlyTopCall": false, "withLog": false}},
-		}, &raw)
+		)
 		if err != nil {
-			return err
+			return sanitizeTraceRPCError(err)
 		}
 		if err := budget.addPayload(len(raw)); err != nil {
 			return Permanent(fmt.Errorf("account callTracer transaction %s: %w", transactions[index].hash, err))
@@ -260,15 +262,15 @@ func (processor *TraceRPCProcessor) fetchCallTracer(
 
 func (processor *TraceRPCProcessor) fetchTraceAPI(
 	ctx context.Context,
-	caller ethrpc.Caller,
+	caller rpcCaller,
 	job Job,
 	transactions []traceTransaction,
 	budget *traceBlockBudget,
 ) error {
 	for index := range transactions {
 		var raw json.RawMessage
-		if err := caller.Call(ctx, "trace_transaction", []any{transactions[index].hash.String()}, &raw); err != nil {
-			return err
+		if err := caller.CallContext(ctx, &raw, "trace_transaction", transactions[index].hash.String()); err != nil {
+			return sanitizeTraceRPCError(err)
 		}
 		if err := budget.addPayload(len(raw)); err != nil {
 			return Permanent(fmt.Errorf("account trace_transaction %s: %w", transactions[index].hash, err))
@@ -471,11 +473,7 @@ func traceDecimal(value string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	integer, err := quantity.Big()
-	if err != nil {
-		return nil, err
-	}
-	return integer.String(), nil
+	return quantity.String(), nil
 }
 
 func nullableBytes(value []byte) any {
@@ -489,17 +487,24 @@ func traceCapabilityUnavailable(err error) bool {
 	if errors.Is(err, errTraceRPCUnavailable) || ethrpc.IsMethodNotFound(err) {
 		return true
 	}
-	var rpcError *ethrpc.RPCError
+	var rpcError rpc.Error
 	if !errors.As(err, &rpcError) {
 		return false
 	}
-	message := strings.ToLower(rpcError.Message)
+	message := strings.ToLower(rpcError.Error())
 	return strings.Contains(message, "pruned") || strings.Contains(message, "historical state") ||
 		strings.Contains(message, "missing trie")
 }
 
 func traceAdapterFallback(err error) bool {
 	return ethrpc.IsMethodNotFound(err) || traceCapabilityUnavailable(err)
+}
+
+func sanitizeTraceRPCError(err error) error {
+	if traceCapabilityUnavailable(err) {
+		return errTraceRPCUnavailable
+	}
+	return ethrpc.SanitizeError(err)
 }
 
 const traceCanonicalSQL = `

@@ -3,15 +3,21 @@ package enrich
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
 
 func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-start", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(801), BlockNumber: 7}
-	raw := []byte(fmt.Sprintf(`{"number":"0x7","hash":%q,"timestamp":"0x64","gasUsed":"0x5208","gasLimit":"0x1c9c380"}`, job.BlockHash.String()))
+	job, raw := statsTestJobAndRaw(t, "stats-start", 7, 100, nil, nil)
 	var statsArguments []driver.NamedValue
 	backend := statsBackend(t, raw, "7", nil, nil, false, nil, func(query string, arguments []driver.NamedValue) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
@@ -34,8 +40,7 @@ func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 
 func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-start-parent", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(804), BlockNumber: 7}
-	raw := []byte(fmt.Sprintf(`{"number":"0x7","hash":%q,"timestamp":"0x64","gasUsed":"0x5208","gasLimit":"0x1c9c380"}`, job.BlockHash.String()))
+	job, raw := statsTestJobAndRaw(t, "stats-start-parent", 7, 100, nil, nil)
 	var statsArguments []driver.NamedValue
 	backend := statsBackend(t, raw, "7", "6", "99", true, nil, func(query string, arguments []driver.NamedValue) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
@@ -57,8 +62,7 @@ func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 
 func TestStatsV2RejectsMissingCanonicalParentAboveConfiguredStart(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-gap", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(802), BlockNumber: 8}
-	raw := []byte(fmt.Sprintf(`{"number":"0x8","hash":%q,"timestamp":"0x65","gasUsed":"0x5208","gasLimit":"0x1c9c380"}`, job.BlockHash.String()))
+	job, raw := statsTestJobAndRaw(t, "stats-gap", 8, 101, nil, nil)
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", nil, nil, false, nil, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -70,9 +74,8 @@ func TestStatsV2RejectsMissingCanonicalParentAboveConfiguredStart(t *testing.T) 
 
 func TestStatsV2RejectsReceiptBlobGasMissingFromHeader(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-blob", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(803), BlockNumber: 8}
-	raw := []byte(fmt.Sprintf(`{"number":"0x8","hash":%q,"timestamp":"0x65","gasUsed":"0x5208","gasLimit":"0x1c9c380"}`, job.BlockHash.String()))
-	receipt := []byte(`{"blobGasUsed":"0x20000","blobGasPrice":"0x3"}`)
+	job, raw := statsTestJobAndRaw(t, "stats-blob", 8, 101, nil, nil)
+	receipt := statsTestReceipt(t, job, 0x20000, 3)
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -84,9 +87,9 @@ func TestStatsV2RejectsReceiptBlobGasMissingFromHeader(t *testing.T) {
 
 func TestStatsV2RejectsIncompleteBlobHeaderFields(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-blob-header", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(805), BlockNumber: 8}
-	raw := []byte(fmt.Sprintf(`{"number":"0x8","hash":%q,"timestamp":"0x65","gasUsed":"0x5208","gasLimit":"0x1c9c380","blobGasUsed":"0x20000"}`, job.BlockHash.String()))
-	receipt := []byte(`{"blobGasUsed":"0x20000","blobGasPrice":"0x3"}`)
+	blobGasUsed := uint64(0x20000)
+	job, raw := statsTestJobAndRaw(t, "stats-blob-header", 8, 101, &blobGasUsed, nil)
+	receipt := statsTestReceipt(t, job, blobGasUsed, 3)
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -98,9 +101,9 @@ func TestStatsV2RejectsIncompleteBlobHeaderFields(t *testing.T) {
 
 func TestStatsV2RejectsNonPositiveReceiptBlobFacts(t *testing.T) {
 	t.Parallel()
-	job := Job{ID: "stats-blob-zero", Stage: StatsStage, ChainID: "1", BlockHash: uintWord(806), BlockNumber: 8}
-	raw := []byte(fmt.Sprintf(`{"number":"0x8","hash":%q,"timestamp":"0x65","gasUsed":"0x5208","gasLimit":"0x1c9c380","blobGasUsed":"0x0","excessBlobGas":"0x1"}`, job.BlockHash.String()))
-	receipt := []byte(`{"blobGasUsed":"0x0","blobGasPrice":"0x3"}`)
+	blobGasUsed, excessBlobGas := uint64(0), uint64(1)
+	job, raw := statsTestJobAndRaw(t, "stats-blob-zero", 8, 101, &blobGasUsed, &excessBlobGas)
+	receipt := statsTestReceipt(t, job, 0, 3)
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +111,73 @@ func TestStatsV2RejectsNonPositiveReceiptBlobFacts(t *testing.T) {
 	if _, err := processor.Process(context.Background(), job); err == nil || !strings.Contains(err.Error(), "non-positive blob fee facts") {
 		t.Fatalf("error=%v", err)
 	}
+}
+
+func statsTestJobAndRaw(
+	t *testing.T,
+	id string,
+	number uint64,
+	timestamp uint64,
+	blobGasUsed *uint64,
+	excessBlobGas *uint64,
+) (Job, []byte) {
+	t.Helper()
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:        number,
+		Timestamp:     timestamp,
+		ExtraData:     []byte(id),
+		BlobGasUsed:   blobGasUsed,
+		ExcessBlobGas: excessBlobGas,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := chainbundle.EncodeStoredBlock(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Job{
+		ID: id, Stage: StatsStage, ChainID: "1",
+		BlockHash: bundle.Block.Hash(), BlockNumber: number,
+	}, raw
+}
+
+func statsTestReceipt(t *testing.T, job Job, blobGasUsed, blobGasPrice uint64) []byte {
+	t.Helper()
+	receipt := &types.Receipt{
+		Type:              types.BlobTxType,
+		Status:            types.ReceiptStatusSuccessful,
+		CumulativeGasUsed: 21_000,
+		Logs:              []*types.Log{},
+		TxHash:            uintWord(job.BlockNumber + 10_000),
+		GasUsed:           21_000,
+		EffectiveGasPrice: big.NewInt(1),
+		BlockHash:         job.BlockHash,
+		BlockNumber:       new(big.Int).SetUint64(job.BlockNumber),
+		TransactionIndex:  0,
+	}
+	receipt.Bloom = types.CreateBloom(receipt)
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["blobGasUsed"], err = json.Marshal(hexutil.EncodeUint64(blobGasUsed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields["blobGasPrice"], err = json.Marshal(hexutil.EncodeUint64(blobGasPrice))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func statsBackend(

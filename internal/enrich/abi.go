@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // ABIRegistry indexes ABI entries by an exact chain/address/code/block
@@ -21,7 +23,7 @@ type ABIRegistry struct {
 type abiCandidateSet struct {
 	functions map[[4]byte][]abiEntry
 	errors    map[[4]byte][]abiEntry
-	events    map[Word][]abiEntry
+	events    map[common.Hash][]abiEntry
 }
 
 func NewABIRegistry() *ABIRegistry {
@@ -62,7 +64,7 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		candidates = &abiCandidateSet{
 			functions: make(map[[4]byte][]abiEntry),
 			errors:    make(map[[4]byte][]abiEntry),
-			events:    make(map[Word][]abiEntry),
+			events:    make(map[common.Hash][]abiEntry),
 		}
 		registry.bindings[binding.Identity] = candidates
 	}
@@ -282,7 +284,7 @@ func uniqueDecodedSignatures(entries []decodedABICandidate) []string {
 	return result
 }
 
-func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []Word, data []byte) DecodeResult {
+func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Hash, data []byte) DecodeResult {
 	if len(topics) == 0 {
 		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindEvent, Warning: "log has no signature topic"}
 	}
@@ -330,7 +332,7 @@ func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []Word, data
 	return chooseDecodedABICandidate(ABIKindEvent, decoded)
 }
 
-func (registry *ABIRegistry) decodeEvent(entry abiEntry, topics []Word, data []byte, budget *abiDecodeBudget) ([]DecodedArgument, error) {
+func (registry *ABIRegistry) decodeEvent(entry abiEntry, topics []common.Hash, data []byte, budget *abiDecodeBudget) ([]DecodedArgument, error) {
 	indexedCount := 0
 	var nonIndexedTypes []*abiType
 	for index, indexed := range entry.indexed {

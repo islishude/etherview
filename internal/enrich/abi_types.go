@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type ABISource string
@@ -40,10 +42,10 @@ func (source ABISource) persistent() bool {
 // height must never share candidates through an in-process registry.
 type ABIIdentity struct {
 	ChainID     string
-	Address     Address
-	CodeHash    Word
+	Address     common.Address
+	CodeHash    common.Hash
 	BlockNumber uint64
-	BlockHash   Word
+	BlockHash   common.Hash
 }
 
 func (identity ABIIdentity) validate() error {
@@ -54,10 +56,10 @@ func (identity ABIIdentity) validate() error {
 	if _, ok := chainID.SetString(identity.ChainID, 10); !ok || chainID.Sign() < 0 {
 		return fmt.Errorf("ABI identity chain ID %q is not an unsigned decimal", identity.ChainID)
 	}
-	if identity.CodeHash.IsZero() {
+	if identity.CodeHash == (common.Hash{}) {
 		return errors.New("ABI identity code hash is zero")
 	}
-	if identity.BlockHash.IsZero() {
+	if identity.BlockHash == (common.Hash{}) {
 		return errors.New("ABI identity block hash is zero")
 	}
 	return nil
@@ -68,8 +70,8 @@ func (identity ABIIdentity) validate() error {
 type ABIBinding struct {
 	Identity       ABIIdentity
 	Source         ABISource
-	SourceAddress  Address
-	SourceCodeHash Word
+	SourceAddress  common.Address
+	SourceCodeHash common.Hash
 	ValidFromBlock uint64
 	ValidToBlock   *uint64
 }
@@ -81,7 +83,7 @@ func (binding ABIBinding) validate() error {
 	if !binding.Source.persistent() {
 		return fmt.Errorf("ABI source %q cannot be registered as durable material", binding.Source)
 	}
-	if binding.SourceCodeHash.IsZero() {
+	if binding.SourceCodeHash == (common.Hash{}) {
 		return errors.New("ABI binding source code hash is zero")
 	}
 	if binding.ValidToBlock != nil && *binding.ValidToBlock < binding.ValidFromBlock {
@@ -127,7 +129,7 @@ type abiEntry struct {
 	indexed   []bool
 	source    ABISource
 	selector  [4]byte
-	topic     Word
+	topic     common.Hash
 }
 
 func (entry abiEntry) confidence() Confidence { return entry.source.confidence() }

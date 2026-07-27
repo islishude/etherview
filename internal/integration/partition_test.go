@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -50,7 +50,7 @@ func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {
 	upper := testBundle(
 		testPartitionLower, testHash(40_001), testHash(40_000), testHash(50_001), "partition-upper",
 	)
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{lower, upper}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{lower, upper}); err != nil {
 		t.Fatalf("commit cross-boundary segment: %v", err)
 	}
 	if err := repository.EnsureBlockPartitions(ctx, testPartitionLower-1, testPartitionLower+1); err != nil {

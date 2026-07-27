@@ -12,16 +12,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 type adminBillingCommand struct {
 	id              string
 	outcome         string
-	transactionHash *billing.TransactionHash
+	transactionHash *common.Hash
 }
 
 type adminBillingOutput struct {
@@ -225,22 +225,21 @@ func canonicalBillingPaymentID(value string) (string, error) {
 
 func parseAdminBillingTransactionHash(
 	value string,
-) (billing.TransactionHash, error) {
-	var result billing.TransactionHash
-	hash, err := ethrpc.ParseHash(value)
-	if err != nil {
+) (common.Hash, error) {
+	var result common.Hash
+	if len(value) != 2+common.HashLength*2 || !strings.HasPrefix(value, "0x") {
 		return result, errors.New(
 			"billing reconcile --transaction-hash must be a 32-byte hexadecimal hash",
 		)
 	}
-	raw, err := hash.Bytes()
-	if err != nil {
+	raw, err := hex.DecodeString(value[2:])
+	if err != nil || len(raw) != common.HashLength {
 		return result, errors.New(
 			"billing reconcile --transaction-hash must be a 32-byte hexadecimal hash",
 		)
 	}
 	copy(result[:], raw)
-	if result == (billing.TransactionHash{}) {
+	if result == (common.Hash{}) {
 		return result, errors.New(
 			"billing reconcile --transaction-hash must not be zero",
 		)
@@ -396,11 +395,11 @@ func adminBillingEventModel(
 	}, nil
 }
 
-func billingAddressString(value billing.Address) string {
+func billingAddressString(value common.Address) string {
 	return "0x" + hex.EncodeToString(value[:])
 }
 
-func optionalBillingAddressString(value *billing.Address) *string {
+func optionalBillingAddressString(value *common.Address) *string {
 	if value == nil {
 		return nil
 	}
@@ -408,7 +407,7 @@ func optionalBillingAddressString(value *billing.Address) *string {
 	return &result
 }
 
-func optionalBillingHashString(value *billing.TransactionHash) *string {
+func optionalBillingHashString(value *common.Hash) *string {
 	if value == nil {
 		return nil
 	}

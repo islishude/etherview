@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -255,7 +256,7 @@ func TestEnrichmentTerminalOutcomesAndExhaustionAreDurable(t *testing.T) {
 	})
 }
 
-func readEnrichmentJob(t *testing.T, ctx context.Context, db *sql.DB, stage enrich.StageID, blockHash enrich.Word, blockNumber uint64) enrich.Job {
+func readEnrichmentJob(t *testing.T, ctx context.Context, db *sql.DB, stage enrich.StageID, blockHash common.Hash, blockNumber uint64) enrich.Job {
 	t.Helper()
 	var id, generation int64
 	if err := db.QueryRowContext(ctx, `

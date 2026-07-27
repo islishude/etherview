@@ -1,12 +1,15 @@
 package ethrpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type Purpose string
@@ -31,12 +34,51 @@ func ValidPurpose(purpose Purpose) bool {
 type Endpoint struct {
 	Name         string
 	Purposes     map[Purpose]bool
-	Client       Caller
+	Client       *rpc.Client
 	Capabilities CapabilityReport
+	purpose      Purpose
+	observer     Observer
 }
 
 func (e *Endpoint) Supports(purpose Purpose) bool {
 	return e != nil && e.Purposes[purpose]
+}
+
+func (e *Endpoint) CallContext(ctx context.Context, result any, method string, args ...any) error {
+	if e == nil || e.Client == nil {
+		return errors.New("RPC endpoint client is nil")
+	}
+	err := e.Client.CallContext(ctx, result, method, args...)
+	e.record(err)
+	return err
+}
+
+func (e *Endpoint) BatchCallContext(ctx context.Context, elements []rpc.BatchElem) error {
+	if e == nil || e.Client == nil {
+		return errors.New("RPC endpoint client is nil")
+	}
+	err := e.Client.BatchCallContext(ctx, elements)
+	if err != nil {
+		for range elements {
+			e.record(err)
+		}
+		return err
+	}
+	for index := range elements {
+		e.record(elements[index].Error)
+	}
+	return nil
+}
+
+func (e *Endpoint) record(err error) {
+	if e == nil || e.observer == nil || !ValidPurpose(e.purpose) {
+		return
+	}
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	e.observer.RecordRPC(string(e.purpose), result)
 }
 
 type Pool struct {
@@ -163,7 +205,8 @@ func (p *Pool) Acquire(purpose Purpose) (*Endpoint, error) {
 	}
 	p.next[purpose] = (selected + 1) % len(candidates)
 	endpoint := cloneEndpoint(candidates[selected].endpoint)
-	endpoint.Client = observeCaller(endpoint.Client, purpose, p.observer)
+	endpoint.purpose = purpose
+	endpoint.observer = p.observer
 	return &endpoint, nil
 }
 

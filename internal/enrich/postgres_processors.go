@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 var (
@@ -148,7 +150,7 @@ func (processor *PostgresTokenProcessor) processDetected(ctx context.Context, jo
 		return StageResult{}, err
 	}
 	addresses := sortedTokenAddresses(evidence)
-	detections := make(map[Address]TokenDetection, len(addresses))
+	detections := make(map[common.Address]TokenDetection, len(addresses))
 	if blockDetector, ok := processor.detector.(TokenBlockDetector); ok {
 		detections, err = blockDetector.DetectBlock(ctx, job, evidence)
 		if err != nil {
@@ -190,7 +192,7 @@ func (processor *PostgresTokenProcessor) tokenBlockCanonical(ctx context.Context
 	return canonical, nil
 }
 
-func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Context, job Job) (map[Address]TokenLogEvidence, error) {
+func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Context, job Job) (map[common.Address]TokenLogEvidence, error) {
 	rows, err := processor.db.QueryContext(ctx, tokenLogsSQL,
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 	)
@@ -201,7 +203,7 @@ func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	evidence := make(map[Address]TokenLogEvidence)
+	evidence := make(map[common.Address]TokenLogEvidence)
 	for _, stored := range storedLogs {
 		parsed := ParseTokenLog(stored.log)
 		if parsed.Status != TokenParsed {
@@ -225,7 +227,7 @@ func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Contex
 	return evidence, nil
 }
 
-func (processor *PostgresTokenProcessor) persistDetectedTokenBlock(ctx context.Context, job Job, detections map[Address]TokenDetection) (StageResult, error) {
+func (processor *PostgresTokenProcessor) persistDetectedTokenBlock(ctx context.Context, job Job, detections map[common.Address]TokenDetection) (StageResult, error) {
 	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx *sql.Tx) (StageResult, error) {
 		return processor.persistDetectedTokenBlockTx(ctx, tx, job, detections)
 	})
@@ -235,7 +237,7 @@ func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	job Job,
-	detections map[Address]TokenDetection,
+	detections map[common.Address]TokenDetection,
 ) (StageResult, error) {
 	canonical, err := lockCanonicalBlock(ctx, tx, job)
 	if err != nil {
@@ -307,12 +309,12 @@ func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 	}, nil
 }
 
-func sortedTokenAddresses[Value any](values map[Address]Value) []Address {
-	addresses := make([]Address, 0, len(values))
+func sortedTokenAddresses[Value any](values map[common.Address]Value) []common.Address {
+	addresses := make([]common.Address, 0, len(values))
 	for address := range values {
 		addresses = append(addresses, address)
 	}
-	slices.SortFunc(addresses, func(left, right Address) int {
+	slices.SortFunc(addresses, func(left, right common.Address) int {
 		return bytes.Compare(left[:], right[:])
 	})
 	return addresses
@@ -352,10 +354,10 @@ func scanStoredTokenLog(row rowScanner, job Job) (TokenLog, []byte, []byte, erro
 	if err := row.Scan(&logIndex, &transactionHash, &address, &raw); err != nil {
 		return TokenLog{}, nil, nil, fmt.Errorf("scan token log: %w", err)
 	}
-	if logIndex < 0 || len(transactionHash) != 32 || len(address) != 20 {
+	if logIndex < 0 || len(transactionHash) != common.HashLength || len(address) != common.AddressLength {
 		return TokenLog{}, nil, nil, Permanent(errors.New("stored token log identity is invalid"))
 	}
-	var wire ethrpc.Log
+	var wire types.Log
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return TokenLog{}, nil, nil, Permanent(fmt.Errorf("decode token log: %w", err))
 	}
@@ -366,7 +368,7 @@ func scanStoredTokenLog(row rowScanner, job Job) (TokenLog, []byte, []byte, erro
 	return tokenLog, transactionHash, raw, nil
 }
 
-func persistTokenContract(ctx context.Context, tx *sql.Tx, job Job, address Address, detection TokenDetection) error {
+func persistTokenContract(ctx context.Context, tx *sql.Tx, job Job, address common.Address, detection TokenDetection) error {
 	var name, symbol, decimals, totalSupply any
 	if detection.Name != nil {
 		name = *detection.Name
@@ -390,49 +392,31 @@ func persistTokenContract(ctx context.Context, tx *sql.Tx, job Job, address Addr
 	return nil
 }
 
-func indexedTokenLog(wire ethrpc.Log, logIndex uint64, transactionHash, address []byte, job Job) (TokenLog, error) {
-	if wire.LogIndex == nil {
+func indexedTokenLog(wire types.Log, logIndex uint64, transactionHash, address []byte, job Job) (TokenLog, error) {
+	if uint64(wire.Index) != logIndex {
 		return TokenLog{}, errors.New("stored token log raw identity is incomplete")
 	}
-	wireIndex, err := wire.LogIndex.Uint64()
-	if err != nil || wireIndex != logIndex || wire.TransactionHash == nil || wire.BlockHash == nil || wire.BlockNumber == nil {
-		return TokenLog{}, errors.New("stored token log raw identity is incomplete")
-	}
-	wireTransactionHash, err := wire.TransactionHash.Bytes()
-	if err != nil || !equalBytes(wireTransactionHash, transactionHash) {
+	if wire.TxHash != common.BytesToHash(transactionHash) {
 		return TokenLog{}, errors.New("stored token log transaction hash mismatch")
 	}
-	wireBlockHash, err := wire.BlockHash.Bytes()
-	if err != nil || !equalBytes(wireBlockHash, job.BlockHash[:]) {
+	if wire.BlockHash != job.BlockHash {
 		return TokenLog{}, errors.New("stored token log block hash mismatch")
 	}
-	wireBlockNumber, err := wire.BlockNumber.Uint64()
-	if err != nil || wireBlockNumber != job.BlockNumber {
+	if wire.BlockNumber != job.BlockNumber {
 		return TokenLog{}, errors.New("stored token log block number mismatch")
 	}
-	wireAddress, err := wire.Address.Bytes()
-	if err != nil || !equalBytes(wireAddress, address) {
+	if wire.Address != common.BytesToAddress(address) {
 		return TokenLog{}, errors.New("stored token log address mismatch")
 	}
-	contract, err := ParseAddress(wire.Address.String())
-	if err != nil {
-		return TokenLog{}, err
-	}
-	data, err := wire.Data.Bytes()
-	if err != nil {
-		return TokenLog{}, fmt.Errorf("decode token log data: %w", err)
-	}
-	topics := make([]Word, len(wire.Topics))
-	for index, topic := range wire.Topics {
-		topics[index], err = ParseWord(topic.String())
-		if err != nil {
-			return TokenLog{}, fmt.Errorf("decode token log topic %d: %w", index, err)
-		}
-	}
-	return TokenLog{Contract: contract, Topics: topics, Data: data, LogIndex: logIndex}, nil
+	return TokenLog{
+		Contract: wire.Address,
+		Topics:   append([]common.Hash(nil), wire.Topics...),
+		Data:     common.CopyBytes(wire.Data),
+		LogIndex: logIndex,
+	}, nil
 }
 
-func detectedToken(ctx context.Context, tx *sql.Tx, job Job, address Address) (TokenStandard, Confidence, bool, error) {
+func detectedToken(ctx context.Context, tx *sql.Tx, job Job, address common.Address) (TokenStandard, Confidence, bool, error) {
 	var standard, confidence string
 	err := tx.QueryRowContext(ctx, detectedTokenSQL,
 		job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
@@ -493,9 +477,9 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 	if !ok || value.Sign() < 0 {
 		return Permanent(errors.New("token transfer amount is invalid"))
 	}
-	deltas := make(map[Address]*big.Int, 2)
-	add := func(owner *Address, delta *big.Int) {
-		if owner == nil || *owner == (Address{}) {
+	deltas := make(map[common.Address]*big.Int, 2)
+	add := func(owner *common.Address, delta *big.Int) {
+		if owner == nil || *owner == (common.Address{}) {
 			return
 		}
 		if deltas[*owner] == nil {
@@ -575,15 +559,15 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	if transactionCount < 0 {
 		return StageResult{}, Permanent(errors.New("negative transaction count"))
 	}
-	var block ethrpc.Block
-	if err := json.Unmarshal(raw, &block); err != nil {
+	bundle, err := chainbundle.DecodeStoredBlock(raw)
+	if err != nil {
 		return StageResult{}, Permanent(fmt.Errorf("decode stats block: %w", err))
 	}
-	if block.Hash == nil || block.Number == nil || !strings.EqualFold(block.Hash.String(), job.BlockHash.String()) {
+	block := bundle.Block
+	if block == nil || block.Hash() != job.BlockHash {
 		return StageResult{}, Permanent(errors.New("stats block identity mismatch"))
 	}
-	number, err := block.Number.Uint64()
-	if err != nil || number != job.BlockNumber {
+	if block.Number() == nil || !block.Number().IsUint64() || block.NumberU64() != job.BlockNumber {
 		return StageResult{}, Permanent(errors.New("stats block number mismatch"))
 	}
 	configuredStartNumber, err := strconv.ParseUint(configuredStart, 10, 64)
@@ -596,18 +580,9 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 			return StageResult{}, Permanent(errors.New("stats canonical parent fact is missing or inconsistent"))
 		}
 	}
-	gasUsed, err := block.GasUsed.Big()
-	if err != nil {
-		return StageResult{}, Permanent(fmt.Errorf("decode block gas used: %w", err))
-	}
-	gasLimit, err := block.GasLimit.Big()
-	if err != nil {
-		return StageResult{}, Permanent(fmt.Errorf("decode block gas limit: %w", err))
-	}
-	timestamp, err := block.Timestamp.Big()
-	if err != nil {
-		return StageResult{}, Permanent(fmt.Errorf("decode block timestamp: %w", err))
-	}
+	gasUsed := new(big.Int).SetUint64(block.GasUsed())
+	gasLimit := new(big.Int).SetUint64(block.GasLimit())
+	timestamp := new(big.Int).SetUint64(block.Time())
 	var blockInterval, transactionsPerSecond any
 	// The configured indexing start defines the statistics observation boundary.
 	// Even if an older canonical parent happens to be retained in PostgreSQL, it
@@ -622,40 +597,29 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 		transactionsPerSecond = decimalRatio(big.NewInt(transactionCount), interval, 18)
 	}
 	var baseFee, blobGasUsed, excessBlobGas, blobBaseFee, burned, blobBurned any
-	if block.BaseFeePerGas != nil {
-		value, err := block.BaseFeePerGas.Big()
-		if err != nil {
-			return StageResult{}, Permanent(fmt.Errorf("decode block base fee: %w", err))
-		}
+	if value := block.BaseFee(); value != nil {
 		baseFee = value.String()
 		burned = new(big.Int).Mul(value, gasUsed).String()
 	}
-	if (block.BlobGasUsed == nil) != (block.ExcessBlobGas == nil) {
+	header := block.Header()
+	if (header.BlobGasUsed == nil) != (header.ExcessBlobGas == nil) {
 		return StageResult{}, Permanent(errors.New("stats block has incomplete blob header fields"))
 	}
-	if block.BlobGasUsed != nil {
-		value, err := block.BlobGasUsed.Big()
-		if err != nil {
-			return StageResult{}, Permanent(fmt.Errorf("decode block blob gas used: %w", err))
-		}
-		blobGasUsed = value.String()
+	if header.BlobGasUsed != nil {
+		blobGasUsed = strconv.FormatUint(*header.BlobGasUsed, 10)
 	}
-	if block.ExcessBlobGas != nil {
-		value, err := block.ExcessBlobGas.Big()
-		if err != nil {
-			return StageResult{}, Permanent(fmt.Errorf("decode block excess blob gas: %w", err))
-		}
-		excessBlobGas = value.String()
+	if header.ExcessBlobGas != nil {
+		excessBlobGas = strconv.FormatUint(*header.ExcessBlobGas, 10)
 	}
 	receiptBlobGas, receiptBlobPrice, err := statsReceiptBlobFees(ctx, tx, job)
 	if err != nil {
 		return StageResult{}, err
 	}
-	if block.BlobGasUsed == nil && receiptBlobGas.Sign() > 0 {
+	if header.BlobGasUsed == nil && receiptBlobGas.Sign() > 0 {
 		return StageResult{}, Permanent(errors.New("receipt blob gas is absent from the block header"))
 	}
-	if block.BlobGasUsed != nil {
-		headerBlobGas, _ := block.BlobGasUsed.Big()
+	if header.BlobGasUsed != nil {
+		headerBlobGas := new(big.Int).SetUint64(*header.BlobGasUsed)
 		if headerBlobGas.Cmp(receiptBlobGas) != 0 {
 			return StageResult{}, Permanent(errors.New("receipt blob gas does not match the block header"))
 		}
@@ -705,24 +669,24 @@ func statsReceiptBlobFees(ctx context.Context, tx *sql.Tx, job Job) (*big.Int, *
 		if err := rows.Scan(&raw); err != nil {
 			return nil, nil, fmt.Errorf("scan stats source receipt: %w", err)
 		}
-		var receipt ethrpc.Receipt
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, nil, Permanent(fmt.Errorf("decode stats receipt fields: %w", err))
+		}
+		blobGasUsedPresent := jsonValuePresent(fields["blobGasUsed"])
+		blobGasPricePresent := jsonValuePresent(fields["blobGasPrice"])
+		var receipt types.Receipt
 		if err := json.Unmarshal(raw, &receipt); err != nil {
 			return nil, nil, Permanent(fmt.Errorf("decode stats receipt: %w", err))
 		}
-		if receipt.BlobGasUsed == nil && receipt.BlobGasPrice == nil {
+		if !blobGasUsedPresent && !blobGasPricePresent {
 			continue
 		}
-		if receipt.BlobGasUsed == nil || receipt.BlobGasPrice == nil {
+		if !blobGasUsedPresent || !blobGasPricePresent || receipt.BlobGasPrice == nil {
 			return nil, nil, Permanent(errors.New("stats receipt has an incomplete blob fee observation"))
 		}
-		used, err := receipt.BlobGasUsed.Big()
-		if err != nil {
-			return nil, nil, Permanent(fmt.Errorf("decode receipt blob gas used: %w", err))
-		}
-		currentPrice, err := receipt.BlobGasPrice.Big()
-		if err != nil {
-			return nil, nil, Permanent(fmt.Errorf("decode receipt blob gas price: %w", err))
-		}
+		used := new(big.Int).SetUint64(receipt.BlobGasUsed)
+		currentPrice := receipt.BlobGasPrice
 		if used.Sign() <= 0 || currentPrice.Sign() <= 0 {
 			return nil, nil, Permanent(errors.New("stats receipt has non-positive blob fee facts"))
 		}
@@ -736,6 +700,11 @@ func statsReceiptBlobFees(ctx context.Context, tx *sql.Tx, job Job) (*big.Int, *
 		return nil, nil, fmt.Errorf("iterate stats source receipts: %w", err)
 	}
 	return total, price, nil
+}
+
+func jsonValuePresent(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) != 0 && !bytes.Equal(trimmed, []byte("null"))
 }
 
 func lockCanonicalBlock(ctx context.Context, tx *sql.Tx, job Job) (bool, error) {
@@ -826,18 +795,6 @@ func requireDirectStageWrite(result sql.Result) error {
 		return ErrAtomicPublicationRequired
 	}
 	return nil
-}
-
-func equalBytes(left, right []byte) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }
 
 const lockCanonicalBlockSQL = `

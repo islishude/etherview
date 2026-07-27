@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -41,7 +43,7 @@ type EnqueueRequest struct {
 	Kind        string
 	Stage       StageID
 	ChainID     string
-	BlockHash   Word
+	BlockHash   common.Hash
 	BlockNumber uint64
 	Payload     json.RawMessage
 	Priority    int
@@ -482,7 +484,7 @@ func validateEnqueueRequest(request EnqueueRequest) error {
 	if err := validateChainID(request.ChainID); err != nil {
 		return err
 	}
-	if request.BlockHash.IsZero() {
+	if request.BlockHash == (common.Hash{}) {
 		return errors.New("enrichment job block hash is zero")
 	}
 	if request.Kind != "" && request.Kind != DefaultJobKind {

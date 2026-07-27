@@ -10,7 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 func TestPostgresProxyProcessorLoadsGenesisPredeployCandidatesOnlyAtBlockZero(t *testing.T) {
@@ -37,7 +39,7 @@ func TestPostgresProxyProcessorLoadsGenesisPredeployCandidatesOnlyAtBlockZero(t 
 	}
 	var candidate proxyCandidate
 	if err := processor.loadGenesisCandidates(t.Context(), job, func(
-		address Address,
+		address common.Address,
 		source string,
 		force bool,
 	) error {
@@ -55,7 +57,7 @@ func TestPostgresProxyProcessorLoadsGenesisPredeployCandidatesOnlyAtBlockZero(t 
 		t.Fatalf("genesis proxy candidate sources = %+v", candidate.sources)
 	}
 	job.BlockNumber = 1
-	if err := processor.loadGenesisCandidates(t.Context(), job, func(Address, string, bool) error {
+	if err := processor.loadGenesisCandidates(t.Context(), job, func(common.Address, string, bool) error {
 		t.Fatal("non-zero block produced a genesis proxy candidate")
 		return nil
 	}); err != nil {
@@ -75,15 +77,15 @@ type proxyRPCCall struct {
 type proxyStateCaller struct {
 	mu           sync.Mutex
 	calls        []proxyRPCCall
-	code         map[Address][]byte
-	storage      map[string]Word
-	beacon       map[Address]Address
+	code         map[common.Address][]byte
+	storage      map[string]common.Hash
+	beacon       map[common.Address]common.Address
 	err          error
 	methodErrors map[string]error
-	beaconRaw    map[Address][]byte
+	beaconRaw    map[common.Address][]byte
 }
 
-func (caller *proxyStateCaller) Call(_ context.Context, method string, params []any, result any) error {
+func (caller *proxyStateCaller) CallContext(_ context.Context, result any, method string, params ...any) error {
 	if caller.err != nil {
 		return caller.err
 	}
@@ -93,32 +95,31 @@ func (caller *proxyStateCaller) Call(_ context.Context, method string, params []
 	if len(params) < 2 {
 		return fmt.Errorf("%s has too few parameters", method)
 	}
-	blockReference, ok := params[len(params)-1].(map[string]any)
-	if !ok || blockReference["requireCanonical"] != true {
+	blockReference, ok := params[len(params)-1].(rpc.BlockNumberOrHash)
+	if !ok || !blockReference.RequireCanonical {
 		return errors.New("proxy RPC did not use a canonical EIP-1898 selector")
 	}
-	blockHash, ok := blockReference["blockHash"].(string)
-	if !ok {
+	if blockReference.BlockHash == nil {
 		return errors.New("proxy RPC block hash is missing")
 	}
-	var address Address
+	blockHash := blockReference.BlockHash.String()
+	var address common.Address
 	switch method {
 	case "eth_getCode", "eth_getStorageAt":
-		parsed, err := ParseAddress(params[0].(string))
-		if err != nil {
-			return err
+		var ok bool
+		address, ok = params[0].(common.Address)
+		if !ok {
+			return fmt.Errorf("%s address is %T", method, params[0])
 		}
-		address = parsed
 	case "eth_call":
 		request, ok := params[0].(map[string]any)
 		if !ok {
 			return errors.New("beacon call is malformed")
 		}
-		parsed, err := ParseAddress(request["to"].(string))
-		if err != nil {
-			return err
+		address, ok = request["to"].(common.Address)
+		if !ok {
+			return fmt.Errorf("beacon address is %T", request["to"])
 		}
-		address = parsed
 	default:
 		return fmt.Errorf("unexpected proxy RPC method %s", method)
 	}
@@ -127,36 +128,39 @@ func (caller *proxyStateCaller) Call(_ context.Context, method string, params []
 	caller.mu.Unlock()
 	switch method {
 	case "eth_getCode":
-		destination, ok := result.(*ethrpc.Data)
+		destination, ok := result.(*hexutil.Bytes)
 		if !ok {
 			return errors.New("code destination is invalid")
 		}
-		*destination = ethrpc.DataFromBytes(caller.code[address])
+		*destination = hexutil.Bytes(common.CopyBytes(caller.code[address]))
 	case "eth_getStorageAt":
-		slot := params[1].(string)
-		destination, ok := result.(*ethrpc.Data)
+		slot, ok := params[1].(common.Hash)
+		if !ok {
+			return fmt.Errorf("storage slot is %T", params[1])
+		}
+		destination, ok := result.(*hexutil.Bytes)
 		if !ok {
 			return errors.New("storage destination is invalid")
 		}
-		*destination = ethrpc.DataFromBytes(wordBytes(caller.storage[address.String()+":"+slot]))
+		*destination = hexutil.Bytes(wordBytes(caller.storage[address.String()+":"+slot.String()]))
 	case "eth_call":
 		if raw, exists := caller.beaconRaw[address]; exists {
-			destination, ok := result.(*ethrpc.Data)
+			destination, ok := result.(*hexutil.Bytes)
 			if !ok {
 				return errors.New("beacon destination is invalid")
 			}
-			*destination = ethrpc.DataFromBytes(raw)
+			*destination = hexutil.Bytes(common.CopyBytes(raw))
 			return nil
 		}
 		implementation, ok := caller.beacon[address]
 		if !ok {
 			return errors.New("unknown beacon")
 		}
-		destination, ok := result.(*ethrpc.Data)
+		destination, ok := result.(*hexutil.Bytes)
 		if !ok {
 			return errors.New("beacon destination is invalid")
 		}
-		*destination = ethrpc.DataFromBytes(wordBytes(addressWord(implementation)))
+		*destination = hexutil.Bytes(wordBytes(addressWord(implementation)))
 	}
 	return nil
 }
@@ -166,7 +170,7 @@ func TestRPCProxyDetectorRecognizesMinimalImmutableAndPinsBlockHash(t *testing.T
 	proxy, implementation := testAddress(31), testAddress(32)
 	code := append(append(append([]byte(nil), minimalProxyPrefix...), implementation[:]...), minimalProxySuffix...)
 	code = append(code, []byte("immutable-args")...)
-	caller := &proxyStateCaller{code: map[Address][]byte{
+	caller := &proxyStateCaller{code: map[common.Address][]byte{
 		proxy: code, implementation: {0x60, 0x00},
 	}}
 	job := Job{ID: "minimal", Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(310), BlockNumber: 310}
@@ -200,24 +204,24 @@ func TestRPCProxyDetectorResolvesEIP1967AndBeaconFinalImplementation(t *testing.
 	for _, test := range []struct {
 		name           string
 		kind           ProxyKind
-		proxy          Address
-		implementation Address
-		beacon         *Address
+		proxy          common.Address
+		implementation common.Address
+		beacon         *common.Address
 	}{
 		{name: "implementation", kind: ProxyEIP1967, proxy: testAddress(41), implementation: testAddress(42)},
 		{name: "beacon", kind: ProxyBeacon, proxy: testAddress(51), implementation: testAddress(52), beacon: addressPointer(testAddress(53))},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			storage := map[string]Word{}
+			storage := map[string]common.Hash{}
 			if test.beacon == nil {
 				storage[test.proxy.String()+":"+EIP1967ImplementationSlot.String()] = addressWord(test.implementation)
 			} else {
 				storage[test.proxy.String()+":"+EIP1967BeaconSlot.String()] = addressWord(*test.beacon)
 			}
 			caller := &proxyStateCaller{
-				code:    map[Address][]byte{test.proxy: {0x60, 0x01}, test.implementation: {0x60, 0x02}},
-				storage: storage, beacon: map[Address]Address{},
+				code:    map[common.Address][]byte{test.proxy: {0x60, 0x01}, test.implementation: {0x60, 0x02}},
+				storage: storage, beacon: map[common.Address]common.Address{},
 			}
 			if test.beacon != nil {
 				caller.beacon[*test.beacon] = test.implementation
@@ -247,7 +251,7 @@ func TestRPCProxyDetectorResolvesEIP1967AndBeaconFinalImplementation(t *testing.
 
 func TestRPCProxyDetectorReportsMissingEIP1898AsUnavailable(t *testing.T) {
 	t.Parallel()
-	caller := &proxyStateCaller{err: &ethrpc.RPCError{Code: -32602, Message: "invalid argument 1: block hash selectors unsupported"}}
+	caller := &proxyStateCaller{err: testRPCError{code: -32602, message: "invalid argument 1: block hash selectors unsupported"}}
 	detector := rpcProxyDetector{caller: caller, limits: ProxyLimits{MaxCandidates: 1, MaxCodeBytes: 1024, MaxDetailsBytes: 256}}
 	job := Job{ID: "unsupported", Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(500), BlockNumber: 500}
 	_, err := detector.detectBlock(t.Context(), job, []proxyCandidate{{address: testAddress(50)}})
@@ -263,10 +267,10 @@ func TestRPCProxyDetectorRejectsPoisonCandidateWithoutBlockingValidProxy(t *test
 	poisonImplementation, poisonBeacon := testAddress(63), testAddress(64)
 	validImplementation := testAddress(65)
 	caller := &proxyStateCaller{
-		code: map[Address][]byte{
+		code: map[common.Address][]byte{
 			poison: {0x60, 0x01}, valid: {0x60, 0x02}, validImplementation: {0x60, 0x03},
 		},
-		storage: map[string]Word{
+		storage: map[string]common.Hash{
 			poison.String() + ":" + EIP1967ImplementationSlot.String(): addressWord(poisonImplementation),
 			poison.String() + ":" + EIP1967BeaconSlot.String():         addressWord(poisonBeacon),
 			valid.String() + ":" + EIP1967ImplementationSlot.String():  addressWord(validImplementation),
@@ -288,24 +292,24 @@ func TestRPCProxyDetectorTreatsInvalidCandidateStateAsLocalRejection(t *testing.
 	t.Parallel()
 	for _, test := range []struct {
 		name  string
-		setup func(Address, *proxyStateCaller)
+		setup func(common.Address, *proxyStateCaller)
 		want  string
 	}{
 		{
 			name: "self implementation", want: "self_implementation",
-			setup: func(proxy Address, caller *proxyStateCaller) {
+			setup: func(proxy common.Address, caller *proxyStateCaller) {
 				caller.storage[proxy.String()+":"+EIP1967ImplementationSlot.String()] = addressWord(proxy)
 			},
 		},
 		{
 			name: "implementation without code", want: "implementation_has_no_code",
-			setup: func(proxy Address, caller *proxyStateCaller) {
+			setup: func(proxy common.Address, caller *proxyStateCaller) {
 				caller.storage[proxy.String()+":"+EIP1967ImplementationSlot.String()] = addressWord(testAddress(72))
 			},
 		},
 		{
 			name: "invalid slot address", want: "invalid_slot_address",
-			setup: func(proxy Address, caller *proxyStateCaller) {
+			setup: func(proxy common.Address, caller *proxyStateCaller) {
 				word := addressWord(testAddress(73))
 				word[0] = 1
 				caller.storage[proxy.String()+":"+EIP1967ImplementationSlot.String()] = word
@@ -313,7 +317,7 @@ func TestRPCProxyDetectorTreatsInvalidCandidateStateAsLocalRejection(t *testing.
 		},
 		{
 			name: "invalid beacon return", want: "invalid_beacon_implementation",
-			setup: func(proxy Address, caller *proxyStateCaller) {
+			setup: func(proxy common.Address, caller *proxyStateCaller) {
 				beacon := testAddress(74)
 				caller.storage[proxy.String()+":"+EIP1967BeaconSlot.String()] = addressWord(beacon)
 				caller.beaconRaw[beacon] = []byte{1}
@@ -321,10 +325,10 @@ func TestRPCProxyDetectorTreatsInvalidCandidateStateAsLocalRejection(t *testing.
 		},
 		{
 			name: "beacon execution revert", want: "invalid_beacon_implementation",
-			setup: func(proxy Address, caller *proxyStateCaller) {
+			setup: func(proxy common.Address, caller *proxyStateCaller) {
 				beacon := testAddress(75)
 				caller.storage[proxy.String()+":"+EIP1967BeaconSlot.String()] = addressWord(beacon)
-				caller.methodErrors["eth_call"] = &ethrpc.RPCError{Code: 3, Message: "execution reverted"}
+				caller.methodErrors["eth_call"] = testRPCError{code: 3, message: "execution reverted"}
 			},
 		},
 	} {
@@ -332,8 +336,8 @@ func TestRPCProxyDetectorTreatsInvalidCandidateStateAsLocalRejection(t *testing.
 			t.Parallel()
 			proxy := testAddress(71)
 			caller := &proxyStateCaller{
-				code: map[Address][]byte{proxy: {0x60, 0x01}}, storage: map[string]Word{},
-				beacon: map[Address]Address{}, beaconRaw: map[Address][]byte{}, methodErrors: map[string]error{},
+				code: map[common.Address][]byte{proxy: {0x60, 0x01}}, storage: map[string]common.Hash{},
+				beacon: map[common.Address]common.Address{}, beaconRaw: map[common.Address][]byte{}, methodErrors: map[string]error{},
 			}
 			test.setup(proxy, caller)
 			job := Job{ID: test.name, Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(700), BlockNumber: 700}
@@ -353,8 +357,8 @@ func TestRPCProxyDetectorKeepsBeaconTransportFailureRetryable(t *testing.T) {
 	t.Parallel()
 	proxy, beacon := testAddress(81), testAddress(82)
 	caller := &proxyStateCaller{
-		code:         map[Address][]byte{proxy: {0x60, 0x01}},
-		storage:      map[string]Word{proxy.String() + ":" + EIP1967BeaconSlot.String(): addressWord(beacon)},
+		code:         map[common.Address][]byte{proxy: {0x60, 0x01}},
+		storage:      map[string]common.Hash{proxy.String() + ":" + EIP1967BeaconSlot.String(): addressWord(beacon)},
 		methodErrors: map[string]error{"eth_call": context.DeadlineExceeded},
 	}
 	job := Job{ID: "beacon-timeout", Stage: ProxyStage, ChainID: "1", BlockHash: uintWord(800), BlockNumber: 800}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 )
 
@@ -195,17 +196,17 @@ func TestAdminBillingOutputIsSafeAndOrdered(t *testing.T) {
 	failureCode := "settlement_unknown"
 	userID := "00000000-0000-4000-8000-000000000099"
 	apiKeyPrefix := "abcdefghij"
-	payer := billing.Address{19: 0x33}
-	hash := billing.TransactionHash{31: 0x44}
+	payer := common.Address{19: 0x33}
+	hash := common.Hash{31: 0x44}
 	fromState := billing.StateVerified
 	inspection := billing.Inspection{
 		Payment: billing.Payment{
 			ID: testAdminBillingID, ChainID: 84532,
 			Operation: "listBlocks", Method: "GET",
 			Network:      "eip155:84532",
-			Asset:        billing.Address{19: 0x11},
+			Asset:        common.Address{19: 0x11},
 			AmountAtomic: "1000",
-			Recipient:    billing.Address{19: 0x22},
+			Recipient:    common.Address{19: 0x22},
 			Payer:        &payer, UserID: &userID, APIKeyPrefix: &apiKeyPrefix,
 			State: billing.StateSettling, FailureCode: &failureCode,
 			ReservationExpiresAt: createdAt.Add(2 * time.Minute),

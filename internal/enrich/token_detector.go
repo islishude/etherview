@@ -8,8 +8,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"golang.org/x/crypto/sha3"
 )
 
 type TokenLogEvidence struct {
@@ -25,7 +28,7 @@ func (evidence TokenLogEvidence) empty() bool {
 
 type TokenDetectionRequest struct {
 	Job      Job
-	Address  Address
+	Address  common.Address
 	Evidence TokenLogEvidence
 }
 
@@ -36,7 +39,7 @@ func (request TokenDetectionRequest) validate() error {
 	if request.Job.Stage != TokenStage {
 		return errors.New("token detection requires the token stage")
 	}
-	if request.Address == (Address{}) {
+	if request.Address == (common.Address{}) {
 		return errors.New("token detection address is zero")
 	}
 	if request.Evidence.empty() {
@@ -55,7 +58,7 @@ const (
 type TokenDetection struct {
 	Standard      TokenStandard
 	Confidence    Confidence
-	CodeHash      Word
+	CodeHash      common.Hash
 	Name          *string
 	Symbol        *string
 	Decimals      *uint8
@@ -76,7 +79,7 @@ func (detection TokenDetection) validate() error {
 	default:
 		return errors.New("token detection standard is invalid")
 	}
-	if detection.CodeHash.IsZero() {
+	if detection.CodeHash == (common.Hash{}) {
 		return errors.New("token detection code hash is zero")
 	}
 	if detection.Name != nil && len(*detection.Name) > 4096 || detection.Symbol != nil && len(*detection.Symbol) > 4096 {
@@ -114,7 +117,7 @@ func (function TokenDetectorFunc) Detect(ctx context.Context, request TokenDetec
 // per contract so the pool can rotate only between blocks.
 type TokenBlockDetector interface {
 	TokenDetector
-	DetectBlock(context.Context, Job, map[Address]TokenLogEvidence) (map[Address]TokenDetection, error)
+	DetectBlock(context.Context, Job, map[common.Address]TokenLogEvidence) (map[common.Address]TokenDetection, error)
 }
 
 type PoolTokenDetector struct {
@@ -138,7 +141,7 @@ func (detector *PoolTokenDetector) Detect(ctx context.Context, request TokenDete
 	if err := request.validate(); err != nil {
 		return TokenDetection{}, Permanent(err)
 	}
-	results, err := detector.DetectBlock(ctx, request.Job, map[Address]TokenLogEvidence{
+	results, err := detector.DetectBlock(ctx, request.Job, map[common.Address]TokenLogEvidence{
 		request.Address: request.Evidence,
 	})
 	if err != nil {
@@ -151,7 +154,7 @@ func (detector *PoolTokenDetector) Detect(ctx context.Context, request TokenDete
 	return result, nil
 }
 
-func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evidence map[Address]TokenLogEvidence) (map[Address]TokenDetection, error) {
+func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evidence map[common.Address]TokenLogEvidence) (map[common.Address]TokenDetection, error) {
 	if detector == nil || detector.pool == nil {
 		return nil, errors.New("pool token detector is not configured")
 	}
@@ -163,10 +166,10 @@ func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evi
 	}
 	addresses := sortedTokenAddresses(evidence)
 	if len(addresses) == 0 {
-		return map[Address]TokenDetection{}, nil
+		return map[common.Address]TokenDetection{}, nil
 	}
 	for _, address := range addresses {
-		if address == (Address{}) || evidence[address].empty() {
+		if address == (common.Address{}) || evidence[address].empty() {
 			return nil, Permanent(errors.New("pool token detector received invalid block evidence"))
 		}
 	}
@@ -178,7 +181,7 @@ func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evi
 	if err != nil {
 		return nil, err
 	}
-	results := make(map[Address]TokenDetection, len(addresses))
+	results := make(map[common.Address]TokenDetection, len(addresses))
 	for _, address := range addresses {
 		result, detectErr := blockDetector.Detect(ctx, TokenDetectionRequest{
 			Job: job, Address: address, Evidence: evidence[address],
@@ -212,11 +215,11 @@ func (limits *TokenProbeLimits) defaults() {
 }
 
 type RPCTokenDetector struct {
-	caller ethrpc.Caller
+	caller rpcCaller
 	limits TokenProbeLimits
 }
 
-func NewRPCTokenDetector(caller ethrpc.Caller, limits TokenProbeLimits) (*RPCTokenDetector, error) {
+func NewRPCTokenDetector(caller rpcCaller, limits TokenProbeLimits) (*RPCTokenDetector, error) {
 	if caller == nil {
 		return nil, errors.New("RPC token detector requires a caller")
 	}
@@ -246,17 +249,18 @@ func (detector *RPCTokenDetector) Detect(ctx context.Context, request TokenDetec
 	if err := request.validate(); err != nil {
 		return TokenDetection{}, Permanent(err)
 	}
-	blockReference := map[string]any{
-		"blockHash": request.Job.BlockHash.String(), "requireCanonical": true,
-	}
-	var encodedCode ethrpc.Data
-	if err := detector.caller.Call(ctx, "eth_getCode", []any{request.Address.String(), blockReference}, &encodedCode); err != nil {
+	blockReference := rpc.BlockNumberOrHashWithHash(request.Job.BlockHash, true)
+	var encodedCode hexutil.Bytes
+	if err := detector.caller.CallContext(
+		ctx,
+		&encodedCode,
+		"eth_getCode",
+		request.Address,
+		blockReference,
+	); err != nil {
 		return TokenDetection{}, exactStateRPCError(ctx, "eth_getCode", err)
 	}
-	code, err := encodedCode.Bytes()
-	if err != nil {
-		return TokenDetection{}, Permanent(errors.New("eth_getCode returned invalid bytecode"))
-	}
+	code := []byte(encodedCode)
 	if len(code) > detector.limits.MaxCodeBytes {
 		return TokenDetection{}, Permanent(errors.New("contract bytecode exceeds token detection limit"))
 	}
@@ -280,7 +284,11 @@ func (detector *RPCTokenDetector) Detect(ctx context.Context, request TokenDetec
 	return detection, nil
 }
 
-func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, blockReference map[string]any) (tokenProbeResults, error) {
+func (detector *RPCTokenDetector) probe(
+	ctx context.Context,
+	address common.Address,
+	blockReference rpc.BlockNumberOrHash,
+) (tokenProbeResults, error) {
 	var probes tokenProbeResults
 	var err error
 	if probes.erc721, err = detector.supportsInterface(ctx, address, blockReference, [4]byte{0x80, 0xac, 0x58, 0xcd}); err != nil {
@@ -289,7 +297,7 @@ func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, bl
 	if probes.erc1155, err = detector.supportsInterface(ctx, address, blockReference, [4]byte{0xd9, 0xb6, 0x7a, 0x26}); err != nil {
 		return tokenProbeResults{}, err
 	}
-	name, supported, err := detector.call(ctx, address, blockReference, SignatureSelector("name()"))
+	name, supported, err := detector.call(ctx, address, blockReference, "name")
 	if err != nil {
 		return tokenProbeResults{}, err
 	}
@@ -298,7 +306,7 @@ func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, bl
 			probes.name, probes.nameOK = &value, true
 		}
 	}
-	symbol, supported, err := detector.call(ctx, address, blockReference, SignatureSelector("symbol()"))
+	symbol, supported, err := detector.call(ctx, address, blockReference, "symbol")
 	if err != nil {
 		return tokenProbeResults{}, err
 	}
@@ -307,7 +315,7 @@ func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, bl
 			probes.symbol, probes.symbolOK = &value, true
 		}
 	}
-	decimals, supported, err := detector.call(ctx, address, blockReference, SignatureSelector("decimals()"))
+	decimals, supported, err := detector.call(ctx, address, blockReference, "decimals")
 	if err != nil {
 		return tokenProbeResults{}, err
 	}
@@ -317,7 +325,7 @@ func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, bl
 			probes.decimals, probes.decimalsOK = &parsed, true
 		}
 	}
-	totalSupply, supported, err := detector.call(ctx, address, blockReference, SignatureSelector("totalSupply()"))
+	totalSupply, supported, err := detector.call(ctx, address, blockReference, "totalSupply")
 	if err != nil {
 		return tokenProbeResults{}, err
 	}
@@ -330,12 +338,16 @@ func (detector *RPCTokenDetector) probe(ctx context.Context, address Address, bl
 	return probes, nil
 }
 
-func (detector *RPCTokenDetector) supportsInterface(ctx context.Context, address Address, blockReference map[string]any, interfaceID [4]byte) (bool, error) {
-	input := make([]byte, 4+32)
-	selector := SignatureSelector("supportsInterface(bytes4)")
-	copy(input[:4], selector[:])
-	// ABI fixed bytes are left-aligned in their 32-byte slot.
-	copy(input[4:8], interfaceID[:])
+func (detector *RPCTokenDetector) supportsInterface(
+	ctx context.Context,
+	address common.Address,
+	blockReference rpc.BlockNumberOrHash,
+	interfaceID [4]byte,
+) (bool, error) {
+	input, err := packStateProbe("supportsInterface", interfaceID)
+	if err != nil {
+		return false, Permanent(err)
+	}
 	output, supported, err := detector.callData(ctx, address, blockReference, input)
 	if err != nil || !supported {
 		return false, err
@@ -351,34 +363,56 @@ func (detector *RPCTokenDetector) supportsInterface(ctx context.Context, address
 	return output[31] == 1, nil
 }
 
-func (detector *RPCTokenDetector) call(ctx context.Context, address Address, blockReference map[string]any, selector [4]byte) ([]byte, bool, error) {
-	return detector.callData(ctx, address, blockReference, selector[:])
+func (detector *RPCTokenDetector) call(
+	ctx context.Context,
+	address common.Address,
+	blockReference rpc.BlockNumberOrHash,
+	method string,
+) ([]byte, bool, error) {
+	input, err := packStateProbe(method)
+	if err != nil {
+		return nil, false, Permanent(err)
+	}
+	return detector.callData(ctx, address, blockReference, input)
 }
 
-func (detector *RPCTokenDetector) callData(ctx context.Context, address Address, blockReference map[string]any, input []byte) ([]byte, bool, error) {
-	request := map[string]any{"to": address.String(), "data": ethrpc.DataFromBytes(input).String()}
-	var encoded ethrpc.Data
-	err := detector.caller.Call(ctx, "eth_call", []any{request, blockReference}, &encoded)
+func (detector *RPCTokenDetector) callData(
+	ctx context.Context,
+	address common.Address,
+	blockReference rpc.BlockNumberOrHash,
+	input []byte,
+) ([]byte, bool, error) {
+	request := map[string]any{"to": address, "data": hexutil.Bytes(input)}
+	var encoded hexutil.Bytes
+	err := detector.caller.CallContext(
+		ctx,
+		&encoded,
+		"eth_call",
+		request,
+		blockReference,
+	)
 	if err != nil {
 		if executionReverted(err) {
 			return nil, false, nil
 		}
 		return nil, false, exactStateRPCError(ctx, "eth_call", err)
 	}
-	output, err := encoded.Bytes()
-	if err != nil || len(output) > detector.limits.MaxReturnBytes {
+	output := []byte(encoded)
+	if len(output) > detector.limits.MaxReturnBytes {
 		return nil, false, nil
 	}
 	return output, true, nil
 }
 
 func executionReverted(err error) bool {
-	var rpcError *ethrpc.RPCError
+	var rpcError rpc.Error
 	if !errors.As(err, &rpcError) {
 		return false
 	}
-	message := strings.ToLower(rpcError.Message)
-	return rpcError.Code == 3 || strings.Contains(message, "execution reverted") || strings.Contains(message, "revert")
+	message := strings.ToLower(rpcError.Error())
+	return rpcError.ErrorCode() == 3 ||
+		strings.Contains(message, "execution reverted") ||
+		strings.Contains(message, "revert")
 }
 
 func classifyToken(evidence TokenLogEvidence, probes tokenProbeResults) (TokenStandard, Confidence) {
@@ -458,10 +492,6 @@ func zeroWordPrefix(word []byte) bool {
 	return true
 }
 
-func codeHash(code []byte) Word {
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(code)
-	var hash Word
-	hasher.Sum(hash[:0])
-	return hash
+func codeHash(code []byte) common.Hash {
+	return crypto.Keccak256Hash(code)
 }

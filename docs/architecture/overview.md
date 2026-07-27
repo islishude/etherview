@@ -74,11 +74,12 @@ of the callback. The routing and lag contract is specified in
 - Block-zero RPC ingestion authenticates but cannot enumerate the allocation.
   The sync role can read the authoritative Genesis JSON from one mutually
   exclusive server-only source: an absolute `chain.genesis_file` or a
-  `chain.genesis_url`; either requires indexing to start at zero. It computes
-  the block hash, account trie, and per-account storage roots, requires the
-  block hash and state root to match canonical block zero, and atomically
-  stores balances, nonces, code identity, and storage roots. Raw storage slots
-  are discarded. Missing input is a typed unavailable capability, not an empty
+  `chain.genesis_url`; either requires indexing to start at zero. After bounded
+  source validation, go-ethereum `core.Genesis.ToBlock()` is authoritative for
+  the allocation root, Genesis header semantics, and block hash. Those values
+  must match canonical block zero before balances, nonces, code identity, and
+  per-account storage roots are stored atomically. Raw storage slots are
+  discarded. Missing input is a typed unavailable capability, not an empty
   allocation.
 - Remote Genesis bootstrap is restricted to public HTTPS port 443 with no
   credentials, query, fragment, path traversal, redirect, proxy, or
@@ -101,6 +102,24 @@ of the callback. The routing and lag contract is specified in
   orphan facts remain queryable.
 - Core readiness means block, transaction, receipt, log, and withdrawal facts
   are durably committed. Enrichment has independent completeness states.
+- Execution RPC ingestion is raw-first. The transport bounds and validates the
+  JSON-RPC envelope before protocol decoding and preserves each accepted raw
+  object independently of its typed projection. Go-ethereum is authoritative
+  for matching Ethereum protocol semantics, including transaction types 0
+  through 4. Unsupported future transaction types fail permanently and
+  atomically before any block write or coverage advance. `blocks.raw` preserves
+  the block result's top-level JSON shape. A PoW block stores its full uncle
+  headers only in reserved versioned root-level metadata, which
+  `DecodeStoredBlock` removes before exposing the raw block. Legacy rows with
+  empty uncles decode directly; a legacy row with non-empty uncle hashes but no
+  headers fails permanently with `ErrStoredUncleHeadersUnavailable` and
+  requires an exact endpoint- and block-identity-bound RPC repair before it can
+  become a verified bundle. Typed geth projections are never marshaled over
+  stored raw objects or used to discard unknown fields on supported objects.
+  Response limits, batch correlation, endpoint pinning, stable error
+  classification, redaction, SQL models, and public API models remain explicit
+  Etherview adapters; see
+  [ADR-0022](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md).
 - New-head subscriptions are hints. Polling, ancestry checks, and gap scans are
   authoritative.
 - The upstream head, indexed position, readiness, and bounded head/reorg/status

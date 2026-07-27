@@ -7,16 +7,20 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 const maximumUint256Bits = 256
 
 type Source interface {
-	PendingBlock(context.Context) (*ethrpc.Block, string, error)
+	PendingBlock(context.Context) (json.RawMessage, string, error)
 }
 
 type SourceError struct {
@@ -36,7 +40,7 @@ func (err SourceError) Unwrap() error { return err.Cause }
 
 type PoolSource struct{ Pool *ethrpc.Pool }
 
-func (source PoolSource) PendingBlock(ctx context.Context) (*ethrpc.Block, string, error) {
+func (source PoolSource) PendingBlock(ctx context.Context) (json.RawMessage, string, error) {
 	if source.Pool == nil {
 		return nil, "", SourceError{State: StateUnavailable, Code: "endpoint_unavailable"}
 	}
@@ -44,17 +48,21 @@ func (source PoolSource) PendingBlock(ctx context.Context) (*ethrpc.Block, strin
 	if err != nil {
 		return nil, "", SourceError{State: StateUnavailable, Code: "endpoint_unavailable", Cause: err}
 	}
-	var block *ethrpc.Block
-	err = endpoint.Client.Call(ctx, "eth_getBlockByNumber", []any{"pending", true}, &block)
+	var block json.RawMessage
+	err = endpoint.CallContext(ctx, &block, "eth_getBlockByNumber", "pending", true)
 	if err != nil {
 		source.Pool.ReportFailure(endpoint.Name)
 		state, code := StateFailed, "rpc_request_failed"
 		if ethrpc.IsMethodNotFound(err) {
 			state, code = StateUnavailable, "method_not_supported"
 		}
-		return nil, endpoint.Name, SourceError{State: state, Code: code, Cause: err}
+		return nil, endpoint.Name, SourceError{
+			State: state,
+			Code:  code,
+			Cause: ethrpc.SanitizeError(err),
+		}
 	}
-	if block == nil {
+	if len(block) == 0 || strings.EqualFold(strings.TrimSpace(string(block)), "null") {
 		source.Pool.ReportFailure(endpoint.Name)
 		return nil, endpoint.Name, SourceError{State: StateFailed, Code: "null_snapshot"}
 	}
@@ -165,9 +173,35 @@ func sourceFailure(err error, endpoint string, observedAt time.Time) Failure {
 	return Failure{State: state, Endpoint: endpoint, Code: code, Message: message, ObservedAt: observedAt}
 }
 
-func buildSnapshot(block *ethrpc.Block, endpoint string, options PollerOptions, observedAt time.Time) (Snapshot, error) {
-	if block == nil {
+type pendingBlockProjection struct {
+	Hash         *common.Hash      `json:"hash"`
+	Number       *hexutil.Big      `json:"number"`
+	Transactions []json.RawMessage `json:"transactions"`
+}
+
+type pendingTransactionProjection struct {
+	Hash                 *common.Hash    `json:"hash"`
+	From                 *common.Address `json:"from"`
+	BlockHash            *common.Hash    `json:"blockHash"`
+	BlockNumber          *hexutil.Big    `json:"blockNumber"`
+	TransactionIndex     *hexutil.Uint64 `json:"transactionIndex"`
+	ChainID              *hexutil.Big    `json:"chainId"`
+	GasPrice             *hexutil.Big    `json:"gasPrice"`
+	MaxFeePerGas         *hexutil.Big    `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas *hexutil.Big    `json:"maxPriorityFeePerGas"`
+	Type                 *hexutil.Uint64 `json:"type"`
+}
+
+func buildSnapshot(rawBlock json.RawMessage, endpoint string, options PollerOptions, observedAt time.Time) (Snapshot, error) {
+	if len(rawBlock) == 0 || strings.EqualFold(strings.TrimSpace(string(rawBlock)), "null") {
 		return Snapshot{}, errors.New("pending block is null")
+	}
+	if len(rawBlock) > options.MaxResponseBytes {
+		return Snapshot{}, fmt.Errorf("pending snapshot has %d bytes, limit is %d", len(rawBlock), options.MaxResponseBytes)
+	}
+	var block pendingBlockProjection
+	if err := json.Unmarshal(rawBlock, &block); err != nil {
+		return Snapshot{}, fmt.Errorf("decode pending snapshot: %w", err)
 	}
 	if block.Hash != nil || block.Number != nil {
 		return Snapshot{}, errors.New("pending block has a mined block identity")
@@ -178,20 +212,13 @@ func buildSnapshot(block *ethrpc.Block, endpoint string, options PollerOptions, 
 	if len(block.Transactions) > options.MaxTransactions {
 		return Snapshot{}, fmt.Errorf("pending snapshot has %d transactions, limit is %d", len(block.Transactions), options.MaxTransactions)
 	}
-	rawBlock, err := json.Marshal(block)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("encode pending snapshot: %w", err)
-	}
-	if len(rawBlock) > options.MaxResponseBytes {
-		return Snapshot{}, fmt.Errorf("pending snapshot has %d bytes, limit is %d", len(rawBlock), options.MaxResponseBytes)
-	}
 	transactions := make([]Transaction, 0, len(block.Transactions))
 	seen := make(map[string]struct{}, len(block.Transactions))
-	for index, reference := range block.Transactions {
-		if !reference.IsFull() {
+	for index, rawTransaction := range block.Transactions {
+		if len(rawTransaction) == 0 || rawTransaction[0] != '{' {
 			return Snapshot{}, fmt.Errorf("pending transaction %d is hash-only", index)
 		}
-		transaction, err := pendingTransaction(reference, options.ChainID, endpoint, observedAt, observedAt.Add(options.Retention))
+		transaction, err := pendingTransaction(rawTransaction, options.ChainID, endpoint, observedAt, observedAt.Add(options.Retention))
 		if err != nil {
 			return Snapshot{}, fmt.Errorf("pending transaction %d: %w", index, err)
 		}
@@ -208,100 +235,98 @@ func buildSnapshot(block *ethrpc.Block, endpoint string, options PollerOptions, 
 	}, nil
 }
 
-func pendingTransaction(reference ethrpc.TransactionRef, chainID uint64, endpoint string, firstSeen, expires time.Time) (Transaction, error) {
-	wire := reference.Transaction
-	if wire == nil {
-		return Transaction{}, errors.New("transaction object is missing")
+func pendingTransaction(raw json.RawMessage, chainID uint64, endpoint string, firstSeen, expires time.Time) (Transaction, error) {
+	var projection pendingTransactionProjection
+	if err := json.Unmarshal(raw, &projection); err != nil {
+		return Transaction{}, fmt.Errorf("decode transaction object: %w", err)
 	}
-	if wire.BlockHash != nil || wire.BlockNumber != nil || wire.TransactionIndex != nil {
+	if projection.Hash == nil || projection.From == nil {
+		return Transaction{}, errors.New("transaction hash or sender is missing")
+	}
+	if projection.BlockHash != nil || projection.BlockNumber != nil || projection.TransactionIndex != nil {
 		return Transaction{}, errors.New("transaction has a mined block hash, number, or index")
 	}
-	hashBytes, err := wire.Hash.Bytes()
-	if err != nil || len(hashBytes) != 32 {
-		return Transaction{}, errors.New("transaction hash is invalid")
+	var wire types.Transaction
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return Transaction{}, fmt.Errorf("decode geth transaction: %w", err)
 	}
-	if reference.Hash != "" && !reference.Hash.Equal(wire.Hash) {
-		return Transaction{}, errors.New("transaction reference hash does not match the full object")
+	if wire.Hash() != *projection.Hash {
+		return Transaction{}, errors.New("transaction hash does not match the full object")
 	}
-	from, err := checksumAddress(wire.From)
+	sender, err := types.Sender(types.LatestSignerForChainID(wire.ChainId()), &wire)
+	if err != nil || sender != *projection.From {
+		return Transaction{}, errors.New("transaction sender is invalid")
+	}
+	from, err := checksumAddress(sender)
 	if err != nil {
 		return Transaction{}, errors.New("transaction sender is invalid")
 	}
 	var to *string
-	if wire.To != nil {
-		value, err := checksumAddress(*wire.To)
+	if wire.To() != nil {
+		value, err := checksumAddress(*wire.To())
 		if err != nil {
 			return Transaction{}, errors.New("transaction recipient is invalid")
 		}
 		to = &value
 	}
-	if wire.ChainID != nil {
-		actual, err := wire.ChainID.Uint64()
-		if err != nil || actual != chainID {
+	if projection.ChainID != nil {
+		actual := projection.ChainID.ToInt()
+		if !actual.IsUint64() || actual.Uint64() != chainID || wire.ChainId().Cmp(actual) != 0 {
 			return Transaction{}, errors.New("transaction chain ID does not match the configured chain")
 		}
 	}
-	nonce, err := decimalQuantity(wire.Nonce)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("nonce: %w", err)
-	}
-	value, err := decimalQuantity(wire.Value)
+	value, err := decimalQuantity(wire.Value())
 	if err != nil {
 		return Transaction{}, fmt.Errorf("value: %w", err)
 	}
-	gas, err := decimalQuantity(wire.Gas)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("gas: %w", err)
-	}
-	gasPrice, err := optionalDecimalQuantity(wire.GasPrice)
+	gasPrice, err := optionalDecimalQuantity(projection.GasPrice)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("gas price: %w", err)
 	}
-	maxFee, err := optionalDecimalQuantity(wire.MaxFeePerGas)
+	maxFee, err := optionalDecimalQuantity(projection.MaxFeePerGas)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("max fee per gas: %w", err)
 	}
-	priorityFee, err := optionalDecimalQuantity(wire.MaxPriorityFeePerGas)
+	priorityFee, err := optionalDecimalQuantity(projection.MaxPriorityFeePerGas)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("max priority fee per gas: %w", err)
 	}
-	txType, err := optionalDecimalQuantity(wire.Type)
+	txType, err := optionalUint64Quantity(projection.Type)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("type: %w", err)
 	}
-	inputBytes, err := wire.Input.Bytes()
-	if err != nil {
-		return Transaction{}, errors.New("transaction input is invalid")
-	}
-	raw, err := json.Marshal(wire)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("encode raw transaction: %w", err)
-	}
 	return Transaction{
-		Hash: strings.ToLower(wire.Hash.String()), From: from, To: to,
-		Nonce: nonce, Value: value, Gas: gas, GasPrice: gasPrice,
+		Hash: strings.ToLower(wire.Hash().Hex()), From: from, To: to,
+		Nonce: strconv.FormatUint(wire.Nonce(), 10), Value: value, Gas: strconv.FormatUint(wire.Gas(), 10), GasPrice: gasPrice,
 		MaxFeePerGas: maxFee, MaxPriorityFeePerGas: priorityFee, Type: txType,
-		Input: ethrpc.DataFromBytes(inputBytes).String(), Raw: raw,
+		Input: hexutil.Encode(wire.Data()), Raw: append(json.RawMessage(nil), raw...),
 		FirstSeenAt: firstSeen, LastSeenAt: firstSeen, ExpiresAt: expires, Endpoint: endpoint,
 	}, nil
 }
 
-func decimalQuantity(quantity ethrpc.Quantity) (string, error) {
-	value, err := quantity.Big()
-	if err != nil || value.Sign() < 0 || value.BitLen() > maximumUint256Bits {
+func decimalQuantity(value *big.Int) (string, error) {
+	if value == nil || value.Sign() < 0 || value.BitLen() > maximumUint256Bits {
 		return "", errors.New("quantity is not an unsigned 256-bit integer")
 	}
 	return value.String(), nil
 }
 
-func optionalDecimalQuantity(quantity *ethrpc.Quantity) (*string, error) {
+func optionalDecimalQuantity(quantity *hexutil.Big) (*string, error) {
 	if quantity == nil {
 		return nil, nil
 	}
-	value, err := decimalQuantity(*quantity)
+	value, err := decimalQuantity(quantity.ToInt())
 	if err != nil {
 		return nil, err
 	}
+	return &value, nil
+}
+
+func optionalUint64Quantity(quantity *hexutil.Uint64) (*string, error) {
+	if quantity == nil {
+		return nil, nil
+	}
+	value := strconv.FormatUint(uint64(*quantity), 10)
 	return &value, nil
 }
 

@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/metadata"
 )
 
@@ -30,12 +30,12 @@ type recordingMediaSource struct {
 	currentCalls int
 }
 
-func (source *recordingMediaSource) SelectNFTImage(_ context.Context, _ ethrpc.Address, _ string) (metadata.NFTImageSelection, error) {
+func (source *recordingMediaSource) SelectNFTImage(_ context.Context, _ common.Address, _ string) (metadata.NFTImageSelection, error) {
 	source.calls++
 	return metadata.NFTImageSelection{URI: source.uri}, source.err
 }
 
-func (source *recordingMediaSource) NFTImageCurrent(_ context.Context, _ ethrpc.Address, _ string, _ metadata.NFTImageSelection) (bool, error) {
+func (source *recordingMediaSource) NFTImageCurrent(_ context.Context, _ common.Address, _ string, _ metadata.NFTImageSelection) (bool, error) {
 	source.currentCalls++
 	return !source.stale, source.currentErr
 }

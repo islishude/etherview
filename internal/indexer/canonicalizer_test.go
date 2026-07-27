@@ -1,15 +1,18 @@
 package indexer
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -18,10 +21,10 @@ func TestCanonicalizerInitializesAndExtendsAcrossHeadGap(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	genesis := indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0))
-	blockOne := indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1))
-	blockTwo := indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2))
-	blockThree := indexerTestBundle(3, indexerTestHash(4), indexerTestHash(3))
+	chain := indexerTestChain(t, 4, 1)
+	genesis, blockOne, blockTwo, blockThree :=
+		chain[0], chain[1], chain[2], chain[3]
+	blockThreeRef := mustIndexerTestRef(t, blockThree)
 	source := newMapSource(blockOne, blockTwo)
 	canonicalizer := testCanonicalizer(repository, source)
 	result, err := canonicalizer.Apply(ctx, genesis)
@@ -36,7 +39,8 @@ func TestCanonicalizerInitializesAndExtendsAcrossHeadGap(t *testing.T) {
 		t.Fatalf("extension result = %+v", result)
 	}
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
-	if err != nil || !exists || tip.Number != 3 || !tip.Hash.Equal(indexerTestHash(4)) {
+	if err != nil || !exists || tip.Number != 3 ||
+		tip.Hash != blockThreeRef.Hash {
 		t.Fatalf("tip = %+v, exists = %v, error = %v", tip, exists, err)
 	}
 	checkpoint, exists, err := repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
@@ -49,21 +53,19 @@ func TestCanonicalizerReorgRetainsOldBranch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	oldChain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-		indexerTestBundle(3, indexerTestHash(4), indexerTestHash(3)),
-	}
+	oldChain := indexerTestChain(t, 4, 1)
 	canonicalizer := testCanonicalizer(repository, nil)
 	for _, bundle := range oldChain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
-	newTwo := indexerTestBundle(2, indexerTestHash(12), indexerTestHash(2))
-	newThree := indexerTestBundle(3, indexerTestHash(13), indexerTestHash(12))
-	newFour := indexerTestBundle(4, indexerTestHash(14), indexerTestHash(13))
+	ancestorRef := mustIndexerTestRef(t, oldChain[1])
+	newTwo := indexerTestBundle(2, ancestorRef.Hash, 12)
+	newTwoRef := mustIndexerTestRef(t, newTwo)
+	newThree := indexerTestBundle(3, newTwoRef.Hash, 13)
+	newThreeRef := mustIndexerTestRef(t, newThree)
+	newFour := indexerTestBundle(4, newThreeRef.Hash, 14)
 	canonicalizer.Source = newMapSource(newTwo, newThree)
 	result, err := canonicalizer.Apply(ctx, newFour)
 	if err != nil {
@@ -76,10 +78,11 @@ func TestCanonicalizerReorgRetainsOldBranch(t *testing.T) {
 		t.Fatalf("detached = %d, attached = %d", len(result.Detached), len(result.Attached))
 	}
 	canonicalTwo, exists, err := repository.CanonicalBlock(ctx, "1", 2)
-	if err != nil || !exists || !canonicalTwo.Hash.Equal(indexerTestHash(12)) {
+	if err != nil || !exists || canonicalTwo.Hash != newTwoRef.Hash {
 		t.Fatalf("canonical block 2 = %+v, exists = %v, error = %v", canonicalTwo, exists, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", indexerTestHash(3)); err != nil || !exists {
+	oldTwoRef := mustIndexerTestRef(t, oldChain[2])
+	if _, exists, err := repository.BundleByHash(ctx, "1", oldTwoRef.Hash); err != nil || !exists {
 		t.Fatalf("old block retained = %v, error = %v", exists, err)
 	}
 }
@@ -88,12 +91,7 @@ func TestCanonicalizerStopsReorgAcrossFinalized(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-		indexerTestBundle(3, indexerTestHash(4), indexerTestHash(3)),
-	}
+	chain := indexerTestChain(t, 4, 1)
 	canonicalizer := testCanonicalizer(repository, nil)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
@@ -105,16 +103,19 @@ func TestCanonicalizerStopsReorgAcrossFinalized(t *testing.T) {
 	if err := canonicalizer.UpdateFinality(ctx, &safe, &finalized); err != nil {
 		t.Fatal(err)
 	}
-	newTwo := indexerTestBundle(2, indexerTestHash(12), indexerTestHash(2))
-	newThree := indexerTestBundle(3, indexerTestHash(13), indexerTestHash(12))
-	newFour := indexerTestBundle(4, indexerTestHash(14), indexerTestHash(13))
+	ancestorRef := mustIndexerTestRef(t, chain[1])
+	newTwo := indexerTestBundle(2, ancestorRef.Hash, 12)
+	newTwoRef := mustIndexerTestRef(t, newTwo)
+	newThree := indexerTestBundle(3, newTwoRef.Hash, 13)
+	newThreeRef := mustIndexerTestRef(t, newThree)
+	newFour := indexerTestBundle(4, newThreeRef.Hash, 14)
 	canonicalizer.Source = newMapSource(newTwo, newThree)
 	_, err := canonicalizer.Apply(ctx, newFour)
 	if !errors.Is(err, ErrFinalizedReorg) {
 		t.Fatalf("error = %v, want ErrFinalizedReorg", err)
 	}
 	tip, _, _ := repository.CanonicalTip(ctx, "1")
-	if !tip.Hash.Equal(indexerTestHash(4)) {
+	if tip.Hash != mustIndexerTestRef(t, chain[3]).Hash {
 		t.Fatalf("tip changed despite rejected reorg: %+v", tip)
 	}
 }
@@ -126,12 +127,12 @@ func TestCanonicalizerRejectsFinalityAcrossSparseCanonicalGap(t *testing.T) {
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	genesis := indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0))
-	island := indexerTestBundle(3, indexerTestHash(4), indexerTestHash(3))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis}); err != nil {
+	genesis := indexerTestBundle(0, common.Hash{}, 1)
+	island := indexerTestBundle(3, indexerTestHash(3), 4)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{island}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{island}); err != nil {
 		t.Fatal(err)
 	}
 	finalized, _, _ := repository.CanonicalBlock(ctx, "1", 0)
@@ -151,18 +152,22 @@ func TestCanonicalizerEnforcesReorgDepth(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
 	canonicalizer.MaxReorgDepth = 1
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-	}
+	chain := indexerTestChain(t, 3, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
-	newOne := indexerTestBundle(1, indexerTestHash(12), indexerTestHash(1))
-	newTwo := indexerTestBundle(2, indexerTestHash(13), indexerTestHash(12))
+	newOne := indexerTestBundle(
+		1,
+		mustIndexerTestRef(t, chain[0]).Hash,
+		12,
+	)
+	newTwo := indexerTestBundle(
+		2,
+		mustIndexerTestRef(t, newOne).Hash,
+		13,
+	)
 	canonicalizer.Source = newMapSource(newOne)
 	_, err := canonicalizer.Apply(ctx, newTwo)
 	if !errors.Is(err, ErrReorgTooDeep) {
@@ -175,17 +180,20 @@ func TestCanonicalizerRejectsStaleAlternateHead(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-	}
+	chain := indexerTestChain(t, 3, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := canonicalizer.Apply(ctx, indexerTestBundle(1, indexerTestHash(12), indexerTestHash(1)))
+	_, err := canonicalizer.Apply(
+		ctx,
+		indexerTestBundle(
+			1,
+			mustIndexerTestRef(t, chain[0]).Hash,
+			12,
+		),
+	)
 	if !errors.Is(err, ErrStaleHead) {
 		t.Fatalf("error = %v, want ErrStaleHead", err)
 	}
@@ -196,11 +204,7 @@ func TestCanonicalizerAllowsAuthoritativeHeadToMoveBackward(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-	}
+	chain := indexerTestChain(t, 3, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -225,16 +229,29 @@ func TestCanonicalizerRepairsKnownSparseHeadAcrossShallowLowerFork(t *testing.T)
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	oldChain := indexerTestChain(101, 1)
+	oldChain := indexerTestChain(t, 101, 1)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", oldChain); err != nil {
 		t.Fatal(err)
 	}
 	ancestor, _ := store.RefFromBundle(oldChain[98])
-	newNinetyNine := indexerTestBundle(99, indexerTestHash(209), ancestor.Hash)
-	newHundred := indexerTestBundle(100, indexerTestHash(210), indexerTestHash(209))
-	newHundredOne := indexerTestBundle(101, indexerTestHash(211), indexerTestHash(210))
-	newHundredTwo := indexerTestBundle(102, indexerTestHash(212), indexerTestHash(211))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{newHundredTwo}); err != nil {
+	newNinetyNine := indexerTestBundle(99, ancestor.Hash, 209)
+	newHundred := indexerTestBundle(
+		100,
+		mustIndexerTestRef(t, newNinetyNine).Hash,
+		210,
+	)
+	newHundredOne := indexerTestBundle(
+		101,
+		mustIndexerTestRef(t, newHundred).Hash,
+		211,
+	)
+	newHundredTwo := indexerTestBundle(
+		102,
+		mustIndexerTestRef(t, newHundredOne).Hash,
+		212,
+	)
+	newHundredTwoRef := mustIndexerTestRef(t, newHundredTwo)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{newHundredTwo}); err != nil {
 		t.Fatal(err)
 	}
 	source := newMapSource(newNinetyNine, newHundred, newHundredOne)
@@ -250,7 +267,8 @@ func TestCanonicalizerRepairsKnownSparseHeadAcrossShallowLowerFork(t *testing.T)
 	}
 	coverage, exists, err := repository.Coverage(ctx, "1")
 	if err != nil || !exists || len(coverage.Ranges) != 1 || coverage.Ranges[0] != (store.BlockRange{Start: 0, End: 102}) ||
-		coverage.Contiguous == nil || !coverage.Contiguous.Hash.Equal(indexerTestHash(212)) {
+		coverage.Contiguous == nil ||
+		coverage.Contiguous.Hash != newHundredTwoRef.Hash {
 		t.Fatalf("coverage=%+v exists=%v error=%v", coverage, exists, err)
 	}
 }
@@ -262,12 +280,12 @@ func TestCanonicalizerSparseHeadRollbackDropsIslandWithoutAdvancingCheckpoint(t 
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	chain := indexerTestChain(101, 1)
+	chain := indexerTestChain(t, 101, 1)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", chain); err != nil {
 		t.Fatal(err)
 	}
-	island := indexerTestBundle(102, indexerTestHash(212), indexerTestHash(211))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{island}); err != nil {
+	island := indexerTestBundle(102, indexerTestHash(211), 212)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{island}); err != nil {
 		t.Fatal(err)
 	}
 	canonicalizer := testCanonicalizer(repository, nil)
@@ -296,13 +314,21 @@ func TestCanonicalizerSparseReplacementAllowsAuthoritativeHeadAboveOldIsland(t *
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	oldHundred := indexerTestBundle(100, indexerTestHash(100), indexerTestHash(99))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldHundred}); err != nil {
+	oldHundred := indexerTestBundle(100, indexerTestHash(99), 100)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{oldHundred}); err != nil {
 		t.Fatal(err)
 	}
-	newHundred := indexerTestBundle(100, indexerTestHash(210), indexerTestHash(208))
-	newHundredOne := indexerTestBundle(101, indexerTestHash(211), indexerTestHash(210))
-	newHundredTwo := indexerTestBundle(102, indexerTestHash(212), indexerTestHash(211))
+	newHundred := indexerTestBundle(100, indexerTestHash(208), 210)
+	newHundredOne := indexerTestBundle(
+		101,
+		mustIndexerTestRef(t, newHundred).Hash,
+		211,
+	)
+	newHundredTwo := indexerTestBundle(
+		102,
+		mustIndexerTestRef(t, newHundredOne).Hash,
+		212,
+	)
 	canonicalizer := testCanonicalizer(repository, nil)
 	canonicalizer.HeadSource = newMapSource(newHundred, newHundredOne)
 	result, err := canonicalizer.ApplyHead(ctx, newHundredTwo)
@@ -325,12 +351,16 @@ func TestCanonicalizerRejectsInconsistentSourceParent(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	genesis := indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0))
+	genesis := indexerTestBundle(0, common.Hash{}, 1)
 	if _, err := canonicalizer.Apply(ctx, genesis); err != nil {
 		t.Fatal(err)
 	}
-	blockTwo := indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2))
-	wrongParent := indexerTestBundle(7, indexerTestHash(2), indexerTestHash(99))
+	wrongParent := indexerTestBundle(7, indexerTestHash(99), 2)
+	blockTwo := indexerTestBundle(
+		2,
+		mustIndexerTestRef(t, wrongParent).Hash,
+		3,
+	)
 	canonicalizer.Source = newMapSource(wrongParent)
 	_, err := canonicalizer.Apply(ctx, blockTwo)
 	if !errors.Is(err, ErrSourceInconsistent) {
@@ -343,9 +373,9 @@ func TestCanonicalizerAlreadyKnownHistoricalBlockIsNoop(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	genesis := indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0))
-	blockOne := indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1))
-	for _, bundle := range []ethrpc.Bundle{genesis, blockOne} {
+	chain := indexerTestChain(t, 2, 1)
+	genesis, blockOne := chain[0], chain[1]
+	for _, bundle := range []chainbundle.Bundle{genesis, blockOne} {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
@@ -361,29 +391,40 @@ func TestCanonicalizerRefreshRewritesKnownFactsWithoutMovingCanonicalState(t *te
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-	}
+	chain := indexerTestChain(t, 3, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
 	checkpointBefore, _, _ := repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
-	refreshed := chain[1]
-	refreshed.Block.ExtraData = ethrpc.Data("0xcafe")
+	refreshed := indexerTestBundle(
+		1,
+		mustIndexerTestRef(t, chain[0]).Hash,
+		2,
+	)
 	result, err := canonicalizer.Refresh(ctx, refreshed, store.RefreshOptions{})
 	if err != nil || result.Disposition != DispositionAlreadyKnown {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	stored, exists, err := repository.BundleByHash(ctx, "1", indexerTestHash(2))
-	if err != nil || !exists || stored.Block.ExtraData.String() != "0xcafe" {
-		t.Fatalf("stored=%+v exists=%v error=%v", stored.Block.ExtraData, exists, err)
+	blockOneRef := mustIndexerTestRef(t, chain[1])
+	stored, exists, err := repository.BundleByHash(
+		ctx,
+		"1",
+		blockOneRef.Hash,
+	)
+	if err != nil || !exists ||
+		!bytes.Equal(stored.Block.Extra(), []byte{2}) {
+		t.Fatalf(
+			"stored extra=%x exists=%v error=%v",
+			stored.Block.Extra(),
+			exists,
+			err,
+		)
 	}
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
-	if err != nil || !exists || tip.Number != 2 || !tip.Hash.Equal(indexerTestHash(3)) {
+	if err != nil || !exists || tip.Number != 2 ||
+		tip.Hash != mustIndexerTestRef(t, chain[2]).Hash {
 		t.Fatalf("tip=%+v exists=%v error=%v", tip, exists, err)
 	}
 	checkpointAfter, _, _ := repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
@@ -397,11 +438,7 @@ func TestCanonicalizerRefreshOverrideCannotBypassReorgBoundary(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-		indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2)),
-	}
+	chain := indexerTestChain(t, 3, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -411,20 +448,27 @@ func TestCanonicalizerRefreshOverrideCannotBypassReorgBoundary(t *testing.T) {
 	if err := canonicalizer.UpdateFinality(ctx, &finalized, &finalized); err != nil {
 		t.Fatal(err)
 	}
-	refreshed := chain[1]
-	refreshed.Block.ExtraData = ethrpc.Data("0xab")
+	refreshed := indexerTestBundle(
+		1,
+		mustIndexerTestRef(t, chain[0]).Hash,
+		2,
+	)
 	if _, err := canonicalizer.Refresh(ctx, refreshed, store.RefreshOptions{}); !errors.Is(err, store.ErrFinalizedRefresh) {
 		t.Fatalf("finalized refresh error=%v", err)
 	}
 	if _, err := canonicalizer.Refresh(ctx, refreshed, store.RefreshOptions{AllowFinalized: true}); err != nil {
 		t.Fatal(err)
 	}
-	alternate := indexerTestBundle(1, indexerTestHash(12), indexerTestHash(1))
+	alternate := indexerTestBundle(
+		1,
+		mustIndexerTestRef(t, chain[0]).Hash,
+		12,
+	)
 	if _, err := canonicalizer.Refresh(ctx, alternate, store.RefreshOptions{AllowFinalized: true}); !errors.Is(err, ErrStaleHead) {
 		t.Fatalf("alternate historical refresh error=%v", err)
 	}
 	tip, _, _ := repository.CanonicalTip(ctx, "1")
-	if !tip.Hash.Equal(indexerTestHash(3)) {
+	if tip.Hash != mustIndexerTestRef(t, chain[2]).Hash {
 		t.Fatalf("refresh override changed canonical tip: %+v", tip)
 	}
 }
@@ -434,27 +478,30 @@ func TestCanonicalizerRefreshCannotExtendCanonicalChain(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-	}
+	chain := indexerTestChain(t, 2, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
-	candidate := indexerTestBundle(2, indexerTestHash(3), indexerTestHash(2))
+	candidate := indexerTestBundle(
+		2,
+		mustIndexerTestRef(t, chain[1]).Hash,
+		3,
+	)
+	candidateRef := mustIndexerTestRef(t, candidate)
 	if _, err := canonicalizer.Refresh(ctx, candidate, store.RefreshOptions{}); !errors.Is(err, ErrGap) {
 		t.Fatalf("tip extension refresh error=%v", err)
 	}
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
-	if err != nil || !exists || tip.Number != 1 || !tip.Hash.Equal(indexerTestHash(2)) {
+	if err != nil || !exists || tip.Number != 1 ||
+		tip.Hash != mustIndexerTestRef(t, chain[1]).Hash {
 		t.Fatalf("tip changed after rejected refresh: tip=%+v exists=%v error=%v", tip, exists, err)
 	}
 	if _, exists, err := repository.CanonicalBlock(ctx, "1", 2); err != nil || exists {
 		t.Fatalf("refresh created canonical block 2: exists=%v error=%v", exists, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", indexerTestHash(3)); err != nil || exists {
+	if _, exists, err := repository.BundleByHash(ctx, "1", candidateRef.Hash); err != nil || exists {
 		t.Fatalf("refresh persisted noncanonical candidate: exists=%v error=%v", exists, err)
 	}
 }
@@ -464,24 +511,27 @@ func TestCanonicalizerRefreshCannotReplaceCanonicalIdentityAtTip(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := []ethrpc.Bundle{
-		indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0)),
-		indexerTestBundle(1, indexerTestHash(2), indexerTestHash(1)),
-	}
+	chain := indexerTestChain(t, 2, 1)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
 		}
 	}
-	alternate := indexerTestBundle(1, indexerTestHash(12), indexerTestHash(1))
+	alternate := indexerTestBundle(
+		1,
+		mustIndexerTestRef(t, chain[0]).Hash,
+		12,
+	)
+	alternateRef := mustIndexerTestRef(t, alternate)
 	if _, err := canonicalizer.Refresh(ctx, alternate, store.RefreshOptions{AllowFinalized: true}); !errors.Is(err, ErrStaleHead) {
 		t.Fatalf("alternate tip refresh error=%v", err)
 	}
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
-	if err != nil || !exists || !tip.Hash.Equal(indexerTestHash(2)) {
+	if err != nil || !exists ||
+		tip.Hash != mustIndexerTestRef(t, chain[1]).Hash {
 		t.Fatalf("tip changed after rejected identity replacement: tip=%+v exists=%v error=%v", tip, exists, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", indexerTestHash(12)); err != nil || exists {
+	if _, exists, err := repository.BundleByHash(ctx, "1", alternateRef.Hash); err != nil || exists {
 		t.Fatalf("refresh persisted alternate identity: exists=%v error=%v", exists, err)
 	}
 }
@@ -489,13 +539,13 @@ func TestCanonicalizerRefreshCannotReplaceCanonicalIdentityAtTip(t *testing.T) {
 func TestIngestorUsesOnePurposeEndpointForBlockAndReceipts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	bundle := indexerTestBundle(0, indexerTestHash(1), indexerTestHash(0))
-	first := &indexerFakeCaller{bundle: bundle}
-	second := &indexerFakeCaller{bundle: bundle}
+	bundle := indexerTestBundle(0, common.Hash{}, 1)
+	first := newIndexerFakeRPC(t, bundle)
+	second := newIndexerFakeRPC(t, bundle)
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
-		{Name: "history-a", Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}, Client: first,
+		{Name: "history-a", Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}, Client: first.client,
 			Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{ethrpc.CapabilityBlockReceipts: ethrpc.AvailabilityAvailable}}},
-		{Name: "history-b", Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}, Client: second,
+		{Name: "history-b", Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}, Client: second.client,
 			Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{ethrpc.CapabilityBlockReceipts: ethrpc.AvailabilityAvailable}}},
 	}, ethrpc.PoolOptions{})
 	if err != nil {
@@ -503,7 +553,7 @@ func TestIngestorUsesOnePurposeEndpointForBlockAndReceipts(t *testing.T) {
 	}
 	repository := store.NewMemoryRepository()
 	ingestor := &Ingestor{Pool: pool, Canonicalizer: testCanonicalizer(repository, nil)}
-	if _, err := ingestor.ByNumber(ctx, ethrpc.PurposeHistory, ethrpc.QuantityFromUint64(0)); err != nil {
+	if _, err := ingestor.ByNumber(ctx, ethrpc.PurposeHistory, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := first.Methods(); len(got) != 2 || got[0] != "eth_getBlockByNumber" || got[1] != "eth_getBlockReceipts" {
@@ -515,50 +565,77 @@ func TestIngestorUsesOnePurposeEndpointForBlockAndReceipts(t *testing.T) {
 }
 
 type mapSource struct {
-	bundles map[string]ethrpc.Bundle
+	bundles map[common.Hash]chainbundle.Bundle
 }
 
-func newMapSource(bundles ...ethrpc.Bundle) *mapSource {
-	source := &mapSource{bundles: make(map[string]ethrpc.Bundle, len(bundles))}
+func newMapSource(bundles ...chainbundle.Bundle) *mapSource {
+	source := &mapSource{
+		bundles: make(map[common.Hash]chainbundle.Bundle, len(bundles)),
+	}
 	for _, bundle := range bundles {
 		hash, _ := bundle.BlockHash()
-		source.bundles[strings.ToLower(hash.String())] = bundle
+		source.bundles[hash] = bundle
 	}
 	return source
 }
 
-func (s *mapSource) BundleByHash(_ context.Context, hash ethrpc.Hash) (ethrpc.Bundle, bool, error) {
-	bundle, exists := s.bundles[strings.ToLower(hash.String())]
+func (s *mapSource) BundleByHash(
+	_ context.Context,
+	hash common.Hash,
+) (chainbundle.Bundle, bool, error) {
+	bundle, exists := s.bundles[hash]
 	return bundle, exists, nil
 }
 
-type indexerFakeCaller struct {
+type indexerFakeRPC struct {
 	mu      sync.Mutex
-	bundle  ethrpc.Bundle
+	bundle  chainbundle.Bundle
 	methods []string
+	server  *rpc.Server
+	client  *rpc.Client
 }
 
-func (f *indexerFakeCaller) Call(_ context.Context, method string, _ []any, result any) error {
+func newIndexerFakeRPC(
+	t *testing.T,
+	bundle chainbundle.Bundle,
+) *indexerFakeRPC {
+	t.Helper()
+	service := &indexerFakeRPC{bundle: bundle, server: rpc.NewServer()}
+	if err := service.server.RegisterName("eth", service); err != nil {
+		t.Fatal(err)
+	}
+	service.client = rpc.DialInProc(service.server)
+	t.Cleanup(func() {
+		service.client.Close()
+		service.server.Stop()
+	})
+	return service
+}
+
+func (f *indexerFakeRPC) GetBlockByNumber(
+	context.Context,
+	string,
+	bool,
+) (json.RawMessage, error) {
+	f.record("eth_getBlockByNumber")
+	return append(json.RawMessage(nil), f.bundle.RawBlock...), nil
+}
+
+func (f *indexerFakeRPC) GetBlockReceipts(
+	context.Context,
+	common.Hash,
+) (json.RawMessage, error) {
+	f.record("eth_getBlockReceipts")
+	return json.Marshal(f.bundle.RawReceipts)
+}
+
+func (f *indexerFakeRPC) record(method string) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.methods = append(f.methods, method)
-	f.mu.Unlock()
-	var value any
-	switch method {
-	case "eth_getBlockByNumber":
-		value = f.bundle.Block
-	case "eth_getBlockReceipts":
-		value = f.bundle.Receipts
-	default:
-		return fmt.Errorf("unexpected method %s", method)
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, result)
 }
 
-func (f *indexerFakeCaller) Methods() []string {
+func (f *indexerFakeRPC) Methods() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.methods...)
@@ -575,41 +652,53 @@ func testCanonicalizer(repository store.Repository, source BundleSource) *Canoni
 	}
 }
 
-func indexerTestBundle(number uint64, hash, parent ethrpc.Hash) ethrpc.Bundle {
-	numberQuantity := ethrpc.QuantityFromUint64(number)
-	zeroHash := indexerTestHash(0)
-	return ethrpc.Bundle{Block: ethrpc.Block{
-		Number:           &numberQuantity,
-		Hash:             new(hash),
-		ParentHash:       parent,
-		Sha3Uncles:       zeroHash,
-		TransactionsRoot: zeroHash,
-		StateRoot:        zeroHash,
-		ReceiptsRoot:     zeroHash,
-		ExtraData:        ethrpc.Data("0x"),
-		GasLimit:         ethrpc.QuantityFromUint64(30_000_000),
-		GasUsed:          ethrpc.QuantityFromUint64(0),
-		Timestamp:        ethrpc.QuantityFromUint64(1_700_000_000 + number),
-		Transactions:     []ethrpc.TransactionRef{},
-		Uncles:           []ethrpc.Hash{},
-	}, Receipts: []ethrpc.Receipt{}}
+func indexerTestBundle(
+	number uint64,
+	parent common.Hash,
+	extraData byte,
+) chainbundle.Bundle {
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:     number,
+		ParentHash: parent,
+		ExtraData:  []byte{extraData},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return bundle
 }
 
-func indexerTestChain(length int, firstHash byte) []ethrpc.Bundle {
-	chain := make([]ethrpc.Bundle, length)
-	parent := indexerTestHash(0)
+func indexerTestChain(
+	t *testing.T,
+	length int,
+	firstExtraData byte,
+) []chainbundle.Bundle {
+	t.Helper()
+	chain := make([]chainbundle.Bundle, length)
+	var parent common.Hash
 	for index := range length {
-		hash := indexerTestHash(firstHash + byte(index))
-		chain[index] = indexerTestBundle(uint64(index), hash, parent)
-		parent = hash
+		chain[index] = indexerTestBundle(
+			uint64(index),
+			parent,
+			firstExtraData+byte(index),
+		)
+		parent = mustIndexerTestRef(t, chain[index]).Hash
 	}
 	return chain
 }
 
-func indexerTestHash(value byte) ethrpc.Hash {
-	hash, err := ethrpc.ParseHash(fmt.Sprintf("0x%064x", value))
+func mustIndexerTestRef(
+	t *testing.T,
+	bundle chainbundle.Bundle,
+) store.BlockRef {
+	t.Helper()
+	reference, err := store.RefFromBundle(bundle)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
-	return hash
+	return reference
+}
+
+func indexerTestHash(value byte) common.Hash {
+	return common.Hash{common.HashLength - 1: value}
 }

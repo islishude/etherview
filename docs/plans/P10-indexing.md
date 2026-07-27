@@ -27,6 +27,7 @@ enrichment.
 | P10-T04 | done | P10-T03 | Parallel backfill, live-head priority, polling reconciliation, coverage status | restart/gap tests |
 | P10-T05 | done | P10-T03 | Common-ancestor reorg, finality ancestry, orphan retention, rollback journal | single/multi/finalized reorg tests |
 | P10-T06 | done | P10-T04, P10-T05 | Repair/reindex tooling, history-pruning detection, audit records | CLI integration tests |
+| P10-T07 | dropped | P10-T01, P10-T03 | Replace custom Ethereum RPC scalar and wire models with reviewed go-ethereum types | replacement P70-T09 |
 
 ## Acceptance
 
@@ -34,8 +35,10 @@ enrichment.
 - [x] Transaction and receipt counts/hashes/indexes are validated before commit.
 - [x] WebSocket loss, timeout, throttling, stale endpoints, and receipt fallback
       have deterministic recovery.
-- [x] Type 0–4 transactions, unknown types, withdrawals, blob-era fields,
-      EIP-7702, and historical PoW fields remain ingestible.
+- [x] Type 0–4 transactions, withdrawals, blob-era fields, EIP-7702, and
+      fully authenticated historical PoW fields remain ingestible; transaction
+      types unsupported by the selected go-ethereum version fail permanently
+      and atomically before persistence or coverage advancement.
 - [x] Reorgs roll back derived journals; a finalized-crossing reorg stops and
       alerts instead of silently rewriting history.
 
@@ -45,6 +48,11 @@ None.
 
 ## Evidence
 
+- P10-T07 was dropped before implementation because reopening completed P10
+  invalidates the already completed dependent phases under `make plan-check`.
+  Cross-phase release item P70-T09 owns the same migration without weakening
+  the completed P10 dependency graph.
+
 - P10-T01: `go test -race ./internal/ethrpc` passes identity, purpose,
   capability, pruning, cooldown, sticky endpoint, receipt fallback, malformed
   batch, throttling, and credential-redaction cases.
@@ -53,10 +61,11 @@ None.
   leases, and concurrent fixed 1,000,000-block partition provisioning with
   atomic DEFAULT evacuation and typed recovery failures.
 - P10-T03: `go test -race ./internal/indexer ./internal/ethrpc` passes sticky
-  block/receipt acquisition and pre-commit bundle validation. PostgreSQL 18
-  `TestPostgresCoreProtocolRoundTripAndReceiptMismatchAtomicity` persists types
-  0–4 plus unknown type 127, blob/EIP-7702/PoW/withdrawal fields, and proves a
-  mismatched receipt rolls the whole bundle back.
+  block/receipt acquisition and pre-commit bundle validation. PostgreSQL
+  integration persists transaction types 0–4 plus blob, EIP-7702, validated
+  PoW-uncle, and withdrawal fields; unsupported type 127 and mismatched
+  receipts both reject the whole bundle before a partial write or coverage
+  advance.
 - P10-T04: `go test -race ./internal/syncer ./internal/store` passes independent
   live/backfill lanes, live priority during blocked history, authoritative poll
   after missed WebSocket wakes, durable coverage islands, restart-safe leases,

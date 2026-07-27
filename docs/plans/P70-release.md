@@ -14,6 +14,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0019: Authenticated genesis state import](../decisions/ADR-0019-authenticated-genesis-state-import.md)
 - [ADR-0020: SIWE user sessions](../decisions/ADR-0020-siwe-user-sessions.md)
 - [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
+- [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -25,9 +26,10 @@ and user/operator evidence sufficient for a production public release.
 | P70-T03 | todo | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
 | P70-T04 | in_progress | P60 | 500 RPS reference capacity report and tuning guide | load report |
 | P70-T05 | todo | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
-| P70-T06 | todo | P70-T01–P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
+| P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | blocked | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
+| P70-T09 | blocked | P10–P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
 
 ## Acceptance
 
@@ -49,6 +51,19 @@ and user/operator evidence sufficient for a production public release.
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
       UI; missing input remains explicitly unavailable.
+- [ ] P70-T09: reviewed go-ethereum types own recognized protocol semantics,
+      including transaction types 0 through 4, while unsupported future
+      transaction types fail permanently and atomically before persistence or
+      coverage advancement; `blocks.raw` keeps the original block top-level
+      shape, versioned root metadata carries validated PoW uncle headers and is
+      stripped by `DecodeStoredBlock`, legacy empty-uncle rows remain readable,
+      and legacy non-empty uncle hashes without headers fail permanently
+      pending exact RPC-backed repair. Receipt fields outside the trie,
+      including gas-use deltas, creation address, and effective gas price, are
+      authenticated against the matching transaction and block context.
+      Transport limits, redaction, supported-object unknown-field retention,
+      SQL persistence, and public contracts remain explicit compatible
+      adapters.
 
 ## Current Blockers
 
@@ -64,9 +79,18 @@ managed macOS sandbox denies Chromium's MachPort rendezvous. That blocker
 clears when the Genesis browser acceptance can run in CI or another environment
 allowed to launch Chromium. P70-T01 through P70-T03 and P70-T05 remain `todo`;
 P70-T04 is `in_progress` while its reference-capacity tooling and final report
-are prepared. P70-T06 and the v1 release remain blocked on P66 completion,
-Genesis browser evidence, conformance, security, release-CI, long-capacity,
-and documentation evidence.
+are prepared.
+
+P70-T09 implementation, focused compatibility, PostgreSQL integration,
+generation, lint, security, license, Helm, Compose, ordinary Go, and race gates
+pass. Its final image and common-gate evidence is blocked because the managed
+sandbox denies Docker buildx access to its local activity state and the
+unsandboxed approval request exhausted the current approval allowance. The
+blocker clears when `make docker-check`, `make docker-build
+docker-image-check`, `make compose-runtime-smoke`, and then `make check` pass in
+CI or another environment with Docker buildx access. P70-T06 and the v1 release
+remain blocked on P66 completion, Genesis browser evidence, P70-T09 completion,
+conformance, security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
@@ -161,3 +185,45 @@ and documentation evidence.
   MachPort rendezvous. No application assertion failed. An unsandboxed rerun
   was requested and rejected only because workspace approval credits were
   exhausted, so browser acceptance remains unclaimed.
+- P70-T09 type ownership: `internal/ethrpc` retains only bounded transport,
+  endpoint-pool, capability, scheduling, observation, and stable-error
+  concepts. Protocol scalars and recognized RPC objects use go-ethereum
+  `common`, `hexutil`, `core/types`, `rpc`, and `core.Genesis` types directly;
+  there are no repository aliases or replacement Ethereum models in that
+  package. Genesis JSON decodes directly into `core.Genesis`, and
+  `core.Genesis.ToBlock()` owns the state root and block identity after a narrow
+  duplicate-key, normalized-map-collision, resource, and uint256 preflight.
+- P70-T09 raw and persistence boundary: raw-first block acquisition preserves
+  supported-object unknown fields and validates header, transaction, receipt,
+  log, withdrawal, sender, root, inclusion, uncle, gas-delta, contract-address,
+  and effective-gas-price relationships before any atomic repository write.
+  Geth transaction types 0 through 4 are supported; type 127 and other
+  unsupported formats fail permanently before persistence or coverage
+  advancement. Root-preserving versioned metadata carries validated PoW uncle
+  headers, and legacy rows missing required non-empty headers return
+  `ErrStoredUncleHeadersUnavailable`.
+- P70-T09 compatibility: downstream indexing, enrichment, mempool, metadata,
+  billing, x402, native API, Etherscan adapters, stores, and test fixtures use
+  the direct geth values while SQL and OpenAPI contracts remain unchanged.
+  Dynamic effective gas price is authenticated against the matching
+  transaction and block base fee; fresh receipts require it, compatible stored
+  rows may derive a missing value, and poisoned or context-free values are
+  never exposed as verified.
+- P70-T09 license closure: the reviewed go-ethereum v1.17.2 scanner baseline
+  now includes the separately licensed `crypto/bn256` package. The transitive
+  `github.com/holiman/bloomfilter/v2` v2.0.3 module archive omits its
+  repository-root MIT license, so the narrow scanner exception fixes the
+  version, checked-in text SHA-256, dependency presence, and exact scanner
+  result without expanding the permissive allowlist. The production image
+  copies all reviewed license texts, and its rootfs check requires each path.
+- P70-T09 verification: `go test ./... -count=1`, `go test -race ./...
+  -count=1`, `make test-integration`, and the integration-tag race suite pass
+  against disposable PostgreSQL 18. `make toolchain-check`, `make plan-check`,
+  `make generate-check`, `make lint`, `make security-check`, `make
+  license-check`, `make helm-check`, `make compose-check`, and `git diff
+  --check` pass. One initial ordinary test overlapped the full race run and
+  timed out waiting for Docker in
+  `TestContainerCompilerValidatesAndAppliesIsolation`; the isolated case and
+  serialized full suite both passed immediately afterward. Docker build,
+  production-image rootfs, runtime-parity smoke, and therefore the aggregate
+  `make check` remain unclaimed under the blocker above.

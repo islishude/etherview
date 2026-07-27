@@ -1,6 +1,7 @@
 package enrich
 
 import (
+	"bytes"
 	"context"
 	"database/sql/driver"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -25,7 +27,15 @@ type traceTestCaller struct {
 	handler func(method, hash string) (json.RawMessage, error)
 }
 
-func (caller *traceTestCaller) Call(_ context.Context, method string, params []any, result any) error {
+type debugTraceRPCService struct {
+	caller *traceTestCaller
+}
+
+type parityTraceRPCService struct {
+	caller *traceTestCaller
+}
+
+func (caller *traceTestCaller) CallContext(_ context.Context, result any, method string, params ...any) error {
 	if len(params) == 0 {
 		return fmt.Errorf("trace RPC %s has no transaction hash", method)
 	}
@@ -33,14 +43,7 @@ func (caller *traceTestCaller) Call(_ context.Context, method string, params []a
 	if !ok {
 		return fmt.Errorf("trace RPC %s hash is %T", method, params[0])
 	}
-	caller.mu.Lock()
-	caller.calls = append(caller.calls, traceRPCInvocation{method: method, hash: hash})
-	handler := caller.handler
-	caller.mu.Unlock()
-	if handler == nil {
-		return errors.New("trace test caller has no handler")
-	}
-	raw, err := handler(method, hash)
+	raw, err := caller.invoke(method, hash)
 	if err != nil {
 		return err
 	}
@@ -52,6 +55,32 @@ func (caller *traceTestCaller) Call(_ context.Context, method string, params []a
 	return nil
 }
 
+func (service debugTraceRPCService) TraceTransaction(
+	_ context.Context,
+	hash string,
+	_ map[string]any,
+) (json.RawMessage, error) {
+	return service.caller.invoke("debug_traceTransaction", hash)
+}
+
+func (service parityTraceRPCService) Transaction(
+	_ context.Context,
+	hash string,
+) (json.RawMessage, error) {
+	return service.caller.invoke("trace_transaction", hash)
+}
+
+func (caller *traceTestCaller) invoke(method, hash string) (json.RawMessage, error) {
+	caller.mu.Lock()
+	caller.calls = append(caller.calls, traceRPCInvocation{method: method, hash: hash})
+	handler := caller.handler
+	caller.mu.Unlock()
+	if handler == nil {
+		return nil, errors.New("trace test caller has no handler")
+	}
+	return handler(method, hash)
+}
+
 func callTracerRoot(from, to, value, input string) json.RawMessage {
 	return json.RawMessage(`{
 		"type":"CALL","from":"` + from + `","to":"` + to + `","value":"` + value + `",
@@ -59,7 +88,7 @@ func callTracerRoot(from, to, value, input string) json.RawMessage {
 	}`)
 }
 
-func traceTransactionRow(index int64, hash Word) []driver.Value {
+func traceTransactionRow(index int64, hash common.Hash) []driver.Value {
 	return []driver.Value{index, hash[:], traceAddress1, traceAddress2, "0x5", "0x1234"}
 }
 
@@ -119,8 +148,8 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 	}}
 	second := &traceTestCaller{handler: first.handler}
 	endpoints := []ethrpc.Endpoint{
-		traceEndpoint("trace-a", first, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
-		traceEndpoint("trace-b", second, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
+		traceEndpoint(t, "trace-a", first, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
+		traceEndpoint(t, "trace-b", second, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
 	}
 	pool, err := ethrpc.NewPool(endpoints, ethrpc.PoolOptions{})
 	if err != nil {
@@ -154,7 +183,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 
 func TestSuccessfulCreationTargetsRejectsCallsAndRevertedCreations(t *testing.T) {
 	t.Parallel()
-	created := Address{19: 1}
+	created := common.Address{19: 1}
 	tests := []struct {
 		name  string
 		frame CallFrame
@@ -186,11 +215,15 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 		"type":"CALL","from":"` + traceAddress1 + `","to":"` + traceAddress2 + `","value":"0x5",
 		"gas":"0x100","gasUsed":"0x20","input":"0x1234","output":"0x","error":"x"
 	}`)
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		name   string
 		change func(*TraceLimits)
 	}{
-		{name: "payload", change: func(limits *TraceLimits) { limits.MaxBlockPayloadBytes = len(raw)*2 - 1 }},
+		{name: "payload", change: func(limits *TraceLimits) { limits.MaxBlockPayloadBytes = compact.Len()*2 - 1 }},
 		{name: "frames", change: func(limits *TraceLimits) { limits.MaxBlockFrames = 1 }},
 		{name: "data", change: func(limits *TraceLimits) { limits.MaxBlockDataBytes = 3 }},
 		{name: "text", change: func(limits *TraceLimits) { limits.MaxBlockTextBytes = 1 }},
@@ -205,7 +238,7 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 				return raw, nil
 			}}
 			pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
-				traceEndpoint("trace-budget", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
+				traceEndpoint(t, "trace-budget", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
 			}, ethrpc.PoolOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -244,7 +277,7 @@ func TestTraceRPCProcessorAppliesBlockBudgetToTraceAPI(t *testing.T) {
 		return traceAPIRoot(t, job, transactionHash, transactionIndex), nil
 	}}
 	pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
-		traceEndpoint("trace-api-budget", caller, ethrpc.AvailabilityUnavailable, ethrpc.AvailabilityAvailable),
+		traceEndpoint(t, "trace-api-budget", caller, ethrpc.AvailabilityUnavailable, ethrpc.AvailabilityAvailable),
 	}, ethrpc.PoolOptions{})
 	limits := DefaultTraceLimits()
 	limits.MaxBlockFrames = 1
@@ -264,7 +297,7 @@ func TestTraceRPCProcessorDoesNotResetBlockBudgetOnAdapterFallback(t *testing.T)
 		switch method {
 		case "debug_traceTransaction":
 			if hash == txHash2.String() {
-				return nil, &ethrpc.RPCError{Code: -32601, Message: "method not found"}
+				return nil, testRPCError{code: -32601, message: "method not found"}
 			}
 			return callTracerRoot(traceAddress1, traceAddress2, "0x5", "0x1234"), nil
 		case "trace_transaction":
@@ -278,7 +311,7 @@ func TestTraceRPCProcessorDoesNotResetBlockBudgetOnAdapterFallback(t *testing.T)
 		}
 	}}
 	pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
-		traceEndpoint("trace-fallback-budget", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityAvailable),
+		traceEndpoint(t, "trace-fallback-budget", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityAvailable),
 	}, ethrpc.PoolOptions{})
 	limits := DefaultTraceLimits()
 	// One callTracer frame plus two trace_transaction frames must count as
@@ -297,8 +330,8 @@ func TestTraceRPCProcessorFallsBackToSameEndpointTraceAPI(t *testing.T) {
 		name string
 		err  error
 	}{
-		{name: "method_not_found", err: &ethrpc.RPCError{Code: -32601, Message: "method not found"}},
-		{name: "pruned", err: &ethrpc.RPCError{Code: -32000, Message: "historical state pruned"}},
+		{name: "method_not_found", err: testRPCError{code: -32601, message: "method not found"}},
+		{name: "pruned", err: testRPCError{code: -32000, message: "historical state pruned"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -321,7 +354,7 @@ func TestTraceRPCProcessorFallsBackToSameEndpointTraceAPI(t *testing.T) {
 				return marshalTraceFixture(t, []any{root}), nil
 			}}
 			pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
-				traceEndpoint("trace-combined", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityAvailable),
+				traceEndpoint(t, "trace-combined", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityAvailable),
 			}, ethrpc.PoolOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -361,7 +394,7 @@ func TestTraceRPCProcessorRejectsEmptyOrMismatchedTrace(t *testing.T) {
 			backend := traceReadBackend(txHash)
 			caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
 				if test.name == "empty_trace_api" && method == "debug_traceTransaction" {
-					return nil, &ethrpc.RPCError{Code: -32601, Message: "method not found"}
+					return nil, testRPCError{code: -32601, message: "method not found"}
 				}
 				return test.raw, nil
 			}}
@@ -370,7 +403,7 @@ func TestTraceRPCProcessorRejectsEmptyOrMismatchedTrace(t *testing.T) {
 				parity = ethrpc.AvailabilityAvailable
 			}
 			pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
-				traceEndpoint("trace-invalid", caller, ethrpc.AvailabilityAvailable, parity),
+				traceEndpoint(t, "trace-invalid", caller, ethrpc.AvailabilityAvailable, parity),
 			}, ethrpc.PoolOptions{})
 			processor, _ := NewTraceRPCProcessor(openFakeSQLDB(t, backend), pool, TraceLimits{})
 			_, err := processor.Process(context.Background(), job)
@@ -391,7 +424,7 @@ func TestTraceRPCProcessorReportsMissingCapabilityUnavailable(t *testing.T) {
 		return nil, errors.New("RPC must not be called")
 	}}
 	pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
-		traceEndpoint("trace-disabled", caller, ethrpc.AvailabilityUnavailable, ethrpc.AvailabilityUnavailable),
+		traceEndpoint(t, "trace-disabled", caller, ethrpc.AvailabilityUnavailable, ethrpc.AvailabilityUnavailable),
 	}, ethrpc.PoolOptions{})
 	processor, _ := NewTraceRPCProcessor(openFakeSQLDB(t, backend), pool, TraceLimits{})
 	_, err := processor.Process(context.Background(), job)
@@ -403,22 +436,92 @@ func TestTraceRPCProcessorReportsMissingCapabilityUnavailable(t *testing.T) {
 
 func TestTraceCapabilityClassificationKeepsMissingTransactionRetryable(t *testing.T) {
 	t.Parallel()
-	err := &ethrpc.RPCError{Code: -32000, Message: "transaction not found"}
+	err := testRPCError{code: -32000, message: "transaction not found"}
 	if traceCapabilityUnavailable(err) || traceAdapterFallback(err) {
 		t.Fatal("a temporarily missing transaction was classified as a terminal trace capability gap")
 	}
 }
 
-func traceEndpoint(name string, caller ethrpc.Caller, debug, parity ethrpc.Availability) ethrpc.Endpoint {
+func TestTraceRPCProviderErrorIsSanitizedBeforeDurableRetry(t *testing.T) {
+	t.Parallel()
+	const secret = "trace-provider-secret"
+	job := Job{
+		ID:          "trace-provider-error",
+		Stage:       TraceStage,
+		ChainID:     "1",
+		BlockHash:   uintWord(16),
+		BlockNumber: 16,
+		Attempt:     1,
+	}
+	transactionHash := uintWord(160)
+	caller := &traceTestCaller{handler: func(string, string) (json.RawMessage, error) {
+		return nil, testRPCError{code: -32000, message: secret}
+	}}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
+		traceEndpoint(
+			t,
+			"trace-hostile",
+			caller,
+			ethrpc.AvailabilityAvailable,
+			ethrpc.AvailabilityUnavailable,
+		),
+	}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := NewTraceRPCProcessor(
+		openFakeSQLDB(t, traceReadBackend(transactionHash)),
+		pool,
+		TraceLimits{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := &testJobQueue{
+		cancel: func() {},
+		lease:  Lease{Job: job, Token: "trace-provider-error-lease"},
+	}
+	worker, err := NewWorker(
+		queue,
+		[]Processor{processor},
+		WorkerOptions{ID: "trace-provider-error-worker"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, err := worker.ProcessOne(t.Context())
+	if err != nil || !found {
+		t.Fatalf("ProcessOne() = %t, %v", found, err)
+	}
+	if queue.retried == nil ||
+		strings.Contains(queue.retried.Reason, secret) ||
+		queue.retried.Reason != "JSON-RPC error code -32000" {
+		t.Fatalf("durable retry = %#v", queue.retried)
+	}
+}
+
+func traceEndpoint(
+	t *testing.T,
+	name string,
+	caller *traceTestCaller,
+	debug,
+	parity ethrpc.Availability,
+) ethrpc.Endpoint {
+	t.Helper()
 	return ethrpc.Endpoint{
-		Name: name, Client: caller, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Name: name,
+		Client: inProcessRPCClient(t, map[string]any{
+			"debug": debugTraceRPCService{caller: caller},
+			"trace": parityTraceRPCService{caller: caller},
+		}),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: debug, ethrpc.CapabilityParityTrace: parity,
 		}},
 	}
 }
 
-func traceReadBackend(txHash Word) *fakeSQLBackend {
+func traceReadBackend(txHash common.Hash) *fakeSQLBackend {
 	return &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 		switch {
 		case strings.Contains(query, "SELECT EXISTS"):
@@ -431,7 +534,7 @@ func traceReadBackend(txHash Word) *fakeSQLBackend {
 	}}
 }
 
-func traceBlockReadBackend(transactionHashes ...Word) *fakeSQLBackend {
+func traceBlockReadBackend(transactionHashes ...common.Hash) *fakeSQLBackend {
 	return &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 		switch {
 		case strings.Contains(query, "SELECT EXISTS"):
@@ -448,7 +551,7 @@ func traceBlockReadBackend(transactionHashes ...Word) *fakeSQLBackend {
 	}}
 }
 
-func traceAPIRoot(t *testing.T, job Job, transactionHash Word, transactionIndex uint64) json.RawMessage {
+func traceAPIRoot(t *testing.T, job Job, transactionHash common.Hash, transactionIndex uint64) json.RawMessage {
 	t.Helper()
 	identity := TraceIdentity{
 		BlockHash: job.BlockHash, BlockNumber: job.BlockNumber,
@@ -465,7 +568,7 @@ func traceAPIRoot(t *testing.T, job Job, transactionHash Word, transactionIndex 
 	return marshalTraceFixture(t, []any{root})
 }
 
-func successfulTraceBackend(t *testing.T, txHash Word) *fakeSQLBackend {
+func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 	t.Helper()
 	backend := traceReadBackend(txHash)
 	backend.query = func(original func(string, []driver.NamedValue) (driver.Rows, error)) func(string, []driver.NamedValue) (driver.Rows, error) {

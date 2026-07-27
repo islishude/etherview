@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -20,7 +21,7 @@ var (
 )
 
 type BundleSource interface {
-	BundleByHash(ctx context.Context, hash ethrpc.Hash) (ethrpc.Bundle, bool, error)
+	BundleByHash(ctx context.Context, hash common.Hash) (chainbundle.Bundle, bool, error)
 }
 
 type Canonicalizer struct {
@@ -51,7 +52,7 @@ type ApplyResult struct {
 	Attached    []store.BlockRef
 }
 
-func (c *Canonicalizer) Apply(ctx context.Context, candidate ethrpc.Bundle) (ApplyResult, error) {
+func (c *Canonicalizer) Apply(ctx context.Context, candidate chainbundle.Bundle) (ApplyResult, error) {
 	return c.apply(ctx, candidate, false)
 }
 
@@ -61,7 +62,7 @@ func (c *Canonicalizer) Apply(ctx context.Context, candidate ethrpc.Bundle) (App
 // identity-bound store refresh is reached.
 func (c *Canonicalizer) Refresh(
 	ctx context.Context,
-	candidate ethrpc.Bundle,
+	candidate chainbundle.Bundle,
 	options store.RefreshOptions,
 ) (ApplyResult, error) {
 	if c == nil || c.Repository == nil {
@@ -70,7 +71,7 @@ func (c *Canonicalizer) Refresh(
 	if c.ChainID == "" {
 		return ApplyResult{}, errors.New("canonicalizer chain ID is empty")
 	}
-	if err := ethrpc.ValidateBundle(candidate); err != nil {
+	if err := chainbundle.Validate(candidate); err != nil {
 		return ApplyResult{}, fmt.Errorf("validate refresh candidate: %w", err)
 	}
 	candidateRef, err := store.RefFromBundle(candidate)
@@ -84,7 +85,7 @@ func (c *Canonicalizer) Refresh(
 	if !exists {
 		return ApplyResult{}, fmt.Errorf("%w: refresh block %d is not canonical", ErrGap, candidateRef.Number)
 	}
-	if !canonical.Hash.Equal(candidateRef.Hash) {
+	if canonical.Hash != candidateRef.Hash {
 		return ApplyResult{}, fmt.Errorf(
 			"%w: refresh block %d hash %s does not match canonical hash %s",
 			ErrStaleHead, candidateRef.Number, candidateRef.Hash, canonical.Hash,
@@ -111,18 +112,18 @@ func (c *Canonicalizer) Refresh(
 // path. Unlike historical ingestion it may accept a shorter fork-choice head;
 // this distinction prevents a stale backfill block from truncating canonical
 // state while still handling a node whose latest height moves backwards.
-func (c *Canonicalizer) ApplyHead(ctx context.Context, candidate ethrpc.Bundle) (ApplyResult, error) {
+func (c *Canonicalizer) ApplyHead(ctx context.Context, candidate chainbundle.Bundle) (ApplyResult, error) {
 	return c.apply(ctx, candidate, true)
 }
 
-func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, authoritativeHead bool) (ApplyResult, error) {
+func (c *Canonicalizer) apply(ctx context.Context, candidate chainbundle.Bundle, authoritativeHead bool) (ApplyResult, error) {
 	if c == nil || c.Repository == nil {
 		return ApplyResult{}, errors.New("canonicalizer repository is nil")
 	}
 	if c.ChainID == "" {
 		return ApplyResult{}, errors.New("canonicalizer chain ID is empty")
 	}
-	if err := ethrpc.ValidateBundle(candidate); err != nil {
+	if err := chainbundle.Validate(candidate); err != nil {
 		return ApplyResult{}, fmt.Errorf("validate candidate bundle: %w", err)
 	}
 	candidateRef, err := store.RefFromBundle(candidate)
@@ -137,7 +138,7 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 		if candidateRef.Number != c.StartBlock {
 			return ApplyResult{}, fmt.Errorf("%w: expected start block %d, got %d", ErrGap, c.StartBlock, candidateRef.Number)
 		}
-		if err := c.commitCanonicalBundles(ctx, []ethrpc.Bundle{candidate}, []store.BlockRef{candidateRef}); err != nil {
+		if err := c.commitCanonicalBundles(ctx, []chainbundle.Bundle{candidate}, []store.BlockRef{candidateRef}); err != nil {
 			return ApplyResult{}, fmt.Errorf("commit initial canonical block: %w", err)
 		}
 		return ApplyResult{
@@ -165,7 +166,7 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 	if err != nil {
 		return ApplyResult{}, fmt.Errorf("read candidate canonical height: %w", err)
 	}
-	if canonicalExists && canonical.Hash.Equal(candidateRef.Hash) {
+	if canonicalExists && canonical.Hash == candidateRef.Hash {
 		if authoritativeHead && candidateRef.Number < tip.Number {
 			if sparseTop != nil && candidateRef.Number < sparseTop.Start {
 				return c.truncateSparseHead(ctx, oldTip, canonical, coverage, *sparseTop)
@@ -179,9 +180,9 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 	if candidateRef.Number < tip.Number && !authoritativeHead {
 		return ApplyResult{}, fmt.Errorf("%w: candidate %d, canonical tip %d", ErrStaleHead, candidateRef.Number, tip.Number)
 	}
-	resolvingKnownSparseHead := sparseTop != nil && canonicalExists && canonical.Hash.Equal(candidateRef.Hash)
+	resolvingKnownSparseHead := sparseTop != nil && canonicalExists && canonical.Hash == candidateRef.Hash
 
-	backward := []ethrpc.Bundle{candidate}
+	backward := []chainbundle.Bundle{candidate}
 	cursor := candidate
 	var ancestor store.BlockRef
 	for {
@@ -195,7 +196,7 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 				return ApplyResult{}, fmt.Errorf("read canonical ancestor candidate %d: %w", cursorRef.Number, err)
 			}
 			insideKnownSparseRange := resolvingKnownSparseHead && cursorRef.Number >= sparseTop.Start
-			if exists && canonical.Hash.Equal(cursorRef.Hash) && !insideKnownSparseRange {
+			if exists && canonical.Hash == cursorRef.Hash && !insideKnownSparseRange {
 				ancestor = canonical
 				backward = backward[:len(backward)-1]
 				break
@@ -214,10 +215,10 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 		if !exists {
 			return ApplyResult{}, fmt.Errorf("%w: parent %s of block %s is unavailable", ErrGap, cursorRef.ParentHash, cursorRef.Hash)
 		}
-		if err := ethrpc.ValidateBundle(parent); err != nil {
+		if err := chainbundle.Validate(parent); err != nil {
 			return ApplyResult{}, fmt.Errorf("%w: invalid parent bundle: %v", ErrSourceInconsistent, err)
 		}
-		if err := ethrpc.ValidateParent(cursor, parent); err != nil {
+		if err := chainbundle.ValidateParent(cursor, parent); err != nil {
 			return ApplyResult{}, fmt.Errorf("%w: %v", ErrSourceInconsistent, err)
 		}
 		backward = append(backward, parent)
@@ -234,7 +235,7 @@ func (c *Canonicalizer) apply(ctx context.Context, candidate ethrpc.Bundle, auth
 			ctx, oldTip, candidateRef, ancestor, *sparseTop, coverage, attachedBundles, attachedRefs,
 		)
 	}
-	if ancestor.Hash.Equal(tip.Hash) {
+	if ancestor.Hash == tip.Hash {
 		if err := c.commitCanonicalBundles(ctx, attachedBundles, attachedRefs); err != nil {
 			return ApplyResult{}, fmt.Errorf("commit canonical extension through %d: %w", candidateRef.Number, err)
 		}
@@ -278,7 +279,7 @@ func (c *Canonicalizer) replaceSparseHead(
 	ctx context.Context,
 	oldTip, candidate store.BlockRef,
 	covered store.BlockRange,
-	backward []ethrpc.Bundle,
+	backward []chainbundle.Bundle,
 ) (ApplyResult, error) {
 	detached := make([]store.BlockRef, 0, covered.End-covered.Start+1)
 	for number := covered.End; ; number-- {
@@ -333,7 +334,7 @@ func (c *Canonicalizer) replaceSparseHeadThroughAncestor(
 	oldTip, candidate, ancestor store.BlockRef,
 	covered store.BlockRange,
 	coverage store.CoreCoverage,
-	attachedBundles []ethrpc.Bundle,
+	attachedBundles []chainbundle.Bundle,
 	attached []store.BlockRef,
 ) (ApplyResult, error) {
 	detached, err := c.detachedCoveredAbove(ctx, oldTip, ancestor, coverage)
@@ -431,7 +432,7 @@ func (c *Canonicalizer) detachedCoveredAbove(
 				return nil, fmt.Errorf("%w: sparse coverage is missing canonical height %d", ErrGap, number)
 			}
 			if len(detached) > 0 && detached[len(detached)-1].Number == reference.Number+1 &&
-				!detached[len(detached)-1].ParentHash.Equal(reference.Hash) {
+				detached[len(detached)-1].ParentHash != reference.Hash {
 				return nil, fmt.Errorf("%w: canonical ancestry breaks at height %d", ErrSourceInconsistent, detached[len(detached)-1].Number)
 			}
 			detached = append(detached, reference)
@@ -440,7 +441,7 @@ func (c *Canonicalizer) detachedCoveredAbove(
 			}
 		}
 	}
-	if len(detached) == 0 || detached[0].Number != tip.Number || !detached[0].Hash.Equal(tip.Hash) {
+	if len(detached) == 0 || detached[0].Number != tip.Number || detached[0].Hash != tip.Hash {
 		return nil, fmt.Errorf("%w: highest covered canonical range does not match the tip", ErrGap)
 	}
 	return detached, nil
@@ -448,7 +449,7 @@ func (c *Canonicalizer) detachedCoveredAbove(
 
 func (c *Canonicalizer) commitCanonicalBundles(
 	ctx context.Context,
-	bundles []ethrpc.Bundle,
+	bundles []chainbundle.Bundle,
 	references []store.BlockRef,
 ) error {
 	if len(bundles) == 0 {
@@ -536,7 +537,7 @@ func (c *Canonicalizer) UpdateFinality(ctx context.Context, safe, finalized *sto
 		if err != nil {
 			return fmt.Errorf("resolve %s block: %w", name, err)
 		}
-		if !exists || !canonical.Hash.Equal(requested.Hash) {
+		if !exists || canonical.Hash != requested.Hash {
 			return fmt.Errorf("%w: %s block is not canonical", store.ErrConflict, name)
 		}
 		switch name {
@@ -568,7 +569,7 @@ func (c *Canonicalizer) validateCanonicalAncestry(ctx context.Context, tip, floo
 		if !exists {
 			return fmt.Errorf("%w: canonical finality ancestry has a gap at height %d", ErrGap, child.Number-1)
 		}
-		if !child.ParentHash.Equal(parent.Hash) {
+		if child.ParentHash != parent.Hash {
 			return fmt.Errorf(
 				"%w: canonical block %d parent %s does not match block %d hash %s",
 				ErrSourceInconsistent, child.Number, child.ParentHash, parent.Number, parent.Hash,
@@ -576,7 +577,7 @@ func (c *Canonicalizer) validateCanonicalAncestry(ctx context.Context, tip, floo
 		}
 		child = parent
 	}
-	if !child.Hash.Equal(floor.Hash) {
+	if child.Hash != floor.Hash {
 		return fmt.Errorf("%w: finality floor is not an ancestor of the canonical tip", store.ErrConflict)
 	}
 	return nil
@@ -584,11 +585,11 @@ func (c *Canonicalizer) validateCanonicalAncestry(ctx context.Context, tip, floo
 
 func (c *Canonicalizer) parentBundle(
 	ctx context.Context,
-	hash ethrpc.Hash,
+	hash common.Hash,
 	authoritativeHead bool,
-) (ethrpc.Bundle, bool, error) {
+) (chainbundle.Bundle, bool, error) {
 	if bundle, exists, err := c.Repository.BundleByHash(ctx, c.ChainID, hash); err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("read parent bundle from store: %w", err)
+		return chainbundle.Bundle{}, false, fmt.Errorf("read parent bundle from store: %w", err)
 	} else if exists {
 		return bundle, true, nil
 	}
@@ -597,11 +598,11 @@ func (c *Canonicalizer) parentBundle(
 		source = c.HeadSource
 	}
 	if source == nil {
-		return ethrpc.Bundle{}, false, nil
+		return chainbundle.Bundle{}, false, nil
 	}
 	bundle, exists, err := source.BundleByHash(ctx, hash)
 	if err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("fetch parent bundle %s: %w", hash, err)
+		return chainbundle.Bundle{}, false, fmt.Errorf("fetch parent bundle %s: %w", hash, err)
 	}
 	return bundle, exists, nil
 }
@@ -619,7 +620,7 @@ func (c *Canonicalizer) detachedBranch(ctx context.Context, tip, ancestor store.
 		detached = append(detached, reference)
 	}
 	for index := range detached {
-		if index+1 < len(detached) && !detached[index].ParentHash.Equal(detached[index+1].Hash) {
+		if index+1 < len(detached) && detached[index].ParentHash != detached[index+1].Hash {
 			return nil, fmt.Errorf("%w: canonical ancestry breaks at height %d", ErrSourceInconsistent, detached[index].Number)
 		}
 	}
@@ -642,8 +643,8 @@ func (c *Canonicalizer) now() time.Time {
 	return time.Now().UTC()
 }
 
-func reverseBundles(backward []ethrpc.Bundle) []ethrpc.Bundle {
-	forward := make([]ethrpc.Bundle, len(backward))
+func reverseBundles(backward []chainbundle.Bundle) []chainbundle.Bundle {
+	forward := make([]chainbundle.Bundle, len(backward))
 	for index := range backward {
 		forward[len(backward)-1-index] = backward[index]
 	}

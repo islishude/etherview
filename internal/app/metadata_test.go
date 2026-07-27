@@ -1,30 +1,29 @@
 package app
 
 import (
-	"context"
 	"database/sql"
-	"errors"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-type metadataTestCaller struct{}
-
-func (metadataTestCaller) Call(context.Context, string, []any, any) error {
-	return errors.New("unused metadata test RPC")
-}
-
 func TestRegisterMetadataWorkersUseUniqueDurableSafeWorkers(t *testing.T) {
 	t.Parallel()
 	registry := components.NewRegistry()
 	cfg := config.Default()
 	cfg.Runtime.WorkerCount = 3
+	server := rpc.NewServer()
+	client := rpc.DialInProc(server)
+	t.Cleanup(func() {
+		client.Close()
+		server.Stop()
+	})
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "state", Client: metadataTestCaller{},
+		Name: "state", Client: client,
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {

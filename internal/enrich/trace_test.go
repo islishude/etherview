@@ -6,6 +6,8 @@ import (
 	"maps"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -25,8 +27,8 @@ func traceTestIdentity() TraceIdentity {
 	}
 }
 
-func traceTestWord(value uint64) Word {
-	var word Word
+func traceTestWord(value uint64) common.Hash {
+	var word common.Hash
 	for index := range 8 {
 		word[31-index] = byte(value)
 		value >>= 8

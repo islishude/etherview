@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
@@ -79,7 +80,7 @@ type billingUserLookup interface {
 
 func (resolver billingUserResolver) UserIDForPayer(
 	ctx context.Context,
-	payer billing.Address,
+	payer common.Address,
 ) (string, bool, error) {
 	if resolver.repository == nil {
 		return "", false, nil

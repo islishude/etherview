@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -33,7 +36,7 @@ func (r *Reader) NativeBalances(ctx context.Context, addresses []string) ([]stri
 	if len(addresses) == 0 {
 		return nil, errors.New("native balance address list is empty")
 	}
-	parsed := make([]ethrpc.Address, len(addresses))
+	parsed := make([]common.Address, len(addresses))
 	for index, address := range addresses {
 		value, err := ethrpc.ParseAddress(address)
 		if err != nil {
@@ -46,30 +49,21 @@ func (r *Reader) NativeBalances(ctx context.Context, addresses []string) ([]stri
 		return nil, err
 	}
 	selector := canonicalSelector(reference)
-	results := make([]ethrpc.Quantity, len(parsed))
-	elements := make([]ethrpc.BatchElem, len(parsed))
+	results := make([]hexutil.Big, len(parsed))
+	elements := make([]rpc.BatchElem, len(parsed))
 	for index := range parsed {
-		elements[index] = ethrpc.BatchElem{
-			Method: "eth_getBalance", Params: []any{parsed[index].String(), selector}, Result: &results[index],
+		elements[index] = rpc.BatchElem{
+			Method: "eth_getBalance", Args: []any{parsed[index], selector}, Result: &results[index],
 		}
 	}
-	if batch, ok := endpoint.Client.(ethrpc.BatchCaller); ok {
-		if err := batch.BatchCall(ctx, elements); err != nil {
+	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
+		r.Pool.ReportFailure(endpoint.Name)
+		return nil, stateUnavailable(err)
+	}
+	for _, element := range elements {
+		if element.Error != nil {
 			r.Pool.ReportFailure(endpoint.Name)
-			return nil, stateUnavailable(err)
-		}
-		for _, element := range elements {
-			if element.Error != nil {
-				r.Pool.ReportFailure(endpoint.Name)
-				return nil, stateUnavailable(element.Error)
-			}
-		}
-	} else {
-		for index := range elements {
-			if err := endpoint.Client.Call(ctx, elements[index].Method, elements[index].Params, elements[index].Result); err != nil {
-				r.Pool.ReportFailure(endpoint.Name)
-				return nil, stateUnavailable(err)
-			}
+			return nil, stateUnavailable(element.Error)
 		}
 	}
 	if err := r.confirmCanonical(ctx, endpoint, reference); err != nil {
@@ -96,10 +90,7 @@ func (r *Reader) ERC20Balance(ctx context.Context, contract, owner string) (stri
 	if err != nil {
 		return "", fmt.Errorf("invalid token owner address: %w", err)
 	}
-	ownerBytes, err := ownerAddress.Bytes()
-	if err != nil {
-		return "", err
-	}
+	ownerBytes := ownerAddress.Bytes()
 	callData := make([]byte, len(erc20BalanceOfSelector)+32)
 	copy(callData, erc20BalanceOfSelector)
 	copy(callData[len(callData)-len(ownerBytes):], ownerBytes)
@@ -115,26 +106,25 @@ func (r *Reader) ERC20TotalSupply(ctx context.Context, contract string) (string,
 	return r.erc20Uint256Call(ctx, contractAddress, erc20TotalSupplySelector)
 }
 
-func (r *Reader) erc20Uint256Call(ctx context.Context, contract ethrpc.Address, callData []byte) (string, error) {
+func (r *Reader) erc20Uint256Call(ctx context.Context, contract common.Address, callData []byte) (string, error) {
 	reference, endpoint, err := r.fixedStateEndpoint(ctx)
 	if err != nil {
 		return "", err
 	}
 	selector := canonicalSelector(reference)
-	call := map[string]any{"to": contract.String(), "data": ethrpc.DataFromBytes(callData).String()}
-	var result ethrpc.Data
-	if err := endpoint.Client.Call(ctx, "eth_call", []any{call, selector}, &result); err != nil {
+	call := map[string]any{"to": contract, "data": hexutil.Bytes(callData)}
+	var result hexutil.Bytes
+	if err := endpoint.CallContext(ctx, &result, "eth_call", call, selector); err != nil {
 		r.Pool.ReportFailure(endpoint.Name)
 		return "", stateUnavailable(err)
 	}
 	if err := r.confirmCanonical(ctx, endpoint, reference); err != nil {
 		return "", err
 	}
-	bytes, err := result.Bytes()
-	if err != nil || len(bytes) != 32 {
+	if len(result) != 32 {
 		return "", fmt.Errorf("decode fixed-block ERC-20 uint256 result")
 	}
-	return new(big.Int).SetBytes(bytes).String(), nil
+	return new(big.Int).SetBytes(result).String(), nil
 }
 
 func (r *Reader) fixedStateEndpoint(ctx context.Context) (CanonicalRef, *ethrpc.Endpoint, error) {
@@ -164,6 +154,6 @@ func (r *Reader) confirmCanonical(ctx context.Context, endpoint *ethrpc.Endpoint
 	return nil
 }
 
-func canonicalSelector(reference CanonicalRef) map[string]any {
-	return map[string]any{"blockHash": reference.Hash.String(), "requireCanonical": true}
+func canonicalSelector(reference CanonicalRef) rpc.BlockNumberOrHash {
+	return rpc.BlockNumberOrHashWithHash(reference.Hash, true)
 }

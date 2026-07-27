@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -27,16 +29,16 @@ func TestPostgresRepositoryCanonicalReorgRetainsOrphansAndRejectsFinalizedCrossi
 	genesis := testBundle(0, testHash(100), testHash(0), testHash(1_000), "genesis")
 	oldOne := testBundle(1, testHash(101), testHash(100), testHash(1_001), "old-one")
 	oldTwo := testBundle(2, testHash(102), testHash(101), testHash(1_002), "old-two")
-	for _, bundle := range []ethrpc.Bundle{genesis, oldOne, oldTwo} {
+	for _, bundle := range []chainbundle.Bundle{genesis, oldOne, oldTwo} {
 		commitCanonical(t, ctx, repository, bundle)
 	}
 
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
-	if err != nil || !exists || !tip.Hash.Equal(testHash(102)) || tip.Number != 2 {
+	if err != nil || !exists || tip.Hash != testHash(102) || tip.Number != 2 {
 		t.Fatalf("canonical tip = %+v, exists=%t, err=%v", tip, exists, err)
 	}
 	checkpoint, exists, err := repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
-	if err != nil || !exists || checkpoint.ContiguousThrough != 2 || !checkpoint.BlockHash.Equal(testHash(102)) {
+	if err != nil || !exists || checkpoint.ContiguousThrough != 2 || checkpoint.BlockHash != testHash(102) {
 		t.Fatalf("core checkpoint = %+v, exists=%t, err=%v", checkpoint, exists, err)
 	}
 	if err := repository.AppendJournal(ctx, "1", store.JournalEntry{
@@ -51,27 +53,27 @@ func TestPostgresRepositoryCanonicalReorgRetainsOrphansAndRejectsFinalizedCrossi
 	reorg := store.Reorg{
 		Ancestor:   mustBlockRef(t, genesis),
 		Detached:   []store.BlockRef{mustBlockRef(t, oldTwo), mustBlockRef(t, oldOne)},
-		Attached:   []ethrpc.Bundle{newOne, newTwo},
+		Attached:   []chainbundle.Bundle{newOne, newTwo},
 		Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, newTwo)),
 		Reason:     "integration fork",
 	}
 	if err := repository.ApplyReorg(ctx, "1", reorg); err != nil {
 		t.Fatalf("apply reorg: %v", err)
 	}
-	for number, wantHash := range map[uint64]ethrpc.Hash{0: testHash(100), 1: testHash(201), 2: testHash(202)} {
+	for number, wantHash := range map[uint64]common.Hash{0: testHash(100), 1: testHash(201), 2: testHash(202)} {
 		canonical, found, err := repository.CanonicalBlock(ctx, "1", number)
-		if err != nil || !found || !canonical.Hash.Equal(wantHash) {
+		if err != nil || !found || canonical.Hash != wantHash {
 			t.Fatalf("canonical block %d = %+v, found=%t, err=%v, want %s", number, canonical, found, err, wantHash)
 		}
 	}
-	for _, orphan := range []ethrpc.Bundle{oldOne, oldTwo} {
+	for _, orphan := range []chainbundle.Bundle{oldOne, oldTwo} {
 		hash, _ := orphan.BlockHash()
 		stored, found, err := repository.BundleByHash(ctx, "1", hash)
 		if err != nil || !found {
 			t.Fatalf("orphan bundle %s found=%t err=%v", hash, found, err)
 		}
 		storedHash, _ := stored.BlockHash()
-		if !storedHash.Equal(hash) || len(stored.Receipts) != 1 {
+		if storedHash != hash || len(stored.Receipts) != 1 {
 			t.Fatalf("orphan bundle %s was not retained: %+v", hash, stored)
 		}
 	}
@@ -91,7 +93,7 @@ func TestPostgresRepositoryCanonicalReorgRetainsOrphansAndRejectsFinalizedCrossi
 	finalizedCrossing := store.Reorg{
 		Ancestor:   mustBlockRef(t, genesis),
 		Detached:   []store.BlockRef{mustBlockRef(t, newTwo), mustBlockRef(t, newOne)},
-		Attached:   []ethrpc.Bundle{thirdOne, thirdTwo},
+		Attached:   []chainbundle.Bundle{thirdOne, thirdTwo},
 		Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, thirdTwo)),
 		Reason:     "must be rejected",
 	}
@@ -99,11 +101,11 @@ func TestPostgresRepositoryCanonicalReorgRetainsOrphansAndRejectsFinalizedCrossi
 		t.Fatalf("finalized-crossing reorg error = %v, want ErrConflict", err)
 	}
 	canonicalTwo, found, err := repository.CanonicalBlock(ctx, "1", 2)
-	if err != nil || !found || !canonicalTwo.Hash.Equal(testHash(202)) {
+	if err != nil || !found || canonicalTwo.Hash != testHash(202) {
 		t.Fatalf("canonical block changed after rejected reorg: %+v, found=%t, err=%v", canonicalTwo, found, err)
 	}
 	checkpoint, exists, err = repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
-	if err != nil || !exists || !checkpoint.BlockHash.Equal(testHash(202)) {
+	if err != nil || !exists || checkpoint.BlockHash != testHash(202) {
 		t.Fatalf("checkpoint changed after rejected reorg: %+v, exists=%t, err=%v", checkpoint, exists, err)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM reorg_events WHERE chain_id = 1`, 1)
@@ -123,14 +125,14 @@ func TestPostgresCoverageLeaseRestartAndSparseForkRepair(t *testing.T) {
 	oldZero := testBundle(0, testHash(600), testHash(0), testHash(6_000), "old-zero")
 	oldOne := testBundle(1, testHash(601), testHash(600), testHash(6_001), "old-one")
 	oldTwo := testBundle(2, testHash(602), testHash(601), testHash(6_002), "old-two")
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldZero, oldOne, oldTwo}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{oldZero, oldOne, oldTwo}); err != nil {
 		t.Fatal(err)
 	}
 	newOne := testBundle(1, testHash(611), testHash(600), testHash(6_011), "new-one")
 	newTwo := testBundle(2, testHash(612), testHash(611), testHash(6_012), "new-two")
 	newThree := testBundle(3, testHash(613), testHash(612), testHash(6_013), "new-three")
 	newFour := testBundle(4, testHash(614), testHash(613), testHash(6_014), "new-four")
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{newFour}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{newFour}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -162,7 +164,7 @@ func TestPostgresCoverageLeaseRestartAndSparseForkRepair(t *testing.T) {
 		Range:    store.BlockRange{Start: 4, End: 4},
 		Ancestor: &ancestor,
 		Detached: []store.BlockRef{mustBlockRef(t, newFour), mustBlockRef(t, oldTwo), mustBlockRef(t, oldOne)},
-		Attached: []ethrpc.Bundle{newOne, newTwo, newThree, newFour},
+		Attached: []chainbundle.Bundle{newOne, newTwo, newThree, newFour},
 		Reason:   "integration sparse live fork",
 	})
 	if err != nil {
@@ -170,21 +172,21 @@ func TestPostgresCoverageLeaseRestartAndSparseForkRepair(t *testing.T) {
 	}
 	if len(coverage.Ranges) != 1 || coverage.Ranges[0] != (store.BlockRange{Start: 0, End: 4}) ||
 		coverage.Contiguous == nil || coverage.Contiguous.Number != 4 ||
-		coverage.Highest == nil || !coverage.Highest.Hash.Equal(testHash(614)) {
+		coverage.Highest == nil || coverage.Highest.Hash != testHash(614) {
 		t.Fatalf("coverage=%+v", coverage)
 	}
 	if err := restarted.CompleteBackfillRange(ctx, reclaimed); err != nil {
 		t.Fatal(err)
 	}
 	checkpoint, exists, err := restarted.Checkpoint(ctx, "1", store.CoreCheckpoint)
-	if err != nil || !exists || checkpoint.ContiguousThrough != 4 || !checkpoint.BlockHash.Equal(testHash(614)) {
+	if err != nil || !exists || checkpoint.ContiguousThrough != 4 || checkpoint.BlockHash != testHash(614) {
 		t.Fatalf("checkpoint=%+v exists=%v error=%v", checkpoint, exists, err)
 	}
 	if err := restarted.ConfigureIndex(ctx, "1", 1); !errors.Is(err, store.ErrIndexConfigurationMismatch) {
 		t.Fatalf("configuration mismatch error=%v", err)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM reorg_events WHERE chain_id = 1`, 1)
-	for _, orphanHash := range []ethrpc.Hash{testHash(601), testHash(602)} {
+	for _, orphanHash := range []common.Hash{testHash(601), testHash(602)} {
 		if _, exists, err := restarted.BundleByHash(ctx, "1", orphanHash); err != nil || !exists {
 			t.Fatalf("orphan %s retained=%v error=%v", orphanHash, exists, err)
 		}
@@ -202,7 +204,7 @@ func TestPostgresRepositoryRefreshCanonicalIsIdentityBoundAndInvalidatesReplayab
 
 	genesis := testBundle(0, testHash(400), testHash(0), testHash(4_000), "genesis")
 	original := testBundle(1, testHash(401), testHash(400), testHash(4_001), "original")
-	for _, bundle := range []ethrpc.Bundle{genesis, original} {
+	for _, bundle := range []chainbundle.Bundle{genesis, original} {
 		commitCanonical(t, ctx, repository, bundle)
 	}
 	if err := repository.AppendJournal(ctx, "1", store.JournalEntry{
@@ -223,7 +225,7 @@ func TestPostgresRepositoryRefreshCanonicalIsIdentityBoundAndInvalidatesReplayab
 	if err := repository.RefreshCanonical(ctx, "1", wrongHash, store.RefreshOptions{}); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("wrong-hash refresh error = %v, want ErrConflict", err)
 	}
-	wrongParent := testBundle(1, testHash(401), testHash(499), testHash(4_001), "wrong-parent")
+	wrongParent := testBundle(1, testHash(498), testHash(499), testHash(4_098), "wrong-parent")
 	if err := repository.RefreshCanonical(ctx, "1", wrongParent, store.RefreshOptions{}); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("wrong-parent refresh error = %v, want ErrConflict", err)
 	}
@@ -235,7 +237,10 @@ func TestPostgresRepositoryRefreshCanonicalIsIdentityBoundAndInvalidatesReplayab
 	if err := repository.UpdateFinality(ctx, "1", store.Finality{Safe: &finalized, Finalized: &finalized}); err != nil {
 		t.Fatalf("finalize original block: %v", err)
 	}
-	refreshed := testBundle(1, testHash(401), testHash(400), testHash(4_001), "refreshed")
+	refreshed, err := withIntegrationBlockRawField(original, "integrationVariant", "refreshed")
+	if err != nil {
+		t.Fatalf("build refreshed bundle: %v", err)
+	}
 	if err := repository.RefreshCanonical(ctx, "1", refreshed, store.RefreshOptions{}); !errors.Is(err, store.ErrFinalizedRefresh) {
 		t.Fatalf("finalized refresh error = %v, want ErrFinalizedRefresh", err)
 	}
@@ -256,31 +261,31 @@ func TestPostgresRepositoryRefreshCanonicalIsIdentityBoundAndInvalidatesReplayab
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM block_journals WHERE chain_id = 1 AND block_hash = $1`, 1, mustBytes(t, testHash(400)))
 	checkpointAfter, exists, err := repository.Checkpoint(ctx, "1", store.CoreCheckpoint)
 	if err != nil || !exists || checkpointAfter.ContiguousThrough != checkpointBefore.ContiguousThrough ||
-		!checkpointAfter.BlockHash.Equal(checkpointBefore.BlockHash) || !checkpointAfter.UpdatedAt.Equal(checkpointBefore.UpdatedAt) {
+		checkpointAfter.BlockHash != checkpointBefore.BlockHash || !checkpointAfter.UpdatedAt.Equal(checkpointBefore.UpdatedAt) {
 		t.Fatalf("refresh moved checkpoint: before=%+v after=%+v exists=%t err=%v", checkpointBefore, checkpointAfter, exists, err)
 	}
 	canonical, exists, err := repository.CanonicalBlock(ctx, "1", 1)
-	if err != nil || !exists || !canonical.Hash.Equal(testHash(401)) || !canonical.ParentHash.Equal(testHash(400)) {
+	if err != nil || !exists || canonical.Hash != testHash(401) || canonical.ParentHash != testHash(400) {
 		t.Fatalf("refresh moved canonical identity: %+v, exists=%t err=%v", canonical, exists, err)
 	}
 	finality, exists, err := repository.Finality(ctx, "1")
-	if err != nil || !exists || finality.Finalized == nil || !finality.Finalized.Hash.Equal(testHash(401)) {
+	if err != nil || !exists || finality.Finalized == nil || finality.Finalized.Hash != testHash(401) {
 		t.Fatalf("refresh moved finality: %+v, exists=%t err=%v", finality, exists, err)
 	}
 	stored, found, err := repository.BundleByHash(ctx, "1", testHash(401))
 	if err != nil || !found || len(stored.Receipts) != 1 || len(stored.Receipts[0].Logs) != 1 {
 		t.Fatalf("refreshed bundle = %+v, found=%t err=%v", stored, found, err)
 	}
-	if got := stored.Block.Transactions[0].Transaction.Input; got != ethrpc.DataFromBytes([]byte("refreshed")) {
-		t.Fatalf("refreshed transaction input = %s", got)
+	if got, want := stored.Block.Transactions()[0].Data(), original.Block.Transactions()[0].Data(); !bytes.Equal(got, want) {
+		t.Fatalf("refresh changed consensus transaction input: got=%x want=%x", got, want)
 	}
-	if got := stored.Receipts[0].Logs[0].Data; got != ethrpc.DataFromBytes([]byte("refreshed")) {
-		t.Fatalf("refreshed log data = %s", got)
+	if got, want := stored.Receipts[0].Logs[0].Data, original.Receipts[0].Logs[0].Data; !bytes.Equal(got, want) {
+		t.Fatalf("refresh changed consensus log data: got=%x want=%x", got, want)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM withdrawals WHERE chain_id = 1 AND block_hash = $1`, 1, mustBytes(t, testHash(401)))
 }
 
-func commitCanonical(t *testing.T, ctx context.Context, repository *store.PostgresRepository, bundle ethrpc.Bundle) {
+func commitCanonical(t *testing.T, ctx context.Context, repository *store.PostgresRepository, bundle chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, bundle)
 	if err := repository.CommitCanonical(ctx, "1", bundle, store.NewCoreCheckpoint(reference)); err != nil {
@@ -288,12 +293,12 @@ func commitCanonical(t *testing.T, ctx context.Context, repository *store.Postgr
 	}
 }
 
-func insertRefreshFixtures(t *testing.T, ctx context.Context, db *sql.DB, bundle ethrpc.Bundle) {
+func insertRefreshFixtures(t *testing.T, ctx context.Context, db *sql.DB, bundle chainbundle.Bundle) {
 	t.Helper()
 	reference := mustBlockRef(t, bundle)
-	transaction := bundle.Block.Transactions[0].Transaction
+	transaction := bundle.Block.Transactions()[0]
 	blockHash := mustBytes(t, reference.Hash)
-	transactionHash := mustBytes(t, transaction.Hash)
+	transactionHash := mustBytes(t, transaction.Hash())
 	tokenAddress := mustBytes(t, testAddress(10))
 	ownerAddress := mustBytes(t, testAddress(11))
 	codeHash := mustBytes(t, testHash(5_000))
@@ -365,7 +370,7 @@ func assertRefreshFixtures(
 	t *testing.T,
 	ctx context.Context,
 	db *sql.DB,
-	bundle ethrpc.Bundle,
+	bundle chainbundle.Bundle,
 	replayableCount int,
 	stateObservationCount int,
 ) {
@@ -401,7 +406,7 @@ func assertRefreshFixtures(
 	)
 }
 
-func assertBlockVariant(t *testing.T, ctx context.Context, db *sql.DB, hash ethrpc.Hash, want string) {
+func assertBlockVariant(t *testing.T, ctx context.Context, db *sql.DB, hash common.Hash, want string) {
 	t.Helper()
 	var variant string
 	if err := db.QueryRowContext(ctx, `

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/auth"
@@ -86,7 +87,7 @@ func (ledger *httpBillingLedger) MarkSettlementUnknown(
 func (ledger *httpBillingLedger) MarkSettled(
 	_ context.Context,
 	id, _ string,
-	_ billing.TransactionHash,
+	_ common.Hash,
 	at time.Time,
 ) (billing.Payment, error) {
 	ledger.settleCalls.Add(1)

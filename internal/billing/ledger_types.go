@@ -6,6 +6,8 @@ package billing
 import (
 	"errors"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type State string
@@ -49,8 +51,6 @@ var (
 )
 
 type Digest [32]byte
-type Address [20]byte
-type TransactionHash [32]byte
 
 type Payment struct {
 	ID                   string
@@ -58,13 +58,13 @@ type Payment struct {
 	Operation            string
 	Method               string
 	Network              string
-	Asset                Address
+	Asset                common.Address
 	AmountAtomic         string
-	Recipient            Address
-	Payer                *Address
+	Recipient            common.Address
+	Payer                *common.Address
 	UserID               *string
 	APIKeyPrefix         *string
-	TransactionHash      *TransactionHash
+	TransactionHash      *common.Hash
 	State                State
 	FailureCode          *string
 	ReservationExpiresAt time.Time
@@ -97,9 +97,9 @@ type ReserveInput struct {
 	ResourceDigest    Digest
 	RequirementDigest Digest
 	Network           string
-	Asset             Address
+	Asset             common.Address
 	AmountAtomic      string
-	Recipient         Address
+	Recipient         common.Address
 	APIKeyPrefix      *string
 	FacilitatorDigest Digest
 	ObservedAt        time.Time
@@ -108,7 +108,7 @@ type ReserveInput struct {
 type VerifiedInput struct {
 	PaymentID    string
 	Owner        string
-	Payer        Address
+	Payer        common.Address
 	UserID       *string
 	APIKeyPrefix *string
 	ObservedAt   time.Time
@@ -123,7 +123,7 @@ type AdminFilter struct {
 	State     *State
 	Operation *string
 	Network   *string
-	Asset     *Address
+	Asset     *common.Address
 	FromTime  *time.Time
 	ToTime    *time.Time
 }
@@ -132,7 +132,7 @@ type SummaryRow struct {
 	State        State
 	Operation    string
 	Network      string
-	Asset        Address
+	Asset        common.Address
 	PaymentCount string
 	AmountAtomic string
 }
@@ -147,7 +147,7 @@ type PaymentEvent struct {
 	ToState         State
 	Code            string
 	Actor           Actor
-	TransactionHash *TransactionHash
+	TransactionHash *common.Hash
 	OccurredAt      time.Time
 }
 

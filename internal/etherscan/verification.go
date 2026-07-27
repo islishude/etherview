@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/verify"
-	"golang.org/x/crypto/sha3"
 )
 
 const defaultVerificationInputBytes = 5 << 20
@@ -145,9 +145,7 @@ func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, address
 	if len(target.codeHash) != 32 || len(target.blockHash) != 32 || len(target.runtimeBytecode) == 0 || len(target.runtimeBytecode) > b.maxVerificationInputBytes {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
 	}
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(target.runtimeBytecode)
-	if !bytes.Equal(hasher.Sum(nil), target.codeHash) {
+	if !bytes.Equal(crypto.Keccak256(target.runtimeBytecode), target.codeHash) {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
 	}
 	if !creation.Valid || strings.TrimSpace(creation.String) == "" {

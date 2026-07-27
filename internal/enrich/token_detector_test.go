@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -25,26 +30,52 @@ type fakeTokenRPCCaller struct {
 	handler func(string, []any) ([]byte, error)
 }
 
+type tokenRPCService struct {
+	caller *fakeTokenRPCCaller
+}
+
 type tokenRPCCallerFunc func(context.Context, string, []any, any) error
 
-func (function tokenRPCCallerFunc) Call(ctx context.Context, method string, params []any, result any) error {
+func (function tokenRPCCallerFunc) CallContext(ctx context.Context, result any, method string, params ...any) error {
 	return function(ctx, method, params, result)
 }
 
-func (caller *fakeTokenRPCCaller) Call(_ context.Context, method string, params []any, result any) error {
-	caller.mu.Lock()
-	caller.calls = append(caller.calls, tokenRPCCall{method: method, params: params})
-	caller.mu.Unlock()
-	output, err := caller.handler(method, params)
+func (caller *fakeTokenRPCCaller) CallContext(_ context.Context, result any, method string, params ...any) error {
+	output, err := caller.invoke(method, params)
 	if err != nil {
 		return err
 	}
-	encoded, ok := result.(*ethrpc.Data)
+	encoded, ok := result.(*hexutil.Bytes)
 	if !ok {
 		return fmt.Errorf("unexpected token RPC result %T", result)
 	}
-	*encoded = ethrpc.DataFromBytes(output)
+	*encoded = hexutil.Bytes(common.CopyBytes(output))
 	return nil
+}
+
+func (caller *fakeTokenRPCCaller) invoke(method string, params []any) ([]byte, error) {
+	caller.mu.Lock()
+	caller.calls = append(caller.calls, tokenRPCCall{method: method, params: params})
+	caller.mu.Unlock()
+	return caller.handler(method, params)
+}
+
+func (service tokenRPCService) GetCode(
+	_ context.Context,
+	address common.Address,
+	block rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
+	output, err := service.caller.invoke("eth_getCode", []any{address, block})
+	return hexutil.Bytes(output), err
+}
+
+func (service tokenRPCService) Call(
+	_ context.Context,
+	request map[string]any,
+	block rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
+	output, err := service.caller.invoke("eth_call", []any{request, block})
+	return hexutil.Bytes(output), err
 }
 
 func (caller *fakeTokenRPCCaller) recordedCalls() []tokenRPCCall {
@@ -69,15 +100,10 @@ func TestRPCTokenDetectorCombinesERC20SignalsAtFixedBlock(t *testing.T) {
 		case "eth_getCode":
 			return code, nil
 		case "eth_call":
-			request, ok := params[0].(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("eth_call request type %T", params[0])
-			}
-			encoded, err := ethrpc.ParseData(request["data"].(string))
+			input, err := tokenCallInput(params)
 			if err != nil {
 				return nil, err
 			}
-			input, _ := encoded.Bytes()
 			if len(input) < 4 {
 				return nil, errors.New("short eth_call input")
 			}
@@ -87,7 +113,7 @@ func TestRPCTokenDetectorCombinesERC20SignalsAtFixedBlock(t *testing.T) {
 			case supportsSelector:
 				return wordBytes(uintWord(0)), nil
 			case nameSelector:
-				return nil, &ethrpc.RPCError{Code: 3, Message: "execution reverted"}
+				return nil, testRPCError{code: 3, message: "execution reverted"}
 			case symbolSelector:
 				return encodeDynamicBytes([]byte("TOK")), nil
 			case decimalsSelector:
@@ -127,8 +153,8 @@ func TestRPCTokenDetectorCombinesERC20SignalsAtFixedBlock(t *testing.T) {
 		if len(call.params) != 2 {
 			t.Fatalf("%s params=%v", call.method, call.params)
 		}
-		block, ok := call.params[1].(map[string]any)
-		if !ok || block["blockHash"] != job.BlockHash.String() || block["requireCanonical"] != true {
+		block, ok := call.params[1].(rpc.BlockNumberOrHash)
+		if !ok || block.BlockHash == nil || *block.BlockHash != job.BlockHash || !block.RequireCanonical {
 			t.Fatalf("%s block reference=%v", call.method, call.params[1])
 		}
 	}
@@ -141,13 +167,25 @@ func TestPoolTokenDetectorPinsOneEndpointPerBlockAndRotatesBetweenBlocks(t *test
 			if method == "eth_getCode" {
 				return []byte{0x60, 0x00}, nil
 			}
-			return nil, &ethrpc.RPCError{Code: 3, Message: "execution reverted"}
+			return nil, testRPCError{code: 3, message: "execution reverted"}
 		}}
 	}
 	first, second := newCaller(), newCaller()
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
-		{Name: "state-a", Client: first, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}},
-		{Name: "state-b", Client: second, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}},
+		{
+			Name: "state-a",
+			Client: inProcessRPCClient(t, map[string]any{
+				"eth": tokenRPCService{caller: first},
+			}),
+			Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+		},
+		{
+			Name: "state-b",
+			Client: inProcessRPCClient(t, map[string]any{
+				"eth": tokenRPCService{caller: second},
+			}),
+			Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+		},
 	}, ethrpc.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +194,7 @@ func TestPoolTokenDetectorPinsOneEndpointPerBlockAndRotatesBetweenBlocks(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence := map[Address]TokenLogEvidence{
+	evidence := map[common.Address]TokenLogEvidence{
 		testAddress(1): {ERC20: true},
 		testAddress(2): {ERC721Or1155: true},
 	}
@@ -178,8 +216,8 @@ func TestPoolTokenDetectorPinsOneEndpointPerBlockAndRotatesBetweenBlocks(t *test
 	}
 	for index, caller := range []*fakeTokenRPCCaller{first, second} {
 		for _, call := range caller.recordedCalls() {
-			block, ok := call.params[1].(map[string]any)
-			if !ok || block["blockHash"] != jobs[index].BlockHash.String() || block["requireCanonical"] != true {
+			block, ok := call.params[1].(rpc.BlockNumberOrHash)
+			if !ok || block.BlockHash == nil || *block.BlockHash != jobs[index].BlockHash || !block.RequireCanonical {
 				t.Fatalf("endpoint %d call %s block selector=%#v", index, call.method, call.params[1])
 			}
 		}
@@ -195,16 +233,17 @@ func TestRPCTokenDetectorRecognizesERC721MintedDuringConstructorAtBlockEnd(t *te
 			// so the block-hash state must expose the deployed runtime code.
 			return []byte{0x60, 0x01}, nil
 		}
-		request := params[0].(map[string]any)
-		encoded, _ := ethrpc.ParseData(request["data"].(string))
-		input, _ := encoded.Bytes()
+		input, err := tokenCallInput(params)
+		if err != nil {
+			return nil, err
+		}
 		if len(input) == 36 && bytes.Equal(input[:4], supportsSelector[:]) {
 			if bytes.Equal(input[4:8], []byte{0x80, 0xac, 0x58, 0xcd}) {
 				return wordBytes(uintWord(1)), nil
 			}
 			return wordBytes(uintWord(0)), nil
 		}
-		return nil, &ethrpc.RPCError{Code: 3, Message: "execution reverted"}
+		return nil, testRPCError{code: 3, message: "execution reverted"}
 	}}
 	detector, err := NewRPCTokenDetector(caller, TokenProbeLimits{})
 	if err != nil {
@@ -239,8 +278,8 @@ func TestRPCTokenDetectorReturnsTransportErrorsForRetry(t *testing.T) {
 		Job:     Job{ID: "retry", Stage: TokenStage, ChainID: "1", BlockHash: uintWord(1), BlockNumber: 1},
 		Address: testAddress(1), Evidence: TokenLogEvidence{ERC20: true},
 	})
-	if !errors.Is(err, retryable) {
-		t.Fatalf("error=%v, want original retryable transport error", err)
+	if !errors.Is(err, ethrpc.ErrTransport) {
+		t.Fatalf("error=%v, want sanitized retryable transport error", err)
 	}
 	if strings.Contains(err.Error(), retryable.Error()) {
 		t.Fatalf("retryable error leaked hostile RPC text: %v", err)
@@ -260,27 +299,27 @@ func TestRPCTokenDetectorClassifiesExactStateCapabilityGaps(t *testing.T) {
 	}{
 		{
 			name: "missing getCode method", method: "eth_getCode",
-			rpcErr:  &ethrpc.RPCError{Code: -32601, Message: "method not found"},
+			rpcErr:  testRPCError{code: -32601, message: "method not found"},
 			message: "EIP-1898 block hash is unavailable",
 		},
 		{
 			name: "invalid block-hash selector", method: "eth_getCode",
-			rpcErr:  &ethrpc.RPCError{Code: -32602, Message: "invalid argument"},
+			rpcErr:  testRPCError{code: -32602, message: "invalid argument"},
 			message: "cannot serve the exact block-hash state",
 		},
 		{
 			name: "missing trie node", method: "eth_getCode",
-			rpcErr:  &ethrpc.RPCError{Code: -32000, Message: "missing trie node 0xsecret"},
+			rpcErr:  testRPCError{code: -32000, message: "missing trie node 0xsecret"},
 			message: "cannot serve the exact block-hash state",
 		},
 		{
 			name: "pruned historical state", method: "eth_call",
-			rpcErr:  &ethrpc.RPCError{Code: -32000, Message: "historical state was pruned"},
+			rpcErr:  testRPCError{code: -32000, message: "historical state was pruned"},
 			message: "cannot serve the exact block-hash state",
 		},
 		{
 			name: "header not found", method: "eth_call",
-			rpcErr:  &ethrpc.RPCError{Code: -32000, Message: "header not found"},
+			rpcErr:  testRPCError{code: -32000, message: "header not found"},
 			message: "cannot serve the exact block-hash state",
 		},
 	}
@@ -325,12 +364,14 @@ func TestRPCTokenDetectorClassifiesMalformedCodeAsPermanent(t *testing.T) {
 		if method != "eth_getCode" {
 			return errors.New("unexpected token RPC method")
 		}
-		encoded, ok := result.(*ethrpc.Data)
+		_, ok := result.(*hexutil.Bytes)
 		if !ok {
 			return errors.New("unexpected token RPC result")
 		}
-		*encoded = ethrpc.Data("0xzz")
-		return nil
+		return &json.UnmarshalTypeError{
+			Value: "invalid hex string",
+			Type:  reflect.TypeFor[hexutil.Bytes](),
+		}
 	})
 	detector, err := NewRPCTokenDetector(caller, TokenProbeLimits{})
 	if err != nil {
@@ -347,6 +388,24 @@ func TestRPCTokenDetectorClassifiesMalformedCodeAsPermanent(t *testing.T) {
 	if !errors.As(err, &classified) || classified.kind != "permanent" ||
 		classified.Error() != "eth_getCode returned invalid bytecode" {
 		t.Fatalf("error=%#v, want permanent malformed-wire classification", err)
+	}
+}
+
+func tokenCallInput(params []any) ([]byte, error) {
+	if len(params) == 0 {
+		return nil, errors.New("eth_call request is missing")
+	}
+	request, ok := params[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("eth_call request type %T", params[0])
+	}
+	switch encoded := request["data"].(type) {
+	case hexutil.Bytes:
+		return common.CopyBytes(encoded), nil
+	case string:
+		return ethrpc.ParseData(encoded)
+	default:
+		return nil, fmt.Errorf("eth_call data type %T", request["data"])
 	}
 }
 
@@ -547,7 +606,7 @@ func TestPostgresTokenProcessorDoesNotOpenTransactionOnDetectorTransportError(t 
 	}
 }
 
-func storedERC20Transfer(job Job, contract, from, to Address, transactionHash Word, logIndex, amount uint64) []driver.Value {
+func storedERC20Transfer(job Job, contract, from, to common.Address, transactionHash common.Hash, logIndex, amount uint64) []driver.Value {
 	raw := fmt.Sprintf(`{
 		"removed":false,"logIndex":"0x%x","transactionIndex":"0x%x",
 		"transactionHash":%q,"blockHash":%q,"blockNumber":"0x%x",

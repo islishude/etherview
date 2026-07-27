@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/apiops"
 	dbaccess "github.com/islishude/etherview/internal/db"
@@ -320,7 +321,7 @@ func (ledger *PostgresLedger) MarkSettled(
 	ctx context.Context,
 	paymentID string,
 	owner string,
-	transactionHash TransactionHash,
+	transactionHash common.Hash,
 	observedAt time.Time,
 ) (Payment, error) {
 	if zeroTransactionHash(transactionHash) {
@@ -354,7 +355,7 @@ func (ledger *PostgresLedger) MarkFailed(
 func (ledger *PostgresLedger) ReconcileSettled(
 	ctx context.Context,
 	paymentID string,
-	transactionHash TransactionHash,
+	transactionHash common.Hash,
 	observedAt time.Time,
 ) (Payment, error) {
 	if zeroTransactionHash(transactionHash) || observedAt.IsZero() {
@@ -410,7 +411,7 @@ func (ledger *PostgresLedger) markSettled(
 	ctx context.Context,
 	id pgtype.UUID,
 	owner pgtype.UUID,
-	transactionHash TransactionHash,
+	transactionHash common.Hash,
 	observedAt time.Time,
 ) (Payment, error) {
 	return ledger.transition(ctx, id, func(queries *dbgen.Queries) error {
@@ -867,7 +868,7 @@ func (ledger *PostgresLedger) eventsFromRows(
 		if !validEventTransition(currentState, fromState, toState) {
 			return nil, ErrIntegrity
 		}
-		var transactionHash *TransactionHash
+		var transactionHash *common.Hash
 		if len(row.TransactionHash) != 0 {
 			value, hashErr := transactionHashFromBytes(row.TransactionHash)
 			if hashErr != nil || zeroTransactionHash(value) {
@@ -1111,8 +1112,8 @@ func digestFromBytes(value []byte) (Digest, error) {
 	return result, nil
 }
 
-func addressFromBytes(value []byte) (Address, error) {
-	var result Address
+func addressFromBytes(value []byte) (common.Address, error) {
+	var result common.Address
 	if len(value) != len(result) {
 		return result, ErrIntegrity
 	}
@@ -1120,8 +1121,8 @@ func addressFromBytes(value []byte) (Address, error) {
 	return result, nil
 }
 
-func transactionHashFromBytes(value []byte) (TransactionHash, error) {
-	var result TransactionHash
+func transactionHashFromBytes(value []byte) (common.Hash, error) {
+	var result common.Hash
 	if len(value) != len(result) {
 		return result, ErrIntegrity
 	}
@@ -1129,9 +1130,8 @@ func transactionHashFromBytes(value []byte) (TransactionHash, error) {
 	return result, nil
 }
 
-func zeroTransactionHash(value TransactionHash) bool {
-	var zero TransactionHash
-	return value == zero
+func zeroTransactionHash(value common.Hash) bool {
+	return value == (common.Hash{})
 }
 
 func validFailureCode(value string) bool {

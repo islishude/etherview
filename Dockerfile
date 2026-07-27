@@ -24,7 +24,15 @@ COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go install -trimpath -ldflags="-s -w" ./cmd/...
+    go install -trimpath -ldflags="-s -w" ./cmd/... \
+    && geth_module_dir="$(go list -m -f '{{.Dir}}' github.com/ethereum/go-ethereum)" \
+    && mkdir -p /licenses \
+    && cp "$geth_module_dir/COPYING.LESSER" /licenses/go-ethereum-LGPL-3.0-or-later.txt \
+    && cp "$geth_module_dir/crypto/bn256/LICENSE" /licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt \
+    && cp "$geth_module_dir/crypto/keccak/LICENSE" /licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
+    && cp "$geth_module_dir/crypto/secp256k1/LICENSE" /licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
+    && cp "$geth_module_dir/crypto/secp256k1/libsecp256k1/COPYING" /licenses/libsecp256k1-MIT.txt \
+    && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 
 # The deterministic JSON-RPC fixture and bounded public-API load driver share
 # one test-only image used by the Compose runtime parity smoke. Nothing from
@@ -52,6 +60,8 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot LICENSE /LICENSE
 COPY --chown=nonroot:nonroot THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
+COPY --from=go-builder --chown=nonroot:nonroot /licenses /licenses
+COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 USER 65532:65532
 EXPOSE 8080 9090

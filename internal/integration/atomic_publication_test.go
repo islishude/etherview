@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
@@ -786,7 +787,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 		t.Fatal(err)
 	}
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{original}, []ethrpc.Bundle{replacement}, "orphan before stale stage")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{original}, []chainbundle.Bundle{replacement}, "orphan before stale stage")
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
 	originalRef := mustBlockRef(t, original)
 	word, _ := enrich.ParseWord(originalRef.Hash.String())
@@ -838,7 +839,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 		published <- publishErr
 	}()
 	waitForAdvisoryWaiter(t, ctx, db, advisoryKey)
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{replacement}, []ethrpc.Bundle{original}, "reattach during stale publication")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{original}, "reattach during stale publication")
 	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
@@ -919,10 +920,10 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	}
 	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 1, enrich.ResultComplete)
 
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{original}, []ethrpc.Bundle{replacement}, "detach completed publication")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{original}, []chainbundle.Bundle{replacement}, "detach completed publication")
 	// Model the orphan notification having drained before the later reattach.
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
-	applyDerivedReorg(t, ctx, repository, genesis, []ethrpc.Bundle{replacement}, []ethrpc.Bundle{original}, "reattach completed publication")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{original}, "reattach completed publication")
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM published_block_stage_results
 		WHERE durable_job_id = $1`, 0, enqueued.Job.ID)
@@ -966,7 +967,7 @@ func newEmptyProxyProcessor(t *testing.T, db *sql.DB, blockHash string) *enrich.
 	t.Helper()
 	states := map[string]map[string]proxyContractState{blockHash: {}}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
-		proxyStateEndpoint("atomic-publication-state", states, nil, &sync.Mutex{}, make(map[string][]string)),
+		proxyStateEndpoint(t, "atomic-publication-state", states, nil, &sync.Mutex{}, make(map[string][]string)),
 	}, ethrpc.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -156,7 +156,9 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 		t.Fatalf("create core repository: %v", err)
 	}
 	blockHash := testHash(910)
-	commitCanonical(t, ctx, core, testBundle(0, blockHash, testHash(0), testHash(9_100), "media-genesis"))
+	genesis := testBundle(0, blockHash, testHash(0), testHash(9_100), "media-genesis")
+	blockHash = genesis.Block.Hash()
+	commitCanonical(t, ctx, core, genesis)
 	address := testAddress(911)
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO external_metadata (
@@ -200,7 +202,9 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	}
 
 	newBlockHash := testHash(914)
-	commitCanonical(t, ctx, core, testBundle(1, newBlockHash, blockHash, testHash(9_140), "media-new"))
+	newBlock := testBundle(1, newBlockHash, blockHash, testHash(9_140), "media-new")
+	newBlockHash = newBlock.Block.Hash()
+	commitCanonical(t, ctx, core, newBlock)
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO external_metadata (
 			chain_id, resource_kind, resource_key, source_uri, state, document,
@@ -246,6 +250,7 @@ func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
 	}
 	blockHash := testHash(920)
 	bundle := testBundle(0, blockHash, testHash(0), testHash(9_200), "metadata-source")
+	blockHash = bundle.Block.Hash()
 	commitCanonical(t, ctx, core, bundle)
 	token := testAddress(921)
 	if _, err := db.ExecContext(ctx, `
@@ -263,7 +268,7 @@ func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {
 			from_address, to_address, token_id, amount, canonical, confidence, raw
 		) VALUES (1, 0, $1, 0, 0, $2, $3, 'erc721', 'transfer',
 			$4, $5, 42, 1, TRUE, 'high', '{}')`,
-		mustBytes(t, blockHash), mustBytes(t, bundle.Block.Transactions[0].Hash),
+		mustBytes(t, blockHash), mustBytes(t, bundle.Block.Transactions()[0].Hash()),
 		mustBytes(t, token), mustBytes(t, testAddress(923)), mustBytes(t, testAddress(924))); err != nil {
 		t.Fatalf("insert NFT event candidate: %v", err)
 	}

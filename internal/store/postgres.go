@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -48,29 +50,31 @@ func (r *PostgresRepository) CanonicalBlock(ctx context.Context, chainID string,
 	return queryCanonicalBlock(ctx, r.db, chainID, number, "")
 }
 
-func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, hash ethrpc.Hash) (ethrpc.Bundle, bool, error) {
+func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, hash common.Hash) (chainbundle.Bundle, bool, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
-		return ethrpc.Bundle{}, false, err
+		return chainbundle.Bundle{}, false, err
 	}
-	hashBytes, err := hash.Bytes()
-	if err != nil {
-		return ethrpc.Bundle{}, false, err
-	}
+	hashBytes := hash.Bytes()
 	var blockJSON []byte
 	err = r.db.QueryRowContext(ctx,
 		`SELECT raw FROM blocks WHERE chain_id = $1::numeric AND hash = $2`,
 		chainID, hashBytes,
 	).Scan(&blockJSON)
 	if err == sql.ErrNoRows {
-		return ethrpc.Bundle{}, false, nil
+		return chainbundle.Bundle{}, false, nil
 	}
 	if err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("query block by hash: %w", err)
+		return chainbundle.Bundle{}, false, fmt.Errorf("query block by hash: %w", err)
 	}
-	var bundle ethrpc.Bundle
-	if err := json.Unmarshal(blockJSON, &bundle.Block); err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("decode stored block: %w", err)
+	bundle, err := chainbundle.DecodeStoredBlock(blockJSON)
+	if err != nil {
+		return chainbundle.Bundle{}, false, fmt.Errorf("decode stored block: %w", err)
+	}
+	if bundle.Block.Hash() != hash {
+		return chainbundle.Bundle{}, false, errors.New(
+			"decode stored block: block hash does not match requested identity",
+		)
 	}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT raw
@@ -78,32 +82,33 @@ func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, h
 		WHERE chain_id = $1::numeric AND block_hash = $2
 		ORDER BY tx_index`, chainID, hashBytes)
 	if err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("query stored receipts: %w", err)
+		return chainbundle.Bundle{}, false, fmt.Errorf("query stored receipts: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
+	rawReceipts := make([]json.RawMessage, 0, len(bundle.Block.Transactions()))
 	for rows.Next() {
 		var receiptJSON []byte
 		if err := rows.Scan(&receiptJSON); err != nil {
-			return ethrpc.Bundle{}, false, fmt.Errorf("scan stored receipt: %w", err)
+			return chainbundle.Bundle{}, false, fmt.Errorf("scan stored receipt: %w", err)
 		}
-		var receipt ethrpc.Receipt
-		if err := json.Unmarshal(receiptJSON, &receipt); err != nil {
-			return ethrpc.Bundle{}, false, fmt.Errorf("decode stored receipt: %w", err)
-		}
-		bundle.Receipts = append(bundle.Receipts, receipt)
+		rawReceipts = append(rawReceipts, json.RawMessage(receiptJSON))
 	}
 	if err := rows.Err(); err != nil {
-		return ethrpc.Bundle{}, false, fmt.Errorf("iterate stored receipts: %w", err)
+		return chainbundle.Bundle{}, false, fmt.Errorf("iterate stored receipts: %w", err)
+	}
+	bundle, err = bundle.WithStoredReceipts(rawReceipts)
+	if err != nil {
+		return chainbundle.Bundle{}, false, fmt.Errorf("decode stored receipts: %w", err)
 	}
 	return bundle, true, nil
 }
 
-func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string, bundle ethrpc.Bundle, checkpoint Checkpoint) error {
+func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string, bundle chainbundle.Bundle, checkpoint Checkpoint) error {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return err
 	}
-	if err := ethrpc.ValidateBundle(bundle); err != nil {
+	if err := chainbundle.Validate(bundle); err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -130,7 +135,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 	if err != nil {
 		return err
 	}
-	if exists && !existing.Hash.Equal(reference.Hash) {
+	if exists && existing.Hash != reference.Hash {
 		return fmt.Errorf("%w: height %d already maps to another hash", ErrConflict, reference.Number)
 	}
 	if !exists {
@@ -138,7 +143,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 		if err != nil {
 			return err
 		}
-		if tipExists && (reference.Number != tip.Number+1 || !reference.ParentHash.Equal(tip.Hash)) {
+		if tipExists && (reference.Number != tip.Number+1 || reference.ParentHash != tip.Hash) {
 			return fmt.Errorf("%w: block does not extend canonical tip", ErrConflict)
 		}
 	}
@@ -186,14 +191,14 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 func (r *PostgresRepository) RefreshCanonical(
 	ctx context.Context,
 	chainID string,
-	bundle ethrpc.Bundle,
+	bundle chainbundle.Bundle,
 	options RefreshOptions,
 ) error {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return err
 	}
-	if err := ethrpc.ValidateBundle(bundle); err != nil {
+	if err := chainbundle.Validate(bundle); err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -214,7 +219,7 @@ func (r *PostgresRepository) RefreshCanonical(
 	if err != nil {
 		return err
 	}
-	if !exists || !canonical.Hash.Equal(reference.Hash) {
+	if !exists || canonical.Hash != reference.Hash {
 		return fmt.Errorf("%w: block %d hash %s is not canonical", ErrConflict, reference.Number, reference.Hash)
 	}
 	if err := validateRefreshParentTx(ctx, tx, chainID, reference); err != nil {
@@ -281,7 +286,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if err != nil {
 		return err
 	}
-	if !exists || !ancestor.Hash.Equal(reorg.Ancestor.Hash) {
+	if !exists || ancestor.Hash != reorg.Ancestor.Hash {
 		return fmt.Errorf("%w: common ancestor is not canonical", ErrConflict)
 	}
 	tip, exists, err := queryCanonicalTip(ctx, tx, chainID, " FOR UPDATE")
@@ -291,7 +296,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if !exists {
 		return fmt.Errorf("%w: canonical chain is empty", ErrConflict)
 	}
-	if len(reorg.Detached) > 0 && !tip.Hash.Equal(reorg.Detached[0].Hash) {
+	if len(reorg.Detached) > 0 && tip.Hash != reorg.Detached[0].Hash {
 		return fmt.Errorf("%w: detached branch does not begin at canonical tip", ErrConflict)
 	}
 	for _, detached := range reorg.Detached {
@@ -299,7 +304,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 		if err != nil {
 			return err
 		}
-		if !exists || !canonical.Hash.Equal(detached.Hash) {
+		if !exists || canonical.Hash != detached.Hash {
 			return fmt.Errorf("%w: detached block %d is not canonical", ErrConflict, detached.Number)
 		}
 	}
@@ -489,7 +494,7 @@ func (r *PostgresRepository) UpdateFinality(ctx context.Context, chainID string,
 		if err != nil {
 			return err
 		}
-		if !exists || !canonical.Hash.Equal(reference.Hash) {
+		if !exists || canonical.Hash != reference.Hash {
 			return fmt.Errorf("%w: %s block is not canonical", ErrConflict, name)
 		}
 	}
@@ -563,7 +568,7 @@ func (r *PostgresRepository) AppendJournal(ctx context.Context, chainID string, 
 	return nil
 }
 
-func (r *PostgresRepository) JournalsByBlock(ctx context.Context, chainID string, hash ethrpc.Hash) ([]JournalEntry, error) {
+func (r *PostgresRepository) JournalsByBlock(ctx context.Context, chainID string, hash common.Hash) ([]JournalEntry, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return nil, err
@@ -631,7 +636,7 @@ func validateRefreshParentTx(ctx context.Context, tx *sql.Tx, chainID string, re
 		return err
 	}
 	if exists {
-		if !reference.ParentHash.Equal(parent.Hash) {
+		if reference.ParentHash != parent.Hash {
 			return fmt.Errorf(
 				"%w: block %d parent %s does not match canonical block %d hash %s",
 				ErrConflict, reference.Number, reference.ParentHash, parent.Number, parent.Hash,
@@ -724,15 +729,14 @@ func scanBlockRef(row *sql.Row, operation string) (BlockRef, bool, error) {
 	return BlockRef{Number: parsedNumber, Hash: parsedHash, ParentHash: parsedParent}, true, nil
 }
 
-func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.Bundle) error {
-	reference, _ := RefFromBundle(bundle)
-	blockJSON, err := json.Marshal(bundle.Block)
-	if err != nil {
-		return fmt.Errorf("encode block: %w", err)
+func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbundle.Bundle) error {
+	if err := chainbundle.Validate(bundle); err != nil {
+		return fmt.Errorf("validate bundle for persistence: %w", err)
 	}
-	timestamp, err := bundle.Block.Timestamp.Big()
+	reference, _ := RefFromBundle(bundle)
+	blockJSON, err := chainbundle.EncodeStoredBlock(bundle)
 	if err != nil {
-		return fmt.Errorf("decode block timestamp: %w", err)
+		return fmt.Errorf("encode block persistence: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO blocks (chain_id, number, hash, parent_hash, timestamp, raw)
@@ -742,22 +746,22 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.
 			timestamp = EXCLUDED.timestamp,
 			raw = EXCLUDED.raw`,
 		chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
-		mustHashBytes(reference.ParentHash), timestamp.String(), blockJSON); err != nil {
+		mustHashBytes(reference.ParentHash), decimal(bundle.Block.Time()),
+		blockJSON); err != nil {
 		return fmt.Errorf("upsert block %d: %w", reference.Number, err)
 	}
-	for index, transactionRef := range bundle.Block.Transactions {
-		transaction := transactionRef.Transaction
-		transactionJSON, err := json.Marshal(transaction)
-		if err != nil {
-			return fmt.Errorf("encode transaction %d: %w", index, err)
-		}
+	for index, transaction := range bundle.Block.Transactions() {
+		transactionHash := transaction.Hash()
+		transactionJSON := bundle.RawTransactions[index]
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO transactions (chain_id, hash, tx_type, raw)
 			VALUES ($1::numeric, $2, $3::numeric, $4::jsonb)
 			ON CONFLICT (chain_id, hash) DO UPDATE SET
 				tx_type = EXCLUDED.tx_type,
 				raw = EXCLUDED.raw`,
-			chainID, mustHashBytes(transaction.Hash), nullableQuantity(transaction.Type), transactionJSON); err != nil {
+			chainID, mustHashBytes(transactionHash),
+			strconv.FormatUint(uint64(transaction.Type()), 10),
+			transactionJSON); err != nil {
 			return fmt.Errorf("upsert transaction %d: %w", index, err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -767,15 +771,12 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.
 			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 			DO UPDATE SET raw = EXCLUDED.raw`,
 			chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
-			mustHashBytes(transaction.Hash), transactionJSON); err != nil {
+			mustHashBytes(transactionHash), transactionJSON); err != nil {
 			return fmt.Errorf("upsert transaction inclusion %d: %w", index, err)
 		}
 
 		receipt := bundle.Receipts[index]
-		receiptJSON, err := json.Marshal(receipt)
-		if err != nil {
-			return fmt.Errorf("encode receipt %d: %w", index, err)
-		}
+		receiptJSON := bundle.RawReceipts[index]
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO receipts (
 				chain_id, block_number, block_hash, tx_index, tx_hash, raw
@@ -783,21 +784,16 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.
 			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
 			DO UPDATE SET raw = EXCLUDED.raw`,
 			chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
-			mustHashBytes(transaction.Hash), receiptJSON); err != nil {
+			mustHashBytes(transactionHash), receiptJSON); err != nil {
 			return fmt.Errorf("upsert receipt %d: %w", index, err)
 		}
 		for logPosition := range receipt.Logs {
 			log := receipt.Logs[logPosition]
-			logIndex, _ := log.LogIndex.Uint64()
-			logJSON, err := json.Marshal(log)
-			if err != nil {
-				return fmt.Errorf("encode log %d: %w", logPosition, err)
-			}
+			logJSON := bundle.RawLogs[index][logPosition]
 			var topic0 any
 			if len(log.Topics) > 0 {
 				topic0 = mustHashBytes(log.Topics[0])
 			}
-			address, _ := log.Address.Bytes()
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO logs (
 					chain_id, block_number, block_hash, log_index, tx_index,
@@ -805,21 +801,14 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.
 				) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9::jsonb)
 				ON CONFLICT (chain_id, block_number, block_hash, log_index)
 				DO UPDATE SET raw = EXCLUDED.raw`,
-				chainID, decimal(reference.Number), mustHashBytes(reference.Hash), logIndex,
-				index, mustHashBytes(transaction.Hash), address, topic0, logJSON); err != nil {
+				chainID, decimal(reference.Number), mustHashBytes(reference.Hash), log.Index,
+				index, mustHashBytes(transactionHash), log.Address.Bytes(), topic0, logJSON); err != nil {
 				return fmt.Errorf("upsert log %d: %w", logPosition, err)
 			}
 		}
 	}
-	for index, withdrawal := range bundle.Block.Withdrawals {
-		withdrawalJSON, err := json.Marshal(withdrawal)
-		if err != nil {
-			return fmt.Errorf("encode withdrawal %d: %w", index, err)
-		}
-		withdrawalIndex, _ := withdrawal.Index.Big()
-		validatorIndex, _ := withdrawal.ValidatorIndex.Big()
-		amount, _ := withdrawal.Amount.Big()
-		address, _ := withdrawal.Address.Bytes()
+	for index, withdrawal := range bundle.Block.Withdrawals() {
+		withdrawalJSON := bundle.RawWithdrawals[index]
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO withdrawals (
 				chain_id, block_number, block_hash, withdrawal_index,
@@ -827,8 +816,9 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle ethrpc.
 			) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5::numeric, $6, $7::numeric, $8::jsonb)
 			ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
 			DO UPDATE SET raw = EXCLUDED.raw`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash), withdrawalIndex.String(),
-			validatorIndex.String(), address, amount.String(), withdrawalJSON); err != nil {
+			chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
+			decimal(withdrawal.Index), decimal(withdrawal.Validator),
+			withdrawal.Address.Bytes(), decimal(withdrawal.Amount), withdrawalJSON); err != nil {
 			return fmt.Errorf("upsert withdrawal %d: %w", index, err)
 		}
 	}
@@ -880,7 +870,7 @@ func checkCheckpointTx(ctx context.Context, tx *sql.Tx, chainID string, checkpoi
 		if err != nil {
 			return err
 		}
-		if !previousHash.Equal(checkpoint.BlockHash) {
+		if previousHash != checkpoint.BlockHash {
 			return fmt.Errorf("%w: hash changed at height %d", ErrCheckpointRegress, previous)
 		}
 	}
@@ -1056,7 +1046,7 @@ func insertCoreOutboxTx(ctx context.Context, tx *sql.Tx, chainID, topic string, 
 	return nil
 }
 
-func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash ethrpc.Hash, canonical bool) error {
+func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash common.Hash, canonical bool) error {
 	for _, table := range []string{
 		"contract_code_observations",
 		"proxy_observations",
@@ -1087,30 +1077,18 @@ func normalizeChainID(chainID string) (string, error) {
 
 func decimal(value uint64) string { return strconv.FormatUint(value, 10) }
 
-func mustHashBytes(hash ethrpc.Hash) []byte {
-	value, err := hash.Bytes()
-	if err != nil {
-		panic(err)
-	}
-	return value
+func mustHashBytes(hash common.Hash) []byte {
+	return hash.Bytes()
 }
 
-func hashFromBytes(value []byte) (ethrpc.Hash, error) {
-	if len(value) != 32 {
-		return "", fmt.Errorf("stored hash has %d bytes, expected 32", len(value))
+func hashFromBytes(value []byte) (common.Hash, error) {
+	if len(value) != common.HashLength {
+		return common.Hash{}, fmt.Errorf(
+			"stored hash has %d bytes, expected %d",
+			len(value), common.HashLength,
+		)
 	}
-	return ethrpc.ParseHash(ethrpc.DataFromBytes(value).String())
-}
-
-func nullableQuantity(quantity *ethrpc.Quantity) any {
-	if quantity == nil {
-		return nil
-	}
-	value, err := quantity.Big()
-	if err != nil {
-		panic(err)
-	}
-	return value.String()
+	return common.BytesToHash(value), nil
 }
 
 func nullableNumber(reference *BlockRef) any {

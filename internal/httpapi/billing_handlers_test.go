@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/config"
@@ -654,7 +655,7 @@ func billingHandlerNow() time.Time {
 func billingTestPayment(now time.Time) billing.Payment {
 	userID := testUserID
 	apiKeyPrefix := "aaaaaaaaaa"
-	transaction := billing.TransactionHash{}
+	transaction := common.Hash{}
 	for index := range transaction {
 		transaction[index] = 0xaa
 	}
@@ -665,7 +666,7 @@ func billingTestPayment(now time.Time) billing.Payment {
 		Network: "eip155:84532", Asset: repeatedBillingAddress(0x11),
 		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935",
 		Recipient:    repeatedBillingAddress(0x22),
-		Payer: func() *billing.Address {
+		Payer: func() *common.Address {
 			value := repeatedBillingAddress(0x33)
 			return &value
 		}(),
@@ -676,8 +677,8 @@ func billingTestPayment(now time.Time) billing.Payment {
 	}
 }
 
-func repeatedBillingAddress(value byte) billing.Address {
-	var address billing.Address
+func repeatedBillingAddress(value byte) common.Address {
+	var address common.Address
 	for index := range address {
 		address[index] = value
 	}

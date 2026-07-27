@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -27,7 +27,7 @@ type SchemaStatus struct {
 
 type ChainIdentity struct {
 	ChainID     string
-	GenesisHash ethrpc.Hash
+	GenesisHash common.Hash
 }
 
 func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
@@ -107,7 +107,7 @@ func CheckSchema(ctx context.Context, db *sql.DB) error {
 
 // BindChainIdentity persists the chain/genesis pair and rejects reuse of a
 // database with another genesis, including when the numeric chain ID matches.
-func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis ethrpc.Hash) error {
+func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis common.Hash) error {
 	if db == nil {
 		return errors.New("bind chain identity: nil database")
 	}
@@ -115,10 +115,7 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 	if err != nil {
 		return err
 	}
-	genesisBytes, err := genesis.Bytes()
-	if err != nil {
-		return fmt.Errorf("bind chain identity: %w", err)
-	}
+	genesisBytes := genesis.Bytes()
 	// The advisory lock is the serialization boundary for every chain-scoped
 	// writer. Keep READ COMMITTED here so a transaction that waited for another
 	// process to bind the same chain gets a fresh snapshot for the INSERT below.

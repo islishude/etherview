@@ -8,8 +8,6 @@ import (
 	"math/big"
 	"net/url"
 	"strings"
-
-	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Values) (string, error) {
@@ -52,21 +50,11 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if err != nil {
 		return "", err
 	}
-	var block ethrpc.Block
-	if err := decodeRawObject(raw, &block); err != nil {
+	block, err := decodeStoredBlockProjection(raw, hash, number)
+	if err != nil {
 		return "", fmt.Errorf("decode block-by-time raw JSON: %w", err)
 	}
-	if block.Number == nil || block.Hash == nil || !block.Hash.Equal(hash) {
-		return "", errors.New("stored block-by-time raw identity does not match indexed row")
-	}
-	wireNumber, err := block.Number.Big()
-	if err != nil || wireNumber.Cmp(number) != 0 {
-		return "", errors.New("stored block-by-time raw number does not match indexed row")
-	}
-	wireTimestamp, err := block.Timestamp.Big()
-	if err != nil {
-		return "", fmt.Errorf("decode block-by-time timestamp: %w", err)
-	}
+	wireTimestamp := new(big.Int).SetUint64(uint64(*block.Timestamp))
 	indexedTimestamp, ok := new(big.Int).SetString(timestampText, 10)
 	if !ok || indexedTimestamp.Sign() < 0 || wireTimestamp.Cmp(indexedTimestamp) != 0 {
 		return "", errors.New("stored block-by-time raw timestamp does not match indexed row")

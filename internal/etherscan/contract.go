@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -206,13 +208,13 @@ func (b *PostgresBackend) contractCreation(ctx context.Context, values url.Value
 		return nil, invalidParameter("contractaddresses must contain between 1 and 5 addresses")
 	}
 	seen := make(map[string]struct{}, len(rawAddresses))
-	addresses := make([]ethrpc.Address, 0, len(rawAddresses))
+	addresses := make([]common.Address, 0, len(rawAddresses))
 	for _, raw := range rawAddresses {
 		address, _, err := parseAddressParameter(strings.TrimSpace(raw), "contractaddresses")
 		if err != nil {
 			return nil, err
 		}
-		key := strings.ToLower(address.String())
+		key := strings.ToLower(address.Hex())
 		if _, duplicate := seen[key]; duplicate {
 			return nil, invalidParameter("contractaddresses contains a duplicate address")
 		}
@@ -247,12 +249,9 @@ func (b *PostgresBackend) contractCreation(ctx context.Context, values url.Value
 func (b *PostgresBackend) oneContractCreation(
 	ctx context.Context,
 	queryer enrichmentQueryer,
-	requested ethrpc.Address,
+	requested common.Address,
 ) (contractCreationResult, error) {
-	requestedBytes, err := requested.Bytes()
-	if err != nil {
-		return contractCreationResult{}, err
-	}
+	requestedBytes := requested.Bytes()
 	var sourceKind string
 	var receiptJSON, transactionJSON, factoryBytes, traceInput []byte
 	var transactionHashBytes, blockHashBytes []byte
@@ -260,7 +259,7 @@ func (b *PostgresBackend) oneContractCreation(
 	var transactionIndex int64
 	var tracePath, callType sql.NullString
 	var traceDepth sql.NullInt64
-	err = queryer.QueryRowContext(ctx, contractCreationSQL, b.chain, requestedBytes).Scan(
+	err := queryer.QueryRowContext(ctx, contractCreationSQL, b.chain, requestedBytes).Scan(
 		&sourceKind, &receiptJSON, &transactionJSON, &transactionHashBytes, &blockHashBytes,
 		&blockNumberText, &timestampText, &transactionIndex,
 		&tracePath, &traceDepth, &callType, &factoryBytes, &traceInput,
@@ -289,42 +288,26 @@ func (b *PostgresBackend) oneContractCreation(
 	if _, err := storedUint256(timestampText, "contract creation timestamp"); err != nil {
 		return contractCreationResult{}, err
 	}
-	var transaction ethrpc.Transaction
-	if err := decodeRawObject(transactionJSON, &transaction); err != nil {
+	transaction, sender, err := decodeStoredTransaction(transactionJSON, blockHash, blockNumber, transactionIndex)
+	if err != nil {
 		return contractCreationResult{}, fmt.Errorf("decode contract creation transaction: %w", err)
 	}
-	if !transaction.Hash.Equal(transactionHash) || transaction.BlockHash == nil || !transaction.BlockHash.Equal(blockHash) || transaction.BlockNumber == nil || transaction.TransactionIndex == nil {
+	if transaction.Hash() != transactionHash {
 		return contractCreationResult{}, errors.New("stored contract creation transaction identity is invalid")
 	}
-	transactionBlock, err := transaction.BlockNumber.Big()
-	if err != nil || transactionBlock.Cmp(blockNumber) != 0 {
-		return contractCreationResult{}, errors.New("stored contract creation transaction block is invalid")
-	}
-	transactionIndexValue, err := transaction.TransactionIndex.Uint64()
-	if err != nil || transactionIndexValue != uint64(transactionIndex) {
-		return contractCreationResult{}, errors.New("stored contract creation transaction index is invalid")
-	}
-	creationBytecode := transaction.Input.String()
+	creationBytecode := hexutil.Encode(transaction.Data())
 	contractFactory := ""
 	switch sourceKind {
 	case "top_level":
-		if transaction.To != nil || tracePath.Valid || traceDepth.Valid || callType.Valid || factoryBytes != nil || traceInput != nil {
+		if transaction.To() != nil || tracePath.Valid || traceDepth.Valid || callType.Valid || factoryBytes != nil || traceInput != nil {
 			return contractCreationResult{}, errors.New("stored top-level contract creation has trace-only fields")
 		}
-		var receipt ethrpc.Receipt
-		if err := decodeRawObject(receiptJSON, &receipt); err != nil {
+		receipt, err := decodeStoredReceipt(receiptJSON, transaction, blockHash, blockNumber, transactionIndex)
+		if err != nil {
 			return contractCreationResult{}, fmt.Errorf("decode contract creation receipt: %w", err)
 		}
-		if receipt.ContractAddress == nil || !receipt.ContractAddress.Equal(requested) || !receipt.TransactionHash.Equal(transactionHash) || !receipt.BlockHash.Equal(blockHash) {
+		if receipt.ContractAddress != requested {
 			return contractCreationResult{}, errors.New("stored contract creation receipt identity does not match indexed row")
-		}
-		wireBlock, receiptErr := receipt.BlockNumber.Big()
-		if receiptErr != nil || wireBlock.Cmp(blockNumber) != 0 {
-			return contractCreationResult{}, errors.New("stored contract creation receipt block does not match indexed row")
-		}
-		wireIndex, receiptErr := receipt.TransactionIndex.Uint64()
-		if receiptErr != nil || wireIndex != uint64(transactionIndex) {
-			return contractCreationResult{}, errors.New("stored contract creation receipt index does not match indexed row")
 		}
 	case "trace":
 		if len(receiptJSON) != 0 || !tracePath.Valid || !traceDepth.Valid || !callType.Valid ||
@@ -339,7 +322,7 @@ func (b *PostgresBackend) oneContractCreation(
 		if err != nil {
 			return contractCreationResult{}, fmt.Errorf("checksum contract factory: %w", err)
 		}
-		creationBytecode = ethrpc.DataFromBytes(traceInput).String()
+		creationBytecode = hexutil.Encode(traceInput)
 	default:
 		return contractCreationResult{}, errors.New("stored contract creation source kind is invalid")
 	}
@@ -349,7 +332,7 @@ func (b *PostgresBackend) oneContractCreation(
 	if len(creationBytecode) > b.maxVerificationInputBytes*2+2 {
 		return contractCreationResult{}, errors.New("stored contract creation bytecode exceeds the response limit")
 	}
-	creator, err := checksumAddress(transaction.From)
+	creator, err := checksumAddress(sender)
 	if err != nil {
 		return contractCreationResult{}, fmt.Errorf("checksum contract creator: %w", err)
 	}
@@ -359,7 +342,7 @@ func (b *PostgresBackend) oneContractCreation(
 	}
 	return contractCreationResult{
 		ContractAddress: contract, ContractCreator: creator,
-		TxHash: strings.ToLower(transactionHash.String()), BlockNumber: blockNumberText,
+		TxHash: strings.ToLower(transactionHash.Hex()), BlockNumber: blockNumberText,
 		Timestamp: timestampText, ContractFactory: contractFactory,
 		CreationBytecode: strings.ToLower(creationBytecode),
 	}, nil

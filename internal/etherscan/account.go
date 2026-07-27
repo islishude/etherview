@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Values) ([]accountTransaction, error) {
@@ -34,7 +35,7 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 		return nil, err
 	}
 
-	arguments := []any{b.chain, strings.ToLower(address.String()), start}
+	arguments := []any{b.chain, strings.ToLower(address.Hex()), start}
 	endClause := ""
 	if end != nil {
 		arguments = append(arguments, *end)
@@ -103,122 +104,79 @@ func scanAccountTransaction(scanner rowScanner) (accountTransaction, error) {
 		return accountTransaction{}, err
 	}
 
-	var transaction ethrpc.Transaction
-	if err := decodeRawObject(transactionJSON, &transaction); err != nil {
+	transaction, sender, err := decodeStoredTransaction(transactionJSON, blockHash, blockNumber, transactionIndex)
+	if err != nil {
 		return accountTransaction{}, fmt.Errorf("decode transaction raw JSON: %w", err)
 	}
-	if !transaction.Hash.Equal(transactionHash) || transaction.BlockHash == nil || !transaction.BlockHash.Equal(blockHash) {
+	if transaction.Hash() != transactionHash {
 		return accountTransaction{}, errors.New("stored transaction raw identity does not match inclusion")
 	}
-	if transaction.BlockNumber == nil || transaction.TransactionIndex == nil {
-		return accountTransaction{}, errors.New("stored transaction raw inclusion fields are null")
-	}
-	wireBlockNumber, err := transaction.BlockNumber.Big()
-	if err != nil || wireBlockNumber.Cmp(blockNumber) != 0 {
-		return accountTransaction{}, errors.New("stored transaction raw block number does not match inclusion")
-	}
-	wireIndex, err := transaction.TransactionIndex.Uint64()
-	if err != nil || wireIndex != uint64(transactionIndex) {
-		return accountTransaction{}, errors.New("stored transaction raw index does not match inclusion")
-	}
 
-	var receipt ethrpc.Receipt
-	if err := decodeRawObject(receiptJSON, &receipt); err != nil {
+	receipt, err := decodeStoredReceiptWithBlockContext(
+		receiptJSON,
+		blockJSON,
+		transaction,
+		blockHash,
+		blockNumber,
+		transactionIndex,
+	)
+	if err != nil {
 		return accountTransaction{}, fmt.Errorf("decode receipt raw JSON: %w", err)
 	}
-	if !receipt.TransactionHash.Equal(transactionHash) || !receipt.BlockHash.Equal(blockHash) {
-		return accountTransaction{}, errors.New("stored receipt raw identity does not match inclusion")
-	}
-	receiptBlockNumber, err := receipt.BlockNumber.Big()
-	if err != nil || receiptBlockNumber.Cmp(blockNumber) != 0 {
-		return accountTransaction{}, errors.New("stored receipt block number does not match inclusion")
-	}
-	receiptIndex, err := receipt.TransactionIndex.Uint64()
-	if err != nil || receiptIndex != uint64(transactionIndex) {
-		return accountTransaction{}, errors.New("stored receipt index does not match inclusion")
-	}
 
-	var block ethrpc.Block
-	if err := decodeRawObject(blockJSON, &block); err != nil {
+	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
+	if err != nil {
 		return accountTransaction{}, fmt.Errorf("decode block raw JSON: %w", err)
 	}
-	if block.Number == nil || block.Hash == nil || !block.Hash.Equal(blockHash) {
-		return accountTransaction{}, errors.New("stored block raw identity does not match inclusion")
-	}
-	wireBlock, err := block.Number.Big()
-	if err != nil || wireBlock.Cmp(blockNumber) != 0 {
-		return accountTransaction{}, errors.New("stored block raw number does not match inclusion")
-	}
 
-	from, err := checksumAddress(transaction.From)
+	from, err := checksumAddress(sender)
 	if err != nil {
 		return accountTransaction{}, fmt.Errorf("checksum transaction sender: %w", err)
 	}
 	to := ""
-	if transaction.To != nil {
-		to, err = checksumAddress(*transaction.To)
+	if transaction.To() != nil {
+		to, err = checksumAddress(*transaction.To())
 		if err != nil {
 			return accountTransaction{}, fmt.Errorf("checksum transaction recipient: %w", err)
 		}
 	}
 	contractAddress := ""
-	if receipt.ContractAddress != nil {
-		contractAddress, err = checksumAddress(*receipt.ContractAddress)
+	if receipt.ContractAddress != (common.Address{}) {
+		contractAddress, err = checksumAddress(receipt.ContractAddress)
 		if err != nil {
 			return accountTransaction{}, fmt.Errorf("checksum created contract: %w", err)
 		}
 	}
 
 	item := accountTransaction{
-		BlockNumber: blockNumber.String(), Hash: strings.ToLower(transactionHash.String()),
-		BlockHash: strings.ToLower(blockHash.String()), TransactionIndex: strconv.FormatInt(transactionIndex, 10),
-		From: from, To: to, ContractAddress: contractAddress, Input: transaction.Input.String(),
+		BlockNumber: blockNumber.String(), Hash: strings.ToLower(transactionHash.Hex()),
+		BlockHash: strings.ToLower(blockHash.Hex()), TransactionIndex: strconv.FormatInt(transactionIndex, 10),
+		From: from, To: to, ContractAddress: contractAddress, Input: hexutil.Encode(transaction.Data()),
 		FunctionName: "",
 	}
-	if item.TimeStamp, err = decimalQuantity(block.Timestamp); err != nil {
-		return accountTransaction{}, fmt.Errorf("decode block timestamp: %w", err)
-	}
-	if item.Nonce, err = decimalQuantity(transaction.Nonce); err != nil {
-		return accountTransaction{}, fmt.Errorf("decode transaction nonce: %w", err)
-	}
-	if item.Value, err = decimalQuantity(transaction.Value); err != nil {
+	item.TimeStamp = decimalUint64(uint64(*block.Timestamp))
+	item.Nonce = decimalUint64(transaction.Nonce())
+	if item.Value, err = decimalBig(transaction.Value()); err != nil {
 		return accountTransaction{}, fmt.Errorf("decode transaction value: %w", err)
 	}
-	if item.Gas, err = decimalQuantity(transaction.Gas); err != nil {
-		return accountTransaction{}, fmt.Errorf("decode transaction gas: %w", err)
+	item.Gas = decimalUint64(transaction.Gas())
+	gasPrice, err := effectiveGasPrice(transaction, receipt)
+	if err != nil {
+		return accountTransaction{}, err
 	}
-	gasPrice := transaction.GasPrice
-	if gasPrice == nil {
-		gasPrice = receipt.EffectiveGasPrice
-	}
-	if gasPrice == nil {
-		return accountTransaction{}, errors.New("stored transaction has no effective gas price")
-	}
-	if item.GasPrice, err = decimalQuantity(*gasPrice); err != nil {
+	if item.GasPrice, err = decimalBig(gasPrice); err != nil {
 		return accountTransaction{}, fmt.Errorf("decode transaction gas price: %w", err)
 	}
-	if item.CumulativeGasUsed, err = decimalQuantity(receipt.CumulativeGasUsed); err != nil {
-		return accountTransaction{}, fmt.Errorf("decode receipt cumulative gas: %w", err)
-	}
-	if receipt.GasUsed == nil {
-		return accountTransaction{}, errors.New("stored receipt gas used is null")
-	}
-	if item.GasUsed, err = decimalQuantity(*receipt.GasUsed); err != nil {
-		return accountTransaction{}, fmt.Errorf("decode receipt gas used: %w", err)
-	}
-	if receipt.Status != nil {
-		status, err := receipt.Status.Big()
-		if err != nil {
-			return accountTransaction{}, fmt.Errorf("decode receipt status: %w", err)
-		}
-		switch status.Sign() {
+	item.CumulativeGasUsed = decimalUint64(receipt.CumulativeGasUsed)
+	item.GasUsed = decimalUint64(receipt.GasUsed)
+	if len(receipt.PostState) == 0 {
+		switch receipt.Status {
 		case 0:
 			item.IsError, item.ReceiptStatus = "1", "0"
-		default:
-			if status.Cmp(big.NewInt(1)) != 0 {
-				return accountTransaction{}, errors.New("stored receipt status is neither zero nor one")
-			}
+		case 1:
 			item.IsError, item.ReceiptStatus = "0", "1"
+		default:
+			return accountTransaction{}, errors.New("stored receipt status is neither zero nor one")
 		}
 	}
 	confirmations := new(big.Int).Sub(tipNumber, blockNumber)
@@ -255,7 +213,7 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 		return nil, err
 	}
 	query := fmt.Sprintf(minedBlocksSQL, page.direction, page.direction)
-	rows, err := tx.QueryContext(ctx, query, b.chain, strings.ToLower(address.String()), page.limit, page.offset)
+	rows, err := tx.QueryContext(ctx, query, b.chain, strings.ToLower(address.Hex()), page.limit, page.offset)
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
 	}
@@ -276,21 +234,14 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 		if err != nil {
 			return nil, err
 		}
-		var block ethrpc.Block
-		if err := decodeRawObject(raw, &block); err != nil {
+		block, err := decodeStoredBlockProjection(raw, hash, number)
+		if err != nil {
 			return nil, fmt.Errorf("decode mined block raw JSON: %w", err)
 		}
-		if block.Number == nil || block.Hash == nil || block.Miner == nil || !block.Hash.Equal(hash) || !block.Miner.Equal(address) {
+		if block.Miner == nil || *block.Miner != address {
 			return nil, errors.New("stored mined block raw identity does not match indexed row")
 		}
-		wireNumber, err := block.Number.Big()
-		if err != nil || wireNumber.Cmp(number) != 0 {
-			return nil, errors.New("stored mined block raw number does not match indexed row")
-		}
-		timestamp, err := decimalQuantity(block.Timestamp)
-		if err != nil {
-			return nil, fmt.Errorf("decode mined block timestamp: %w", err)
-		}
+		timestamp := decimalUint64(uint64(*block.Timestamp))
 		result = append(result, minedBlock{BlockNumber: number.String(), TimeStamp: timestamp})
 	}
 	if err := rows.Err(); err != nil {

@@ -1,33 +1,38 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
 
 func TestMemoryRepositoryCommitsCanonicalChainAndCheckpoint(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	genesis := storeTestBundle(0, storeTestHash(1), storeTestHash(0))
-	blockOne := storeTestBundle(1, storeTestHash(2), storeTestHash(1))
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	blockOne := storeTestBundle(1, genesisRef.Hash, 2)
+	blockOneRef := mustStoreTestRef(t, blockOne)
 	commitTestBundle(t, repository, genesis)
 	commitTestBundle(t, repository, blockOne)
 	tip, exists, err := repository.CanonicalTip(ctx, "1")
 	if err != nil || !exists {
 		t.Fatalf("tip exists = %v, error = %v", exists, err)
 	}
-	if tip.Number != 1 || !tip.Hash.Equal(storeTestHash(2)) {
+	if tip.Number != 1 || tip.Hash != blockOneRef.Hash {
 		t.Fatalf("tip = %+v", tip)
 	}
 	checkpoint, exists, err := repository.Checkpoint(ctx, "1", CoreCheckpoint)
-	if err != nil || !exists || checkpoint.ContiguousThrough != 1 || !checkpoint.BlockHash.Equal(tip.Hash) {
+	if err != nil || !exists || checkpoint.ContiguousThrough != 1 || checkpoint.BlockHash != tip.Hash {
 		t.Fatalf("checkpoint = %+v, exists = %v, error = %v", checkpoint, exists, err)
 	}
 }
@@ -35,8 +40,9 @@ func TestMemoryRepositoryCommitsCanonicalChainAndCheckpoint(t *testing.T) {
 func TestMemoryRepositoryRejectsNonExtendingCommit(t *testing.T) {
 	t.Parallel()
 	repository := NewMemoryRepository()
-	commitTestBundle(t, repository, storeTestBundle(0, storeTestHash(1), storeTestHash(0)))
-	fork := storeTestBundle(1, storeTestHash(3), storeTestHash(99))
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	commitTestBundle(t, repository, genesis)
+	fork := storeTestBundle(1, storeTestHash(99), 3)
 	reference, _ := RefFromBundle(fork)
 	err := repository.CommitCanonical(context.Background(), "1", fork, NewCoreCheckpoint(reference))
 	if !errors.Is(err, ErrConflict) {
@@ -48,20 +54,25 @@ func TestMemoryRepositoryReorgRetainsOrphanAndFlipsJournals(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	genesis := storeTestBundle(0, storeTestHash(1), storeTestHash(0))
-	oldOne := storeTestBundle(1, storeTestHash(2), storeTestHash(1))
-	oldTwo := storeTestBundle(2, storeTestHash(3), storeTestHash(2))
-	for _, bundle := range []ethrpc.Bundle{genesis, oldOne, oldTwo} {
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	oldOne := storeTestBundle(1, genesisRef.Hash, 2)
+	oldOneRef := mustStoreTestRef(t, oldOne)
+	oldTwo := storeTestBundle(2, oldOneRef.Hash, 3)
+	oldTwoRef := mustStoreTestRef(t, oldTwo)
+	for _, bundle := range []chainbundle.Bundle{genesis, oldOne, oldTwo} {
 		commitTestBundle(t, repository, bundle)
 	}
 	if err := repository.AppendJournal(ctx, "1", JournalEntry{
-		BlockHash: storeTestHash(3), Stage: "token", Sequence: 0, Payload: json.RawMessage(`{"undo":true}`),
+		BlockHash: oldTwoRef.Hash, Stage: "token", Sequence: 0, Payload: json.RawMessage(`{"undo":true}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	newOne := storeTestBundle(1, storeTestHash(12), storeTestHash(1))
-	newTwo := storeTestBundle(2, storeTestHash(13), storeTestHash(12))
-	newThree := storeTestBundle(3, storeTestHash(14), storeTestHash(13))
+	newOne := storeTestBundle(1, genesisRef.Hash, 12)
+	newOneRef := mustStoreTestRef(t, newOne)
+	newTwo := storeTestBundle(2, newOneRef.Hash, 13)
+	newTwoRef := mustStoreTestRef(t, newTwo)
+	newThree := storeTestBundle(3, newTwoRef.Hash, 14)
 	ancestor, _, _ := repository.CanonicalBlock(ctx, "1", 0)
 	detachedTwo, _, _ := repository.CanonicalBlock(ctx, "1", 2)
 	detachedOne, _, _ := repository.CanonicalBlock(ctx, "1", 1)
@@ -69,7 +80,7 @@ func TestMemoryRepositoryReorgRetainsOrphanAndFlipsJournals(t *testing.T) {
 	err := repository.ApplyReorg(ctx, "1", Reorg{
 		Ancestor:   ancestor,
 		Detached:   []BlockRef{detachedTwo, detachedOne},
-		Attached:   []ethrpc.Bundle{newOne, newTwo, newThree},
+		Attached:   []chainbundle.Bundle{newOne, newTwo, newThree},
 		Checkpoint: NewCoreCheckpoint(newTip),
 		Reason:     "test fork",
 	})
@@ -77,13 +88,13 @@ func TestMemoryRepositoryReorgRetainsOrphanAndFlipsJournals(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonicalTwo, exists, err := repository.CanonicalBlock(ctx, "1", 2)
-	if err != nil || !exists || !canonicalTwo.Hash.Equal(storeTestHash(13)) {
+	if err != nil || !exists || canonicalTwo.Hash != newTwoRef.Hash {
 		t.Fatalf("canonical block 2 = %+v, exists = %v, error = %v", canonicalTwo, exists, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", storeTestHash(3)); err != nil || !exists {
+	if _, exists, err := repository.BundleByHash(ctx, "1", oldTwoRef.Hash); err != nil || !exists {
 		t.Fatalf("orphan retained = %v, error = %v", exists, err)
 	}
-	journals, err := repository.JournalsByBlock(ctx, "1", storeTestHash(3))
+	journals, err := repository.JournalsByBlock(ctx, "1", oldTwoRef.Hash)
 	if err != nil || len(journals) != 1 || journals[0].Canonical {
 		t.Fatalf("orphan journals = %+v, error = %v", journals, err)
 	}
@@ -93,11 +104,12 @@ func TestMemoryRepositoryRejectsReorgBelowFinalized(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	bundles := []ethrpc.Bundle{
-		storeTestBundle(0, storeTestHash(1), storeTestHash(0)),
-		storeTestBundle(1, storeTestHash(2), storeTestHash(1)),
-		storeTestBundle(2, storeTestHash(3), storeTestHash(2)),
-	}
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	blockOne := storeTestBundle(1, genesisRef.Hash, 2)
+	blockOneRef := mustStoreTestRef(t, blockOne)
+	blockTwo := storeTestBundle(2, blockOneRef.Hash, 3)
+	bundles := []chainbundle.Bundle{genesis, blockOne, blockTwo}
 	for _, bundle := range bundles {
 		commitTestBundle(t, repository, bundle)
 	}
@@ -109,12 +121,13 @@ func TestMemoryRepositoryRejectsReorgBelowFinalized(t *testing.T) {
 	ancestor, _, _ := repository.CanonicalBlock(ctx, "1", 0)
 	detachedTwo, _, _ := repository.CanonicalBlock(ctx, "1", 2)
 	detachedOne, _, _ := repository.CanonicalBlock(ctx, "1", 1)
-	newOne := storeTestBundle(1, storeTestHash(12), storeTestHash(1))
-	newTwo := storeTestBundle(2, storeTestHash(13), storeTestHash(12))
+	newOne := storeTestBundle(1, genesisRef.Hash, 12)
+	newOneRef := mustStoreTestRef(t, newOne)
+	newTwo := storeTestBundle(2, newOneRef.Hash, 13)
 	newTip, _ := RefFromBundle(newTwo)
 	err := repository.ApplyReorg(ctx, "1", Reorg{
 		Ancestor: ancestor, Detached: []BlockRef{detachedTwo, detachedOne},
-		Attached: []ethrpc.Bundle{newOne, newTwo}, Checkpoint: NewCoreCheckpoint(newTip),
+		Attached: []chainbundle.Bundle{newOne, newTwo}, Checkpoint: NewCoreCheckpoint(newTip),
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("error = %v, want ErrConflict", err)
@@ -125,8 +138,9 @@ func TestMemoryRepositoryRejectsCheckpointRegression(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	genesis := storeTestBundle(0, storeTestHash(1), storeTestHash(0))
-	blockOne := storeTestBundle(1, storeTestHash(2), storeTestHash(1))
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	blockOne := storeTestBundle(1, genesisRef.Hash, 2)
 	commitTestBundle(t, repository, genesis)
 	commitTestBundle(t, repository, blockOne)
 	reference, _ := RefFromBundle(genesis)
@@ -140,11 +154,12 @@ func TestMemoryRepositoryRefreshCanonicalIsIdentityBoundAtomicAndIdempotent(t *t
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	bundles := []ethrpc.Bundle{
-		storeTestBundle(0, storeTestHash(1), storeTestHash(0)),
-		storeTestBundle(1, storeTestHash(2), storeTestHash(1)),
-		storeTestBundle(2, storeTestHash(3), storeTestHash(2)),
-	}
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	blockOne := storeTestBundle(1, genesisRef.Hash, 2)
+	blockOneRef := mustStoreTestRef(t, blockOne)
+	blockTwo := storeTestBundle(2, blockOneRef.Hash, 3)
+	bundles := []chainbundle.Bundle{genesis, blockOne, blockTwo}
 	for _, bundle := range bundles {
 		commitTestBundle(t, repository, bundle)
 	}
@@ -153,20 +168,19 @@ func TestMemoryRepositoryRefreshCanonicalIsIdentityBoundAtomicAndIdempotent(t *t
 		t.Fatalf("checkpoint exists=%v error=%v", exists, err)
 	}
 
-	refreshed := bundles[1]
-	refreshed.Block.ExtraData = ethrpc.Data("0x1234")
+	refreshed := storeTestBundle(1, genesisRef.Hash, 2)
 	if err := repository.RefreshCanonical(ctx, "1", refreshed, RefreshOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.RefreshCanonical(ctx, "1", refreshed, RefreshOptions{}); err != nil {
 		t.Fatalf("idempotent refresh failed: %v", err)
 	}
-	stored := mustStoredBundle(t, repository, storeTestHash(2))
-	if stored.Block.ExtraData.String() != "0x1234" {
-		t.Fatalf("refreshed extra data=%s", stored.Block.ExtraData)
+	stored := mustStoredBundle(t, repository, blockOneRef.Hash)
+	if !bytes.Equal(stored.Block.Extra(), []byte{2}) {
+		t.Fatalf("refreshed extra data=%x", stored.Block.Extra())
 	}
 	canonical, exists, err := repository.CanonicalBlock(ctx, "1", 1)
-	if err != nil || !exists || !canonical.Hash.Equal(storeTestHash(2)) {
+	if err != nil || !exists || canonical.Hash != blockOneRef.Hash {
 		t.Fatalf("canonical=%+v exists=%v error=%v", canonical, exists, err)
 	}
 	checkpointAfter, exists, err := repository.Checkpoint(ctx, "1", CoreCheckpoint)
@@ -174,24 +188,22 @@ func TestMemoryRepositoryRefreshCanonicalIsIdentityBoundAtomicAndIdempotent(t *t
 		t.Fatalf("checkpoint before=%+v after=%+v exists=%v error=%v", checkpointBefore, checkpointAfter, exists, err)
 	}
 
-	wrongHash := refreshed
-	wrongHash.Block.Hash = new(storeTestHash(22))
+	wrongHash := storeTestBundle(1, genesisRef.Hash, 22)
 	if err := repository.RefreshCanonical(ctx, "1", wrongHash, RefreshOptions{}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("identity mismatch error=%v", err)
 	}
-	wrongParent := refreshed
-	wrongParent.Block.ParentHash = storeTestHash(99)
+	wrongParent := storeTestBundle(1, storeTestHash(99), 2)
 	if err := repository.RefreshCanonical(ctx, "1", wrongParent, RefreshOptions{}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("parent mismatch error=%v", err)
 	}
 	invalid := refreshed
-	invalid.Receipts = append(invalid.Receipts, ethrpc.Receipt{})
+	invalid.Receipts = append(invalid.Receipts, &types.Receipt{})
 	if err := repository.RefreshCanonical(ctx, "1", invalid, RefreshOptions{}); err == nil {
 		t.Fatal("invalid replacement bundle was accepted")
 	}
-	stored = mustStoredBundle(t, repository, storeTestHash(2))
-	if stored.Block.ExtraData.String() != "0x1234" {
-		t.Fatalf("failed refresh mutated stored bundle: %s", stored.Block.ExtraData)
+	stored = mustStoredBundle(t, repository, blockOneRef.Hash)
+	if !bytes.Equal(stored.Block.Extra(), []byte{2}) {
+		t.Fatalf("failed refresh mutated stored bundle: %x", stored.Block.Extra())
 	}
 }
 
@@ -199,9 +211,11 @@ func TestMemoryRepositoryRefreshCanonicalRequiresFinalizedOverride(t *testing.T)
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	genesis := storeTestBundle(0, storeTestHash(1), storeTestHash(0))
-	blockOne := storeTestBundle(1, storeTestHash(2), storeTestHash(1))
-	for _, bundle := range []ethrpc.Bundle{genesis, blockOne} {
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	blockOne := storeTestBundle(1, genesisRef.Hash, 2)
+	blockOneRef := mustStoreTestRef(t, blockOne)
+	for _, bundle := range []chainbundle.Bundle{genesis, blockOne} {
 		commitTestBundle(t, repository, bundle)
 	}
 	finalized, _, _ := repository.CanonicalBlock(ctx, "1", 1)
@@ -209,29 +223,28 @@ func TestMemoryRepositoryRefreshCanonicalRequiresFinalizedOverride(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := repository.AppendJournal(ctx, "1", JournalEntry{
-		BlockHash: storeTestHash(2), Stage: "token", Sequence: 0,
+		BlockHash: blockOneRef.Hash, Stage: "token", Sequence: 0,
 		Payload: json.RawMessage(`{"undo":"old-core-facts"}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	refreshed := blockOne
-	refreshed.Block.ExtraData = ethrpc.Data("0xab")
+	refreshed := storeTestBundle(1, genesisRef.Hash, 2)
 	if err := repository.RefreshCanonical(ctx, "1", refreshed, RefreshOptions{}); !errors.Is(err, ErrFinalizedRefresh) {
 		t.Fatalf("finalized refresh error=%v", err)
 	}
-	if stored := mustStoredBundle(t, repository, storeTestHash(2)); stored.Block.ExtraData.String() != "0x" {
-		t.Fatalf("rejected finalized refresh mutated bundle: %s", stored.Block.ExtraData)
+	if stored := mustStoredBundle(t, repository, blockOneRef.Hash); !bytes.Equal(stored.Block.Extra(), []byte{2}) {
+		t.Fatalf("rejected finalized refresh mutated bundle: %x", stored.Block.Extra())
 	}
-	if journals, err := repository.JournalsByBlock(ctx, "1", storeTestHash(2)); err != nil || len(journals) != 1 {
+	if journals, err := repository.JournalsByBlock(ctx, "1", blockOneRef.Hash); err != nil || len(journals) != 1 {
 		t.Fatalf("rejected refresh journals=%v error=%v", journals, err)
 	}
 	if err := repository.RefreshCanonical(ctx, "1", refreshed, RefreshOptions{AllowFinalized: true}); err != nil {
 		t.Fatal(err)
 	}
-	if stored := mustStoredBundle(t, repository, storeTestHash(2)); stored.Block.ExtraData.String() != "0xab" {
-		t.Fatalf("authorized finalized refresh was not applied: %s", stored.Block.ExtraData)
+	if stored := mustStoredBundle(t, repository, blockOneRef.Hash); !bytes.Equal(stored.Block.Extra(), []byte{2}) {
+		t.Fatalf("authorized finalized refresh was not applied: %x", stored.Block.Extra())
 	}
-	if journals, err := repository.JournalsByBlock(ctx, "1", storeTestHash(2)); err != nil || len(journals) != 0 {
+	if journals, err := repository.JournalsByBlock(ctx, "1", blockOneRef.Hash); err != nil || len(journals) != 0 {
 		t.Fatalf("refreshed block retained stale journals=%v error=%v", journals, err)
 	}
 }
@@ -361,35 +374,27 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 	}
 }
 
-func storeTestBundle(number uint64, hash, parent ethrpc.Hash) ethrpc.Bundle {
-	numberQuantity := ethrpc.QuantityFromUint64(number)
-	zeroHash := storeTestHash(0)
-	return ethrpc.Bundle{Block: ethrpc.Block{
-		Number:           &numberQuantity,
-		Hash:             new(hash),
-		ParentHash:       parent,
-		Sha3Uncles:       zeroHash,
-		TransactionsRoot: zeroHash,
-		StateRoot:        zeroHash,
-		ReceiptsRoot:     zeroHash,
-		ExtraData:        ethrpc.Data("0x"),
-		GasLimit:         ethrpc.QuantityFromUint64(30_000_000),
-		GasUsed:          ethrpc.QuantityFromUint64(0),
-		Timestamp:        ethrpc.QuantityFromUint64(1_700_000_000 + number),
-		Transactions:     []ethrpc.TransactionRef{},
-		Uncles:           []ethrpc.Hash{},
-	}, Receipts: []ethrpc.Receipt{}}
-}
-
-func storeTestHash(value byte) ethrpc.Hash {
-	hash, err := ethrpc.ParseHash(fmt.Sprintf("0x%064x", value))
+func storeTestBundle(
+	number uint64,
+	parent common.Hash,
+	extraData byte,
+) chainbundle.Bundle {
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:     number,
+		ParentHash: parent,
+		ExtraData:  []byte{extraData},
+	})
 	if err != nil {
 		panic(err)
 	}
-	return hash
+	return bundle
 }
 
-func commitTestBundle(t *testing.T, repository Repository, bundle ethrpc.Bundle) {
+func storeTestHash(value byte) common.Hash {
+	return common.Hash{common.HashLength - 1: value}
+}
+
+func commitTestBundle(t *testing.T, repository Repository, bundle chainbundle.Bundle) {
 	t.Helper()
 	reference, err := RefFromBundle(bundle)
 	if err != nil {
@@ -400,7 +405,7 @@ func commitTestBundle(t *testing.T, repository Repository, bundle ethrpc.Bundle)
 	}
 }
 
-func mustStoredBundle(t *testing.T, repository Repository, hash ethrpc.Hash) ethrpc.Bundle {
+func mustStoredBundle(t *testing.T, repository Repository, hash common.Hash) chainbundle.Bundle {
 	t.Helper()
 	bundle, exists, err := repository.BundleByHash(context.Background(), "1", hash)
 	if err != nil || !exists {

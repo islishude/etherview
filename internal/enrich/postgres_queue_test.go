@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type fakeSQLBackend struct {
@@ -106,7 +108,7 @@ func openFakeSQLDB(t *testing.T, backend *fakeSQLBackend) *sql.DB {
 	return db
 }
 
-func durableJobRow(id, attempt int64, stage StageID, hash Word, block uint64) driver.Rows {
+func durableJobRow(id, attempt int64, stage StageID, hash common.Hash, block uint64) driver.Rows {
 	payload, _ := json.Marshal(durableJobPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
 		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"},
@@ -124,7 +126,7 @@ func emptyReplayTargetRows() driver.Rows {
 	}}
 }
 
-func replayTargetRow(id, attempt, generation int64, stage StageID, hash Word, block uint64, status string) driver.Rows {
+func replayTargetRow(id, attempt, generation int64, stage StageID, hash common.Hash, block uint64, status string) driver.Rows {
 	payload, _ := json.Marshal(durableJobPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
 		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation", "status"},

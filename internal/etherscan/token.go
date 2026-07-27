@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action string, values url.Values) ([]tokenTransfer, error) {
@@ -136,54 +136,34 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 		return tokenTransfer{}, err
 	}
 
-	var transaction ethrpc.Transaction
-	if err := decodeRawObject(transactionJSON, &transaction); err != nil {
+	transaction, _, err := decodeStoredTransaction(transactionJSON, blockHash, blockNumber, transactionIndex)
+	if err != nil {
 		return tokenTransfer{}, fmt.Errorf("decode token transaction raw JSON: %w", err)
 	}
-	if !transaction.Hash.Equal(transactionHash) || transaction.BlockHash == nil || !transaction.BlockHash.Equal(blockHash) ||
-		transaction.BlockNumber == nil || transaction.TransactionIndex == nil {
+	if transaction.Hash() != transactionHash {
 		return tokenTransfer{}, errors.New("stored token transaction raw identity does not match event")
 	}
-	wireBlockNumber, err := transaction.BlockNumber.Big()
-	if err != nil || wireBlockNumber.Cmp(blockNumber) != 0 {
-		return tokenTransfer{}, errors.New("stored token transaction block number does not match event")
-	}
-	wireTransactionIndex, err := transaction.TransactionIndex.Uint64()
-	if err != nil || wireTransactionIndex != uint64(transactionIndex) {
-		return tokenTransfer{}, errors.New("stored token transaction index does not match event")
-	}
 
-	var receipt ethrpc.Receipt
-	if err := decodeRawObject(receiptJSON, &receipt); err != nil {
+	receipt, err := decodeStoredReceiptWithBlockContext(
+		receiptJSON,
+		blockJSON,
+		transaction,
+		blockHash,
+		blockNumber,
+		transactionIndex,
+	)
+	if err != nil {
 		return tokenTransfer{}, fmt.Errorf("decode token receipt raw JSON: %w", err)
 	}
-	if !receipt.TransactionHash.Equal(transactionHash) || !receipt.BlockHash.Equal(blockHash) {
-		return tokenTransfer{}, errors.New("stored token receipt raw identity does not match event")
-	}
-	receiptBlockNumber, err := receipt.BlockNumber.Big()
-	if err != nil || receiptBlockNumber.Cmp(blockNumber) != 0 {
-		return tokenTransfer{}, errors.New("stored token receipt block number does not match event")
-	}
-	receiptIndex, err := receipt.TransactionIndex.Uint64()
-	if err != nil || receiptIndex != uint64(transactionIndex) {
-		return tokenTransfer{}, errors.New("stored token receipt index does not match event")
-	}
 
-	var block ethrpc.Block
-	if err := decodeRawObject(blockJSON, &block); err != nil {
+	block, err := decodeStoredBlockProjection(blockJSON, blockHash, blockNumber)
+	if err != nil {
 		return tokenTransfer{}, fmt.Errorf("decode token block raw JSON: %w", err)
-	}
-	if block.Number == nil || block.Hash == nil || !block.Hash.Equal(blockHash) {
-		return tokenTransfer{}, errors.New("stored token block raw identity does not match event")
-	}
-	wireBlock, err := block.Number.Big()
-	if err != nil || wireBlock.Cmp(blockNumber) != 0 {
-		return tokenTransfer{}, errors.New("stored token block number does not match event")
 	}
 
 	item := tokenTransfer{
-		BlockNumber: blockNumber.String(), Hash: strings.ToLower(transactionHash.String()),
-		BlockHash: strings.ToLower(blockHash.String()), TransactionIndex: strconv.FormatInt(transactionIndex, 10),
+		BlockNumber: blockNumber.String(), Hash: strings.ToLower(transactionHash.Hex()),
+		BlockHash: strings.ToLower(blockHash.Hex()), TransactionIndex: strconv.FormatInt(transactionIndex, 10),
 		Input: "deprecated", FunctionName: "",
 	}
 	item.ContractAddress, err = checksumAddress(tokenAddress)
@@ -217,36 +197,21 @@ func scanTokenTransfer(scanner rowScanner, expectedStandard, tipText string) (to
 	if item.To, err = optionalChecksumAddress(toBytes); err != nil {
 		return tokenTransfer{}, fmt.Errorf("checksum token transfer recipient: %w", err)
 	}
-	if item.TimeStamp, err = decimalQuantity(block.Timestamp); err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token block timestamp: %w", err)
+	item.TimeStamp = decimalUint64(uint64(*block.Timestamp))
+	item.Nonce = decimalUint64(transaction.Nonce())
+	item.Gas = decimalUint64(transaction.Gas())
+	gasPrice, err := effectiveGasPrice(transaction, receipt)
+	if err != nil {
+		return tokenTransfer{}, err
 	}
-	if item.Nonce, err = decimalQuantity(transaction.Nonce); err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token transaction nonce: %w", err)
-	}
-	if item.Gas, err = decimalQuantity(transaction.Gas); err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token transaction gas: %w", err)
-	}
-	gasPrice := transaction.GasPrice
-	if gasPrice == nil {
-		gasPrice = receipt.EffectiveGasPrice
-	}
-	if gasPrice == nil {
-		return tokenTransfer{}, errors.New("stored token transaction has no effective gas price")
-	}
-	if item.GasPrice, err = decimalQuantity(*gasPrice); err != nil {
+	if item.GasPrice, err = decimalBig(gasPrice); err != nil {
 		return tokenTransfer{}, fmt.Errorf("decode token transaction gas price: %w", err)
 	}
-	if item.CumulativeGasUsed, err = decimalQuantity(receipt.CumulativeGasUsed); err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token receipt cumulative gas: %w", err)
-	}
-	if receipt.GasUsed == nil {
-		return tokenTransfer{}, errors.New("stored token receipt gas used is null")
-	}
-	if item.GasUsed, err = decimalQuantity(*receipt.GasUsed); err != nil {
-		return tokenTransfer{}, fmt.Errorf("decode token receipt gas used: %w", err)
-	}
-	if len(transaction.Input) >= 10 {
-		item.MethodID = strings.ToLower(transaction.Input.String()[:10])
+	item.CumulativeGasUsed = decimalUint64(receipt.CumulativeGasUsed)
+	item.GasUsed = decimalUint64(receipt.GasUsed)
+	input := hexutil.Encode(transaction.Data())
+	if len(input) >= 10 {
+		item.MethodID = strings.ToLower(input[:10])
 	}
 	confirmations := new(big.Int).Sub(tip, blockNumber)
 	confirmations.Add(confirmations, big.NewInt(1))

@@ -5,12 +5,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"math/big"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -18,7 +22,9 @@ func TestBuildSnapshotRequiresFullUnminedTransactionsAndPreservesUnknownFields(t
 	t.Parallel()
 	observed := time.Unix(100, 0).UTC()
 	block := pendingTestBlock(t, 1)
-	block.Transactions[0].Transaction.Extra = map[string]json.RawMessage{"futureField": json.RawMessage(`{"enabled":true}`)}
+	block = mutatePendingTransaction(t, block, func(transaction map[string]any) {
+		transaction["futureField"] = map[string]any{"enabled": true}
+	})
 	snapshot, err := buildSnapshot(block, "mempool-primary", PollerOptions{
 		ChainID: 1, Retention: time.Minute, MaxTransactions: 10, MaxResponseBytes: 1 << 20,
 	}, observed)
@@ -29,31 +35,30 @@ func TestBuildSnapshotRequiresFullUnminedTransactionsAndPreservesUnknownFields(t
 		!strings.Contains(string(snapshot.Transactions[0].Raw), `"futureField"`) {
 		t.Fatalf("snapshot did not retain full transaction: %+v", snapshot)
 	}
-	if !snapshot.ExpiresAt.Equal(observed.Add(time.Minute)) || snapshot.Transactions[0].From != "0x0000000000000000000000000000000000000001" {
+	if !snapshot.ExpiresAt.Equal(observed.Add(time.Minute)) || snapshot.Transactions[0].From != pendingTestSender().Hex() {
 		t.Fatalf("unexpected snapshot metadata: %+v", snapshot)
 	}
 
-	height := ethrpc.QuantityFromUint64(1)
 	blockHash := pendingTestHash(8)
-	index := ethrpc.QuantityFromUint64(0)
-	for name, mutate := range map[string]func(*ethrpc.Transaction){
-		"block hash":   func(transaction *ethrpc.Transaction) { transaction.BlockHash = &blockHash },
-		"block number": func(transaction *ethrpc.Transaction) { transaction.BlockNumber = &height },
-		"index":        func(transaction *ethrpc.Transaction) { transaction.TransactionIndex = &index },
+	for name, mutate := range map[string]func(map[string]any){
+		"block hash":   func(transaction map[string]any) { transaction["blockHash"] = blockHash.Hex() },
+		"block number": func(transaction map[string]any) { transaction["blockNumber"] = "0x1" },
+		"index":        func(transaction map[string]any) { transaction["transactionIndex"] = "0x0" },
 	} {
-		mined := pendingTestBlock(t, 1)
-		mutate(mined.Transactions[0].Transaction)
+		mined := mutatePendingTransaction(t, pendingTestBlock(t, 1), mutate)
 		if _, err := buildSnapshot(mined, "rpc", PollerOptions{ChainID: 1, Retention: time.Minute, MaxTransactions: 10, MaxResponseBytes: 1 << 20}, observed); err == nil {
 			t.Fatalf("accepted pending transaction with a mined %s", name)
 		}
 	}
-	identifiedBlock := pendingTestBlock(t, 1)
-	identifiedBlock.Hash = &blockHash
+	identifiedBlock := mutatePendingBlock(t, pendingTestBlock(t, 1), func(block map[string]any) {
+		block["hash"] = blockHash.Hex()
+	})
 	if _, err := buildSnapshot(identifiedBlock, "rpc", PollerOptions{ChainID: 1, Retention: time.Minute, MaxTransactions: 10, MaxResponseBytes: 1 << 20}, observed); err == nil {
 		t.Fatal("accepted a pending block with a mined identity")
 	}
-	hashOnly := pendingTestBlock(t, 1)
-	hashOnly.Transactions[0].Transaction = nil
+	hashOnly := mutatePendingBlock(t, pendingTestBlock(t, 1), func(block map[string]any) {
+		block["transactions"] = []any{pendingTestHash(3).Hex()}
+	})
 	if _, err := buildSnapshot(hashOnly, "rpc", PollerOptions{ChainID: 1, Retention: time.Minute, MaxTransactions: 10, MaxResponseBytes: 1 << 20}, observed); err == nil {
 		t.Fatal("accepted hash-only pending transaction")
 	}
@@ -66,8 +71,10 @@ func TestBuildSnapshotRejectsWrongChainAndDuplicateHashes(t *testing.T) {
 	if _, err := buildSnapshot(wrongChain, "rpc", options, time.Unix(1, 0)); err == nil || !strings.Contains(err.Error(), "chain ID") {
 		t.Fatalf("wrong-chain error = %v", err)
 	}
-	duplicate := pendingTestBlock(t, 1)
-	duplicate.Transactions = append(duplicate.Transactions, duplicate.Transactions[0])
+	duplicate := mutatePendingBlock(t, pendingTestBlock(t, 1), func(block map[string]any) {
+		transactions := block["transactions"].([]any)
+		block["transactions"] = append(transactions, transactions[0])
+	})
 	if _, err := buildSnapshot(duplicate, "rpc", options, time.Unix(1, 0)); err == nil || !strings.Contains(err.Error(), "duplicates") {
 		t.Fatalf("duplicate error = %v", err)
 	}
@@ -109,9 +116,9 @@ func TestPollerPersistsExplicitFailureWithoutReturningStaleSuccess(t *testing.T)
 
 func TestPoolSourceUsesPendingFullTransactionRPC(t *testing.T) {
 	t.Parallel()
-	caller := &recordingCaller{block: pendingTestBlock(t, 1)}
+	service := &pendingRPCService{block: pendingTestBlock(t, 1)}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "pending", Client: caller, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeMempool: true},
+		Name: "pending", Client: newPendingRPCClient(t, service), Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeMempool: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -120,8 +127,8 @@ func TestPoolSourceUsesPendingFullTransactionRPC(t *testing.T) {
 	if err != nil || block == nil || endpoint != "pending" {
 		t.Fatalf("block=%v endpoint=%q error=%v", block, endpoint, err)
 	}
-	if caller.method != "eth_getBlockByNumber" || len(caller.params) != 2 || caller.params[0] != "pending" || caller.params[1] != true {
-		t.Fatalf("RPC call = %s %#v", caller.method, caller.params)
+	if service.tag != "pending" || !service.full {
+		t.Fatalf("RPC call = %q full=%t", service.tag, service.full)
 	}
 }
 
@@ -129,7 +136,7 @@ func TestPendingCursorIsOpaqueVersionedAndStrict(t *testing.T) {
 	t.Parallel()
 	cursor := pendingCursor{
 		Version: cursorVersion, ChainID: "1", SnapshotID: 4,
-		BeforeFirstSeen: time.Unix(5, 0).UTC(), BeforeHash: pendingTestHash(9).String(),
+		BeforeFirstSeen: time.Unix(5, 0).UTC(), BeforeHash: pendingTestHash(9).Hex(),
 	}
 	encoded, err := encodePendingCursor(cursor)
 	if err != nil {
@@ -147,7 +154,7 @@ func TestPendingCursorIsOpaqueVersionedAndStrict(t *testing.T) {
 
 type errorSource struct{ err error }
 
-func (source errorSource) PendingBlock(context.Context) (*ethrpc.Block, string, error) {
+func (source errorSource) PendingBlock(context.Context) (json.RawMessage, string, error) {
 	return nil, "pending", source.err
 }
 
@@ -171,58 +178,100 @@ func (store *recordingStore) StoreFailure(_ context.Context, failure Failure) er
 	return nil
 }
 
-type recordingCaller struct {
-	method string
-	params []any
-	block  *ethrpc.Block
+type pendingRPCService struct {
+	tag   string
+	full  bool
+	block json.RawMessage
 }
 
-func (caller *recordingCaller) Call(_ context.Context, method string, params []any, result any) error {
-	caller.method, caller.params = method, params
-	destination, ok := result.(**ethrpc.Block)
-	if !ok {
-		return fmt.Errorf("unexpected result type %T", result)
-	}
-	*destination = caller.block
-	return nil
+func (service *pendingRPCService) GetBlockByNumber(_ context.Context, tag string, full bool) (json.RawMessage, error) {
+	service.tag, service.full = tag, full
+	return service.block, nil
 }
 
-func pendingTestBlock(t *testing.T, chainID uint64) *ethrpc.Block {
+func newPendingRPCClient(t *testing.T, service *pendingRPCService) *rpc.Client {
 	t.Helper()
-	zero := pendingTestHash(0)
-	from := pendingTestAddress(1)
-	to := pendingTestAddress(2)
-	txHash := pendingTestHash(3)
-	txType := ethrpc.QuantityFromUint64(2)
-	chain := ethrpc.QuantityFromUint64(chainID)
-	transaction := &ethrpc.Transaction{
-		Hash: txHash, Type: &txType, From: from, To: &to,
-		Nonce: ethrpc.QuantityFromUint64(7), Gas: ethrpc.QuantityFromUint64(21_000),
-		Value: ethrpc.QuantityFromUint64(9), Input: ethrpc.Data("0x"), ChainID: &chain,
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", service); err != nil {
+		t.Fatal(err)
 	}
-	return &ethrpc.Block{
-		ParentHash: zero, Sha3Uncles: zero, TransactionsRoot: zero, StateRoot: zero, ReceiptsRoot: zero,
-		ExtraData: ethrpc.Data("0x"), GasLimit: ethrpc.QuantityFromUint64(30_000_000),
-		GasUsed: ethrpc.QuantityFromUint64(0), Timestamp: ethrpc.QuantityFromUint64(1),
-		Transactions: []ethrpc.TransactionRef{{Hash: txHash, Transaction: transaction}},
-		Uncles:       []ethrpc.Hash{},
-	}
+	client := rpc.DialInProc(server)
+	t.Cleanup(func() {
+		client.Close()
+		server.Stop()
+	})
+	return client
 }
 
-func pendingTestHash(value uint64) ethrpc.Hash {
-	hash, err := ethrpc.ParseHash(fmt.Sprintf("0x%064x", value))
+func pendingTestBlock(t *testing.T, chainID uint64) json.RawMessage {
+	t.Helper()
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	to := common.HexToAddress("0x2")
+	transaction := types.NewTx(&types.DynamicFeeTx{
+		ChainID: new(big.Int).SetUint64(chainID), Nonce: 7, Gas: 21_000, To: &to,
+		Value: big.NewInt(9), GasFeeCap: big.NewInt(2), GasTipCap: big.NewInt(1),
+	})
+	transaction, err = types.SignTx(transaction, types.LatestSignerForChainID(new(big.Int).SetUint64(chainID)), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := transaction.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transactionObject map[string]any
+	if err := json.Unmarshal(encoded, &transactionObject); err != nil {
+		t.Fatal(err)
+	}
+	transactionObject["from"] = pendingTestSender().Hex()
+	transactionObject["blockHash"] = nil
+	transactionObject["blockNumber"] = nil
+	transactionObject["transactionIndex"] = nil
+	block, err := json.Marshal(map[string]any{
+		"hash": nil, "number": nil, "transactions": []any{transactionObject},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return block
+}
+
+func mutatePendingBlock(t *testing.T, raw json.RawMessage, mutate func(map[string]any)) json.RawMessage {
+	t.Helper()
+	var block map[string]any
+	if err := json.Unmarshal(raw, &block); err != nil {
+		t.Fatal(err)
+	}
+	mutate(block)
+	encoded, err := json.Marshal(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func mutatePendingTransaction(t *testing.T, raw json.RawMessage, mutate func(map[string]any)) json.RawMessage {
+	t.Helper()
+	return mutatePendingBlock(t, raw, func(block map[string]any) {
+		transactions := block["transactions"].([]any)
+		transaction := transactions[0].(map[string]any)
+		mutate(transaction)
+	})
+}
+
+func pendingTestHash(value uint64) common.Hash {
+	return common.BigToHash(new(big.Int).SetUint64(value))
+}
+
+func pendingTestSender() common.Address {
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	if err != nil {
 		panic(err)
 	}
-	return hash
-}
-
-func pendingTestAddress(value uint64) ethrpc.Address {
-	address, err := ethrpc.ParseAddress(fmt.Sprintf("0x%040x", value))
-	if err != nil {
-		panic(err)
-	}
-	return address
+	return crypto.PubkeyToAddress(key.PublicKey)
 }
 
 func base64Raw(value string) string {

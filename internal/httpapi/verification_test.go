@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/verify"
-	"golang.org/x/crypto/sha3"
 )
 
 type verificationRepository struct {
@@ -175,9 +175,7 @@ func TestVerificationAPIRequiresKeyAndBindsServerChain(t *testing.T) {
 }
 
 func testVerificationRuntimeHash(runtimeBytecode []byte) string {
-	hasher := sha3.NewLegacyKeccak256()
-	_, _ = hasher.Write(runtimeBytecode)
-	return "0x" + hex.EncodeToString(hasher.Sum(nil))
+	return "0x" + hex.EncodeToString(crypto.Keccak256(runtimeBytecode))
 }
 
 func TestVerificationAPIRejectsUnknownFields(t *testing.T) {

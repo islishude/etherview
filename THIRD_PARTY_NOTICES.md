@@ -23,9 +23,12 @@ The automated license gate pins the reviewed version, verifies the upstream
 license materials and a representative library source header by SHA-256, and
 rejects any `cmd/` dependency before applying a narrow scanner exception.
 
-The imported dependency graph also contains three directories with their own
+The imported dependency graph also contains four directories with their own
 permissive license attribution:
 
+- `crypto/bn256`: BSD-3-Clause, Copyright 2012 The Go Authors and 2018 Péter
+  Szilágyi; license at
+  `/licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt`.
 - `crypto/keccak`: BSD-3-Clause, Copyright 2009 The Go Authors; license at
   `/licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt`.
 - `crypto/secp256k1`: BSD-3-Clause, Copyright The Go Authors, ThePiachu,
@@ -37,3 +40,15 @@ permissive license attribution:
 The `crypto/secp256k1` source includes libsecp256k1 under the MIT license,
 Copyright 2013 Pieter Wuille. Its text is included at
 `/licenses/libsecp256k1-MIT.txt`.
+
+## bloomfilter
+
+- Module: `github.com/holiman/bloomfilter/v2`
+- Reviewed version: `v2.0.3`
+- Copyright: 2014, 2015 Barry Allard
+- License: MIT
+- Upstream: <https://github.com/holiman/bloomfilter>
+
+The nested v2 module archive does not include the repository-root license file.
+The exact reviewed text is checked into this repository and included in the
+production image at `/licenses/holiman-bloomfilter-MIT.txt`.

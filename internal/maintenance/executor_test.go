@@ -7,6 +7,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/indexer"
@@ -14,30 +16,34 @@ import (
 )
 
 type executorBundleSource struct {
-	bundles  map[uint64]ethrpc.Bundle
+	bundles  map[uint64]chainbundle.Bundle
 	purposes []ethrpc.Purpose
 	numbers  []uint64
 	err      error
 }
 
-func (source *executorBundleSource) BundleByNumber(_ context.Context, purpose ethrpc.Purpose, number uint64) (ethrpc.Bundle, error) {
+func (source *executorBundleSource) BundleByNumber(
+	_ context.Context,
+	purpose ethrpc.Purpose,
+	number uint64,
+) (chainbundle.Bundle, error) {
 	source.purposes = append(source.purposes, purpose)
 	source.numbers = append(source.numbers, number)
 	if source.err != nil {
-		return ethrpc.Bundle{}, source.err
+		return chainbundle.Bundle{}, source.err
 	}
 	return source.bundles[number], nil
 }
 
 type executorCanonicalizer struct {
-	bundles []ethrpc.Bundle
+	bundles []chainbundle.Bundle
 	options []store.RefreshOptions
 	err     error
 }
 
 func (canonicalizer *executorCanonicalizer) Refresh(
 	_ context.Context,
-	bundle ethrpc.Bundle,
+	bundle chainbundle.Bundle,
 	options store.RefreshOptions,
 ) (indexer.ApplyResult, error) {
 	canonicalizer.bundles = append(canonicalizer.bundles, bundle)
@@ -90,7 +96,9 @@ func (queue *executorReplayQueue) Requeue(_ context.Context, job enrich.Job) err
 
 func TestExecutorRepairUsesHistorySourceAndCanonicalizerForEveryBlock(t *testing.T) {
 	t.Parallel()
-	source := &executorBundleSource{bundles: map[uint64]ethrpc.Bundle{}}
+	source := &executorBundleSource{
+		bundles: map[uint64]chainbundle.Bundle{},
+	}
 	for number := uint64(7); number <= 9; number++ {
 		source.bundles[number] = executorBundle(number)
 	}
@@ -119,7 +127,9 @@ func TestExecutorRepairUsesHistorySourceAndCanonicalizerForEveryBlock(t *testing
 
 func TestExecutorRepairRejectsWrongReturnedHeightAndDoesNotAdvance(t *testing.T) {
 	t.Parallel()
-	source := &executorBundleSource{bundles: map[uint64]ethrpc.Bundle{7: executorBundle(8)}}
+	source := &executorBundleSource{
+		bundles: map[uint64]chainbundle.Bundle{7: executorBundle(8)},
+	}
 	canonicalizer := &executorCanonicalizer{}
 	executor := mustExecutor(t, source, canonicalizer, &executorCanonicalSource{}, &executorReplayQueue{})
 	request := validRequest()
@@ -211,7 +221,11 @@ func TestExecutorReindexPropagatesIdentityMismatchInsteadOfHidingIt(t *testing.T
 
 func TestExecutorNeverAliasesRepairAndReindex(t *testing.T) {
 	t.Parallel()
-	source := &executorBundleSource{bundles: map[uint64]ethrpc.Bundle{100: executorBundle(100)}}
+	source := &executorBundleSource{
+		bundles: map[uint64]chainbundle.Bundle{
+			100: executorBundle(100),
+		},
+	}
 	canonicalizer := &executorCanonicalizer{}
 	canonical := &executorCanonicalSource{blocks: map[uint64]store.BlockRef{100: executorBlockRef(100)}}
 	queue := &executorReplayQueue{}
@@ -239,7 +253,11 @@ func TestExecutorNeverAliasesRepairAndReindex(t *testing.T) {
 
 func TestExecutorRangeIncludesMaximumUint64WithoutOverflow(t *testing.T) {
 	t.Parallel()
-	source := &executorBundleSource{bundles: map[uint64]ethrpc.Bundle{math.MaxUint64: executorBundle(math.MaxUint64)}}
+	source := &executorBundleSource{
+		bundles: map[uint64]chainbundle.Bundle{
+			math.MaxUint64: executorBundle(math.MaxUint64),
+		},
+	}
 	executor := mustExecutor(t, source, &executorCanonicalizer{}, &executorCanonicalSource{}, &executorReplayQueue{})
 	request := validRequest()
 	request.FromBlock, request.ToBlock = math.MaxUint64, math.MaxUint64
@@ -299,17 +317,23 @@ func mustExecutor(
 	return executor
 }
 
-func executorBundle(number uint64) ethrpc.Bundle {
-	quantity := ethrpc.QuantityFromUint64(number)
-	return ethrpc.Bundle{Block: ethrpc.Block{Number: &quantity}}
-}
-
-func executorBlockRef(number uint64) store.BlockRef {
-	hash, err := ethrpc.ParseHash(fmt.Sprintf("0x%064x", number+1))
+func executorBundle(number uint64) chainbundle.Bundle {
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:    number,
+		ExtraData: []byte{1},
+	})
 	if err != nil {
 		panic(err)
 	}
-	return store.BlockRef{Number: number, Hash: hash}
+	return bundle
+}
+
+func executorBlockRef(number uint64) store.BlockRef {
+	reference, err := store.RefFromBundle(executorBundle(number))
+	if err != nil {
+		panic(err)
+	}
+	return reference
 }
 
 func executorJob(id string, stage enrich.StageID, reference store.BlockRef) enrich.Job {

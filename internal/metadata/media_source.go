@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -26,15 +26,15 @@ var (
 type NFTImageSelection struct {
 	URI         string
 	BlockNumber uint64
-	BlockHash   ethrpc.Hash
+	BlockHash   common.Hash
 }
 
 // NFTImageSource selects an image URI from a persisted, canonical NFT
 // metadata document. The URI remains server-side and must only be consumed by
 // MediaProxy; callers must never accept a replacement URI from an HTTP client.
 type NFTImageSource interface {
-	SelectNFTImage(context.Context, ethrpc.Address, string) (NFTImageSelection, error)
-	NFTImageCurrent(context.Context, ethrpc.Address, string, NFTImageSelection) (bool, error)
+	SelectNFTImage(context.Context, common.Address, string) (NFTImageSelection, error)
+	NFTImageCurrent(context.Context, common.Address, string, NFTImageSelection) (bool, error)
 }
 
 // PostgresImageSource binds media selection to one configured chain. Only a
@@ -55,14 +55,11 @@ func NewPostgresImageSource(db *sql.DB, chainID string) (*PostgresImageSource, e
 	return &PostgresImageSource{db: db, chainID: chainID}, nil
 }
 
-func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address ethrpc.Address, tokenID string) (NFTImageSelection, error) {
+func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address common.Address, tokenID string) (NFTImageSelection, error) {
 	if source == nil || source.db == nil {
 		return NFTImageSelection{}, errors.New("select NFT media using nil PostgreSQL source")
 	}
-	addressBytes, err := address.Bytes()
-	if err != nil {
-		return NFTImageSelection{}, fmt.Errorf("select NFT media: %w", err)
-	}
+	addressBytes := address.Bytes()
 	if err := validateDecimal(tokenID, 78, "media token ID"); err != nil {
 		return NFTImageSelection{}, err
 	}
@@ -77,7 +74,7 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address e
 		blockNumber string
 		blockHash   []byte
 	)
-	err = source.db.QueryRowContext(ctx, selectCanonicalNFTImageSQL,
+	err := source.db.QueryRowContext(ctx, selectCanonicalNFTImageSQL,
 		source.chainID, addressBytes, tokenID,
 	).Scan(&state, &image, &blockNumber, &blockHash)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -117,10 +114,10 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address e
 		if err != nil || strconv.FormatUint(height, 10) != blockNumber {
 			return NFTImageSelection{}, errors.New("select canonical NFT media: invalid block number")
 		}
-		hash, err := ethrpc.ParseHash(ethrpc.DataFromBytes(blockHash).String())
-		if err != nil {
+		if len(blockHash) != common.HashLength {
 			return NFTImageSelection{}, errors.New("select canonical NFT media: invalid block hash")
 		}
+		hash := common.BytesToHash(blockHash)
 		return NFTImageSelection{URI: uri, BlockNumber: height, BlockHash: hash}, nil
 	default:
 		return NFTImageSelection{}, fmt.Errorf("select canonical NFT media: unsupported metadata state")
@@ -129,17 +126,14 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address e
 
 func (source *PostgresImageSource) NFTImageCurrent(
 	ctx context.Context,
-	address ethrpc.Address,
+	address common.Address,
 	tokenID string,
 	selection NFTImageSelection,
 ) (bool, error) {
 	if source == nil || source.db == nil {
 		return false, errors.New("validate NFT media using nil PostgreSQL source")
 	}
-	addressBytes, err := address.Bytes()
-	if err != nil {
-		return false, fmt.Errorf("validate NFT media: %w", err)
-	}
+	addressBytes := address.Bytes()
 	if err := validateDecimal(tokenID, 78, "media token ID"); err != nil {
 		return false, err
 	}
@@ -147,7 +141,7 @@ func (source *PostgresImageSource) NFTImageCurrent(
 		return false, errors.New("validate NFT media: invalid selection")
 	}
 	var current bool
-	err = source.db.QueryRowContext(ctx, currentNFTImageSQL,
+	err := source.db.QueryRowContext(ctx, currentNFTImageSQL,
 		source.chainID, addressBytes, tokenID, strconv.FormatUint(selection.BlockNumber, 10),
 		mustHashBytes(selection.BlockHash), selection.URI,
 	).Scan(&current)

@@ -42,7 +42,6 @@ func TestNFTRequestValidationAndIdempotency(t *testing.T) {
 			value.TokenID = new(big.Int).Add(maximumUint256, big.NewInt(1)).String()
 			return value
 		}(),
-		func() NFTRequest { value := request; value.Token = "0x01"; return value }(),
 		func() NFTRequest {
 			value := request
 			value.SourceURI = "https://user:secret@example.invalid"

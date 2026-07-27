@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -30,13 +30,13 @@ func TestCanonicalTransitionsAndRuntimeStatusShareDurableEventLedger(t *testing.
 
 	genesis := testBundle(0, testHash(800), testHash(0), testHash(8_000), "runtime-genesis")
 	oldOne := testBundle(1, testHash(801), testHash(800), testHash(8_001), "runtime-old-one")
-	for _, bundle := range []ethrpc.Bundle{genesis, oldOne} {
+	for _, bundle := range []chainbundle.Bundle{genesis, oldOne} {
 		commitCanonical(t, ctx, repository, bundle)
 	}
 	newOne := testBundle(1, testHash(901), testHash(800), testHash(9_001), "runtime-new-one")
 	reorg := store.Reorg{
 		Ancestor: mustBlockRef(t, genesis), Detached: []store.BlockRef{mustBlockRef(t, oldOne)},
-		Attached: []ethrpc.Bundle{newOne}, Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, newOne)),
+		Attached: []chainbundle.Bundle{newOne}, Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, newOne)),
 		Reason: "integration runtime event",
 	}
 	if err := repository.ApplyReorg(ctx, "1", reorg); err != nil {

@@ -118,7 +118,7 @@ func checksumAddressOrderInversion(t *testing.T) (string, string) {
 	}
 	candidates := make([]candidate, 0, 512)
 	for value := uint64(1); value <= 512; value++ {
-		normalized := testAddress(value).String()
+		normalized := strings.ToLower(testAddress(value).Hex())
 		checksum, err := query.ChecksumAddress(normalized)
 		if err != nil {
 			t.Fatal(err)
@@ -411,14 +411,16 @@ func TestExactCoreSearchUsesFrozenOperatorLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sharedHash := testHash(934)
-	commitCanonical(t, ctx, repository, testBundle(0, sharedHash, testHash(0), sharedHash, "exact-label"))
+	bundle := testBundle(0, testHash(934), testHash(0), testHash(9_340), "exact-label")
+	commitCanonical(t, ctx, repository, bundle)
+	blockHash := bundle.Block.Hash()
+	transactionHash := bundle.Block.Transactions()[0].Hash()
 	for _, label := range []struct {
 		kind, key, value string
 	}{
 		{"block", "0", "Height zero label"},
-		{"block", sharedHash.String(), "Block hash label"},
-		{"transaction", sharedHash.String(), "Transaction hash label"},
+		{"block", blockHash.String(), "Shared identity label"},
+		{"transaction", transactionHash.String(), "Shared identity label"},
 	} {
 		execFixture(t, ctx, db, `INSERT INTO operator_labels
 			(chain_id, object_kind, object_key, label) VALUES (1, $1, $2, $3)`,
@@ -432,17 +434,25 @@ func TestExactCoreSearchUsesFrozenOperatorLabels(t *testing.T) {
 	if err != nil || len(byHeight) != 1 || byHeight[0].Label != "Height zero label" {
 		t.Fatalf("height results=%+v error=%v", byHeight, err)
 	}
-	first, cursor, err := reader.Search(ctx, sharedHash.String(), "", 1)
+	blockResult, _, err := reader.Search(ctx, blockHash.String(), "", 20)
+	if err != nil || len(blockResult) != 1 || blockResult[0].Kind != gen.SearchResultKindBlock {
+		t.Fatalf("exact block results=%+v error=%v", blockResult, err)
+	}
+	transactionResult, _, err := reader.Search(ctx, transactionHash.String(), "", 20)
+	if err != nil || len(transactionResult) != 1 || transactionResult[0].Kind != gen.SearchResultKindTransaction {
+		t.Fatalf("exact transaction results=%+v error=%v", transactionResult, err)
+	}
+	first, cursor, err := reader.Search(ctx, "Shared identity label", "", 1)
 	if err != nil || len(first) != 1 || cursor == "" || first[0].Kind != gen.SearchResultKindBlock ||
-		first[0].Label != "Block hash label" {
+		first[0].Label != "Shared identity label" {
 		t.Fatalf("first exact results=%+v cursor=%q error=%v", first, cursor, err)
 	}
 	execFixture(t, ctx, db, `UPDATE operator_labels
 		SET label = 'Changed transaction label', updated_at = now()
-		WHERE chain_id = 1 AND object_kind = 'transaction' AND object_key = $1`, sharedHash.String())
-	second, next, err := reader.Search(ctx, sharedHash.String(), cursor, 1)
+		WHERE chain_id = 1 AND object_kind = 'transaction' AND object_key = $1`, transactionHash.String())
+	second, next, err := reader.Search(ctx, "Shared identity label", cursor, 1)
 	if err != nil || len(second) != 1 || next != "" || second[0].Kind != gen.SearchResultKindTransaction ||
-		second[0].Label != "Transaction hash label" {
+		second[0].Label != "Shared identity label" {
 		t.Fatalf("second exact results=%+v next=%q error=%v", second, next, err)
 	}
 }

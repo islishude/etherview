@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 func TestEnrichmentStageAbsenceIsNeverAnEmptySuccess(t *testing.T) {
@@ -204,7 +206,7 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 			contains: "event.canonical = TRUE AND (event.from_address = $2 OR event.to_address = $2) AND event.standard = $3",
 			columns:  fakeColumns(19),
 			rows: [][]driver.Value{{
-				"10", testHashBytes(3), int64(4), int64(0), testHashBytes(7), testAddressBytes(testContract),
+				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(7, testRecipient), testAddressBytes(testContract),
 				"erc20", "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), nil, maximum,
 				testTransactionJSON(10, 3, 7, 1, testRecipient), testReceiptJSON(10, 3, 7, 1, "0x1", ""),
 				testBlockJSON(10, 3, 2, 100, testSender), int64(1), "Example", "TOK", int64(18),
@@ -235,7 +237,7 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[{"blockNumber":"10","timeStamp":"100","hash":"` + testHash(7) + `","nonce":"15","blockHash":"` + testHash(3) + `","from":"0x52908400098527886E0F7030069857D2E4169EE7","contractAddress":"` + testContract + `","to":"` + testRecipient + `","value":"` + maximum + `","tokenName":"Example","tokenSymbol":"TOK","tokenDecimal":"18","transactionIndex":"1","gas":"21000","gasPrice":"2000000000","gasUsed":"21000","cumulativeGasUsed":"42000","input":"deprecated","methodId":"0xdeadbeef","functionName":"","confirmations":"3"}]`
+	want := `[{"blockNumber":"10","timeStamp":"100","hash":"` + testTransactionHash(7, testRecipient).Hex() + `","nonce":"15","blockHash":"` + testHash(3) + `","from":"0x52908400098527886E0F7030069857D2E4169EE7","contractAddress":"` + testContract + `","to":"` + testRecipient + `","value":"` + maximum + `","tokenName":"Example","tokenSymbol":"TOK","tokenDecimal":"18","transactionIndex":"1","gas":"21000","gasPrice":"2000000000","gasUsed":"21000","cumulativeGasUsed":"42000","input":"deprecated","methodId":"0xdeadbeef","functionName":"","confirmations":"3"}]`
 	if string(encoded) != want {
 		t.Fatalf("token transfer JSON\n got: %s\nwant: %s", encoded, want)
 	}
@@ -272,7 +274,7 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 				sqlExpectation{
 					contains: "event.standard = $3", columns: fakeColumns(19),
 					rows: [][]driver.Value{{
-						"10", testHashBytes(3), int64(4), int64(0), testHashBytes(7), testAddressBytes(testContract),
+						"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(7, testRecipient), testAddressBytes(testContract),
 						test.standard, "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), test.tokenID, test.amount,
 						testTransactionJSON(10, 3, 7, 1, testRecipient), testReceiptJSON(10, 3, 7, 1, "0x1", ""),
 						testBlockJSON(10, 3, 2, 100, testSender), int64(1), "Collectible", "NFT", nil,
@@ -331,7 +333,8 @@ func TestTokenInformationSupplyBalanceAndHolders(t *testing.T) {
 	if !errors.Is(err, ErrStateUnavailable) {
 		t.Fatalf("holders error=%v", err)
 	}
-	if provider.supplyCall != testContract || !reflect.DeepEqual(provider.balanceCall, []string{testContract, testSender}) {
+	if provider.supplyCall != common.HexToAddress(testContract).Hex() ||
+		!reflect.DeepEqual(provider.balanceCall, []string{common.HexToAddress(testContract).Hex(), common.HexToAddress(testSender).Hex()}) {
 		t.Fatalf("supply call=%q balance call=%v", provider.supplyCall, provider.balanceCall)
 	}
 }

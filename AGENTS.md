@@ -49,6 +49,19 @@ plan changes.
 - Treat external input and providers as hostile: enforce size/time/work limits,
   reject unsafe redirects and network targets, and expose stable typed errors.
   Never log nested upstream errors or raw credentials.
+- Use go-ethereum's exported types directly for matching Ethereum protocol
+  semantics; do not maintain replacement protocol models or aliases in
+  `internal/ethrpc`. Keep RPC ingestion raw-first: supported transaction types
+  0 through 4 use geth as their typed authority, unsupported future types fail
+  permanently before any block write or coverage advance, and explicit
+  transport, redaction, persistence, and public-contract adapters remain
+  repository-owned. Preserve the original block's top-level JSON shape in
+  `blocks.raw`; PoW uncle headers may appear only in reserved versioned
+  root-level metadata that `DecodeStoredBlock` removes. Legacy empty-uncle rows
+  decode directly. A legacy row with non-empty uncle hashes but no headers
+  fails permanently with `ErrStoredUncleHeadersUnavailable` and requires an
+  exact endpoint- and block-identity-bound RPC repair before it can become a
+  verified bundle.
 - Public quantities beyond JavaScript's safe integer range are strings. Public
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
   `internal/db/queries/`. Regenerate outputs and never hand-edit generated

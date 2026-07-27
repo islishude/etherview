@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/indexer"
@@ -15,14 +16,14 @@ import (
 // must pin every returned bundle to one endpoint; syncer.RPCSource supplies
 // that guarantee through ethrpc.Fetcher.
 type BundleSource interface {
-	BundleByNumber(context.Context, ethrpc.Purpose, uint64) (ethrpc.Bundle, error)
+	BundleByNumber(context.Context, ethrpc.Purpose, uint64) (chainbundle.Bundle, error)
 }
 
 // BundleCanonicalizer is deliberately the same apply boundary used by normal
 // history synchronization. Maintenance must not invent a second canonicality
 // implementation or use the authoritative-head truncation path.
 type BundleCanonicalizer interface {
-	Refresh(context.Context, ethrpc.Bundle, store.RefreshOptions) (indexer.ApplyResult, error)
+	Refresh(context.Context, chainbundle.Bundle, store.RefreshOptions) (indexer.ApplyResult, error)
 }
 
 type CanonicalBlockSource interface {
@@ -130,17 +131,9 @@ func (executor *Executor) Reindex(ctx context.Context, request Request) error {
 		if reference.Number != number {
 			return fmt.Errorf("reindex %s block %d: canonical source returned height %d", stage, number, reference.Number)
 		}
-		hashBytes, err := reference.Hash.Bytes()
-		if err != nil {
-			return fmt.Errorf("reindex %s block %d: decode canonical hash: %w", stage, number, err)
-		}
-		blockHash, err := enrich.WordFromBytes(hashBytes)
-		if err != nil {
-			return fmt.Errorf("reindex %s block %d: convert canonical hash: %w", stage, number, err)
-		}
 		result, err := executor.queue.Enqueue(ctx, enrich.EnqueueRequest{
 			Stage: stage, ChainID: executor.chainID,
-			BlockHash: blockHash, BlockNumber: number,
+			BlockHash: reference.Hash, BlockNumber: number,
 		})
 		if err != nil {
 			return fmt.Errorf("reindex %s block %d: enqueue durable job: %w", stage, number, err)

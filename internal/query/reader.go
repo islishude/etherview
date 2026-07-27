@@ -4,12 +4,12 @@ package query
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -287,11 +287,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 	if hash, isHash, err := parseHashIdentifier(identifier); err != nil {
 		return gen.Block{}, err
 	} else if isHash {
-		hashBytes, err := hash.Bytes()
-		if err != nil {
-			return gen.Block{}, err
-		}
-		rows, err := r.db.QueryContext(ctx, blockByHashSQL, r.chainID, hashBytes)
+		rows, err := r.db.QueryContext(ctx, blockByHashSQL, r.chainID, hash.Bytes())
 		if err != nil {
 			return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
 		}
@@ -335,11 +331,7 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("invalid transaction hash: %w", err)
 	}
-	hashBytes, err := hash.Bytes()
-	if err != nil {
-		return gen.Transaction{}, err
-	}
-	rows, err := r.db.QueryContext(ctx, transactionByHashSQL, r.chainID, hashBytes)
+	rows, err := r.db.QueryContext(ctx, transactionByHashSQL, r.chainID, hash.Bytes())
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
 	}
@@ -558,22 +550,22 @@ func parseBlockNumber(value string) (uint64, error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func parseHashIdentifier(value string) (ethrpc.Hash, bool, error) {
+func parseHashIdentifier(value string) (common.Hash, bool, error) {
 	if len(value) != 66 {
-		return "", false, nil
+		return common.Hash{}, false, nil
 	}
 	hash, err := ethrpc.ParseHash(value)
 	if err != nil {
-		return "", false, fmt.Errorf("invalid hash identifier: %w", err)
+		return common.Hash{}, false, fmt.Errorf("invalid hash identifier: %w", err)
 	}
 	return hash, true, nil
 }
 
-func decodeHashBytes(value []byte) (ethrpc.Hash, error) {
-	if len(value) != 32 {
-		return "", fmt.Errorf("database hash has %d bytes, expected 32", len(value))
+func decodeHashBytes(value []byte) (common.Hash, error) {
+	if len(value) != common.HashLength {
+		return common.Hash{}, fmt.Errorf("database hash has %d bytes, expected 32", len(value))
 	}
-	return ethrpc.ParseHash("0x" + hex.EncodeToString(value))
+	return common.BytesToHash(value), nil
 }
 
 func equalBytes(left, right []byte) bool {

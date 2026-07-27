@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/app"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/cli"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -228,7 +229,10 @@ func TestCLIOperatorLabelsAreCanonicalChainScopedAndSearchable(t *testing.T) {
 		t.Fatal(err)
 	}
 	blockHash, transactionHash := testHash(82_000), testHash(82_100)
-	commitCanonical(t, ctx, repository, testBundle(0, blockHash, testHash(0), transactionHash, "label-chain-one"))
+	chainOne := testBundle(0, blockHash, testHash(0), transactionHash, "label-chain-one")
+	blockHash = chainOne.Block.Hash()
+	transactionHash = chainOne.Block.Transactions()[0].Hash()
+	commitCanonical(t, ctx, repository, chainOne)
 	chainTwo := testBundle(0, testHash(83_000), testHash(0), testHash(83_100), "label-chain-two")
 	chainTwoRef := mustBlockRef(t, chainTwo)
 	if err := repository.CommitCanonical(ctx, "2", chainTwo, store.NewCoreCheckpoint(chainTwoRef)); err != nil {
@@ -374,6 +378,8 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	parentHash := testHash(0)
 	transactionHash := testHash(80_100)
 	original := testBundle(0, blockHash, parentHash, transactionHash, "repair-original")
+	blockHash = original.Block.Hash()
+	transactionHash = original.Block.Transactions()[0].Hash()
 	commitCanonical(t, ctx, repository, original)
 	canonicalBefore, found, err := repository.CanonicalBlock(ctx, "1", 0)
 	if err != nil || !found {
@@ -400,16 +406,8 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create enrichment queue: %v", err)
 	}
-	blockHashBytes, err := blockHash.Bytes()
-	if err != nil {
-		t.Fatalf("decode block hash: %v", err)
-	}
-	word, err := enrich.WordFromBytes(blockHashBytes)
-	if err != nil {
-		t.Fatalf("convert block hash: %v", err)
-	}
 	queued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
-		Stage: enrich.TokenStage, ChainID: "1", BlockHash: word, BlockNumber: 0,
+		Stage: enrich.TokenStage, ChainID: "1", BlockHash: blockHash, BlockNumber: 0,
 	})
 	if err != nil || !queued.Created {
 		t.Fatalf("enqueue active token job: created=%t error=%v", queued.Created, err)
@@ -419,7 +417,10 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 		t.Fatalf("claim active token job: found=%t error=%v", found, err)
 	}
 
-	refreshed := testBundle(0, blockHash, parentHash, transactionHash, "repair-refreshed")
+	refreshed, err := withIntegrationBlockRawField(original, "integrationVariant", "repair-refreshed")
+	if err != nil {
+		t.Fatalf("build refreshed raw block: %v", err)
+	}
 	source := &maintenanceBundleSource{bundle: refreshed}
 	canonicalizer := &indexer.Canonicalizer{
 		ChainID: "1", StartBlock: 0, MaxReorgDepth: 128, Repository: repository,
@@ -513,7 +514,7 @@ func isolatedDatabaseURL(t *testing.T, schema string) string {
 }
 
 type maintenanceBundleSource struct {
-	bundle   ethrpc.Bundle
+	bundle   chainbundle.Bundle
 	purposes []ethrpc.Purpose
 	numbers  []uint64
 }
@@ -522,7 +523,7 @@ func (source *maintenanceBundleSource) BundleByNumber(
 	_ context.Context,
 	purpose ethrpc.Purpose,
 	number uint64,
-) (ethrpc.Bundle, error) {
+) (chainbundle.Bundle, error) {
 	source.purposes = append(source.purposes, purpose)
 	source.numbers = append(source.numbers, number)
 	return source.bundle, nil

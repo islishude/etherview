@@ -10,6 +10,10 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -65,7 +69,7 @@ func (limits ProxyLimits) validate() error {
 }
 
 type proxyCandidate struct {
-	address Address
+	address common.Address
 	force   bool
 	sources map[string]struct{}
 }
@@ -89,10 +93,10 @@ func (candidate proxyCandidate) sourceList() []string {
 
 type proxyResolution struct {
 	kind               ProxyKind
-	implementation     Address
+	implementation     common.Address
 	implementationCode []byte
-	implementationHash Word
-	beacon             *Address
+	implementationHash common.Hash
+	beacon             *common.Address
 	minimalExact       bool
 	immutableArgsBytes int
 }
@@ -100,7 +104,7 @@ type proxyResolution struct {
 type proxyDetection struct {
 	candidate proxyCandidate
 	code      []byte
-	codeHash  Word
+	codeHash  common.Hash
 	proxy     *proxyResolution
 	rejected  string
 }
@@ -179,9 +183,9 @@ func (processor *PostgresProxyProcessor) loadCandidates(ctx context.Context, job
 	if !canonical {
 		return nil, false, nil
 	}
-	candidates := make(map[Address]proxyCandidate)
-	add := func(address Address, source string, force bool) error {
-		if address == (Address{}) {
+	candidates := make(map[common.Address]proxyCandidate)
+	add := func(address common.Address, source string, force bool) error {
+		if address == (common.Address{}) {
 			return Permanent(errors.New("proxy discovery produced the zero address"))
 		}
 		candidate := candidates[address]
@@ -231,7 +235,7 @@ func (processor *PostgresProxyProcessor) loadCandidates(ctx context.Context, job
 	return result, true, nil
 }
 
-type proxyCandidateAdder func(Address, string, bool) error
+type proxyCandidateAdder func(common.Address, string, bool) error
 
 func (processor *PostgresProxyProcessor) loadGenesisCandidates(
 	ctx context.Context,
@@ -263,11 +267,10 @@ func (processor *PostgresProxyProcessor) loadGenesisCandidates(
 		if err := rows.Scan(&addressBytes); err != nil {
 			return fmt.Errorf("scan genesis proxy candidate: %w", err)
 		}
-		if len(addressBytes) != len(Address{}) {
+		if len(addressBytes) != common.AddressLength {
 			return Permanent(errors.New("stored genesis address is invalid"))
 		}
-		var address Address
-		copy(address[:], addressBytes)
+		address := common.BytesToAddress(addressBytes)
 		if err := add(address, proxySourceGenesis, true); err != nil {
 			return err
 		}
@@ -297,19 +300,15 @@ func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.C
 		if err != nil {
 			return Permanent(errors.New("stored proxy transaction hash is invalid"))
 		}
-		var wire ethrpc.Transaction
+		var wire types.Transaction
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return Permanent(errors.New("stored proxy transaction is invalid"))
 		}
-		if err := validateABITransactionIdentity(wire, job, hash); err != nil {
+		if err := validateABITransactionIdentity(&wire, raw, job, hash); err != nil {
 			return Permanent(fmt.Errorf("proxy transaction identity: %w", err))
 		}
-		if wire.To != nil {
-			address, err := ParseAddress(wire.To.String())
-			if err != nil {
-				return Permanent(errors.New("stored proxy transaction target is invalid"))
-			}
-			if err := add(address, proxySourceTransaction, false); err != nil {
+		if address := wire.To(); address != nil {
+			if err := add(*address, proxySourceTransaction, false); err != nil {
 				return err
 			}
 		}
@@ -343,19 +342,15 @@ func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Conte
 		if err != nil {
 			return Permanent(errors.New("stored proxy receipt hash is invalid"))
 		}
-		var wire ethrpc.Receipt
+		var wire types.Receipt
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return Permanent(errors.New("stored proxy receipt is invalid"))
 		}
 		if err := validateProxyReceipt(wire, job, uint64(index), hash); err != nil {
 			return Permanent(err)
 		}
-		if wire.ContractAddress != nil {
-			address, err := ParseAddress(wire.ContractAddress.String())
-			if err != nil {
-				return Permanent(errors.New("stored creation address is invalid"))
-			}
-			if err := add(address, proxySourceReceipt, true); err != nil {
+		if wire.ContractAddress != (common.Address{}) {
+			if err := add(wire.ContractAddress, proxySourceReceipt, true); err != nil {
 				return err
 			}
 		}
@@ -366,13 +361,18 @@ func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Conte
 	return nil
 }
 
-func validateProxyReceipt(wire ethrpc.Receipt, job Job, index uint64, hash Word) error {
-	wireIndex, err := wire.TransactionIndex.Uint64()
-	if err != nil || wireIndex != index || wire.TransactionHash.String() != hash.String() {
+func validateProxyReceipt(
+	wire types.Receipt,
+	job Job,
+	index uint64,
+	hash common.Hash,
+) error {
+	if uint64(wire.TransactionIndex) != index || wire.TxHash != hash {
 		return errors.New("stored proxy receipt transaction identity mismatch")
 	}
-	wireNumber, err := wire.BlockNumber.Uint64()
-	if err != nil || wireNumber != job.BlockNumber || wire.BlockHash.String() != job.BlockHash.String() {
+	if wire.BlockNumber == nil || !wire.BlockNumber.IsUint64() ||
+		wire.BlockNumber.Uint64() != job.BlockNumber ||
+		wire.BlockHash != job.BlockHash {
 		return errors.New("stored proxy receipt block identity mismatch")
 	}
 	return nil
@@ -394,16 +394,15 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(ctx context.Context, 
 		if err := rows.Scan(&index, &hashBytes, &addressBytes, &topicBytes, &raw); err != nil {
 			return fmt.Errorf("scan proxy log target: %w", err)
 		}
-		if index < 0 || len(addressBytes) != 20 {
+		if index < 0 || len(addressBytes) != common.AddressLength {
 			return Permanent(errors.New("stored proxy log identity is invalid"))
 		}
 		hash, err := WordFromBytes(hashBytes)
 		if err != nil {
 			return Permanent(errors.New("stored proxy log transaction hash is invalid"))
 		}
-		var address Address
-		copy(address[:], addressBytes)
-		var wire ethrpc.Log
+		address := common.BytesToAddress(addressBytes)
+		var wire types.Log
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return Permanent(errors.New("stored proxy log is invalid"))
 		}
@@ -413,7 +412,7 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(ctx context.Context, 
 		force := false
 		if len(topicBytes) != 0 {
 			topic, err := WordFromBytes(topicBytes)
-			if err != nil || len(wire.Topics) == 0 || wire.Topics[0].String() != topic.String() {
+			if err != nil || len(wire.Topics) == 0 || wire.Topics[0] != topic {
 				return Permanent(errors.New("stored proxy log topic is invalid"))
 			}
 			force = topic == proxyUpgradedTopic || topic == proxyBeaconUpgradedTopic
@@ -452,21 +451,19 @@ func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context
 			return fmt.Errorf("scan proxy trace target: %w", err)
 		}
 		if len(toBytes) != 0 {
-			if len(toBytes) != 20 {
+			if len(toBytes) != common.AddressLength {
 				return Permanent(errors.New("stored proxy trace target is invalid"))
 			}
-			var address Address
-			copy(address[:], toBytes)
+			address := common.BytesToAddress(toBytes)
 			if err := add(address, proxySourceTrace, false); err != nil {
 				return err
 			}
 		}
 		if !reverted && (callType == "CREATE" || callType == "CREATE2") && len(createdBytes) != 0 {
-			if len(createdBytes) != 20 {
+			if len(createdBytes) != common.AddressLength {
 				return Permanent(errors.New("stored proxy trace creation address is invalid"))
 			}
-			var address Address
-			copy(address[:], createdBytes)
+			address := common.BytesToAddress(createdBytes)
 			if err := add(address, proxySourceTraceCreate, true); err != nil {
 				return err
 			}
@@ -493,11 +490,10 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(ctx context.Contex
 		if err := rows.Scan(&addressBytes); err != nil {
 			return fmt.Errorf("scan exact proxy replay target: %w", err)
 		}
-		if len(addressBytes) != 20 {
+		if len(addressBytes) != common.AddressLength {
 			return Permanent(errors.New("stored exact proxy address is invalid"))
 		}
-		var address Address
-		copy(address[:], addressBytes)
+		address := common.BytesToAddress(addressBytes)
 		if err := add(address, proxySourceReplay, true); err != nil {
 			return err
 		}
@@ -508,7 +504,7 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(ctx context.Contex
 	return nil
 }
 
-func (processor *PostgresProxyProcessor) hasCanonicalCodeHistory(ctx context.Context, job Job, address Address) (bool, error) {
+func (processor *PostgresProxyProcessor) hasCanonicalCodeHistory(ctx context.Context, job Job, address common.Address) (bool, error) {
 	var exists bool
 	if err := processor.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
@@ -527,7 +523,7 @@ func (processor *PostgresProxyProcessor) hasCanonicalCodeHistory(ctx context.Con
 }
 
 type rpcProxyDetector struct {
-	caller ethrpc.Caller
+	caller rpcCaller
 	limits ProxyLimits
 }
 
@@ -535,7 +531,7 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 	if detector.caller == nil {
 		return nil, errors.New("proxy RPC detector is not configured")
 	}
-	blockReference := map[string]any{"blockHash": job.BlockHash.String(), "requireCanonical": true}
+	blockReference := rpc.BlockNumberOrHashWithHash(job.BlockHash, true)
 	result := make([]proxyDetection, 0, len(candidates))
 	for _, candidate := range candidates {
 		detection, err := detector.detect(ctx, candidate, blockReference)
@@ -547,7 +543,11 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 	return result, nil
 }
 
-func (detector rpcProxyDetector) detect(ctx context.Context, candidate proxyCandidate, blockReference map[string]any) (proxyDetection, error) {
+func (detector rpcProxyDetector) detect(
+	ctx context.Context,
+	candidate proxyCandidate,
+	blockReference rpc.BlockNumberOrHash,
+) (proxyDetection, error) {
 	code, err := detector.getCode(ctx, candidate.address, blockReference)
 	if err != nil {
 		return proxyDetection{}, err
@@ -557,7 +557,7 @@ func (detector rpcProxyDetector) detect(ctx context.Context, candidate proxyCand
 		return detection, nil
 	}
 	if minimal, ok := DetectEIP1167(code); ok {
-		if minimal.Implementation == (Address{}) {
+		if minimal.Implementation == (common.Address{}) {
 			detection.rejected = "minimal_zero_implementation"
 			return detection, nil
 		}
@@ -602,7 +602,7 @@ func (detector rpcProxyDetector) detect(ctx context.Context, candidate proxyCand
 	}
 	reference := references[0]
 	implementation := reference.Target
-	var beacon *Address
+	var beacon *common.Address
 	if reference.Kind == ProxyBeacon {
 		beaconAddress := reference.Target
 		beacon = &beaconAddress
@@ -635,15 +635,18 @@ func (detector rpcProxyDetector) detect(ctx context.Context, candidate proxyCand
 	return detection, nil
 }
 
-func (detector rpcProxyDetector) getCode(ctx context.Context, address Address, blockReference map[string]any) ([]byte, error) {
-	var encoded ethrpc.Data
-	if err := detector.caller.Call(ctx, "eth_getCode", []any{address.String(), blockReference}, &encoded); err != nil {
+func (detector rpcProxyDetector) getCode(
+	ctx context.Context,
+	address common.Address,
+	blockReference rpc.BlockNumberOrHash,
+) ([]byte, error) {
+	var encoded hexutil.Bytes
+	if err := detector.caller.CallContext(
+		ctx, &encoded, "eth_getCode", address, blockReference,
+	); err != nil {
 		return nil, exactStateRPCError(ctx, "eth_getCode", err)
 	}
-	code, err := encoded.Bytes()
-	if err != nil {
-		return nil, Permanent(errors.New("eth_getCode returned invalid bytecode"))
-	}
+	code := []byte(encoded)
 	if len(code) > detector.limits.MaxCodeBytes {
 		return nil, Permanent(errors.New("contract bytecode exceeds proxy detection limit"))
 	}
@@ -656,35 +659,48 @@ func (detector rpcProxyDetector) getCode(ctx context.Context, address Address, b
 	return code, nil
 }
 
-func (detector rpcProxyDetector) getStorage(ctx context.Context, address Address, slot Word, blockReference map[string]any) (Word, error) {
-	var encoded ethrpc.Data
-	if err := detector.caller.Call(ctx, "eth_getStorageAt", []any{address.String(), slot.String(), blockReference}, &encoded); err != nil {
-		return Word{}, exactStateRPCError(ctx, "eth_getStorageAt", err)
+func (detector rpcProxyDetector) getStorage(
+	ctx context.Context,
+	address common.Address,
+	slot common.Hash,
+	blockReference rpc.BlockNumberOrHash,
+) (common.Hash, error) {
+	var encoded hexutil.Bytes
+	if err := detector.caller.CallContext(
+		ctx, &encoded, "eth_getStorageAt", address, slot, blockReference,
+	); err != nil {
+		return common.Hash{}, exactStateRPCError(ctx, "eth_getStorageAt", err)
 	}
-	value, err := encoded.Bytes()
-	if err != nil || len(value) != 32 {
-		return Word{}, Permanent(errors.New("eth_getStorageAt returned a non-word value"))
+	value := []byte(encoded)
+	if len(value) != common.HashLength {
+		return common.Hash{}, Permanent(errors.New("eth_getStorageAt returned a non-word value"))
 	}
 	return WordFromBytes(value)
 }
 
-func (detector rpcProxyDetector) beaconImplementation(ctx context.Context, beacon Address, blockReference map[string]any) (Address, bool, error) {
-	selector := SignatureSelector("implementation()")
-	request := map[string]any{"to": beacon.String(), "data": ethrpc.DataFromBytes(selector[:]).String()}
-	var encoded ethrpc.Data
-	if err := detector.caller.Call(ctx, "eth_call", []any{request, blockReference}, &encoded); err != nil {
-		if executionReverted(err) {
-			return Address{}, false, nil
-		}
-		return Address{}, false, exactStateRPCError(ctx, "eth_call", err)
-	}
-	value, err := encoded.Bytes()
+func (detector rpcProxyDetector) beaconImplementation(
+	ctx context.Context,
+	beacon common.Address,
+	blockReference rpc.BlockNumberOrHash,
+) (common.Address, bool, error) {
+	input, err := packStateProbe("implementation")
 	if err != nil {
-		return Address{}, false, Permanent(errors.New("beacon implementation RPC returned invalid data"))
+		return common.Address{}, false, Permanent(err)
 	}
+	request := map[string]any{"to": beacon, "data": hexutil.Bytes(input)}
+	var encoded hexutil.Bytes
+	if err := detector.caller.CallContext(
+		ctx, &encoded, "eth_call", request, blockReference,
+	); err != nil {
+		if executionReverted(err) {
+			return common.Address{}, false, nil
+		}
+		return common.Address{}, false, exactStateRPCError(ctx, "eth_call", err)
+	}
+	value := []byte(encoded)
 	implementation, err := ParseBeaconImplementation(value)
 	if err != nil {
-		return Address{}, false, nil
+		return common.Address{}, false, nil
 	}
 	return implementation, true, nil
 }
@@ -710,7 +726,7 @@ func (processor *PostgresProxyProcessor) persistTx(
 		outcome = "stale_canonical_skipped"
 		detections = nil
 	}
-	codeObservations := make(map[Address]proxyCodeObservation)
+	codeObservations := make(map[common.Address]proxyCodeObservation)
 	proxyCount := 0
 	rejectedCount := 0
 	for _, detection := range detections {
@@ -731,11 +747,11 @@ func (processor *PostgresProxyProcessor) persistTx(
 			return StageResult{}, Permanent(err)
 		}
 	}
-	addresses := make([]Address, 0, len(codeObservations))
+	addresses := make([]common.Address, 0, len(codeObservations))
 	for address := range codeObservations {
 		addresses = append(addresses, address)
 	}
-	slices.SortFunc(addresses, func(left, right Address) int { return bytes.Compare(left[:], right[:]) })
+	slices.SortFunc(addresses, func(left, right common.Address) int { return bytes.Compare(left[:], right[:]) })
 	for _, address := range addresses {
 		if err := persistProxyCodeObservation(ctx, tx, job, codeObservations[address]); err != nil {
 			return StageResult{}, err
@@ -770,13 +786,13 @@ func (processor *PostgresProxyProcessor) persistTx(
 }
 
 type proxyCodeObservation struct {
-	address  Address
-	codeHash Word
+	address  common.Address
+	codeHash common.Hash
 	code     []byte
 }
 
-func mergeProxyCodeObservation(observations map[Address]proxyCodeObservation, address Address, hash Word, code []byte) error {
-	if address == (Address{}) || hash.IsZero() {
+func mergeProxyCodeObservation(observations map[common.Address]proxyCodeObservation, address common.Address, hash common.Hash, code []byte) error {
+	if address == (common.Address{}) || hash == (common.Hash{}) {
 		return errors.New("proxy code observation identity is invalid")
 	}
 	if existing, exists := observations[address]; exists {

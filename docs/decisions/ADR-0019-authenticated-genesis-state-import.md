@@ -27,11 +27,15 @@ repair it because the result would no longer describe genesis.
   an explicit non-zero lowercase SHA-256 digest of the exact response bytes and
   must match before parsing or importing. No HTTP header or sidecar checksum is
   trusted implicitly.
-- Import computes the Ethereum allocation trie and requires its root to equal
-  the exact stored canonical block-zero `state_root`. It also requires the
-  document's resulting block identity to match the configured and stored
-  genesis hash. A mismatch or malformed account is a startup/import failure and
-  publishes no partial state.
+- Import decodes the document into go-ethereum `core.Genesis` after the bounded
+  source checks. `core.Genesis.ToBlock()` is authoritative for allocation-trie
+  root calculation, Genesis header defaults and fork semantics, and the
+  resulting block identity; Etherview does not maintain a parallel block
+  constructor. The authoritative root must equal the exact stored canonical
+  block-zero `state_root`, and the block hash must match the configured and
+  stored genesis hash. Per-account observations are derived from the same
+  authenticated allocation. A mismatch or malformed account is a
+  startup/import failure and publishes no partial state.
 - Remote import first waits for canonical block zero. Sync replicas coordinate
   with a per-chain PostgreSQL session advisory lock and recheck durable
   completion after acquiring it, so only one replica fetches. The HTTP request,
@@ -71,6 +75,9 @@ repair it because the result would no longer describe genesis.
 - The explorer can prove that displayed genesis accounts are covered by the
   same state root and block identity as its indexed chain without persisting
   raw storage slots.
+- Genesis construction follows the reviewed go-ethereum semantics. Dependency
+  upgrades therefore require the Genesis compatibility review in
+  [ADR-0022](ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md).
 - Adding the remote bootstrap source and checksum does not alter the persistent
   schema, native API, or embedded SPA protocol.
 - Persistent schema, public API, deployment configuration, proxy replay, and

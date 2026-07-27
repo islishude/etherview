@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -69,19 +70,11 @@ func (r *PostgresReader) validateBlockCursor(ctx context.Context, tx *sql.Tx, cu
 	if err != nil {
 		return fmt.Errorf("%w: invalid boundary hash", ErrInvalidCursor)
 	}
-	snapshotHashBytes, err := snapshotHash.Bytes()
-	if err != nil {
-		return fmt.Errorf("%w: invalid snapshot hash", ErrInvalidCursor)
-	}
-	beforeHashBytes, err := beforeHash.Bytes()
-	if err != nil {
-		return fmt.Errorf("%w: invalid boundary hash", ErrInvalidCursor)
-	}
 	var valid bool
 	if err := tx.QueryRowContext(ctx, validateCursorSQL,
 		r.chainID,
-		strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHashBytes,
-		strconv.FormatUint(cursor.BeforeNumber, 10), beforeHashBytes,
+		strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
+		strconv.FormatUint(cursor.BeforeNumber, 10), beforeHash.Bytes(),
 	).Scan(&valid); err != nil {
 		return fmt.Errorf("validate block cursor: %w", err)
 	}
@@ -94,15 +87,11 @@ func (r *PostgresReader) validateBlockCursor(ctx context.Context, tx *sql.Tx, cu
 func (r *PostgresReader) searchHash(
 	ctx context.Context,
 	queryer searchQueryer,
-	hash ethrpc.Hash,
+	hash common.Hash,
 	generation int64,
 	limit int,
 ) ([]gen.SearchResult, error) {
-	hashBytes, err := hash.Bytes()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := queryer.QueryContext(ctx, searchHashSQL, r.chainID, hashBytes, generation, limit)
+	rows, err := queryer.QueryContext(ctx, searchHashSQL, r.chainID, hash.Bytes(), generation, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search hash: %w", err)
 	}
@@ -247,13 +236,9 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 	if err != nil {
 		return fmt.Errorf("%w: search cursor hash is invalid", ErrInvalidCursor)
 	}
-	hashBytes, err := hash.Bytes()
-	if err != nil {
-		return fmt.Errorf("%w: search cursor hash is invalid", ErrInvalidCursor)
-	}
 	var valid bool
 	if err := tx.QueryRowContext(ctx, validateSearchCursorSQL,
-		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), hashBytes, cursor.Generation,
+		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), hash.Bytes(), cursor.Generation,
 	).Scan(&valid); err != nil {
 		return fmt.Errorf("validate search cursor: %w", err)
 	}
@@ -285,10 +270,6 @@ func (r *PostgresReader) resolvedNameVisible(
 	if err != nil {
 		return false, fmt.Errorf("validate resolved name address: %w", err)
 	}
-	addressBytes, err := parsed.Bytes()
-	if err != nil {
-		return false, fmt.Errorf("validate resolved name address: %w", err)
-	}
 	var visible bool
 	if err := tx.QueryRowContext(
 		ctx,
@@ -297,7 +278,7 @@ func (r *PostgresReader) resolvedNameVisible(
 		strings.ToLower(strings.TrimSpace(name)),
 		strconv.FormatUint(snapshotNumber, 10),
 		generation,
-		addressBytes,
+		parsed.Bytes(),
 	).Scan(&visible); err != nil {
 		return false, fmt.Errorf("validate resolved name snapshot: %w", err)
 	}

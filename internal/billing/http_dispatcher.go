@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
@@ -38,7 +39,7 @@ type PaymentLedger interface {
 	StartHandler(context.Context, string, string, time.Time) (Payment, error)
 	BeginSettlement(context.Context, string, string, time.Time) (Payment, error)
 	MarkSettlementUnknown(context.Context, string, string, time.Time) (Payment, error)
-	MarkSettled(context.Context, string, string, TransactionHash, time.Time) (Payment, error)
+	MarkSettled(context.Context, string, string, common.Hash, time.Time) (Payment, error)
 	MarkFailed(context.Context, string, string, string, time.Time) (Payment, error)
 }
 
@@ -52,7 +53,7 @@ type PaymentFacilitator interface {
 // facilitator has verified the payer. Missing users are not errors and payment
 // never depends on a browser session.
 type PayerUserResolver interface {
-	UserIDForPayer(context.Context, Address) (string, bool, error)
+	UserIDForPayer(context.Context, common.Address) (string, bool, error)
 }
 
 // RequestObserver receives only the static operation ID and one closed
@@ -77,9 +78,9 @@ type HTTPDispatcher struct {
 	chainID           uint64
 	network           string
 	asset             string
-	assetAddress      Address
+	assetAddress      common.Address
 	recipient         string
-	recipientAddress  Address
+	recipientAddress  common.Address
 	assetName         string
 	assetVersion      string
 	maxTimeoutSeconds int
@@ -498,7 +499,7 @@ func (dispatcher *HTTPDispatcher) writeDuplicate(writer http.ResponseWriter, pay
 
 func (dispatcher *HTTPDispatcher) resolveUser(
 	ctx context.Context,
-	payer Address,
+	payer common.Address,
 ) (*string, error) {
 	if dispatcher.userResolver == nil {
 		return nil, nil
@@ -562,8 +563,8 @@ func optionalAPIKeyPrefix(identity APIKeyIdentity) *string {
 	return &value
 }
 
-func addressFromHex(value string) (Address, bool) {
-	var result Address
+func addressFromHex(value string) (common.Address, bool) {
+	var result common.Address
 	canonical, ok := canonicalFixedHex(value, len(result))
 	if !ok {
 		return result, false
@@ -576,8 +577,8 @@ func addressFromHex(value string) (Address, bool) {
 	return result, true
 }
 
-func transactionHashFromHex(value string) (TransactionHash, bool) {
-	var result TransactionHash
+func transactionHashFromHex(value string) (common.Hash, bool) {
+	var result common.Hash
 	canonical, ok := canonicalFixedHex(value, len(result))
 	if !ok {
 		return result, false

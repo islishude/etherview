@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -155,7 +157,7 @@ type outboxMessage struct {
 	Payload     json.RawMessage
 	Attempts    int64
 	Generation  int64
-	BlockHash   Word
+	BlockHash   common.Hash
 	BlockNumber uint64
 }
 

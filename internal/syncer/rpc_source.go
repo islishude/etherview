@@ -2,9 +2,12 @@ package syncer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -19,24 +22,24 @@ func (s *RPCSource) Head(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var quantity ethrpc.Quantity
-	if err := endpoint.Client.Call(ctx, "eth_blockNumber", nil, &quantity); err != nil {
+	var quantity hexutil.Uint64
+	if err := endpoint.CallContext(ctx, &quantity, "eth_blockNumber"); err != nil {
 		s.Pool.ReportFailure(endpoint.Name)
-		return 0, err
+		return 0, ethrpc.SanitizeError(err)
 	}
 	s.Pool.ReportSuccess(endpoint.Name)
-	return quantity.Uint64()
+	return uint64(quantity), nil
 }
 
-func (s *RPCSource) BundleByNumber(ctx context.Context, purpose ethrpc.Purpose, number uint64) (ethrpc.Bundle, error) {
+func (s *RPCSource) BundleByNumber(ctx context.Context, purpose ethrpc.Purpose, number uint64) (chainbundle.Bundle, error) {
 	endpoint, err := s.endpoint(purpose)
 	if err != nil {
-		return ethrpc.Bundle{}, err
+		return chainbundle.Bundle{}, err
 	}
-	bundle, err := s.Fetcher.ByNumber(ctx, endpoint, ethrpc.QuantityFromUint64(number))
+	bundle, err := s.Fetcher.ByNumber(ctx, endpoint, number)
 	if err != nil {
 		s.Pool.ReportFailure(endpoint.Name)
-		return ethrpc.Bundle{}, err
+		return chainbundle.Bundle{}, err
 	}
 	s.Pool.ReportSuccess(endpoint.Name)
 	return bundle, nil
@@ -80,16 +83,25 @@ func (s *RPCSource) endpoint(purpose ethrpc.Purpose) (*ethrpc.Endpoint, error) {
 }
 
 func blockRefByTag(ctx context.Context, endpoint *ethrpc.Endpoint, tag string) (*store.BlockRef, error) {
-	var block *ethrpc.Block
-	if err := endpoint.Client.Call(ctx, "eth_getBlockByNumber", []any{tag, false}, &block); err != nil {
-		return nil, fmt.Errorf("fetch %s block: %w", tag, err)
+	var raw json.RawMessage
+	if err := endpoint.CallContext(
+		ctx, &raw, "eth_getBlockByNumber", tag, false,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"fetch %s block: %w",
+			tag,
+			ethrpc.SanitizeError(err),
+		)
 	}
-	if block == nil || block.Number == nil || block.Hash == nil {
+	if len(raw) == 0 || string(raw) == "null" {
 		return nil, fmt.Errorf("fetch %s block: result is null or incomplete", tag)
 	}
-	number, err := block.Number.Uint64()
-	if err != nil {
-		return nil, err
+	header, err := chainbundle.DecodeHeader(raw)
+	if err != nil || header.Number == nil || !header.Number.IsUint64() {
+		return nil, fmt.Errorf("fetch %s block: result is invalid", tag)
 	}
-	return &store.BlockRef{Number: number, Hash: *block.Hash, ParentHash: block.ParentHash}, nil
+	return &store.BlockRef{
+		Number: header.Number.Uint64(), Hash: header.Hash(),
+		ParentHash: header.ParentHash,
+	}, nil
 }

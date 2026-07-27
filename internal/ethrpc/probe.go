@@ -8,6 +8,11 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type Availability string
@@ -30,15 +35,8 @@ const (
 )
 
 var (
-	// ErrHistoryUnavailable identifies an endpoint that definitively cannot
-	// return the configured starting block. Transient transport and upstream
-	// failures do not match this sentinel because their capability remains
-	// unknown and may recover without operator action.
 	ErrHistoryUnavailable = errors.New("RPC history is unavailable at the configured start block")
-	// ErrHistoryPruned is the narrower classification for an explicit JSON-RPC
-	// response stating that historical data was pruned. Every pruned error also
-	// matches ErrHistoryUnavailable.
-	ErrHistoryPruned = errors.New("RPC history was pruned at the configured start block")
+	ErrHistoryPruned      = errors.New("RPC history was pruned at the configured start block")
 )
 
 type HistoryUnavailableKind string
@@ -48,12 +46,11 @@ const (
 	HistoryPrunedResult      HistoryUnavailableKind = "history_pruned"
 )
 
-// HistoryUnavailableError is a stable, credential-free capability result.
-// It intentionally does not retain the upstream error: RPC messages are an
-// untrusted boundary and can contain endpoint credentials or provider data.
+// HistoryUnavailableError is a stable, credential-free capability result. It
+// intentionally does not retain the untrusted upstream error.
 type HistoryUnavailableError struct {
 	Kind       HistoryUnavailableKind
-	StartBlock Quantity
+	StartBlock uint64
 }
 
 func (e *HistoryUnavailableError) Error() string {
@@ -61,9 +58,9 @@ func (e *HistoryUnavailableError) Error() string {
 		return "<nil>"
 	}
 	if e.Kind == HistoryPrunedResult {
-		return fmt.Sprintf("%s: %s", ErrHistoryPruned, e.StartBlock)
+		return fmt.Sprintf("%s: %s", ErrHistoryPruned, hexutil.EncodeUint64(e.StartBlock))
 	}
-	return fmt.Sprintf("%s: %s", ErrHistoryUnavailable, e.StartBlock)
+	return fmt.Sprintf("%s: %s", ErrHistoryUnavailable, hexutil.EncodeUint64(e.StartBlock))
 }
 
 func (e *HistoryUnavailableError) Is(target error) bool {
@@ -75,7 +72,7 @@ func (e *HistoryUnavailableError) Is(target error) bool {
 
 type CapabilityReport struct {
 	ChainID            string
-	GenesisHash        Hash
+	GenesisHash        common.Hash
 	Methods            map[string]Availability
 	HistoryUnavailable *HistoryUnavailableError
 	Warnings           []string
@@ -102,12 +99,12 @@ func (r CapabilityReport) Status(capability string) Availability {
 
 type ChainIdentity struct {
 	ChainID     string
-	GenesisHash Hash
+	GenesisHash common.Hash
 }
 
 type ProbeOptions struct {
 	Expected   *ChainIdentity
-	StartBlock Quantity
+	StartBlock uint64
 }
 
 type IdentityMismatchError struct {
@@ -124,72 +121,64 @@ func ProbeEndpoint(ctx context.Context, endpoint *Endpoint, options ProbeOptions
 	if endpoint == nil || endpoint.Client == nil {
 		return CapabilityReport{}, errors.New("cannot probe a nil RPC endpoint")
 	}
-	if options.StartBlock == "" {
-		options.StartBlock = QuantityFromUint64(0)
-	}
 	report := CapabilityReport{Methods: make(map[string]Availability)}
-	var chainID Quantity
-	if err := endpoint.Client.Call(ctx, "eth_chainId", nil, &chainID); err != nil {
-		return report, fmt.Errorf("probe eth_chainId on %q: %w", endpoint.Name, err)
+	var chainID hexutil.Big
+	if err := endpoint.CallContext(ctx, &chainID, "eth_chainId"); err != nil {
+		return report, fmt.Errorf("probe eth_chainId on %q: %w", endpoint.Name, SanitizeError(err))
 	}
-	chainIDBig, err := chainID.Big()
-	if err != nil {
-		return report, fmt.Errorf("probe eth_chainId on %q: %w", endpoint.Name, err)
-	}
-	report.ChainID = chainIDBig.String()
-	var genesis *probeBlock
-	genesisErr := endpoint.Client.Call(ctx, "eth_getBlockByNumber", []any{"0x0", false}, &genesis)
+	report.ChainID = (*big.Int)(&chainID).String()
+	var genesis *types.Header
+	genesisErr := endpoint.CallContext(ctx, &genesis, "eth_getBlockByNumber", "0x0", false)
 	if genesisErr != nil {
-		if options.StartBlock == QuantityFromUint64(0) && isExplicitHistoryPruned(genesisErr) {
+		if options.StartBlock == 0 && isExplicitHistoryPruned(genesisErr) {
 			issue := setHistoryUnavailable(&report, options.StartBlock, HistoryPrunedResult)
 			return report, issue
 		}
-		return report, fmt.Errorf("probe genesis block on %q: %w", endpoint.Name, genesisErr)
+		return report, fmt.Errorf("probe genesis block on %q: %w", endpoint.Name, SanitizeError(genesisErr))
 	}
-	if genesis == nil || genesis.Hash == nil {
-		if options.StartBlock == QuantityFromUint64(0) {
+	if genesis == nil {
+		if options.StartBlock == 0 {
 			issue := setHistoryUnavailable(&report, options.StartBlock, HistoryUnavailableResult)
 			return report, issue
 		}
-		return report, fmt.Errorf("probe genesis block on %q: result is null or has no hash", endpoint.Name)
+		return report, fmt.Errorf("probe genesis block on %q: result is null", endpoint.Name)
 	}
-	report.GenesisHash = *genesis.Hash
+	report.GenesisHash = genesis.Hash()
 	if options.Expected != nil {
 		if options.Expected.ChainID != "" && options.Expected.ChainID != report.ChainID {
 			return report, &IdentityMismatchError{Field: "chain_id", Expected: options.Expected.ChainID, Actual: report.ChainID}
 		}
-		if options.Expected.GenesisHash != "" && !options.Expected.GenesisHash.Equal(report.GenesisHash) {
-			return report, &IdentityMismatchError{Field: "genesis_hash", Expected: options.Expected.GenesisHash.String(), Actual: report.GenesisHash.String()}
+		if options.Expected.GenesisHash != (common.Hash{}) && options.Expected.GenesisHash != report.GenesisHash {
+			return report, &IdentityMismatchError{
+				Field:    "genesis_hash",
+				Expected: options.Expected.GenesisHash.Hex(),
+				Actual:   report.GenesisHash.Hex(),
+			}
 		}
 	}
 
 	if endpoint.Supports(PurposeHead) {
-		probeBlockTag(ctx, endpoint.Client, "safe", CapabilitySafeTag, &report)
-		probeBlockTag(ctx, endpoint.Client, "finalized", CapabilityFinalizedTag, &report)
+		probeBlockTag(ctx, endpoint, "safe", CapabilitySafeTag, &report)
+		probeBlockTag(ctx, endpoint, "finalized", CapabilityFinalizedTag, &report)
 	}
 	if endpoint.Supports(PurposeHead) || endpoint.Supports(PurposeHistory) {
-		probeHistoricalBlock(ctx, endpoint.Client, options.StartBlock, &report)
-		probeBlockReceipts(ctx, endpoint.Client, options.StartBlock, &report)
+		probeHistoricalBlock(ctx, endpoint, options.StartBlock, &report)
+		probeBlockReceipts(ctx, endpoint, options.StartBlock, &report)
 	}
 	if endpoint.Supports(PurposeState) {
-		probeHistoricalState(ctx, endpoint.Client, options.StartBlock, &report)
+		probeHistoricalState(ctx, endpoint, options.StartBlock, &report)
 	}
 	if endpoint.Supports(PurposeTrace) || endpoint.Supports(PurposeMempool) {
-		probeModules(ctx, endpoint.Client, &report)
+		probeModules(ctx, endpoint, &report)
 	}
 	return report, nil
 }
 
-type probeBlock struct {
-	Hash   *Hash     `json:"hash"`
-	Number *Quantity `json:"number"`
-}
-
-func probeBlockTag(ctx context.Context, caller Caller, tag, capability string, report *CapabilityReport) {
-	var block *probeBlock
-	err := caller.Call(ctx, "eth_getBlockByNumber", []any{tag, false}, &block)
+func probeBlockTag(ctx context.Context, endpoint *Endpoint, tag, capability string, report *CapabilityReport) {
+	var header *types.Header
+	err := endpoint.CallContext(ctx, &header, "eth_getBlockByNumber", tag, false)
 	switch {
-	case err == nil && block != nil && block.Hash != nil:
+	case err == nil && header != nil:
 		report.Methods[capability] = AvailabilityAvailable
 	case err == nil:
 		report.Methods[capability] = AvailabilityUnavailable
@@ -197,15 +186,15 @@ func probeBlockTag(ctx context.Context, caller Caller, tag, capability string, r
 		report.Methods[capability] = AvailabilityUnavailable
 	default:
 		report.Methods[capability] = AvailabilityUnknown
-		report.Warnings = append(report.Warnings, fmt.Sprintf("%s probe failed: %v", capability, err))
+		report.Warnings = append(report.Warnings, capability+" probe failed")
 	}
 }
 
-func probeHistoricalBlock(ctx context.Context, caller Caller, start Quantity, report *CapabilityReport) {
-	var block *probeBlock
-	err := caller.Call(ctx, "eth_getBlockByNumber", []any{start.String(), false}, &block)
+func probeHistoricalBlock(ctx context.Context, endpoint *Endpoint, start uint64, report *CapabilityReport) {
+	var header *types.Header
+	err := endpoint.CallContext(ctx, &header, "eth_getBlockByNumber", hexutil.EncodeUint64(start), false)
 	switch {
-	case err == nil && block != nil && block.Hash != nil:
+	case err == nil && header != nil:
 		report.Methods[CapabilityHistoricalData] = AvailabilityAvailable
 	case err == nil:
 		_ = setHistoryUnavailable(report, start, HistoryUnavailableResult)
@@ -219,7 +208,7 @@ func probeHistoricalBlock(ctx context.Context, caller Caller, start Quantity, re
 
 func setHistoryUnavailable(
 	report *CapabilityReport,
-	start Quantity,
+	start uint64,
 	kind HistoryUnavailableKind,
 ) *HistoryUnavailableError {
 	report.Methods[CapabilityHistoricalData] = AvailabilityUnavailable
@@ -229,16 +218,16 @@ func setHistoryUnavailable(
 }
 
 func isExplicitHistoryPruned(err error) bool {
-	var rpcErr *RPCError
+	var rpcErr rpc.Error
 	if !errors.As(err, &rpcErr) || rpcErr == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(rpcErr.Message), "pruned")
+	return strings.Contains(strings.ToLower(rpcErr.Error()), "pruned")
 }
 
-func probeBlockReceipts(ctx context.Context, caller Caller, start Quantity, report *CapabilityReport) {
-	var receipts []Receipt
-	err := caller.Call(ctx, CapabilityBlockReceipts, []any{start.String()}, &receipts)
+func probeBlockReceipts(ctx context.Context, endpoint *Endpoint, start uint64, report *CapabilityReport) {
+	var receipts types.Receipts
+	err := endpoint.CallContext(ctx, &receipts, CapabilityBlockReceipts, hexutil.EncodeUint64(start))
 	switch err {
 	case nil:
 		report.Methods[CapabilityBlockReceipts] = AvailabilityAvailable
@@ -247,31 +236,37 @@ func probeBlockReceipts(ctx context.Context, caller Caller, start Quantity, repo
 			report.Methods[CapabilityBlockReceipts] = AvailabilityUnavailable
 		} else {
 			report.Methods[CapabilityBlockReceipts] = AvailabilityUnknown
-			report.Warnings = append(report.Warnings, fmt.Sprintf("block receipt probe failed: %v", err))
+			report.Warnings = append(report.Warnings, "block receipt probe failed")
 		}
 	}
 }
 
-func probeHistoricalState(ctx context.Context, caller Caller, start Quantity, report *CapabilityReport) {
-	var balance Quantity
-	err := caller.Call(ctx, "eth_getBalance", []any{"0x0000000000000000000000000000000000000000", start.String()}, &balance)
+func probeHistoricalState(ctx context.Context, endpoint *Endpoint, start uint64, report *CapabilityReport) {
+	var balance hexutil.Big
+	err := endpoint.CallContext(
+		ctx,
+		&balance,
+		"eth_getBalance",
+		common.Address{}.Hex(),
+		hexutil.EncodeUint64(start),
+	)
 	switch err {
 	case nil:
 		report.Methods[CapabilityHistoricalState] = AvailabilityAvailable
 	default:
 		report.Methods[CapabilityHistoricalState] = AvailabilityUnavailable
-		report.Warnings = append(report.Warnings, fmt.Sprintf("historical state probe failed: %v", err))
+		report.Warnings = append(report.Warnings, "historical state probe failed")
 	}
 }
 
-func probeModules(ctx context.Context, caller Caller, report *CapabilityReport) {
+func probeModules(ctx context.Context, endpoint *Endpoint, report *CapabilityReport) {
 	var modules map[string]string
-	err := caller.Call(ctx, "rpc_modules", nil, &modules)
+	err := endpoint.CallContext(ctx, &modules, "rpc_modules")
 	if err != nil {
 		report.Methods[CapabilityDebugTrace] = AvailabilityUnknown
 		report.Methods[CapabilityParityTrace] = AvailabilityUnknown
 		report.Methods[CapabilityTxPool] = AvailabilityUnknown
-		report.Warnings = append(report.Warnings, fmt.Sprintf("rpc_modules probe failed: %v", err))
+		report.Warnings = append(report.Warnings, "rpc_modules probe failed")
 		return
 	}
 	for capability, module := range map[string]string{
@@ -292,11 +287,7 @@ func NormalizeChainID(value string) (string, error) {
 		return "", errors.New("chain ID is empty")
 	}
 	if strings.HasPrefix(value, "0x") {
-		quantity, err := ParseQuantity(value)
-		if err != nil {
-			return "", err
-		}
-		integer, err := quantity.Big()
+		integer, err := ParseQuantity(value)
 		if err != nil {
 			return "", err
 		}
@@ -316,4 +307,33 @@ func SortedCapabilities(report CapabilityReport) []string {
 	}
 	sort.Strings(capabilities)
 	return capabilities
+}
+
+// SanitizeError removes provider-controlled message, data, body, and URL text
+// while retaining only stable local categories needed by callers.
+func SanitizeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	var status rpc.HTTPError
+	if errors.As(err, &status) {
+		return fmt.Errorf("JSON-RPC HTTP status %d", status.StatusCode)
+	}
+	var rpcErr rpc.Error
+	if errors.As(err, &rpcErr) {
+		return fmt.Errorf("JSON-RPC error code %d", rpcErr.ErrorCode())
+	}
+	if errors.Is(err, ErrInvalidResponse) {
+		return ErrInvalidResponse
+	}
+	if errors.Is(err, ErrResponseTooLarge) {
+		return ErrResponseTooLarge
+	}
+	return ErrTransport
 }

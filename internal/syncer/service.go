@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/indexer"
@@ -28,7 +29,7 @@ const (
 // consume a WebSocket wake or delay the next authoritative head poll.
 type Source interface {
 	Head(context.Context) (uint64, error)
-	BundleByNumber(context.Context, ethrpc.Purpose, uint64) (ethrpc.Bundle, error)
+	BundleByNumber(context.Context, ethrpc.Purpose, uint64) (chainbundle.Bundle, error)
 	Finality(context.Context) (safe, finalized *store.BlockRef, err error)
 }
 
@@ -279,7 +280,7 @@ func (s *Service) liveOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read authoritative canonical height: %w", err)
 	}
-	if canonicalExists && canonical.Hash.Equal(reference.Hash) {
+	if canonicalExists && canonical.Hash == reference.Hash {
 		if tipExists && tip.Number > head {
 			result, applyErr := s.Canonicalizer.ApplyHead(ctx, bundle)
 			if applyErr != nil {
@@ -302,7 +303,7 @@ func (s *Service) liveOnce(ctx context.Context) error {
 		return s.updateAvailableFinality(ctx)
 	}
 
-	_, err = s.Repository.CommitCanonicalSegment(ctx, s.ChainID, []ethrpc.Bundle{bundle})
+	_, err = s.Repository.CommitCanonicalSegment(ctx, s.ChainID, []chainbundle.Bundle{bundle})
 	if err == nil {
 		s.signalEvents()
 		return s.updateAvailableFinality(ctx)
@@ -354,7 +355,7 @@ func (s *Service) backfillOnce(ctx context.Context, owner string) (bool, error) 
 }
 
 func (s *Service) processBackfillLease(ctx context.Context, lease store.BackfillLease) error {
-	bundles := make([]ethrpc.Bundle, 0, lease.Range.End-lease.Range.Start+1)
+	bundles := make([]chainbundle.Bundle, 0, lease.Range.End-lease.Range.Start+1)
 	for number := lease.Range.Start; ; number++ {
 		if s.now().Add(s.leaseDuration() / 2).After(lease.ExpiresAt) {
 			renewed, err := s.Repository.RenewBackfillRange(ctx, lease, s.now(), s.leaseDuration())
@@ -422,7 +423,7 @@ func (s *Service) syncRange(ctx context.Context, start, end, head uint64) error 
 		return nil
 	}
 	count := end - start + 1
-	bundles := make([]ethrpc.Bundle, count)
+	bundles := make([]chainbundle.Bundle, count)
 	errs := make([]error, count)
 	jobs := make(chan uint64)
 	workers := s.workerCount()
@@ -490,7 +491,7 @@ func (s *Service) updateAvailableFinality(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("check finality coverage: %w", err)
 		}
-		if !exists || !canonical.Hash.Equal(requested.Hash) {
+		if !exists || canonical.Hash != requested.Hash {
 			// Sparse live coverage is expected while history is filling. The next
 			// authoritative poll retries once both finality identities are stored.
 			return nil

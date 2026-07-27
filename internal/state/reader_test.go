@@ -2,11 +2,14 @@ package state
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -44,38 +47,98 @@ func (c testCanonical) IsCanonical(context.Context, CanonicalRef) (bool, error) 
 	return c.canonical, nil
 }
 
-type testCaller struct{}
-
-func (testCaller) Call(_ context.Context, method string, _ []any, result any) error {
-	value := any("0x0")
-	switch method {
-	case "eth_getBalance":
-		value = "0xde0b6b3a7640000"
-	case "eth_getTransactionCount":
-		value = "0x2"
-	case "eth_getCode":
-		value = "0x6000"
-	}
-	encoded, _ := json.Marshal(value)
-	return json.Unmarshal(encoded, result)
+type testStateRPC struct {
+	method     string
+	params     []any
+	balance    *big.Int
+	nonce      uint64
+	code       []byte
+	callResult []byte
+	err        error
 }
 
-type failingStateCaller struct{ err error }
-
-func (caller failingStateCaller) Call(context.Context, string, []any, any) error { return caller.err }
-
-func (caller testCaller) BatchCall(ctx context.Context, elements []ethrpc.BatchElem) error {
-	for index := range elements {
-		elements[index].Error = caller.Call(ctx, elements[index].Method, elements[index].Params, elements[index].Result)
+func (service *testStateRPC) GetBalance(_ context.Context, address common.Address, selector rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+	service.method = "eth_getBalance"
+	service.params = []any{address, selector}
+	if service.err != nil {
+		return nil, service.err
 	}
-	return nil
+	value := service.balance
+	if value == nil {
+		value = big.NewInt(1_000_000_000_000_000_000)
+	}
+	result := hexutil.Big(*value)
+	return &result, nil
+}
+
+func (service *testStateRPC) GetTransactionCount(_ context.Context, address common.Address, selector rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+	service.method = "eth_getTransactionCount"
+	service.params = []any{address, selector}
+	if service.err != nil {
+		return 0, service.err
+	}
+	nonce := service.nonce
+	if nonce == 0 {
+		nonce = 2
+	}
+	return hexutil.Uint64(nonce), nil
+}
+
+func (service *testStateRPC) GetCode(_ context.Context, address common.Address, selector rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	service.method = "eth_getCode"
+	service.params = []any{address, selector}
+	if service.err != nil {
+		return nil, service.err
+	}
+	code := service.code
+	if code == nil {
+		code = []byte{0x60, 0}
+	}
+	return hexutil.Bytes(code), nil
+}
+
+func (service *testStateRPC) Call(_ context.Context, call map[string]any, selector rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	service.method = "eth_call"
+	service.params = []any{call, selector}
+	if service.err != nil {
+		return nil, service.err
+	}
+	return hexutil.Bytes(service.callResult), nil
+}
+
+type testRPCError struct {
+	code    int
+	message string
+}
+
+func (err *testRPCError) Error() string  { return err.message }
+func (err *testRPCError) ErrorCode() int { return err.code }
+
+func newTestStateClient(t *testing.T, service *testStateRPC) *rpc.Client {
+	t.Helper()
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", service); err != nil {
+		t.Fatal(err)
+	}
+	client := rpc.DialInProc(server)
+	t.Cleanup(func() {
+		client.Close()
+		server.Stop()
+	})
+	return client
+}
+
+func newTestStateEndpoint(t *testing.T, service *testStateRPC) *ethrpc.Endpoint {
+	t.Helper()
+	return &ethrpc.Endpoint{Name: "state", Client: newTestStateClient(t, service)}
 }
 
 func TestReaderQueriesFixedCanonicalState(t *testing.T) {
 	t.Parallel()
 	hash := testStateHash(1)
+	service := &testStateRPC{}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "state", Client: testCaller{},
+		Name: "state", Client: newTestStateClient(t, service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {
@@ -92,7 +155,7 @@ func TestReaderQueriesFixedCanonicalState(t *testing.T) {
 	if model.Balance != "1000000000000000000" || model.Nonce != "2" || model.Type != gen.AddressSummaryTypeContract {
 		t.Fatalf("unexpected model: %+v", model)
 	}
-	if model.Address != "0x000000000000000000000000000000000000dEaD" || model.AtBlock != hash.String() {
+	if model.Address != "0x000000000000000000000000000000000000dEaD" || model.AtBlock != hash.Hex() {
 		t.Fatalf("unexpected identity: %+v", model)
 	}
 	if model.CodeHash == nil || model.Completeness.State != gen.StageStateComplete {
@@ -102,14 +165,14 @@ func TestReaderQueriesFixedCanonicalState(t *testing.T) {
 
 func TestClassifyDelegatedEOA(t *testing.T) {
 	t.Parallel()
-	typeValue, hash, err := classifyCode("0xef01000000000000000000000000000000000000000000")
+	typeValue, hash, err := classifyCode(hexutil.MustDecode("0xef01000000000000000000000000000000000000000000"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if typeValue != gen.AddressSummaryTypeDelegatedEoa || hash == nil {
 		t.Fatalf("type=%q hash=%v", typeValue, hash)
 	}
-	typeValue, hash, err = classifyCode("0x")
+	typeValue, hash, err = classifyCode(hexutil.Bytes{})
 	if err != nil || typeValue != gen.AddressSummaryTypeEoa || hash != nil {
 		t.Fatalf("empty code type=%q hash=%v err=%v", typeValue, hash, err)
 	}
@@ -118,8 +181,9 @@ func TestClassifyDelegatedEOA(t *testing.T) {
 func TestReaderReportsUnsupportedFixedBlockStateAsUnavailable(t *testing.T) {
 	t.Parallel()
 	secret := "https://operator:rpc-secret@example.invalid"
+	service := &testStateRPC{err: &testRPCError{code: -32602, message: secret}}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "legacy-state", Client: failingStateCaller{err: &ethrpc.RPCError{Code: -32602, Message: secret}},
+		Name: "legacy-state", Client: newTestStateClient(t, service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}}, ethrpc.PoolOptions{})
 	if err != nil {
@@ -139,12 +203,8 @@ func TestReaderReportsUnsupportedFixedBlockStateAsUnavailable(t *testing.T) {
 	}
 }
 
-func testStateHash(value byte) ethrpc.Hash {
-	bytes := make([]byte, 32)
-	bytes[31] = value
-	hash, err := ethrpc.ParseHash(ethrpc.DataFromBytes(bytes).String())
-	if err != nil {
-		panic(err)
-	}
+func testStateHash(value byte) common.Hash {
+	var hash common.Hash
+	hash[common.HashLength-1] = value
 	return hash
 }

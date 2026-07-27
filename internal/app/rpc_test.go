@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -13,13 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 func TestBuildRPCCollectsOptionalWebSocketWakeEndpointsWithoutLoggingCredentials(t *testing.T) {
 	t.Parallel()
-	const genesis = "0x0000000000000000000000000000000000000000000000000000000000000001"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var envelope struct {
 			JSONRPC string            `json:"jsonrpc"`
@@ -37,7 +39,7 @@ func TestBuildRPCCollectsOptionalWebSocketWakeEndpointsWithoutLoggingCredentials
 		case "eth_chainId":
 			result = "0x1"
 		case "eth_getBlockByNumber":
-			result = map[string]any{"number": "0x0", "hash": genesis}
+			result = probeHeaderJSON(t, 0)
 		case "eth_getBlockReceipts":
 			result = []any{}
 		case "eth_getBalance":
@@ -173,7 +175,6 @@ func TestBuildRPCAcceptsAPIOnlyStateEndpointWithoutHistoryPurpose(t *testing.T) 
 
 func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server {
 	t.Helper()
-	const genesis = "0x0000000000000000000000000000000000000000000000000000000000000001"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var envelope struct {
 			JSONRPC string            `json:"jsonrpc"`
@@ -199,10 +200,10 @@ func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server
 			}
 			switch tag {
 			case "0x0", "safe", "finalized":
-				result = map[string]any{"number": "0x0", "hash": genesis}
+				result = probeHeaderJSON(t, 0)
 			case "0x40":
 				if historyAvailable {
-					result = map[string]any{"number": "0x40", "hash": genesis}
+					result = probeHeaderJSON(t, 64)
 				} else {
 					result = nil
 				}
@@ -226,4 +227,24 @@ func newHistoryProbeServer(t *testing.T, historyAvailable bool) *httptest.Server
 	}))
 	t.Cleanup(server.Close)
 	return server
+}
+
+func probeHeaderJSON(t *testing.T, number uint64) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(&types.Header{
+		ParentHash:  common.Hash{},
+		UncleHash:   types.EmptyUncleHash,
+		Coinbase:    common.Address{19: 1},
+		Root:        common.Hash{31: 2},
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+		Difficulty:  big.NewInt(0),
+		Number:      new(big.Int).SetUint64(number),
+		GasLimit:    30_000_000,
+		Time:        1_700_000_000 + number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"unicode/utf8"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ErrABIDecodeLimit = errors.New("ABI decode exceeds configured limit")
@@ -341,8 +343,8 @@ func (decoder *abiDecoder) decodeArray(element *abiType, count, base, depth int)
 	return values, nil
 }
 
-func (decoder *abiDecoder) word(position int) (Word, error) {
-	var word Word
+func (decoder *abiDecoder) word(position int) (common.Hash, error) {
+	var word common.Hash
 	if err := decoder.budget.addWork(1); err != nil {
 		return word, err
 	}
@@ -357,7 +359,7 @@ func (decoder *abiDecoder) word(position int) (Word, error) {
 	return word, nil
 }
 
-func boundedABIInt(word Word, maximum int) (int, error) {
+func boundedABIInt(word common.Hash, maximum int) (int, error) {
 	value := new(big.Int).SetBytes(word[:])
 	if !value.IsUint64() {
 		return 0, errors.New("ABI integer exceeds uint64")

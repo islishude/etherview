@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 func TestMemoryCoverageMergesOutOfOrderWithoutAdvancingAcrossGap(t *testing.T) {
@@ -26,10 +27,13 @@ func TestMemoryCoverageMergesOutOfOrderWithoutAdvancingAcrossGap(t *testing.T) {
 		t.Fatalf("configuration mismatch error=%v", err)
 	}
 
-	blockZero := storeTestBundle(0, storeTestHash(10), storeTestHash(0))
-	blockOne := storeTestBundle(1, storeTestHash(11), storeTestHash(10))
-	blockTwo := storeTestBundle(2, storeTestHash(12), storeTestHash(11))
-	coverage, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{blockTwo})
+	blockZero := storeTestBundle(0, common.Hash{}, 10)
+	blockZeroRef := mustStoreTestRef(t, blockZero)
+	blockOne := storeTestBundle(1, blockZeroRef.Hash, 11)
+	blockOneRef := mustStoreTestRef(t, blockOne)
+	blockTwo := storeTestBundle(2, blockOneRef.Hash, 12)
+	blockTwoRef := mustStoreTestRef(t, blockTwo)
+	coverage, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{blockTwo})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,21 +42,22 @@ func TestMemoryCoverageMergesOutOfOrderWithoutAdvancingAcrossGap(t *testing.T) {
 		t.Fatalf("live island advanced checkpoint: exists=%v error=%v", exists, err)
 	}
 
-	coverage, err = repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{blockZero})
+	coverage, err = repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{blockZero})
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkpointZero := uint64(0)
 	assertCoverage(t, coverage, []BlockRange{{Start: 0, End: 0}, {Start: 2, End: 2}}, &checkpointZero, 2)
 
-	badBoundary := storeTestBundle(1, storeTestHash(11), storeTestHash(99))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{badBoundary}); !errors.Is(err, ErrConflict) {
+	badBoundary := storeTestBundle(1, storeTestHash(99), 11)
+	badBoundaryRef := mustStoreTestRef(t, badBoundary)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{badBoundary}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("boundary mismatch error=%v", err)
 	}
 	if _, exists, err := repository.CanonicalBlock(ctx, "1", 1); err != nil || exists {
 		t.Fatalf("failed segment left canonical block: exists=%v error=%v", exists, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", storeTestHash(11)); err != nil || exists {
+	if _, exists, err := repository.BundleByHash(ctx, "1", badBoundaryRef.Hash); err != nil || exists {
 		t.Fatalf("failed segment left block facts: exists=%v error=%v", exists, err)
 	}
 	coverage, exists, err := repository.Coverage(ctx, "1")
@@ -61,14 +66,14 @@ func TestMemoryCoverageMergesOutOfOrderWithoutAdvancingAcrossGap(t *testing.T) {
 	}
 	assertCoverage(t, coverage, []BlockRange{{Start: 0, End: 0}, {Start: 2, End: 2}}, &checkpointZero, 2)
 
-	coverage, err = repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{blockOne})
+	coverage, err = repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{blockOne})
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkpointTwo := uint64(2)
 	assertCoverage(t, coverage, []BlockRange{{Start: 0, End: 2}}, &checkpointTwo, 2)
 	checkpoint, exists, err := repository.Checkpoint(ctx, "1", CoreCheckpoint)
-	if err != nil || !exists || checkpoint.ContiguousThrough != 2 || !checkpoint.BlockHash.Equal(storeTestHash(12)) {
+	if err != nil || !exists || checkpoint.ContiguousThrough != 2 || checkpoint.BlockHash != blockTwoRef.Hash {
 		t.Fatalf("checkpoint=%+v exists=%v error=%v", checkpoint, exists, err)
 	}
 }
@@ -77,7 +82,7 @@ func TestConfigureIndexClearsLegacyTipCheckpointWhenConfiguredStartIsMissing(t *
 	t.Parallel()
 	ctx := context.Background()
 	repository := NewMemoryRepository()
-	legacy := storeTestBundle(5, storeTestHash(5), storeTestHash(4))
+	legacy := storeTestBundle(5, storeTestHash(4), 5)
 	legacyRef := mustStoreTestRef(t, legacy)
 	if err := repository.CommitCanonical(ctx, "1", legacy, NewCoreCheckpoint(legacyRef)); err != nil {
 		t.Fatal(err)
@@ -127,9 +132,10 @@ func TestMemoryBackfillRangeLeasesExpireRenewReleaseAndCompleteFromCoverage(t *t
 		t.Fatalf("uncovered completion error=%v", err)
 	}
 
-	blockTwo := storeTestBundle(2, storeTestHash(22), storeTestHash(21))
-	blockThree := storeTestBundle(3, storeTestHash(23), storeTestHash(22))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{blockTwo, blockThree}); err != nil {
+	blockTwo := storeTestBundle(2, storeTestHash(21), 22)
+	blockTwoRef := mustStoreTestRef(t, blockTwo)
+	blockThree := storeTestBundle(3, blockTwoRef.Hash, 23)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{blockTwo, blockThree}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.CompleteBackfillRange(ctx, renewed); err != nil {
@@ -218,7 +224,7 @@ func TestCommittedCoverageSurvivesCrashBeforeLeaseCompletion(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("lease=%+v claimed=%v error=%v", lease, claimed, err)
 	}
-	chain := storeTestChain(2, 1)
+	chain := storeTestChain(t, 2, 1)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", chain); err != nil {
 		t.Fatal(err)
 	}
@@ -241,27 +247,31 @@ func TestMemorySparseReplacementCanExtendHighestIslandWithoutAdvancingCheckpoint
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	genesis := storeTestBundle(0, storeTestHash(1), storeTestHash(0))
-	oldHundred := storeTestBundle(100, storeTestHash(100), storeTestHash(99))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{genesis}); err != nil {
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	genesisRef := mustStoreTestRef(t, genesis)
+	oldHundred := storeTestBundle(100, storeTestHash(99), 100)
+	oldHundredRef := mustStoreTestRef(t, oldHundred)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldHundred}); err != nil {
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{oldHundred}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.AppendJournal(ctx, "1", JournalEntry{
-		BlockHash: storeTestHash(100), Stage: "token", Sequence: 1,
+		BlockHash: oldHundredRef.Hash, Stage: "token", Sequence: 1,
 		Payload: json.RawMessage(`{"old":true}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	newHundred := storeTestBundle(100, storeTestHash(110), storeTestHash(98))
-	newHundredOne := storeTestBundle(101, storeTestHash(111), storeTestHash(110))
-	newHundredTwo := storeTestBundle(102, storeTestHash(112), storeTestHash(111))
+	newHundred := storeTestBundle(100, storeTestHash(98), 110)
+	newHundredRef := mustStoreTestRef(t, newHundred)
+	newHundredOne := storeTestBundle(101, newHundredRef.Hash, 111)
+	newHundredOneRef := mustStoreTestRef(t, newHundredOne)
+	newHundredTwo := storeTestBundle(102, newHundredOneRef.Hash, 112)
 	coverage, err := repository.ReplaceHighestCanonicalSegment(ctx, "1", SparseCanonicalReplacement{
 		Range:    BlockRange{Start: 100, End: 100},
 		Detached: []BlockRef{mustStoreTestRef(t, oldHundred)},
-		Attached: []ethrpc.Bundle{newHundred, newHundredOne, newHundredTwo},
+		Attached: []chainbundle.Bundle{newHundred, newHundredOne, newHundredTwo},
 		Reason:   "replace and extend isolated head",
 	})
 	if err != nil {
@@ -270,14 +280,14 @@ func TestMemorySparseReplacementCanExtendHighestIslandWithoutAdvancingCheckpoint
 	checkpointZero := uint64(0)
 	assertCoverage(t, coverage, []BlockRange{{Start: 0, End: 0}, {Start: 100, End: 102}}, &checkpointZero, 102)
 	checkpoint, exists, err := repository.Checkpoint(ctx, "1", CoreCheckpoint)
-	if err != nil || !exists || checkpoint.ContiguousThrough != 0 || !checkpoint.BlockHash.Equal(storeTestHash(1)) {
+	if err != nil || !exists || checkpoint.ContiguousThrough != 0 || checkpoint.BlockHash != genesisRef.Hash {
 		t.Fatalf("checkpoint=%+v exists=%v error=%v", checkpoint, exists, err)
 	}
-	journals, err := repository.JournalsByBlock(ctx, "1", storeTestHash(100))
+	journals, err := repository.JournalsByBlock(ctx, "1", oldHundredRef.Hash)
 	if err != nil || len(journals) != 1 || journals[0].Canonical {
 		t.Fatalf("old island journals=%+v error=%v", journals, err)
 	}
-	if _, exists, err := repository.BundleByHash(ctx, "1", storeTestHash(100)); err != nil || !exists {
+	if _, exists, err := repository.BundleByHash(ctx, "1", oldHundredRef.Hash); err != nil || !exists {
 		t.Fatalf("old island retained=%v error=%v", exists, err)
 	}
 }
@@ -289,19 +299,23 @@ func TestMemoryGeneralizedSparseReplacementClosesGapAndReorgsLowerCoverageAtomic
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	oldChain := storeTestChain(101, 1)
+	oldChain := storeTestChain(t, 101, 1)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", oldChain); err != nil {
 		t.Fatal(err)
 	}
-	oldIsland := storeTestBundle(102, storeTestHash(202), storeTestHash(201))
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []ethrpc.Bundle{oldIsland}); err != nil {
+	oldIsland := storeTestBundle(102, storeTestHash(201), 202)
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{oldIsland}); err != nil {
 		t.Fatal(err)
 	}
 	ancestor := mustStoreTestRef(t, oldChain[98])
-	newNinetyNine := storeTestBundle(99, storeTestHash(209), ancestor.Hash)
-	newHundred := storeTestBundle(100, storeTestHash(210), storeTestHash(209))
-	newHundredOne := storeTestBundle(101, storeTestHash(211), storeTestHash(210))
-	newHundredTwo := storeTestBundle(102, storeTestHash(212), storeTestHash(211))
+	newNinetyNine := storeTestBundle(99, ancestor.Hash, 209)
+	newNinetyNineRef := mustStoreTestRef(t, newNinetyNine)
+	newHundred := storeTestBundle(100, newNinetyNineRef.Hash, 210)
+	newHundredRef := mustStoreTestRef(t, newHundred)
+	newHundredOne := storeTestBundle(101, newHundredRef.Hash, 211)
+	newHundredOneRef := mustStoreTestRef(t, newHundredOne)
+	newHundredTwo := storeTestBundle(102, newHundredOneRef.Hash, 212)
+	newHundredTwoRef := mustStoreTestRef(t, newHundredTwo)
 	coverage, err := repository.ReplaceHighestCanonicalSegment(ctx, "1", SparseCanonicalReplacement{
 		Range:    BlockRange{Start: 102, End: 102},
 		Ancestor: &ancestor,
@@ -310,7 +324,7 @@ func TestMemoryGeneralizedSparseReplacementClosesGapAndReorgsLowerCoverageAtomic
 			mustStoreTestRef(t, oldChain[100]),
 			mustStoreTestRef(t, oldChain[99]),
 		},
-		Attached: []ethrpc.Bundle{newNinetyNine, newHundred, newHundredOne, newHundredTwo},
+		Attached: []chainbundle.Bundle{newNinetyNine, newHundred, newHundredOne, newHundredTwo},
 		Reason:   "repair shallow fork across live gap",
 	})
 	if err != nil {
@@ -318,11 +332,14 @@ func TestMemoryGeneralizedSparseReplacementClosesGapAndReorgsLowerCoverageAtomic
 	}
 	checkpointHeight := uint64(102)
 	assertCoverage(t, coverage, []BlockRange{{Start: 0, End: 102}}, &checkpointHeight, 102)
-	for number, hash := range map[uint64]ethrpc.Hash{
-		99: storeTestHash(209), 100: storeTestHash(210), 101: storeTestHash(211), 102: storeTestHash(212),
+	for number, hash := range map[uint64]common.Hash{
+		99:  newNinetyNineRef.Hash,
+		100: newHundredRef.Hash,
+		101: newHundredOneRef.Hash,
+		102: newHundredTwoRef.Hash,
 	} {
 		canonical, exists, err := repository.CanonicalBlock(ctx, "1", number)
-		if err != nil || !exists || !canonical.Hash.Equal(hash) {
+		if err != nil || !exists || canonical.Hash != hash {
 			t.Fatalf("canonical %d=%+v exists=%v error=%v", number, canonical, exists, err)
 		}
 	}
@@ -352,7 +369,7 @@ func assertCoverage(t *testing.T, coverage CoreCoverage, ranges []BlockRange, co
 	}
 }
 
-func mustStoreTestRef(t *testing.T, bundle ethrpc.Bundle) BlockRef {
+func mustStoreTestRef(t *testing.T, bundle chainbundle.Bundle) BlockRef {
 	t.Helper()
 	reference, err := RefFromBundle(bundle)
 	if err != nil {
@@ -361,13 +378,21 @@ func mustStoreTestRef(t *testing.T, bundle ethrpc.Bundle) BlockRef {
 	return reference
 }
 
-func storeTestChain(length int, firstHash byte) []ethrpc.Bundle {
-	chain := make([]ethrpc.Bundle, length)
-	parent := storeTestHash(0)
+func storeTestChain(
+	t *testing.T,
+	length int,
+	firstExtraData byte,
+) []chainbundle.Bundle {
+	t.Helper()
+	chain := make([]chainbundle.Bundle, length)
+	var parent common.Hash
 	for index := range length {
-		hash := storeTestHash(firstHash + byte(index))
-		chain[index] = storeTestBundle(uint64(index), hash, parent)
-		parent = hash
+		chain[index] = storeTestBundle(
+			uint64(index),
+			parent,
+			firstExtraData+byte(index),
+		)
+		parent = mustStoreTestRef(t, chain[index]).Hash
 	}
 	return chain
 }

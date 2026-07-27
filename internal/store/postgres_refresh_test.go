@@ -13,7 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 )
 
 const refreshDriverName = "etherview-store-refresh-test"
@@ -44,13 +45,19 @@ type refreshScript struct {
 func TestPostgresRefreshCanonicalRollsBackWholeReplacementOnWriteFailure(t *testing.T) {
 	t.Parallel()
 	writeErr := errors.New("injected block replacement failure")
-	steps := refreshHappyPathSteps(1, storeTestHash(2), storeTestHash(1))
+	bundle := refreshTestBundle(t)
+	reference := mustStoreTestRef(t, bundle)
+	steps := refreshHappyPathSteps(
+		reference.Number,
+		reference.Hash,
+		reference.ParentHash,
+	)
 	steps[len(steps)-1].err = writeErr
 	db, script := refreshDatabase(t, steps...)
 	repository := newRefreshRepository(t, db)
 	err := repository.RefreshCanonical(
 		context.Background(), "1",
-		storeTestBundle(1, storeTestHash(2), storeTestHash(1)),
+		bundle,
 		RefreshOptions{},
 	)
 	if !errors.Is(err, writeErr) {
@@ -61,14 +68,20 @@ func TestPostgresRefreshCanonicalRollsBackWholeReplacementOnWriteFailure(t *test
 
 func TestPostgresRefreshCanonicalIdentityMismatchDoesNotDeleteFacts(t *testing.T) {
 	t.Parallel()
+	bundle := refreshTestBundle(t)
+	reference := mustStoreTestRef(t, bundle)
 	db, script := refreshDatabase(t,
 		refreshStep{kind: "exec", contains: "pg_advisory_xact_lock", affected: 1},
-		refreshCanonicalRow(1, storeTestHash(99), storeTestHash(1)),
+		refreshCanonicalRow(
+			reference.Number,
+			storeTestHash(99),
+			reference.ParentHash,
+		),
 	)
 	repository := newRefreshRepository(t, db)
 	err := repository.RefreshCanonical(
 		context.Background(), "1",
-		storeTestBundle(1, storeTestHash(2), storeTestHash(1)),
+		bundle,
 		RefreshOptions{},
 	)
 	if !errors.Is(err, ErrConflict) {
@@ -79,13 +92,22 @@ func TestPostgresRefreshCanonicalIdentityMismatchDoesNotDeleteFacts(t *testing.T
 
 func TestPostgresRefreshCanonicalIsIdempotentAndDoesNotMoveCanonicalState(t *testing.T) {
 	t.Parallel()
+	bundle := refreshTestBundle(t)
+	reference := mustStoreTestRef(t, bundle)
 	steps := append(
-		refreshHappyPathSteps(1, storeTestHash(2), storeTestHash(1)),
-		refreshHappyPathSteps(1, storeTestHash(2), storeTestHash(1))...,
+		refreshHappyPathSteps(
+			reference.Number,
+			reference.Hash,
+			reference.ParentHash,
+		),
+		refreshHappyPathSteps(
+			reference.Number,
+			reference.Hash,
+			reference.ParentHash,
+		)...,
 	)
 	db, script := refreshDatabase(t, steps...)
 	repository := newRefreshRepository(t, db)
-	bundle := storeTestBundle(1, storeTestHash(2), storeTestHash(1))
 	for range 2 {
 		if err := repository.RefreshCanonical(context.Background(), "1", bundle, RefreshOptions{}); err != nil {
 			t.Fatal(err)
@@ -96,13 +118,13 @@ func TestPostgresRefreshCanonicalIsIdempotentAndDoesNotMoveCanonicalState(t *tes
 	assertRefreshTransactions(t, script, 2, 0)
 }
 
-func refreshHappyPathSteps(number uint64, hash, parentHash ethrpc.Hash) []refreshStep {
+func refreshHappyPathSteps(number uint64, hash, parentHash common.Hash) []refreshStep {
 	steps := []refreshStep{
 		{kind: "exec", contains: "pg_advisory_xact_lock", affected: 1},
 		refreshCanonicalRow(number, hash, parentHash),
 	}
 	if number > 0 {
-		steps = append(steps, refreshCanonicalRow(number-1, parentHash, storeTestHash(0)))
+		steps = append(steps, refreshCanonicalRow(number-1, parentHash, common.Hash{}))
 	}
 	steps = append(steps, refreshStep{kind: "query", contains: "FROM chain_finality", columns: 5})
 	for _, table := range []string{
@@ -114,6 +136,16 @@ func refreshHappyPathSteps(number uint64, hash, parentHash ethrpc.Hash) []refres
 	}
 	steps = append(steps, refreshStep{kind: "exec", contains: "INSERT INTO blocks", affected: 1})
 	return steps
+}
+
+func refreshTestBundle(t *testing.T) chainbundle.Bundle {
+	t.Helper()
+	genesis := storeTestBundle(0, common.Hash{}, 1)
+	return storeTestBundle(
+		1,
+		mustStoreTestRef(t, genesis).Hash,
+		2,
+	)
 }
 
 func newRefreshRepository(t *testing.T, db *sql.DB) *PostgresRepository {
@@ -128,7 +160,7 @@ func newRefreshRepository(t *testing.T, db *sql.DB) *PostgresRepository {
 	return repository
 }
 
-func refreshCanonicalRow(number uint64, hash, parentHash ethrpc.Hash) refreshStep {
+func refreshCanonicalRow(number uint64, hash, parentHash common.Hash) refreshStep {
 	return refreshStep{
 		kind: "query", contains: "FROM canonical_blocks cb", columns: 3,
 		rows: [][]driver.Value{{

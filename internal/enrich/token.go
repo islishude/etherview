@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type TokenStandard string
@@ -35,8 +37,8 @@ const (
 )
 
 type TokenLog struct {
-	Contract Address
-	Topics   []Word
+	Contract common.Address
+	Topics   []common.Hash
 	Data     []byte
 	LogIndex uint64
 }
@@ -46,12 +48,12 @@ type TokenLog struct {
 type TokenEvent struct {
 	Standard   TokenStandard
 	Kind       TokenEventKind
-	Contract   Address
-	Operator   *Address
-	From       *Address
-	To         *Address
-	Owner      *Address
-	Spender    *Address
+	Contract   common.Address
+	Operator   *common.Address
+	From       *common.Address
+	To         *common.Address
+	Owner      *common.Address
+	Spender    *common.Address
 	TokenID    string
 	Amount     string
 	Approved   *bool
@@ -282,18 +284,18 @@ func parseTransferBatch(log TokenLog) TokenParseResult {
 	return TokenParseResult{Status: TokenParsed, Events: events}
 }
 
-func parseERC1155Addresses(topics []Word) (Address, Address, Address, TokenParseResult) {
+func parseERC1155Addresses(topics []common.Hash) (common.Address, common.Address, common.Address, TokenParseResult) {
 	operator, err := AddressFromWord(topics[1])
 	if err != nil {
-		return Address{}, Address{}, Address{}, malformedToken("ERC-1155 operator: %v", err)
+		return common.Address{}, common.Address{}, common.Address{}, malformedToken("ERC-1155 operator: %v", err)
 	}
 	from, err := AddressFromWord(topics[2])
 	if err != nil {
-		return Address{}, Address{}, Address{}, malformedToken("ERC-1155 from: %v", err)
+		return common.Address{}, common.Address{}, common.Address{}, malformedToken("ERC-1155 from: %v", err)
 	}
 	to, err := AddressFromWord(topics[3])
 	if err != nil {
-		return Address{}, Address{}, Address{}, malformedToken("ERC-1155 to: %v", err)
+		return common.Address{}, common.Address{}, common.Address{}, malformedToken("ERC-1155 to: %v", err)
 	}
 	return operator, from, to, TokenParseResult{}
 }
@@ -323,18 +325,18 @@ func staticBool(data []byte) (bool, error) {
 	return word[31] == 1, nil
 }
 
-func wordDecimal(word Word) string { return new(big.Int).SetBytes(word[:]).String() }
+func wordDecimal(word common.Hash) string { return new(big.Int).SetBytes(word[:]).String() }
 
-func addressPointer(value Address) *Address {
+func addressPointer(value common.Address) *common.Address {
 	copy := value
 	return &copy
 }
 
-func transferAction(from, to Address) TokenEventKind {
-	if from == (Address{}) {
+func transferAction(from, to common.Address) TokenEventKind {
+	if from == (common.Address{}) {
 		return TokenMint
 	}
-	if to == (Address{}) {
+	if to == (common.Address{}) {
 		return TokenBurn
 	}
 	return TokenTransfer

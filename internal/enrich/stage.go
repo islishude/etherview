@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ErrAtomicPublicationRequired = errors.New("successful enrichment output requires lease-fenced atomic publication")
@@ -47,7 +49,7 @@ type Job struct {
 	ID          string
 	Stage       StageID
 	ChainID     string
-	BlockHash   Word
+	BlockHash   common.Hash
 	BlockNumber uint64
 	Attempt     uint32
 	// Generation is the durable replay generation claimed by this attempt.
@@ -67,7 +69,7 @@ func (job Job) Validate() error {
 	if strings.TrimSpace(job.ChainID) == "" {
 		return errors.New("job chain ID is empty")
 	}
-	if job.BlockHash.IsZero() {
+	if job.BlockHash == (common.Hash{}) {
 		return errors.New("job block hash is zero")
 	}
 	return nil

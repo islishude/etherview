@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -22,8 +24,8 @@ type MemoryRepository struct {
 }
 
 type memoryChain struct {
-	blocks          map[string]ethrpc.Bundle
-	canonical       map[uint64]ethrpc.Hash
+	blocks          map[string]chainbundle.Bundle
+	canonical       map[uint64]common.Hash
 	checkpoints     map[string]Checkpoint
 	finality        *Finality
 	journals        map[string][]JournalEntry
@@ -72,34 +74,34 @@ func (r *MemoryRepository) CanonicalBlock(_ context.Context, chainID string, num
 	return memoryCanonicalRef(chain, number)
 }
 
-func (r *MemoryRepository) BundleByHash(_ context.Context, chainID string, hash ethrpc.Hash) (ethrpc.Bundle, bool, error) {
+func (r *MemoryRepository) BundleByHash(_ context.Context, chainID string, hash common.Hash) (chainbundle.Bundle, bool, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
-		return ethrpc.Bundle{}, false, err
+		return chainbundle.Bundle{}, false, err
 	}
 	if _, err := ethrpc.ParseHash(hash.String()); err != nil {
-		return ethrpc.Bundle{}, false, err
+		return chainbundle.Bundle{}, false, err
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	chain := r.chains[chainID]
 	if chain == nil {
-		return ethrpc.Bundle{}, false, nil
+		return chainbundle.Bundle{}, false, nil
 	}
 	bundle, exists := chain.blocks[memoryHashKey(hash)]
 	if !exists {
-		return ethrpc.Bundle{}, false, nil
+		return chainbundle.Bundle{}, false, nil
 	}
 	copy, err := cloneBundle(bundle)
 	return copy, true, err
 }
 
-func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bundle ethrpc.Bundle, checkpoint Checkpoint) error {
+func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bundle chainbundle.Bundle, checkpoint Checkpoint) error {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return err
 	}
-	if err := ethrpc.ValidateBundle(bundle); err != nil {
+	if err := chainbundle.Validate(bundle); err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -120,7 +122,7 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 		return err
 	}
 	if existingHash, exists := chain.canonical[reference.Number]; exists {
-		if !existingHash.Equal(reference.Hash) {
+		if existingHash != reference.Hash {
 			return fmt.Errorf("%w: height %d is already canonical with another hash", ErrConflict, reference.Number)
 		}
 		chain.blocks[memoryHashKey(reference.Hash)] = copy
@@ -129,7 +131,7 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 	if tip, exists, err := memoryTip(chain); err != nil {
 		return err
 	} else if exists {
-		if reference.Number != tip.Number+1 || !reference.ParentHash.Equal(tip.Hash) {
+		if reference.Number != tip.Number+1 || reference.ParentHash != tip.Hash {
 			return fmt.Errorf("%w: block does not extend canonical tip", ErrConflict)
 		}
 	}
@@ -141,14 +143,14 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 func (r *MemoryRepository) RefreshCanonical(
 	_ context.Context,
 	chainID string,
-	bundle ethrpc.Bundle,
+	bundle chainbundle.Bundle,
 	options RefreshOptions,
 ) error {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return err
 	}
-	if err := ethrpc.ValidateBundle(bundle); err != nil {
+	if err := chainbundle.Validate(bundle); err != nil {
 		return err
 	}
 	reference, err := RefFromBundle(bundle)
@@ -166,7 +168,7 @@ func (r *MemoryRepository) RefreshCanonical(
 		return fmt.Errorf("%w: canonical chain is empty", ErrConflict)
 	}
 	canonicalHash, exists := chain.canonical[reference.Number]
-	if !exists || !canonicalHash.Equal(reference.Hash) {
+	if !exists || canonicalHash != reference.Hash {
 		return fmt.Errorf("%w: block %d hash %s is not canonical", ErrConflict, reference.Number, reference.Hash)
 	}
 	if err := validateMemoryRefreshParent(chain, reference); err != nil {
@@ -192,7 +194,7 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 	if err := ValidateReorg(reorg); err != nil {
 		return err
 	}
-	attachedCopies := make([]ethrpc.Bundle, len(reorg.Attached))
+	attachedCopies := make([]chainbundle.Bundle, len(reorg.Attached))
 	for index := range reorg.Attached {
 		copy, err := cloneBundle(reorg.Attached[index])
 		if err != nil {
@@ -207,7 +209,7 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 	if err != nil {
 		return err
 	}
-	if !exists || !ancestor.Hash.Equal(reorg.Ancestor.Hash) {
+	if !exists || ancestor.Hash != reorg.Ancestor.Hash {
 		return fmt.Errorf("%w: common ancestor is not canonical", ErrConflict)
 	}
 	tip, exists, err := memoryTip(chain)
@@ -217,12 +219,12 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 	if !exists {
 		return fmt.Errorf("%w: canonical chain is empty", ErrConflict)
 	}
-	if len(reorg.Detached) > 0 && !tip.Hash.Equal(reorg.Detached[0].Hash) {
+	if len(reorg.Detached) > 0 && tip.Hash != reorg.Detached[0].Hash {
 		return fmt.Errorf("%w: detached branch does not start at canonical tip", ErrConflict)
 	}
 	for _, reference := range reorg.Detached {
 		hash, canonical := chain.canonical[reference.Number]
-		if !canonical || !hash.Equal(reference.Hash) {
+		if !canonical || hash != reference.Hash {
 			return fmt.Errorf("%w: detached block %d is not canonical", ErrConflict, reference.Number)
 		}
 	}
@@ -236,9 +238,9 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 			return err
 		}
 	}
-	nextBlocks := make(map[string]ethrpc.Bundle, len(chain.blocks)+len(attachedCopies))
+	nextBlocks := make(map[string]chainbundle.Bundle, len(chain.blocks)+len(attachedCopies))
 	maps.Copy(nextBlocks, chain.blocks)
-	nextCanonical := make(map[uint64]ethrpc.Hash, len(chain.canonical)+len(attachedCopies))
+	nextCanonical := make(map[uint64]common.Hash, len(chain.canonical)+len(attachedCopies))
 	maps.Copy(nextCanonical, chain.canonical)
 	for _, bundle := range attachedCopies {
 		reference, _ := RefFromBundle(bundle)
@@ -332,7 +334,7 @@ func (r *MemoryRepository) UpdateFinality(_ context.Context, chainID string, fin
 		if err != nil {
 			return err
 		}
-		if !exists || !canonical.Hash.Equal(reference.Hash) {
+		if !exists || canonical.Hash != reference.Hash {
 			return fmt.Errorf("%w: %s block is not canonical", ErrConflict, name)
 		}
 	}
@@ -381,7 +383,7 @@ func (r *MemoryRepository) AppendJournal(_ context.Context, chainID string, entr
 	return nil
 }
 
-func (r *MemoryRepository) JournalsByBlock(_ context.Context, chainID string, hash ethrpc.Hash) ([]JournalEntry, error) {
+func (r *MemoryRepository) JournalsByBlock(_ context.Context, chainID string, hash common.Hash) ([]JournalEntry, error) {
 	chainID, err := normalizeChainID(chainID)
 	if err != nil {
 		return nil, err
@@ -412,8 +414,8 @@ func (r *MemoryRepository) chain(chainID string) *memoryChain {
 	chain := r.chains[chainID]
 	if chain == nil {
 		chain = &memoryChain{
-			blocks:         make(map[string]ethrpc.Bundle),
-			canonical:      make(map[uint64]ethrpc.Hash),
+			blocks:         make(map[string]chainbundle.Bundle),
+			canonical:      make(map[uint64]common.Hash),
 			checkpoints:    make(map[string]Checkpoint),
 			journals:       make(map[string][]JournalEntry),
 			backfillLeases: make(map[string]BackfillLease),
@@ -460,7 +462,7 @@ func validateMemoryRefreshParent(chain *memoryChain, reference BlockRef) error {
 		return err
 	}
 	if exists {
-		if !reference.ParentHash.Equal(parent.Hash) {
+		if reference.ParentHash != parent.Hash {
 			return fmt.Errorf(
 				"%w: block %d parent %s does not match canonical block %d hash %s",
 				ErrConflict, reference.Number, reference.ParentHash, parent.Number, parent.Hash,
@@ -481,7 +483,7 @@ func checkMemoryCheckpoint(chain *memoryChain, checkpoint Checkpoint, allowRegre
 		if checkpoint.ContiguousThrough < previous.ContiguousThrough {
 			return ErrCheckpointRegress
 		}
-		if checkpoint.ContiguousThrough == previous.ContiguousThrough && !checkpoint.BlockHash.Equal(previous.BlockHash) {
+		if checkpoint.ContiguousThrough == previous.ContiguousThrough && checkpoint.BlockHash != previous.BlockHash {
 			return fmt.Errorf("%w: hash changed at height %d", ErrCheckpointRegress, checkpoint.ContiguousThrough)
 		}
 	}
@@ -496,7 +498,7 @@ func setMemoryCheckpoint(chain *memoryChain, checkpoint Checkpoint) error {
 	return nil
 }
 
-func markMemoryJournals(chain *memoryChain, hash ethrpc.Hash, canonical bool) {
+func markMemoryJournals(chain *memoryChain, hash common.Hash, canonical bool) {
 	key := memoryHashKey(hash)
 	entries := chain.journals[key]
 	for index := range entries {
@@ -505,34 +507,19 @@ func markMemoryJournals(chain *memoryChain, hash ethrpc.Hash, canonical bool) {
 	chain.journals[key] = entries
 }
 
-func memoryHashCanonical(chain *memoryChain, hash ethrpc.Hash) bool {
+func memoryHashCanonical(chain *memoryChain, hash common.Hash) bool {
 	for _, canonicalHash := range chain.canonical {
-		if canonicalHash.Equal(hash) {
+		if canonicalHash == hash {
 			return true
 		}
 	}
 	return false
 }
 
-func memoryHashKey(hash ethrpc.Hash) string { return strings.ToLower(hash.String()) }
+func memoryHashKey(hash common.Hash) string { return strings.ToLower(hash.String()) }
 
-func cloneBundle(bundle ethrpc.Bundle) (ethrpc.Bundle, error) {
-	blockJSON, err := json.Marshal(bundle.Block)
-	if err != nil {
-		return ethrpc.Bundle{}, err
-	}
-	receiptsJSON, err := json.Marshal(bundle.Receipts)
-	if err != nil {
-		return ethrpc.Bundle{}, err
-	}
-	var clone ethrpc.Bundle
-	if err := json.Unmarshal(blockJSON, &clone.Block); err != nil {
-		return ethrpc.Bundle{}, err
-	}
-	if err := json.Unmarshal(receiptsJSON, &clone.Receipts); err != nil {
-		return ethrpc.Bundle{}, err
-	}
-	return clone, nil
+func cloneBundle(bundle chainbundle.Bundle) (chainbundle.Bundle, error) {
+	return bundle.Clone()
 }
 
 func cloneFinality(finality Finality) Finality {
@@ -562,7 +549,7 @@ func checkFinalityRegression(previous, next Finality) error {
 		if pair[1].Number < pair[0].Number {
 			return fmt.Errorf("%w: %s height moved from %d to %d", ErrFinalityRegress, name, pair[0].Number, pair[1].Number)
 		}
-		if pair[1].Number == pair[0].Number && !pair[1].Hash.Equal(pair[0].Hash) {
+		if pair[1].Number == pair[0].Number && pair[1].Hash != pair[0].Hash {
 			return fmt.Errorf("%w: %s hash changed at height %d", ErrFinalityRegress, name, pair[1].Number)
 		}
 	}

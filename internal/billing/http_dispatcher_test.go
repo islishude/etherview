@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
@@ -184,7 +185,7 @@ func (ledger *memoryPaymentLedger) MarkSettlementUnknown(
 func (ledger *memoryPaymentLedger) MarkSettled(
 	_ context.Context,
 	id, owner string,
-	hash TransactionHash,
+	hash common.Hash,
 	at time.Time,
 ) (Payment, error) {
 	ledger.mu.Lock()
@@ -276,12 +277,12 @@ type fakePayerResolver struct {
 	id    string
 	found bool
 	err   error
-	payer Address
+	payer common.Address
 }
 
 func (resolver *fakePayerResolver) UserIDForPayer(
 	_ context.Context,
-	payer Address,
+	payer common.Address,
 ) (string, bool, error) {
 	resolver.calls.Add(1)
 	resolver.payer = payer

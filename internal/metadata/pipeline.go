@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -48,10 +48,10 @@ const (
 // later block or URI creates a new durable job while retaining prior attempts.
 type NFTRequest struct {
 	ChainID     string
-	Token       ethrpc.Address
+	Token       common.Address
 	TokenID     string
 	BlockNumber uint64
-	BlockHash   ethrpc.Hash
+	BlockHash   common.Hash
 	SourceURI   string
 	Priority    int32
 	MaxAttempts uint32
@@ -61,18 +61,12 @@ func (request NFTRequest) Validate() error {
 	if err := validateDecimal(request.ChainID, 78, "chain ID"); err != nil {
 		return err
 	}
-	if _, err := ethrpc.ParseAddress(request.Token.String()); err != nil {
-		return fmt.Errorf("metadata token address: %w", err)
-	}
 	if err := validateDecimal(request.TokenID, 78, "token ID"); err != nil {
 		return err
 	}
 	tokenID, _ := new(big.Int).SetString(request.TokenID, 10)
 	if tokenID.Cmp(maximumUint256) > 0 {
 		return errors.New("metadata token ID exceeds uint256")
-	}
-	if _, err := ethrpc.ParseHash(request.BlockHash.String()); err != nil {
-		return fmt.Errorf("metadata observed block hash: %w", err)
 	}
 	if len(request.SourceURI) == 0 || len(request.SourceURI) > MaxSourceURIBytes {
 		return fmt.Errorf("metadata source URI must contain between 1 and %d bytes", MaxSourceURIBytes)
@@ -96,7 +90,7 @@ func (request NFTRequest) Validate() error {
 }
 
 func (request NFTRequest) resourceKey() string {
-	return strings.ToLower(request.Token.String()) + ":" + request.TokenID
+	return strings.ToLower(request.Token.Hex()) + ":" + request.TokenID
 }
 
 func (request NFTRequest) idempotencyKey() (string, error) {
@@ -107,7 +101,7 @@ func (request NFTRequest) idempotencyKey() (string, error) {
 		request.ChainID,
 		request.resourceKey(),
 		strconv.FormatUint(request.BlockNumber, 10),
-		strings.ToLower(request.BlockHash.String()),
+		strings.ToLower(request.BlockHash.Hex()),
 		request.SourceURI,
 	}, "\x00")))
 	return hex.EncodeToString(digest[:]), nil
