@@ -7,7 +7,7 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
-  ETHERVIEW_SESSION_PEPPER: "31025a24be4f4fd21b1783aeb2931eabaaaba9401a6c9e1b294eb2d41e34bc5c"
+  ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
 
 x-etherview-service: &etherview-service
   image: ${ETHERVIEW_IMAGE:-etherview:local}
