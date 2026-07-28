@@ -22,6 +22,15 @@ and `span_id`. Boundary failures use stable `error_code` and `error_type`
 fields. Raw RPC, PostgreSQL, compiler, metadata, panic, URL credential,
 authorization-header, and exporter errors are not log attributes.
 
+The active PostgreSQL sync-status reporter emits an `info` progress record only
+when its latest, indexed, highest-covered, lag, backfill-complete, or ready
+state changes. `observability.sync_progress_log_interval` limits those records
+to one per interval (default `30s`, configurable from `1s` through `1h`);
+`ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL` overrides the file. Intermediate changes
+are coalesced into the next record, idle heads do not produce heartbeats, and
+non-reporter sync replicas stay silent. Durable worker outcomes remain
+event-driven and are not delayed by this interval.
+
 OTLP/HTTP tracing is off when `observability.otlp_trace_endpoint` is empty. To
 enable it, supply an origin such as `https://collector.example:4318` through
 `ETHERVIEW_OTLP_TRACE_ENDPOINT`; Etherview sends protobuf spans to

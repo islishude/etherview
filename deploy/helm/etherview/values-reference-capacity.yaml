@@ -92,6 +92,7 @@ config:
     lease_duration: 30s
   observability:
     metrics_refresh_interval: 5s
+    sync_progress_log_interval: 30s
   features:
     # Authentication is outside the anonymous explorer capacity profile.
     user_auth: false

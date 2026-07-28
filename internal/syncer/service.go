@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -107,23 +108,24 @@ func (t *Tracker) record(status events.SyncStatus) {
 }
 
 type Service struct {
-	ChainID             string
-	StartBlock          uint64
-	PollInterval        time.Duration
-	Workers             int
-	BackfillBatchBlocks uint64
-	WorkerID            string
-	LeaseDuration       time.Duration
-	Source              Source
-	Repository          store.Repository
-	Canonicalizer       *indexer.Canonicalizer
-	Status              StatusRecorder
-	EventWake           func()
-	Tracker             *Tracker
-	Observer            Observer
-	Logger              *slog.Logger
-	Wake                <-chan struct{}
-	Now                 func() time.Time
+	ChainID                 string
+	StartBlock              uint64
+	PollInterval            time.Duration
+	Workers                 int
+	BackfillBatchBlocks     uint64
+	WorkerID                string
+	LeaseDuration           time.Duration
+	Source                  Source
+	Repository              store.Repository
+	Canonicalizer           *indexer.Canonicalizer
+	Status                  StatusRecorder
+	EventWake               func()
+	Tracker                 *Tracker
+	Observer                Observer
+	Logger                  *slog.Logger
+	Wake                    <-chan struct{}
+	Now                     func() time.Time
+	SyncProgressLogInterval time.Duration
 
 	latest          atomic.Uint64
 	latestKnown     atomic.Bool
@@ -131,6 +133,18 @@ type Service struct {
 	liveErrorCode   string
 	backfillErrCode string
 	safetyHaltCode  string
+	progressMu      sync.Mutex
+	lastProgress    syncProgressSnapshot
+	lastProgressAt  time.Time
+	progressLogged  bool
+}
+
+type syncProgressSnapshot struct {
+	latest, indexed, highest  uint64
+	latestKnown, indexedKnown bool
+	highestKnown              bool
+	lag                       uint64
+	backfillComplete, ready   bool
 }
 
 func (s *Service) Name() string { return "core-sync" }
@@ -578,8 +592,62 @@ func (s *Service) recordRuntimeStatus(ctx context.Context) error {
 	}
 	if event.ID != 0 {
 		s.signalEvents()
+		s.logProgress(ctx, status)
 	}
 	return nil
+}
+
+func (s *Service) logProgress(ctx context.Context, status events.SyncStatus) {
+	if status.ErrorCode != "" || !status.LatestKnown {
+		return
+	}
+	snapshot := syncProgressSnapshot{
+		latest: status.Latest, indexed: status.Indexed, highest: status.HighestCovered,
+		latestKnown: status.LatestKnown, indexedKnown: status.IndexedKnown,
+		highestKnown: status.HighestCoveredKnown, lag: syncStatusLag(status),
+		backfillComplete: status.BackfillComplete, ready: status.Ready,
+	}
+	now := status.PolledAt.UTC()
+	s.progressMu.Lock()
+	if s.progressLogged && snapshot == s.lastProgress {
+		s.progressMu.Unlock()
+		return
+	}
+	if s.progressLogged && !now.Before(s.lastProgressAt) &&
+		now.Sub(s.lastProgressAt) < s.syncProgressLogInterval() {
+		s.progressMu.Unlock()
+		return
+	}
+	s.lastProgress = snapshot
+	s.lastProgressAt = now
+	s.progressLogged = true
+	s.progressMu.Unlock()
+
+	s.logger().InfoContext(ctx, "core sync progress",
+		"latest_block", strconv.FormatUint(status.Latest, 10),
+		"indexed_block", knownBlockNumber(status.Indexed, status.IndexedKnown),
+		"highest_covered_block", knownBlockNumber(status.HighestCovered, status.HighestCoveredKnown),
+		"lag_blocks", strconv.FormatUint(snapshot.lag, 10),
+		"backfill_complete", status.BackfillComplete,
+		"ready", status.Ready,
+	)
+}
+
+func syncStatusLag(status events.SyncStatus) uint64 {
+	if !status.LatestKnown || !status.IndexedKnown {
+		return status.Latest
+	}
+	if status.Latest > status.Indexed {
+		return status.Latest - status.Indexed
+	}
+	return 0
+}
+
+func knownBlockNumber(number uint64, known bool) string {
+	if !known {
+		return ""
+	}
+	return strconv.FormatUint(number, 10)
 }
 
 func missingBackfillRanges(coverage store.CoreCoverage, through, batch uint64, limit int) []store.BlockRange {
@@ -713,6 +781,13 @@ func (s *Service) pollInterval() time.Duration {
 		return 2 * time.Second
 	}
 	return s.PollInterval
+}
+
+func (s *Service) syncProgressLogInterval() time.Duration {
+	if s.SyncProgressLogInterval <= 0 {
+		return 30 * time.Second
+	}
+	return s.SyncProgressLogInterval
 }
 
 func (s *Service) workerCount() int {

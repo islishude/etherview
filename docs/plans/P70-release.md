@@ -33,6 +33,8 @@ and user/operator evidence sufficient for a production public release.
 | P70-T10 | done | P60 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
 | P70-T11 | done | P50 | Keep embedded-browser native-value assertions aligned with configured decimal display | focused Playwright E2E and common frontend gates |
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
+| P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
+| P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
 
 ## Acceptance
 
@@ -55,6 +57,18 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T07: configuration, Compose, Helm Secret/ExternalSecret wiring,
       effective connection bounds, and API-only capacity accounting have
       regression coverage and pass the applicable repository gates.
+- [x] P70-T13: the full-stack Preview runs the production union of all seven
+      split roles, exposes public and metrics ports only from the API role, and
+      keeps the API session pepper out of migration and worker containers.
+- [x] P70-T14: only the active PostgreSQL sync-status reporter emits changed
+      sync progress, immediately for its first valid state and then no more than
+      once per bounded configured interval, without idle heartbeats or delaying
+      failure and safety-boundary logs.
+- [x] P70-T14: enrichment, trace, verification, metadata, and maintenance
+      outcomes emit bounded event-driven logs only when their worker observers
+      report a completed durable transition; API request logging remains the
+      existing per-request boundary and catalog success is logged only after an
+      executed sweep.
 - [x] P70-T08: an optional bounded Genesis JSON source is authenticated against
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
@@ -84,12 +98,60 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09 and P70-T12 are complete. P70-T06 and the v1 release remain blocked on
-P66 completion, conformance, security, release-CI, long-capacity, and
-documentation evidence.
+P70-T09, P70-T12, P70-T13, and P70-T14 are complete. P70-T06 and the v1 release
+remain blocked on P66 completion, conformance, security, release-CI,
+long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T14 implementation: `observability.sync_progress_log_interval` defaults
+  to `30s`, accepts YAML and
+  `ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL`, and rejects values outside `1s` to
+  `1h`. Compose, Preview, Helm, capacity values, example configuration, and
+  operations guidance expose the same setting. The sync service logs only
+  after the active reporter successfully persists a changed runtime status;
+  its last emitted snapshot and timestamp coalesce interval-local changes
+  without adding a timer, query, or heartbeat.
+- P70-T14 business logs: a composed observer preserves the existing bounded
+  Prometheus counters and emits stage/result or operation/result fields after
+  enrich, trace, verification, metadata, and maintenance observers report an
+  outcome. Successful, unavailable, and stale-target outcomes use `info`;
+  retry, failed, rejected, resource, and error outcomes use `warn`. Unknown
+  values collapse to `other`, so raw task inputs, URLs, credentials, and nested
+  errors cannot enter these records. Catalog maintenance emits success only
+  when its durable sweep reports `Ran`.
+- P70-T14 verification: focused ordinary and race tests for
+  `./internal/config`, `./internal/observability`, `./internal/syncer`,
+  `./internal/maintenance`, and `./internal/app` pass. `make lint`, `make
+  compose-check`, `make helm-check`, `make plan-check`, `make check`, and `git
+  diff --check` pass. The full check includes all Go and web tests, the complete
+  Go race suite, generation, security, license, Docker, Compose, and Helm
+  gates.
+- P70-T14 Preview evidence: `make recreate-preview` replaced all seven
+  application roles while the PostgreSQL and Reth container IDs remained
+  unchanged; migration completed, every role ran, and API readiness returned
+  `200`. With Reth continuously producing blocks, sync emitted at
+  `08:42:53.318Z` for height `340` and next at `08:43:24.020Z` for the coalesced
+  height `346`, with no per-block records between them; the status API then
+  reached height `350` at zero lag. Enrich and trace emitted immediate bounded
+  success records, catalog maintenance logged its executed sweep, and API kept
+  its existing request-completion records. Disabled verification and metadata
+  features produced no idle business heartbeat.
+- P70-T13: `compose.preview.yaml` replaces the `roles=all` monolith with API,
+  sync, enrichment, trace, verification, metadata, and maintenance processes
+  built from the same image. All roles share PostgreSQL, Reth, migration,
+  config, and genesis dependencies; only API publishes ports and receives the
+  session pepper. Preview start and application-only recreation remove orphaned
+  services, while recreation preserves PostgreSQL and Reth.
+- P70-T13 verification: `make compose-check`,
+  `BUILDX_CONFIG=/tmp/etherview-buildx make deployment-check`, `make
+  plan-check`, and `git diff --check` pass. A fresh
+  `BUILDX_CONFIG=/tmp/etherview-buildx make start-preview` ran all seven roles,
+  completed migration, served ready API and embedded SPA responses, and reached
+  the Reth head with zero lag. Application container IDs all changed after
+  `BUILDX_CONFIG=/tmp/etherview-buildx make recreate-preview`, while PostgreSQL
+  and Reth container IDs remained unchanged and indexed height advanced from 4
+  to 18 with zero lag.
 - P70-T10: `observability.log_level` and `observability.log_format` default to
   `info` and `json`; exact YAML and `ETHERVIEW_LOG_*` values are validated
   before startup. Every configuration-bearing command accepts the same

@@ -44,6 +44,7 @@ observability:
   log_format: json
   trace_sample_ratio: 0.01
   metrics_refresh_interval: 5s
+  sync_progress_log_interval: 30s
 
 features:
   trace: false

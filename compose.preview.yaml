@@ -9,8 +9,12 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
-  ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
   ETHERVIEW_LOG_FORMAT: text
+  ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL:
+
+x-etherview-api-env: &etherview-api-env
+  <<: *etherview-app-env
+  ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
 
 x-etherview-service: &etherview-service
   image: ${ETHERVIEW_IMAGE:-etherview:local}
@@ -21,6 +25,14 @@ x-etherview-service: &etherview-service
   volumes:
     - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
     - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+
+x-etherview-runtime-depends-on: &etherview-runtime-depends-on
+  postgres:
+    condition: service_healthy
+  migration:
+    condition: service_completed_successfully
+  reth:
+    condition: service_started
 
 services:
   postgres:
@@ -73,22 +85,72 @@ services:
       postgres:
         condition: service_healthy
 
-  etherview:
+  api:
     <<: *etherview-service
-    command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
+    command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
     environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: all
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migration:
-        condition: service_completed_successfully
-      reth:
-        condition: service_started
+      <<: *etherview-api-env
+      ETHERVIEW_ROLES: api
+    depends_on: *etherview-runtime-depends-on
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  sync:
+    <<: *etherview-service
+    command: ["serve", "--roles=sync", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: sync
+    depends_on: *etherview-runtime-depends-on
+    restart: unless-stopped
+
+  enrich:
+    <<: *etherview-service
+    command: ["serve", "--roles=enrich", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: enrich
+    depends_on: *etherview-runtime-depends-on
+    restart: unless-stopped
+
+  trace:
+    <<: *etherview-service
+    command: ["serve", "--roles=trace", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: trace
+    depends_on: *etherview-runtime-depends-on
+    restart: unless-stopped
+
+  verify:
+    <<: *etherview-service
+    command: ["serve", "--roles=verify", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: verify
+    depends_on: *etherview-runtime-depends-on
+    restart: unless-stopped
+
+  metadata:
+    <<: *etherview-service
+    command:
+      ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: metadata
+    depends_on: *etherview-runtime-depends-on
+    restart: unless-stopped
+
+  maintenance:
+    <<: *etherview-service
+    command:
+      ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: maintenance
+    depends_on: *etherview-runtime-depends-on
     restart: unless-stopped
 
 volumes:

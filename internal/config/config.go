@@ -141,14 +141,15 @@ type MaintenanceConfig struct {
 // disabled when OTLPTraceEndpoint is empty, so the normal PostgreSQL-only
 // deployment starts no exporter goroutines and makes no collector calls.
 type ObservabilityConfig struct {
-	Environment            string        `yaml:"environment"`
-	LogLevel               string        `yaml:"log_level"`
-	LogFormat              string        `yaml:"log_format"`
-	OTLPTraceEndpoint      string        `yaml:"otlp_trace_endpoint"`
-	OTLPTraceInsecure      bool          `yaml:"otlp_trace_insecure"`
-	TraceSampleRatio       float64       `yaml:"trace_sample_ratio"`
-	TraceExportTimeout     time.Duration `yaml:"trace_export_timeout"`
-	MetricsRefreshInterval time.Duration `yaml:"metrics_refresh_interval"`
+	Environment             string        `yaml:"environment"`
+	LogLevel                string        `yaml:"log_level"`
+	LogFormat               string        `yaml:"log_format"`
+	OTLPTraceEndpoint       string        `yaml:"otlp_trace_endpoint"`
+	OTLPTraceInsecure       bool          `yaml:"otlp_trace_insecure"`
+	TraceSampleRatio        float64       `yaml:"trace_sample_ratio"`
+	TraceExportTimeout      time.Duration `yaml:"trace_export_timeout"`
+	MetricsRefreshInterval  time.Duration `yaml:"metrics_refresh_interval"`
+	SyncProgressLogInterval time.Duration `yaml:"sync_progress_log_interval"`
 }
 
 // MetadataConfig bounds hostile external NFT metadata retrieval. The IPFS
@@ -338,8 +339,10 @@ func Default() Config {
 		},
 		Observability: ObservabilityConfig{
 			Environment: "production", LogLevel: "info", LogFormat: "json",
-			TraceSampleRatio:   0.1,
-			TraceExportTimeout: 5 * time.Second, MetricsRefreshInterval: 15 * time.Second,
+			TraceSampleRatio:        0.1,
+			TraceExportTimeout:      5 * time.Second,
+			MetricsRefreshInterval:  15 * time.Second,
+			SyncProgressLogInterval: 30 * time.Second,
 		},
 		Metadata: MetadataConfig{
 			FetchTimeout:     10 * time.Second,
@@ -1189,6 +1192,9 @@ func validateObservability(cfg ObservabilityConfig) error {
 	if cfg.MetricsRefreshInterval < time.Second || cfg.MetricsRefreshInterval > 5*time.Minute {
 		errs = append(errs, errors.New("observability.metrics_refresh_interval must be between 1s and 5m"))
 	}
+	if cfg.SyncProgressLogInterval < time.Second || cfg.SyncProgressLogInterval > time.Hour {
+		errs = append(errs, errors.New("observability.sync_progress_log_interval must be between 1s and 1h"))
+	}
 	if cfg.OTLPTraceEndpoint == "" {
 		if cfg.OTLPTraceInsecure {
 			errs = append(errs, errors.New("observability.otlp_trace_insecure requires otlp_trace_endpoint"))
@@ -1555,6 +1561,7 @@ func applyEnvironmentForRoles(
 		"SOURCIFY_TIMEOUT":             &cfg.Sourcify.Timeout,
 		"TRACE_EXPORT_TIMEOUT":         &cfg.Observability.TraceExportTimeout,
 		"METRICS_REFRESH_INTERVAL":     &cfg.Observability.MetricsRefreshInterval,
+		"SYNC_PROGRESS_LOG_INTERVAL":   &cfg.Observability.SyncProgressLogInterval,
 		"USER_AUTH_CHALLENGE_TTL":      &cfg.UserAuth.ChallengeTTL,
 		"USER_AUTH_SESSION_TTL":        &cfg.UserAuth.SessionTTL,
 		"USER_AUTH_LAST_USED_INTERVAL": &cfg.UserAuth.LastUsedInterval,

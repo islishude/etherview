@@ -160,7 +160,7 @@ func (housekeeper *CatalogHousekeeper) Run(ctx context.Context) error {
 				return err
 			}
 		}
-		_, err := housekeeper.cleaner.Sweep(
+		result, err := housekeeper.cleaner.Sweep(
 			ctx,
 			housekeeper.options.ChainID,
 			housekeeper.options.RetentionGenerations,
@@ -168,6 +168,12 @@ func (housekeeper *CatalogHousekeeper) Run(ctx context.Context) error {
 			housekeeper.options.Now().UTC(),
 		)
 		if err == nil {
+			if result.Ran {
+				housekeeper.logger.InfoContext(ctx, "catalog maintenance sweep completed",
+					"minimum_generation", result.MinGeneration,
+					"deleted_observations", result.Deleted,
+				)
+			}
 			delay = housekeeper.options.Interval
 			retry = housekeeper.options.RetryInterval
 			continue

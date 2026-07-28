@@ -82,6 +82,7 @@ observability:
   trace_sample_ratio: 0.1
   trace_export_timeout: 5s
   metrics_refresh_interval: 15s
+  sync_progress_log_interval: 30s
 
 metadata:
   fetch_timeout: 10s

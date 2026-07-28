@@ -120,6 +120,23 @@ func TestLoadReadDatabaseYAML(t *testing.T) {
 	}
 }
 
+func TestLoadSyncProgressLogIntervalYAML(t *testing.T) {
+	unsetHostEnvironment(t, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`observability:
+  sync_progress_log_interval: 45s
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Observability.SyncProgressLogInterval != 45*time.Second {
+		t.Fatalf("sync progress YAML interval = %s, want 45s", cfg.Observability.SyncProgressLogInterval)
+	}
+}
+
 func TestRPCEnvironmentSupportsPurposeAndRateStructuredSecret(t *testing.T) {
 	t.Setenv("ETHERVIEW_RPC_URLS", `[
 		{"name":"live","url":"https://live.example","purposes":["head"],"max_requests_per_second":25},
@@ -277,7 +294,8 @@ func TestMaintenanceConfigurationIsStrictlyBounded(t *testing.T) {
 func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 	t.Parallel()
 	if got := Default().Observability; got.OTLPTraceEndpoint != "" ||
-		got.LogLevel != "info" || got.LogFormat != "json" {
+		got.LogLevel != "info" || got.LogFormat != "json" ||
+		got.SyncProgressLogInterval != 30*time.Second {
 		t.Fatalf("unexpected observability defaults: %#v", got)
 	}
 	for _, test := range []struct {
@@ -298,6 +316,8 @@ func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 		{name: "infinite sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = math.Inf(1) }, want: "trace_sample_ratio"},
 		{name: "short export timeout", mutate: func(cfg *Config) { cfg.Observability.TraceExportTimeout = 99 * time.Millisecond }, want: "trace_export_timeout"},
 		{name: "short refresh", mutate: func(cfg *Config) { cfg.Observability.MetricsRefreshInterval = time.Millisecond }, want: "metrics_refresh_interval"},
+		{name: "short sync progress log", mutate: func(cfg *Config) { cfg.Observability.SyncProgressLogInterval = time.Millisecond }, want: "sync_progress_log_interval"},
+		{name: "long sync progress log", mutate: func(cfg *Config) { cfg.Observability.SyncProgressLogInterval = time.Hour + 1 }, want: "sync_progress_log_interval"},
 		{name: "credential endpoint", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://user:secret@otel.example:4318" }, want: "otlp_trace_endpoint"},
 		{name: "endpoint query", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318?key=secret" }, want: "otlp_trace_endpoint"},
 		{name: "endpoint path", mutate: func(cfg *Config) { cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318/private" }, want: "otlp_trace_endpoint"},
@@ -321,13 +341,13 @@ func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 			Environment: "production", LogLevel: "debug", LogFormat: "text",
 			OTLPTraceEndpoint: "https://otel.example:4318",
 			TraceSampleRatio:  0.25, TraceExportTimeout: time.Second,
-			MetricsRefreshInterval: 10 * time.Second,
+			MetricsRefreshInterval: 10 * time.Second, SyncProgressLogInterval: time.Minute,
 		},
 		{
 			Environment: "staging", LogLevel: "error", LogFormat: "json",
 			OTLPTraceEndpoint: "http://otel.monitoring.svc:4318",
 			OTLPTraceInsecure: true, TraceSampleRatio: 1, TraceExportTimeout: time.Second,
-			MetricsRefreshInterval: 10 * time.Second,
+			MetricsRefreshInterval: 10 * time.Second, SyncProgressLogInterval: time.Second,
 		},
 	} {
 		root := Default()
@@ -342,14 +362,15 @@ func TestObservabilityEnvironmentOverrides(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	values := map[string]string{
-		"ETHERVIEW_OBSERVABILITY_ENVIRONMENT": "staging",
-		"ETHERVIEW_LOG_LEVEL":                 "debug",
-		"ETHERVIEW_LOG_FORMAT":                "text",
-		"ETHERVIEW_OTLP_TRACE_ENDPOINT":       "http://otel.monitoring.svc:4318",
-		"ETHERVIEW_OTLP_TRACE_INSECURE":       "true",
-		"ETHERVIEW_TRACE_SAMPLE_RATIO":        "0.5",
-		"ETHERVIEW_TRACE_EXPORT_TIMEOUT":      "3s",
-		"ETHERVIEW_METRICS_REFRESH_INTERVAL":  "20s",
+		"ETHERVIEW_OBSERVABILITY_ENVIRONMENT":  "staging",
+		"ETHERVIEW_LOG_LEVEL":                  "debug",
+		"ETHERVIEW_LOG_FORMAT":                 "text",
+		"ETHERVIEW_OTLP_TRACE_ENDPOINT":        "http://otel.monitoring.svc:4318",
+		"ETHERVIEW_OTLP_TRACE_INSECURE":        "true",
+		"ETHERVIEW_TRACE_SAMPLE_RATIO":         "0.5",
+		"ETHERVIEW_TRACE_EXPORT_TIMEOUT":       "3s",
+		"ETHERVIEW_METRICS_REFRESH_INTERVAL":   "20s",
+		"ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL": "45s",
 	}
 	lookup := func(name string) (string, bool) { value, ok := values[name]; return value, ok }
 	if err := applyEnvironment(&cfg, lookup, os.ReadFile); err != nil {
@@ -359,7 +380,9 @@ func TestObservabilityEnvironmentOverrides(t *testing.T) {
 		cfg.Observability.LogLevel != "debug" || cfg.Observability.LogFormat != "text" ||
 		cfg.Observability.OTLPTraceEndpoint != "http://otel.monitoring.svc:4318" ||
 		!cfg.Observability.OTLPTraceInsecure || cfg.Observability.TraceSampleRatio != 0.5 ||
-		cfg.Observability.TraceExportTimeout != 3*time.Second || cfg.Observability.MetricsRefreshInterval != 20*time.Second {
+		cfg.Observability.TraceExportTimeout != 3*time.Second ||
+		cfg.Observability.MetricsRefreshInterval != 20*time.Second ||
+		cfg.Observability.SyncProgressLogInterval != 45*time.Second {
 		t.Fatalf("observability environment was not applied: %#v", cfg.Observability)
 	}
 }

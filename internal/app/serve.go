@@ -68,6 +68,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		"environment", cfg.Observability.Environment,
 	)
 	registry := observability.NewRegistry(b.Version, strings.Join(roleNames, ","))
+	businessObserver := observability.NewBusinessObserver(registry, logger)
 	tracker := &syncer.Tracker{}
 	// Operational backlog snapshots stay writer-backed so every role exports
 	// the same authoritative model even when an API reader is replaying behind.
@@ -343,10 +344,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		service := &syncer.Service{
 			ChainID: chainID, StartBlock: cfg.Chain.StartBlock,
 			PollInterval: cfg.Runtime.PollInterval, Workers: cfg.Runtime.BackfillWorkers,
-			BackfillBatchBlocks: uint64(cfg.Runtime.BackfillBatchBlocks),
-			WorkerID:            runtimeWorkerID("core-backfill"),
-			LeaseDuration:       cfg.Runtime.LeaseDuration,
-			Source:              coreRPCSource, Repository: repository, Canonicalizer: coreCanonicalizer,
+			BackfillBatchBlocks:     uint64(cfg.Runtime.BackfillBatchBlocks),
+			SyncProgressLogInterval: cfg.Observability.SyncProgressLogInterval,
+			WorkerID:                runtimeWorkerID("core-backfill"),
+			LeaseDuration:           cfg.Runtime.LeaseDuration,
+			Source:                  coreRPCSource, Repository: repository, Canonicalizer: coreCanonicalizer,
 			Status: runtimeEvents, EventWake: signalEvents,
 			Tracker: tracker, Observer: registry, Logger: logger,
 		}
@@ -658,7 +660,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 					ServiceName: serviceName, WorkerID: verificationWorkerID(index),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-					Public: cfg.Security.PublicVerification, Observer: registry,
+					Public: cfg.Security.PublicVerification, Observer: businessObserver,
 				})
 			},
 		); err != nil {
@@ -724,7 +726,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return enrich.NewWorker(queue, processors, enrich.WorkerOptions{
 					ID:            runtimeWorkerID(indexedWorkerName("enrich", index)),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
-					PollInterval:  cfg.Runtime.PollInterval, Wake: enrichJobWake, Observer: registry,
+					PollInterval:  cfg.Runtime.PollInterval, Wake: enrichJobWake,
+					Observer: businessObserver,
 				})
 			},
 		); err != nil {
@@ -758,7 +761,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return enrich.NewWorker(queue, []enrich.Processor{traceProcessor, stateDiffProcessor}, enrich.WorkerOptions{
 					ID:            runtimeWorkerID(indexedWorkerName("trace", index)),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
-					PollInterval:  cfg.Runtime.PollInterval, Wake: traceJobWake, Observer: registry,
+					PollInterval:  cfg.Runtime.PollInterval, Wake: traceJobWake,
+					Observer: businessObserver,
 				})
 			},
 		); err != nil {
@@ -770,7 +774,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
 			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
 		}
-		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, registry); err != nil {
+		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, businessObserver); err != nil {
 			return err
 		}
 	}
@@ -789,7 +793,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 		if err := registerMaintenanceWorkers(componentRegistry, requestRepository, executor, cfg.Runtime.WorkerCount, maintenance.WorkerOptions{
-			PollInterval: cfg.Runtime.PollInterval, Observer: registry,
+			PollInterval: cfg.Runtime.PollInterval, Observer: businessObserver,
 		}); err != nil {
 			return err
 		}

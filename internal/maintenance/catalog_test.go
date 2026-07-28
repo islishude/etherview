@@ -21,6 +21,7 @@ type catalogSweepCall struct {
 type scriptedCatalogCleaner struct {
 	mu      sync.Mutex
 	errors  []error
+	results []CatalogCleanupResult
 	calls   []catalogSweepCall
 	arrived chan int
 }
@@ -42,6 +43,10 @@ func (cleaner *scriptedCatalogCleaner) Sweep(
 	if index < len(cleaner.errors) {
 		err = cleaner.errors[index]
 	}
+	result := CatalogCleanupResult{Ran: err == nil}
+	if index < len(cleaner.results) {
+		result = cleaner.results[index]
+	}
 	cleaner.mu.Unlock()
 	if cleaner.arrived != nil {
 		select {
@@ -49,7 +54,7 @@ func (cleaner *scriptedCatalogCleaner) Sweep(
 		default:
 		}
 	}
-	return CatalogCleanupResult{Ran: err == nil}, err
+	return result, err
 }
 
 func (cleaner *scriptedCatalogCleaner) snapshot() []catalogSweepCall {
@@ -62,6 +67,7 @@ func TestCatalogHousekeeperRetriesWithoutLeakingFailureAndStops(t *testing.T) {
 	now := time.Date(2026, time.July, 20, 1, 2, 3, 0, time.FixedZone("test", 8*60*60))
 	cleaner := &scriptedCatalogCleaner{
 		errors:  []error{errors.New("upstream secret one"), errors.New("upstream secret two")},
+		results: []CatalogCleanupResult{{}, {}, {Ran: true, MinGeneration: 73, Deleted: 4}},
 		arrived: make(chan int, 8),
 	}
 	var logs bytes.Buffer
@@ -101,6 +107,42 @@ func TestCatalogHousekeeperRetriesWithoutLeakingFailureAndStops(t *testing.T) {
 	}
 	if strings.Contains(output, "upstream secret") {
 		t.Fatalf("maintenance log leaked nested failure: %q", output)
+	}
+	if !strings.Contains(output, "msg=\"catalog maintenance sweep completed\"") ||
+		!strings.Contains(output, "minimum_generation=73") ||
+		!strings.Contains(output, "deleted_observations=4") {
+		t.Fatalf("maintenance success log=%q", output)
+	}
+}
+
+func TestCatalogHousekeeperDoesNotLogSkippedSweepAsProgress(t *testing.T) {
+	t.Parallel()
+	cleaner := &scriptedCatalogCleaner{
+		results: []CatalogCleanupResult{{Ran: false}},
+		arrived: make(chan int, 1),
+	}
+	var logs bytes.Buffer
+	housekeeper, err := NewCatalogHousekeeper(
+		cleaner,
+		slog.New(slog.NewTextHandler(&logs, nil)),
+		CatalogHousekeeperOptions{
+			ChainID: 1, Interval: time.Hour, RetentionGenerations: 1000,
+			AdapterDeleteBatch: 1,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- housekeeper.Run(ctx) }()
+	waitForCatalogSweep(t, cleaner.arrived, 1)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error=%v", err)
+	}
+	if strings.Contains(logs.String(), "catalog maintenance sweep completed") {
+		t.Fatalf("skipped sweep was logged as progress: %q", logs.String())
 	}
 }
 

@@ -32,6 +32,7 @@ GENERATED_PATHS := \
 IMAGE ?= etherview:local
 RUNTIME_TOOLS_IMAGE ?= etherview-runtime-tools:local
 HELM_CHART ?= deploy/helm/etherview
+PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check
@@ -216,18 +217,21 @@ compose-check:
 	$(DOCKER) compose --profile monolith config --quiet
 	$(DOCKER) compose --profile distributed config --quiet
 	$(DOCKER) compose --profile accelerators config --quiet
+	$(DOCKER) compose -f compose.preview.yaml config --quiet
+	@$(DOCKER) compose -f compose.preview.yaml config --format json | \
+		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const apiTargets = new Set(config.services.api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!config.services.api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const [name, service] of Object.entries(config.services)) if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name);'
 	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
 		--profile monolith config --quiet
 	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
 		--profile distributed config --quiet
 	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
 		--profile distributed --profile runtime-tools config --quiet
-	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT; \
+	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL; \
 		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
-	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text \
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
+	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL=45s \
 		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text") throw new Error("Compose logging overrides were not preserved");'
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text" || env.ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL !== "45s") throw new Error("Compose logging overrides were not preserved");'
 
 # This focused schema smoke keeps fresh migration compatibility independently runnable;
 # compose-runtime-smoke covers the complete application deployment shapes.
@@ -262,11 +266,11 @@ deployment-check: docker-check compose-check helm-check
 check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
 start-preview:
-	@$(DOCKER) compose -f compose.preview.yaml up --build --wait
+	@$(DOCKER) compose -f compose.preview.yaml up --build --wait --remove-orphans
 
 stop-preview:
 	@$(DOCKER) compose -f compose.preview.yaml down --volumes --remove-orphans
 
 recreate-preview:
-	@$(DOCKER) compose -f compose.preview.yaml rm -fs etherview
-	@$(DOCKER) compose -f compose.preview.yaml up -d --build etherview
+	@$(DOCKER) compose -f compose.preview.yaml rm -fs $(PREVIEW_APP_SERVICES)
+	@$(DOCKER) compose -f compose.preview.yaml up -d --build --remove-orphans $(PREVIEW_APP_SERVICES)

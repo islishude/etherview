@@ -32,7 +32,9 @@ Logs default to `info` and JSON. Configure `observability.log_level` and
 `observability.log_format` in the mounted YAML, or export
 `ETHERVIEW_LOG_LEVEL` and `ETHERVIEW_LOG_FORMAT` in the shell invoking Compose.
 The Compose entries are value-less so an unset host variable preserves the
-mounted YAML value.
+mounted YAML value. The sync reporter's changed-progress log interval follows
+the same rule through `observability.sync_progress_log_interval` or
+`ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL`.
 The maintenance component runs one search-catalog and adapter-retention sweep
 at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep

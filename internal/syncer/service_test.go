@@ -72,13 +72,14 @@ type statusRecorder struct {
 type capturedLog struct {
 	message string
 	attrs   map[string]string
+	level   slog.Level
 }
 
 type captureLogHandler struct{ records chan capturedLog }
 
 func (handler *captureLogHandler) Enabled(context.Context, slog.Level) bool { return true }
 func (handler *captureLogHandler) Handle(_ context.Context, record slog.Record) error {
-	entry := capturedLog{message: record.Message, attrs: make(map[string]string)}
+	entry := capturedLog{message: record.Message, attrs: make(map[string]string), level: record.Level}
 	record.Attrs(func(attribute slog.Attr) bool {
 		entry.attrs[attribute.Key] = attribute.Value.Resolve().String()
 		return true
@@ -106,6 +107,12 @@ func (r *statusRecorder) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.statuses)
+}
+
+type zeroStatusRecorder struct{}
+
+func (zeroStatusRecorder) RecordStatus(context.Context, events.SyncStatus) (events.Event, error) {
+	return events.Event{}, nil
 }
 
 func (s *notifyingSource) Head(ctx context.Context) (uint64, error) {
@@ -351,6 +358,91 @@ func TestRunDoesNotLogCredentialBearingRPCError(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("sync service did not stop")
+	}
+}
+
+func TestSyncProgressLogCoalescesChangesAndSkipsIdleStatus(t *testing.T) {
+	t.Parallel()
+	logs := &captureLogHandler{records: make(chan capturedLog, 4)}
+	service := &Service{
+		Logger: slog.New(logs), SyncProgressLogInterval: 30 * time.Second,
+	}
+	start := time.Date(2026, 7, 28, 1, 2, 3, 0, time.UTC)
+	status := events.SyncStatus{
+		Latest: 10, Indexed: 5, HighestCovered: 10,
+		LatestKnown: true, IndexedKnown: true, HighestCoveredKnown: true,
+		PolledAt: start,
+	}
+	service.logProgress(t.Context(), status)
+	first := <-logs.records
+	if first.message != "core sync progress" || first.level != slog.LevelInfo ||
+		first.attrs["latest_block"] != "10" || first.attrs["indexed_block"] != "5" ||
+		first.attrs["highest_covered_block"] != "10" || first.attrs["lag_blocks"] != "5" {
+		t.Fatalf("first progress log=%+v", first)
+	}
+
+	status.Latest = 11
+	status.HighestCovered = 11
+	status.PolledAt = start.Add(5 * time.Second)
+	service.logProgress(t.Context(), status)
+	assertNoCapturedLog(t, logs.records)
+
+	// The intermediate height remains pending and is emitted once the interval
+	// has elapsed, even though this poll observes the same latest snapshot.
+	status.PolledAt = start.Add(35 * time.Second)
+	service.logProgress(t.Context(), status)
+	second := <-logs.records
+	if second.attrs["latest_block"] != "11" || second.attrs["lag_blocks"] != "6" {
+		t.Fatalf("coalesced progress log=%+v", second)
+	}
+
+	status.PolledAt = start.Add(70 * time.Second)
+	service.logProgress(t.Context(), status)
+	assertNoCapturedLog(t, logs.records)
+
+	status.Latest = 12
+	status.ErrorCode = "sync_cycle_failed"
+	status.PolledAt = start.Add(71 * time.Second)
+	service.logProgress(t.Context(), status)
+	assertNoCapturedLog(t, logs.records)
+}
+
+func TestSyncProgressLogRequiresActiveStatusReporter(t *testing.T) {
+	t.Parallel()
+	repository := store.NewMemoryRepository()
+	if err := repository.ConfigureIndex(t.Context(), "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	logs := &captureLogHandler{records: make(chan capturedLog, 2)}
+	now := time.Date(2026, 7, 28, 2, 3, 4, 0, time.UTC)
+	service := &Service{
+		ChainID: "1", Repository: repository, Tracker: &Tracker{},
+		Status: zeroStatusRecorder{}, Logger: slog.New(logs),
+		Now: func() time.Time { return now },
+	}
+	service.latest.Store(10)
+	service.latestKnown.Store(true)
+	if err := service.recordRuntimeStatus(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertNoCapturedLog(t, logs.records)
+
+	service.Status = &statusRecorder{}
+	if err := service.recordRuntimeStatus(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	entry := <-logs.records
+	if entry.message != "core sync progress" || entry.attrs["latest_block"] != "10" {
+		t.Fatalf("active reporter progress log=%+v", entry)
+	}
+}
+
+func assertNoCapturedLog(t *testing.T, records <-chan capturedLog) {
+	t.Helper()
+	select {
+	case entry := <-records:
+		t.Fatalf("unexpected log=%+v", entry)
+	default:
 	}
 }
 

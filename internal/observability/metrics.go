@@ -417,6 +417,8 @@ func boundedJobStage(value string) string {
 		return "stats"
 	case "trace", "trace@1":
 		return "trace"
+	case "state_diff", "state_diff@1":
+		return "state_diff"
 	case "nft-metadata", "verification":
 		return strings.TrimSpace(value)
 	default:

@@ -189,6 +189,7 @@ assert_contains "$monolith" "name: etherview-all"
 assert_contains "$monolith" 'args: ["serve", "--config", "/etc/etherview/config.yaml", "--roles=all"]'
 assert_contains "$monolith" "log_level: info"
 assert_contains "$monolith" "log_format: json"
+assert_contains "$monolith" "sync_progress_log_interval: 30s"
 assert_occurrences "$monolith" "name: schema-compatibility" 1
 assert_occurrences "$monolith" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 1
 assert_occurrences "$monolith" 'args: ["migrate", "up", "--config", "/etc/etherview/config.yaml"]' 1
@@ -217,6 +218,7 @@ assert_kind_count "$distributed" HorizontalPodAutoscaler 5
 assert_kind_count "$distributed" PodDisruptionBudget 0
 assert_kind_count "$distributed" Job 1
 assert_kind_count "$distributed" NetworkPolicy 1
+assert_contains "$distributed" "sync_progress_log_interval: 30s"
 assert_contains "$distributed" "alert: EtherviewMetricsSnapshotStale"
 assert_contains "$distributed" "alert: EtherviewRepairQueueStalled"
 assert_contains "$distributed" "alert: EtherviewRepairExecutionFailures"
@@ -270,6 +272,7 @@ assert_not_contains "$genesis_url_distributed" "claimName:"
 assert_kind_count "$reference_capacity" Deployment 4
 assert_kind_count "$reference_capacity" HorizontalPodAutoscaler 2
 assert_kind_count "$reference_capacity" PodDisruptionBudget 4
+assert_contains "$reference_capacity" "sync_progress_log_interval: 30s"
 assert_occurrences "$reference_capacity" "minAvailable: 1" 4
 assert_occurrences "$reference_capacity" "minDomains: 2" 4
 assert_occurrences "$reference_capacity" 'topologyKey: "kubernetes.io/hostname"' 4

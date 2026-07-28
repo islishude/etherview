@@ -600,6 +600,10 @@
               "type": "string",
               "enum": ["json", "text"]
             },
+            "sync_progress_log_interval": {
+              "type": "string",
+              "minLength": 2
+            },
             "otlp_trace_endpoint": {
               "const": "",
               "description": "The OTLP trace endpoint must come from secrets.existingSecret."
