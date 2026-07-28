@@ -61,6 +61,8 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
         }
       : code === "not_ready"
         ? { title: t("state.coreNotReady"), detail: t("state.coreNotReadyDetail") }
+        : code === "analytics_pending"
+          ? { title: t("charts.backfillPending"), detail: t("charts.backfillPendingDetail", { dirty: "—" }) }
         : code === "invalid_cursor"
           ? { title: t("state.cursorInvalid"), detail: t("state.cursorInvalidDetail") }
           : code === "not_found"

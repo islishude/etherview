@@ -44,6 +44,10 @@ type Registry struct {
 	verifyJobs             map[string]uint64
 	metadata               map[string]uint64
 	maintenance            map[pair]uint64
+	analyticsRollups       map[string]uint64
+	analyticsDirtyHours    float64
+	analyticsOldestDirty   float64
+	analyticsBackfill      float64
 	rateLimits             map[string]uint64
 	x402Requests           map[pair]uint64
 }
@@ -85,6 +89,7 @@ func NewRegistry(version, role string) *Registry {
 		verifyJobs:          make(map[string]uint64),
 		metadata:            make(map[string]uint64),
 		maintenance:         make(map[pair]uint64),
+		analyticsRollups:    make(map[string]uint64),
 		rateLimits:          make(map[string]uint64),
 		x402Requests:        make(map[pair]uint64),
 	}
@@ -181,6 +186,29 @@ func (registry *Registry) RecordMetadataFetch(result string) {
 // RecordMaintenanceRequest records only controlled operation/result values.
 func (registry *Registry) RecordMaintenanceRequest(operation, result string) {
 	registry.incrementPair(registry.maintenance, boundedMaintenanceOperation(operation), boundedJobResult(result))
+}
+
+// RecordAnalyticsRollup records a bounded recompute outcome.
+func (registry *Registry) RecordAnalyticsRollup(result string) {
+	switch result {
+	case "succeeded", "retry", "failed":
+	default:
+		result = "failed"
+	}
+	registry.increment(registry.analyticsRollups, result)
+}
+
+// SetAnalyticsRollupState updates writer-backed queue and backfill gauges.
+func (registry *Registry) SetAnalyticsRollupState(
+	dirtyHours int64,
+	oldestDirtySeconds float64,
+	backfillProgress float64,
+) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.analyticsDirtyHours = max(0, float64(dirtyHours))
+	registry.analyticsOldestDirty = max(0, oldestDirtySeconds)
+	registry.analyticsBackfill = min(100, max(0, backfillProgress))
 }
 
 // RecordMetricsRefreshFailure exposes PostgreSQL scrape-state loss without
@@ -290,6 +318,13 @@ func (registry *Registry) Gather() string {
 	writeCounters(&output, "etherview_verification_jobs_total", "Verification jobs grouped by result.", "result", registry.verifyJobs)
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
 	writePairCounters(&output, "etherview_maintenance_requests_total", "Repair and reindex executions grouped by operation and result.", "operation", "result", registry.maintenance)
+	writeCounters(&output, "etherview_analytics_rollup_recomputes_total", "Historical analytics rollup recomputes grouped by outcome.", "result", registry.analyticsRollups)
+	writeHelp(&output, "etherview_analytics_dirty_hours", "UTC hour buckets waiting for canonical analytics recompute.", "gauge")
+	fmt.Fprintf(&output, "etherview_analytics_dirty_hours %s\n", formatFloat(registry.analyticsDirtyHours))
+	writeHelp(&output, "etherview_analytics_oldest_dirty_seconds", "Age of the oldest UTC analytics bucket waiting for recompute.", "gauge")
+	fmt.Fprintf(&output, "etherview_analytics_oldest_dirty_seconds %s\n", formatFloat(registry.analyticsOldestDirty))
+	writeHelp(&output, "etherview_analytics_backfill_percent", "Canonical block source publication progress for historical analytics.", "gauge")
+	fmt.Fprintf(&output, "etherview_analytics_backfill_percent %s\n", formatFloat(registry.analyticsBackfill))
 	writeCounters(&output, "etherview_rate_limit_decisions_total", "Rate limit decisions grouped by outcome.", "decision", registry.rateLimits)
 	writePairCounters(&output, "etherview_x402_requests_total", "x402 request attempts grouped by eligible operation and terminal outcome.", "operation", "result", registry.x402Requests)
 	return output.String()
@@ -413,7 +448,7 @@ func boundedJobStage(value string) string {
 		return "abi"
 	case "token", "token@1":
 		return "token"
-	case "stats", "stats@2":
+	case "stats", "stats@2", "stats@3":
 		return "stats"
 	case "trace", "trace@1":
 		return "trace"

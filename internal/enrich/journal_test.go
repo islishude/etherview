@@ -81,7 +81,7 @@ func TestStatsJournalFailureRollsBackStageTransaction(t *testing.T) {
 			case strings.Contains(query, "GROUP BY block.raw"):
 				return &fakeSQLRows{
 					columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-					values:  [][]driver.Value{{raw, int64(1), "0", "6", "99", true}},
+					values:  [][]driver.Value{{raw, int64(0), "0", "6", "99", true}},
 				}, nil
 			case strings.Contains(query, "FROM receipts AS receipt"):
 				return &fakeSQLRows{columns: []string{"raw"}}, nil

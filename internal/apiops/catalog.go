@@ -163,6 +163,12 @@ var catalog = []Spec{
 	spec("getAggregateStats", "GET", "/stats/summary", true,
 		requiredQueryParameter("from_block", ParameterUint256),
 		requiredQueryParameter("to_block", ParameterUint256)),
+	spec("getChartOverview", "GET", "/stats/charts/overview", true),
+	spec("getChartMetric", "GET", "/stats/charts/{metric}", true,
+		pathParameter("metric", ParameterText),
+		requiredQueryParameter("from_time", ParameterRFC3339),
+		chartIntervalParameter(),
+		requiredQueryParameter("to_time", ParameterRFC3339)),
 	spec("search", "GET", "/search", true,
 		cursorParameter(),
 		limitParameter("20"),
@@ -240,6 +246,15 @@ func limitParameter(defaultValue string) ParameterSpec {
 	parameter.Minimum = 1
 	parameter.HasMaximum = true
 	parameter.Maximum = 100
+	return parameter
+}
+
+func chartIntervalParameter() ParameterSpec {
+	parameter := queryParameter("interval", ParameterText)
+	parameter.HasDefault = true
+	parameter.DefaultValue = "auto"
+	parameter.MinimumBytes = 3
+	parameter.MaximumBytes = 5
 	return parameter
 }
 

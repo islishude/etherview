@@ -625,6 +625,8 @@ func catalogParameterExample(t *testing.T, parameterType apiops.ParameterType) s
 		return "0x" + strings.Repeat("22", 32)
 	case apiops.ParameterOpaqueCursor:
 		return "opaque"
+	case apiops.ParameterRFC3339:
+		return "2026-07-28T00:00:00Z"
 	case apiops.ParameterText:
 		return "query"
 	case apiops.ParameterUUID:

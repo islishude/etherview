@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -32,8 +33,9 @@ func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 	if err != nil || result.State != ResultComplete {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	if len(statsArguments) != 15 || statsArguments[10].Value != nil || statsArguments[11].Value != nil ||
-		statsArguments[13].Value != nil || statsArguments[14].Value != "0" {
+	if len(statsArguments) != 19 || statsArguments[10].Value != nil || statsArguments[11].Value != nil ||
+		statsArguments[13].Value != nil || statsArguments[14].Value != "0" ||
+		statsArguments[15].Value != "0" || statsArguments[16].Value != "0" {
 		t.Fatalf("stats arguments=%+v", statsArguments)
 	}
 }
@@ -55,7 +57,7 @@ func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 	if err != nil || result.State != ResultComplete {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	if len(statsArguments) != 15 || statsArguments[10].Value != nil || statsArguments[11].Value != nil {
+	if len(statsArguments) != 19 || statsArguments[10].Value != nil || statsArguments[11].Value != nil {
 		t.Fatalf("stats arguments=%+v", statsArguments)
 	}
 }
@@ -110,6 +112,137 @@ func TestStatsV2RejectsNonPositiveReceiptBlobFacts(t *testing.T) {
 	}
 	if _, err := processor.Process(context.Background(), job); err == nil || !strings.Contains(err.Error(), "non-positive blob fee facts") {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestStatsV3DerivesAuthenticatedExecutionFeePriorityFailureAndCreation(t *testing.T) {
+	t.Parallel()
+	bundle, err := testfixture.New(testfixture.Options{
+		Number:             8,
+		Timestamp:          101,
+		ExtraData:          []byte("stats-v3"),
+		TransactionTypes:   []uint8{types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.SetCodeTxType},
+		ContractCreations:  []bool{false, false, true, false},
+		FailedTransactions: []bool{false, true, false, false},
+		BaseFee:            big.NewInt(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := chainbundle.EncodeStoredBlock(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := Job{
+		ID: "stats-v3", Stage: StatsStage, ChainID: "1",
+		BlockHash: bundle.Block.Hash(), BlockNumber: 8,
+	}
+	receipts := make([][]byte, len(bundle.RawReceipts))
+	for index := range bundle.RawReceipts {
+		receipts[index] = bundle.RawReceipts[index]
+	}
+	var statsArguments []driver.NamedValue
+	backend := statsBackend(t, raw, "7", "7", "100", true, receipts, func(query string, arguments []driver.NamedValue) {
+		if strings.Contains(query, "INSERT INTO block_statistics") {
+			statsArguments = append([]driver.NamedValue(nil), arguments...)
+		}
+	})
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := processor.Process(context.Background(), job)
+	if err != nil || result.State != ResultComplete {
+		t.Fatalf("result=%+v error=%v", result, err)
+	}
+	if len(statsArguments) != 19 {
+		t.Fatalf("stats arguments=%+v", statsArguments)
+	}
+	if got := statsArguments[15].Value; got != "126000" {
+		t.Errorf("execution fee=%v want=126000", got)
+	}
+	if got := statsArguments[16].Value; got != "42000" {
+		t.Errorf("priority fee=%v want=42000", got)
+	}
+	if got := statsArguments[17].Value; got != int64(1) {
+		t.Errorf("failed transactions=%v want=1", got)
+	}
+	if got := statsArguments[18].Value; got != int64(1) {
+		t.Errorf("contract creations=%v want=1", got)
+	}
+}
+
+func TestStatsV3RejectsIncompleteReceiptSet(t *testing.T) {
+	t.Parallel()
+	job, raw := statsTestJobAndRaw(t, "stats-receipt-gap", 8, 101, nil, nil)
+	receipt := statsTestReceipt(t, job, 0, 0)
+	var receiptFields map[string]json.RawMessage
+	if err := json.Unmarshal(receipt, &receiptFields); err != nil {
+		t.Fatal(err)
+	}
+	delete(receiptFields, "blobGasUsed")
+	delete(receiptFields, "blobGasPrice")
+	receipt, err := json.Marshal(receiptFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Override the source count while returning no authenticated receipt rows.
+	backend := statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)
+	backend.query = func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
+		if strings.Contains(query, "GROUP BY block.raw") {
+			return &fakeSQLRows{
+				columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
+				values:  [][]driver.Value{{raw, int64(2), "7", "7", "100", true}},
+			}, nil
+		}
+		if strings.Contains(query, "FOR KEY SHARE") {
+			return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
+		}
+		if strings.Contains(query, "FROM receipts AS receipt") {
+			return &fakeSQLRows{
+				columns: []string{"raw"},
+				values:  [][]driver.Value{{receipt}},
+			}, nil
+		}
+		return nil, fmt.Errorf("unexpected query with %d arguments: %s", len(arguments), query)
+	}
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, backend))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, processErr := processor.Process(context.Background(), job)
+	var classified stageError
+	if processErr == nil || !strings.Contains(processErr.Error(), "receipt count") ||
+		!errors.As(processErr, &classified) || classified.kind != "permanent" {
+		t.Fatalf("error=%v", processErr)
+	}
+}
+
+func TestStatsV3RejectsExecutionFeeAboveUint256(t *testing.T) {
+	t.Parallel()
+	job, raw := statsTestJobAndRaw(t, "stats-fee-overflow", 8, 101, nil, nil)
+	receipt := statsTestReceipt(t, job, 0, 0)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(receipt, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["effectiveGasPrice"] = json.RawMessage(`"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"`)
+	receipt, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(
+		t,
+		statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, processErr := processor.Process(context.Background(), job)
+	var classified stageError
+	if processErr == nil || !strings.Contains(processErr.Error(), "execution fee exceeds uint256") ||
+		!errors.As(processErr, &classified) || classified.kind != "permanent" {
+		t.Fatalf("error=%v", processErr)
 	}
 }
 
@@ -199,7 +332,7 @@ func statsBackend(
 			case strings.Contains(query, "GROUP BY block.raw"):
 				return &fakeSQLRows{
 					columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-					values:  [][]driver.Value{{raw, int64(0), configuredStart, parentNumber, parentTimestamp, canonicalParent}},
+					values:  [][]driver.Value{{raw, int64(len(receipts)), configuredStart, parentNumber, parentTimestamp, canonicalParent}},
 				}, nil
 			case strings.Contains(query, "FROM receipts AS receipt"):
 				values := make([][]driver.Value, len(receipts))

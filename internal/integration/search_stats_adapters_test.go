@@ -15,11 +15,43 @@ import (
 
 	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
 )
+
+func TestCanonicalCatalogSnapshotOrdersNumericHeightsAcrossDecimalBoundaries(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := testHash(0)
+	for number := uint64(0); number <= 100; number++ {
+		hash := testHash(30_000 + number)
+		bundle := testBundle(
+			number, hash, parent, testHash(31_000+number), "numeric-snapshot",
+		)
+		commitCanonical(t, ctx, repository, bundle)
+		parent = bundle.Block.Hash()
+	}
+	reader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = reader.TokenContracts(ctx, catalog.TokenListRequest{ChainID: "1", Limit: 1})
+	var unavailable catalog.StageUnavailableError
+	if !errors.As(err, &unavailable) {
+		t.Fatalf("token catalog error=%v, want stage unavailable at numeric tip", err)
+	}
+	if unavailable.BlockNumber != "100" {
+		t.Fatalf("canonical snapshot height=%s, want 100 across 9/10/99/100", unavailable.BlockNumber)
+	}
+}
 
 func TestSearchCursorGenerationFreezesLateLabelsAndEnrichment(t *testing.T) {
 	db := newMigratedPostgres(t)

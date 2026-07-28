@@ -553,7 +553,7 @@ func TestOperationalMetricLabelsUseClosedStateMappings(t *testing.T) {
 		}
 	}
 	for versioned, want := range map[string]string{
-		"proxy@1": "proxy", "abi@1": "abi", "token@1": "token", "stats@2": "stats", "trace@1": "trace",
+		"proxy@1": "proxy", "abi@1": "abi", "token@1": "token", "stats@2": "stats", "stats@3": "stats", "trace@1": "trace",
 	} {
 		if got := boundedJobStage(versioned); got != want {
 			t.Fatalf("boundedJobStage(%q) = %q, want %q", versioned, got, want)
@@ -574,6 +574,28 @@ func TestOperationalMetricLabelsUseClosedStateMappings(t *testing.T) {
 			boundedRPCPurpose(value) != "other" || boundedRPCResult(value) != "other" || boundedRateDecision(value) != "other" ||
 			boundedSyncHaltReason(value) != "other" {
 			t.Fatalf("uncontrolled label %q was not collapsed", value)
+		}
+	}
+}
+
+func TestAnalyticsRollupMetricsExposeBoundedOutcomesAndState(t *testing.T) {
+	t.Parallel()
+	registry := NewRegistry("test", "maintenance")
+	registry.RecordAnalyticsRollup("succeeded")
+	registry.RecordAnalyticsRollup("retry")
+	registry.RecordAnalyticsRollup("nested database error")
+	registry.SetAnalyticsRollupState(12, 75.5, 37.25)
+	output := registry.Gather()
+	for _, expected := range []string{
+		`etherview_analytics_rollup_recomputes_total{result="succeeded"} 1`,
+		`etherview_analytics_rollup_recomputes_total{result="retry"} 1`,
+		`etherview_analytics_rollup_recomputes_total{result="failed"} 1`,
+		"etherview_analytics_dirty_hours 12",
+		"etherview_analytics_oldest_dirty_seconds 75.5",
+		"etherview_analytics_backfill_percent 37.25",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("metrics missing %q:\n%s", expected, output)
 		}
 	}
 }

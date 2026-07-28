@@ -16,6 +16,7 @@ vi.mock("echarts/core", () => ({
 }));
 vi.mock("echarts/charts", () => ({ LineChart: {} }));
 vi.mock("echarts/components", () => ({
+  DataZoomComponent: {},
   GridComponent: {},
   LegendComponent: {},
   TooltipComponent: {},
@@ -420,7 +421,7 @@ describe("embedded explorer shell", () => {
     expect(screen.getByText(/Core indexed data remains available\./)).toBeVisible();
   });
 
-  it("renders chart trends with an accessible exact-value table", async () => {
+  it("renders a deep-linked metric chart with an accessible exact-value table", async () => {
     const blockHash = `0x${"44".repeat(32)}`;
     vi.stubGlobal(
       "fetch",
@@ -440,33 +441,57 @@ describe("embedded explorer shell", () => {
             meta,
           });
         }
-        if (path === "/api/v1/status") {
+        if (path === "/api/v1/stats/charts/overview") {
           return Response.json({
             data: {
-              chain_id: "1",
-              core_ready: true,
-              latest_block: "12",
-              indexed_block: "12",
-              finalized_block: "10",
-              lag: "0",
-              completeness: { core: "complete", trace: "unavailable", metadata: "pending", state: "complete" },
+              generated_at: "2026-01-08T00:00:00Z",
+              snapshot: { chain_id: "1", block_number: "12", block_hash: blockHash },
+              coverage: {
+                available_from: "2026-01-01T00:00:00Z",
+                available_to: "2026-01-08T00:00:00Z",
+                complete: true,
+                dirty_hours: "0",
+                backfill_state: "complete",
+                backfill_progress: "100",
+              },
+              metrics: [],
+              pending: false,
             },
             meta,
           });
         }
-        if (path === "/api/v1/stats/blocks?from_block=0&to_block=12") {
+        if (path.includes("/api/v1/stats/charts/execution-fees")) {
           return Response.json({
-            data: [{
-              chain_id: "1",
-              block_number: "12",
-              block_hash: blockHash,
-              transaction_count: "17",
-              gas_limit: "30000000",
-              gas_used: "12345678",
-              base_fee_per_gas: "25000000000",
-              burned_wei: "123456789012345678901234567890",
-              computed_at: "2026-01-01T00:00:00Z",
-            }],
+            data: {
+              metric: "execution-fees",
+              interval: "day",
+              from_time: "2026-01-01T00:00:00Z",
+              to_time: "2026-01-08T00:00:00Z",
+              points: [{
+                bucket_start: "2026-01-07T00:00:00Z",
+                bucket_end: "2026-01-08T00:00:00Z",
+                value: "123456789012345678901234567890",
+                partial: false,
+                from_block: "1",
+                to_block: "12",
+              }],
+              summary: {
+                current: "123456789012345678901234567890",
+                highest: "123456789012345678901234567890",
+                lowest: "123456789012345678901234567890",
+                total: "123456789012345678901234567890",
+                average: "123456789012345678901234567890",
+              },
+              snapshot: { chain_id: "1", block_number: "12", block_hash: blockHash },
+              coverage: {
+                available_from: "2026-01-01T00:00:00Z",
+                available_to: "2026-01-08T00:00:00Z",
+                complete: true,
+                dirty_hours: "0",
+                backfill_state: "complete",
+                backfill_progress: "100",
+              },
+            },
             meta,
           });
         }
@@ -474,12 +499,18 @@ describe("embedded explorer shell", () => {
       }),
     );
 
-    renderExplorer("/charts");
+    renderExplorer("/charts/execution-fees?range=7d&interval=day");
 
-    expect(await screen.findByRole("heading", { name: "Canonical block statistics", level: 2 })).toBeVisible();
-    expect(screen.getByText("Accessible exact-value alternative to the trend chart")).toBeVisible();
-    expect(screen.getByText("123456789012345678901234567890")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Execution gas fees", level: 1 })).toBeVisible();
+    expect(await screen.findByText("Accessible exact values from the same response used by the chart")).toBeVisible();
+    expect(screen.getAllByText("123456789012345678901234567890").length).toBeGreaterThan(0);
     expect(screen.getByRole("table")).toBeVisible();
+  });
+
+  it("routes unknown chart metrics through the existing not-found page", async () => {
+    renderExplorer("/charts/not-a-metric");
+    expect(await screen.findByText("Page not found", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Chart range and interval controls")).not.toBeInTheDocument();
   });
 
   it("shows statistics stage loss as an explicit unavailable state", async () => {
@@ -488,25 +519,11 @@ describe("embedded explorer shell", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input);
         const meta = { request_id: "chart-stage-test", chain_id: "1" };
-        if (path === "/api/v1/status") {
-          return Response.json({
-            data: {
-              chain_id: "1",
-              core_ready: true,
-              latest_block: "8",
-              indexed_block: "8",
-              lag: "0",
-              completeness: { core: "complete", trace: "unavailable", metadata: "pending", state: "complete" },
-            },
-            meta,
-          });
-        }
-        if (path.startsWith("/api/v1/stats/blocks")) {
+        if (path === "/api/v1/stats/charts/overview") {
           return Response.json({
             error: {
-              code: "stage_unavailable",
-              message: "statistics are unavailable",
-              details: { stage: "statistics", state: "unavailable", block_number: "8" },
+              code: "analytics_pending",
+              message: "historical analytics are still being rebuilt",
               request_id: "chart-stage-test",
             },
           }, { status: 503 });
@@ -517,8 +534,8 @@ describe("embedded explorer shell", () => {
 
     renderExplorer("/charts");
 
-    expect(await screen.findByText("Statistics data is unavailable")).toBeVisible();
-    expect(screen.getByText(/reported Unavailable at block 8/)).toBeVisible();
+    expect(await screen.findByText("Historical analytics are being rebuilt")).toBeVisible();
+    expect(screen.getByText(/Available history appears newest first/)).toBeVisible();
   });
 
   it("rejects invalid Standard JSON locally and explains disabled verification", async () => {

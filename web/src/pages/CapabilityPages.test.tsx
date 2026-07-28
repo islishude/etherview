@@ -17,6 +17,7 @@ vi.mock("echarts/core", () => ({
 }));
 vi.mock("echarts/charts", () => ({ LineChart: {} }));
 vi.mock("echarts/components", () => ({
+  DataZoomComponent: {},
   GridComponent: {},
   LegendComponent: {},
   TooltipComponent: {},
@@ -407,55 +408,31 @@ describe("P50 capability pages", () => {
     expect(fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs")).toBe(false);
   });
 
-  it("clamps charts to configured coverage and renders exact stats@2 aggregates", async () => {
+  it("renders categorized historical analytics and localizes the overview", async () => {
     const hugeBurn = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({});
-      if (path === "/api/v1/status") return statusResponse("520", "500");
-      if (path === "/api/v1/stats/blocks?from_block=500&to_block=520") {
-        return Response.json({
-          data: [{
-            chain_id: "1",
-            block_number: "520",
-            block_hash: blockHash,
-            transaction_count: "17",
-            gas_used: "12345678",
-            gas_limit: "30000000",
-            base_fee_per_gas: "25000000000",
-            blob_gas_used: "393216",
-            excess_blob_gas: "786432",
-            blob_base_fee_per_gas: "7",
-            burned_wei: hugeBurn,
-            blob_burned_wei: "2752512",
-            block_timestamp: "1784780000",
-            block_interval_seconds: "12",
-            transactions_per_second: "1.416666666666666667",
-            token_event_count: "23",
-            token_transfer_count: "19",
-            nft_transfer_count: "5",
-            computed_at: "2026-07-20T10:00:00Z",
-          }],
-          meta: { ...meta, coverage_start: "500", coverage_end: "520" },
-        });
-      }
-      if (path === "/api/v1/stats/summary?from_block=500&to_block=520") {
+      if (path === "/api/v1/stats/charts/overview") {
         return Response.json({
           data: {
-            chain_id: "1",
-            from_block: "500",
-            to_block: "520",
+            generated_at: "2026-07-20T10:00:00Z",
             snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
-            block_count: "21",
-            transaction_count: "357",
-            gas_used: "259259238",
-            burned_wei: hugeBurn,
-            blob_burned_wei: "2752512",
-            token_event_count: "483",
-            token_transfer_count: "399",
-            nft_transfer_count: "105",
-            average_tps: "1.416666666666666667",
-            completeness: { core: true, stats: true, token: false },
+            coverage: {
+              available_from: "2026-01-01T00:00:00Z",
+              available_to: "2026-07-20T10:00:00Z",
+              complete: true,
+              dirty_hours: "0",
+              backfill_state: "complete",
+              backfill_progress: "100",
+            },
+            metrics: [
+              { metric: "transactions", current_value: hugeBurn, previous_value: "1", change_percent: "5", points: [] },
+              { metric: "average-tps", current_value: "1.416666666666666667", previous_value: "1", change_percent: "41.666667", points: [] },
+              { metric: "execution-fees", current_value: "1000000000000000000", previous_value: "1", change_percent: "1", points: [] },
+              { metric: "gas-utilization", current_value: "72.5", previous_value: "70", change_percent: "3.571429", points: [] },
+            ],
+            pending: false,
           },
           meta,
         });
@@ -465,38 +442,55 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/charts");
 
-    expect(await screen.findByRole("heading", { name: "Range summary" })).toBeVisible();
-    expect(screen.getAllByText(hugeBurn).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("1.416666666666666667").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole("columnheader", { name: "Parent interval (seconds)" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Blob base fee per gas" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "NFT transfers" })).toBeVisible();
-    expect(screen.getAllByRole("link", { name: "520" })[0]).toHaveAttribute(
+    expect(await screen.findByRole("heading", { name: "Overview stats" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Activity" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Blocks & capacity" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Fees & burn" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Blob" })).toBeVisible();
+    expect(screen.getAllByText("1.416666666666666667").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1 ETH").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "520" })).toHaveAttribute(
       "href",
       `/blocks/${blockHash}`,
     );
-    expect(fetcher.mock.calls.some(([input]) => String(input).includes("from_block=401"))).toBe(false);
+    expect(screen.getAllByRole("link", { name: /View chart/ })).toHaveLength(18);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(await screen.findByRole("heading", { name: "区间汇总" })).toBeVisible();
-    expect(screen.getByText("统计")).toBeVisible();
-    expect(screen.getByText("代币")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "统计总览" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "区块与容量" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "费用与销毁" })).toBeVisible();
   });
 
-  it("does not query statistics before configured coverage has started", async () => {
+  it("shows explicit rollup backfill state without fabricating zero cards", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({});
-      if (path === "/api/v1/status") return statusResponse("0", "500", false);
+      if (path === "/api/v1/stats/charts/overview") {
+        return Response.json({
+          data: {
+            generated_at: "2026-07-20T10:00:00Z",
+            snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
+            coverage: {
+              complete: false,
+              dirty_hours: "21",
+              backfill_state: "empty",
+              backfill_progress: "0",
+            },
+            metrics: [],
+            pending: true,
+          },
+          meta,
+        });
+      }
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/charts");
 
-    expect(await screen.findByText(
-      "Contiguous coverage has not reached configured start block 500.",
-    )).toBeVisible();
-    expect(fetcher.mock.calls.some(([input]) => String(input).includes("/stats/"))).toBe(false);
+    expect(await screen.findByText("Historical analytics are being rebuilt")).toBeVisible();
+    expect(screen.getByText(/21 UTC hour buckets/)).toBeVisible();
+    expect(screen.queryByText("0", { exact: true })).not.toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([input]) => String(input).includes("/stats/charts/transactions"))).toBe(false);
   });
 
   it("localizes sync facts separately from configured feature availability", async () => {

@@ -190,7 +190,7 @@ func TestOnlyViteContentHashedAssetsAreImmutable(t *testing.T) {
 		"assets/index-BR0k1Xmr.js":           true,
 		"assets/index-Abc-1234.js":           true,
 		"assets/index_Abc_1234.css":          false,
-		"assets/StatsChart-BHcCzZxN.js":      true,
+		"assets/MetricChart-BHcCzZxN.js":     true,
 		"assets/index-too-short.js":          false,
 		"assets/logo-not-a-build-hash.svg":   false,
 		"assets/nested/file-BR0k1Xmr.js":     false,

@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/auth"
@@ -108,6 +109,11 @@ type GenesisReader interface {
 	GenesisAccounts(context.Context, string, int) ([]gen.GenesisAccount, string, error)
 }
 
+type AnalyticsReader interface {
+	Overview(context.Context, string, time.Time) (analytics.Overview, error)
+	Detail(context.Context, analytics.DetailRequest) (analytics.Series, error)
+}
+
 type AddressActivityReader interface {
 	AddressTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error)
 }
@@ -148,6 +154,7 @@ type Options struct {
 	AddressActivities     AddressActivityReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
+	Analytics             AnalyticsReader
 	Web                   http.Handler
 	Etherscan             http.Handler
 	Metrics               http.Handler
@@ -179,6 +186,7 @@ type Handler struct {
 	addressEnrichment     AddressEnrichmentActivityReader
 	genesis               GenesisReader
 	catalog               catalog.Reader
+	analytics             AnalyticsReader
 	web                   http.Handler
 	etherscan             http.Handler
 	metrics               http.Handler
@@ -228,6 +236,7 @@ func New(options Options) (*Handler, error) {
 		addressActivities:     options.AddressActivities,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
+		analytics:             options.Analytics,
 		web:                   options.Web,
 		etherscan:             options.Etherscan,
 		metrics:               options.Metrics,
@@ -329,6 +338,8 @@ func (h *Handler) routes() {
 		h.handleBillable("getBlockStats", h.blockStats)
 		h.handleBillable("getAggregateStats", h.aggregateStats)
 	}
+	h.handleBillable("getChartOverview", h.chartOverview)
+	h.handleBillable("getChartMetric", h.chartMetric)
 	// The route remains present when external metadata is disabled so clients
 	// receive a typed capability state instead of a misleading route-level 404.
 	h.mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}/media", h.nftMedia)
@@ -1424,6 +1435,75 @@ func (h *Handler) aggregateStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.AggregateStatsResponse{Data: aggregateStatsModel(item), Meta: meta})
 }
 
+func (h *Handler) chartOverview(w http.ResponseWriter, r *http.Request) {
+	if h.analytics == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "analytics_pending", "historical analytics are still being rebuilt", nil)
+		return
+	}
+	item, err := h.analytics.Overview(r.Context(), h.chainID(), h.now().UTC())
+	if err != nil {
+		h.handleAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ChartOverviewResponse{
+		Data: chartOverviewModel(item),
+		Meta: h.meta(r),
+	})
+}
+
+func (h *Handler) chartMetric(w http.ResponseWriter, r *http.Request) {
+	if h.analytics == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "analytics_pending", "historical analytics are still being rebuilt", nil)
+		return
+	}
+	metric, ok := analytics.ParseMetric(r.PathValue("metric"))
+	if !ok {
+		writeError(w, r, http.StatusUnprocessableEntity, "invalid_chart_metric", "metric is not supported", nil)
+		return
+	}
+	from, fromErr := time.Parse(time.RFC3339, r.URL.Query().Get("from_time"))
+	to, toErr := time.Parse(time.RFC3339, r.URL.Query().Get("to_time"))
+	intervalText := r.URL.Query().Get("interval")
+	if intervalText == "" {
+		intervalText = string(analytics.IntervalAuto)
+	}
+	interval, intervalOK := analytics.ParseInterval(intervalText)
+	if fromErr != nil || toErr != nil || !intervalOK {
+		writeError(w, r, http.StatusUnprocessableEntity, "invalid_chart_range", "chart times or interval are invalid", nil)
+		return
+	}
+	item, err := h.analytics.Detail(r.Context(), analytics.DetailRequest{
+		ChainID: h.chainID(), Metric: metric, From: from, To: to,
+		Interval: interval, Now: h.now().UTC(),
+	})
+	if err != nil {
+		h.handleAnalyticsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ChartMetricResponse{
+		Data: chartSeriesModel(item),
+		Meta: h.meta(r),
+	})
+}
+
+func (h *Handler) handleAnalyticsError(w http.ResponseWriter, r *http.Request, err error) {
+	var pending analytics.PendingError
+	switch {
+	case errors.As(err, &pending), errors.Is(err, analytics.ErrPending):
+		details := map[string]any{"state": "pending"}
+		if errors.As(err, &pending) {
+			details["coverage"] = chartCoverageModel(pending.Coverage)
+		}
+		writeError(w, r, http.StatusServiceUnavailable, "analytics_pending", "historical analytics are still being rebuilt", details)
+	case errors.Is(err, analytics.ErrInvalidInput):
+		writeError(w, r, http.StatusUnprocessableEntity, "invalid_chart_range", "chart range exceeds the supported point limit or is invalid", nil)
+	case errors.Is(err, analytics.ErrCorruptData):
+		writeError(w, r, http.StatusServiceUnavailable, "analytics_inconsistent", "historical analytics are temporarily unavailable", nil)
+	default:
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "internal server error", nil)
+	}
+}
+
 func (h *Handler) transactionTrace(w http.ResponseWriter, r *http.Request) {
 	hash := strings.ToLower(r.PathValue("hash"))
 	if !hashPattern.MatchString(hash) {
@@ -2133,6 +2213,68 @@ func aggregateStatsModel(item catalog.AggregateStats) gen.AggregateStats {
 		Completeness: gen.AggregateStatsCompleteness{
 			Core: item.CoreComplete, Stats: item.StatsComplete, Token: item.TokenComplete,
 		},
+	}
+}
+
+func chartOverviewModel(item analytics.Overview) gen.ChartOverview {
+	metrics := make([]gen.ChartPreview, len(item.Metrics))
+	for index := range item.Metrics {
+		preview := item.Metrics[index]
+		metrics[index] = gen.ChartPreview{
+			Metric: gen.ChartMetric(preview.Metric), CurrentValue: preview.CurrentValue,
+			PreviousValue: preview.PreviousValue, ChangePercent: preview.ChangePercent,
+			Points: chartPointsModel(preview.Points),
+		}
+	}
+	return gen.ChartOverview{
+		GeneratedAt: item.GeneratedAt.UTC(), Snapshot: chartSnapshotModel(item.Snapshot),
+		Coverage: chartCoverageModel(item.Coverage), Metrics: metrics, Pending: item.Pending,
+	}
+}
+
+func chartSeriesModel(item analytics.Series) gen.ChartMetricSeries {
+	return gen.ChartMetricSeries{
+		Metric: gen.ChartMetric(item.Metric), Interval: gen.ChartInterval(item.Interval),
+		FromTime: item.FromTime.UTC(), ToTime: item.ToTime.UTC(),
+		Points: chartPointsModel(item.Points),
+		Summary: gen.ChartSummary{
+			Current: item.Summary.Current, Highest: item.Summary.Highest,
+			Lowest: item.Summary.Lowest, Total: item.Summary.Total, Average: item.Summary.Average,
+		},
+		Snapshot: chartSnapshotModel(item.Snapshot), Coverage: chartCoverageModel(item.Coverage),
+	}
+}
+
+func chartPointsModel(items []analytics.Point) []gen.ChartPoint {
+	result := make([]gen.ChartPoint, len(items))
+	for index := range items {
+		item := items[index]
+		result[index] = gen.ChartPoint{
+			BucketStart: item.BucketStart.UTC(), BucketEnd: item.BucketEnd.UTC(),
+			Value: item.Value, Partial: item.Partial,
+			FromBlock: item.FromBlock, ToBlock: item.ToBlock,
+		}
+	}
+	return result
+}
+
+func chartSnapshotModel(item analytics.Snapshot) gen.CatalogSnapshot {
+	return gen.CatalogSnapshot{
+		ChainId: item.ChainID, BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
+	}
+}
+
+func chartCoverageModel(item analytics.Coverage) gen.ChartCoverage {
+	state := gen.ChartCoverageBackfillStatePartial
+	if item.Complete {
+		state = gen.ChartCoverageBackfillStateComplete
+	} else if item.AvailableFrom == nil {
+		state = gen.ChartCoverageBackfillStateEmpty
+	}
+	return gen.ChartCoverage{
+		AvailableFrom: item.AvailableFrom, AvailableTo: item.AvailableTo,
+		Complete: item.Complete, DirtyHours: item.DirtyHours,
+		BackfillState: state, BackfillProgress: item.Progress,
 	}
 }
 

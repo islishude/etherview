@@ -174,6 +174,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		}},
 		{name: "maintenance", role: components.RoleMaintenance, want: []string{
 			"00-operations-http", "02-durable-metrics",
+			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"45-maintenance-03", "45-maintenance-04",
 			"46-search-catalog-maintenance",
@@ -186,6 +187,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
+				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -200,6 +202,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
+				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -215,6 +218,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			},
 			want: []string{
 				"00-operations-http", "02-durable-metrics",
+				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
 				"46-search-catalog-maintenance",
@@ -267,6 +271,7 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 		}},
 		{role: components.RoleMaintenance, want: []string{
 			"00-operations-http", "02-durable-metrics",
+			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"46-search-catalog-maintenance",
 		}},

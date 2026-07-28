@@ -345,6 +345,8 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getAggregateStats",
 		"getBlock",
 		"getBlockStats",
+		"getChartMetric",
+		"getChartOverview",
 		"getNFTOwner",
 		"getToken",
 		"getTransaction",

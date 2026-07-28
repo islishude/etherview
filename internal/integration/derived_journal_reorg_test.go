@@ -492,7 +492,7 @@ func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, bloc
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, stage := range []string{"token@1", "stats@2", "trace@1"} {
+	for _, stage := range []string{"token@1", "stats@3", "trace@1"} {
 		if !seen[stage] {
 			t.Fatalf("missing journal %s; seen=%v", stage, seen)
 		}

@@ -854,6 +854,78 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /stats/charts/overview:
+    get:
+      operationId: getChartOverview
+      tags: [stats]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+      responses:
+        "200":
+          description: Recent execution analytics with previous-window comparisons, previews, and backfill coverage.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartOverviewResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
+  /stats/charts/{metric}:
+    get:
+      operationId: getChartMetric
+      tags: [stats]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - name: metric
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ChartMetric"
+        - name: from_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to_time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: interval
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [auto, hour, day, week, month]
+            minLength: 3
+            maxLength: 5
+            default: auto
+      responses:
+        "200":
+          description: One bounded exact execution metric series from reorg-safe hourly rollups.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartMetricResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "422":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /search:
     get:
       operationId: search
@@ -1354,6 +1426,11 @@ components:
       pattern: '^(0|[1-9][0-9]*)(\.[0-9]{0,17}[1-9])?$'
       maxLength: 97
       description: A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+    SignedDecimal:
+      type: string
+      pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]{0,17}[1-9])?$'
+      maxLength: 98
+      description: A canonical signed fixed-point decimal with at most 18 fractional digits.
     OpaqueCursor:
       type: string
       minLength: 1
@@ -2184,6 +2261,148 @@ components:
           description: Weighted TPS across only blocks with an exact parent interval; omitted when the range has no such interval.
         completeness:
           $ref: "#/components/schemas/AggregateStatsCompleteness"
+    ChartMetric:
+      type: string
+      enum:
+        - transactions
+        - failed-transactions
+        - average-tps
+        - erc20-transfers
+        - nft-transfers
+        - contract-creations
+        - blocks
+        - average-block-time
+        - gas-used
+        - gas-utilization
+        - average-base-fee
+        - execution-fees
+        - average-transaction-fee
+        - priority-fees
+        - burned-fees
+        - blob-gas-used
+        - average-blob-base-fee
+        - blob-burned-fees
+    ChartInterval:
+      type: string
+      enum: [auto, hour, day, week, month]
+    ChartCoverage:
+      type: object
+      additionalProperties: false
+      required: [complete, dirty_hours, backfill_state, backfill_progress]
+      properties:
+        available_from:
+          type: string
+          format: date-time
+        available_to:
+          type: string
+          format: date-time
+        complete:
+          type: boolean
+        dirty_hours:
+          $ref: "#/components/schemas/Quantity"
+        backfill_state:
+          type: string
+          enum: [empty, partial, complete]
+        backfill_progress:
+          allOf:
+            - $ref: "#/components/schemas/Decimal"
+          description: Exact percentage of canonical blocks whose stats@3 and token@1 sources are published.
+    ChartPoint:
+      type: object
+      additionalProperties: false
+      required: [bucket_start, bucket_end, value, partial, from_block, to_block]
+      properties:
+        bucket_start:
+          type: string
+          format: date-time
+        bucket_end:
+          type: string
+          format: date-time
+        value:
+          $ref: "#/components/schemas/Decimal"
+        partial:
+          type: boolean
+        from_block:
+          $ref: "#/components/schemas/Quantity"
+        to_block:
+          $ref: "#/components/schemas/Quantity"
+    ChartSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        current:
+          $ref: "#/components/schemas/Decimal"
+        highest:
+          $ref: "#/components/schemas/Decimal"
+        lowest:
+          $ref: "#/components/schemas/Decimal"
+        total:
+          $ref: "#/components/schemas/Decimal"
+        average:
+          $ref: "#/components/schemas/Decimal"
+    ChartMetricSeries:
+      type: object
+      additionalProperties: false
+      required: [metric, interval, from_time, to_time, points, summary, snapshot, coverage]
+      properties:
+        metric:
+          $ref: "#/components/schemas/ChartMetric"
+        interval:
+          $ref: "#/components/schemas/ChartInterval"
+        from_time:
+          type: string
+          format: date-time
+        to_time:
+          type: string
+          format: date-time
+        points:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ChartPoint"
+        summary:
+          $ref: "#/components/schemas/ChartSummary"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        coverage:
+          $ref: "#/components/schemas/ChartCoverage"
+    ChartPreview:
+      type: object
+      additionalProperties: false
+      required: [metric, points]
+      properties:
+        metric:
+          $ref: "#/components/schemas/ChartMetric"
+        current_value:
+          $ref: "#/components/schemas/Decimal"
+        previous_value:
+          $ref: "#/components/schemas/Decimal"
+        change_percent:
+          $ref: "#/components/schemas/SignedDecimal"
+        points:
+          type: array
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/ChartPoint"
+    ChartOverview:
+      type: object
+      additionalProperties: false
+      required: [generated_at, snapshot, coverage, metrics, pending]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        coverage:
+          $ref: "#/components/schemas/ChartCoverage"
+        metrics:
+          type: array
+          maxItems: 18
+          items:
+            $ref: "#/components/schemas/ChartPreview"
+        pending:
+          type: boolean
     TraceFrame:
       type: object
       required: [path, parent_path, depth, call_type, reverted]
@@ -3201,6 +3420,22 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AggregateStats"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ChartOverviewResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ChartOverview"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ChartMetricResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ChartMetricSeries"
         meta:
           $ref: "#/components/schemas/Meta"
     TransactionTraceResponse:

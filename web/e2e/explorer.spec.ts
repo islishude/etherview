@@ -299,9 +299,16 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "ABI", exact: true })).toBeVisible();
 
   await page.goto("/charts");
-  await expect(page.getByRole("heading", { name: "Range summary", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview stats", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fees & burn", level: 2 })).toBeVisible();
+  await expect(page.getByText("900.719925474099312345 ETH", { exact: true }).first()).toBeVisible();
+
+  await page.goto("/charts/execution-fees?range=7d&interval=day");
+  await expect(page.getByRole("button", { name: "7D" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Exact API value" })).toBeVisible();
   await expect(page.getByText("900719925474099312345", { exact: true })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Parent interval (seconds)" })).toBeVisible();
 
   await page.goto("/pending");
   await expect(page.getByRole("heading", { name: "Immutable node snapshot", level: 2 })).toBeVisible();
@@ -325,6 +332,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     `/contract/${address}?code_hash=${codeHash}`,
     "/verify",
     "/charts",
+    "/charts/execution-fees?range=7d&interval=day",
     "/pending",
     "/status",
   ];

@@ -1,7 +1,5 @@
 import {
   FormEvent,
-  lazy,
-  Suspense,
   useEffect,
   useId,
   useMemo,
@@ -19,10 +17,8 @@ import {
   useAddressNFTBalances,
   useAddressNFTTransfers,
   useAddressTransactions,
-  useAggregateStats,
   useAddress,
   useBlock,
-  useBlockStats,
   useBlocks,
   useChainStatus,
   useGenesisAccounts,
@@ -45,10 +41,8 @@ import {
 } from "@/api/hooks";
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import type {
-  AggregateStats,
   AddressInternalTransaction,
   AddressTokenTransfer,
-  BlockStat,
   BlockSummary,
   ChainStatus,
   Completeness,
@@ -79,11 +73,6 @@ import {
   walletErrorTranslationKey,
 } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
-
-const StatsChart = lazy(async () => {
-  const module = await import("@/components/StatsChart");
-  return { default: module.StatsChart };
-});
 
 const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
@@ -2346,211 +2335,6 @@ const MAX_STANDARD_JSON_BYTES = 5 * 1024 * 1024;
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const QUANTITY_PATTERN = /^(0|[1-9][0-9]*)$/;
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
-export function ChartsPage() {
-  const { i18n, t } = useTranslation();
-  const status = useChainStatus();
-  const [draftFrom, setDraftFrom] = useState("");
-  const [draftTo, setDraftTo] = useState("");
-  const [range, setRange] = useState<{ from: string; to: string }>();
-  const [rangeError, setRangeError] = useState<string>();
-  const stats = useBlockStats(range?.from ?? "", range?.to ?? "", Boolean(range));
-  const aggregate = useAggregateStats(
-    range?.from ?? "",
-    range?.to ?? "",
-    Boolean(range),
-  );
-  const locale = i18n.resolvedLanguage ?? "en";
-  const coverageNotStarted = status.data?.coverage_start !== undefined &&
-    BigInt(status.data.indexed_block) < BigInt(status.data.coverage_start);
-
-  useEffect(() => {
-    if (!status.data || range || draftFrom || draftTo || coverageNotStarted) return;
-    const to = BigInt(status.data.indexed_block);
-    const configuredStart = status.data.coverage_start
-      ? BigInt(status.data.coverage_start)
-      : 0n;
-    const candidate = to > 99n ? to - 99n : 0n;
-    const from = candidate < configuredStart ? configuredStart : candidate;
-    const next = { from: from.toString(), to: to.toString() };
-    setDraftFrom(next.from);
-    setDraftTo(next.to);
-    setRange(next);
-  }, [coverageNotStarted, draftFrom, draftTo, range, status.data]);
-
-  const submitRange = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setRangeError(undefined);
-    if (!QUANTITY_PATTERN.test(draftFrom) || !QUANTITY_PATTERN.test(draftTo)) {
-      setRangeError(t("charts.invalidRange"));
-      return;
-    }
-    const from = BigInt(draftFrom);
-    const to = BigInt(draftTo);
-    const configuredStart = status.data?.coverage_start
-      ? BigInt(status.data.coverage_start)
-      : 0n;
-    if (from > to || from < configuredStart || to - from + 1n > 5_000n) {
-      setRangeError(t("charts.invalidRange"));
-      return;
-    }
-    setRange({ from: draftFrom, to: draftTo });
-  };
-
-  return (
-    <Page title={t("page.charts")} description={t("page.chartsDescription")}>
-      <form className="panel range-form" onSubmit={submitRange}>
-        <label htmlFor="chart-from-block">{t("charts.fromBlock")}</label>
-        <input
-          id="chart-from-block"
-          inputMode="numeric"
-          onChange={(event) => setDraftFrom(event.target.value)}
-          pattern="[0-9]*"
-          value={draftFrom}
-        />
-        <label htmlFor="chart-to-block">{t("charts.toBlock")}</label>
-        <input
-          id="chart-to-block"
-          inputMode="numeric"
-          onChange={(event) => setDraftTo(event.target.value)}
-          pattern="[0-9]*"
-          value={draftTo}
-        />
-        <button className="button primary" type="submit">{t("charts.load")}</button>
-      </form>
-      {rangeError && <p className="form-error" role="alert">{rangeError}</p>}
-      <QueryNotice loading={status.isPending && !range} error={status.error} />
-      {coverageNotStarted && (
-        <UnavailablePanel
-          title={t("state.coreNotReady")}
-          detail={t("charts.coverageNotStarted", {
-            start: status.data?.coverage_start,
-          })}
-        />
-      )}
-      <QueryNotice loading={stats.isPending && Boolean(range)} error={stats.error} />
-      <QueryNotice
-        loading={aggregate.isPending && Boolean(range)}
-        error={aggregate.error}
-      />
-      {aggregate.data && <AggregateStatsPanel data={aggregate.data} />}
-      {stats.data?.length === 0 && <p className="empty-result">{t("charts.empty")}</p>}
-      {stats.data && stats.data.length > 0 && (
-        <section className="panel chart-panel" aria-labelledby="block-stats-title">
-          <h2 id="block-stats-title">{t("charts.title")}</h2>
-          <Suspense fallback={<div className="stats-chart chart-loading" aria-hidden="true" />}>
-            <StatsChart data={stats.data} />
-          </Suspense>
-          <BlockStatsTable data={stats.data} locale={locale} />
-        </section>
-      )}
-    </Page>
-  );
-}
-
-function AggregateStatsPanel({ data }: { data: AggregateStats }) {
-  const { t } = useTranslation();
-  return (
-    <section className="panel aggregate-stats" aria-labelledby="aggregate-stats-title">
-      <h2 id="aggregate-stats-title">{t("charts.summary")}</h2>
-      <dl className="aggregate-stats-grid">
-        <div><dt>{t("charts.range")}</dt><dd><code>{data.from_block} – {data.to_block}</code></dd></div>
-        <div><dt>{t("charts.blocks")}</dt><dd><code>{data.block_count}</code></dd></div>
-        <div><dt>{t("charts.transactions")}</dt><dd><code>{data.transaction_count}</code></dd></div>
-        <div><dt>{t("charts.gasUsed")}</dt><dd><code>{data.gas_used}</code></dd></div>
-        <div><dt>{t("charts.averageTPS")}</dt><dd><code>{data.average_tps ?? "—"}</code></dd></div>
-        <div><dt>{t("charts.burned")}</dt><dd><code>{data.burned_wei}</code></dd></div>
-        <div><dt>{t("charts.blobBurned")}</dt><dd><code>{data.blob_burned_wei}</code></dd></div>
-        <div><dt>{t("charts.tokenEvents")}</dt><dd><code>{data.token_event_count}</code></dd></div>
-        <div><dt>{t("charts.tokenTransfers")}</dt><dd><code>{data.token_transfer_count}</code></dd></div>
-        <div><dt>{t("charts.nftTransfers")}</dt><dd><code>{data.nft_transfer_count}</code></dd></div>
-        <div>
-          <dt>{t("charts.snapshot")}</dt>
-          <dd>
-            <Link
-              to="/blocks/$blockID"
-              params={{ blockID: data.snapshot.block_hash }}
-            >
-              <code>{data.snapshot.block_number}</code>
-            </Link>
-          </dd>
-        </div>
-      </dl>
-      <ul className="aggregate-completeness" aria-label={t("charts.completeness")}>
-        {Object.entries(data.completeness).map(([stage, complete]) => (
-          <li key={stage}>
-            <code>{stageLabel(stage, t)}</code>
-            <span className={complete ? "availability yes" : "availability no"}>
-              {complete ? t("stageState.complete") : t("stageState.missing")}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function BlockStatsTable({ data, locale }: { data: BlockStat[]; locale: string }) {
-  const { t } = useTranslation();
-  return (
-    <div className="table-scroll chart-table" tabIndex={0} aria-label={t("charts.tableLabel")}>
-      <table>
-        <caption>{t("charts.tableFallback")}</caption>
-        <thead>
-          <tr>
-            <th>{t("table.block")}</th>
-            <th>{t("charts.transactions")}</th>
-            <th>{t("charts.gasUsed")}</th>
-            <th>{t("charts.gasLimit")}</th>
-            <th>{t("charts.baseFee")}</th>
-            <th>{t("charts.burned")}</th>
-            <th>{t("charts.blockTimestamp")}</th>
-            <th>{t("charts.interval")}</th>
-            <th>{t("charts.tps")}</th>
-            <th>{t("charts.blobGasUsed")}</th>
-            <th>{t("charts.excessBlobGas")}</th>
-            <th>{t("charts.blobBaseFee")}</th>
-            <th>{t("charts.blobBurned")}</th>
-            <th>{t("charts.tokenEvents")}</th>
-            <th>{t("charts.tokenTransfers")}</th>
-            <th>{t("charts.nftTransfers")}</th>
-            <th>{t("charts.computedAt")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((item) => (
-            <tr key={item.block_hash}>
-              <td>
-                <span className="table-primary">
-                  <Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}>
-                    <code>{item.block_number}</code>
-                  </Link>
-                  <code title={item.block_hash}>{shorten(item.block_hash)}</code>
-                </span>
-              </td>
-              <td><code>{item.transaction_count}</code></td>
-              <td><code>{item.gas_used}</code></td>
-              <td><code>{item.gas_limit}</code></td>
-              <td><code>{item.base_fee_per_gas ?? "—"}</code></td>
-              <td><code>{item.burned_wei ?? "—"}</code></td>
-              <td><code>{item.block_timestamp}</code></td>
-              <td><code>{item.block_interval_seconds ?? "—"}</code></td>
-              <td><code>{item.transactions_per_second ?? "—"}</code></td>
-              <td><code>{item.blob_gas_used ?? "—"}</code></td>
-              <td><code>{item.excess_blob_gas ?? "—"}</code></td>
-              <td><code>{item.blob_base_fee_per_gas ?? "—"}</code></td>
-              <td><code>{item.blob_burned_wei ?? "—"}</code></td>
-              <td><code>{item.token_event_count}</code></td>
-              <td><code>{item.token_transfer_count}</code></td>
-              <td><code>{item.nft_transfer_count}</code></td>
-              <td><time dateTime={item.computed_at}>{formatTimestamp(item.computed_at, locale)}</time></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export function VerifyPage() {
   const { t } = useTranslation();

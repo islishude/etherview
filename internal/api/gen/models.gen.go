@@ -188,6 +188,120 @@ func (e BillingPaymentState) Valid() bool {
 	}
 }
 
+// Defines values for ChartCoverageBackfillState.
+const (
+	ChartCoverageBackfillStateComplete ChartCoverageBackfillState = "complete"
+	ChartCoverageBackfillStateEmpty    ChartCoverageBackfillState = "empty"
+	ChartCoverageBackfillStatePartial  ChartCoverageBackfillState = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ChartCoverageBackfillState enum.
+func (e ChartCoverageBackfillState) Valid() bool {
+	switch e {
+	case ChartCoverageBackfillStateComplete:
+		return true
+	case ChartCoverageBackfillStateEmpty:
+		return true
+	case ChartCoverageBackfillStatePartial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChartInterval.
+const (
+	ChartIntervalAuto  ChartInterval = "auto"
+	ChartIntervalDay   ChartInterval = "day"
+	ChartIntervalHour  ChartInterval = "hour"
+	ChartIntervalMonth ChartInterval = "month"
+	ChartIntervalWeek  ChartInterval = "week"
+)
+
+// Valid indicates whether the value is a known member of the ChartInterval enum.
+func (e ChartInterval) Valid() bool {
+	switch e {
+	case ChartIntervalAuto:
+		return true
+	case ChartIntervalDay:
+		return true
+	case ChartIntervalHour:
+		return true
+	case ChartIntervalMonth:
+		return true
+	case ChartIntervalWeek:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChartMetric.
+const (
+	AverageBaseFee        ChartMetric = "average-base-fee"
+	AverageBlobBaseFee    ChartMetric = "average-blob-base-fee"
+	AverageBlockTime      ChartMetric = "average-block-time"
+	AverageTps            ChartMetric = "average-tps"
+	AverageTransactionFee ChartMetric = "average-transaction-fee"
+	BlobBurnedFees        ChartMetric = "blob-burned-fees"
+	BlobGasUsed           ChartMetric = "blob-gas-used"
+	Blocks                ChartMetric = "blocks"
+	BurnedFees            ChartMetric = "burned-fees"
+	ContractCreations     ChartMetric = "contract-creations"
+	Erc20Transfers        ChartMetric = "erc20-transfers"
+	ExecutionFees         ChartMetric = "execution-fees"
+	FailedTransactions    ChartMetric = "failed-transactions"
+	GasUsed               ChartMetric = "gas-used"
+	GasUtilization        ChartMetric = "gas-utilization"
+	NftTransfers          ChartMetric = "nft-transfers"
+	PriorityFees          ChartMetric = "priority-fees"
+	Transactions          ChartMetric = "transactions"
+)
+
+// Valid indicates whether the value is a known member of the ChartMetric enum.
+func (e ChartMetric) Valid() bool {
+	switch e {
+	case AverageBaseFee:
+		return true
+	case AverageBlobBaseFee:
+		return true
+	case AverageBlockTime:
+		return true
+	case AverageTps:
+		return true
+	case AverageTransactionFee:
+		return true
+	case BlobBurnedFees:
+		return true
+	case BlobGasUsed:
+		return true
+	case Blocks:
+		return true
+	case BurnedFees:
+		return true
+	case ContractCreations:
+		return true
+	case Erc20Transfers:
+		return true
+	case ExecutionFees:
+		return true
+	case FailedTransactions:
+		return true
+	case GasUsed:
+		return true
+	case GasUtilization:
+		return true
+	case NftTransfers:
+		return true
+	case PriorityFees:
+		return true
+	case Transactions:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompilationFailureOutcomeKind.
 const (
 	CompilationFailure CompilationFailureOutcomeKind = "compilation_failure"
@@ -670,16 +784,16 @@ func (e VerificationJobStatus) Valid() bool {
 
 // Defines values for VerificationMatchType.
 const (
-	Full    VerificationMatchType = "full"
-	Partial VerificationMatchType = "partial"
+	VerificationMatchTypeFull    VerificationMatchType = "full"
+	VerificationMatchTypePartial VerificationMatchType = "partial"
 )
 
 // Valid indicates whether the value is a known member of the VerificationMatchType enum.
 func (e VerificationMatchType) Valid() bool {
 	switch e {
-	case Full:
+	case VerificationMatchTypeFull:
 		return true
-	case Partial:
+	case VerificationMatchTypePartial:
 		return true
 	default:
 		return false
@@ -773,6 +887,33 @@ func (e VerifierLanguage) Valid() bool {
 	case Vyper:
 		return true
 	case Yul:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetChartMetricParamsInterval.
+const (
+	GetChartMetricParamsIntervalAuto  GetChartMetricParamsInterval = "auto"
+	GetChartMetricParamsIntervalDay   GetChartMetricParamsInterval = "day"
+	GetChartMetricParamsIntervalHour  GetChartMetricParamsInterval = "hour"
+	GetChartMetricParamsIntervalMonth GetChartMetricParamsInterval = "month"
+	GetChartMetricParamsIntervalWeek  GetChartMetricParamsInterval = "week"
+)
+
+// Valid indicates whether the value is a known member of the GetChartMetricParamsInterval enum.
+func (e GetChartMetricParamsInterval) Valid() bool {
+	switch e {
+	case GetChartMetricParamsIntervalAuto:
+		return true
+	case GetChartMetricParamsIntervalDay:
+		return true
+	case GetChartMetricParamsIntervalHour:
+		return true
+	case GetChartMetricParamsIntervalMonth:
+		return true
+	case GetChartMetricParamsIntervalWeek:
 		return true
 	default:
 		return false
@@ -1276,6 +1417,110 @@ type CatalogSnapshot struct {
 	ChainId Quantity `json:"chain_id"`
 }
 
+// ChartCoverage defines model for ChartCoverage.
+type ChartCoverage struct {
+	AvailableFrom *time.Time `json:"available_from,omitempty"`
+	AvailableTo   *time.Time `json:"available_to,omitempty"`
+
+	// BackfillProgress Exact percentage of canonical blocks whose stats@3 and token@1 sources are published.
+	BackfillProgress Decimal                    `json:"backfill_progress"`
+	BackfillState    ChartCoverageBackfillState `json:"backfill_state"`
+	Complete         bool                       `json:"complete"`
+
+	// DirtyHours A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	DirtyHours Quantity `json:"dirty_hours"`
+}
+
+// ChartCoverageBackfillState defines model for ChartCoverage.BackfillState.
+type ChartCoverageBackfillState string
+
+// ChartInterval defines model for ChartInterval.
+type ChartInterval string
+
+// ChartMetric defines model for ChartMetric.
+type ChartMetric string
+
+// ChartMetricResponse defines model for ChartMetricResponse.
+type ChartMetricResponse struct {
+	Data ChartMetricSeries `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// ChartMetricSeries defines model for ChartMetricSeries.
+type ChartMetricSeries struct {
+	Coverage ChartCoverage   `json:"coverage"`
+	FromTime time.Time       `json:"from_time"`
+	Interval ChartInterval   `json:"interval"`
+	Metric   ChartMetric     `json:"metric"`
+	Points   []ChartPoint    `json:"points"`
+	Snapshot CatalogSnapshot `json:"snapshot"`
+	Summary  ChartSummary    `json:"summary"`
+	ToTime   time.Time       `json:"to_time"`
+}
+
+// ChartOverview defines model for ChartOverview.
+type ChartOverview struct {
+	Coverage    ChartCoverage   `json:"coverage"`
+	GeneratedAt time.Time       `json:"generated_at"`
+	Metrics     []ChartPreview  `json:"metrics"`
+	Pending     bool            `json:"pending"`
+	Snapshot    CatalogSnapshot `json:"snapshot"`
+}
+
+// ChartOverviewResponse defines model for ChartOverviewResponse.
+type ChartOverviewResponse struct {
+	Data ChartOverview `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
+// ChartPoint defines model for ChartPoint.
+type ChartPoint struct {
+	BucketEnd   time.Time `json:"bucket_end"`
+	BucketStart time.Time `json:"bucket_start"`
+
+	// FromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	FromBlock Quantity `json:"from_block"`
+	Partial   bool     `json:"partial"`
+
+	// ToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ToBlock Quantity `json:"to_block"`
+
+	// Value A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Value Decimal `json:"value"`
+}
+
+// ChartPreview defines model for ChartPreview.
+type ChartPreview struct {
+	// ChangePercent A canonical signed fixed-point decimal with at most 18 fractional digits.
+	ChangePercent *SignedDecimal `json:"change_percent,omitempty"`
+
+	// CurrentValue A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	CurrentValue *Decimal     `json:"current_value,omitempty"`
+	Metric       ChartMetric  `json:"metric"`
+	Points       []ChartPoint `json:"points"`
+
+	// PreviousValue A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	PreviousValue *Decimal `json:"previous_value,omitempty"`
+}
+
+// ChartSummary defines model for ChartSummary.
+type ChartSummary struct {
+	// Average A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Average *Decimal `json:"average,omitempty"`
+
+	// Current A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Current *Decimal `json:"current,omitempty"`
+
+	// Highest A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Highest *Decimal `json:"highest,omitempty"`
+
+	// Lowest A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Lowest *Decimal `json:"lowest,omitempty"`
+
+	// Total A canonical non-negative fixed-point decimal with at most 18 fractional digits.
+	Total *Decimal `json:"total,omitempty"`
+}
+
 // CompilationFailureOutcome defines model for CompilationFailureOutcome.
 type CompilationFailureOutcome struct {
 	Kind CompilationFailureOutcomeKind `json:"kind"`
@@ -1579,6 +1824,9 @@ type SessionRevocationResponse struct {
 	Data SessionRevocation `json:"data"`
 	Meta Meta              `json:"meta"`
 }
+
+// SignedDecimal A canonical signed fixed-point decimal with at most 18 fractional digits.
+type SignedDecimal = string
 
 // SourcifyFromEtherscanSubmission defines model for SourcifyFromEtherscanSubmission.
 type SourcifyFromEtherscanSubmission struct {
@@ -2470,6 +2718,25 @@ type GetBlockStatsParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
+
+// GetChartOverviewParams defines parameters for GetChartOverview.
+type GetChartOverviewParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetChartMetricParams defines parameters for GetChartMetric.
+type GetChartMetricParams struct {
+	FromTime time.Time                     `form:"from_time" json:"from_time"`
+	ToTime   time.Time                     `form:"to_time" json:"to_time"`
+	Interval *GetChartMetricParamsInterval `form:"interval,omitempty" json:"interval,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetChartMetricParamsInterval defines parameters for GetChartMetric.
+type GetChartMetricParamsInterval string
 
 // GetAggregateStatsParams defines parameters for GetAggregateStats.
 type GetAggregateStatsParams struct {

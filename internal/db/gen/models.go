@@ -217,23 +217,27 @@ type BlockStageResult struct {
 }
 
 type BlockStatistic struct {
-	ChainID               pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	BlockNumber           pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash             []byte             `db:"block_hash" json:"block_hash"`
-	TransactionCount      int64              `db:"transaction_count" json:"transaction_count"`
-	GasUsed               pgtype.Numeric     `db:"gas_used" json:"gas_used"`
-	GasLimit              pgtype.Numeric     `db:"gas_limit" json:"gas_limit"`
-	BaseFeePerGas         pgtype.Numeric     `db:"base_fee_per_gas" json:"base_fee_per_gas"`
-	BlobGasUsed           pgtype.Numeric     `db:"blob_gas_used" json:"blob_gas_used"`
-	BurnedWei             pgtype.Numeric     `db:"burned_wei" json:"burned_wei"`
-	Canonical             bool               `db:"canonical" json:"canonical"`
-	ComputedAt            pgtype.Timestamptz `db:"computed_at" json:"computed_at"`
-	BlockTimestamp        pgtype.Numeric     `db:"block_timestamp" json:"block_timestamp"`
-	BlockIntervalSeconds  pgtype.Numeric     `db:"block_interval_seconds" json:"block_interval_seconds"`
-	TransactionsPerSecond pgtype.Numeric     `db:"transactions_per_second" json:"transactions_per_second"`
-	ExcessBlobGas         pgtype.Numeric     `db:"excess_blob_gas" json:"excess_blob_gas"`
-	BlobBaseFeePerGas     pgtype.Numeric     `db:"blob_base_fee_per_gas" json:"blob_base_fee_per_gas"`
-	BlobBurnedWei         pgtype.Numeric     `db:"blob_burned_wei" json:"blob_burned_wei"`
+	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber            pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash              []byte             `db:"block_hash" json:"block_hash"`
+	TransactionCount       int64              `db:"transaction_count" json:"transaction_count"`
+	GasUsed                pgtype.Numeric     `db:"gas_used" json:"gas_used"`
+	GasLimit               pgtype.Numeric     `db:"gas_limit" json:"gas_limit"`
+	BaseFeePerGas          pgtype.Numeric     `db:"base_fee_per_gas" json:"base_fee_per_gas"`
+	BlobGasUsed            pgtype.Numeric     `db:"blob_gas_used" json:"blob_gas_used"`
+	BurnedWei              pgtype.Numeric     `db:"burned_wei" json:"burned_wei"`
+	Canonical              bool               `db:"canonical" json:"canonical"`
+	ComputedAt             pgtype.Timestamptz `db:"computed_at" json:"computed_at"`
+	BlockTimestamp         pgtype.Numeric     `db:"block_timestamp" json:"block_timestamp"`
+	BlockIntervalSeconds   pgtype.Numeric     `db:"block_interval_seconds" json:"block_interval_seconds"`
+	TransactionsPerSecond  pgtype.Numeric     `db:"transactions_per_second" json:"transactions_per_second"`
+	ExcessBlobGas          pgtype.Numeric     `db:"excess_blob_gas" json:"excess_blob_gas"`
+	BlobBaseFeePerGas      pgtype.Numeric     `db:"blob_base_fee_per_gas" json:"blob_base_fee_per_gas"`
+	BlobBurnedWei          pgtype.Numeric     `db:"blob_burned_wei" json:"blob_burned_wei"`
+	ExecutionGasFeeWei     pgtype.Numeric     `db:"execution_gas_fee_wei" json:"execution_gas_fee_wei"`
+	PriorityFeeWei         pgtype.Numeric     `db:"priority_fee_wei" json:"priority_fee_wei"`
+	FailedTransactionCount *int64             `db:"failed_transaction_count" json:"failed_transaction_count"`
+	ContractCreationCount  *int64             `db:"contract_creation_count" json:"contract_creation_count"`
 }
 
 type CanonicalBlock struct {
@@ -256,6 +260,55 @@ type ChainFinality struct {
 	FinalizedNumber pgtype.Numeric     `db:"finalized_number" json:"finalized_number"`
 	FinalizedHash   []byte             `db:"finalized_hash" json:"finalized_hash"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ChartHourlyRollup struct {
+	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BucketStart            pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
+	SourceGeneration       int64              `db:"source_generation" json:"source_generation"`
+	FromBlock              pgtype.Numeric     `db:"from_block" json:"from_block"`
+	ToBlock                pgtype.Numeric     `db:"to_block" json:"to_block"`
+	BlockCount             int64              `db:"block_count" json:"block_count"`
+	TransactionCount       pgtype.Numeric     `db:"transaction_count" json:"transaction_count"`
+	FailedTransactionCount pgtype.Numeric     `db:"failed_transaction_count" json:"failed_transaction_count"`
+	ContractCreationCount  pgtype.Numeric     `db:"contract_creation_count" json:"contract_creation_count"`
+	GasUsed                pgtype.Numeric     `db:"gas_used" json:"gas_used"`
+	GasLimit               pgtype.Numeric     `db:"gas_limit" json:"gas_limit"`
+	BlockIntervalSeconds   pgtype.Numeric     `db:"block_interval_seconds" json:"block_interval_seconds"`
+	BlockIntervalSamples   int64              `db:"block_interval_samples" json:"block_interval_samples"`
+	BaseFeePerGasSum       pgtype.Numeric     `db:"base_fee_per_gas_sum" json:"base_fee_per_gas_sum"`
+	BaseFeeSamples         int64              `db:"base_fee_samples" json:"base_fee_samples"`
+	ExecutionGasFeeWei     pgtype.Numeric     `db:"execution_gas_fee_wei" json:"execution_gas_fee_wei"`
+	PriorityFeeWei         pgtype.Numeric     `db:"priority_fee_wei" json:"priority_fee_wei"`
+	BurnedWei              pgtype.Numeric     `db:"burned_wei" json:"burned_wei"`
+	BlobGasUsed            pgtype.Numeric     `db:"blob_gas_used" json:"blob_gas_used"`
+	BlobBaseFeePerGasSum   pgtype.Numeric     `db:"blob_base_fee_per_gas_sum" json:"blob_base_fee_per_gas_sum"`
+	BlobBaseFeeSamples     int64              `db:"blob_base_fee_samples" json:"blob_base_fee_samples"`
+	BlobBurnedWei          pgtype.Numeric     `db:"blob_burned_wei" json:"blob_burned_wei"`
+	Erc20TransferCount     pgtype.Numeric     `db:"erc20_transfer_count" json:"erc20_transfer_count"`
+	NftTransferCount       pgtype.Numeric     `db:"nft_transfer_count" json:"nft_transfer_count"`
+	ComputedAt             pgtype.Timestamptz `db:"computed_at" json:"computed_at"`
+}
+
+type ChartRollupBackfill struct {
+	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	AvailableFrom    pgtype.Timestamptz `db:"available_from" json:"available_from"`
+	AvailableTo      pgtype.Timestamptz `db:"available_to" json:"available_to"`
+	NextBlock        pgtype.Numeric     `db:"next_block" json:"next_block"`
+	TargetStartBlock pgtype.Numeric     `db:"target_start_block" json:"target_start_block"`
+	CompletedBlocks  pgtype.Numeric     `db:"completed_blocks" json:"completed_blocks"`
+	TotalBlocks      pgtype.Numeric     `db:"total_blocks" json:"total_blocks"`
+	Complete         bool               `db:"complete" json:"complete"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ChartRollupDirtyHour struct {
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BucketStart   pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
+	Generation    int64              `db:"generation" json:"generation"`
+	Attempts      int32              `db:"attempts" json:"attempts"`
+	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	DirtiedAt     pgtype.Timestamptz `db:"dirtied_at" json:"dirtied_at"`
 }
 
 type CompilerCatalogEntry struct {

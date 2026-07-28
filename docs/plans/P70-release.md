@@ -15,6 +15,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0020: SIWE user sessions](../decisions/ADR-0020-siwe-user-sessions.md)
 - [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
 - [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
+- [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -36,6 +37,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
 | P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
+| P70-T16 | in_progress | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and Preview tests |
 
 ## Acceptance
 
@@ -70,6 +72,20 @@ and user/operator evidence sufficient for a production public release.
       report a completed durable transition; API request logging remains the
       existing per-request boundary and catalog success is logged only after an
       executed sweep.
+- [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
+      priority fees, failed transactions, and successful top-level creations;
+      additive UTC hourly rollups, dirty generations, and fenced newest-first
+      backfill expose only complete canonical history.
+- [x] P70-T16: generated native overview/detail APIs and the embedded
+      bilingual `/charts` plus `/charts/:metric` experience expose the fixed
+      execution-layer metric allowlist, exact decimal values, URL-bound
+      controls, zoom, CSV, and accessible table fallback without external
+      resources.
+- [ ] P70-T16: the preserved-volume Preview produces a competing-hash reorg and
+      demonstrates the affected public rollup changing after detach/attach.
+      The current Reth dev node's `debug_setHead` reselected its already stored
+      descendants with identical hashes, so it did not supply this final live
+      evidence.
 - [x] P70-T08: an optional bounded Genesis JSON source is authenticated against
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
@@ -99,12 +115,52 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09, P70-T12, P70-T13, and P70-T14 are complete. P70-T06 and the v1 release
-remain blocked on P66 completion, conformance, security, release-CI,
+P70-T09, P70-T12, P70-T13, and P70-T14 are complete. P70-T16 remains
+`in_progress` only for a competing-hash Preview reorg run; its implementation,
+database reorg regression, performance target, browser suite, full common
+gates, and preserved-volume Preview backfill otherwise pass. P70-T06 and the
+v1 release remain blocked on P66 completion, conformance, security, release-CI,
 long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T16 statistics and persistence: `stats@3` derives exact execution gas
+  fees from verified receipt gas use and effective gas price, keeps blob fees
+  independent, rejects incomplete or uint256-overflowing receipt facts
+  permanently, and persists sums plus sample counts instead of floating-point
+  averages. Migration `0028_historical_execution_analytics` adds UTC hourly
+  rollups, dirty generations, and backfill coverage without removing
+  `stats@2`. Canonical, stats, token, and stage publication transitions dirty
+  affected hours in their database transaction; the maintenance worker holds a
+  chain lock and generation fence and publishes newest hours first.
+- P70-T16 API and web: OpenAPI, generated Go/TypeScript contracts, the native
+  operation catalog, and optional x402 inventory expose overview plus the fixed
+  18-metric detail allowlist. Query aggregation remains within one repeatable
+  snapshot, rejects more than 500 explicit buckets with `422`, and returns
+  analytics-pending rather than stale rollups. `/charts` renders categorized
+  7-day previews, while `/charts/:metric` provides URL-bound presets/custom UTC
+  dates, intervals, ECharts zoom/reset, reduced motion, semantic summaries,
+  browser CSV, and an always-present exact table.
+- P70-T16 verification: ordinary and race Go suites, 142 web tests, all 9
+  embedded Playwright cases, the PostgreSQL 18 integration suite, `make
+  generate-check`, `make plan-check`, `make deployment-check`, `make
+  compose-runtime-smoke`, and aggregate `make check` pass. The integration
+  suite covers numeric canonical ordering across 9/10/99/100 and a
+  competing-hash detach/attach with generation-fenced rollup correction. A
+  ten-year hourly dataset returned at most 500 monthly points with measured
+  query p95 `91.412333ms`, below the existing 500 ms common-query target.
+- P70-T16 Preview evidence: the current image and migration were applied while
+  preserving the PostgreSQL and Reth volumes, and only the seven application
+  roles were recreated. Audited stats reindex request `1` completed through
+  the then-current tip. The indexed chain advanced beyond height 100; overview
+  returned all 18 metrics with `backfill_progress=100`, `dirty_hours=0`, and
+  `pending=false`; the hourly detail endpoint returned exact partial and
+  completed buckets, and both embedded `/charts` routes returned `200`.
+  Submitting a new transaction changed the current transaction total from 1 to
+  2 and the maintenance worker cleared the dirty hour. `debug_setHead` rewound
+  the Reth dev head, but Reth selected its stored identical-hash descendants,
+  so this run is not claimed as the remaining competing-hash Preview reorg
+  evidence.
 - P70-T14 implementation: `observability.sync_progress_log_interval` defaults
   to `30s`, accepts YAML and
   `ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL`, and rejects values outside `1s` to

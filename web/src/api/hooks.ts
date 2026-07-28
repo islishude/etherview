@@ -6,6 +6,10 @@ import type {
   AddressInternalTransaction,
   AddressTokenTransfer,
   BlockSummary,
+  ChartInterval,
+  ChartMetric,
+  ChartMetricSeries,
+  ChartOverview,
   CursorPage,
   GenesisAccount,
   NFTBalance,
@@ -517,6 +521,44 @@ export function useAggregateStats(fromBlock: string, toBlock: string, enabled = 
         }),
       ).data,
     enabled: enabled && fromBlock.length > 0 && toBlock.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useChartOverview() {
+  return useQuery({
+    queryKey: ["chart-overview"],
+    queryFn: async (): Promise<ChartOverview> =>
+      requireEnvelope(await apiClient.GET("/stats/charts/overview")).data,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useChartMetric(
+  metric: ChartMetric,
+  fromTime: string,
+  toTime: string,
+  interval: ChartInterval,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["chart-metric", metric, fromTime, toTime, interval],
+    queryFn: async (): Promise<ChartMetricSeries> =>
+      requireEnvelope(
+        await apiClient.GET("/stats/charts/{metric}", {
+          params: {
+            path: { metric },
+            query: {
+              from_time: fromTime,
+              to_time: toTime,
+              interval,
+            },
+          },
+        }),
+      ).data,
+    enabled,
     retry: false,
     staleTime: 30_000,
   });

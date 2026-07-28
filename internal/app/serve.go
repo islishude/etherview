@@ -13,6 +13,7 @@ import (
 
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/adapters"
+	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/catalog"
@@ -483,6 +484,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
+		analyticsReader, err := analytics.NewReader(readDB)
+		if err != nil {
+			return err
+		}
 		completeness := configuredCompleteness(cfg)
 		if cfg.Features.Trace && (rpcBuild == nil || !traceRPCAvailable(rpcBuild.Pool)) {
 			completeness.Trace = gen.StageStateUnavailable
@@ -637,6 +642,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
+			Analytics: analyticsReader,
 			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
@@ -835,6 +841,18 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 
 	if roleSet[components.RoleMaintenance] {
+		rollupWorker, err := analytics.NewRollupWorker(db, analytics.RollupWorkerOptions{
+			ChainID: cfg.Chain.ID, PollInterval: cfg.Runtime.PollInterval,
+			Logger: logger, Observer: registry,
+		})
+		if err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleMaintenance, "44-historical-analytics-rollup", func() (components.Service, error) {
+			return rollupWorker, nil
+		}); err != nil {
+			return err
+		}
 		requestRepository, err := maintenance.NewPostgresRepository(db)
 		if err != nil {
 			return err
@@ -1059,6 +1077,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				add("50-role-metadata")
 			}
 		case components.RoleMaintenance:
+			add("44-historical-analytics-rollup")
 			addWorkerComponentKeys(add, "45-maintenance", cfg.Runtime.WorkerCount)
 			add("46-search-catalog-maintenance")
 			if cfg.Features.UserAuth {

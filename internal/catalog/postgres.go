@@ -180,9 +180,9 @@ func commitRead(tx *sql.Tx) error {
 
 const canonicalSnapshotSQL = `
 SELECT number::text, block_hash
-FROM canonical_blocks
+FROM canonical_blocks AS canonical
 WHERE chain_id = $1::numeric
-ORDER BY number DESC
+ORDER BY canonical.number DESC
 LIMIT 1`
 
 const validateCanonicalSnapshotSQL = `

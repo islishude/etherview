@@ -8,7 +8,6 @@ import {
 import { AppShell } from "@/components/AppShell";
 import {
   BlocksPage,
-  ChartsPage,
   ContractPage,
   ContractsPage,
   EntityPage,
@@ -21,6 +20,12 @@ import {
   TransactionsPage,
   VerifyPage,
 } from "@/pages/pages";
+import {
+  ChartMetricPage,
+  ChartsPage,
+  isChartMetric,
+  type ChartSearch,
+} from "@/pages/ChartsPages";
 import { PendingPage } from "@/pages/PendingPage";
 import { AccountPage, AdminUsersPage } from "@/pages/AuthPages";
 import { AdminBillingPage } from "@/pages/BillingPages";
@@ -119,6 +124,27 @@ const chartsRoute = createRoute({
   path: "/charts",
   component: ChartsPage,
 });
+const chartMetricRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/charts/$metric",
+  validateSearch: (search: Record<string, unknown>): ChartSearch => {
+    const ranges = ["24h", "7d", "30d", "90d", "1y", "all", "custom"];
+    const intervals = ["auto", "hour", "day", "week", "month"];
+    const range = typeof search.range === "string" && ranges.includes(search.range)
+      ? search.range as ChartSearch["range"]
+      : "7d";
+    const interval = typeof search.interval === "string" && intervals.includes(search.interval)
+      ? search.interval as ChartSearch["interval"]
+      : "auto";
+    return {
+      range,
+      interval,
+      from_time: typeof search.from_time === "string" ? search.from_time : undefined,
+      to_time: typeof search.to_time === "string" ? search.to_time : undefined,
+    };
+  },
+  component: ChartMetricRoutePage,
+});
 const pendingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/pending",
@@ -168,6 +194,7 @@ const routeTree = rootRoute.addChildren([
   contractRoute,
   verifyRoute,
   chartsRoute,
+  chartMetricRoute,
   pendingRoute,
   statusRoute,
   accountRoute,
@@ -212,6 +239,20 @@ function ContractRoutePage() {
 function SearchRoutePage() {
   const { q } = searchRoute.useSearch();
   return <SearchPage query={q} />;
+}
+
+function ChartMetricRoutePage() {
+  const { metric } = chartMetricRoute.useParams();
+  const search = chartMetricRoute.useSearch();
+  const navigate = chartMetricRoute.useNavigate();
+  if (!isChartMetric(metric)) return <NotFoundPage />;
+  return (
+    <ChartMetricPage
+      metric={metric}
+      search={search}
+      updateSearch={(next) => void navigate({ search: next })}
+    />
+  );
 }
 
 export function makeRouter(history?: RouterHistory) {

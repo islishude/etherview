@@ -473,6 +473,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stats/charts/{metric}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getChartMetric"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats/charts/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getChartOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stats/summary": {
         parameters: {
             query?: never;
@@ -1132,6 +1164,74 @@ export interface components {
             block_number: components["schemas"]["Quantity"];
             chain_id: components["schemas"]["Quantity"];
         };
+        ChartCoverage: {
+            /** Format: date-time */
+            available_from?: string;
+            /** Format: date-time */
+            available_to?: string;
+            /** @description Exact percentage of canonical blocks whose stats@3 and token@1 sources are published. */
+            backfill_progress: components["schemas"]["Decimal"];
+            /** @enum {string} */
+            backfill_state: "empty" | "partial" | "complete";
+            complete: boolean;
+            dirty_hours: components["schemas"]["Quantity"];
+        };
+        /** @enum {string} */
+        ChartInterval: "auto" | "hour" | "day" | "week" | "month";
+        /** @enum {string} */
+        ChartMetric: "transactions" | "failed-transactions" | "average-tps" | "erc20-transfers" | "nft-transfers" | "contract-creations" | "blocks" | "average-block-time" | "gas-used" | "gas-utilization" | "average-base-fee" | "execution-fees" | "average-transaction-fee" | "priority-fees" | "burned-fees" | "blob-gas-used" | "average-blob-base-fee" | "blob-burned-fees";
+        ChartMetricResponse: {
+            data: components["schemas"]["ChartMetricSeries"];
+            meta: components["schemas"]["Meta"];
+        };
+        ChartMetricSeries: {
+            coverage: components["schemas"]["ChartCoverage"];
+            /** Format: date-time */
+            from_time: string;
+            interval: components["schemas"]["ChartInterval"];
+            metric: components["schemas"]["ChartMetric"];
+            points: components["schemas"]["ChartPoint"][];
+            snapshot: components["schemas"]["CatalogSnapshot"];
+            summary: components["schemas"]["ChartSummary"];
+            /** Format: date-time */
+            to_time: string;
+        };
+        ChartOverview: {
+            coverage: components["schemas"]["ChartCoverage"];
+            /** Format: date-time */
+            generated_at: string;
+            metrics: components["schemas"]["ChartPreview"][];
+            pending: boolean;
+            snapshot: components["schemas"]["CatalogSnapshot"];
+        };
+        ChartOverviewResponse: {
+            data: components["schemas"]["ChartOverview"];
+            meta: components["schemas"]["Meta"];
+        };
+        ChartPoint: {
+            /** Format: date-time */
+            bucket_end: string;
+            /** Format: date-time */
+            bucket_start: string;
+            from_block: components["schemas"]["Quantity"];
+            partial: boolean;
+            to_block: components["schemas"]["Quantity"];
+            value: components["schemas"]["Decimal"];
+        };
+        ChartPreview: {
+            change_percent?: components["schemas"]["SignedDecimal"];
+            current_value?: components["schemas"]["Decimal"];
+            metric: components["schemas"]["ChartMetric"];
+            points: components["schemas"]["ChartPoint"][];
+            previous_value?: components["schemas"]["Decimal"];
+        };
+        ChartSummary: {
+            average?: components["schemas"]["Decimal"];
+            current?: components["schemas"]["Decimal"];
+            highest?: components["schemas"]["Decimal"];
+            lowest?: components["schemas"]["Decimal"];
+            total?: components["schemas"]["Decimal"];
+        };
         CompilationFailureOutcome: {
             /** @enum {string} */
             kind: "compilation_failure";
@@ -1312,6 +1412,8 @@ export interface components {
             data: components["schemas"]["SessionRevocation"];
             meta: components["schemas"]["Meta"];
         };
+        /** @description A canonical signed fixed-point decimal with at most 18 fractional digits. */
+        SignedDecimal: string;
         SourcifyFromEtherscanSubmission: {
             address: components["schemas"]["Address"];
             chain_id: components["schemas"]["Quantity"];
@@ -2589,6 +2691,67 @@ export interface operations {
                 };
             };
             402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getChartMetric: {
+        parameters: {
+            query: {
+                from_time: string;
+                interval?: "auto" | "hour" | "day" | "week" | "month";
+                to_time: string;
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                metric: components["schemas"]["ChartMetric"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One bounded exact execution metric series from reorg-safe hourly rollups. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartMetricResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getChartOverview: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent execution analytics with previous-window comparisons, previews, and backfill coverage. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartOverviewResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            503: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };
     };

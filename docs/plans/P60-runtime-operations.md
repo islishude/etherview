@@ -223,7 +223,7 @@ owned by P70 and is not implied by P60 completion.
 - P60-T03: `make compose-runtime-smoke` rebuilds the current working tree and
   passes against independently migrated fresh PostgreSQL 18 databases. The
   monolith and seven-role runs each publish exact `proxy@1`, `abi@1`,
-  `token@1`, `stats@2`, and `trace@1` results for the final canonical block,
+  `token@1`, `stats@3`, and `trace@1` results for the final canonical block,
   reach zero core lag with a drained outbox, and match the normalized
   correctness projection, seven selected API responses, and embedded SPA
   bytes. The distributed run first binds chain identity from a config-only

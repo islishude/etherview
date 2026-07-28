@@ -175,7 +175,7 @@ func bytesOf(value byte, length int) []byte {
 }
 
 func snapshotStep(number string, hash []byte) catalogQueryStep {
-	return catalogQueryStep{contains: "ORDER BY number DESC", rows: catalogRows(2, []driver.Value{number, hash})}
+	return catalogQueryStep{contains: "ORDER BY canonical.number DESC", rows: catalogRows(2, []driver.Value{number, hash})}
 }
 
 func stageStep(state string) catalogQueryStep {

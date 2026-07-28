@@ -197,7 +197,7 @@ of the callback. The routing and lag contract is specified in
   hash that was detached, terminally skipped as stale, and reattached receives
   a new enrichment generation. A delayed orphan wake for the now-canonical
   hash is acknowledged as stale rather than retried forever.
-- `stats@2` derives intervals only from the exact canonical parent. The exact
+- `stats@3` derives intervals only from the exact canonical parent. The exact
   configured indexing start has null interval and TPS; every later block
   requires a positive timestamp delta. Aggregate TPS divides transactions by
   total known interval rather than averaging block rates. A block without blob

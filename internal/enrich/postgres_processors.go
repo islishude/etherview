@@ -20,10 +20,11 @@ import (
 
 var (
 	TokenStage = StageID{Name: "token", Version: 1}
-	// stats@2 adds timestamp/cadence plus EIP-4844 fee observations. Keeping a
-	// new durable identity prevents old stats@1 completions from claiming the
+	// stats@3 adds receipt-authenticated execution fees, priority fees, failed
+	// transactions, and successful top-level creations. Its new durable
+	// identity prevents stats@1 or stats@2 completions from claiming the
 	// expanded persisted contract.
-	StatsStage = StageID{Name: "stats", Version: 2}
+	StatsStage = StageID{Name: "stats", Version: 3}
 )
 
 type PostgresTokenProcessor struct {
@@ -611,29 +612,42 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	if header.ExcessBlobGas != nil {
 		excessBlobGas = strconv.FormatUint(*header.ExcessBlobGas, 10)
 	}
-	receiptBlobGas, receiptBlobPrice, err := statsReceiptBlobFees(ctx, tx, job)
+	receiptFacts, err := readStatsReceiptFacts(ctx, tx, job, transactionCount)
 	if err != nil {
 		return StageResult{}, err
 	}
-	if header.BlobGasUsed == nil && receiptBlobGas.Sign() > 0 {
+	if header.BlobGasUsed == nil && receiptFacts.BlobGasUsed.Sign() > 0 {
 		return StageResult{}, Permanent(errors.New("receipt blob gas is absent from the block header"))
 	}
 	if header.BlobGasUsed != nil {
 		headerBlobGas := new(big.Int).SetUint64(*header.BlobGasUsed)
-		if headerBlobGas.Cmp(receiptBlobGas) != 0 {
+		if headerBlobGas.Cmp(receiptFacts.BlobGasUsed) != 0 {
 			return StageResult{}, Permanent(errors.New("receipt blob gas does not match the block header"))
 		}
 	}
-	if receiptBlobPrice != nil {
-		blobBaseFee = receiptBlobPrice.String()
-		blobBurned = new(big.Int).Mul(receiptBlobPrice, receiptBlobGas).String()
-	} else if receiptBlobGas.Sign() == 0 {
+	if receiptFacts.GasUsed.Cmp(gasUsed) != 0 {
+		return StageResult{}, Permanent(errors.New("receipt gas used does not match the block header"))
+	}
+	if receiptFacts.BlobGasPrice != nil {
+		blobBaseFee = receiptFacts.BlobGasPrice.String()
+		blobBurned = new(big.Int).Mul(receiptFacts.BlobGasPrice, receiptFacts.BlobGasUsed).String()
+	} else if receiptFacts.BlobGasUsed.Sign() == 0 {
 		blobBurned = "0"
+	}
+	baseFeeBurn := new(big.Int)
+	if block.BaseFee() != nil {
+		baseFeeBurn.Mul(block.BaseFee(), receiptFacts.GasUsed)
+	}
+	priorityFee := new(big.Int).Sub(new(big.Int).Set(receiptFacts.ExecutionFee), baseFeeBurn)
+	if priorityFee.Sign() < 0 {
+		return StageResult{}, Permanent(errors.New("execution fee is below authenticated base fee burn"))
 	}
 	if _, err := tx.ExecContext(ctx, insertBlockStatsSQL,
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transactionCount,
 		gasUsed.String(), gasLimit.String(), baseFee, blobGasUsed, burned,
 		timestamp.String(), blockInterval, transactionsPerSecond, excessBlobGas, blobBaseFee, blobBurned,
+		receiptFacts.ExecutionFee.String(), priorityFee.String(), receiptFacts.FailedTransactions,
+		receiptFacts.ContractCreations,
 	); err != nil {
 		return StageResult{}, fmt.Errorf("persist block statistics: %w", err)
 	}
@@ -641,7 +655,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 }
 
 // decimalRatio returns a canonical, bounded fixed-point decimal without using
-// float64. PostgreSQL NUMERIC(78,18) is the persisted boundary for stats@2.
+// float64. PostgreSQL NUMERIC(78,18) is the persisted boundary for stats@3.
 func decimalRatio(numerator, denominator *big.Int, scale int) string {
 	if numerator == nil || denominator == nil || denominator.Sign() <= 0 || scale < 0 {
 		return "0"
@@ -654,52 +668,101 @@ func decimalRatio(numerator, denominator *big.Int, scale int) string {
 	return ratio
 }
 
-func statsReceiptBlobFees(ctx context.Context, tx *sql.Tx, job Job) (*big.Int, *big.Int, error) {
+type statsReceiptFacts struct {
+	GasUsed            *big.Int
+	ExecutionFee       *big.Int
+	BlobGasUsed        *big.Int
+	BlobGasPrice       *big.Int
+	FailedTransactions int64
+	ContractCreations  int64
+}
+
+var maxStatsUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+
+func readStatsReceiptFacts(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	expectedCount int64,
+) (statsReceiptFacts, error) {
 	rows, err := tx.QueryContext(ctx, statsReceiptSourceSQL,
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("query stats source receipts: %w", err)
+		return statsReceiptFacts{}, fmt.Errorf("query stats source receipts: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
-	total := new(big.Int)
-	var price *big.Int
+	facts := statsReceiptFacts{
+		GasUsed:      new(big.Int),
+		ExecutionFee: new(big.Int),
+		BlobGasUsed:  new(big.Int),
+	}
+	var count int64
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
-			return nil, nil, fmt.Errorf("scan stats source receipt: %w", err)
+			return statsReceiptFacts{}, fmt.Errorf("scan stats source receipt: %w", err)
 		}
+		count++
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &fields); err != nil {
-			return nil, nil, Permanent(fmt.Errorf("decode stats receipt fields: %w", err))
+			return statsReceiptFacts{}, Permanent(fmt.Errorf("decode stats receipt fields: %w", err))
 		}
 		blobGasUsedPresent := jsonValuePresent(fields["blobGasUsed"])
 		blobGasPricePresent := jsonValuePresent(fields["blobGasPrice"])
+		effectiveGasPricePresent := jsonValuePresent(fields["effectiveGasPrice"])
 		var receipt types.Receipt
 		if err := json.Unmarshal(raw, &receipt); err != nil {
-			return nil, nil, Permanent(fmt.Errorf("decode stats receipt: %w", err))
+			return statsReceiptFacts{}, Permanent(fmt.Errorf("decode stats receipt: %w", err))
+		}
+		if receipt.Status != types.ReceiptStatusSuccessful && receipt.Status != types.ReceiptStatusFailed {
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipt has an invalid status"))
+		}
+		if !effectiveGasPricePresent || receipt.EffectiveGasPrice == nil || receipt.EffectiveGasPrice.Sign() < 0 {
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipt has no authenticated effective gas price"))
+		}
+		if receipt.EffectiveGasPrice.Cmp(maxStatsUint256) > 0 {
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipt effective gas price exceeds uint256"))
+		}
+		used := new(big.Int).SetUint64(receipt.GasUsed)
+		facts.GasUsed.Add(facts.GasUsed, used)
+		facts.ExecutionFee.Add(facts.ExecutionFee, new(big.Int).Mul(used, receipt.EffectiveGasPrice))
+		if facts.ExecutionFee.Cmp(maxStatsUint256) > 0 {
+			return statsReceiptFacts{}, Permanent(errors.New("stats execution fee exceeds uint256"))
+		}
+		if receipt.Status == types.ReceiptStatusFailed {
+			facts.FailedTransactions++
+		} else if receipt.ContractAddress != (common.Address{}) {
+			facts.ContractCreations++
 		}
 		if !blobGasUsedPresent && !blobGasPricePresent {
 			continue
 		}
 		if !blobGasUsedPresent || !blobGasPricePresent || receipt.BlobGasPrice == nil {
-			return nil, nil, Permanent(errors.New("stats receipt has an incomplete blob fee observation"))
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipt has an incomplete blob fee observation"))
 		}
-		used := new(big.Int).SetUint64(receipt.BlobGasUsed)
+		used = new(big.Int).SetUint64(receipt.BlobGasUsed)
 		currentPrice := receipt.BlobGasPrice
 		if used.Sign() <= 0 || currentPrice.Sign() <= 0 {
-			return nil, nil, Permanent(errors.New("stats receipt has non-positive blob fee facts"))
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipt has non-positive blob fee facts"))
 		}
-		if price != nil && price.Cmp(currentPrice) != 0 {
-			return nil, nil, Permanent(errors.New("stats receipts disagree on blob gas price"))
+		if currentPrice.Cmp(maxStatsUint256) > 0 ||
+			new(big.Int).Mul(used, currentPrice).Cmp(maxStatsUint256) > 0 {
+			return statsReceiptFacts{}, Permanent(errors.New("stats blob fee exceeds uint256"))
 		}
-		price = new(big.Int).Set(currentPrice)
-		total.Add(total, used)
+		if facts.BlobGasPrice != nil && facts.BlobGasPrice.Cmp(currentPrice) != 0 {
+			return statsReceiptFacts{}, Permanent(errors.New("stats receipts disagree on blob gas price"))
+		}
+		facts.BlobGasPrice = new(big.Int).Set(currentPrice)
+		facts.BlobGasUsed.Add(facts.BlobGasUsed, used)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("iterate stats source receipts: %w", err)
+		return statsReceiptFacts{}, fmt.Errorf("iterate stats source receipts: %w", err)
 	}
-	return total, price, nil
+	if count != expectedCount {
+		return statsReceiptFacts{}, Permanent(errors.New("stats receipt count does not match transaction count"))
+	}
+	return facts, nil
 }
 
 func jsonValuePresent(raw json.RawMessage) bool {
@@ -932,11 +995,14 @@ INSERT INTO block_statistics (
     chain_id, block_number, block_hash, transaction_count, gas_used, gas_limit,
     base_fee_per_gas, blob_gas_used, burned_wei, block_timestamp,
     block_interval_seconds, transactions_per_second, excess_blob_gas,
-    blob_base_fee_per_gas, blob_burned_wei, canonical
+    blob_base_fee_per_gas, blob_burned_wei, execution_gas_fee_wei,
+    priority_fee_wei, failed_transaction_count, contract_creation_count,
+    canonical
 ) VALUES (
     $1::numeric, $2::numeric, $3, $4, $5::numeric, $6::numeric, $7::numeric,
     $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12::numeric,
-    $13::numeric, $14::numeric, $15::numeric, true
+    $13::numeric, $14::numeric, $15::numeric, $16::numeric, $17::numeric,
+    $18, $19, true
 )
 ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
     transaction_count = EXCLUDED.transaction_count,
@@ -951,6 +1017,10 @@ ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
     excess_blob_gas = EXCLUDED.excess_blob_gas,
     blob_base_fee_per_gas = EXCLUDED.blob_base_fee_per_gas,
     blob_burned_wei = EXCLUDED.blob_burned_wei,
+    execution_gas_fee_wei = EXCLUDED.execution_gas_fee_wei,
+    priority_fee_wei = EXCLUDED.priority_fee_wei,
+    failed_transaction_count = EXCLUDED.failed_transaction_count,
+    contract_creation_count = EXCLUDED.contract_creation_count,
     canonical = true,
     computed_at = now()`
 

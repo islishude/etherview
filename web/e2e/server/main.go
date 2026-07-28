@@ -330,6 +330,57 @@ func main() {
 			"completeness": map[string]bool{"core": true, "stats": true, "token": true},
 		})
 	})
+	mux.HandleFunc("GET /api/v1/stats/charts/overview", func(response http.ResponseWriter, _ *http.Request) {
+		metrics := []string{
+			"transactions", "failed-transactions", "average-tps",
+			"erc20-transfers", "nft-transfers", "contract-creations",
+			"blocks", "average-block-time", "gas-used", "gas-utilization",
+			"average-base-fee", "execution-fees", "average-transaction-fee",
+			"priority-fees", "burned-fees", "blob-gas-used",
+			"average-blob-base-fee", "blob-burned-fees",
+		}
+		previews := make([]map[string]any, 0, len(metrics))
+		for _, metric := range metrics {
+			value := "42"
+			if metric == "execution-fees" {
+				value = "900719925474099312345"
+			}
+			previews = append(previews, map[string]any{
+				"metric": metric, "current_value": value, "previous_value": "40",
+				"change_percent": "5", "points": []map[string]any{chartPoint(value)},
+			})
+		}
+		writeEnvelope(response, map[string]any{
+			"generated_at": "2026-07-28T12:00:00Z",
+			"snapshot": map[string]any{
+				"chain_id": "1", "block_number": "100", "block_hash": secondHash,
+			},
+			"coverage": chartCoverage(), "metrics": previews, "pending": false,
+		})
+	})
+	mux.HandleFunc("GET /api/v1/stats/charts/{metric}", func(response http.ResponseWriter, request *http.Request) {
+		metric := request.PathValue("metric")
+		if metric == "" || request.URL.Query().Get("from_time") == "" ||
+			request.URL.Query().Get("to_time") == "" {
+			writeNotFound(response)
+			return
+		}
+		value := "900719925474099312345"
+		writeEnvelope(response, map[string]any{
+			"metric": metric, "interval": "day",
+			"from_time": request.URL.Query().Get("from_time"),
+			"to_time":   request.URL.Query().Get("to_time"),
+			"points":    []map[string]any{chartPoint(value)},
+			"summary": map[string]any{
+				"current": value, "highest": value, "lowest": value,
+				"total": value, "average": value,
+			},
+			"snapshot": map[string]any{
+				"chain_id": "1", "block_number": "100", "block_hash": secondHash,
+			},
+			"coverage": chartCoverage(),
+		})
+	})
 	mux.HandleFunc("GET /api/v1/verifier/jobs/{id}", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("id") != testVerificationJobID {
 			writeNotFound(response)
@@ -424,6 +475,23 @@ func main() {
 	log.Printf("Etherview E2E server listening on %s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
+	}
+}
+
+func chartCoverage() map[string]any {
+	return map[string]any{
+		"available_from": "2025-07-28T00:00:00Z",
+		"available_to":   "2026-07-28T12:00:00Z",
+		"complete":       true, "dirty_hours": "0",
+		"backfill_state": "complete", "backfill_progress": "100",
+	}
+}
+
+func chartPoint(value string) map[string]any {
+	return map[string]any{
+		"bucket_start": "2026-07-27T00:00:00Z",
+		"bucket_end":   "2026-07-28T00:00:00Z",
+		"value":        value, "partial": false, "from_block": "99", "to_block": "100",
 	}
 }
 

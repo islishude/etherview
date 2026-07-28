@@ -46,6 +46,8 @@ const BILLABLE_OPERATIONS = [
   "getNFTOwner",
   "getBlockStats",
   "getAggregateStats",
+  "getChartOverview",
+  "getChartMetric",
   "search",
   "getVerifierJob",
   "getVerifiedContract",

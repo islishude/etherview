@@ -31,7 +31,7 @@ const (
 func (stage Stage) Version() int {
 	switch stage {
 	case StageStats:
-		return 2
+		return 3
 	case StageCore, StageToken, StageTrace, StageStateDiff:
 		return 1
 	default:

@@ -274,7 +274,7 @@ func TestAtomicPublicationRollsBackDerivedOutputOnJournalFailure(t *testing.T) {
 		CREATE FUNCTION reject_atomic_stats_journal() RETURNS trigger
 		LANGUAGE plpgsql AS $$
 		BEGIN
-			IF NEW.stage = 'stats@2' THEN
+			IF NEW.stage = 'stats@3' THEN
 				RAISE EXCEPTION 'reject atomic stats journal';
 			END IF;
 			RETURN NEW;
