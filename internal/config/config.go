@@ -142,6 +142,8 @@ type MaintenanceConfig struct {
 // deployment starts no exporter goroutines and makes no collector calls.
 type ObservabilityConfig struct {
 	Environment            string        `yaml:"environment"`
+	LogLevel               string        `yaml:"log_level"`
+	LogFormat              string        `yaml:"log_format"`
 	OTLPTraceEndpoint      string        `yaml:"otlp_trace_endpoint"`
 	OTLPTraceInsecure      bool          `yaml:"otlp_trace_insecure"`
 	TraceSampleRatio       float64       `yaml:"trace_sample_ratio"`
@@ -335,7 +337,8 @@ func Default() Config {
 			AdapterDeleteBatch: 1_000,
 		},
 		Observability: ObservabilityConfig{
-			Environment: "production", TraceSampleRatio: 0.1,
+			Environment: "production", LogLevel: "info", LogFormat: "json",
+			TraceSampleRatio:   0.1,
 			TraceExportTimeout: 5 * time.Second, MetricsRefreshInterval: 15 * time.Second,
 		},
 		Metadata: MetadataConfig{
@@ -396,7 +399,29 @@ func Default() Config {
 // Load reads an optional YAML file, overlays supported ETHERVIEW_ environment
 // variables, and validates the resulting configuration.
 func Load(path string) (Config, error) {
-	return load(path, nil)
+	return LoadWithOverrides(path, Overrides{})
+}
+
+// Overrides contains command-line values that must be applied after file and
+// environment inputs but before validation.
+type Overrides struct {
+	Roles     []string
+	LogLevel  *string
+	LogFormat *string
+}
+
+// LoadWithOverrides loads configuration using explicit highest-precedence
+// command-line values.
+func LoadWithOverrides(path string, overrides Overrides) (Config, error) {
+	var forcedRoles []string
+	if overrides.Roles != nil {
+		normalized, err := NormalizeRoles(overrides.Roles)
+		if err != nil {
+			return Config{}, err
+		}
+		forcedRoles = normalized
+	}
+	return load(path, forcedRoles, overrides)
 }
 
 // LoadForRoles loads configuration with an explicit final runtime-role
@@ -404,14 +429,10 @@ func Load(path string) (Config, error) {
 // files are never opened according to a lower-precedence YAML or environment
 // role value before the CLI override is applied.
 func LoadForRoles(path string, roles []string) (Config, error) {
-	normalized, err := NormalizeRoles(roles)
-	if err != nil {
-		return Config{}, err
-	}
-	return load(path, normalized)
+	return LoadWithOverrides(path, Overrides{Roles: roles})
 }
 
-func load(path string, forcedRoles []string) (Config, error) {
+func load(path string, forcedRoles []string, overrides Overrides) (Config, error) {
 	cfg := Default()
 	if path != "" {
 		data, err := os.ReadFile(path)
@@ -435,6 +456,12 @@ func load(path string, forcedRoles []string) (Config, error) {
 		&cfg, os.LookupEnv, os.ReadFile, forcedRoles,
 	); err != nil {
 		return Config{}, err
+	}
+	if overrides.LogLevel != nil {
+		cfg.Observability.LogLevel = *overrides.LogLevel
+	}
+	if overrides.LogFormat != nil {
+		cfg.Observability.LogFormat = *overrides.LogFormat
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -1147,6 +1174,12 @@ func validateObservability(cfg ObservabilityConfig) error {
 	if environment := strings.TrimSpace(cfg.Environment); environment == "" || environment != cfg.Environment || len(environment) > 64 {
 		errs = append(errs, errors.New("observability.environment must contain between 1 and 64 trimmed bytes"))
 	}
+	if !slices.Contains([]string{"debug", "info", "warn", "error"}, cfg.LogLevel) {
+		errs = append(errs, errors.New("observability.log_level must be debug, info, warn, or error"))
+	}
+	if cfg.LogFormat != "json" && cfg.LogFormat != "text" {
+		errs = append(errs, errors.New("observability.log_format must be json or text"))
+	}
 	if math.IsNaN(cfg.TraceSampleRatio) || math.IsInf(cfg.TraceSampleRatio, 0) || cfg.TraceSampleRatio < 0 || cfg.TraceSampleRatio > 1 {
 		errs = append(errs, errors.New("observability.trace_sample_ratio must be between 0 and 1"))
 	}
@@ -1360,6 +1393,8 @@ func applyEnvironmentForRoles(
 	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
 	setString(lookup, "SOURCIFY_BASE_URL", &cfg.Sourcify.BaseURL)
 	setString(lookup, "OBSERVABILITY_ENVIRONMENT", &cfg.Observability.Environment)
+	setExactString(lookup, "LOG_LEVEL", &cfg.Observability.LogLevel)
+	setExactString(lookup, "LOG_FORMAT", &cfg.Observability.LogFormat)
 	setString(lookup, "OTLP_TRACE_ENDPOINT", &cfg.Observability.OTLPTraceEndpoint)
 	setString(lookup, "X402_FACILITATOR_URL", &cfg.Billing.FacilitatorURL)
 	setString(lookup, "X402_NETWORK", &cfg.Billing.Network)
@@ -1667,6 +1702,12 @@ func lookupValueOrFile(name string, lookup func(string) (string, bool), readFile
 func setString(lookup func(string) (string, bool), name string, target *string) {
 	if value, ok := lookup(envPrefix + name); ok {
 		*target = strings.TrimSpace(value)
+	}
+}
+
+func setExactString(lookup func(string) (string, bool), name string, target *string) {
+	if value, ok := lookup(envPrefix + name); ok {
+		*target = value
 	}
 }
 

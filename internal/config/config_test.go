@@ -276,8 +276,9 @@ func TestMaintenanceConfigurationIsStrictlyBounded(t *testing.T) {
 
 func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 	t.Parallel()
-	if Default().Observability.OTLPTraceEndpoint != "" {
-		t.Fatal("OTLP tracing must be disabled by default")
+	if got := Default().Observability; got.OTLPTraceEndpoint != "" ||
+		got.LogLevel != "info" || got.LogFormat != "json" {
+		t.Fatalf("unexpected observability defaults: %#v", got)
 	}
 	for _, test := range []struct {
 		name   string
@@ -285,6 +286,13 @@ func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 		want   string
 	}{
 		{name: "empty environment", mutate: func(cfg *Config) { cfg.Observability.Environment = "" }, want: "environment"},
+		{name: "empty log level", mutate: func(cfg *Config) { cfg.Observability.LogLevel = "" }, want: "log_level"},
+		{name: "uppercase log level", mutate: func(cfg *Config) { cfg.Observability.LogLevel = "INFO" }, want: "log_level"},
+		{name: "numeric log level", mutate: func(cfg *Config) { cfg.Observability.LogLevel = "DEBUG-4" }, want: "log_level"},
+		{name: "spaced log level", mutate: func(cfg *Config) { cfg.Observability.LogLevel = " info" }, want: "log_level"},
+		{name: "empty log format", mutate: func(cfg *Config) { cfg.Observability.LogFormat = "" }, want: "log_format"},
+		{name: "uppercase log format", mutate: func(cfg *Config) { cfg.Observability.LogFormat = "JSON" }, want: "log_format"},
+		{name: "spaced log format", mutate: func(cfg *Config) { cfg.Observability.LogFormat = "text " }, want: "log_format"},
 		{name: "sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = 1.01 }, want: "trace_sample_ratio"},
 		{name: "nan sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = math.NaN() }, want: "trace_sample_ratio"},
 		{name: "infinite sample ratio", mutate: func(cfg *Config) { cfg.Observability.TraceSampleRatio = math.Inf(1) }, want: "trace_sample_ratio"},
@@ -310,12 +318,14 @@ func TestObservabilityConfigurationIsExplicitAndBounded(t *testing.T) {
 	}
 	for _, cfg := range []ObservabilityConfig{
 		{
-			Environment: "production", OTLPTraceEndpoint: "https://otel.example:4318",
-			TraceSampleRatio: 0.25, TraceExportTimeout: time.Second,
+			Environment: "production", LogLevel: "debug", LogFormat: "text",
+			OTLPTraceEndpoint: "https://otel.example:4318",
+			TraceSampleRatio:  0.25, TraceExportTimeout: time.Second,
 			MetricsRefreshInterval: 10 * time.Second,
 		},
 		{
-			Environment: "staging", OTLPTraceEndpoint: "http://otel.monitoring.svc:4318",
+			Environment: "staging", LogLevel: "error", LogFormat: "json",
+			OTLPTraceEndpoint: "http://otel.monitoring.svc:4318",
 			OTLPTraceInsecure: true, TraceSampleRatio: 1, TraceExportTimeout: time.Second,
 			MetricsRefreshInterval: 10 * time.Second,
 		},
@@ -333,6 +343,8 @@ func TestObservabilityEnvironmentOverrides(t *testing.T) {
 	cfg := Default()
 	values := map[string]string{
 		"ETHERVIEW_OBSERVABILITY_ENVIRONMENT": "staging",
+		"ETHERVIEW_LOG_LEVEL":                 "debug",
+		"ETHERVIEW_LOG_FORMAT":                "text",
 		"ETHERVIEW_OTLP_TRACE_ENDPOINT":       "http://otel.monitoring.svc:4318",
 		"ETHERVIEW_OTLP_TRACE_INSECURE":       "true",
 		"ETHERVIEW_TRACE_SAMPLE_RATIO":        "0.5",
@@ -343,10 +355,51 @@ func TestObservabilityEnvironmentOverrides(t *testing.T) {
 	if err := applyEnvironment(&cfg, lookup, os.ReadFile); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Observability.Environment != "staging" || cfg.Observability.OTLPTraceEndpoint != "http://otel.monitoring.svc:4318" ||
+	if cfg.Observability.Environment != "staging" ||
+		cfg.Observability.LogLevel != "debug" || cfg.Observability.LogFormat != "text" ||
+		cfg.Observability.OTLPTraceEndpoint != "http://otel.monitoring.svc:4318" ||
 		!cfg.Observability.OTLPTraceInsecure || cfg.Observability.TraceSampleRatio != 0.5 ||
 		cfg.Observability.TraceExportTimeout != 3*time.Second || cfg.Observability.MetricsRefreshInterval != 20*time.Second {
 		t.Fatalf("observability environment was not applied: %#v", cfg.Observability)
+	}
+}
+
+func TestObservabilityEnvironmentRejectsNonCanonicalLoggingValues(t *testing.T) {
+	t.Parallel()
+	for name, values := range map[string]map[string]string{
+		"level whitespace":  {"ETHERVIEW_LOG_LEVEL": " info"},
+		"level uppercase":   {"ETHERVIEW_LOG_LEVEL": "INFO"},
+		"format whitespace": {"ETHERVIEW_LOG_FORMAT": "json "},
+		"format uppercase":  {"ETHERVIEW_LOG_FORMAT": "TEXT"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := Default()
+			lookup := func(key string) (string, bool) {
+				value, ok := values[key]
+				return value, ok
+			}
+			if err := applyEnvironment(&cfg, lookup, os.ReadFile); err != nil {
+				t.Fatal(err)
+			}
+			if err := cfg.Validate(); err == nil {
+				t.Fatalf("non-canonical logging configuration passed: %#v", cfg.Observability)
+			}
+		})
+	}
+}
+
+func TestLoadWithOverridesAppliesLoggingBeforeValidation(t *testing.T) {
+	t.Setenv("ETHERVIEW_LOG_LEVEL", "INVALID")
+	t.Setenv("ETHERVIEW_LOG_FORMAT", "INVALID")
+	level, format := "debug", "text"
+	cfg, err := LoadWithOverrides("", Overrides{
+		LogLevel: &level, LogFormat: &format,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Observability.LogLevel != level || cfg.Observability.LogFormat != format {
+		t.Fatalf("logging overrides were not applied: %#v", cfg.Observability)
 	}
 }
 

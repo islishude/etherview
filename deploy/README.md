@@ -28,6 +28,11 @@ Reader pool sizes default to the mounted YAML file: either edit
 export the corresponding `ETHERVIEW_DATABASE_READ_*` variables in the shell
 that invokes Compose. Compose deliberately does not supply numeric defaults,
 so an omitted environment override cannot replace YAML sizing with zero.
+Logs default to `info` and JSON. Configure `observability.log_level` and
+`observability.log_format` in the mounted YAML, or export
+`ETHERVIEW_LOG_LEVEL` and `ETHERVIEW_LOG_FORMAT` in the shell invoking Compose.
+The Compose entries are value-less so an unset host variable preserves the
+mounted YAML value.
 The maintenance component runs one search-catalog and adapter-retention sweep
 at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep

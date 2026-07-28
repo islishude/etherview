@@ -275,6 +275,8 @@ config:
     adapter_delete_batch: 1000
   observability:
     environment: production
+    log_level: info
+    log_format: json
     # The OTLP endpoint is injected from secrets.existingSecret.
     otlp_trace_endpoint: ""
     otlp_trace_insecure: false

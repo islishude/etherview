@@ -53,6 +53,73 @@ func TestLoggerAddsTraceIdentityFromContext(t *testing.T) {
 	}
 }
 
+func TestLoggerSupportsJSONAndTextFormats(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		format LogFormat
+		want   string
+	}{
+		{name: "default json", want: `"msg":"configured"`},
+		{name: "explicit json", format: LogFormatJSON, want: `"msg":"configured"`},
+		{name: "text", format: LogFormatText, want: `msg=configured`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := NewLogger(LoggerOptions{Writer: &output, Format: test.format})
+			ctx, trace, _ := StartSpan(context.Background(), "logging-format", "", nil, time.Now)
+			logger.InfoContext(
+				ctx,
+				"configured",
+				"database_url", "postgres://user:pass@db/etherview",
+				"upstream_endpoint", "https://rpc.example/provider-secret",
+			)
+			line := output.String()
+			if !strings.Contains(line, test.want) ||
+				!strings.Contains(line, "https://rpc.example") ||
+				!strings.Contains(line, trace.TraceID) ||
+				strings.Contains(line, "user:pass") ||
+				strings.Contains(line, "provider-secret") {
+				t.Fatalf("unexpected %s log: %s", test.name, line)
+			}
+		})
+	}
+}
+
+func TestLoggerFiltersConfiguredLevels(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		level     slog.Level
+		want      []string
+		forbidden []string
+	}{
+		{name: "debug", level: slog.LevelDebug, want: []string{"debug-event", "info-event", "warn-event", "error-event"}},
+		{name: "info", level: slog.LevelInfo, want: []string{"info-event", "warn-event", "error-event"}, forbidden: []string{"debug-event"}},
+		{name: "warn", level: slog.LevelWarn, want: []string{"warn-event", "error-event"}, forbidden: []string{"debug-event", "info-event"}},
+		{name: "error", level: slog.LevelError, want: []string{"error-event"}, forbidden: []string{"debug-event", "info-event", "warn-event"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := NewLogger(LoggerOptions{
+				Writer: &output, Level: test.level, Format: LogFormatText,
+			})
+			logger.Debug("debug-event")
+			logger.Info("info-event")
+			logger.Warn("warn-event")
+			logger.Error("error-event")
+			for _, want := range test.want {
+				if !strings.Contains(output.String(), want) {
+					t.Fatalf("log at %s omitted %q: %s", test.name, want, output.String())
+				}
+			}
+			for _, forbidden := range test.forbidden {
+				if strings.Contains(output.String(), forbidden) {
+					t.Fatalf("log at %s included %q: %s", test.name, forbidden, output.String())
+				}
+			}
+		})
+	}
+}
+
 func TestTraceparentValidationAndSpanHook(t *testing.T) {
 	const parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 	parsed, err := ParseTraceparent(parent)
@@ -423,24 +490,37 @@ func TestMuxRoutePatternDistinguishesOperationalRoutes(t *testing.T) {
 }
 
 func TestHTTPServerErrorLogDiscardsNetHTTPPanicText(t *testing.T) {
-	var logs synchronizedBuffer
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		panic("net-http-server-panic-secret")
-	}))
-	server.Config.ErrorLog = HTTPServerErrorLog(NewLogger(LoggerOptions{Writer: &logs}))
-	server.Start()
-	response, err := server.Client().Get(server.URL)
-	if err == nil {
-		_ = response.Body.Close()
-	}
-	server.Close()
-	if !strings.Contains(logs.String(), `"error_code":"http_server_error"`) {
-		t.Fatalf("stable server error event missing: %s", logs.String())
-	}
-	for _, forbidden := range []string{"net-http-server-panic-secret", "goroutine", "observability_test.go"} {
-		if strings.Contains(logs.String(), forbidden) {
-			t.Fatalf("server logger leaked %q: %s", forbidden, logs.String())
-		}
+	for _, test := range []struct {
+		name   string
+		format LogFormat
+		want   string
+	}{
+		{name: "json", format: LogFormatJSON, want: `"error_code":"http_server_error"`},
+		{name: "text", format: LogFormatText, want: `error_code=http_server_error`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var logs synchronizedBuffer
+			server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				panic("net-http-server-panic-secret")
+			}))
+			server.Config.ErrorLog = HTTPServerErrorLog(NewLogger(LoggerOptions{
+				Writer: &logs, Format: test.format,
+			}))
+			server.Start()
+			response, err := server.Client().Get(server.URL)
+			if err == nil {
+				_ = response.Body.Close()
+			}
+			server.Close()
+			if !strings.Contains(logs.String(), test.want) {
+				t.Fatalf("stable server error event missing: %s", logs.String())
+			}
+			for _, forbidden := range []string{"net-http-server-panic-secret", "goroutine", "observability_test.go"} {
+				if strings.Contains(logs.String(), forbidden) {
+					t.Fatalf("server logger leaked %q: %s", forbidden, logs.String())
+				}
+			}
+		})
 	}
 }
 
@@ -505,4 +585,17 @@ type recordingSink struct {
 func (sink *recordingSink) ExportSpan(_ context.Context, span Span) error {
 	sink.spans = append(sink.spans, span)
 	return nil
+}
+
+func TestParseLogLevel(t *testing.T) {
+	for value, want := range map[string]slog.Level{
+		"debug": slog.LevelDebug,
+		"info":  slog.LevelInfo,
+		"warn":  slog.LevelWarn,
+		"error": slog.LevelError,
+	} {
+		if got := ParseLogLevel(value); got != want {
+			t.Fatalf("ParseLogLevel(%q) = %s, want %s", value, got, want)
+		}
+	}
 }

@@ -17,13 +17,17 @@ import (
 
 type fakeBackend struct {
 	served        bool
+	servedConfig  config.Config
 	roles         []string
 	doctorCalled  bool
+	doctorConfig  config.Config
 	doctorRoles   []string
 	doctorErr     error
 	doctorContext context.Context
 	migrate       string
+	migrateConfig config.Config
 	repairKind    string
+	repairConfig  config.Config
 	repairArgs    []string
 	adminResource string
 	adminAction   string
@@ -31,23 +35,27 @@ type fakeBackend struct {
 	adminConfig   config.Config
 }
 
-func (f *fakeBackend) Serve(_ context.Context, _ config.Config, roles []string) error {
+func (f *fakeBackend) Serve(_ context.Context, cfg config.Config, roles []string) error {
 	f.served = true
+	f.servedConfig = cfg
 	f.roles = roles
 	return nil
 }
-func (f *fakeBackend) Doctor(ctx context.Context, _ config.Config, roles []string) error {
+func (f *fakeBackend) Doctor(ctx context.Context, cfg config.Config, roles []string) error {
 	f.doctorCalled = true
+	f.doctorConfig = cfg
 	f.doctorRoles = append([]string(nil), roles...)
 	f.doctorContext = ctx
 	return f.doctorErr
 }
-func (f *fakeBackend) Migrate(_ context.Context, _ config.Config, action string) error {
+func (f *fakeBackend) Migrate(_ context.Context, cfg config.Config, action string) error {
 	f.migrate = action
+	f.migrateConfig = cfg
 	return nil
 }
-func (f *fakeBackend) Repair(_ context.Context, _ config.Config, kind string, args []string) error {
+func (f *fakeBackend) Repair(_ context.Context, cfg config.Config, kind string, args []string) error {
 	f.repairKind = kind
+	f.repairConfig = cfg
 	f.repairArgs = append([]string(nil), args...)
 	return nil
 }
@@ -95,6 +103,88 @@ rpc:
 	}
 	if !backend.served || strings.Join(backend.roles, ",") != "api,trace" {
 		t.Fatalf("served=%v roles=%v", backend.served, backend.roles)
+	}
+}
+
+func TestLoggingConfigurationPrecedenceAndCommandCoverage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+database:
+  url: postgres://localhost/etherview
+rpc:
+  endpoints:
+    - name: primary
+      url: http://localhost:8545
+      purposes: [all]
+observability:
+  log_level: warn
+  log_format: json
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ETHERVIEW_LOG_LEVEL", "error")
+	t.Setenv("ETHERVIEW_LOG_FORMAT", "text")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "serve", args: []string{"serve", "--config", path, "--log-level", "debug", "--log-format=json"}},
+		{name: "doctor", args: []string{"doctor", "--config", path, "--log-level=debug", "--log-format", "json"}},
+		{name: "migrate", args: []string{"migrate", "status", "--log-level", "debug", "--config", path, "--log-format", "json"}},
+		{name: "repair", args: []string{"repair", "--from", "1", "--log-format=json", "--config", path, "--log-level=debug"}},
+		{name: "reindex", args: []string{"reindex", "--stage", "trace", "--config", path, "--log-level", "debug", "--log-format", "json"}},
+		{name: "admin", args: []string{"admin", "api-key", "list", "--log-level=debug", "--config", path, "--log-format=json"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backend := &fakeBackend{}
+			var configured []config.ObservabilityConfig
+			var stderr bytes.Buffer
+			program := Program{
+				Backend: backend, Stdout: io.Discard, Stderr: &stderr,
+				ConfigureLogging: func(cfg config.ObservabilityConfig) error {
+					configured = append(configured, cfg)
+					return nil
+				},
+			}
+			if code := program.Run(context.Background(), test.args); code != 0 {
+				t.Fatalf("code=%d stderr=%s", code, stderr.String())
+			}
+			if len(configured) != 1 || configured[0].LogLevel != "debug" ||
+				configured[0].LogFormat != "json" {
+				t.Fatalf("configured logging = %#v", configured)
+			}
+		})
+	}
+}
+
+func TestLoggingCLIRejectsInvalidAndDuplicateValues(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "empty level", args: []string{"serve", "--log-level="}, want: "--log-level must be"},
+		{name: "uppercase level", args: []string{"serve", "--log-level", "INFO"}, want: "--log-level must be"},
+		{name: "numeric level", args: []string{"serve", "--log-level", "DEBUG-4"}, want: "--log-level must be"},
+		{name: "spaced level", args: []string{"serve", "--log-level", " info"}, want: "--log-level must be"},
+		{name: "empty format", args: []string{"doctor", "--log-format="}, want: "--log-format must be"},
+		{name: "uppercase format", args: []string{"doctor", "--log-format", "JSON"}, want: "--log-format must be"},
+		{name: "duplicate level", args: []string{"migrate", "status", "--log-level", "info", "--log-level=debug"}, want: "--log-level may only"},
+		{name: "duplicate format", args: []string{"admin", "api-key", "list", "--log-format=json", "--log-format", "text"}, want: "--log-format may only"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			program := Program{
+				Backend: &fakeBackend{}, Stdout: io.Discard, Stderr: &stderr,
+			}
+			if code := program.Run(context.Background(), test.args); code != 1 ||
+				!strings.Contains(stderr.String(), test.want) {
+				t.Fatalf("code=%d stderr=%q", code, stderr.String())
+			}
+		})
 	}
 }
 

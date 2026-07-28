@@ -8,6 +8,7 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
   ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
+  ETHERVIEW_LOG_FORMAT: text
 
 x-etherview-service: &etherview-service
   image: ${ETHERVIEW_IMAGE:-etherview:local}

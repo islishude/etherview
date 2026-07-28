@@ -15,18 +15,27 @@ import (
 
 const redactedValue = "[REDACTED]"
 
+type LogFormat string
+
+const (
+	LogFormatJSON LogFormat = "json"
+	LogFormatText LogFormat = "text"
+)
+
 // LoggerOptions describes stable process identity attached to every log line.
 type LoggerOptions struct {
 	Writer      io.Writer
 	Level       slog.Leveler
+	Format      LogFormat
 	Service     string
 	Version     string
 	Environment string
 	AddSource   bool
 }
 
-// NewLogger returns a JSON logger that redacts secret-bearing attributes and
-// URL credentials before records reach the output handler.
+// NewLogger returns a structured logger that redacts secret-bearing attributes
+// and URL credentials before records reach the selected output handler. The
+// zero format retains the production JSON default.
 func NewLogger(options LoggerOptions) *slog.Logger {
 	writer := options.Writer
 	if writer == nil {
@@ -36,10 +45,16 @@ func NewLogger(options LoggerOptions) *slog.Logger {
 	if level == nil {
 		level = slog.LevelInfo
 	}
-	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
+	handlerOptions := &slog.HandlerOptions{
 		AddSource: options.AddSource,
 		Level:     level,
-	})
+	}
+	var handler slog.Handler
+	if options.Format == LogFormatText {
+		handler = slog.NewTextHandler(writer, handlerOptions)
+	} else {
+		handler = slog.NewJSONHandler(writer, handlerOptions)
+	}
 	logger := slog.New(&redactingHandler{next: handler})
 	attributes := make([]any, 0, 6)
 	if options.Service != "" {
@@ -52,6 +67,21 @@ func NewLogger(options LoggerOptions) *slog.Logger {
 		attributes = append(attributes, "environment", options.Environment)
 	}
 	return logger.With(attributes...)
+}
+
+// ParseLogLevel returns the slog.Level corresponding to the given string value.
+// If the value is unrecognized, slog.LevelInfo is returned.
+func ParseLogLevel(value string) slog.Level {
+	switch value {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 type redactingHandler struct {

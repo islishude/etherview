@@ -72,6 +72,8 @@ maintenance:
 
 observability:
   environment: production
+  log_level: info
+  log_format: json
   # Supply ETHERVIEW_OTLP_TRACE_ENDPOINT at runtime to enable OTLP/HTTP traces.
   # The endpoint is an origin; Etherview sends protobuf spans to /v1/traces.
   otlp_trace_endpoint: ""

@@ -56,6 +56,8 @@ maintenance:
 
 observability:
   environment: production
+  log_level: info
+  log_format: text
   otlp_trace_endpoint: ""
   otlp_trace_insecure: false
   trace_sample_ratio: 0.1

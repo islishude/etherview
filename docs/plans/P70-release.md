@@ -30,6 +30,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | blocked | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
 | P70-T09 | blocked | P10–P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
+| P70-T10 | done | P60 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
 
 ## Acceptance
 
@@ -40,6 +41,11 @@ and user/operator evidence sufficient for a production public release.
 - [ ] Reference capacity target passes with documented hardware and dataset.
 - [ ] Published artifacts are reproducible, checksummed, signed, and accompanied
       by an SBOM.
+- [x] P70-T10: every configuration-bearing command applies exact lowercase
+      `debug|info|warn|error` and `json|text` logging settings with CLI,
+      environment, file, and default precedence.
+- [x] P70-T10: JSON and text handlers retain the same bounded fields,
+      redaction, trace correlation, and stable HTTP internal-error boundary.
 - [x] P70-T07: only API-bearing processes open the optional read-only pool;
       startup validates its schema and chain identity, readiness covers both
       pools without automatic fallback, and every correctness-sensitive read or
@@ -94,6 +100,23 @@ conformance, security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T10: `observability.log_level` and `observability.log_format` default to
+  `info` and `json`; exact YAML and `ETHERVIEW_LOG_*` values are validated
+  before startup. Every configuration-bearing command accepts the same
+  `--log-level` and `--log-format` overrides after its command name, with CLI
+  precedence and duplicate rejection. The entrypoint creates and injects the
+  logger only after the effective configuration is known.
+- P70-T10: JSON and text output share level filtering, redaction, URL
+  contraction, trace correlation, and the stable net/http internal-error
+  adapter. Compose preserves mounted YAML when host overrides are absent and
+  forwards exact overrides when present; Helm schema and render regressions
+  accept the supported enums and reject invalid values.
+- P70-T10 verification: targeted ordinary and race tests for
+  `./cmd/etherview`, `./internal/config`, `./internal/cli`,
+  `./internal/observability`, `./internal/httpapi`, and `./internal/app` pass.
+  `go test ./... -count=1`, targeted `go vet`, `make lint`, `make
+  toolchain-check`, `make compose-check`, `make helm-check`, `make plan-check`,
+  and `git diff --check` pass.
 - P70-T07 configuration: YAML, environment, and `_FILE` inputs support an
   optional reader URL plus independently bounded pool sizes. Zero reader
   values inherit writer settings; negative, overflowed, malformed, and

@@ -19,6 +19,8 @@ x-runtime-smoke-environment: &runtime-smoke-environment
   ETHERVIEW_OTLP_TRACE_ENDPOINT: ""
   ETHERVIEW_OTLP_TRACE_INSECURE: "false"
   ETHERVIEW_TRACE_SAMPLE_RATIO: "0"
+  ETHERVIEW_LOG_LEVEL: info
+  ETHERVIEW_LOG_FORMAT: json
   # The bounded in-network load phase must measure application behavior rather
   # than the deliberately conservative anonymous production default.
   ETHERVIEW_ANONYMOUS_RATE: "1000"

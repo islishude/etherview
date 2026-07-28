@@ -590,8 +590,16 @@
         },
         "observability": {
           "type": "object",
-          "required": ["otlp_trace_endpoint"],
+          "required": ["log_level", "log_format", "otlp_trace_endpoint"],
           "properties": {
+            "log_level": {
+              "type": "string",
+              "enum": ["debug", "info", "warn", "error"]
+            },
+            "log_format": {
+              "type": "string",
+              "enum": ["json", "text"]
+            },
             "otlp_trace_endpoint": {
               "const": "",
               "description": "The OTLP trace endpoint must come from secrets.existingSecret."

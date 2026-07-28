@@ -187,6 +187,8 @@ assert_kind_count "$monolith" Job 1
 assert_kind_count "$monolith" NetworkPolicy 1
 assert_contains "$monolith" "name: etherview-all"
 assert_contains "$monolith" 'args: ["serve", "--config", "/etc/etherview/config.yaml", "--roles=all"]'
+assert_contains "$monolith" "log_level: info"
+assert_contains "$monolith" "log_format: json"
 assert_occurrences "$monolith" "name: schema-compatibility" 1
 assert_occurrences "$monolith" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 1
 assert_occurrences "$monolith" 'args: ["migrate", "up", "--config", "/etc/etherview/config.yaml"]' 1
@@ -605,6 +607,10 @@ expect_render_failure inline-x402-facilitator-headers \
   --set-string config.billing.facilitator_headers.Authorization=inline-secret
 expect_render_failure inline-otlp-endpoint \
   --set-string config.observability.otlp_trace_endpoint=https://otel.invalid:4318
+expect_render_failure invalid-log-level \
+  --set-string config.observability.log_level=INFO
+expect_render_failure invalid-log-format \
+  --set-string config.observability.log_format=console
 expect_render_failure incomplete-s3-external-secret \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access
 expect_render_failure auth-without-public-origin \

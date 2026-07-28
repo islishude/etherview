@@ -222,12 +222,12 @@ compose-check:
 		--profile distributed config --quiet
 	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
 		--profile distributed --profile runtime-tools config --quiet
-	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS; \
+	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT; \
 		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
-	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 \
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
+	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text \
 		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
-		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved");'
+		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text") throw new Error("Compose logging overrides were not preserved");'
 
 # This focused schema smoke keeps fresh migration compatibility independently runnable;
 # compose-runtime-smoke covers the complete application deployment shapes.

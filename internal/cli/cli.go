@@ -14,20 +14,20 @@ import (
 )
 
 const usage = `Usage:
-  etherview serve [--config path] [--roles all|api,sync,...]
-  etherview doctor [--config path]
-  etherview migrate <up|status> [--config path]
-  etherview repair [--config path] [arguments]
-  etherview reindex [--config path] [arguments]
-  etherview admin api-key <create|rotate|revoke|list> [--config path] [arguments]
-  etherview admin label <set|delete|list> [--config path] [arguments]
-  etherview admin repair list [--config path] [--limit count] [--format json|table]
-  etherview admin user set-role --address address --role admin|user [--config path]
-  etherview admin user set-status --address address --status active|disabled [--config path]
-  etherview admin user revoke-sessions --address address [--config path]
-  etherview admin billing inspect --id uuid [--config path]
-  etherview admin billing reconcile --id uuid --outcome settled --transaction-hash hash [--config path]
-  etherview admin billing reconcile --id uuid --outcome failed [--config path]
+  etherview serve [--config path] [--roles all|api,sync,...] [--log-level level] [--log-format json|text]
+  etherview doctor [--config path] [--log-level level] [--log-format json|text]
+  etherview migrate <up|status> [--config path] [--log-level level] [--log-format json|text]
+  etherview repair [--config path] [--log-level level] [--log-format json|text] [arguments]
+  etherview reindex [--config path] [--log-level level] [--log-format json|text] [arguments]
+  etherview admin api-key <create|rotate|revoke|list> [--config path] [--log-level level] [--log-format json|text] [arguments]
+  etherview admin label <set|delete|list> [--config path] [--log-level level] [--log-format json|text] [arguments]
+  etherview admin repair list [--config path] [--log-level level] [--log-format json|text] [--limit count] [--format json|table]
+  etherview admin user set-role --address address --role admin|user [--config path] [--log-level level] [--log-format json|text]
+  etherview admin user set-status --address address --status active|disabled [--config path] [--log-level level] [--log-format json|text]
+  etherview admin user revoke-sessions --address address [--config path] [--log-level level] [--log-format json|text]
+  etherview admin billing inspect --id uuid [--config path] [--log-level level] [--log-format json|text]
+  etherview admin billing reconcile --id uuid --outcome settled --transaction-hash hash [--config path] [--log-level level] [--log-format json|text]
+  etherview admin billing reconcile --id uuid --outcome failed [--config path] [--log-level level] [--log-format json|text]
   etherview version
 `
 
@@ -42,10 +42,11 @@ type Backend interface {
 }
 
 type Program struct {
-	Backend Backend
-	Version string
-	Stdout  io.Writer
-	Stderr  io.Writer
+	Backend          Backend
+	ConfigureLogging func(config.ObservabilityConfig) error
+	Version          string
+	Stdout           io.Writer
+	Stderr           io.Writer
 }
 
 func (p Program) Run(ctx context.Context, args []string) int {
@@ -100,9 +101,12 @@ func (p Program) Run(ctx context.Context, args []string) int {
 }
 
 func (p Program) runServe(ctx context.Context, args []string) error {
+	path, args, logging, err := extractRuntimeFlags("serve", args)
+	if err != nil {
+		return err
+	}
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	path := fs.String("config", "", "configuration file")
 	rolesFlag := fs.String("roles", "", "comma-separated runtime roles")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -110,16 +114,15 @@ func (p Program) runServe(ctx context.Context, args []string) error {
 	if fs.NArg() != 0 {
 		return fmt.Errorf("serve: unexpected arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	var (
-		cfg config.Config
-		err error
-	)
-	if *rolesFlag == "" {
-		cfg, err = config.Load(*path)
-	} else {
-		cfg, err = config.LoadForRoles(*path, strings.Split(*rolesFlag, ","))
+	overrides := logging.configOverrides()
+	if *rolesFlag != "" {
+		overrides.Roles = strings.Split(*rolesFlag, ",")
 	}
+	cfg, err := config.LoadWithOverrides(path, overrides)
 	if err != nil {
+		return err
+	}
+	if err := p.configureLogging(cfg.Observability); err != nil {
 		return err
 	}
 	roles := cfg.Runtime.Roles
@@ -134,17 +137,18 @@ func (p Program) runServe(ctx context.Context, args []string) error {
 }
 
 func (p Program) runDoctor(ctx context.Context, args []string, stdout io.Writer) error {
-	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	path := fs.String("config", "", "configuration file")
-	if err := fs.Parse(args); err != nil {
+	path, rest, logging, err := extractRuntimeFlags("doctor", args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 0 {
+	if len(rest) != 0 {
 		return errors.New("doctor does not accept positional arguments")
 	}
-	cfg, err := config.Load(*path)
+	cfg, err := config.LoadWithOverrides(path, logging.configOverrides())
 	if err != nil {
+		return err
+	}
+	if err := p.configureLogging(cfg.Observability); err != nil {
 		return err
 	}
 	roles, err := config.NormalizeRoles(cfg.Runtime.Roles)
@@ -215,6 +219,9 @@ func (p Program) runMigrate(ctx context.Context, args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("migrate: unexpected arguments: %s", strings.Join(rest, " "))
 	}
+	if err := p.configureLogging(cfg.Observability); err != nil {
+		return err
+	}
 	if cfg.Database.URL == "" {
 		return errors.New("database.url is required")
 	}
@@ -224,6 +231,9 @@ func (p Program) runMigrate(ctx context.Context, args []string) error {
 func (p Program) runRepair(ctx context.Context, kind string, args []string) error {
 	cfg, rest, err := loadConfigFlag(kind, args)
 	if err != nil {
+		return err
+	}
+	if err := p.configureLogging(cfg.Observability); err != nil {
 		return err
 	}
 	if cfg.Database.URL == "" {
@@ -260,18 +270,24 @@ func (p Program) runAdmin(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := p.configureLogging(cfg.Observability); err != nil {
+		return err
+	}
 	if cfg.Database.URL == "" {
 		return errors.New("database.url is required")
 	}
 	return p.Backend.Admin(ctx, cfg, resource, action, rest)
 }
 
-func loadConfigFlag(name string, args []string) (config.Config, []string, error) {
-	path, rest, err := extractConfigFlag(name, args)
+func loadConfigFlag(
+	name string,
+	args []string,
+) (config.Config, []string, error) {
+	path, rest, logging, err := extractRuntimeFlags(name, args)
 	if err != nil {
 		return config.Config{}, nil, err
 	}
-	cfg, err := config.Load(path)
+	cfg, err := config.LoadWithOverrides(path, logging.configOverrides())
 	return cfg, rest, err
 }
 
@@ -280,43 +296,152 @@ func loadConfigFlagForRoles(
 	args []string,
 	roles []string,
 ) (config.Config, []string, error) {
-	path, rest, err := extractConfigFlag(name, args)
+	path, rest, logging, err := extractRuntimeFlags(name, args)
 	if err != nil {
 		return config.Config{}, nil, err
 	}
-	cfg, err := config.LoadForRoles(path, roles)
+	overrides := logging.configOverrides()
+	overrides.Roles = roles
+	cfg, err := config.LoadWithOverrides(path, overrides)
 	return cfg, rest, err
 }
 
-// extractConfigFlag keeps resource-specific arguments intact for the runtime
+type loggingOverrides struct {
+	level     string
+	format    string
+	levelSet  bool
+	formatSet bool
+}
+
+func (p Program) configureLogging(cfg config.ObservabilityConfig) error {
+	if p.ConfigureLogging == nil {
+		return nil
+	}
+	return p.ConfigureLogging(cfg)
+}
+
+func (overrides loggingOverrides) configOverrides() config.Overrides {
+	result := config.Overrides{}
+	if overrides.levelSet {
+		result.LogLevel = &overrides.level
+	}
+	if overrides.formatSet {
+		result.LogFormat = &overrides.format
+	}
+	return result
+}
+
+// extractRuntimeFlags keeps resource-specific arguments intact for the runtime
 // backend. The standard flag package stops at the first positional argument,
-// which would otherwise make `admin ... --config` ordering surprising.
-func extractConfigFlag(name string, args []string) (string, []string, error) {
-	var path string
+// which would otherwise make `admin ...` flag ordering surprising.
+func extractRuntimeFlags(
+	name string,
+	args []string,
+) (string, []string, loggingOverrides, error) {
+	var (
+		path      string
+		overrides loggingOverrides
+	)
 	rest := make([]string, 0, len(args))
 	for index := 0; index < len(args); index++ {
 		argument := args[index]
 		switch {
 		case argument == "--config":
+			value, next, err := requiredFlagValue(name, "config", args, index)
+			if err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
 			if path != "" {
-				return "", nil, fmt.Errorf("%s: --config may only be supplied once", name)
+				return "", nil, loggingOverrides{}, fmt.Errorf("%s: --config may only be supplied once", name)
 			}
-			if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
-				return "", nil, fmt.Errorf("%s: --config requires a path", name)
-			}
-			path = args[index+1]
-			index++
+			path = value
+			index = next
 		case strings.HasPrefix(argument, "--config="):
 			if path != "" {
-				return "", nil, fmt.Errorf("%s: --config may only be supplied once", name)
+				return "", nil, loggingOverrides{}, fmt.Errorf("%s: --config may only be supplied once", name)
 			}
 			path = strings.TrimPrefix(argument, "--config=")
 			if path == "" {
-				return "", nil, fmt.Errorf("%s: --config requires a path", name)
+				return "", nil, loggingOverrides{}, fmt.Errorf("%s: --config requires a path", name)
+			}
+		case argument == "--log-level":
+			value, next, err := requiredFlagValue(name, "log-level", args, index)
+			if err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
+			if err := overrides.setLevel(name, value); err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
+			index = next
+		case strings.HasPrefix(argument, "--log-level="):
+			if err := overrides.setLevel(name, strings.TrimPrefix(argument, "--log-level=")); err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
+		case argument == "--log-format":
+			value, next, err := requiredFlagValue(name, "log-format", args, index)
+			if err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
+			if err := overrides.setFormat(name, value); err != nil {
+				return "", nil, loggingOverrides{}, err
+			}
+			index = next
+		case strings.HasPrefix(argument, "--log-format="):
+			if err := overrides.setFormat(name, strings.TrimPrefix(argument, "--log-format=")); err != nil {
+				return "", nil, loggingOverrides{}, err
 			}
 		default:
 			rest = append(rest, argument)
 		}
 	}
-	return path, rest, nil
+	return path, rest, overrides, nil
+}
+
+func requiredFlagValue(
+	command string,
+	flagName string,
+	args []string,
+	index int,
+) (string, int, error) {
+	if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
+		return "", index, fmt.Errorf("%s: --%s requires a value", command, flagName)
+	}
+	return args[index+1], index + 1, nil
+}
+
+func (overrides *loggingOverrides) setLevel(command, value string) error {
+	if overrides.levelSet {
+		return fmt.Errorf("%s: --log-level may only be supplied once", command)
+	}
+	if !isLogLevel(value) {
+		return fmt.Errorf("%s: --log-level must be debug, info, warn, or error", command)
+	}
+	overrides.level, overrides.levelSet = value, true
+	return nil
+}
+
+func (overrides *loggingOverrides) setFormat(command, value string) error {
+	if overrides.formatSet {
+		return fmt.Errorf("%s: --log-format may only be supplied once", command)
+	}
+	if value != "json" && value != "text" {
+		return fmt.Errorf("%s: --log-format must be json or text", command)
+	}
+	overrides.format, overrides.formatSet = value, true
+	return nil
+}
+
+func isLogLevel(value string) bool {
+	switch value {
+	case "debug", "info", "warn", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+// extractConfigFlag is retained for focused parser tests.
+func extractConfigFlag(name string, args []string) (string, []string, error) {
+	path, rest, _, err := extractRuntimeFlags(name, args)
+	return path, rest, err
 }

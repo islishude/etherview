@@ -12,11 +12,15 @@ on `server.metrics_address`. Readiness requires the shared component lifecycle
 and PostgreSQL. The API role additionally requires durable core readiness on
 its public listener.
 
-Logs are JSON and include service, version, roles, chain, environment, and,
-inside traced requests, `trace_id` and `span_id`. Boundary failures use stable
-`error_code` and `error_type` fields. Raw RPC, PostgreSQL, compiler, metadata,
-panic, URL credential, authorization-header, and exporter errors are not log
-attributes.
+Logs default to JSON at the `info` level. Set `observability.log_level` to
+`debug`, `info`, `warn`, or `error`, and set `observability.log_format` to
+`json` or `text`. `ETHERVIEW_LOG_LEVEL` and `ETHERVIEW_LOG_FORMAT` override
+the file; `--log-level` and `--log-format` override both for the current
+command. Values are exact lowercase tokens. Both formats include service,
+version, roles, chain, environment, and, inside traced requests, `trace_id`
+and `span_id`. Boundary failures use stable `error_code` and `error_type`
+fields. Raw RPC, PostgreSQL, compiler, metadata, panic, URL credential,
+authorization-header, and exporter errors are not log attributes.
 
 OTLP/HTTP tracing is off when `observability.otlp_trace_endpoint` is empty. To
 enable it, supply an origin such as `https://collector.example:4318` through
