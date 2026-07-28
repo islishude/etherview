@@ -187,7 +187,7 @@ func TestStatusDoesNotTreatIsolatedLiveCoverageAsIndexedOrReady(t *testing.T) {
 func TestBlocksUseSnapshotBoundOpaqueCursor(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "canonical.number <= $2::numeric",
 			columns:  columns(6),
@@ -250,7 +250,7 @@ func TestBlocksRejectCursorAfterReorg(t *testing.T) {
 func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
 			columns:  columns(10),
@@ -334,7 +334,7 @@ func TestBlockRejectsRawIdentityMismatch(t *testing.T) {
 func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
 		rows: [][]driver.Value{{
@@ -384,7 +384,7 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFee(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"1", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"1", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
 		rows: [][]driver.Value{{
@@ -411,7 +411,7 @@ func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFe
 func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"3", testHashBytes(3)}},
+		contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"3", testHashBytes(3)}},
 	}, queryExpectation{
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
 		rows: [][]driver.Value{{
@@ -442,15 +442,15 @@ func TestAddressIsHonestlyUnavailable(t *testing.T) {
 func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(5)},
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(4), rows: [][]driver.Value{{
 			"2", testHashBytes(3), "Canonical block two", int64(110),
 		}}},
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{contains: "SELECT kind, key, label, rank, canonical", columns: columns(5), rows: [][]driver.Value{
 			{"block", testHash(3), "Block hash label", int64(110), false},
@@ -478,7 +478,7 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 	t.Parallel()
 	tokenAddress := "0x5aAe" + "b6053F3E94C9b9A09f33669435E7Ef1BeAed"
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{
 			contains: "FROM search_catalog_documents AS document", columns: columns(5),
@@ -504,7 +504,7 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t,
-		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{
 			contains: "FROM search_catalog_documents AS document", columns: columns(5),

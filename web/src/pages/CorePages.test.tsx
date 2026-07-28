@@ -745,6 +745,51 @@ describe("core explorer pages", () => {
     if (!txRow) throw new Error("transactions row missing");
     expect(within(txRow).getByText("1.5")).toBeVisible();
   });
+
+  it("refreshes the first transaction page when a newly indexed transaction becomes visible", async () => {
+    let transactionRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === "/api/v1/status") {
+        return statusResponse({
+          core_ready: true,
+          latest_block: "12",
+          indexed_block: "12",
+          highest_covered_block: "12",
+          backfill_complete: true,
+          lag: "0",
+        });
+      }
+      if (path === "/api/v1/transactions") {
+        transactionRequests += 1;
+        if (transactionRequests === 1) return envelope([]);
+        return envelope([{
+          hash: transactionHash,
+          status: "success",
+          block_hash: canonicalHash,
+          block_number: "12",
+          from: address,
+          to: address,
+          transaction_index: 0,
+          nonce: "0",
+          value: "1",
+          gas: "21000",
+          gas_price: "1",
+          completeness: completeness(),
+          finality: "latest",
+          canonical: true,
+        }]);
+      }
+      return notFound();
+    }));
+
+    renderExplorer("/transactions");
+
+    expect(await screen.findByText("No canonical transactions are available in this snapshot.")).toBeVisible();
+    expect(await screen.findByText(shorten(transactionHash), {}, { timeout: 3_500 })).toBeVisible();
+    expect(transactionRequests).toBeGreaterThanOrEqual(2);
+  });
 });
 
 function block(number: string, hash: string, canonical = true) {

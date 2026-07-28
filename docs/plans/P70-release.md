@@ -29,10 +29,10 @@ and user/operator evidence sufficient for a production public release.
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
-| P70-T09 | blocked | P10–P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
+| P70-T09 | done | P10–P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
 | P70-T10 | done | P60 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
 | P70-T11 | done | P50 | Keep embedded-browser native-value assertions aligned with configured decimal display | focused Playwright E2E and common frontend gates |
-| P70-T12 | blocked | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
+| P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 
 ## Acceptance
 
@@ -59,7 +59,7 @@ and user/operator evidence sufficient for a production public release.
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
       UI; missing input remains explicitly unavailable.
-- [ ] P70-T09: reviewed go-ethereum types own recognized protocol semantics,
+- [x] P70-T09: reviewed go-ethereum types own recognized protocol semantics,
       including transaction types 0 through 4, while unsupported future
       transaction types fail permanently and atomically before persistence or
       coverage advancement; `blocks.raw` keeps the original block top-level
@@ -84,21 +84,9 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09 implementation, focused compatibility, PostgreSQL integration,
-generation, lint, security, license, Helm, Compose, ordinary Go, and race gates
-pass. Its final image and common-gate evidence is blocked because the managed
-sandbox denies Docker buildx access to its local activity state and the
-unsandboxed approval request exhausted the current approval allowance. The
-blocker clears when `make docker-check`, `make docker-build
-docker-image-check`, `make compose-runtime-smoke`, and then `make check` pass in
-CI or another environment with Docker buildx access. P70-T06 and the v1 release
-remain blocked on P66 completion, P70-T09 completion,
-conformance, security, release-CI, long-capacity, and documentation evidence.
-
-P70-T12 accepts and regression-tests the deployed `state_diff@1` name, but the
-full `make compose-runtime-smoke` rerun is blocked because no Docker daemon is
-available in the current workspace. The blocker clears when that command
-passes in CI or another Docker-enabled environment.
+P70-T09 and P70-T12 are complete. P70-T06 and the v1 release remain blocked on
+P66 completion, conformance, security, release-CI, long-capacity, and
+documentation evidence.
 
 ## Evidence
 
@@ -223,7 +211,8 @@ passes in CI or another Docker-enabled environment.
   including `state_diff@1`. Focused ordinary and race tests for
   `internal/enrich`, `internal/app`, and `internal/maintenance` passed, and
   focused `golangci-lint` reported zero issues. The Docker-backed runtime smoke
-  could not execute because the local Docker daemon is unavailable.
+  passes both monolith and seven-role split layouts, replica survival, short
+  load, and normalized database/API/SPA parity.
 - P70-T09 type ownership: `internal/ethrpc` retains only bounded transport,
   endpoint-pool, capability, scheduling, observation, and stable-error
   concepts. Protocol scalars and recognized RPC objects use go-ethereum
@@ -247,7 +236,11 @@ passes in CI or another Docker-enabled environment.
   Dynamic effective gas price is authenticated against the matching
   transaction and block base fee; fresh receipts require it, compatible stored
   rows may derive a missing value, and poisoned or context-free values are
-  never exposed as verified.
+  never exposed as verified. The state-difference adapter accepts geth's
+  JSON-number nonce while retaining bounded quoted-quantity compatibility and
+  persists the schema's required empty storage key for non-storage fields;
+  malformed, negative, fractional, and oversized nonce inputs still fail
+  closed.
 - P70-T09 license closure: the reviewed go-ethereum v1.17.2 scanner baseline
   now includes the separately licensed `crypto/bn256` package. The transitive
   `github.com/holiman/bloomfilter/v2` v2.0.3 module archive omits its
@@ -263,6 +256,6 @@ passes in CI or another Docker-enabled environment.
   --check` pass. One initial ordinary test overlapped the full race run and
   timed out waiting for Docker in
   `TestContainerCompilerValidatesAndAppliesIsolation`; the isolated case and
-  serialized full suite both passed immediately afterward. Docker build,
-  production-image rootfs, runtime-parity smoke, and therefore the aggregate
-  `make check` remain unclaimed under the blocker above.
+  serialized full suite both passed immediately afterward. `make docker-check
+  docker-image-check`, `make compose-runtime-smoke`, and the aggregate `make
+  check` pass on the completed working tree.

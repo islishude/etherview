@@ -30,6 +30,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T04 | done        | P30, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
 | P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
 | P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
+| P50-T07 | done        | P50-T02, P60-T03 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
 
 ## Acceptance
 
@@ -52,6 +53,33 @@ None.
 
 ## Evidence
 
+- P50-T07: Preview now supplies both the authoritative Reth HTTP endpoint and
+  its WebSocket endpoint, registering the production `new-head-wake`
+  component while retaining polling as fallback. Status, first-page blocks,
+  and first-page transactions refresh every two seconds; opaque historical
+  cursor pages remain stable and do not poll.
+- P50-T07: the shared block/transaction/search first-page cursor now qualifies
+  `canonical.number` in its ordering. This prevents PostgreSQL from resolving
+  the `number` output name to `number::text` and ordering heights
+  lexicographically, which had pinned the live lists at block 99 after the
+  chain passed block 100.
+- P50-T07: the rebuilt Preview retained its PostgreSQL and Reth volumes,
+  reported `core_ready=true`, `backfill_complete=true`, and zero lag, and
+  returned transaction
+  `0x8b50660fefae2985db7e24c63f87fa7c3a3c5ee40454e8526b84802532693a95`
+  from both detail and first-page list APIs. After the numeric cursor fix, the
+  list head and indexed head both reported block 320; a live block 323-to-324
+  sample observed API visibility in 4 ms after the RPC head changed.
+- P50-T07: `docker compose -f compose.preview.yaml config --quiet`,
+  `go test ./internal/query -count=1`, `npm --prefix web run lint`,
+  `npm --prefix web test` (18 files, 132 tests), `make generate-check`, and
+  `make plan-check` pass. `make check` passed generation, lint, all ordinary
+  and race tests, security, and license gates before the sandboxed default
+  Buildx activity directory stopped its deployment phase;
+  `BUILDX_CONFIG=/tmp/etherview-buildx make deployment-check` then passed the
+  Dockerfile, Compose, and Helm gates. Focused regressions require numeric tip
+  ordering and prove an initially empty transaction page updates when the next
+  poll makes a newly indexed transaction visible.
 - P50-T06: `/tx/:hash` now preserves five generated-client-backed tabs in the
   `tab` query parameter. Logs, trace, and state changes load only when active;
   the overview's bounded token-transfer read supplies the deterministic action

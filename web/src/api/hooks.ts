@@ -15,6 +15,8 @@ import type {
   VerificationSubmission,
 } from "./types";
 
+const liveRefetchInterval = 2_000;
+
 export function useChainStatus() {
   return useQuery({
     queryKey: ["status"],
@@ -27,8 +29,8 @@ export function useChainStatus() {
       };
     },
     retry: false,
-    staleTime: 5_000,
-    refetchInterval: 12_000,
+    staleTime: liveRefetchInterval,
+    refetchInterval: liveRefetchInterval,
   });
 }
 
@@ -55,7 +57,8 @@ export function useBlocks(limit = 12, cursor?: string, refreshGeneration = 0) {
       };
     },
     retry: false,
-    staleTime: 5_000,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 
@@ -97,7 +100,8 @@ export function useTransactions(limit = 12, cursor?: string, refreshGeneration =
       };
     },
     retry: false,
-    staleTime: 5_000,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 

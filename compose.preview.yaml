@@ -3,7 +3,9 @@ name: etherview-preview
 x-etherview-app-env: &etherview-app-env
   ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://reth:8545}
+  # Keep authoritative HTTP polling and add a newHeads wake hint so locally
+  # mined blocks do not wait for the normal polling interval.
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://reth:8545,ws://reth:8546}
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090

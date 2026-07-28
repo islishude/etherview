@@ -106,7 +106,7 @@ type stateDiffWire struct {
 
 type stateAccountWire struct {
 	Balance *string           `json:"balance"`
-	Nonce   *string           `json:"nonce"`
+	Nonce   json.RawMessage   `json:"nonce"`
 	Code    *string           `json:"code"`
 	Storage map[string]string `json:"storage"`
 }
@@ -288,13 +288,21 @@ func normalizeStateDiff(raw json.RawMessage, limits StateDiffLimits) ([]stateCha
 		if err != nil {
 			return nil, normalizedStateDiffCounts{}, err
 		}
+		preNonce, err := canonicalStateNonce(pre.Nonce)
+		if err != nil {
+			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains invalid quantity")
+		}
+		postNonce, err := canonicalStateNonce(post.Nonce)
+		if err != nil {
+			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains invalid quantity")
+		}
 		for _, field := range []struct {
 			kind   string
 			before *string
 			after  *string
 		}{
 			{kind: "balance", before: canonicalStateQuantity(pre.Balance), after: canonicalStateQuantity(post.Balance)},
-			{kind: "nonce", before: canonicalStateQuantity(pre.Nonce), after: canonicalStateQuantity(post.Nonce)},
+			{kind: "nonce", before: preNonce, after: postNonce},
 			{kind: "code", before: canonicalStateCode(pre.Code, &counts), after: canonicalStateCode(post.Code, &counts)},
 		} {
 			if field.kind == "balance" || field.kind == "nonce" {
@@ -314,7 +322,8 @@ func normalizeStateDiff(raw json.RawMessage, limits StateDiffLimits) ([]stateCha
 				continue
 			}
 			changes = append(changes, stateChange{
-				address: pair.address, kind: field.kind, before: field.before, after: field.after,
+				address: pair.address, kind: field.kind, key: []byte{},
+				before: field.before, after: field.after,
 			})
 		}
 		storageKeys := make(map[string]struct{}, len(pre.Storage)+len(post.Storage))
@@ -395,6 +404,30 @@ func canonicalStateQuantity(value *string) *string {
 	}
 	canonical := quantity.String()
 	return &canonical
+}
+
+func canonicalStateNonce(raw json.RawMessage) (*string, error) {
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	if raw[0] == '"' {
+		var encoded string
+		if err := json.Unmarshal(raw, &encoded); err != nil {
+			return nil, err
+		}
+		quantity, err := ethrpc.ParseQuantity(encoded)
+		if err != nil || !quantity.IsUint64() {
+			return nil, ethrpc.ErrInvalidQuantity
+		}
+		canonical := quantity.String()
+		return &canonical, nil
+	}
+	var nonce uint64
+	if err := json.Unmarshal(raw, &nonce); err != nil {
+		return nil, err
+	}
+	canonical := strconv.FormatUint(nonce, 10)
+	return &canonical, nil
 }
 
 func canonicalStateCode(value *string, counts *normalizedStateDiffCounts) *string {

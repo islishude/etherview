@@ -374,10 +374,10 @@ func httpUnavailableNotReady() error {
 }
 
 const currentTipSQL = `
-SELECT number::text, block_hash
-FROM canonical_blocks
-WHERE chain_id = $1::numeric
-ORDER BY number DESC
+SELECT canonical.number::text, canonical.block_hash
+FROM canonical_blocks AS canonical
+WHERE canonical.chain_id = $1::numeric
+ORDER BY canonical.number DESC, canonical.block_hash DESC
 LIMIT 1`
 
 const validateCursorSQL = `

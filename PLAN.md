@@ -61,7 +61,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   contract calls, and the binary-embedded SPA pass generated-client,
   bilingual, responsive, security-header, browser, and WCAG coverage. The
   transaction detail surface now adds five deep-linkable lazy subresource tabs,
-  deterministic action summaries, and reorg identity fencing.
+  deterministic action summaries, and reorg identity fencing. Preview
+  new-head wake plus bounded first-page refresh keeps newly indexed blocks and
+  transactions visible without disturbing historical cursor pages.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
@@ -85,10 +87,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   ownership for recognized Ethereum protocol semantics under raw-first RPC,
   transport, persistence, and public-contract adapters; its focused,
   PostgreSQL, generation, security, license, Helm, Compose, ordinary, and race
-  gates pass, while Docker image/runtime and aggregate common-gate evidence is
-  blocked on an environment with buildx access. Conformance, security,
-  release CI, long-capacity, documentation, P70-T09 final verification, and
-  artifact gates remain open.
+  gates plus Docker image/runtime and aggregate common-gate verification pass.
+  Conformance, security, release CI, long-capacity, documentation, and artifact
+  gates remain open.
 
 ## Global Release Gates
 

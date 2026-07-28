@@ -54,6 +54,25 @@ func TestNormalizeStateDiffCanonicalizesAndSortsChanges(t *testing.T) {
 	}
 }
 
+func TestNormalizeStateDiffAcceptsGethNumericNonce(t *testing.T) {
+	t.Parallel()
+	address := "0x0000000000000000000000000000000000000001"
+	raw := json.RawMessage(`{
+		"pre":{"` + address + `":{"balance":"0x1"}},
+		"post":{"` + address + `":{"balance":"0x1","nonce":1}}
+	}`)
+
+	changes, _, err := normalizeStateDiff(raw, DefaultStateDiffLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].kind != "nonce" ||
+		changes[0].key == nil || len(changes[0].key) != 0 ||
+		changes[0].before != nil || changes[0].after == nil || *changes[0].after != "1" {
+		t.Fatalf("numeric nonce changes = %+v", changes)
+	}
+}
+
 func TestNormalizeStateDiffRejectsMalformedAndOverBudgetPayloads(t *testing.T) {
 	t.Parallel()
 	address := "0x0000000000000000000000000000000000000001"
@@ -71,6 +90,12 @@ func TestNormalizeStateDiffRejectsMalformedAndOverBudgetPayloads(t *testing.T) {
 		{name: "invalid address", raw: json.RawMessage(`{"pre":{"0x1":{}},"post":{}}`)},
 		{name: "invalid quantity", raw: json.RawMessage(
 			`{"pre":{"` + address + `":{"balance":"1"}},"post":{}}`,
+		)},
+		{name: "invalid numeric nonce", raw: json.RawMessage(
+			`{"pre":{"` + address + `":{"nonce":-1}},"post":{}}`,
+		)},
+		{name: "oversized quoted nonce", raw: json.RawMessage(
+			`{"pre":{"` + address + `":{"nonce":"0x10000000000000000"}},"post":{}}`,
 		)},
 		{name: "invalid code", raw: json.RawMessage(
 			`{"pre":{"` + address + `":{"code":"xyz"}},"post":{}}`,
