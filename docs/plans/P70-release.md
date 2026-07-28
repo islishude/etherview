@@ -28,9 +28,11 @@ and user/operator evidence sufficient for a production public release.
 | P70-T05 | todo | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
-| P70-T08 | blocked | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
+| P70-T08 | done | P10–P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
 | P70-T09 | blocked | P10–P60 | Replace duplicative Ethereum RPC/domain types and codecs with reviewed go-ethereum equivalents while retaining explicit hostile-input, persistence, and public-contract adapters | focused compatibility, integration, generation, security, license, and common gates |
 | P70-T10 | done | P60 | Configurable process log level and JSON/text output across file, environment, CLI, and deployment surfaces | config, CLI, observability, Compose, and Helm tests |
+| P70-T11 | done | P50 | Keep embedded-browser native-value assertions aligned with configured decimal display | focused Playwright E2E and common frontend gates |
+| P70-T12 | blocked | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 
 ## Acceptance
 
@@ -53,7 +55,7 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T07: configuration, Compose, Helm Secret/ExternalSecret wiring,
       effective connection bounds, and API-only capacity accounting have
       regression coverage and pass the applicable repository gates.
-- [ ] P70-T08: an optional bounded Genesis JSON source is authenticated against
+- [x] P70-T08: an optional bounded Genesis JSON source is authenticated against
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
       UI; missing input remains explicitly unavailable.
@@ -79,13 +81,8 @@ compatible staging facilitator and priced route, the matching writer and
 independent RPC endpoint, and the deployed image/build digest needed for live
 settlement and ledger reconciliation evidence.
 
-P70-T08's local and remote Genesis implementation plus every non-browser gate
-are complete, but its browser acceptance remains unavailable because the
-managed macOS sandbox denies Chromium's MachPort rendezvous. That blocker
-clears when the Genesis browser acceptance can run in CI or another environment
-allowed to launch Chromium. P70-T01 through P70-T03 and P70-T05 remain `todo`;
-P70-T04 is `in_progress` while its reference-capacity tooling and final report
-are prepared.
+P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
+while its reference-capacity tooling and final report are prepared.
 
 P70-T09 implementation, focused compatibility, PostgreSQL integration,
 generation, lint, security, license, Helm, Compose, ordinary Go, and race gates
@@ -95,8 +92,13 @@ unsandboxed approval request exhausted the current approval allowance. The
 blocker clears when `make docker-check`, `make docker-build
 docker-image-check`, `make compose-runtime-smoke`, and then `make check` pass in
 CI or another environment with Docker buildx access. P70-T06 and the v1 release
-remain blocked on P66 completion, Genesis browser evidence, P70-T09 completion,
+remain blocked on P66 completion, P70-T09 completion,
 conformance, security, release-CI, long-capacity, and documentation evidence.
+
+P70-T12 accepts and regression-tests the deployed `state_diff@1` name, but the
+full `make compose-runtime-smoke` rerun is blocked because no Docker daemon is
+available in the current workspace. The blocker clears when that command
+passes in CI or another Docker-enabled environment.
 
 ## Evidence
 
@@ -202,12 +204,26 @@ conformance, security, release-CI, long-capacity, and documentation evidence.
   both npm audits report zero vulnerabilities, `govulncheck` reports zero
   reachable vulnerabilities, and both working-tree and history secret scans
   are clean.
-- P70-T08 browser boundary: both system Chrome and bundled Playwright Chromium
-  reached the embedded Go server; the non-browser fallback/header case passed,
-  while six cases stopped before page creation because macOS denied Chromium's
-  MachPort rendezvous. No application assertion failed. An unsandboxed rerun
-  was requested and rejected only because workspace approval credits were
-  exhausted, so browser acceptance remains unclaimed.
+- P70-T08 browser boundary: the explicit restricted-macOS fallback uses bundled
+  Chromium in single-process mode and isolates every test in its own worker,
+  while ordinary local and CI runs retain their multi-process browser. The
+  complete embedded-server suite passed all eight deep-link, bilingual,
+  theme, canonical/orphan, Genesis/capability, WCAG, SIWE/billing/admin, and
+  wallet-boundary cases.
+- P70-T11: transaction-list and address-detail E2E assertions now use the
+  configured 18-decimal native display instead of the former raw wei integer,
+  and finalized status selects the unique high-visibility badge rather than
+  colliding with the hidden More-details value. `PLAYWRIGHT_USE_BUNDLED=1
+  PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` passed all 8 tests; `npm --prefix
+  web test` passed all 131 tests, and `npm --prefix web run lint` passed.
+- P70-T12: `StageID.Validate` now accepts the same lowercase alphanumeric,
+  hyphen, and underscore alphabet as maintenance-stage validation, while
+  continuing to reject uppercase, whitespace, slash, and punctuation. The
+  production trace-enabled dispatcher test validates every scheduled stage,
+  including `state_diff@1`. Focused ordinary and race tests for
+  `internal/enrich`, `internal/app`, and `internal/maintenance` passed, and
+  focused `golangci-lint` reported zero issues. The Docker-backed runtime smoke
+  could not execute because the local Docker daemon is unavailable.
 - P70-T09 type ownership: `internal/ethrpc` retains only bounded transport,
   endpoint-pool, capability, scheduling, observation, and stable-error
   concepts. Protocol scalars and recognized RPC objects use go-ethereum

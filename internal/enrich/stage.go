@@ -29,7 +29,9 @@ func (stage StageID) Validate() error {
 		return errors.New("stage name is empty")
 	}
 	for _, character := range stage.Name {
-		if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '-' {
+		if (character < 'a' || character > 'z') &&
+			(character < '0' || character > '9') &&
+			character != '-' && character != '_' {
 			return fmt.Errorf("stage name %q contains an unsupported character", stage.Name)
 		}
 	}

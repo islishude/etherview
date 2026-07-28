@@ -35,6 +35,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T09 | done | P20-T04 | Immutable exact NFT state and typed token state-capability failures | conflict and capability tests |
 | P20-T10 | done | P20-T01, P20-T07 | Lease-fenced atomic publication of derived output, stage result, journal, and job generation | stale-worker and publication-window tests |
 | P20-T11 | done | P20-T05, P20-T10 | Exact bounded transaction state differences with independent capability state | malformed, limit, replay, and reorg tests |
+| P20-T12 | done | P20-T11 | Preserve historical migration replay and DEFAULT-partition evacuation after adding state differences | migration replay and partition lifecycle integration tests |
 
 ## Acceptance
 
@@ -75,6 +76,22 @@ search documents, and rollup statistics without delaying core readiness.
 None.
 
 ## Evidence
+
+- P20-T12: partition provisioning now discovers migration-owned partition
+  families from the current schema, skips `transaction_state_changes` only
+  when migration `0025_transaction_state_changes` is not recorded, and fails
+  closed when a required parent/default pair is incomplete. This preserves
+  the pre-0014 publication-upgrade fixture without masking a damaged migrated
+  schema. The DEFAULT-partition fixture now includes one exact transaction
+  state-change row so evacuation is asserted for the new family.
+- P20-T12: `go test ./... -count=1`, `go test -race ./internal/store -count=1`,
+  and `GOLANGCI_LINT_CACHE=/tmp/etherview-golangci-lint-cache golangci-lint run
+  ./...` passed. The focused `go test -tags=integration
+  ./internal/integration -run
+  'Test(LeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorkers|PostgresPartitionLifecycleEvacuatesDefaultRowsAtomically)$'
+  -count=1` compiles but skips both tests because
+  `ETHERVIEW_TEST_DATABASE_URL` is unset; `make test-integration` reports the
+  corresponding `INTEGRATION_DATABASE_URL` skip.
 
 - P20-T11: `state_diff@1` uses one trace-capable endpoint and geth
   `prestateTracer` diff mode, validates canonical quantities/hex data, and

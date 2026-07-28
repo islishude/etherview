@@ -83,6 +83,24 @@ func TestStageVersionChangesIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestStageNameValidationMatchesDurableManifestNames(t *testing.T) {
+	t.Parallel()
+	for _, stage := range []StageID{
+		{Name: "state_diff", Version: 1},
+		{Name: "stage-contract", Version: 1},
+		{Name: "trace2", Version: 1},
+	} {
+		if err := stage.Validate(); err != nil {
+			t.Errorf("Validate(%q): %v", stage, err)
+		}
+	}
+	for _, name := range []string{"state.diff", "State_diff", "state/diff", "state diff"} {
+		if err := (StageID{Name: name, Version: 1}).Validate(); err == nil {
+			t.Errorf("Validate(%q) succeeded with an unsupported character", name)
+		}
+	}
+}
+
 func TestDurableWorkerWakeIsOnlyALatencyHint(t *testing.T) {
 	t.Parallel()
 	wake := make(chan struct{}, 1)

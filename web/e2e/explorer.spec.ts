@@ -121,7 +121,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
 
   await page.goto("/transactions");
-  await expect(page.getByText("900,719,925,474,099,312,345", { exact: true })).toBeVisible();
+  await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   await activateInView(page.getByRole("button", { name: "Next page" }));
   const secondPageTransaction = page.getByRole("link", { name: /0xbbbbbb…bbbbbb/ });
@@ -130,10 +130,10 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(transactionCursors).toContain(transactionCursor);
   await activateInView(secondPageTransaction);
   await expect(page.getByRole("heading", { name: "Transaction summary" })).toBeVisible();
-  await expect(page.getByText("Finalized", { exact: true })).toBeVisible();
+  await expect(page.locator(".finality-badge.finalized")).toHaveText("Finalized");
   await activateInView(page.getByRole("link", { name: address, exact: true }).first());
   await expect(page.getByRole("heading", { name: "Address summary" })).toBeVisible();
-  await expect(page.getByText("900,719,925,474,099,312,345", { exact: true })).toBeVisible();
+  await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByText(/unavailable state is never displayed as zero/)).toBeVisible();
 
   const search = page.getByRole("searchbox", { name: "Search" });

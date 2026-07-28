@@ -21,6 +21,7 @@ type blockPartitionSpec struct {
 	Default      string
 	NameCode     string
 	Dependencies []string
+	IntroducedBy string
 }
 
 type pendingPartition struct {
@@ -39,7 +40,11 @@ var blockPartitionSpecs = []blockPartitionSpec{
 	{Parent: "token_events", Default: "token_events_default", NameCode: "tev", Dependencies: []string{"logs"}},
 	{Parent: "token_balance_deltas", Default: "token_balance_deltas_default", NameCode: "tbd", Dependencies: []string{"token_events"}},
 	{Parent: "normalized_traces", Default: "normalized_traces_default", NameCode: "trc", Dependencies: []string{"transaction_inclusions"}},
-	{Parent: "transaction_state_changes", Default: "transaction_state_changes_default", NameCode: "sdf", Dependencies: []string{"transaction_inclusions"}},
+	{
+		Parent: "transaction_state_changes", Default: "transaction_state_changes_default",
+		NameCode: "sdf", Dependencies: []string{"transaction_inclusions"},
+		IntroducedBy: "0025_transaction_state_changes",
+	},
 	{Parent: "address_activities", Default: "address_activities_default", NameCode: "act"},
 }
 
@@ -233,13 +238,17 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 	if schema == "" {
 		return errors.New("resolve partition schema: current schema is empty")
 	}
-	if err := lockPartitionTables(ctx, tx, schema); err != nil {
+	specs, err := availableBlockPartitionSpecs(ctx, tx, schema, lower, upper)
+	if err != nil {
+		return err
+	}
+	if err := lockPartitionTables(ctx, tx, schema, specs); err != nil {
 		return err
 	}
 
-	pending := make([]pendingPartition, 0, len(blockPartitionSpecs))
-	existing := make(map[string]bool, len(blockPartitionSpecs))
-	for _, spec := range blockPartitionSpecs {
+	pending := make([]pendingPartition, 0, len(specs))
+	existing := make(map[string]bool, len(specs))
+	for _, spec := range specs {
 		attached, err := partitionAttachedForRange(ctx, tx, schema, spec, lower, upper)
 		if err != nil {
 			return err
@@ -262,7 +271,7 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 	if len(pending) == 0 {
 		return nil
 	}
-	if err := validatePartialPartitionDependencies(ctx, tx, schema, pending, existing, lower, upper); err != nil {
+	if err := validatePartialPartitionDependencies(ctx, tx, schema, specs, pending, existing, lower, upper); err != nil {
 		return err
 	}
 
@@ -304,7 +313,7 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 		}
 	}
 
-	for _, spec := range blockPartitionSpecs {
+	for _, spec := range specs {
 		partition, attach := pendingByParent[spec.Parent]
 		if !attach {
 			continue
@@ -324,13 +333,87 @@ func ensurePartitionRangeTx(ctx context.Context, tx *sql.Tx, lower, upper uint64
 	return nil
 }
 
-func lockPartitionTables(ctx context.Context, tx *sql.Tx, schema string) error {
-	tables := make([]string, 0, len(blockPartitionSpecs)*2)
+func availableBlockPartitionSpecs(
+	ctx context.Context,
+	tx *sql.Tx,
+	schema string,
+	lower, upper uint64,
+) ([]blockPartitionSpec, error) {
+	specs := make([]blockPartitionSpec, 0, len(blockPartitionSpecs))
 	for _, spec := range blockPartitionSpecs {
+		required := spec.IntroducedBy == ""
+		if !required {
+			applied, err := migrationRecordedTx(ctx, tx, schema, spec.IntroducedBy)
+			if err != nil {
+				return nil, err
+			}
+			required = applied
+		}
+		parentExists, err := relationExistsTx(ctx, tx, schema, spec.Parent)
+		if err != nil {
+			return nil, err
+		}
+		defaultExists, err := relationExistsTx(ctx, tx, schema, spec.Default)
+		if err != nil {
+			return nil, err
+		}
+		if !parentExists && !defaultExists && !required {
+			continue
+		}
+		if !parentExists || !defaultExists {
+			missing := spec.Parent
+			if parentExists {
+				missing = spec.Default
+			}
+			return nil, &PartitionRecoveryError{
+				Table: spec.Parent, Lower: lower, Upper: upper,
+				Cause: fmt.Sprintf("partition relation %s is missing", missing),
+			}
+		}
+		if parentExists {
+			specs = append(specs, spec)
+		}
+	}
+	return specs, nil
+}
+
+func migrationRecordedTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	schema, version string,
+) (bool, error) {
+	ledgerExists, err := relationExistsTx(ctx, tx, schema, "etherview_schema_migrations")
+	if err != nil {
+		return false, err
+	}
+	if !ledgerExists {
+		return false, nil
+	}
+	var applied bool
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(
+		"SELECT EXISTS (SELECT 1 FROM %s WHERE version = $1)",
+		qualifiedIdentifier(schema, "etherview_schema_migrations"),
+	), version).Scan(&applied); err != nil {
+		return false, fmt.Errorf("inspect partition migration %s: %w", version, err)
+	}
+	return applied, nil
+}
+
+func lockPartitionTables(
+	ctx context.Context,
+	tx *sql.Tx,
+	schema string,
+	specs []blockPartitionSpec,
+) error {
+	tables := make([]string, 0, len(specs)*2)
+	for _, spec := range specs {
 		tables = append(tables,
 			qualifiedIdentifier(schema, spec.Parent),
 			qualifiedIdentifier(schema, spec.Default),
 		)
+	}
+	if len(tables) == 0 {
+		return nil
 	}
 	if _, err := tx.ExecContext(ctx,
 		"LOCK TABLE "+strings.Join(tables, ", ")+" IN ACCESS EXCLUSIVE MODE"); err != nil {
@@ -386,6 +469,7 @@ func validatePartialPartitionDependencies(
 	ctx context.Context,
 	tx *sql.Tx,
 	schema string,
+	specs []blockPartitionSpec,
 	pending []pendingPartition,
 	existing map[string]bool,
 	lower, upper uint64,
@@ -394,11 +478,11 @@ func validatePartialPartitionDependencies(
 	for _, partition := range pending {
 		missing[partition.spec.Parent] = true
 	}
-	for _, spec := range blockPartitionSpecs {
+	for _, spec := range specs {
 		if !missing[spec.Parent] {
 			continue
 		}
-		for _, dependent := range dependentPartitionTables(spec.Parent) {
+		for _, dependent := range dependentPartitionTables(specs, spec.Parent) {
 			if !existing[dependent] {
 				continue
 			}
@@ -420,9 +504,9 @@ func validatePartialPartitionDependencies(
 	return nil
 }
 
-func dependentPartitionTables(parent string) []string {
+func dependentPartitionTables(specs []blockPartitionSpec, parent string) []string {
 	var result []string
-	for _, candidate := range blockPartitionSpecs {
+	for _, candidate := range specs {
 		for _, dependency := range candidate.Dependencies {
 			if dependency == parent {
 				result = append(result, candidate.Parent)

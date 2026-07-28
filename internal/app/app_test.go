@@ -59,10 +59,16 @@ func TestEnrichmentDispatcherAlwaysSchedulesABIStage(t *testing.T) {
 	if got, want := enrichmentDispatchStages(false), []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage}; !slices.Equal(got, want) {
 		t.Fatalf("core enrichment stages=%v want=%v", got, want)
 	}
-	if got := enrichmentDispatchStages(true); !slices.Contains(got, enrich.ProxyStage) ||
+	got := enrichmentDispatchStages(true)
+	if !slices.Contains(got, enrich.ProxyStage) ||
 		!slices.Contains(got, enrich.ABIStage) || !slices.Contains(got, enrich.TraceStage) ||
 		!slices.Contains(got, enrich.StateDiffStage) {
 		t.Fatalf("trace-enabled enrichment stages=%v", got)
+	}
+	for _, stage := range got {
+		if err := stage.Validate(); err != nil {
+			t.Errorf("trace-enabled stage %s is invalid: %v", stage, err)
+		}
 	}
 }
 

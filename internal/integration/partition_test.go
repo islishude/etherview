@@ -225,6 +225,12 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *sql.D
 		) VALUES (1, $1::numeric, $2, $3, 0, '0', 0, 'CALL', $4, $5, 1, FALSE, TRUE)`,
 		height, blockHash, transactionHash, fromAddress, toAddress)
 	execFixture(t, ctx, db, `
+		INSERT INTO transaction_state_changes (
+			chain_id, block_number, block_hash, transaction_hash, transaction_index,
+			address, field_kind, before_value, after_value, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, $4, 'balance', '1', '2', TRUE)`,
+		height, blockHash, transactionHash, fromAddress)
+	execFixture(t, ctx, db, `
 		INSERT INTO address_activities (
 			chain_id, block_number, block_hash, transaction_hash, activity_index,
 			address, activity_kind, canonical, details
