@@ -1556,6 +1556,9 @@ type Transaction struct {
 	// Confirmations A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Confirmations *Quantity `json:"confirmations,omitempty"`
 
+	// ContractAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ContractAddress *Address `json:"contract_address,omitempty"`
+
 	// EffectiveGasPrice A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	EffectiveGasPrice *Quantity `json:"effective_gas_price,omitempty"`
 	Finality          Finality  `json:"finality"`

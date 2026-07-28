@@ -1610,6 +1610,9 @@ components:
         to:
           $ref: "#/components/schemas/Address"
           nullable: true
+        contract_address:
+          $ref: "#/components/schemas/Address"
+          description: Address created by a successful top-level contract-creation transaction.
         nonce:
           $ref: "#/components/schemas/Quantity"
         value:

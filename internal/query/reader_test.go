@@ -354,6 +354,9 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	if transaction.From != testTransactionSender().Hex() || transaction.To == nil || *transaction.To != "0xde709f2102306220921060314715629080e2fb77" {
 		t.Fatalf("transaction addresses = %s -> %v", transaction.From, transaction.To)
 	}
+	if transaction.ContractAddress != nil {
+		t.Fatalf("contract_address = %v, want nil for non-creation transaction", transaction.ContractAddress)
+	}
 	if transaction.Type == nil || *transaction.Type != "2" || transaction.Status == nil || *transaction.Status != gen.TransactionStatusSuccess {
 		t.Fatalf("transaction type/status = %v/%v", transaction.Type, transaction.Status)
 	}
@@ -378,6 +381,53 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	}
 	if transaction.Confirmations == nil || *transaction.Confirmations != "1" {
 		t.Fatalf("confirmations = %v", transaction.Confirmations)
+	}
+}
+
+func TestTransactionReturnsOnlySuccessfulReceiptContractAddress(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name            string
+		status          string
+		wantContract    bool
+		transactionSeed byte
+	}{
+		{name: "successful creation", status: "0x1", wantContract: true, transactionSeed: 21},
+		{name: "failed creation", status: "0x0", transactionSeed: 22},
+	} {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			transaction := testContractCreationTransaction(testCase.transactionSeed)
+			db := testDatabase(t, queryExpectation{
+				contains: "SELECT canonical.number::text, canonical.block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
+			}, queryExpectation{
+				contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+				rows: [][]driver.Value{{
+					testContractCreationTransactionRaw(2, 3, testCase.transactionSeed, 0),
+					testContractCreationReceiptRaw(2, 3, transaction, 0, testCase.status),
+					"2", testHashBytes(3), int64(0), transaction.Hash().Bytes(), true, "2", "1",
+					testBlockRaw(2, 3, 2, 1),
+				}},
+			})
+			reader := testReader(t, db, Options{ChainID: 1})
+			model, err := reader.Transaction(context.Background(), transaction.Hash().Hex())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if model.To != nil {
+				t.Fatalf("to = %v, want nil for contract creation", model.To)
+			}
+			if !testCase.wantContract {
+				if model.ContractAddress != nil {
+					t.Fatalf("contract_address = %v, want nil", model.ContractAddress)
+				}
+				return
+			}
+			expected := crypto.CreateAddress(testTransactionSender(), transaction.Nonce()).Hex()
+			if model.ContractAddress == nil || *model.ContractAddress != expected {
+				t.Fatalf("contract_address = %v, want %s", model.ContractAddress, expected)
+			}
+		})
 	}
 }
 
@@ -713,6 +763,19 @@ func testTransactionRaw(blockNumber uint64, blockHash, transactionHash byte) []b
 
 func testTransactionRawAt(blockNumber uint64, blockHash, transactionHash byte, transactionIndex uint64) []byte {
 	transaction := testSignedTransaction(transactionHash)
+	return testTransactionRawFor(transaction, blockNumber, blockHash, transactionIndex)
+}
+
+func testContractCreationTransactionRaw(blockNumber uint64, blockHash, transactionSeed byte, transactionIndex uint64) []byte {
+	return testTransactionRawFor(
+		testContractCreationTransaction(transactionSeed),
+		blockNumber,
+		blockHash,
+		transactionIndex,
+	)
+}
+
+func testTransactionRawFor(transaction *types.Transaction, blockNumber uint64, blockHash byte, transactionIndex uint64) []byte {
 	encoded, err := transaction.MarshalJSON()
 	if err != nil {
 		panic(err)
@@ -765,6 +828,39 @@ func testReceiptRawAtHash(blockNumber uint64, blockHash byte, transactionHash st
 	return data
 }
 
+func testContractCreationReceiptRaw(
+	blockNumber uint64,
+	blockHash byte,
+	transaction *types.Transaction,
+	transactionIndex uint64,
+	status string,
+) []byte {
+	data := testReceiptRawAtHash(
+		blockNumber,
+		blockHash,
+		transaction.Hash().Hex(),
+		"0x2",
+		transactionIndex,
+		status,
+	)
+	if status != "0x1" {
+		return data
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		panic(err)
+	}
+	value["contractAddress"] = crypto.CreateAddress(
+		testTransactionSender(),
+		transaction.Nonce(),
+	).Hex()
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 func testSignedTransaction(seed byte) *types.Transaction {
 	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	if err != nil {
@@ -780,6 +876,27 @@ func testSignedTransaction(seed byte) *types.Transaction {
 		To:        &to,
 		Value:     new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)),
 		Data:      []byte{0xde, 0xad, 0xbe, 0xef},
+	})
+	signed, err := types.SignTx(transaction, types.LatestSignerForChainID(big.NewInt(1)), key)
+	if err != nil {
+		panic(err)
+	}
+	return signed
+}
+
+func testContractCreationTransaction(seed byte) *types.Transaction {
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		panic(err)
+	}
+	transaction := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   big.NewInt(1),
+		Nonce:     uint64(seed) + 8,
+		GasTipCap: big.NewInt(1_000_000_000),
+		GasFeeCap: big.NewInt(2_000_000_000),
+		Gas:       21_000,
+		Value:     big.NewInt(0),
+		Data:      []byte{0x60, 0x00},
 	})
 	signed, err := types.SignTx(transaction, types.LatestSignerForChainID(big.NewInt(1)), key)
 	if err != nil {

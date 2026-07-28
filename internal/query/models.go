@@ -230,6 +230,13 @@ func (r *PostgresReader) transactionModel(
 		}
 	}
 	model.Status = &status
+	if wire.To() == nil && receipt.ContractAddress != (common.Address{}) {
+		contractAddress, err := ChecksumAddress(receipt.ContractAddress.Hex())
+		if err != nil {
+			return gen.Transaction{}, fmt.Errorf("checksum created contract address: %w", err)
+		}
+		model.ContractAddress = &contractAddress
+	}
 	model.GasUsed = ptrQuantity(strconv.FormatUint(receipt.GasUsed, 10))
 
 	var blockBaseFee *big.Int

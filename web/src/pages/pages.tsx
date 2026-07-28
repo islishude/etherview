@@ -817,6 +817,20 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                           <code>{transaction.data.to}</code>
                         </Link>
                       </CopyableField>
+                    ) : transaction.data.contract_address ? (
+                      <span className="transaction-inline-values">
+                        <CopyableField value={transaction.data.contract_address}>
+                          <Link
+                            to="/address/$address"
+                            params={{ address: transaction.data.contract_address }}
+                          >
+                            <code>{transaction.data.contract_address}</code>
+                          </Link>
+                        </CopyableField>
+                        <span className="transaction-creation-label">
+                          {t("common.contractCreation")}
+                        </span>
+                      </span>
                     ) : t("common.contractCreation")}
                   </TransactionDetailRow>
                   <TransactionDetailRow label={t("table.value")}>
@@ -859,7 +873,6 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       </CopyableField>
                     </TransactionDetailRow>
                   </dl>
-                  <CompletenessPanel completeness={transaction.data.completeness} />
                 </details>
               </section>
             </div>

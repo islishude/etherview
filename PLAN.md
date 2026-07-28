@@ -63,7 +63,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   transaction detail surface now adds five deep-linkable lazy subresource tabs,
   deterministic action summaries, and reorg identity fencing. Preview
   new-head wake plus bounded first-page refresh keeps newly indexed blocks and
-  transactions visible without disturbing historical cursor pages.
+  transactions visible without disturbing historical cursor pages. P50-T08
+  keeps transaction copy controls visible and exposes the validated receipt
+  contract address for successful top-level creations.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

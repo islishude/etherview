@@ -31,6 +31,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
 | P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
 | P50-T07 | done        | P50-T02, P60-T03 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
+| P50-T08 | done        | P50-T06       | Persistent transaction copy controls and receipt-backed creation address | query/frontend regressions and generation checks |
 
 ## Acceptance
 
@@ -53,6 +54,23 @@ None.
 
 ## Evidence
 
+- P50-T08: the native transaction contract exposes an optional checksummed
+  `contract_address` only when the validated stored receipt names a successful
+  top-level creation. The transaction overview keeps all hash/address/input
+  copy controls visible, shows the created address with a bilingual creation
+  label, omits the transaction completeness panel, and never fabricates an
+  address for failed creation.
+- P50-T08: `go test ./internal/query -count=1`,
+  `npm --prefix web test -- src/pages/CorePages.test.tsx` (16/16),
+  `npm --prefix web run lint`, and `make generate-check` pass. With writable
+  Go cache under `/tmp`,
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` passes
+  all 8 embedded-distribution flows, including persistent copy controls,
+  receipt-backed creation display, completeness removal, and 390-pixel
+  transaction-detail overflow coverage. The final sandbox-scoped `make check`,
+  with Go, golangci-lint, and Buildx caches under `/tmp`, passes generation,
+  plan, lint, 134 frontend tests, ordinary and race Go tests, security,
+  licenses, Docker/Compose, and Helm gates.
 - P50-T07: Preview now supplies both the authoritative Reth HTTP endpoint and
   its WebSocket endpoint, registering the production `new-head-wake`
   component while retaining polling as fallback. Status, first-page blocks,

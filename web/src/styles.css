@@ -1120,29 +1120,18 @@ tbody tr:hover {
 .copyable-copy-button {
   flex: 0 0 auto;
   min-width: 0;
-  max-width: 0;
-  padding: 0;
-  opacity: 0;
-  pointer-events: none;
+  padding: 0.2rem 0.38rem;
   border: 1px solid transparent;
   border-radius: 0.35rem;
   background: var(--surface);
   color: var(--text-soft);
   cursor: pointer;
   line-height: 1;
-  transition: opacity 0.18s ease, max-width 0.18s ease, padding 0.18s ease;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
 .copyable-copy-button.copied {
   color: var(--text);
-}
-
-.copyable-field:hover .copyable-copy-button,
-.copyable-field:focus-within .copyable-copy-button {
-  max-width: 3rem;
-  padding: 0.2rem 0.38rem;
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .copyable-copy-button:hover,
@@ -1317,6 +1306,7 @@ tbody tr:hover {
 }
 
 .transaction-confirmations,
+.transaction-creation-label,
 .transaction-status,
 .transaction-trace-kind {
   display: inline-flex;
@@ -1367,12 +1357,6 @@ tbody tr:hover {
 
 .transaction-more-details > summary:hover {
   background: var(--brand-soft);
-}
-
-.transaction-more-details .completeness-card {
-  margin-top: 0.8rem;
-  background: var(--surface-raised);
-  box-shadow: none;
 }
 
 .transaction-data,

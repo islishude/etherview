@@ -1186,6 +1186,8 @@ export interface components {
             canonical: boolean;
             completeness: components["schemas"]["Completeness"];
             confirmations?: components["schemas"]["Quantity"];
+            /** @description Address created by a successful top-level contract-creation transaction. */
+            contract_address?: components["schemas"]["Address"];
             /** @description Transaction effective gas price used on-chain (receipt effectiveGasPrice), serialized as wei. For London+ transactions this equals min(baseFeePerGas + tip, gasFeeCap); legacy/access-list transactions use gasPrice. */
             effective_gas_price?: components["schemas"]["Quantity"];
             finality: components["schemas"]["Finality"];

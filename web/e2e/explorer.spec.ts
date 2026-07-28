@@ -129,8 +129,27 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
   expect(transactionCursors).toContain(transactionCursor);
   await activateInView(secondPageTransaction);
-  await expect(page.getByRole("heading", { name: "Transaction summary" })).toBeVisible();
+  const transactionSummary = page.getByRole("heading", { name: "Transaction summary" })
+    .locator("..");
+  await expect(transactionSummary).toBeVisible();
   await expect(page.locator(".finality-badge.finalized")).toHaveText("Finalized");
+  const recipientRow = transactionSummary.locator(".transaction-detail-row").filter({
+    has: page.getByText("To", { exact: true }),
+  });
+  await expect(recipientRow.getByRole("link", { name: address })).toBeVisible();
+  await expect(recipientRow.getByText("Contract creation")).toBeVisible();
+  await activateInView(transactionSummary.getByText("More details"));
+  const copyButtons = transactionSummary.getByRole("button", { name: "Copy" });
+  await expect(copyButtons).toHaveCount(4);
+  for (const button of await copyButtons.all()) {
+    await expect(button).toBeVisible();
+  }
+  await expect(page.getByRole("heading", { name: "Data completeness" })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const transactionOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(transactionOverflow).toBeLessThanOrEqual(1);
   await activateInView(page.getByRole("link", { name: address, exact: true }).first());
   await expect(page.getByRole("heading", { name: "Address summary" })).toBeVisible();
   await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();

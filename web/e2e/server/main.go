@@ -84,7 +84,7 @@ func main() {
 		case testTransactionHash:
 			writeEnvelope(response, transaction(testTransactionHash, secondHash, "2", "safe"))
 		case secondTransactionHash:
-			writeEnvelope(response, transaction(secondTransactionHash, testHash, "1", "finalized"))
+			writeEnvelope(response, contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized"))
 		default:
 			writeNotFound(response)
 		}
@@ -342,6 +342,13 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
 	}
+}
+
+func contractCreationTransaction(hash, blockHash, blockNumber, finality string) map[string]any {
+	result := transaction(hash, blockHash, blockNumber, finality)
+	result["to"] = nil
+	result["contract_address"] = testAddress
+	return result
 }
 
 func tokenContract() map[string]any {

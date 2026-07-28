@@ -354,18 +354,27 @@ describe("core explorer pages", () => {
 
       const fromLink = await screen.findByRole("link", { name: txFrom });
       const toLink = await screen.findByRole("link", { name: txTo });
-    const fromContainer = fromLink.closest(".copyable-field") as HTMLElement | null;
-    const toContainer = toLink.closest(".copyable-field") as HTMLElement | null;
+      const fromContainer = fromLink.closest(".copyable-field") as HTMLElement | null;
+      const toContainer = toLink.closest(".copyable-field") as HTMLElement | null;
       if (!fromContainer || !toContainer) throw new Error("copyable transaction field missing");
 
       const fromCopy = within(fromContainer).getByRole("button", { name: "Copy" });
       const toCopy = within(toContainer).getByRole("button", { name: "Copy" });
+      const detailSection = screen.getByText("Transaction summary").closest("section");
+      if (!detailSection) throw new Error("transaction summary section is missing");
+      await user.click(within(detailSection).getByText("More details"));
+      const copyButtons = within(detailSection).getAllByRole("button", { name: "Copy" });
+      expect(copyButtons).toHaveLength(4);
+      for (const button of copyButtons) {
+        expect(button).toBeVisible();
+        expect(getComputedStyle(button).pointerEvents).not.toBe("none");
+      }
 
-    await user.click(fromCopy);
-    await user.click(toCopy);
+      await user.click(fromCopy);
+      await user.click(toCopy);
 
-    expect(fromCopy).toHaveTextContent("✓");
-    expect(toCopy).toHaveTextContent("✓");
+      expect(fromCopy).toHaveTextContent("✓");
+      expect(toCopy).toHaveTextContent("✓");
 
       fromCopy.focus();
       expect(fromCopy).toHaveFocus();
@@ -375,6 +384,86 @@ describe("core explorer pages", () => {
         configurable: true,
       });
     }
+  });
+
+  it("renders a receipt-backed contract address and creation label", async () => {
+    const contractAddress = "0x52908400098527886E0F7030069857D2E4169EE7";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash,
+          block_hash: canonicalHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: null,
+          contract_address: contractAddress,
+          nonce: "1",
+          value: "0",
+          gas: "21000",
+          input: "0x6000",
+          status: "success",
+          canonical: true,
+          finality: "safe",
+          completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+
+    const user = userEvent.setup();
+    renderExplorer(`/tx/${transactionHash}`);
+
+    const toLabel = await screen.findByText("To", { exact: true });
+    const toRow = toLabel.closest(".transaction-detail-row") as HTMLElement | null;
+    if (!toRow) throw new Error("transaction recipient row is missing");
+    const contractLink = within(toRow).getByRole("link", { name: contractAddress });
+    expect(contractLink).toHaveAttribute("href", `/address/${contractAddress}`);
+    expect(within(toRow).getByText("Contract creation")).toBeVisible();
+    expect(within(toRow).getByRole("button", { name: "Copy" })).toBeVisible();
+
+    await user.click(screen.getByText("More details"));
+    expect(screen.queryByRole("heading", { name: "Data completeness" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(within(toRow).getByText("创建合约")).toBeVisible();
+  });
+
+  it("does not fabricate an address for a failed contract creation", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash,
+          block_hash: canonicalHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: null,
+          nonce: "1",
+          value: "0",
+          gas: "21000",
+          input: "0x6000",
+          status: "failed",
+          canonical: true,
+          finality: "safe",
+          completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+
+    const toLabel = await screen.findByText("To", { exact: true });
+    const toRow = toLabel.closest(".transaction-detail-row") as HTMLElement | null;
+    if (!toRow) throw new Error("transaction recipient row is missing");
+    expect(within(toRow).getByText("Contract creation")).toBeVisible();
+    expect(within(toRow).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(toRow).queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
   });
 
   it("renders transaction type 2 as a semantic label", async () => {
