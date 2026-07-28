@@ -740,7 +740,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		processor, err := enrich.NewTraceRPCProcessor(db, rpcBuild.Pool, enrich.TraceLimits{})
+		traceProcessor, err := enrich.NewTraceRPCProcessor(db, rpcBuild.Pool, enrich.TraceLimits{})
+		if err != nil {
+			return err
+		}
+		stateDiffProcessor, err := enrich.NewStateDiffRPCProcessor(db, rpcBuild.Pool, enrich.StateDiffLimits{})
 		if err != nil {
 			return err
 		}
@@ -751,7 +755,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			"trace-enrichment-worker",
 			cfg.Runtime.WorkerCount,
 			func(index int, _ string) (components.Service, error) {
-				return enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+				return enrich.NewWorker(queue, []enrich.Processor{traceProcessor, stateDiffProcessor}, enrich.WorkerOptions{
 					ID:            runtimeWorkerID(indexedWorkerName("trace", index)),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, Wake: traceJobWake, Observer: registry,
@@ -851,7 +855,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 func enrichmentDispatchStages(trace bool) []enrich.StageID {
 	stages := []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage}
 	if trace {
-		stages = append(stages, enrich.TraceStage)
+		stages = append(stages, enrich.TraceStage, enrich.StateDiffStage)
 	}
 	return stages
 }

@@ -555,6 +555,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transactions/{hash}/state-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionStateChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transactions/{hash}/token-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionTokenTransfers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{hash}/trace": {
         parameters: {
             query?: never;
@@ -1144,6 +1192,7 @@ export interface components {
             from: components["schemas"]["Address"];
             gas: components["schemas"]["Quantity"];
             gas_price?: components["schemas"]["Quantity"];
+            gas_used?: components["schemas"]["Quantity"];
             hash: components["schemas"]["Hash"];
             input: string;
             max_fee_per_gas?: components["schemas"]["Quantity"];
@@ -1162,9 +1211,53 @@ export interface components {
             data: components["schemas"]["Transaction"][];
             meta: components["schemas"]["Meta"];
         };
+        TransactionLog: {
+            address: components["schemas"]["Address"];
+            data: string;
+            log_index: components["schemas"]["Quantity"];
+            topics: components["schemas"]["Hash"][];
+        };
+        TransactionLogResponse: {
+            data: components["schemas"]["TransactionLogs"];
+            meta: components["schemas"]["Meta"];
+        };
+        TransactionLogs: components["schemas"]["TransactionSubresourceIdentity"] & {
+            items: components["schemas"]["TransactionLog"][];
+        };
         TransactionResponse: {
             data: components["schemas"]["Transaction"];
             meta: components["schemas"]["Meta"];
+        };
+        TransactionStateChange: {
+            address: components["schemas"]["Address"];
+            after?: string;
+            before?: string;
+            /** @enum {string} */
+            kind: "balance" | "nonce" | "code" | "storage";
+            storage_key?: components["schemas"]["Hash"];
+        };
+        TransactionStateChangeResponse: {
+            data: components["schemas"]["TransactionStateChanges"];
+            meta: components["schemas"]["Meta"];
+        };
+        TransactionStateChanges: components["schemas"]["TransactionSubresourceIdentity"] & {
+            items: components["schemas"]["TransactionStateChange"][];
+        };
+        TransactionSubresourceIdentity: {
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            chain_id: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            state: "complete" | "missing" | "unavailable" | "failed";
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+        };
+        TransactionTokenTransferResponse: {
+            data: components["schemas"]["TransactionTokenTransfers"];
+            meta: components["schemas"]["Meta"];
+        };
+        TransactionTokenTransfers: components["schemas"]["TransactionSubresourceIdentity"] & {
+            items: components["schemas"]["TokenEvent"][];
         };
         TransactionTrace: {
             block_hash: components["schemas"]["Hash"];
@@ -2268,6 +2361,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionLogs: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Raw receipt logs for the resolved transaction inclusion. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionLogResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionStateChanges: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact published account and storage changes for the resolved transaction inclusion. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionStateChangeResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionTokenTransfers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token events for the resolved transaction inclusion. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionTokenTransferResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

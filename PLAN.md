@@ -41,9 +41,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   ingestion, canonical/orphan retention, finality-safe reorg handling, derived
   rollback journals, and identity-bound repair/reindex. Reviewable commands and
   results remain in [P10 evidence](docs/plans/P10-indexing.md#evidence).
-- P20 is complete: block-scoped ABI/proxy, token, trace, search, adapter, and
-  statistics enrichment now uses exact-state and lease-fenced publication
-  contracts. Reviewable commands and results remain in
+- P20 is complete: block-scoped ABI/proxy, token, trace, state-difference,
+  search, adapter, and statistics enrichment uses exact-state and
+  lease-fenced publication contracts. Reviewable commands and results remain in
   [P20 evidence](docs/plans/P20-enrichment.md#evidence).
 - P30 is complete: verification publication is immutable and exact-result
   backed, compiler execution and cleanup fail closed, and Solidity, Vyper,
@@ -53,12 +53,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
 - P40 is complete: the native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
-  subset now pass their contract, race, security, and PostgreSQL coverage
-  boundaries.
+  subset pass their contract, race, security, and PostgreSQL coverage
+  boundaries, including transaction-scoped logs, token transfers, trace
+  identity, and state-change resources.
 - P50 is complete: core and capability explorer pages, exact verification-job
   and published-artifact reads, EIP-6963 wallet discovery, session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
-  bilingual, responsive, security-header, browser, and WCAG coverage.
+  bilingual, responsive, security-header, browser, and WCAG coverage. The
+  transaction detail surface now adds five deep-linkable lazy subresource tabs,
+  deterministic action summaries, and reorg identity fencing.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

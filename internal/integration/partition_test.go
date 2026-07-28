@@ -22,14 +22,15 @@ const (
 )
 
 var partitionTableNames = map[string]string{
-	"transaction_inclusions": "etherview_p_txi_1000000_2000000",
-	"receipts":               "etherview_p_rcp_1000000_2000000",
-	"logs":                   "etherview_p_log_1000000_2000000",
-	"withdrawals":            "etherview_p_wdr_1000000_2000000",
-	"token_events":           "etherview_p_tev_1000000_2000000",
-	"token_balance_deltas":   "etherview_p_tbd_1000000_2000000",
-	"normalized_traces":      "etherview_p_trc_1000000_2000000",
-	"address_activities":     "etherview_p_act_1000000_2000000",
+	"transaction_inclusions":    "etherview_p_txi_1000000_2000000",
+	"receipts":                  "etherview_p_rcp_1000000_2000000",
+	"logs":                      "etherview_p_log_1000000_2000000",
+	"withdrawals":               "etherview_p_wdr_1000000_2000000",
+	"token_events":              "etherview_p_tev_1000000_2000000",
+	"token_balance_deltas":      "etherview_p_tbd_1000000_2000000",
+	"normalized_traces":         "etherview_p_trc_1000000_2000000",
+	"transaction_state_changes": "etherview_p_sdf_1000000_2000000",
+	"address_activities":        "etherview_p_act_1000000_2000000",
 }
 
 func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {

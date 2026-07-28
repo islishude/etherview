@@ -54,6 +54,14 @@ const transactionsRoute = createRoute({
 const transactionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tx/$hash",
+  validateSearch: (search: Record<string, unknown>) => {
+    const tab = typeof search.tab === "string" ? search.tab : "overview";
+    return {
+      tab: ["overview", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
+        ? tab
+        : "overview",
+    };
+  },
   component: TransactionRoutePage,
 });
 const addressRoute = createRoute({
@@ -163,7 +171,8 @@ function BlockRoutePage() {
 
 function TransactionRoutePage() {
   const { hash } = transactionRoute.useParams();
-  return <EntityPage kind="transaction" identifier={hash} />;
+  const { tab } = transactionRoute.useSearch();
+  return <EntityPage kind="transaction" identifier={hash} transactionTab={tab} />;
 }
 
 function AddressRoutePage() {

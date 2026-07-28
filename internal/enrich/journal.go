@@ -44,6 +44,8 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 		// Only the normalized call tree is persisted by TraceStage. Opcode and
 		// raw traces are intentionally outside this journal contract.
 		relations = []string{"normalized_traces"}
+	case StateDiffStage:
+		relations = []string{"transaction_state_changes"}
 	default:
 		return nil, fmt.Errorf("stage %s has no derived journal contract", stage)
 	}

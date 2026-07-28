@@ -100,6 +100,39 @@ func main() {
 			"state": "unavailable", "frames": []any{},
 		})
 	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/token-transfers", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+			"state": "complete", "items": []any{},
+		})
+	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/logs", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+			"state": "complete", "items": []any{},
+		})
+	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/state-changes", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+			"state": "complete", "items": []any{},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {
 			writeNotFound(response)

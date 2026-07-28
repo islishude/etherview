@@ -370,6 +370,9 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	if transaction.BurnedWei == nil || *transaction.BurnedWei != "21000000000000" {
 		t.Fatalf("burned_wei = %v, want %s", transaction.BurnedWei, "21000000000000")
 	}
+	if transaction.GasUsed == nil || *transaction.GasUsed != "21000" {
+		t.Fatalf("gas_used = %v, want %s", transaction.GasUsed, "21000")
+	}
 	if transaction.BlockTimestamp == nil || transaction.BlockTimestamp.Unix() != 100 {
 		t.Fatalf("block_timestamp = %v", transaction.BlockTimestamp)
 	}

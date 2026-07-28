@@ -284,7 +284,7 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
     expect(screen.getByRole("link", { name: "0x787878…787878" })).toHaveAttribute(
       "href",
-      `/tx/${transactionHash}`,
+      `/tx/${transactionHash}?tab=overview`,
     );
     expect(fetcher).toHaveBeenCalledWith(`/api/v1/tokens/${address}`, expect.anything());
     expect(fetcher).toHaveBeenCalledWith(
@@ -356,17 +356,10 @@ describe("embedded explorer shell", () => {
       }),
     );
 
-    renderExplorer(`/tx/${hash}`);
+    renderExplorer(`/tx/${hash}?tab=trace`);
 
-    expect(await screen.findByRole("heading", { name: "Transaction summary", level: 2 })).toBeVisible();
     expect(await screen.findByText("Trace data is unavailable")).toBeVisible();
     expect(screen.getByText(/reported Unavailable at block 42/)).toBeVisible();
-    expect(screen.getByText("Effective gas price (gwei)")).toBeVisible();
-    expect(screen.getByText("Transaction fee (ETH)")).toBeVisible();
-    expect(screen.getByText("Burned (ETH)")).toBeVisible();
-    expect(screen.getByText("2")).toBeVisible();
-    expect(screen.getByText("0.000042")).toBeVisible();
-    expect(screen.getByText("0.000021")).toBeVisible();
     expect(screen.getByText(/Core indexed data remains available\./)).toBeVisible();
   });
 

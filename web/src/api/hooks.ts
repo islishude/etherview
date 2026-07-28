@@ -162,6 +162,65 @@ export function useTransactionTrace(hash: string, enabled = true) {
   });
 }
 
+export function useTransactionTokenTransfers(
+  hash: string,
+  cursor?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["transaction", hash, "token-transfers", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/token-transfers", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { ...response.data, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useTransactionLogs(hash: string, cursor?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["transaction", hash, "logs", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/logs", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { ...response.data, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+export function useTransactionStateChanges(
+  hash: string,
+  cursor?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["transaction", hash, "state-changes", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/state-changes", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { ...response.data, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useAddress(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address],

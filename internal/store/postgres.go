@@ -672,6 +672,7 @@ func deleteBundleFactsTx(ctx context.Context, tx *sql.Tx, chainID string, refere
 		"token_balance_deltas",
 		"token_events",
 		"normalized_traces",
+		"transaction_state_changes",
 		"address_activities",
 		"block_statistics",
 	} {
@@ -1055,6 +1056,7 @@ func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash
 		"token_events",
 		"token_balance_deltas",
 		"normalized_traces",
+		"transaction_state_changes",
 		"block_statistics",
 		"name_records",
 		"address_activities",

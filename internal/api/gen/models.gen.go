@@ -372,6 +372,126 @@ func (e TransactionStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransactionLogsState.
+const (
+	TransactionLogsStateComplete    TransactionLogsState = "complete"
+	TransactionLogsStateFailed      TransactionLogsState = "failed"
+	TransactionLogsStateMissing     TransactionLogsState = "missing"
+	TransactionLogsStateUnavailable TransactionLogsState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogsState enum.
+func (e TransactionLogsState) Valid() bool {
+	switch e {
+	case TransactionLogsStateComplete:
+		return true
+	case TransactionLogsStateFailed:
+		return true
+	case TransactionLogsStateMissing:
+		return true
+	case TransactionLogsStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionStateChangeKind.
+const (
+	Balance TransactionStateChangeKind = "balance"
+	Code    TransactionStateChangeKind = "code"
+	Nonce   TransactionStateChangeKind = "nonce"
+	Storage TransactionStateChangeKind = "storage"
+)
+
+// Valid indicates whether the value is a known member of the TransactionStateChangeKind enum.
+func (e TransactionStateChangeKind) Valid() bool {
+	switch e {
+	case Balance:
+		return true
+	case Code:
+		return true
+	case Nonce:
+		return true
+	case Storage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionStateChangesState.
+const (
+	TransactionStateChangesStateComplete    TransactionStateChangesState = "complete"
+	TransactionStateChangesStateFailed      TransactionStateChangesState = "failed"
+	TransactionStateChangesStateMissing     TransactionStateChangesState = "missing"
+	TransactionStateChangesStateUnavailable TransactionStateChangesState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionStateChangesState enum.
+func (e TransactionStateChangesState) Valid() bool {
+	switch e {
+	case TransactionStateChangesStateComplete:
+		return true
+	case TransactionStateChangesStateFailed:
+		return true
+	case TransactionStateChangesStateMissing:
+		return true
+	case TransactionStateChangesStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionSubresourceIdentityState.
+const (
+	TransactionSubresourceIdentityStateComplete    TransactionSubresourceIdentityState = "complete"
+	TransactionSubresourceIdentityStateFailed      TransactionSubresourceIdentityState = "failed"
+	TransactionSubresourceIdentityStateMissing     TransactionSubresourceIdentityState = "missing"
+	TransactionSubresourceIdentityStateUnavailable TransactionSubresourceIdentityState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionSubresourceIdentityState enum.
+func (e TransactionSubresourceIdentityState) Valid() bool {
+	switch e {
+	case TransactionSubresourceIdentityStateComplete:
+		return true
+	case TransactionSubresourceIdentityStateFailed:
+		return true
+	case TransactionSubresourceIdentityStateMissing:
+		return true
+	case TransactionSubresourceIdentityStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionTokenTransfersState.
+const (
+	TransactionTokenTransfersStateComplete    TransactionTokenTransfersState = "complete"
+	TransactionTokenTransfersStateFailed      TransactionTokenTransfersState = "failed"
+	TransactionTokenTransfersStateMissing     TransactionTokenTransfersState = "missing"
+	TransactionTokenTransfersStateUnavailable TransactionTokenTransfersState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionTokenTransfersState enum.
+func (e TransactionTokenTransfersState) Valid() bool {
+	switch e {
+	case TransactionTokenTransfersStateComplete:
+		return true
+	case TransactionTokenTransfersStateFailed:
+		return true
+	case TransactionTokenTransfersStateMissing:
+		return true
+	case TransactionTokenTransfersStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionTraceState.
 const (
 	TransactionTraceStateComplete    TransactionTraceState = "complete"
@@ -1449,6 +1569,9 @@ type Transaction struct {
 	// GasPrice A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	GasPrice *Quantity `json:"gas_price,omitempty"`
 
+	// GasUsed A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	GasUsed *Quantity `json:"gas_used,omitempty"`
+
 	// Hash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	Hash  Hash   `json:"hash"`
 	Input string `json:"input"`
@@ -1484,11 +1607,146 @@ type TransactionListResponse struct {
 	Meta Meta          `json:"meta"`
 }
 
+// TransactionLog defines model for TransactionLog.
+type TransactionLog struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+	Data    string  `json:"data"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity `json:"log_index"`
+	Topics   []Hash   `json:"topics"`
+}
+
+// TransactionLogResponse defines model for TransactionLogResponse.
+type TransactionLogResponse struct {
+	Data TransactionLogs `json:"data"`
+	Meta Meta            `json:"meta"`
+}
+
+// TransactionLogs defines model for TransactionLogs.
+type TransactionLogs struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity             `json:"chain_id"`
+	Items   []TransactionLog     `json:"items"`
+	State   TransactionLogsState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionLogsState defines model for TransactionLogs.State.
+type TransactionLogsState string
+
 // TransactionResponse defines model for TransactionResponse.
 type TransactionResponse struct {
 	Data Transaction `json:"data"`
 	Meta Meta        `json:"meta"`
 }
+
+// TransactionStateChange defines model for TransactionStateChange.
+type TransactionStateChange struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address                    `json:"address"`
+	After   *string                    `json:"after,omitempty"`
+	Before  *string                    `json:"before,omitempty"`
+	Kind    TransactionStateChangeKind `json:"kind"`
+
+	// StorageKey A 32-byte hash; responses use normalized lowercase hexadecimal.
+	StorageKey *Hash `json:"storage_key,omitempty"`
+}
+
+// TransactionStateChangeKind defines model for TransactionStateChange.Kind.
+type TransactionStateChangeKind string
+
+// TransactionStateChangeResponse defines model for TransactionStateChangeResponse.
+type TransactionStateChangeResponse struct {
+	Data TransactionStateChanges `json:"data"`
+	Meta Meta                    `json:"meta"`
+}
+
+// TransactionStateChanges defines model for TransactionStateChanges.
+type TransactionStateChanges struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity                     `json:"chain_id"`
+	Items   []TransactionStateChange     `json:"items"`
+	State   TransactionStateChangesState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionStateChangesState defines model for TransactionStateChanges.State.
+type TransactionStateChangesState string
+
+// TransactionSubresourceIdentity defines model for TransactionSubresourceIdentity.
+type TransactionSubresourceIdentity struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity                            `json:"chain_id"`
+	State   TransactionSubresourceIdentityState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionSubresourceIdentityState defines model for TransactionSubresourceIdentity.State.
+type TransactionSubresourceIdentityState string
+
+// TransactionTokenTransferResponse defines model for TransactionTokenTransferResponse.
+type TransactionTokenTransferResponse struct {
+	Data TransactionTokenTransfers `json:"data"`
+	Meta Meta                      `json:"meta"`
+}
+
+// TransactionTokenTransfers defines model for TransactionTokenTransfers.
+type TransactionTokenTransfers struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity                       `json:"chain_id"`
+	Items   []TokenEvent                   `json:"items"`
+	State   TransactionTokenTransfersState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionTokenTransfersState defines model for TransactionTokenTransfers.State.
+type TransactionTokenTransfersState string
 
 // TransactionTrace defines model for TransactionTrace.
 type TransactionTrace struct {
@@ -1885,6 +2143,33 @@ type ListTransactionsParams struct {
 
 // GetTransactionParams defines parameters for GetTransaction.
 type GetTransactionParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListTransactionLogsParams defines parameters for ListTransactionLogs.
+type ListTransactionLogsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListTransactionStateChangesParams defines parameters for ListTransactionStateChanges.
+type ListTransactionStateChangesParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListTransactionTokenTransfersParams defines parameters for ListTransactionTokenTransfers.
+type ListTransactionTokenTransfersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

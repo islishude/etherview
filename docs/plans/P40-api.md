@@ -13,6 +13,7 @@ the agreed Etherscan V2 subset.
 - [Architecture](../architecture/overview.md)
 - [Etherscan V2 compatibility matrix](../architecture/etherscan-v2-compatibility.md)
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
+- [ADR-0023: Exact transaction state differences](../decisions/ADR-0023-exact-transaction-state-differences.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -25,6 +26,7 @@ the agreed Etherscan V2 subset.
 | P40-T04 | done | P40-T01 | API-key lifecycle, anonymous/keyed quotas, CORS, health, metrics | auth/rate tests |
 | P40-T05 | done | P40-T02 | Head/reorg SSE and cache invalidation | reconnect/reorg tests |
 | P40-T06 | done | P40-T02, P40-T03, P40-T04 | Agreed `/v2/api` Etherscan module/action compatibility | golden compatibility tests |
+| P40-T07 | done | P20-T11, P40-T02, P40-T03 | Transaction-scoped token transfer, log, trace identity, and state-change resources | contract, cursor, reorg, and capability tests |
 
 ## Acceptance
 
@@ -34,12 +36,30 @@ the agreed Etherscan V2 subset.
       state rather than a misleading empty success.
 - [x] Cursor order remains stable across pages and reorg boundaries.
 - [x] API keys are one-time revealed and only keyed hashes are stored.
+- [x] Transaction subresources expose one inclusion identity, stable pagination,
+      bounded hostile data, and explicit optional-capability state.
 
 ## Current Blockers
 
 None.
 
 ## Evidence
+
+- P40-T07: OpenAPI, generated Go/TypeScript types, catalog readers, HTTP
+  handlers, and the explicit x402 operation inventory now cover paginated
+  transaction token transfers, receipt-backed logs, and persisted state
+  changes. Every response carries the selected chain/block/transaction
+  inclusion and stage state; cursors bind resource kind, inclusion block hash,
+  publication generation, and offset. Orphan derived resources report
+  `missing`, unavailable/failed generations remain distinct from authoritative
+  empty results, and no handler performs live RPC.
+- P40-T07: `go test ./internal/httpapi ./internal/apiops ./internal/catalog
+  ./internal/query ./internal/store ./internal/app ./internal/enrich`,
+  `go test ./...`, and the related six-package race command passed. Handler
+  regressions cover all three resources, string quantities, inclusion
+  identity, pagination input/output, log topics/data, storage before/after,
+  and the new `gas_used` transaction field. `make generate-check` passed with
+  no OpenAPI, sqlc, generated-client, or embedded-SPA drift.
 
 - P40-T01: `make generate-check` passes OpenAPI-to-Go, OpenAPI-to-TypeScript,
   sqlc, and embedded-SPA regeneration with no drift. Raw OpenAPI contract tests

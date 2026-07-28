@@ -75,7 +75,7 @@ describe("P50 capability pages", () => {
     renderExplorer("/genesis");
 
     expect(await screen.findByRole("heading", { name: "Genesis accounts" })).toBeVisible();
-    expect(await screen.findByText("1,000,000,000,000,000,000")).toBeVisible();
+    expect(await screen.findByText("1", { exact: true })).toBeVisible();
     expect(screen.getByText("Contract account")).toBeVisible();
     expect(screen.getByRole("link", { name: "0x121212…121212" })).toHaveAttribute(
       "href",

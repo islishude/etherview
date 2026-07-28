@@ -296,6 +296,9 @@ func (h *Handler) routes() {
 	h.handleBillable("listPendingTransactions", h.pendingTransactions)
 	if h.catalog != nil {
 		h.handleBillable("getTransactionTrace", h.transactionTrace)
+		h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
+		h.handleBillable("listTransactionLogs", h.transactionLogs)
+		h.handleBillable("listTransactionStateChanges", h.transactionStateChanges)
 	}
 	h.handleBillable("getAddress", h.address)
 	if h.catalog != nil {
@@ -1217,6 +1220,102 @@ func (h *Handler) transactionTrace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TransactionTraceResponse{Data: transactionTraceModel(item), Meta: h.meta(r)})
 }
 
+func (h *Handler) transactionTokenTransfers(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.transactionResourceRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.TransactionTokenEvents(r.Context(), request)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.TokenEvent, len(page.Items))
+	for index := range page.Items {
+		items[index] = tokenEventModel(page.Items[index])
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionTokenTransferResponse{
+		Data: transactionTokenTransfersModel(page.Identity, items), Meta: meta,
+	})
+}
+
+func (h *Handler) transactionLogs(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.transactionResourceRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.TransactionLogs(r.Context(), request)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.TransactionLog, len(page.Items))
+	for index := range page.Items {
+		item := page.Items[index]
+		topics := make([]gen.Hash, len(item.Topics))
+		copy(topics, item.Topics)
+		items[index] = gen.TransactionLog{
+			Address: item.Address, LogIndex: item.LogIndex, Topics: topics, Data: item.Data,
+		}
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionLogResponse{
+		Data: transactionLogsModel(page.Identity, items), Meta: meta,
+	})
+}
+
+func (h *Handler) transactionStateChanges(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.transactionResourceRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.TransactionStateChanges(r.Context(), request)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.TransactionStateChange, len(page.Items))
+	for index := range page.Items {
+		item := page.Items[index]
+		items[index] = gen.TransactionStateChange{
+			Address: item.Address, Kind: gen.TransactionStateChangeKind(item.Kind),
+			StorageKey: item.StorageKey, Before: item.Before, After: item.After,
+		}
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionStateChangeResponse{
+		Data: transactionStateChangesModel(page.Identity, items), Meta: meta,
+	})
+}
+
+func (h *Handler) transactionResourceRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+) (catalog.TransactionResourceRequest, bool) {
+	hash := strings.ToLower(r.PathValue("hash"))
+	if !hashPattern.MatchString(hash) {
+		writeError(w, r, http.StatusBadRequest, "invalid_transaction_hash", "transaction hash must be 32 bytes", nil)
+		return catalog.TransactionResourceRequest{}, false
+	}
+	limit, cursor, ok := parseCatalogPage(w, r)
+	if !ok {
+		return catalog.TransactionResourceRequest{}, false
+	}
+	return catalog.TransactionResourceRequest{
+		ChainID: h.chainID(), TransactionHash: hash, Cursor: cursor, Limit: limit,
+	}, true
+}
+
 type verificationSubmission struct {
 	Address            string          `json:"address"`
 	Language           verify.Language `json:"language"`
@@ -1905,6 +2004,39 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 		ChainId: item.ChainID, BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
 		TransactionHash: item.TransactionHash, TransactionIndex: item.TransactionIndex,
 		State: gen.TransactionTraceState(item.State), Frames: frames,
+	}
+}
+
+func transactionTokenTransfersModel(
+	identity catalog.TransactionResourceIdentity,
+	items []gen.TokenEvent,
+) gen.TransactionTokenTransfers {
+	return gen.TransactionTokenTransfers{
+		ChainId: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
+		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
+		State: gen.TransactionTokenTransfersState(identity.State), Items: items,
+	}
+}
+
+func transactionLogsModel(
+	identity catalog.TransactionResourceIdentity,
+	items []gen.TransactionLog,
+) gen.TransactionLogs {
+	return gen.TransactionLogs{
+		ChainId: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
+		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
+		State: gen.TransactionLogsState(identity.State), Items: items,
+	}
+}
+
+func transactionStateChangesModel(
+	identity catalog.TransactionResourceIdentity,
+	items []gen.TransactionStateChange,
+) gen.TransactionStateChanges {
+	return gen.TransactionStateChanges{
+		ChainId: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
+		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
+		State: gen.TransactionStateChangesState(identity.State), Items: items,
 	}
 }
 

@@ -414,6 +414,75 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /transactions/{hash}/token-transfers:
+    get:
+      operationId: listTransactionTokenTransfers
+      tags: [transactions, tokens]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Token events for the resolved transaction inclusion.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionTokenTransferResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions/{hash}/logs:
+    get:
+      operationId: listTransactionLogs
+      tags: [transactions]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Raw receipt logs for the resolved transaction inclusion.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionLogResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /transactions/{hash}/state-changes:
+    get:
+      operationId: listTransactionStateChanges
+      tags: [transactions, traces]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Exact published account and storage changes for the resolved transaction inclusion.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionStateChangeResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}:
     get:
       operationId: getAddress
@@ -1547,6 +1616,8 @@ components:
           $ref: "#/components/schemas/Quantity"
         gas:
           $ref: "#/components/schemas/Quantity"
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
         effective_gas_price:
           $ref: "#/components/schemas/Quantity"
           description: "Transaction effective gas price used on-chain (receipt effectiveGasPrice), serialized as wei. For London+ transactions this equals min(baseFeePerGas + tip, gasFeeCap); legacy/access-list transactions use gasPrice."
@@ -2019,6 +2090,97 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TraceFrame"
+    TransactionSubresourceIdentity:
+      type: object
+      required:
+        - chain_id
+        - block_number
+        - block_hash
+        - transaction_hash
+        - transaction_index
+        - state
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        state:
+          type: string
+          enum: [complete, missing, unavailable, failed]
+    TransactionTokenTransfers:
+      allOf:
+        - $ref: "#/components/schemas/TransactionSubresourceIdentity"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TokenEvent"
+    TransactionLog:
+      type: object
+      required:
+        - address
+        - log_index
+        - topics
+        - data
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        topics:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/Hash"
+        data:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+          maxLength: 8388610
+    TransactionLogs:
+      allOf:
+        - $ref: "#/components/schemas/TransactionSubresourceIdentity"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TransactionLog"
+    TransactionStateChange:
+      type: object
+      required: [address, kind]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        kind:
+          type: string
+          enum: [balance, nonce, code, storage]
+        storage_key:
+          $ref: "#/components/schemas/Hash"
+        before:
+          type: string
+          maxLength: 16777218
+        after:
+          type: string
+          maxLength: 16777218
+    TransactionStateChanges:
+      allOf:
+        - $ref: "#/components/schemas/TransactionSubresourceIdentity"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TransactionStateChange"
     SearchResult:
       type: object
       required: [kind, key, label, rank]
@@ -2453,6 +2615,30 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/TransactionTrace"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionTokenTransferResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionTokenTransfers"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionLogResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionLogs"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionStateChangeResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionStateChanges"
         meta:
           $ref: "#/components/schemas/Meta"
     SearchResponse:

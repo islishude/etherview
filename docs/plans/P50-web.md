@@ -13,6 +13,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [Architecture](../architecture/overview.md)
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0013: Embedded SPA serving and browser security](../decisions/ADR-0013-embedded-spa-serving-and-browser-security.md)
+- [ADR-0023: Exact transaction state differences](../decisions/ADR-0023-exact-transaction-state-differences.md)
 - [EIP-1193: Ethereum Provider JavaScript API](https://eips.ethereum.org/EIPS/eip-1193)
 - [EIP-6963: Multi Injected Provider Discovery](https://eips.ethereum.org/EIPS/eip-6963)
 - [Tailwind CSS with Vite](https://tailwindcss.com/docs/installation/using-vite)
@@ -28,6 +29,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T03 | done        | P20, P30, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages      | capability UI tests       |
 | P50-T04 | done        | P30, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
 | P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
+| P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
 
 ## Acceptance
 
@@ -40,12 +42,39 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] RPC credentials and server-only settings do not exist in built assets.
 - [x] `web/dist` is treated as a build-only artifact and must be generated
       during build/test pipelines, not checked into git.
+- [x] Transaction detail provides deep-linkable lazy tabs for overview, token
+      transfers, logs, trace, and exact state changes in both languages and
+      themes.
 
 ## Current Blockers
 
-None. All P50 work items and acceptance checks are complete.
+None.
 
 ## Evidence
+
+- P50-T06: `/tx/:hash` now preserves five generated-client-backed tabs in the
+  `tab` query parameter. Logs, trace, and state changes load only when active;
+  the overview's bounded token-transfer read supplies the deterministic action
+  summary without protocol guesses. Arrow/Home/End keyboard navigation,
+  back/forward-compatible links, horizontal narrow-screen tabs, mismatch
+  refetch fencing, authoritative empty/capability states, copied identifiers,
+  and the accessible More-details disclosure have focused regressions.
+- P50-T06: the overview keeps the navigable block height without repeating the
+  block hash; confirmations/time, native-symbol amounts, gas used, success,
+  failure, orphan and finalized badges, long hex data, trace indentation, log
+  cards, and account-grouped state changes are bilingual and theme-aware.
+  `npm --prefix web test`, lint, and build passed with 18 files and 131 tests;
+  the transaction-focused run passed 2 files and 24 tests.
+- P50-T06: the Go embedded E2E fixture exposes all transaction subresources. A
+  real in-app browser verified the built distribution at desktop and 390x844:
+  direct state-change deep links, ArrowRight tab activation, English/light and
+  Chinese/dark state, intended tab-strip scrolling, and zero document
+  overflow. `make test-e2e` built the same distribution, but both bundled and
+  system Chromium command-line launches were denied by this macOS environment
+  before page creation, so no new Playwright/Axe pass is claimed from this run.
+- P50-T06: `make plan-check`, `make generate-check`, and `make check` passed
+  after the final source state. `make test-integration` reported its documented
+  skip because no disposable `INTEGRATION_DATABASE_URL` was configured.
 
 - P50-T01: `make toolchain-check` passes the Go 1.26.5, Node 24.18.0,
   and npm 11.16.0 supported baselines. A clean

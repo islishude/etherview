@@ -1187,6 +1187,305 @@ tbody tr:hover {
   margin-bottom: 0;
 }
 
+.transaction-tabs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.3rem;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  scrollbar-width: thin;
+}
+
+.transaction-tab {
+  flex: 0 0 auto;
+  padding: 0.62rem 0.9rem;
+  color: var(--text-soft);
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: 0.82rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.transaction-tab:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.transaction-tab.active {
+  color: var(--on-brand);
+  background: var(--brand);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.transaction-overview {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.transaction-action-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: center;
+  padding: 1rem 1.2rem;
+}
+
+.transaction-action-icon {
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 50%;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+
+.transaction-action-card > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.transaction-action-card span {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transaction-action-card strong {
+  font-size: 0.98rem;
+}
+
+.transaction-action-card p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.transaction-detail-card,
+.transaction-tab-panel {
+  padding: clamp(1rem, 3vw, 1.35rem);
+}
+
+.transaction-detail-list {
+  display: grid;
+  margin: 0;
+}
+
+.transaction-detail-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(9.5rem, 0.26fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.82rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.transaction-detail-row dt {
+  color: var(--text-soft);
+  font-size: 0.77rem;
+  font-weight: 720;
+}
+
+.transaction-detail-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
+}
+
+.transaction-detail-row.wide {
+  align-items: start;
+}
+
+.transaction-inline-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.transaction-confirmations,
+.transaction-status,
+.transaction-trace-kind {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.transaction-status-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.transaction-status.success {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.transaction-status.failed,
+.transaction-status.orphan,
+.transaction-trace-frame.reverted {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
+}
+
+.transaction-more-details {
+  margin-top: 0.5rem;
+}
+
+.transaction-more-details > summary {
+  width: max-content;
+  padding: 0.55rem 0.7rem;
+  color: var(--brand);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.transaction-more-details > summary:hover {
+  background: var(--brand-soft);
+}
+
+.transaction-more-details .completeness-card {
+  margin-top: 0.8rem;
+  background: var(--surface-raised);
+  box-shadow: none;
+}
+
+.transaction-data,
+.transaction-log code,
+.transaction-state-account code {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.transaction-tab-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.transaction-tab-panel table small {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.transaction-log-list,
+.transaction-state-account,
+.transaction-trace-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.transaction-log,
+.transaction-state-account {
+  min-width: 0;
+  padding: 0.9rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.transaction-log > header,
+.transaction-state-account > header {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-log dl,
+.transaction-state-account dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.transaction-log dl > div,
+.transaction-state-account dl > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.2fr) minmax(0, 1fr);
+  gap: 0.8rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-log dl > div:last-child,
+.transaction-state-account dl > div:last-child {
+  border-bottom: 0;
+}
+
+.transaction-log dt,
+.transaction-state-account dt {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.transaction-log dd,
+.transaction-state-account dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.transaction-state-account dt,
+.transaction-state-account dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.transaction-state-account dd > code {
+  flex: 1 1 12rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border-radius: 0.35rem;
+}
+
+.transaction-trace-frame {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(13rem, 1.4fr) minmax(8rem, 0.7fr) minmax(6rem, 0.5fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin-left: min(calc(var(--trace-depth) * 1.15rem), 9rem);
+  padding: 0.72rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
 .status-layout,
 .contract-layout {
   display: grid;
@@ -2503,6 +2802,22 @@ tbody tr:hover {
 
   .brand small {
     display: none;
+  }
+
+  .transaction-detail-row,
+  .transaction-log dl > div,
+  .transaction-state-account dl > div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .transaction-trace-frame {
+    grid-template-columns: 1fr;
+    margin-left: min(calc(var(--trace-depth) * 0.55rem), 2rem);
+  }
+
+  .transaction-action-card {
+    align-items: start;
   }
 
   .header-controls {

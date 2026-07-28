@@ -17,6 +17,7 @@ search documents, and rollup statistics without delaying core readiness.
 - [ADR-0010: Block-pinned proxy stage and ABI dependency](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md)
 - [ADR-0011: Snapshot search, statistics, and bounded adapters](../decisions/ADR-0011-snapshot-search-stats-and-bounded-adapters.md)
 - [ADR-0012: Lease-fenced derived publication](../decisions/ADR-0012-lease-fenced-derived-publication.md)
+- [ADR-0023: Exact transaction state differences](../decisions/ADR-0023-exact-transaction-state-differences.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -33,6 +34,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T08 | done | P20-T02, P20-T04, P20-T05 | Global ABI/Trace resource budgets and builtin/large-batch boundaries | adversarial budget and fixture tests |
 | P20-T09 | done | P20-T04 | Immutable exact NFT state and typed token state-capability failures | conflict and capability tests |
 | P20-T10 | done | P20-T01, P20-T07 | Lease-fenced atomic publication of derived output, stage result, journal, and job generation | stale-worker and publication-window tests |
+| P20-T11 | done | P20-T05, P20-T10 | Exact bounded transaction state differences with independent capability state | malformed, limit, replay, and reorg tests |
 
 ## Acceptance
 
@@ -63,13 +65,32 @@ search documents, and rollup statistics without delaying core readiness.
 - [x] A successful production attempt publishes derived output, stage result,
       journal, and the matching durable-job generation in one lease-fenced
       PostgreSQL transaction; an expired worker can never make results visible.
+- [x] Transaction state differences are fetched from one trace endpoint,
+      normalized within per-transaction and per-block limits, retained by
+      immutable block identity, and published only through the matching
+      lease-fenced generation.
 
 ## Current Blockers
 
-None. Every P20 work item and acceptance boundary is complete; downstream P30,
-P40, P50, and P60 items may now consume the published enrichment contracts.
+None.
 
 ## Evidence
+
+- P20-T11: `state_diff@1` uses one trace-capable endpoint and geth
+  `prestateTracer` diff mode, validates canonical quantities/hex data, and
+  enforces per-transaction and per-block payload, account, storage-slot, code,
+  and normalized-text budgets. Migration `0025_transaction_state_changes`
+  retains rows by exact inclusion identity and the stage participates in the
+  existing lease-fenced result, generation, journal, reorg, replay, partition,
+  and canonicality protocols. Unsupported debug capability remains a
+  published `unavailable` result with no request-time RPC fallback.
+- P20-T11: `go test ./internal/enrich ./internal/app ./internal/store` and
+  `go test -race ./internal/enrich ./internal/catalog ./internal/httpapi
+  ./internal/query ./internal/store ./internal/app -count=1` passed. Dedicated
+  normalizer regressions cover malformed JSON, invalid account/quantity/code/
+  storage input, deterministic ordering, all per-transaction limits, and the
+  aggregate block budget; dispatch, journal, refresh, and partition
+  regressions include `state_diff@1`.
 
 - P20-T10: all five production derived stages (`proxy@1`, `abi@1`, `token@1`,
   `stats@2`, and `trace@1`) use the PostgreSQL worker's lease-aware processor

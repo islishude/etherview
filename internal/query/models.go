@@ -230,6 +230,7 @@ func (r *PostgresReader) transactionModel(
 		}
 	}
 	model.Status = &status
+	model.GasUsed = ptrQuantity(strconv.FormatUint(receipt.GasUsed, 10))
 
 	var blockBaseFee *big.Int
 	var blockTimestamp *time.Time

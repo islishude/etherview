@@ -23,6 +23,10 @@ type fakeCatalog struct {
 	nftErr     error
 	trace      catalog.TransactionTrace
 	traceErr   error
+	txTokens   catalog.TransactionTokenEventPage
+	txLogs     catalog.TransactionLogPage
+	txState    catalog.TransactionStateChangePage
+	txRequest  catalog.TransactionResourceRequest
 	blockStats []catalog.BlockStat
 	aggregate  catalog.AggregateStats
 	statsErr   error
@@ -58,6 +62,21 @@ func (fake *fakeCatalog) AggregateStats(context.Context, catalog.AggregateStatsR
 
 func (fake *fakeCatalog) TransactionTrace(context.Context, string, string) (catalog.TransactionTrace, error) {
 	return fake.trace, fake.traceErr
+}
+
+func (fake *fakeCatalog) TransactionTokenEvents(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionTokenEventPage, error) {
+	fake.txRequest = request
+	return fake.txTokens, nil
+}
+
+func (fake *fakeCatalog) TransactionLogs(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionLogPage, error) {
+	fake.txRequest = request
+	return fake.txLogs, nil
+}
+
+func (fake *fakeCatalog) TransactionStateChanges(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionStateChangePage, error) {
+	fake.txRequest = request
+	return fake.txState, nil
 }
 
 func testCatalogHandler(t *testing.T, catalogReader catalog.Reader) http.Handler {
@@ -206,6 +225,116 @@ func TestTransactionTraceDistinguishesStageAbsenceFromNoInternalCalls(t *testing
 	}
 	if response.Data.State != "complete" || len(response.Data.Frames) != 1 || response.Data.Frames[0].Depth != 0 {
 		t.Fatalf("data=%+v", response.Data)
+	}
+}
+
+func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("77", 32)
+	blockHash := "0x" + strings.Repeat("88", 32)
+	address := "0x" + strings.Repeat("99", 20)
+	storageKey := "0x" + strings.Repeat("aa", 32)
+	before, after := "1", "2"
+	identity := catalog.TransactionResourceIdentity{
+		ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
+		TransactionHash: hash, TransactionIndex: "3", State: catalog.StageComplete,
+	}
+	tests := []struct {
+		name       string
+		path       string
+		configure  func(*fakeCatalog)
+		assertBody func(*testing.T, []byte)
+	}{
+		{
+			name: "token transfers", path: "/token-transfers?limit=1&cursor=opaque",
+			configure: func(fake *fakeCatalog) {
+				fake.txTokens = catalog.TransactionTokenEventPage{
+					Identity: identity, NextCursor: "token-next",
+					Items: []catalog.TokenEvent{{
+						ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
+						TransactionHash: hash, LogIndex: "4", SubIndex: "0",
+						TokenAddress: address, Standard: "erc20", Kind: "transfer",
+						Amount: &after, Confidence: "event",
+					}},
+				}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response gen.TransactionTokenTransferResponse
+				if err := json.Unmarshal(body, &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data.BlockHash != blockHash || len(response.Data.Items) != 1 ||
+					response.Meta.NextCursor == nil || *response.Meta.NextCursor != "token-next" {
+					t.Fatalf("response=%+v", response)
+				}
+			},
+		},
+		{
+			name: "logs", path: "/logs?limit=1&cursor=opaque",
+			configure: func(fake *fakeCatalog) {
+				fake.txLogs = catalog.TransactionLogPage{
+					Identity: identity, NextCursor: "log-next",
+					Items: []catalog.TransactionLog{{
+						Address: address, LogIndex: "4", Topics: []string{blockHash}, Data: "0x1234",
+					}},
+				}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response gen.TransactionLogResponse
+				if err := json.Unmarshal(body, &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data.TransactionHash != hash || len(response.Data.Items) != 1 ||
+					response.Data.Items[0].LogIndex != "4" {
+					t.Fatalf("response=%+v", response)
+				}
+			},
+		},
+		{
+			name: "state changes", path: "/state-changes?limit=1&cursor=opaque",
+			configure: func(fake *fakeCatalog) {
+				fake.txState = catalog.TransactionStateChangePage{
+					Identity: identity, NextCursor: "state-next",
+					Items: []catalog.TransactionStateChange{{
+						Address: address, Kind: "storage", StorageKey: &storageKey,
+						Before: &before, After: &after,
+					}},
+				}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response gen.TransactionStateChangeResponse
+				if err := json.Unmarshal(body, &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data.State != gen.TransactionStateChangesStateComplete ||
+					len(response.Data.Items) != 1 || response.Data.Items[0].StorageKey == nil {
+					t.Fatalf("response=%+v", response)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fake := &fakeCatalog{}
+			test.configure(fake)
+			recorder := httptest.NewRecorder()
+			testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(
+				http.MethodGet, "/api/v1/transactions/"+hash+test.path, nil,
+			))
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if fake.txRequest.TransactionHash != hash || fake.txRequest.Cursor != "opaque" ||
+				fake.txRequest.Limit != 1 {
+				t.Fatalf("request=%+v", fake.txRequest)
+			}
+			test.assertBody(t, recorder.Body.Bytes())
+		})
 	}
 }
 

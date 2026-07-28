@@ -29,6 +29,9 @@ import {
   useTokenTransfers,
   useTokens,
   useTransaction,
+  useTransactionLogs,
+  useTransactionStateChanges,
+  useTransactionTokenTransfers,
   useTransactionTrace,
   useTransactions,
   useSubmitVerification,
@@ -244,7 +247,7 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
         ↗
       </span>
       <span className="activity-primary">
-        <Link to="/tx/$hash" params={{ hash: transaction.hash }}>
+        <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
           {shorten(transaction.hash)}
         </Link>
         <small>
@@ -435,7 +438,7 @@ export function TransactionsPage() {
               {transactions.data.items.map((transaction) => (
                 <tr key={transaction.hash}>
                   <td>
-                    <Link to="/tx/$hash" params={{ hash: transaction.hash }}>
+                    <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
                       {shorten(transaction.hash)}
                     </Link>
                   </td>
@@ -549,12 +552,22 @@ export function TokensPage() {
 
 export type EntityKind = "block" | "transaction" | "address" | "token" | "nft";
 
-export function EntityPage({ kind, identifier, secondary }: { kind: EntityKind; identifier: string; secondary?: string }) {
+export function EntityPage({
+  kind,
+  identifier,
+  secondary,
+  transactionTab,
+}: {
+  kind: EntityKind;
+  identifier: string;
+  secondary?: string;
+  transactionTab?: string;
+}) {
   switch (kind) {
     case "block":
       return <BlockDetailPage identifier={identifier} />;
     case "transaction":
-      return <TransactionDetailPage hash={identifier} />;
+      return <TransactionDetailPage hash={identifier} tab={transactionTab ?? "overview"} />;
     case "address":
       return <AddressDetailPage address={identifier} />;
     case "token":
@@ -618,153 +631,431 @@ function BlockDetailPage({ identifier }: { identifier: string }) {
   );
 }
 
-function TransactionDetailPage({ hash }: { hash: string }) {
+const TRANSACTION_TABS = ["overview", "token-transfers", "logs", "trace", "state-changes"] as const;
+type TransactionTab = typeof TRANSACTION_TABS[number];
+
+function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const { i18n, t } = useTranslation();
+  const navigate = useNavigate();
+  const activeTab: TransactionTab = TRANSACTION_TABS.includes(tab as TransactionTab)
+    ? tab as TransactionTab
+    : "overview";
+  const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
+  const logPager = useCursorHistory(`transaction-logs:${hash}`);
+  const statePager = useCursorHistory(`transaction-state-changes:${hash}`);
   const transaction = useTransaction(hash);
-  const trace = useTransactionTrace(hash);
+  const tokenTransfers = useTransactionTokenTransfers(
+    hash,
+    tokenPager.cursor,
+    activeTab === "overview" || activeTab === "token-transfers",
+  );
+  const logs = useTransactionLogs(hash, logPager.cursor, activeTab === "logs");
+  const trace = useTransactionTrace(hash, activeTab === "trace");
+  const stateChanges = useTransactionStateChanges(
+    hash,
+    statePager.cursor,
+    activeTab === "state-changes",
+  );
   const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
+  const nativeSymbol = publicConfig.data?.native_symbol ?? "ETH";
   const locale = i18n.resolvedLanguage ?? "en";
+  const lastIdentityRetry = useRef("");
+  const identityMatches = (blockHash?: string) =>
+    !blockHash || !transaction.data?.block_hash || blockHash === transaction.data.block_hash;
+  const tokenIdentityCurrent = identityMatches(tokenTransfers.data?.block_hash);
+  const logIdentityCurrent = identityMatches(logs.data?.block_hash);
+  const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
+  const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
+  useEffect(() => {
+    const resource = activeTab === "token-transfers" || activeTab === "overview"
+      ? tokenTransfers
+      : activeTab === "logs" ? logs
+      : activeTab === "trace" ? trace
+      : stateChanges;
+    const resourceBlockHash = resource.data?.block_hash;
+    const overviewBlockHash = transaction.data?.block_hash;
+    if (!resourceBlockHash || !overviewBlockHash || resourceBlockHash === overviewBlockHash) return;
+    const retryKey = `${activeTab}:${overviewBlockHash}:${resourceBlockHash}`;
+    if (lastIdentityRetry.current === retryKey) return;
+    lastIdentityRetry.current = retryKey;
+    void Promise.all([transaction.refetch(), resource.refetch()]);
+  }, [
+    activeTab,
+    logs,
+    stateChanges,
+    tokenTransfers,
+    trace,
+    transaction,
+  ]);
+  const stateGroups = useMemo(() => {
+    const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
+    for (const change of stateChanges.data?.items ?? []) {
+      const group = groups.get(change.address) ?? [];
+      group.push(change);
+      groups.set(change.address, group);
+    }
+    return [...groups.entries()];
+  }, [stateChanges.data]);
 
   return (
-    <Page title={t("page.transaction")} description={hash} mono>
+    <Page title={t("page.transactionDetails")} description={hash} mono>
       <QueryNotice loading={transaction.isPending} error={transaction.error} />
       {transaction.data && (
         <>
           {!transaction.data.canonical && (
             <ReorgContext kind="transaction" hash={transaction.data.hash} />
           )}
-          <DetailList label={t("detail.transactionSummary")}>
-            <Detail label={t("table.hash")} value={transaction.data.hash} mono />
-            <Detail label={t("table.status")} value={transactionStatusLabel(transaction.data.status, t)} />
-            <Detail
-              label={t("table.block")}
-              value={transaction.data.block_hash ? (
-                <Link to="/blocks/$blockID" params={{ blockID: transaction.data.block_hash }}>
-                  {formatInteger(transaction.data.block_number, locale)}
-                </Link>
-              ) : undefined}
-            />
-            <Detail
-              label={t("detail.confirmations")}
-              value={formatInteger(transaction.data.confirmations, locale)}
-            />
-            <Detail
-              label={t("detail.blockTimestamp")}
-              value={transaction.data.block_timestamp ? (
-                formatTimestamp(transaction.data.block_timestamp, locale)
-              ) : undefined}
-            />
-            <Detail
-              label={t("table.from")}
-              mono
-              value={(
-                <CopyableField value={transaction.data.from}>
-                  <Link to="/address/$address" params={{ address: transaction.data.from }}>
-                    {transaction.data.from}
-                  </Link>
-                </CopyableField>
+          <nav className="transaction-tabs" role="tablist" aria-label={t("detail.transactionSections")}>
+            {TRANSACTION_TABS.map((tabID) => (
+              <Link
+                aria-selected={activeTab === tabID}
+                className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+                key={tabID}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const currentIndex = TRANSACTION_TABS.indexOf(tabID);
+                  const nextIndex = event.key === "Home" ? 0
+                    : event.key === "End" ? TRANSACTION_TABS.length - 1
+                    : event.key === "ArrowLeft"
+                      ? (currentIndex - 1 + TRANSACTION_TABS.length) % TRANSACTION_TABS.length
+                      : (currentIndex + 1) % TRANSACTION_TABS.length;
+                  const nextTab = TRANSACTION_TABS[nextIndex];
+                  if (!nextTab) return;
+                  const tabList = event.currentTarget.parentElement;
+                  void navigate({
+                    to: "/tx/$hash",
+                    params: { hash },
+                    search: { tab: nextTab },
+                  }).then(() => {
+                    const tabs = tabList?.querySelectorAll<HTMLElement>('[role="tab"]');
+                    tabs?.[nextIndex]?.focus();
+                  });
+                }}
+                params={{ hash }}
+                role="tab"
+                search={{ tab: tabID }}
+                tabIndex={activeTab === tabID ? 0 : -1}
+                to="/tx/$hash"
+              >
+                {t(`transactionTabs.${tabID}`)}
+              </Link>
+            ))}
+          </nav>
+
+          {activeTab === "overview" && (
+            <div className="transaction-overview" role="tabpanel">
+              <section className="panel transaction-action-card" aria-labelledby="transaction-action-title">
+                <div className="transaction-action-icon" aria-hidden="true">↗</div>
+                <div>
+                  <span id="transaction-action-title">{t("detail.transactionAction")}</span>
+                  <strong>
+                    {transactionActionLabel(transaction.data, t)}
+                  </strong>
+                  <p>
+                    {formatNativeAmount(transaction.data.value, locale, nativeDecimals)} {nativeSymbol}
+                    {transaction.data.to ? (
+                      <> · <Link to="/address/$address" params={{ address: transaction.data.to }}>
+                        {shorten(transaction.data.to)}
+                      </Link></>
+                    ) : null}
+                    {tokenIdentityCurrent && (tokenTransfers.data?.items.length ?? 0) > 0
+                      ? <> · {t("detail.actionTokenEvents", {
+                          count: tokenTransfers.data?.items.length ?? 0,
+                        })}</>
+                      : null}
+                  </p>
+                </div>
+              </section>
+
+              <section className="panel transaction-detail-card" aria-label={t("detail.transactionSummary")}>
+                <h2 className="sr-only">{t("detail.transactionSummary")}</h2>
+                <dl className="transaction-detail-list">
+                  <TransactionDetailRow label={t("table.hash")}>
+                    <CopyableField value={transaction.data.hash}>
+                      <code>{transaction.data.hash}</code>
+                    </CopyableField>
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("table.status")}>
+                    <TransactionStatusBadge transaction={transaction.data} />
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("table.block")}>
+                    {transaction.data.block_hash ? (
+                      <span className="transaction-inline-values">
+                        <Link to="/blocks/$blockID" params={{ blockID: transaction.data.block_hash }}>
+                          {formatInteger(transaction.data.block_number, locale)}
+                        </Link>
+                        {transaction.data.confirmations && (
+                          <span className="transaction-confirmations">
+                            {t("detail.confirmationCount", {
+                              count: formatInteger(transaction.data.confirmations, locale),
+                            })}
+                          </span>
+                        )}
+                      </span>
+                    ) : "—"}
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("detail.blockTimestamp")}>
+                    {transaction.data.block_timestamp
+                      ? <time dateTime={transaction.data.block_timestamp}>
+                          {formatTimestamp(transaction.data.block_timestamp, locale)}
+                        </time>
+                      : "—"}
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("table.from")}>
+                    <CopyableField value={transaction.data.from}>
+                      <Link to="/address/$address" params={{ address: transaction.data.from }}>
+                        <code>{transaction.data.from}</code>
+                      </Link>
+                    </CopyableField>
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("table.to")}>
+                    {transaction.data.to ? (
+                      <CopyableField value={transaction.data.to}>
+                        <Link to="/address/$address" params={{ address: transaction.data.to }}>
+                          <code>{transaction.data.to}</code>
+                        </Link>
+                      </CopyableField>
+                    ) : t("common.contractCreation")}
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("table.value")}>
+                    <strong>{formatNativeAmount(transaction.data.value, locale, nativeDecimals)} {nativeSymbol}</strong>
+                  </TransactionDetailRow>
+                  <TransactionDetailRow label={t("detail.transactionFee")}>
+                    {formatNativeAmount(transaction.data.tx_fee_wei, locale, nativeDecimals)} {nativeSymbol}
+                  </TransactionDetailRow>
+                </dl>
+                <details className="transaction-more-details">
+                  <summary>{t("detail.moreDetails")}</summary>
+                  <dl className="transaction-detail-list advanced">
+                    <TransactionDetailRow label={t("detail.nonce")}>
+                      {formatInteger(transaction.data.nonce, locale)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.type")}>
+                      {transactionTypeLabel(transaction.data.type, t)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.gasLimit")}>
+                      {formatInteger(transaction.data.gas, locale)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.gasUsed")}>
+                      {formatInteger(transaction.data.gas_used, locale)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.effectiveGasPrice")}>
+                      {formatGweiFromWei(transaction.data.effective_gas_price, locale)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.burned")}>
+                      {formatNativeAmount(transaction.data.burned_wei, locale, nativeDecimals)} {nativeSymbol}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.canonical")}>
+                      {yesNo(transaction.data.canonical, t)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("table.finality")}>
+                      {finalityLabel(transaction.data.finality, t)}
+                    </TransactionDetailRow>
+                    <TransactionDetailRow label={t("detail.input")} wide>
+                      <CopyableField value={transaction.data.input}>
+                        <code className="transaction-data">{transaction.data.input}</code>
+                      </CopyableField>
+                    </TransactionDetailRow>
+                  </dl>
+                  <CompletenessPanel completeness={transaction.data.completeness} />
+                </details>
+              </section>
+            </div>
+          )}
+
+          {activeTab === "token-transfers" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <QueryNotice loading={tokenTransfers.isPending} error={tokenTransfers.error} />
+              {tokenTransfers.data && !tokenIdentityCurrent && (
+                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
               )}
-            />
-            <Detail
-              label={t("table.to")}
-              mono={Boolean(transaction.data.to)}
-              value={transaction.data.to ? (
-                <CopyableField value={transaction.data.to}>
-                  <Link to="/address/$address" params={{ address: transaction.data.to }}>
-                    {transaction.data.to}
-                  </Link>
-                </CopyableField>
-              ) : t("common.contractCreation")}
-            />
-            <Detail label={t("detail.nonce")} value={formatInteger(transaction.data.nonce, locale)} />
-            <Detail
-              label={t("table.value")}
-              value={formatNativeAmount(transaction.data.value, locale, nativeDecimals)}
-            />
-            <Detail label={t("detail.gasLimit")} value={formatInteger(transaction.data.gas, locale)} />
-            <Detail
-              label={t("detail.effectiveGasPrice")}
-              value={formatGweiFromWei(transaction.data.effective_gas_price, locale)}
-            />
-            <Detail
-              label={t("detail.transactionFee")}
-              value={formatNativeAmount(transaction.data.tx_fee_wei, locale, nativeDecimals)}
-            />
-            <Detail
-              label={t("detail.burned")}
-              value={formatNativeAmount(transaction.data.burned_wei, locale, nativeDecimals)}
-            />
-            <Detail label={t("detail.type")} value={transactionTypeLabel(transaction.data.type, t)} />
-            <Detail label={t("detail.input")} value={transaction.data.input} mono wide />
-            <Detail label={t("detail.canonical")} value={yesNo(transaction.data.canonical, t)} />
-            <Detail label={t("table.finality")} value={finalityLabel(transaction.data.finality, t)} />
-          </DetailList>
-          <CompletenessPanel completeness={transaction.data.completeness} />
+              {tokenIdentityCurrent && tokenTransfers.data?.state !== "complete" && tokenTransfers.data && (
+                <CapabilityDegraded stage="token" state={tokenTransfers.data.state} />
+              )}
+              {tokenIdentityCurrent && tokenTransfers.data?.state === "complete" && tokenTransfers.data.items.length === 0 && (
+                <p className="empty-result">{t("state.noTransactionTokenTransfers")}</p>
+              )}
+              {tokenIdentityCurrent && tokenTransfers.data?.state === "complete" && tokenTransfers.data.items.length > 0 && (
+                <div className="table-scroll" tabIndex={0}>
+                  <table>
+                    <thead><tr>
+                      <th>{t("table.token")}</th><th>{t("detail.event")}</th>
+                      <th>{t("table.from")}</th><th>{t("table.to")}</th>
+                      <th>{t("detail.amountOrTokenID")}</th>
+                    </tr></thead>
+                    <tbody>{tokenTransfers.data.items.map((event) => (
+                      <tr key={`${event.log_index}:${event.sub_index}`}>
+                        <td><Link to="/token/$address" params={{ address: event.token_address }}>
+                          <code>{shorten(event.token_address)}</code>
+                        </Link><small className="table-secondary">{event.standard}</small></td>
+                        <td>{event.kind}</td>
+                        <td><code>{event.from ? shorten(event.from) : "—"}</code></td>
+                        <td><code>{event.to ? shorten(event.to) : "—"}</code></td>
+                        <td><code>{formatInteger(event.amount ?? event.token_id, locale)}</code></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              {tokenIdentityCurrent && tokenTransfers.data && (
+                <CursorPagination
+                  busy={tokenTransfers.isFetching}
+                  hasNext={Boolean(tokenTransfers.data.next_cursor)}
+                  hasPrevious={tokenPager.hasPrevious}
+                  label={t("transactionTabs.token-transfers")}
+                  onNext={() => tokenPager.next(tokenTransfers.data?.next_cursor)}
+                  onPrevious={tokenPager.previous}
+                  page={tokenPager.page}
+                />
+              )}
+            </section>
+          )}
+
+          {activeTab === "logs" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <QueryNotice loading={logs.isPending} error={logs.error} />
+              {logs.data && !logIdentityCurrent && (
+                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+              )}
+              {logIdentityCurrent && logs.data?.items.length === 0 && <p className="empty-result">{t("state.noTransactionLogs")}</p>}
+              {logIdentityCurrent && logs.data && logs.data.items.length > 0 && (
+                <div className="transaction-log-list">
+                  {logs.data.items.map((log) => (
+                    <article className="transaction-log" key={log.log_index}>
+                      <header>
+                        <strong>{t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
+                        <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
+                      </header>
+                      <dl>
+                        {log.topics.map((topic, index) => (
+                          <div key={topic}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
+                        ))}
+                        <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {logIdentityCurrent && logs.data && (
+                <CursorPagination
+                  busy={logs.isFetching} hasNext={Boolean(logs.data.next_cursor)}
+                  hasPrevious={logPager.hasPrevious} label={t("transactionTabs.logs")}
+                  onNext={() => logPager.next(logs.data?.next_cursor)}
+                  onPrevious={logPager.previous} page={logPager.page}
+                />
+              )}
+            </section>
+          )}
+
+          {activeTab === "trace" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <QueryNotice loading={trace.isPending} error={trace.error} />
+              {trace.data && !traceIdentityCurrent && (
+                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+              )}
+              {traceIdentityCurrent && trace.data && trace.data.state !== "complete" && (
+                <CapabilityDegraded stage="trace" state={trace.data.state} />
+              )}
+              {traceIdentityCurrent && trace.data?.state === "complete" && trace.data.frames.length === 0 && (
+                <p className="empty-result">{t("state.noTraceFrames")}</p>
+              )}
+              {traceIdentityCurrent && trace.data?.state === "complete" && trace.data.frames.length > 0 && (
+                <div className="transaction-trace-list">
+                  {trace.data.frames.map((frame) => (
+                    <article
+                      className={frame.reverted ? "transaction-trace-frame reverted" : "transaction-trace-frame"}
+                      key={frame.path.join(".") || "root"}
+                      style={{ "--trace-depth": frame.depth } as React.CSSProperties}
+                    >
+                      <span className="transaction-trace-kind">{frame.call_type}</span>
+                      <code>{frame.from ? shorten(frame.from) : "—"} → {frame.to
+                        ? shorten(frame.to)
+                        : frame.created_address ? shorten(frame.created_address) : "—"}</code>
+                      <span>{formatNativeAmount(frame.value, locale, nativeDecimals)} {nativeSymbol}</span>
+                      <span>{frame.reverted ? frame.error ?? t("detail.reverted") : t("detail.succeeded")}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === "state-changes" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <QueryNotice loading={stateChanges.isPending} error={stateChanges.error} />
+              {stateChanges.data && !stateIdentityCurrent && (
+                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+              )}
+              {stateIdentityCurrent && stateChanges.data?.state !== "complete" && stateChanges.data && (
+                <CapabilityDegraded stage="state_diff" state={stateChanges.data.state} />
+              )}
+              {stateIdentityCurrent && stateChanges.data?.state === "complete" && stateGroups.length === 0 && (
+                <p className="empty-result">{t("state.noTransactionStateChanges")}</p>
+              )}
+              {stateIdentityCurrent && stateChanges.data?.state === "complete" && stateGroups.map(([address, changes]) => (
+                <article className="transaction-state-account" key={address}>
+                  <header><Link to="/address/$address" params={{ address }}><code>{address}</code></Link></header>
+                  <dl>{changes.map((change) => (
+                    <div key={`${change.kind}:${change.storage_key ?? ""}`}>
+                      <dt>{change.kind}{change.storage_key ? <code>{shorten(change.storage_key)}</code> : null}</dt>
+                      <dd><code>{change.before ?? "∅"}</code><span aria-hidden="true">→</span><code>{change.after ?? "∅"}</code></dd>
+                    </div>
+                  ))}</dl>
+                </article>
+              ))}
+              {stateIdentityCurrent && stateChanges.data && (
+                <CursorPagination
+                  busy={stateChanges.isFetching} hasNext={Boolean(stateChanges.data.next_cursor)}
+                  hasPrevious={statePager.hasPrevious} label={t("transactionTabs.state-changes")}
+                  onNext={() => statePager.next(stateChanges.data?.next_cursor)}
+                  onPrevious={statePager.previous} page={statePager.page}
+                />
+              )}
+            </section>
+          )}
         </>
       )}
- 
-      <section className="detail-section" aria-labelledby="trace-title">
-        <h2 id="trace-title">{t("detail.trace")}</h2>
-        <QueryNotice loading={trace.isPending} error={trace.error} />
-        {trace.data && trace.data.state !== "complete" && (
-          <CapabilityDegraded stage="trace" state={trace.data.state} />
-        )}
-        {trace.data?.state === "complete" && trace.data.frames.length === 0 && (
-          <p className="empty-result">{t("state.noTraceFrames")}</p>
-        )}
-        {trace.data?.state === "complete" && trace.data.frames.length > 0 && (
-          <div className="table-scroll" tabIndex={0} aria-label={t("detail.trace") }>
-            <table>
-              <caption className="sr-only">{t("detail.traceFrames")}</caption>
-              <thead>
-                <tr>
-                  <th>{t("detail.path")}</th>
-                  <th>{t("detail.callType")}</th>
-                  <th>{t("table.from")}</th>
-                  <th>{t("table.to")}</th>
-                  <th>{t("table.value")}</th>
-                  <th>{t("table.status")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trace.data.frames.map((frame) => (
-                  <tr key={frame.path.join(".") || "root"}>
-                    <td><code>{frame.path.join(".") || "root"}</code></td>
-                    <td>{frame.call_type}</td>
-                    <td>
-                      {frame.from ? (
-                        <CopyableField value={frame.from}>
-                          <code>{shorten(frame.from)}</code>
-                        </CopyableField>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      {frame.to ? (
-                        <CopyableField value={frame.to}>
-                          <code>{shorten(frame.to)}</code>
-                        </CopyableField>
-                      ) : frame.created_address ? (
-                        <CopyableField value={frame.created_address}>
-                          <code>{shorten(frame.created_address)}</code>
-                        </CopyableField>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td><code>{formatNativeAmount(frame.value, locale, nativeDecimals)}</code></td>
-                    <td>{frame.reverted ? frame.error ?? t("detail.reverted") : t("detail.succeeded")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </Page>
   );
+}
+
+function TransactionDetailRow({
+  label,
+  children,
+  wide,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return <div className={wide ? "transaction-detail-row detail-item wide" : "transaction-detail-row detail-item"}>
+    <dt>{label}</dt><dd>{children}</dd>
+  </div>;
+}
+
+function TransactionStatusBadge({ transaction }: { transaction: TransactionSummary }) {
+  const { t } = useTranslation();
+  const state = !transaction.canonical
+    ? "orphan"
+    : transaction.status === "success" ? "success"
+    : transaction.status === "failed" ? "failed"
+    : "unknown";
+  return <span className="transaction-status-group">
+    <span className={`transaction-status ${state}`}>
+      {state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)}
+    </span>
+    {transaction.canonical && transaction.finality === "finalized"
+      ? <span className="finality-badge finalized">{finalityLabel(transaction.finality, t)}</span>
+      : null}
+  </span>;
+}
+
+function transactionActionLabel(transaction: TransactionSummary, t: Translate): string {
+  if (!transaction.to) return t("detail.actionContractCreation");
+  if (transaction.input !== "0x") return t("detail.actionContractCall");
+  return t("detail.actionNativeTransfer");
 }
 
 function AddressDetailPage({ address }: { address: string }) {
@@ -1057,7 +1348,7 @@ function TokenTransfers({
                     </span>
                   </td>
                   <td>
-                    <Link to="/tx/$hash" params={{ hash: event.transaction_hash }}>
+                    <Link to="/tx/$hash" params={{ hash: event.transaction_hash }} search={{ tab: "overview" }}>
                       {shorten(event.transaction_hash)}
                     </Link>
                   </td>
@@ -2207,7 +2498,7 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     case "block":
       return <Link className="search-result" to="/blocks/$blockID" params={{ blockID: result.key }}>{content}</Link>;
     case "transaction":
-      return <Link className="search-result" to="/tx/$hash" params={{ hash: result.key }}>{content}</Link>;
+      return <Link className="search-result" to="/tx/$hash" params={{ hash: result.key }} search={{ tab: "overview" }}>{content}</Link>;
     case "address":
       return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
     case "contract":

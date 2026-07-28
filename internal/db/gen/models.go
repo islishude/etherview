@@ -967,6 +967,48 @@ type TransactionInclusionsP01000000 struct {
 	Raw         []byte         `db:"raw" json:"raw"`
 }
 
+type TransactionStateChange struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	Address          []byte         `db:"address" json:"address"`
+	FieldKind        string         `db:"field_kind" json:"field_kind"`
+	StorageKey       []byte         `db:"storage_key" json:"storage_key"`
+	BeforeValue      *string        `db:"before_value" json:"before_value"`
+	AfterValue       *string        `db:"after_value" json:"after_value"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionStateChangesDefault struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	Address          []byte         `db:"address" json:"address"`
+	FieldKind        string         `db:"field_kind" json:"field_kind"`
+	StorageKey       []byte         `db:"storage_key" json:"storage_key"`
+	BeforeValue      *string        `db:"before_value" json:"before_value"`
+	AfterValue       *string        `db:"after_value" json:"after_value"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionStateChangesP01000000 struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	Address          []byte         `db:"address" json:"address"`
+	FieldKind        string         `db:"field_kind" json:"field_kind"`
+	StorageKey       []byte         `db:"storage_key" json:"storage_key"`
+	BeforeValue      *string        `db:"before_value" json:"before_value"`
+	AfterValue       *string        `db:"after_value" json:"after_value"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
 type TransactionalOutbox struct {
 	ID          int64              `db:"id" json:"id"`
 	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`

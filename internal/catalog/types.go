@@ -21,17 +21,18 @@ var (
 type Stage string
 
 const (
-	StageCore  Stage = "core"
-	StageToken Stage = "token"
-	StageStats Stage = "stats"
-	StageTrace Stage = "trace"
+	StageCore      Stage = "core"
+	StageToken     Stage = "token"
+	StageStats     Stage = "stats"
+	StageTrace     Stage = "trace"
+	StageStateDiff Stage = "state_diff"
 )
 
 func (stage Stage) Version() int {
 	switch stage {
 	case StageStats:
 		return 2
-	case StageCore, StageToken, StageTrace:
+	case StageCore, StageToken, StageTrace, StageStateDiff:
 		return 1
 	default:
 		return 0
@@ -262,6 +263,55 @@ type TransactionTrace struct {
 	Frames           []TraceFrame
 }
 
+type TransactionResourceRequest struct {
+	ChainID         string
+	TransactionHash string
+	Cursor          string
+	Limit           int
+}
+
+type TransactionResourceIdentity struct {
+	ChainID          string
+	BlockNumber      string
+	BlockHash        string
+	TransactionHash  string
+	TransactionIndex string
+	State            StageState
+}
+
+type TransactionLog struct {
+	Address  string
+	LogIndex string
+	Topics   []string
+	Data     string
+}
+
+type TransactionLogPage struct {
+	Identity   TransactionResourceIdentity
+	Items      []TransactionLog
+	NextCursor string
+}
+
+type TransactionTokenEventPage struct {
+	Identity   TransactionResourceIdentity
+	Items      []TokenEvent
+	NextCursor string
+}
+
+type TransactionStateChange struct {
+	Address    string
+	Kind       string
+	StorageKey *string
+	Before     *string
+	After      *string
+}
+
+type TransactionStateChangePage struct {
+	Identity   TransactionResourceIdentity
+	Items      []TransactionStateChange
+	NextCursor string
+}
+
 type Reader interface {
 	TokenContract(context.Context, string, string) (TokenContract, error)
 	TokenContracts(context.Context, TokenListRequest) (TokenPage, error)
@@ -271,4 +321,7 @@ type Reader interface {
 	BlockStats(context.Context, BlockStatsRequest) ([]BlockStat, error)
 	AggregateStats(context.Context, AggregateStatsRequest) (AggregateStats, error)
 	TransactionTrace(context.Context, string, string) (TransactionTrace, error)
+	TransactionTokenEvents(context.Context, TransactionResourceRequest) (TransactionTokenEventPage, error)
+	TransactionLogs(context.Context, TransactionResourceRequest) (TransactionLogPage, error)
+	TransactionStateChanges(context.Context, TransactionResourceRequest) (TransactionStateChangePage, error)
 }

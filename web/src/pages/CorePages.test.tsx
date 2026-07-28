@@ -210,19 +210,91 @@ describe("core explorer pages", () => {
       return notFound();
     }));
 
-    renderExplorer(`/tx/${transactionHash}`);
+    renderExplorer(`/tx/${transactionHash}?tab=trace`);
 
     expect(await screen.findByText("调用追踪 数据不可用", { exact: true })).toBeVisible();
     expect(screen.getByText(/增强阶段报告为 失败/)).toBeVisible();
     expect(screen.getByText("stage_unavailable", { exact: true })).toBeVisible();
 
     const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "概览" }));
     const [addressLink] = screen.getAllByRole("link", { name: address });
     if (!addressLink) throw new Error("transaction address link is missing");
     await user.click(addressLink);
     expect(await screen.findByRole("heading", { name: "地址摘要" })).toBeVisible();
     expect(screen.getByText("委托外部账户", { exact: true })).toBeVisible();
     expect(screen.queryByText("delegated_eoa", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("deep-links transaction tabs and lazily loads only the selected subresource", async () => {
+    const requested: string[] = [];
+    let logFetches = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash,
+          block_hash: canonicalHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: address,
+          nonce: "1",
+          value: "0",
+          gas: "21000",
+          input: "0x",
+          status: "success",
+          canonical: true,
+          finality: "safe",
+          completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/logs`) {
+        logFetches++;
+        return envelope({
+          state: "complete",
+          chain_id: "1",
+          block_number: "12",
+          block_hash: logFetches === 1 ? olderHash : canonicalHash,
+          transaction_hash: transactionHash,
+          canonical: true,
+          finality: "safe",
+          items: [],
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/trace`) {
+        return envelope({
+          state: "complete",
+          chain_id: "1",
+          block_number: "12",
+          block_hash: canonicalHash,
+          transaction_hash: transactionHash,
+          canonical: true,
+          finality: "safe",
+          frames: [],
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}?tab=logs`);
+
+    expect(await screen.findByText("This transaction emitted no logs.")).toBeVisible();
+    expect(logFetches).toBe(2);
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/logs`);
+    expect(requested).not.toContain(`/api/v1/transactions/${transactionHash}/token-transfers`);
+    expect(requested).not.toContain(`/api/v1/transactions/${transactionHash}/trace`);
+    expect(requested).not.toContain(`/api/v1/transactions/${transactionHash}/state-changes`);
+
+    const logsTab = screen.getByRole("tab", { name: "Logs" });
+    logsTab.focus();
+    await userEvent.setup().keyboard("{ArrowRight}");
+
+    expect(await screen.findByText("The trace completed without call frames.")).toBeVisible();
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/trace`);
+    expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
   it("copies transaction addresses from the detail page", async () => {
@@ -347,6 +419,7 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/tx/${transactionHash}`);
 
+    await userEvent.setup().click(await screen.findByText("More details"));
     const typeLabel = await screen.findByText("Type");
     const typeItem = typeLabel.closest("div");
     if (!typeItem) throw new Error("transaction type field missing");
@@ -396,6 +469,7 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/tx/${transactionHash}`);
 
+    await userEvent.setup().click(await screen.findByText("More details"));
     const typeLabel = await screen.findByText("Type");
     const typeItem = typeLabel.closest("div");
     if (!typeItem) throw new Error("transaction type field missing");
@@ -445,6 +519,7 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/tx/${transactionHash}`);
 
+    await userEvent.setup().click(await screen.findByText("More details"));
     const typeLabel = await screen.findByText("Type");
     const typeItem = typeLabel.closest("div");
     if (!typeItem) throw new Error("transaction type field missing");
@@ -507,30 +582,31 @@ describe("core explorer pages", () => {
     const detailSection = (await screen.findByText("Transaction summary"))
       .closest("section");
     if (!detailSection) throw new Error("transaction summary section is missing");
-    const detailValueLabel = await within(detailSection).findByText("Value (ETH)");
+    const detailValueLabel = await within(detailSection).findByText("Value");
     const detailValueRow = detailValueLabel.closest(".detail-item") as HTMLElement | null;
     if (!detailValueRow) throw new Error("transaction value detail row missing");
-    expect(within(detailValueRow).getByText("2.1")).toBeVisible();
+    expect(within(detailValueRow).getByText("2.1 ETH")).toBeVisible();
 
+    await userEvent.setup().click(screen.getByText("More details"));
     const effectiveGasPriceLabel = await screen.findByText("Effective gas price (gwei)");
     const effectiveGasPriceRow = effectiveGasPriceLabel.closest(".detail-item") as HTMLElement | null;
     if (!effectiveGasPriceRow) throw new Error("effective gas price detail row missing");
     expect(within(effectiveGasPriceRow).getByText("2")).toBeVisible();
 
-    const transactionFeeLabel = await screen.findByText("Transaction fee (ETH)");
+    const transactionFeeLabel = await screen.findByText("Transaction fee");
     const transactionFeeRow = transactionFeeLabel.closest(".detail-item") as HTMLElement | null;
     if (!transactionFeeRow) throw new Error("transaction fee detail row missing");
-    expect(within(transactionFeeRow).getByText("0.000042")).toBeVisible();
+    expect(within(transactionFeeRow).getByText("0.000042 ETH")).toBeVisible();
 
-    const burnedLabel = await screen.findByText("Burned (ETH)");
+    const burnedLabel = await screen.findByText("Burned");
     const burnedRow = burnedLabel.closest(".detail-item") as HTMLElement | null;
     if (!burnedRow) throw new Error("burned detail row missing");
-    expect(within(burnedRow).getByText("0.000021")).toBeVisible();
+    expect(within(burnedRow).getByText("0.000021 ETH")).toBeVisible();
 
     expect(screen.queryByText("Gas price")).not.toBeInTheDocument();
 
-    const traceRow = await screen.findByRole("row", { name: /root/ });
-    expect(within(traceRow).getByText("1")).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Trace" }));
+    expect(await screen.findByText("1 ETH")).toBeVisible();
   });
 
   it("renders transaction confirmations and block timestamp in /tx detail", async () => {
@@ -587,10 +663,7 @@ describe("core explorer pages", () => {
 
     expect(screen.queryByText("Block hash")).not.toBeInTheDocument();
 
-    const confirmationsLabel = await screen.findByText("Confirmations");
-    const confirmationsRow = confirmationsLabel.closest(".detail-item") as HTMLElement | null;
-    if (!confirmationsRow) throw new Error("confirmations detail row missing");
-    expect(within(confirmationsRow).getByText("11")).toBeVisible();
+    expect(within(blockRow).getByText("11 confirmations")).toBeVisible();
 
     const blockTimestampLabel = await screen.findByText("Block timestamp");
     const blockTimestampRow = blockTimestampLabel.closest(".detail-item") as HTMLElement | null;
