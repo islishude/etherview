@@ -44,7 +44,7 @@ HELM_CHART ?= deploy/helm/etherview
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-load test-race test-soak test-x402-testnet \
-	web-build web-generate web-install web-lint web-test
+	web-build web-generate web-install web-lint web-test start-preview stop-preview recreate-preview
 
 go-build: web-build
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
@@ -261,8 +261,12 @@ deployment-check: docker-check compose-check helm-check
 
 check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
-run-preview:
+start-preview:
 	@$(DOCKER) compose -f compose.preview.yaml up --build --wait
 
 stop-preview:
 	@$(DOCKER) compose -f compose.preview.yaml down --volumes --remove-orphans
+
+recreate-preview:
+	@$(DOCKER) compose -f compose.preview.yaml rm -fs etherview
+	@$(DOCKER) compose -f compose.preview.yaml up -d --build etherview

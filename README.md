@@ -44,6 +44,34 @@ correctness and readiness do not depend on them. See
 [deploy/README.md](deploy/README.md) for configuration, Secret, read-replica,
 authentication, billing, and deployment details.
 
+## Frontend local workflow
+
+`web/` uses Vite for live development and local preview:
+
+```sh
+npm --prefix web install
+npm --prefix web run dev
+```
+
+Then open `http://127.0.0.1:5173`.
+
+```sh
+npm --prefix web run build
+```
+
+Builds the production frontend bundle used by the embedded server.
+
+```sh
+npm --prefix web run preview
+```
+
+Starts a local preview server on `http://127.0.0.1:4173` for route and asset
+verification.
+
+The frontend expects a local backend at `http://localhost:8080`:
+`/api/v1/...` requests are proxied to `http://localhost:8080/api/v1/...` in
+Vite dev/preview mode.
+
 ## Build and verify
 
 The minimum supported toolchains are Go 1.26.5, Node.js 24.18.0, and npm
