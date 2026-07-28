@@ -197,14 +197,8 @@ code {
 .brand-mark {
   width: 2.15rem;
   height: 2.15rem;
-  display: grid;
-  place-items: center;
-  color: #072f20;
-  background: var(--signal);
-  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
-  border-radius: 50% 50% 48% 52% / 42% 55% 45% 58%;
-  font-weight: 900;
-  box-shadow: inset 0 -6px 13px rgb(18 107 72 / 18%);
+  display: block;
+  flex: 0 0 auto;
 }
 
 .brand > span:last-child {
@@ -344,26 +338,6 @@ code {
   gap: 1.4rem;
 }
 
-.hero {
-  min-height: 350px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
-  gap: 3rem;
-  align-items: center;
-  padding: clamp(2rem, 5vw, 4.5rem);
-  overflow: hidden;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--brand-soft) 60%, var(--surface)), var(--surface));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-
-.hero-copy {
-  position: relative;
-  z-index: 2;
-}
-
 .eyebrow {
   display: inline-block;
   margin-bottom: 0.7rem;
@@ -374,73 +348,11 @@ code {
   text-transform: uppercase;
 }
 
-.hero h1,
 .page-header h1 {
   margin: 0;
   letter-spacing: -0.048em;
   line-height: 1.02;
 }
-
-.hero h1 {
-  max-width: 760px;
-  font-size: clamp(2.45rem, 5vw, 4.8rem);
-}
-
-.hero p {
-  max-width: 650px;
-  margin: 1.25rem 0 0;
-  color: var(--text-soft);
-  font-size: clamp(1rem, 1.5vw, 1.15rem);
-  line-height: 1.7;
-}
-
-.chain-orbit {
-  position: relative;
-  width: min(34vw, 330px);
-  aspect-ratio: 1;
-  justify-self: center;
-}
-
-.orbit-ring,
-.orbit-core,
-.orbit-node {
-  position: absolute;
-  border-radius: 50%;
-}
-
-.orbit-ring {
-  inset: 12%;
-  border: 1px solid color-mix(in srgb, var(--brand) 32%, transparent);
-}
-
-.orbit-ring.outer {
-  inset: 0;
-  border-style: dashed;
-}
-
-.orbit-core {
-  inset: 32%;
-  display: grid;
-  place-items: center;
-  color: #0d3828;
-  background: var(--signal);
-  font-size: clamp(2.5rem, 6vw, 5rem);
-  font-weight: 950;
-  box-shadow:
-    0 0 0 16px color-mix(in srgb, var(--signal) 16%, transparent),
-    0 24px 60px color-mix(in srgb, var(--brand) 26%, transparent);
-}
-
-.orbit-node {
-  width: 1rem;
-  aspect-ratio: 1;
-  background: var(--brand);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--brand) 14%, transparent);
-}
-
-.orbit-node.one { top: 5%; left: 48%; }
-.orbit-node.two { right: 9%; bottom: 24%; }
-.orbit-node.three { bottom: 6%; left: 28%; }
 
 .metrics-grid {
   display: grid;
@@ -1206,6 +1118,46 @@ tbody tr:hover {
   color: var(--on-brand);
   background: var(--brand);
   box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.transaction-tab.contract-entry {
+  margin-inline-start: auto;
+  color: var(--brand-strong);
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line));
+}
+
+.address-activity {
+  min-width: 0;
+}
+
+.address-activity-table {
+  min-width: 980px;
+}
+
+.address-direction {
+  display: inline-flex;
+  min-width: 3.4rem;
+  justify-content: center;
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.address-direction.in {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.address-direction.out {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.address-direction.self {
+  color: var(--text-soft);
+  background: var(--surface-strong);
 }
 
 .transaction-overview {
@@ -2708,11 +2660,6 @@ tbody tr:hover {
     grid-column: 2;
   }
 
-  .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(200px, 0.45fr);
-    gap: 1rem;
-  }
-
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2826,21 +2773,6 @@ tbody tr:hover {
 
   .site-main {
     padding-block: 1rem 3rem;
-  }
-
-  .hero {
-    min-height: 420px;
-    grid-template-columns: 1fr;
-    padding: 1.55rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(2.35rem, 12vw, 3.4rem);
-  }
-
-  .chain-orbit {
-    width: 210px;
-    margin-top: -1rem;
   }
 
   .metrics-grid {

@@ -12,6 +12,7 @@ import (
 
 const (
 	testAddress            = "0x1111111111111111111111111111111111111111"
+	testEOA                = "0x2222222222222222222222222222222222222222"
 	testHash               = "0x1111111111111111111111111111111111111111111111111111111111111111"
 	secondHash             = "0x2222222222222222222222222222222222222222222222222222222222222222"
 	orphanHash             = "0x3333333333333333333333333333333333333333333333333333333333333333"
@@ -134,14 +135,56 @@ func main() {
 		})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}", func(response http.ResponseWriter, request *http.Request) {
+		switch request.PathValue("address") {
+		case testAddress:
+			writeEnvelope(response, map[string]any{
+				"address": testAddress, "type": "contract", "balance": "900719925474099312345", "nonce": "1",
+				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+			})
+		case testEOA:
+			writeEnvelope(response, map[string]any{
+				"address": testEOA, "type": "eoa", "balance": "0", "nonce": "0",
+				"at_block": secondHash, "completeness": completeness(),
+			})
+		default:
+			writeNotFound(response)
+		}
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/transactions", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress && request.PathValue("address") != testEOA {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, []any{transaction(testTransactionHash, secondHash, "2", "safe")})
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/internal-transactions", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {
 			writeNotFound(response)
 			return
 		}
-		writeEnvelope(response, map[string]any{
-			"address": testAddress, "type": "contract", "balance": "900719925474099312345", "nonce": "1",
-			"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
-		})
+		writeEnvelope(response, []any{map[string]any{
+			"block_number": "2", "block_hash": secondHash, "block_timestamp": "2026-01-01T00:00:00Z",
+			"transaction_hash": testTransactionHash, "transaction_index": "0",
+			"path": []int{0}, "depth": 1, "call_type": "call",
+			"from": testAddress, "to": testAddress, "value": "1", "reverted": false,
+		}})
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/erc20-transfers", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, []any{addressTokenTransfer("erc20", "transfer")})
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/nft-transfers", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress {
+			writeNotFound(response)
+			return
+		}
+		transfer := addressTokenTransfer("erc1155", "mint")
+		transfer["from"] = nil
+		transfer["token_id"] = "1"
+		writeEnvelope(response, []any{transfer})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/nfts", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {
@@ -338,9 +381,20 @@ func block(number, hash, parent string, canonical bool, finality string, transac
 func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 	return map[string]any{
 		"hash": hash, "block_hash": blockHash, "block_number": blockNumber, "transaction_index": 0,
-		"from": testAddress, "to": testAddress, "nonce": "1", "value": "900719925474099312345",
+		"block_timestamp": "2026-01-01T00:00:00Z",
+		"from":            testAddress, "to": testAddress, "nonce": "1", "value": "900719925474099312345",
 		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
+	}
+}
+
+func addressTokenTransfer(standard, kind string) map[string]any {
+	return map[string]any{
+		"block_number": "2", "block_hash": secondHash, "block_timestamp": "2026-01-01T00:00:00Z",
+		"transaction_hash": testTransactionHash, "transaction_index": "0",
+		"log_index": "0", "sub_index": "0", "token_address": testAddress,
+		"standard": standard, "kind": kind, "from": testAddress, "to": testAddress,
+		"amount": "1", "confidence": "verified",
 	}
 }
 

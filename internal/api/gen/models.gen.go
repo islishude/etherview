@@ -33,6 +33,48 @@ func (e AddressSummaryType) Valid() bool {
 	}
 }
 
+// Defines values for AddressTokenTransferKind.
+const (
+	Burn     AddressTokenTransferKind = "burn"
+	Mint     AddressTokenTransferKind = "mint"
+	Transfer AddressTokenTransferKind = "transfer"
+)
+
+// Valid indicates whether the value is a known member of the AddressTokenTransferKind enum.
+func (e AddressTokenTransferKind) Valid() bool {
+	switch e {
+	case Burn:
+		return true
+	case Mint:
+		return true
+	case Transfer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AddressTokenTransferStandard.
+const (
+	AddressTokenTransferStandardErc1155 AddressTokenTransferStandard = "erc1155"
+	AddressTokenTransferStandardErc20   AddressTokenTransferStandard = "erc20"
+	AddressTokenTransferStandardErc721  AddressTokenTransferStandard = "erc721"
+)
+
+// Valid indicates whether the value is a known member of the AddressTokenTransferStandard enum.
+func (e AddressTokenTransferStandard) Valid() bool {
+	switch e {
+	case AddressTokenTransferStandardErc1155:
+		return true
+	case AddressTokenTransferStandardErc20:
+		return true
+	case AddressTokenTransferStandardErc721:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingAccess.
 const (
 	ApiKeyOrX402 BillingAccess = "api_key_or_x402"
@@ -703,6 +745,52 @@ type APIError struct {
 // Address A 20-byte address; responses use the EIP-55 checksum form.
 type Address = string
 
+// AddressInternalTransaction defines model for AddressInternalTransaction.
+type AddressInternalTransaction struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity  `json:"block_number"`
+	BlockTimestamp time.Time `json:"block_timestamp"`
+	CallType       string    `json:"call_type"`
+
+	// CreatedAddress A 20-byte address; responses use the EIP-55 checksum form.
+	CreatedAddress *Address `json:"created_address,omitempty"`
+	Depth          int      `json:"depth"`
+	Error          *string  `json:"error,omitempty"`
+
+	// From A 20-byte address; responses use the EIP-55 checksum form.
+	From *Address `json:"from,omitempty"`
+
+	// Gas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Gas *Quantity `json:"gas,omitempty"`
+
+	// GasUsed A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	GasUsed  *Quantity `json:"gas_used,omitempty"`
+	Input    *string   `json:"input,omitempty"`
+	Path     []int     `json:"path"`
+	Reverted bool      `json:"reverted"`
+
+	// To A 20-byte address; responses use the EIP-55 checksum form.
+	To *Address `json:"to,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+
+	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Value *Quantity `json:"value,omitempty"`
+}
+
+// AddressInternalTransactionListResponse defines model for AddressInternalTransactionListResponse.
+type AddressInternalTransactionListResponse struct {
+	Data []AddressInternalTransaction `json:"data"`
+	Meta Meta                         `json:"meta"`
+}
+
 // AddressResponse defines model for AddressResponse.
 type AddressResponse struct {
 	Data AddressSummary `json:"data"`
@@ -732,6 +820,58 @@ type AddressSummary struct {
 
 // AddressSummaryType defines model for AddressSummary.Type.
 type AddressSummaryType string
+
+// AddressTokenTransfer defines model for AddressTokenTransfer.
+type AddressTokenTransfer struct {
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount *Quantity `json:"amount,omitempty"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity  `json:"block_number"`
+	BlockTimestamp time.Time `json:"block_timestamp"`
+	Confidence     string    `json:"confidence"`
+
+	// From A 20-byte address; responses use the EIP-55 checksum form.
+	From *Address                 `json:"from,omitempty"`
+	Kind AddressTokenTransferKind `json:"kind"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity                     `json:"log_index"`
+	Standard AddressTokenTransferStandard `json:"standard"`
+
+	// SubIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SubIndex Quantity `json:"sub_index"`
+
+	// To A 20-byte address; responses use the EIP-55 checksum form.
+	To *Address `json:"to,omitempty"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress Address `json:"token_address"`
+
+	// TokenId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TokenId *Quantity `json:"token_id,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// AddressTokenTransferKind defines model for AddressTokenTransfer.Kind.
+type AddressTokenTransferKind string
+
+// AddressTokenTransferStandard defines model for AddressTokenTransfer.Standard.
+type AddressTokenTransferStandard string
+
+// AddressTokenTransferListResponse defines model for AddressTokenTransferListResponse.
+type AddressTokenTransferListResponse struct {
+	Data []AddressTokenTransfer `json:"data"`
+	Meta Meta                   `json:"meta"`
+}
 
 // AdminUserUpdate defines model for AdminUserUpdate.
 type AdminUserUpdate struct {
@@ -1956,8 +2096,44 @@ type GetAddressParams struct {
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
+// ListAddressERC20TransfersParams defines parameters for ListAddressERC20Transfers.
+type ListAddressERC20TransfersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressInternalTransactionsParams defines parameters for ListAddressInternalTransactions.
+type ListAddressInternalTransactionsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressNFTTransfersParams defines parameters for ListAddressNFTTransfers.
+type ListAddressNFTTransfersParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
 // ListAddressNFTBalancesParams defines parameters for ListAddressNFTBalances.
 type ListAddressNFTBalancesParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressTransactionsParams defines parameters for ListAddressTransactions.
+type ListAddressTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 

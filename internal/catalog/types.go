@@ -125,6 +125,63 @@ type TokenEventPage struct {
 	Snapshot   Snapshot
 }
 
+type AddressActivityRequest struct {
+	ChainID string
+	Address string
+	Cursor  string
+	Limit   int
+}
+
+type AddressInternalTransaction struct {
+	BlockNumber      string
+	BlockHash        string
+	BlockTimestamp   time.Time
+	TransactionHash  string
+	TransactionIndex string
+	Path             []uint32
+	Depth            uint32
+	CallType         string
+	From             *string
+	To               *string
+	CreatedAddress   *string
+	Value            *string
+	Gas              *string
+	GasUsed          *string
+	Input            *string
+	Error            *string
+	Reverted         bool
+}
+
+type AddressInternalTransactionPage struct {
+	Items      []AddressInternalTransaction
+	NextCursor string
+	Snapshot   Snapshot
+}
+
+type AddressTokenTransfer struct {
+	BlockNumber      string
+	BlockHash        string
+	BlockTimestamp   time.Time
+	TransactionHash  string
+	TransactionIndex string
+	LogIndex         string
+	SubIndex         string
+	TokenAddress     string
+	Standard         string
+	Kind             string
+	From             *string
+	To               *string
+	TokenID          *string
+	Amount           *string
+	Confidence       string
+}
+
+type AddressTokenTransferPage struct {
+	Items      []AddressTokenTransfer
+	NextCursor string
+	Snapshot   Snapshot
+}
+
 type NFTOwnership struct {
 	ChainID      string
 	TokenAddress string

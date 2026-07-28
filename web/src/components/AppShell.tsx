@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { usePublicConfig } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthProvider";
+import etherviewMark from "@/assets/etherview-mark.svg";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
@@ -35,9 +36,7 @@ export function AppShell() {
       <header className="site-header">
         <div className="header-primary shell-width">
           <Link className="brand" to="/" aria-label="Etherview home">
-            <span className="brand-mark" aria-hidden="true">
-              E
-            </span>
+            <img alt="" aria-hidden="true" className="brand-mark" src={etherviewMark} />
             <span>
               <strong>Etherview</strong>
               <small>{publicConfig.data?.chain_name ?? t("app.tagline")}</small>

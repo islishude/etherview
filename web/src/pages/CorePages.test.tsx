@@ -789,6 +789,92 @@ describe("core explorer pages", () => {
     expect(within(detailNativeBalanceRow).getByText("1")).toBeVisible();
   });
 
+  it("loads address activity tabs on demand and exposes contracts without summary hashes", async () => {
+    const requestedPaths: string[] = [];
+    const createdAddress = `0x${"55".repeat(20)}`;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${address}`) {
+        return envelope({
+          address,
+          name: "Activity contract",
+          type: "contract",
+          balance: "1000000000000000000",
+          nonce: "7",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          code_hash: olderHash,
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${address}/transactions`) {
+        return envelope([{
+          hash: transactionHash,
+          status: "success",
+          block_hash: canonicalHash,
+          block_number: "12",
+          block_timestamp: "2026-07-28T08:00:00Z",
+          from: address,
+          to: address,
+          transaction_index: 0,
+          nonce: "7",
+          value: "1000000000000000000",
+          gas: "21000",
+          input: "0x",
+          completeness: completeness(),
+          finality: "safe",
+          canonical: true,
+        }]);
+      }
+      if (url.pathname === `/api/v1/addresses/${address}/internal-transactions`) {
+        return envelope([{
+          block_hash: canonicalHash,
+          block_number: "12",
+          block_timestamp: "2026-07-28T08:00:00Z",
+          transaction_hash: transactionHash,
+          transaction_index: "0",
+          path: [0],
+          depth: 1,
+          call_type: "create",
+          from: address,
+          created_address: createdAddress,
+          value: "2",
+          reverted: false,
+        }]);
+      }
+      if (url.pathname === `/api/v1/addresses/${address}/nfts`) {
+        return envelope([]);
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${address}`);
+
+    expect(await screen.findByRole("link", { name: "Contract" })).toHaveAttribute(
+      "href",
+      `/contract/${address}?code_hash=${olderHash}`,
+    );
+    expect(screen.queryByText("Data completeness")).not.toBeInTheDocument();
+    expect(screen.queryByText("Code hash")).not.toBeInTheDocument();
+    expect(screen.queryByText("State block hash")).not.toBeInTheDocument();
+    expect(await screen.findByText("SELF")).toBeVisible();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/transactions`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/internal-transactions`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Internal Transactions" }));
+    expect(await screen.findByText("Created address")).toBeVisible();
+    expect(screen.getByText("OUT")).toBeVisible();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/internal-transactions`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
+
+    await user.click(screen.getByRole("link", { name: "Assets" }));
+    expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
+  });
+
   it("renders ETH-formatted values on transactions list", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestURL(input).pathname;

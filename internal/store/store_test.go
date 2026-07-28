@@ -301,7 +301,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -312,6 +312,8 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			abiSQL = migration.SQL
 		case "0021_sync_status_writer_lease":
 			statusWriterSQL = migration.SQL
+		case "0026_address_activity_indexes":
+			addressActivitySQL = migration.SQL
 		}
 	}
 	for _, fragment := range []string{
@@ -353,6 +355,18 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 	} {
 		if !strings.Contains(statusWriterSQL, fragment) {
 			t.Errorf("sync status writer migration missing %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"transaction_inclusions_from_address_idx",
+		"lower(raw->>'from')",
+		"transaction_inclusions_to_address_idx",
+		"receipts_contract_address_idx",
+		"normalized_traces_created_idx",
+		"WHERE canonical AND created_address IS NOT NULL",
+	} {
+		if !strings.Contains(addressActivitySQL, fragment) {
+			t.Errorf("address activity migration missing %q", fragment)
 		}
 	}
 	var mempoolSQL string

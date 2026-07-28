@@ -32,6 +32,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
 | P50-T07 | done        | P50-T02, P60-T03 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
 | P50-T08 | done        | P50-T06       | Persistent transaction copy controls and receipt-backed creation address | query/frontend regressions and generation checks |
+| P50-T09 | done        | P50-T02       | Compact home, relative recent-block time, and shared brand icon          | frontend, embedded E2E, and generation checks |
+| P50-T10 | done        | P40-T08       | Address activity tabs, lazy assets, and contract-address entry           | frontend, embedded E2E, and generation checks |
 
 ## Acceptance
 
@@ -54,6 +56,40 @@ None.
 
 ## Evidence
 
+- P50-T10: the address summary now contains only address, name, account type,
+  native balance, and nonce. Five query-string-addressable sections expose
+  transactions, internal transactions, ERC-20 transfers, NFT transfers, and
+  lazy NFT assets with independent cursor histories. Only the active section
+  requests data; activity first pages refresh every two seconds while cursor
+  history pages stay fixed. Contract accounts receive a code-hash-prefilled
+  link to the existing contract page without rendering the hash in the address
+  summary; EOAs do not.
+- P50-T10: frontend lint, all 18 Vitest files (138 tests), production build,
+  and `make generate-check` passed. The embedded E2E fallback
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` passed
+  all 8 flows, covering contract and EOA addresses, direct tab links,
+  browser-history navigation, English/Chinese, light/dark, keyboard access,
+  390-pixel containment, and WCAG scanning. The ordinary installed-Chrome run
+  could not launch under the host's Mach bootstrap sandbox; the documented
+  bundled fallback completed successfully. The full `make check` sequence
+  passed through generation, plan, lint, ordinary/race tests, security, and
+  licenses; its sandboxed Buildx activity-file write was rerun successfully
+  outside the filesystem sandbox, followed by passing Compose and Helm gates.
+- P50-T09: the home page removes its hero and dedicated responsive artwork,
+  starts directly with live chain metrics, and renders recent-block ages from
+  a one-second localized clock without changing absolute timestamps elsewhere.
+  The header and browser favicon share one content-hashed SVG block-shaped `E`
+  mark served by the embedded Go handler with SVG MIME, immutable caching, and
+  the standard security headers.
+- P50-T09: focused Vitest passes 2 files and 20 tests; the full frontend suite
+  passes 18 files and 137 tests. `npm --prefix web run lint`,
+  `npm --prefix web run build`, `go test ./web -count=1`,
+  `make generate-check`, and
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` pass,
+  with all 8 embedded-distribution browser flows green. In-app browser checks
+  at desktop and 390x844 confirm zero horizontal overflow, no hero, live
+  Chinese/English relative time, the 34-pixel mark, and clean light/dark
+  rendering with no console warnings or errors.
 - P50-T08: the native transaction contract exposes an optional checksummed
   `contract_address` only when the validated stored receipt names a successful
   top-level creation. The transaction overview keeps all hash/address/input

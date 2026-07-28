@@ -504,6 +504,98 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /addresses/{address}/transactions:
+    get:
+      operationId: listAddressTransactions
+      tags: [addresses, transactions]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical top-level transactions involving the address, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/internal-transactions:
+    get:
+      operationId: listAddressInternalTransactions
+      tags: [addresses, transactions, traces]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical non-root trace frames involving the address, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressInternalTransactionListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/erc20-transfers:
+    get:
+      operationId: listAddressERC20Transfers
+      tags: [addresses, tokens, transactions]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical ERC-20 transfers involving the address, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressTokenTransferListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/nft-transfers:
+    get:
+      operationId: listAddressNFTTransfers
+      tags: [addresses, tokens, nfts, transactions]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical ERC-721 and ERC-1155 transfers involving the address, newest first.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressTokenTransferListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}/nfts:
     get:
       operationId: listAddressNFTBalances
@@ -2065,6 +2157,107 @@ components:
           type: string
         reverted:
           type: boolean
+    AddressInternalTransaction:
+      type: object
+      required:
+        - block_number
+        - block_hash
+        - block_timestamp
+        - transaction_hash
+        - transaction_index
+        - path
+        - depth
+        - call_type
+        - reverted
+      properties:
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        path:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        depth:
+          type: integer
+          minimum: 1
+        call_type:
+          type: string
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        created_address:
+          $ref: "#/components/schemas/Address"
+        value:
+          $ref: "#/components/schemas/Quantity"
+        gas:
+          $ref: "#/components/schemas/Quantity"
+        gas_used:
+          $ref: "#/components/schemas/Quantity"
+        input:
+          type: string
+          pattern: '^0x[0-9a-fA-F]*$'
+        error:
+          type: string
+        reverted:
+          type: boolean
+    AddressTokenTransfer:
+      type: object
+      required:
+        - block_number
+        - block_hash
+        - block_timestamp
+        - transaction_hash
+        - transaction_index
+        - log_index
+        - sub_index
+        - token_address
+        - standard
+        - kind
+        - confidence
+      properties:
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        sub_index:
+          $ref: "#/components/schemas/Quantity"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        standard:
+          type: string
+          enum: [erc20, erc721, erc1155]
+        kind:
+          type: string
+          enum: [transfer, mint, burn]
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          type: string
     TransactionTrace:
       type: object
       required:
@@ -2536,6 +2729,26 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AddressSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AddressInternalTransactionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressInternalTransaction"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AddressTokenTransferListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressTokenTransfer"
         meta:
           $ref: "#/components/schemas/Meta"
     GenesisAccountListResponse:

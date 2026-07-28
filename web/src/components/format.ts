@@ -12,6 +12,39 @@ export function formatTimestamp(value: string, locale: string): string {
   }).format(date);
 }
 
+export function formatRelativeTimestamp(
+  value: string,
+  locale: string,
+  now = Date.now(),
+): string {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return value;
+
+  const deltaMilliseconds = timestamp - now;
+  const absoluteMilliseconds = Math.abs(deltaMilliseconds);
+  let divisor = 1_000;
+  let unit: Intl.RelativeTimeFormatUnit = "second";
+
+  if (absoluteMilliseconds >= 86_400_000) {
+    divisor = 86_400_000;
+    unit = "day";
+  } else if (absoluteMilliseconds >= 3_600_000) {
+    divisor = 3_600_000;
+    unit = "hour";
+  } else if (absoluteMilliseconds >= 60_000) {
+    divisor = 60_000;
+    unit = "minute";
+  }
+
+  const relativeValue = deltaMilliseconds === 0
+    ? -0
+    : Math.trunc(deltaMilliseconds / divisor);
+  return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(
+    relativeValue,
+    unit,
+  );
+}
+
 export function formatInteger(value?: string | number | bigint, locale?: string): string {
   if (value === undefined || value === null || value === "") return "—";
   try {

@@ -14,7 +14,11 @@ import { useTranslation } from "react-i18next";
 import { getAddress, isAddress, toHex, type Hex } from "viem";
 
 import {
+  useAddressERC20Transfers,
+  useAddressInternalTransactions,
   useAddressNFTBalances,
+  useAddressNFTTransfers,
+  useAddressTransactions,
   useAggregateStats,
   useAddress,
   useBlock,
@@ -40,6 +44,8 @@ import {
 } from "@/api/hooks";
 import type {
   AggregateStats,
+  AddressInternalTransaction,
+  AddressTokenTransfer,
   BlockStat,
   BlockSummary,
   ChainStatus,
@@ -56,6 +62,7 @@ import {
   formatGweiFromWei,
   formatInteger,
   formatNativeAmount,
+  formatRelativeTimestamp,
   formatTimestamp,
   shorten,
 } from "@/components/format";
@@ -132,26 +139,16 @@ export function HomePage() {
   const status = useChainStatus();
   const blocks = useBlocks(6);
   const transactions = useTransactions(6);
+  const [relativeNow, setRelativeNow] = useState(() => Date.now());
   const locale = i18n.resolvedLanguage ?? "en";
+
+  useEffect(() => {
+    const intervalID = window.setInterval(() => setRelativeNow(Date.now()), 1_000);
+    return () => window.clearInterval(intervalID);
+  }, []);
 
   return (
     <div className="page-stack">
-      <section className="hero">
-        <div className="hero-copy">
-          <span className="eyebrow">{t("home.eyebrow")}</span>
-          <h1>{t("home.title")}</h1>
-          <p>{t("home.description")}</p>
-        </div>
-        <div className="chain-orbit" aria-hidden="true">
-          <span className="orbit-ring outer" />
-          <span className="orbit-ring inner" />
-          <span className="orbit-core">E</span>
-          <span className="orbit-node one" />
-          <span className="orbit-node two" />
-          <span className="orbit-node three" />
-        </div>
-      </section>
-
       <QueryNotice loading={status.isPending} error={status.error} />
 
       <section className="metrics-grid" aria-label={t("home.metrics")}>
@@ -175,7 +172,7 @@ export function HomePage() {
             <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
           )}
           {blocks.data?.items.map((block) => (
-            <BlockRow block={block} key={block.hash} locale={locale} />
+            <BlockRow block={block} key={block.hash} locale={locale} now={relativeNow} />
           ))}
         </section>
         <section className="panel activity-panel" aria-labelledby="recent-transactions-title">
@@ -217,7 +214,15 @@ function PanelHeading({ id, title, to }: { id: string; title: string; to: "/bloc
   );
 }
 
-function BlockRow({ block, locale }: { block: BlockSummary; locale: string }) {
+function BlockRow({
+  block,
+  locale,
+  now,
+}: {
+  block: BlockSummary;
+  locale: string;
+  now: number;
+}) {
   const { t } = useTranslation();
   return (
     <div className="activity-row">
@@ -228,7 +233,11 @@ function BlockRow({ block, locale }: { block: BlockSummary; locale: string }) {
         <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
           #{formatInteger(block.number, locale)}
         </Link>
-        <small>{formatTimestamp(block.timestamp, locale)}</small>
+        <small>
+          <time dateTime={block.timestamp}>
+            {formatRelativeTimestamp(block.timestamp, locale, now)}
+          </time>
+        </small>
       </span>
       <span className="activity-meta">
         <strong>{formatInteger(block.transaction_count, locale)}</strong>
@@ -557,11 +566,13 @@ export function EntityPage({
   identifier,
   secondary,
   transactionTab,
+  addressTab,
 }: {
   kind: EntityKind;
   identifier: string;
   secondary?: string;
   transactionTab?: string;
+  addressTab?: string;
 }) {
   switch (kind) {
     case "block":
@@ -569,7 +580,7 @@ export function EntityPage({
     case "transaction":
       return <TransactionDetailPage hash={identifier} tab={transactionTab ?? "overview"} />;
     case "address":
-      return <AddressDetailPage address={identifier} />;
+      return <AddressDetailPage address={identifier} tab={addressTab ?? "transactions"} />;
     case "token":
       return <TokenDetailPage address={identifier} />;
     case "nft":
@@ -1071,16 +1082,56 @@ function transactionActionLabel(transaction: TransactionSummary, t: Translate): 
   return t("detail.actionNativeTransfer");
 }
 
-function AddressDetailPage({ address }: { address: string }) {
+type AddressTab =
+  | "transactions"
+  | "internal-transactions"
+  | "erc20-transfers"
+  | "nft-transfers"
+  | "assets";
+
+function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const { i18n, t } = useTranslation();
+  const activeTab = isAddressTab(tab) ? tab : "transactions";
+  const transactionPager = useCursorHistory(`address-transactions:${address}`);
+  const internalPager = useCursorHistory(`address-internal-transactions:${address}`);
+  const erc20Pager = useCursorHistory(`address-erc20-transfers:${address}`);
+  const nftTransferPager = useCursorHistory(`address-nft-transfers:${address}`);
   const nftPager = useCursorHistory(`address-nfts:${address}`);
   const account = useAddress(address);
+  const transactions = useAddressTransactions(
+    address,
+    transactionPager.cursor,
+    CORE_PAGE_SIZE,
+    transactionPager.refreshGeneration,
+    activeTab === "transactions" && isAddress(address),
+  );
+  const internalTransactions = useAddressInternalTransactions(
+    address,
+    internalPager.cursor,
+    CORE_PAGE_SIZE,
+    internalPager.refreshGeneration,
+    activeTab === "internal-transactions" && isAddress(address),
+  );
+  const erc20Transfers = useAddressERC20Transfers(
+    address,
+    erc20Pager.cursor,
+    CORE_PAGE_SIZE,
+    erc20Pager.refreshGeneration,
+    activeTab === "erc20-transfers" && isAddress(address),
+  );
+  const nftTransfers = useAddressNFTTransfers(
+    address,
+    nftTransferPager.cursor,
+    CORE_PAGE_SIZE,
+    nftTransferPager.refreshGeneration,
+    activeTab === "nft-transfers" && isAddress(address),
+  );
   const nfts = useAddressNFTBalances(
     address,
     nftPager.cursor,
     CORE_PAGE_SIZE,
     nftPager.refreshGeneration,
-    isAddress(address),
+    activeTab === "assets" && isAddress(address),
   );
   const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
@@ -1100,49 +1151,483 @@ function AddressDetailPage({ address }: { address: string }) {
               value={formatNativeAmount(account.data.balance, locale, nativeDecimals)}
             />
             <Detail label={t("detail.nonce")} value={formatInteger(account.data.nonce, locale)} />
-            <Detail
-              label={t("detail.atBlock")}
-              mono
-              value={(
-                <Link to="/blocks/$blockID" params={{ blockID: account.data.at_block }}>
-                  {account.data.at_block}
-                </Link>
-              )}
-            />
-            <Detail
-              label={t("detail.codeHash")}
-              mono
-              value={account.data.code_hash ? (
-                <Link
-                  to="/contract/$address"
-                  params={{ address: account.data.address }}
-                  search={{ code_hash: account.data.code_hash }}
-                >
-                  {account.data.code_hash}
-                </Link>
-              ) : undefined}
-            />
           </DetailList>
           <p className="context-note" role="note">{t("context.addressSnapshot")}</p>
-          <CompletenessPanel completeness={account.data.completeness} />
         </>
       )}
-      <AddressNFTBalances
-        balances={nfts.data?.items}
-        busy={nfts.isFetching}
-        coverageEnd={nfts.data?.meta.coverage_end}
-        error={nfts.error}
-        hasNext={Boolean(nfts.data?.next_cursor)}
-        loading={nfts.isPending}
-        locale={locale}
-        onNext={() => nftPager.next(nfts.data?.next_cursor)}
-        onPrevious={nftPager.previous}
-        onReset={nftPager.reset}
-        page={nftPager.page}
-        hasPrevious={nftPager.hasPrevious}
-      />
+      <nav className="transaction-tabs" aria-label={t("detail.addressSections")}>
+        {([
+          ["transactions", t("addressTab.transactions")],
+          ["internal-transactions", t("addressTab.internalTransactions")],
+          ["erc20-transfers", t("addressTab.erc20Transfers")],
+          ["nft-transfers", t("addressTab.nftTransfers")],
+          ["assets", t("addressTab.assets")],
+        ] as const).map(([tabID, label]) => (
+          <Link
+            key={tabID}
+            className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+            to="/address/$address"
+            params={{ address }}
+            search={{ tab: tabID }}
+            aria-current={activeTab === tabID ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+        {account.data?.type === "contract" && account.data.code_hash ? (
+          <Link
+            className="transaction-tab contract-entry"
+            to="/contract/$address"
+            params={{ address: account.data.address }}
+            search={{ code_hash: account.data.code_hash }}
+          >
+            {t("addressTab.contract")}
+          </Link>
+        ) : null}
+      </nav>
+      {activeTab === "transactions" && (
+        <AddressTransactions
+          address={address}
+          busy={transactions.isFetching}
+          error={transactions.error}
+          hasNext={Boolean(transactions.data?.next_cursor)}
+          items={transactions.data?.items}
+          loading={transactions.isPending}
+          locale={locale}
+          nativeDecimals={nativeDecimals}
+          onNext={() => transactionPager.next(transactions.data?.next_cursor)}
+          onPrevious={transactionPager.previous}
+          onReset={transactionPager.reset}
+          page={transactionPager.page}
+          hasPrevious={transactionPager.hasPrevious}
+        />
+      )}
+      {activeTab === "internal-transactions" && (
+        <AddressInternalTransactions
+          address={address}
+          busy={internalTransactions.isFetching}
+          error={internalTransactions.error}
+          hasNext={Boolean(internalTransactions.data?.next_cursor)}
+          items={internalTransactions.data?.items}
+          loading={internalTransactions.isPending}
+          locale={locale}
+          nativeDecimals={nativeDecimals}
+          onNext={() => internalPager.next(internalTransactions.data?.next_cursor)}
+          onPrevious={internalPager.previous}
+          onReset={internalPager.reset}
+          page={internalPager.page}
+          hasPrevious={internalPager.hasPrevious}
+        />
+      )}
+      {activeTab === "erc20-transfers" && (
+        <AddressTokenTransfers
+          address={address}
+          busy={erc20Transfers.isFetching}
+          error={erc20Transfers.error}
+          hasNext={Boolean(erc20Transfers.data?.next_cursor)}
+          items={erc20Transfers.data?.items}
+          loading={erc20Transfers.isPending}
+          locale={locale}
+          onNext={() => erc20Pager.next(erc20Transfers.data?.next_cursor)}
+          onPrevious={erc20Pager.previous}
+          onReset={erc20Pager.reset}
+          page={erc20Pager.page}
+          hasPrevious={erc20Pager.hasPrevious}
+          title={t("addressTab.erc20Transfers")}
+        />
+      )}
+      {activeTab === "nft-transfers" && (
+        <AddressTokenTransfers
+          address={address}
+          busy={nftTransfers.isFetching}
+          error={nftTransfers.error}
+          hasNext={Boolean(nftTransfers.data?.next_cursor)}
+          items={nftTransfers.data?.items}
+          loading={nftTransfers.isPending}
+          locale={locale}
+          onNext={() => nftTransferPager.next(nftTransfers.data?.next_cursor)}
+          onPrevious={nftTransferPager.previous}
+          onReset={nftTransferPager.reset}
+          page={nftTransferPager.page}
+          hasPrevious={nftTransferPager.hasPrevious}
+          title={t("addressTab.nftTransfers")}
+        />
+      )}
+      {activeTab === "assets" && (
+        <AddressNFTBalances
+          balances={nfts.data?.items}
+          busy={nfts.isFetching}
+          coverageEnd={nfts.data?.meta.coverage_end}
+          error={nfts.error}
+          hasNext={Boolean(nfts.data?.next_cursor)}
+          loading={nfts.isPending}
+          locale={locale}
+          onNext={() => nftPager.next(nfts.data?.next_cursor)}
+          onPrevious={nftPager.previous}
+          onReset={nftPager.reset}
+          page={nftPager.page}
+          hasPrevious={nftPager.hasPrevious}
+        />
+      )}
     </Page>
   );
+}
+
+function isAddressTab(tab: string): tab is AddressTab {
+  return [
+    "transactions",
+    "internal-transactions",
+    "erc20-transfers",
+    "nft-transfers",
+    "assets",
+  ].includes(tab);
+}
+
+interface AddressActivityProps {
+  address: string;
+  busy: boolean;
+  error: unknown;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  loading: boolean;
+  locale: string;
+  onNext: () => void;
+  onPrevious: () => void;
+  onReset: () => void;
+  page: number;
+}
+
+function AddressTransactions({
+  address,
+  busy,
+  error,
+  hasNext,
+  hasPrevious,
+  items,
+  loading,
+  locale,
+  nativeDecimals,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+}: AddressActivityProps & { items?: TransactionSummary[]; nativeDecimals: number }) {
+  const { t } = useTranslation();
+  return (
+    <AddressActivitySection
+      busy={busy}
+      error={error}
+      hasNext={hasNext}
+      hasPrevious={hasPrevious}
+      loading={loading}
+      onNext={onNext}
+      onPrevious={onPrevious}
+      onReset={onReset}
+      page={page}
+      title={t("addressTab.transactions")}
+      empty={items?.length === 0}
+    >
+      {items && items.length > 0 ? (
+        <AddressActivityTable label={t("addressTab.transactions")}>
+          {items.map((transaction) => {
+            const destination = transaction.to ?? transaction.contract_address;
+            return (
+              <tr key={`${transaction.block_hash}:${transaction.hash}`}>
+                <ActivityIdentity
+                  blockNumber={transaction.block_number}
+                  hash={transaction.hash}
+                  timestamp={transaction.block_timestamp}
+                  locale={locale}
+                />
+                <AddressCell address={transaction.from} />
+                <DirectionCell
+                  direction={addressDirection(address, transaction.from, destination)}
+                />
+                <AddressCell address={destination} created={!transaction.to && Boolean(destination)} />
+                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
+              </tr>
+            );
+          })}
+        </AddressActivityTable>
+      ) : null}
+    </AddressActivitySection>
+  );
+}
+
+function AddressInternalTransactions({
+  address,
+  busy,
+  error,
+  hasNext,
+  hasPrevious,
+  items,
+  loading,
+  locale,
+  nativeDecimals,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+}: AddressActivityProps & { items?: AddressInternalTransaction[]; nativeDecimals: number }) {
+  const { t } = useTranslation();
+  return (
+    <AddressActivitySection
+      busy={busy}
+      error={error}
+      hasNext={hasNext}
+      hasPrevious={hasPrevious}
+      loading={loading}
+      onNext={onNext}
+      onPrevious={onPrevious}
+      onReset={onReset}
+      page={page}
+      title={t("addressTab.internalTransactions")}
+      empty={items?.length === 0}
+    >
+      {items && items.length > 0 ? (
+        <AddressActivityTable label={t("addressTab.internalTransactions")} action>
+          {items.map((transaction) => {
+            const destination = transaction.created_address ?? transaction.to;
+            return (
+              <tr key={`${transaction.block_hash}:${transaction.transaction_hash}:${transaction.path.join(".")}`}>
+                <ActivityIdentity
+                  blockNumber={transaction.block_number}
+                  hash={transaction.transaction_hash}
+                  timestamp={transaction.block_timestamp}
+                  locale={locale}
+                />
+                <td>
+                  <span className="table-primary">
+                    {transaction.call_type}
+                    {transaction.reverted ? <small>{t("activity.reverted")}</small> : null}
+                  </span>
+                </td>
+                <AddressCell address={transaction.from} />
+                <DirectionCell
+                  direction={addressDirection(address, transaction.from, destination)}
+                />
+                <AddressCell address={destination} created={Boolean(transaction.created_address)} />
+                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
+              </tr>
+            );
+          })}
+        </AddressActivityTable>
+      ) : null}
+    </AddressActivitySection>
+  );
+}
+
+function AddressTokenTransfers({
+  address,
+  busy,
+  error,
+  hasNext,
+  hasPrevious,
+  items,
+  loading,
+  locale,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+  title,
+}: AddressActivityProps & { items?: AddressTokenTransfer[]; title: string }) {
+  const { t } = useTranslation();
+  return (
+    <AddressActivitySection
+      busy={busy}
+      error={error}
+      hasNext={hasNext}
+      hasPrevious={hasPrevious}
+      loading={loading}
+      onNext={onNext}
+      onPrevious={onPrevious}
+      onReset={onReset}
+      page={page}
+      title={title}
+      empty={items?.length === 0}
+    >
+      {items && items.length > 0 ? (
+        <AddressActivityTable label={title} token>
+          {items.map((transfer) => (
+            <tr key={`${transfer.block_hash}:${transfer.transaction_hash}:${transfer.log_index}:${transfer.sub_index}`}>
+              <ActivityIdentity
+                blockNumber={transfer.block_number}
+                hash={transfer.transaction_hash}
+                timestamp={transfer.block_timestamp}
+                locale={locale}
+              />
+              <td>
+                <span className="table-primary">
+                  <Link to="/token/$address" params={{ address: transfer.token_address }}>
+                    <code>{shorten(transfer.token_address)}</code>
+                  </Link>
+                  <small>{tokenStandardLabel(transfer.standard, t)}</small>
+                </span>
+              </td>
+              <AddressCell address={transfer.from} />
+              <DirectionCell direction={addressDirection(address, transfer.from, transfer.to)} />
+              <AddressCell address={transfer.to} />
+              <td>
+                <span className="table-primary">
+                  <code>
+                    {transfer.amount !== undefined
+                      ? formatInteger(transfer.amount, locale)
+                      : transfer.token_id !== undefined ? `#${transfer.token_id}` : "—"}
+                  </code>
+                  {transfer.amount !== undefined && transfer.token_id !== undefined
+                    ? <small>#{transfer.token_id}</small>
+                    : null}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </AddressActivityTable>
+      ) : null}
+    </AddressActivitySection>
+  );
+}
+
+function AddressActivitySection({
+  busy,
+  children,
+  empty,
+  error,
+  hasNext,
+  hasPrevious,
+  loading,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+  title,
+}: Omit<AddressActivityProps, "address" | "locale"> & {
+  children: React.ReactNode;
+  empty: boolean;
+  title: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="detail-section address-activity" aria-label={title}>
+      <QueryNotice loading={loading} error={error} onReset={onReset} />
+      {empty ? <p className="empty-result" role="status">{t("state.noAddressActivity")}</p> : null}
+      {children}
+      {!loading && !error ? (
+        <CursorPagination
+          busy={busy}
+          hasNext={hasNext}
+          hasPrevious={hasPrevious}
+          label={t("pagination.addressActivity")}
+          onNext={onNext}
+          onPrevious={onPrevious}
+          page={page}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function AddressActivityTable({
+  action,
+  children,
+  label,
+  token,
+}: {
+  action?: boolean;
+  children: React.ReactNode;
+  label: string;
+  token?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="table-scroll" tabIndex={0} aria-label={label}>
+      <table className="address-activity-table">
+        <caption className="sr-only">{label}</caption>
+        <thead>
+          <tr>
+            <th>{t("table.hash")}</th>
+            <th>{t("table.block")}</th>
+            <th>{t("table.age")}</th>
+            {action ? <th>{t("table.action")}</th> : null}
+            {token ? <th>{t("table.token")}</th> : null}
+            <th>{t("table.from")}</th>
+            <th>{t("table.direction")}</th>
+            <th>{t("table.to")}</th>
+            <th>{token ? t("detail.amountOrTokenID") : t("detail.amount")}</th>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function ActivityIdentity({
+  blockNumber,
+  hash,
+  locale,
+  timestamp,
+}: {
+  blockNumber?: string;
+  hash: string;
+  locale: string;
+  timestamp?: string;
+}) {
+  return (
+    <>
+      <td>
+        <Link to="/tx/$hash" params={{ hash }} search={{ tab: "overview" }}>
+          <code>{shorten(hash)}</code>
+        </Link>
+      </td>
+      <td>
+        {blockNumber ? (
+          <Link to="/blocks/$blockID" params={{ blockID: blockNumber }}>
+            {formatInteger(blockNumber, locale)}
+          </Link>
+        ) : "—"}
+      </td>
+      <td>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</td>
+    </>
+  );
+}
+
+function AddressCell({ address, created }: { address?: string; created?: boolean }) {
+  const { t } = useTranslation();
+  if (!address) return <td>—</td>;
+  return (
+    <td>
+      <span className="table-primary">
+        <Link to="/address/$address" params={{ address }} search={{ tab: "transactions" }}>
+          <code>{shorten(address)}</code>
+        </Link>
+        {created ? <small>{t("activity.created")}</small> : null}
+      </span>
+    </td>
+  );
+}
+
+function DirectionCell({ direction }: { direction: "in" | "out" | "self" }) {
+  const { t } = useTranslation();
+  return (
+    <td>
+      <span className={`address-direction ${direction}`}>
+        {t(`activity.direction.${direction}`)}
+      </span>
+    </td>
+  );
+}
+
+function addressDirection(
+  address: string,
+  from?: string,
+  destination?: string,
+): "in" | "out" | "self" {
+  const subject = address.toLowerCase();
+  const outgoing = from?.toLowerCase() === subject;
+  const incoming = destination?.toLowerCase() === subject;
+  if (outgoing && incoming) return "self";
+  return outgoing ? "out" : "in";
 }
 
 function AddressNFTBalances({

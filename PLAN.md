@@ -55,7 +55,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   capability surfaces, durable event replay, and the explicit Etherscan V2
   subset pass their contract, race, security, and PostgreSQL coverage
   boundaries, including transaction-scoped logs, token transfers, trace
-  identity, and state-change resources.
+  identity, state-change resources, and snapshot-stable address activity
+  across transactions, internal calls, ERC-20 transfers, and NFT transfers.
 - P50 is complete: core and capability explorer pages, exact verification-job
   and published-artifact reads, EIP-6963 wallet discovery, session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
@@ -65,7 +66,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   new-head wake plus bounded first-page refresh keeps newly indexed blocks and
   transactions visible without disturbing historical cursor pages. P50-T08
   keeps transaction copy controls visible and exposes the validated receipt
-  contract address for successful top-level creations.
+  contract address for successful top-level creations. P50-T09 removes the
+  home hero, localizes live recent-block age, and unifies the header brand mark
+  with the browser favicon. P50-T10 adds address activity tabs with lazy,
+  independent pagination and a contract-only entry to the existing contract
+  page while keeping state identity fields out of the address summary.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

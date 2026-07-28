@@ -3,6 +3,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient, requireEnvelope } from "./client";
 import type {
   AggregateStats,
+  AddressInternalTransaction,
+  AddressTokenTransfer,
   BlockSummary,
   CursorPage,
   GenesisAccount,
@@ -235,6 +237,134 @@ export function useAddress(address: string, enabled = true) {
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
+  });
+}
+
+export function useAddressTransactions(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["address", address, "transactions", cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/transactions", {
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
+  });
+}
+
+export function useAddressInternalTransactions(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["address", address, "internal-transactions", cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<AddressInternalTransaction>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/internal-transactions", {
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
+  });
+}
+
+export function useAddressERC20Transfers(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useAddressTokenActivity(
+    "erc20-transfers",
+    "/addresses/{address}/erc20-transfers",
+    address,
+    cursor,
+    limit,
+    refreshGeneration,
+    enabled,
+  );
+}
+
+export function useAddressNFTTransfers(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useAddressTokenActivity(
+    "nft-transfers",
+    "/addresses/{address}/nft-transfers",
+    address,
+    cursor,
+    limit,
+    refreshGeneration,
+    enabled,
+  );
+}
+
+function useAddressTokenActivity(
+  kind: "erc20-transfers" | "nft-transfers",
+  path:
+    | "/addresses/{address}/erc20-transfers"
+    | "/addresses/{address}/nft-transfers",
+  address: string,
+  cursor: string | undefined,
+  limit: number,
+  refreshGeneration: number,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["address", address, kind, cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<AddressTokenTransfer>> => {
+      const response = requireEnvelope(
+        path === "/addresses/{address}/erc20-transfers"
+          ? await apiClient.GET("/addresses/{address}/erc20-transfers", {
+              params: { path: { address }, query: { limit, cursor } },
+            })
+          : await apiClient.GET("/addresses/{address}/nft-transfers", {
+              params: { path: { address }, query: { limit, cursor } },
+            }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
   });
 }
 

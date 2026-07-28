@@ -603,7 +603,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}.Wrap
 		}
 		handler, err := httpapi.New(httpapi.Options{
-			Config: cfg, Reader: publicReader, Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
+			Config: cfg, Reader: publicReader, AddressActivities: reader,
+			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,

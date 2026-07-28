@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,6 +37,7 @@ describe("embedded explorer shell", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -71,6 +72,8 @@ describe("embedded explorer shell", () => {
   });
 
   it("renders the native OpenAPI response envelopes without shape adapters", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date("2026-01-01T00:01:59Z"));
     const blockHash = `0x${"ab".repeat(32)}`;
     const transactionHash = `0x${"cd".repeat(32)}`;
     const address = `0x${"11".repeat(20)}`;
@@ -166,6 +169,24 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByText("#12")).toBeVisible();
     expect(await screen.findByText("Testnet")).toBeVisible();
     expect(screen.getByText("0xcdcdcd…cdcdcd")).toBeVisible();
+    expect(screen.getByText("1 minute ago")).toBeVisible();
+    expect(document.querySelector(".hero")).not.toBeInTheDocument();
+    expect(screen.queryByText("Follow every block, call and asset movement."))
+      .not.toBeInTheDocument();
+
+    const brand = screen.getByRole("link", { name: "Etherview home" });
+    const brandMark = brand.querySelector("img.brand-mark");
+    expect(brandMark).toHaveAttribute("alt", "");
+    expect(brandMark).toHaveAttribute("aria-hidden", "true");
+    expect(brandMark).toHaveAttribute(
+      "src",
+      expect.stringMatching(/etherview-mark.*\.svg$/),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByText("2 minutes ago")).toBeVisible();
   });
 
   it("keeps contiguous coverage distinct from a higher live-head island", async () => {

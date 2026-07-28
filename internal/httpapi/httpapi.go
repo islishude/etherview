@@ -108,6 +108,16 @@ type GenesisReader interface {
 	GenesisAccounts(context.Context, string, int) ([]gen.GenesisAccount, string, error)
 }
 
+type AddressActivityReader interface {
+	AddressTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error)
+}
+
+type AddressEnrichmentActivityReader interface {
+	AddressInternalTransactions(context.Context, catalog.AddressActivityRequest) (catalog.AddressInternalTransactionPage, error)
+	AddressERC20Transfers(context.Context, catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error)
+	AddressNFTTransfers(context.Context, catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error)
+}
+
 // readinessStatusReader lets a cache-decorated Reader bypass its cache for the
 // readiness decision. A cached success must not hide loss of a configured
 // PostgreSQL reader or writer pool.
@@ -138,6 +148,7 @@ type SourcifyAdapter interface {
 type Options struct {
 	Config                config.Config
 	Reader                Reader
+	AddressActivities     AddressActivityReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
 	Web                   http.Handler
@@ -166,6 +177,8 @@ type Options struct {
 type Handler struct {
 	cfg                   config.Config
 	reader                Reader
+	addressActivities     AddressActivityReader
+	addressEnrichment     AddressEnrichmentActivityReader
 	genesis               GenesisReader
 	catalog               catalog.Reader
 	web                   http.Handler
@@ -213,6 +226,7 @@ func New(options Options) (*Handler, error) {
 	h := &Handler{
 		cfg:                   options.Config,
 		reader:                options.Reader,
+		addressActivities:     options.AddressActivities,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
 		web:                   options.Web,
@@ -237,6 +251,7 @@ func New(options Options) (*Handler, error) {
 		maxVerificationBody:   options.MaxVerificationBody,
 		mux:                   http.NewServeMux(),
 	}
+	h.addressEnrichment, _ = options.Catalog.(AddressEnrichmentActivityReader)
 	if h.maxVerificationBody <= 0 {
 		h.maxVerificationBody = 6 << 20
 	}
@@ -301,6 +316,10 @@ func (h *Handler) routes() {
 		h.handleBillable("listTransactionStateChanges", h.transactionStateChanges)
 	}
 	h.handleBillable("getAddress", h.address)
+	h.handleBillable("listAddressTransactions", h.addressTransactions)
+	h.handleBillable("listAddressInternalTransactions", h.addressInternalTransactions)
+	h.handleBillable("listAddressERC20Transfers", h.addressERC20Transfers)
+	h.handleBillable("listAddressNFTTransfers", h.addressNFTTransfers)
 	if h.catalog != nil {
 		h.handleBillable("listAddressNFTBalances", h.nftBalances)
 		h.handleBillable("listTokens", h.tokens)
@@ -865,6 +884,133 @@ func (h *Handler) address(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.AddressResponse{Data: item, Meta: h.meta(r)})
+}
+
+func (h *Handler) addressTransactions(w http.ResponseWriter, r *http.Request) {
+	address, limit, cursor, ok := h.addressActivityPage(w, r)
+	if !ok {
+		return
+	}
+	if h.addressActivities == nil {
+		h.handleReaderError(w, r, ErrUnavailable)
+		return
+	}
+	items, next, err := h.addressActivities.AddressTransactions(r.Context(), address, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	meta := h.meta(r)
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionListResponse{Data: items, Meta: meta})
+}
+
+func (h *Handler) addressInternalTransactions(w http.ResponseWriter, r *http.Request) {
+	address, limit, cursor, ok := h.addressActivityPage(w, r)
+	if !ok {
+		return
+	}
+	if h.addressEnrichment == nil {
+		h.handleCatalogError(w, r, catalog.StageUnavailableError{
+			Stage: catalog.StageTrace, State: catalog.StageUnavailable,
+		})
+		return
+	}
+	page, err := h.addressEnrichment.AddressInternalTransactions(r.Context(), catalog.AddressActivityRequest{
+		ChainID: h.chainID(), Address: address, Cursor: cursor, Limit: limit,
+	})
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.AddressInternalTransaction, len(page.Items))
+	for index := range page.Items {
+		item := page.Items[index]
+		path := make([]int, len(item.Path))
+		for pathIndex := range item.Path {
+			path[pathIndex] = int(item.Path[pathIndex])
+		}
+		items[index] = gen.AddressInternalTransaction{
+			BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
+			BlockTimestamp: item.BlockTimestamp.UTC(), TransactionHash: item.TransactionHash,
+			TransactionIndex: item.TransactionIndex, Path: path, Depth: int(item.Depth),
+			CallType: item.CallType, From: item.From, To: item.To,
+			CreatedAddress: item.CreatedAddress, Value: item.Value, Gas: item.Gas,
+			GasUsed: item.GasUsed, Input: item.Input, Error: item.Error, Reverted: item.Reverted,
+		}
+	}
+	writeJSON(w, http.StatusOK, gen.AddressInternalTransactionListResponse{
+		Data: items, Meta: h.catalogPageMeta(r, page.NextCursor, page.Snapshot),
+	})
+}
+
+func (h *Handler) addressERC20Transfers(w http.ResponseWriter, r *http.Request) {
+	h.addressTokenTransfers(w, r, false)
+}
+
+func (h *Handler) addressNFTTransfers(w http.ResponseWriter, r *http.Request) {
+	h.addressTokenTransfers(w, r, true)
+}
+
+func (h *Handler) addressTokenTransfers(w http.ResponseWriter, r *http.Request, nft bool) {
+	address, limit, cursor, ok := h.addressActivityPage(w, r)
+	if !ok {
+		return
+	}
+	if h.addressEnrichment == nil {
+		h.handleCatalogError(w, r, catalog.StageUnavailableError{
+			Stage: catalog.StageToken, State: catalog.StageUnavailable,
+		})
+		return
+	}
+	request := catalog.AddressActivityRequest{
+		ChainID: h.chainID(), Address: address, Cursor: cursor, Limit: limit,
+	}
+	var page catalog.AddressTokenTransferPage
+	var err error
+	if nft {
+		page, err = h.addressEnrichment.AddressNFTTransfers(r.Context(), request)
+	} else {
+		page, err = h.addressEnrichment.AddressERC20Transfers(r.Context(), request)
+	}
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.AddressTokenTransfer, len(page.Items))
+	for index := range page.Items {
+		item := page.Items[index]
+		items[index] = gen.AddressTokenTransfer{
+			BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
+			BlockTimestamp: item.BlockTimestamp.UTC(), TransactionHash: item.TransactionHash,
+			TransactionIndex: item.TransactionIndex, LogIndex: item.LogIndex,
+			SubIndex: item.SubIndex, TokenAddress: item.TokenAddress,
+			Standard: gen.AddressTokenTransferStandard(item.Standard),
+			Kind:     gen.AddressTokenTransferKind(item.Kind),
+			From:     item.From, To: item.To, TokenId: item.TokenID,
+			Amount: item.Amount, Confidence: item.Confidence,
+		}
+	}
+	writeJSON(w, http.StatusOK, gen.AddressTokenTransferListResponse{
+		Data: items, Meta: h.catalogPageMeta(r, page.NextCursor, page.Snapshot),
+	})
+}
+
+func (h *Handler) addressActivityPage(
+	w http.ResponseWriter,
+	r *http.Request,
+) (string, int, string, bool) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return "", 0, "", false
+	}
+	limit, cursor, ok := parseCatalogPage(w, r)
+	if !ok {
+		return "", 0, "", false
+	}
+	return address, limit, cursor, true
 }
 
 func (h *Handler) search(w http.ResponseWriter, r *http.Request) {

@@ -20,6 +20,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/erc20-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressERC20Transfers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/addresses/{address}/internal-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressInternalTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/addresses/{address}/nft-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressNFTTransfers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}/nfts": {
         parameters: {
             query?: never;
@@ -28,6 +76,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["listAddressNFTBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/addresses/{address}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressTransactions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -690,6 +754,30 @@ export interface components {
     schemas: {
         /** @description A 20-byte address; responses use the EIP-55 checksum form. */
         Address: string;
+        AddressInternalTransaction: {
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            call_type: string;
+            created_address?: components["schemas"]["Address"];
+            depth: number;
+            error?: string;
+            from?: components["schemas"]["Address"];
+            gas?: components["schemas"]["Quantity"];
+            gas_used?: components["schemas"]["Quantity"];
+            input?: string;
+            path: number[];
+            reverted: boolean;
+            to?: components["schemas"]["Address"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+            value?: components["schemas"]["Quantity"];
+        };
+        AddressInternalTransactionListResponse: {
+            data: components["schemas"]["AddressInternalTransaction"][];
+            meta: components["schemas"]["Meta"];
+        };
         AddressResponse: {
             data: components["schemas"]["AddressSummary"];
             meta: components["schemas"]["Meta"];
@@ -704,6 +792,30 @@ export interface components {
             nonce: components["schemas"]["Quantity"];
             /** @enum {string} */
             type: "eoa" | "contract" | "delegated_eoa" | "unknown";
+        };
+        AddressTokenTransfer: {
+            amount?: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            confidence: string;
+            from?: components["schemas"]["Address"];
+            /** @enum {string} */
+            kind: "transfer" | "mint" | "burn";
+            log_index: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            standard: "erc20" | "erc721" | "erc1155";
+            sub_index: components["schemas"]["Quantity"];
+            to?: components["schemas"]["Address"];
+            token_address: components["schemas"]["Address"];
+            token_id?: components["schemas"]["Quantity"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+        };
+        AddressTokenTransferListResponse: {
+            data: components["schemas"]["AddressTokenTransfer"][];
+            meta: components["schemas"]["Meta"];
         };
         AdminUserUpdate: {
             role?: components["schemas"]["UserRole"];
@@ -1453,6 +1565,99 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    listAddressERC20Transfers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical ERC-20 transfers involving the address, newest first. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressTokenTransferListResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressInternalTransactions: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical non-root trace frames involving the address, newest first. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressInternalTransactionListResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressNFTTransfers: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical ERC-721 and ERC-1155 transfers involving the address, newest first. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressTokenTransferListResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
     listAddressNFTBalances: {
         parameters: {
             query?: {
@@ -1478,6 +1683,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NFTBalanceListResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressTransactions: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical top-level transactions involving the address, newest first. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionListResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

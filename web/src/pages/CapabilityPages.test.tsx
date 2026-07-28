@@ -163,7 +163,7 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/address/${owner}`);
+    renderExplorer(`/address/${owner}?tab=assets`);
 
     expect(await screen.findByRole("heading", { name: "Canonical NFT balances" })).toBeVisible();
     expect(await screen.findByText(tokenID)).toBeVisible();
@@ -221,7 +221,7 @@ describe("P50 capability pages", () => {
         return apiError("not_found", 404);
       }),
     );
-    renderExplorer(`/address/${owner}`);
+    renderExplorer(`/address/${owner}?tab=assets`);
 
     expect(await screen.findByText("Token data is unavailable")).toBeVisible();
     expect(screen.getByText(/reported Unavailable at block 999/)).toBeVisible();

@@ -151,9 +151,33 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   );
   expect(transactionOverflow).toBeLessThanOrEqual(1);
   await activateInView(page.getByRole("link", { name: address, exact: true }).first());
-  await expect(page.getByRole("heading", { name: "Address summary" })).toBeVisible();
-  await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
+  const addressSummary = page.getByRole("heading", { name: "Address summary" }).locator("..");
+  await expect(addressSummary).toBeVisible();
+  await expect(addressSummary.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByText(/unavailable state is never displayed as zero/)).toBeVisible();
+  await expect(page.getByText("Data completeness", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Code hash", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("State block hash", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveAttribute(
+    "href",
+    `/contract/${address}?code_hash=${codeHash}`,
+  );
+  await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
+  await expect(page.getByText("SELF", { exact: true })).toBeVisible();
+  await activateInView(page.getByRole("link", { name: "ERC-20 Transfers" }));
+  await expect(page.locator("tbody").getByText("ERC-20", { exact: true })).toBeVisible();
+  await activateInView(page.getByRole("link", { name: "NFT Transfers" }));
+  await expect(page.locator("tbody").getByText("ERC-1155", { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("link", { name: "ERC-20 Transfers" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const addressOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(addressOverflow).toBeLessThanOrEqual(1);
 
   const search = page.getByRole("searchbox", { name: "Search" });
   await search.fill("activity");
@@ -193,9 +217,13 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "NFT instance", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
 
-  await page.goto(`/address/${address}`);
+  await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "Canonical NFT balances", level: 2 })).toBeVisible();
   await expect(page.getByText("Exact RPC observation", { exact: true })).toBeVisible();
+
+  await page.goto(`/address/${walletAccount}`);
+  await expect(page.getByText("Externally owned account", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveCount(0);
 
   await page.goto("/verify");
   await expect(page.getByRole("heading", { name: "Public verification is unavailable" })).toBeVisible();
@@ -235,6 +263,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     `/token/${address}`,
     `/nft/${address}/1`,
     `/address/${address}`,
+    `/address/${walletAccount}`,
     "/contracts",
     `/contract/${address}?code_hash=${codeHash}`,
     "/verify",

@@ -27,6 +27,7 @@ the agreed Etherscan V2 subset.
 | P40-T05 | done | P40-T02 | Head/reorg SSE and cache invalidation | reconnect/reorg tests |
 | P40-T06 | done | P40-T02, P40-T03, P40-T04 | Agreed `/v2/api` Etherscan module/action compatibility | golden compatibility tests |
 | P40-T07 | done | P20-T11, P40-T02, P40-T03 | Transaction-scoped token transfer, log, trace identity, and state-change resources | contract, cursor, reorg, and capability tests |
+| P40-T08 | done | P40-T02, P40-T07 | Snapshot-stable address transaction, internal-call, ERC-20, and NFT activity resources | contract, cursor, reorg, and capability tests |
 
 ## Acceptance
 
@@ -45,6 +46,24 @@ None.
 
 ## Evidence
 
+- P40-T08: OpenAPI, generated Go/TypeScript contracts, HTTP routing, API
+  operation/x402 normalization, and migration-owned indexes now cover
+  paginated address transactions, internal calls, ERC-20 transfers, and merged
+  ERC-721/ERC-1155 transfers. Queries use repeatable-read canonical snapshots,
+  indexed `UNION` branches that deduplicate self activity, and cursors bound to
+  chain, normalized address, activity kind, snapshot hash, and row boundary.
+  Trace/Token incomplete or failed stages remain typed unavailable responses
+  rather than authoritative empty pages.
+- P40-T08: targeted Go tests and the same six-package race run passed for
+  query, catalog, HTTP, operation inventory, migration, and application
+  wiring. Regressions cover checksum input, sender/receiver/self/created
+  roles, internal creation, ERC-721/1155 ordering, maximum uint256 strings,
+  pagination, indexed SQL branches, stage failure, and reorg-invalidated
+  cursors. `make generate-check` passed with a writable Go cache; the
+  PostgreSQL integration target reported its documented skip because no
+  disposable `INTEGRATION_DATABASE_URL` was available. The complete ordinary
+  and race Go suites, vet, golangci-lint, vulnerability, secret, dependency,
+  and license checks also passed as part of the common gate.
 - P40-T07: OpenAPI, generated Go/TypeScript types, catalog readers, HTTP
   handlers, and the explicit x402 operation inventory now cover paginated
   transaction token transfers, receipt-backed logs, and persisted state

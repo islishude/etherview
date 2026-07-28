@@ -30,6 +30,10 @@ type fakeCatalog struct {
 	blockStats []catalog.BlockStat
 	aggregate  catalog.AggregateStats
 	statsErr   error
+	internal   catalog.AddressInternalTransactionPage
+	erc20      catalog.AddressTokenTransferPage
+	nftEvents  catalog.AddressTokenTransferPage
+	addressReq catalog.AddressActivityRequest
 }
 
 func (fake *fakeCatalog) TokenContract(context.Context, string, string) (catalog.TokenContract, error) {
@@ -79,6 +83,39 @@ func (fake *fakeCatalog) TransactionStateChanges(_ context.Context, request cata
 	return fake.txState, nil
 }
 
+func (fake *fakeCatalog) AddressInternalTransactions(_ context.Context, request catalog.AddressActivityRequest) (catalog.AddressInternalTransactionPage, error) {
+	fake.addressReq = request
+	return fake.internal, nil
+}
+
+func (fake *fakeCatalog) AddressERC20Transfers(_ context.Context, request catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error) {
+	fake.addressReq = request
+	return fake.erc20, nil
+}
+
+func (fake *fakeCatalog) AddressNFTTransfers(_ context.Context, request catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error) {
+	fake.addressReq = request
+	return fake.nftEvents, nil
+}
+
+type fakeAddressActivityReader struct {
+	items   []gen.Transaction
+	next    string
+	address string
+	cursor  string
+	limit   int
+}
+
+func (fake *fakeAddressActivityReader) AddressTransactions(
+	_ context.Context,
+	address string,
+	cursor string,
+	limit int,
+) ([]gen.Transaction, string, error) {
+	fake.address, fake.cursor, fake.limit = address, cursor, limit
+	return fake.items, fake.next, nil
+}
+
 func testCatalogHandler(t *testing.T, catalogReader catalog.Reader) http.Handler {
 	t.Helper()
 	cfg := config.Default()
@@ -91,6 +128,128 @@ func testCatalogHandler(t *testing.T, catalogReader catalog.Reader) http.Handler
 		t.Fatal(err)
 	}
 	return handler
+}
+
+func testAddressActivityHandler(
+	t *testing.T,
+	activity AddressActivityReader,
+	catalogReader catalog.Reader,
+) http.Handler {
+	t.Helper()
+	cfg := config.Default()
+	cfg.Chain.ID = 11155111
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{}, AddressActivities: activity, Catalog: catalogReader,
+		RequestID: func() string { return "address-activity-request" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
+}
+
+func TestAddressActivityHTTPResponsesUseGeneratedEnvelopes(t *testing.T) {
+	t.Parallel()
+	address := "0x" + strings.Repeat("11", 20)
+	other := "0x" + strings.Repeat("22", 20)
+	hash := "0x" + strings.Repeat("33", 32)
+	value := "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+	ordinary := &fakeAddressActivityReader{
+		items: []gen.Transaction{{
+			Hash: hash, From: address, To: &other, Nonce: "1", Value: value,
+			Gas: "21000", Input: "0x", Canonical: true, Finality: gen.FinalityLatest,
+			Completeness: gen.Completeness{
+				Core: gen.StageStateComplete, Trace: gen.StageStateUnavailable,
+				Metadata: gen.StageStateUnavailable, State: gen.StageStateUnavailable,
+			},
+		}},
+		next: "next-transactions",
+	}
+	fake := &fakeCatalog{
+		internal: catalog.AddressInternalTransactionPage{
+			Items: []catalog.AddressInternalTransaction{{
+				BlockNumber: "12", BlockHash: hash, BlockTimestamp: time.Unix(1_700_000_000, 0),
+				TransactionHash: hash, TransactionIndex: "1", Path: []uint32{0, 1},
+				Depth: 2, CallType: "create", From: &address, CreatedAddress: &other,
+				Value: &value,
+			}},
+			NextCursor: "next-internal",
+			Snapshot:   catalog.Snapshot{ChainID: "11155111", BlockNumber: "12", BlockHash: hash},
+		},
+		erc20: catalog.AddressTokenTransferPage{
+			Items: []catalog.AddressTokenTransfer{{
+				BlockNumber: "12", BlockHash: hash, BlockTimestamp: time.Unix(1_700_000_000, 0),
+				TransactionHash: hash, TransactionIndex: "1", LogIndex: "2", SubIndex: "0",
+				TokenAddress: other, Standard: "erc20", Kind: "transfer",
+				From: &address, To: &other, Amount: &value, Confidence: "high",
+			}},
+			Snapshot: catalog.Snapshot{ChainID: "11155111", BlockNumber: "12", BlockHash: hash},
+		},
+		nftEvents: catalog.AddressTokenTransferPage{
+			Items: []catalog.AddressTokenTransfer{{
+				BlockNumber: "12", BlockHash: hash, BlockTimestamp: time.Unix(1_700_000_000, 0),
+				TransactionHash: hash, TransactionIndex: "1", LogIndex: "3", SubIndex: "1",
+				TokenAddress: other, Standard: "erc1155", Kind: "mint",
+				To: &address, TokenID: &value, Amount: &value, Confidence: "verified",
+			}},
+			Snapshot: catalog.Snapshot{ChainID: "11155111", BlockNumber: "12", BlockHash: hash},
+		},
+	}
+	handler := testAddressActivityHandler(t, ordinary, fake)
+
+	transactionRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(transactionRecorder, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/addresses/"+address+"/transactions?cursor=opaque&limit=1",
+		nil,
+	))
+	if transactionRecorder.Code != http.StatusOK {
+		t.Fatalf("transaction status=%d body=%s", transactionRecorder.Code, transactionRecorder.Body.String())
+	}
+	var transactions gen.TransactionListResponse
+	if err := json.Unmarshal(transactionRecorder.Body.Bytes(), &transactions); err != nil {
+		t.Fatal(err)
+	}
+	if len(transactions.Data) != 1 || transactions.Data[0].Value != value ||
+		transactions.Meta.NextCursor == nil || *transactions.Meta.NextCursor != ordinary.next ||
+		ordinary.address != address || ordinary.cursor != "opaque" || ordinary.limit != 1 {
+		t.Fatalf("transactions=%+v reader=%+v", transactions, ordinary)
+	}
+
+	for _, test := range []struct {
+		path     string
+		standard gen.AddressTokenTransferStandard
+	}{
+		{"/internal-transactions", ""},
+		{"/erc20-transfers", gen.AddressTokenTransferStandardErc20},
+		{"/nft-transfers", gen.AddressTokenTransferStandardErc1155},
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(
+			http.MethodGet, "/api/v1/addresses/"+address+test.path+"?limit=1", nil,
+		))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", test.path, recorder.Code, recorder.Body.String())
+		}
+		if test.standard == "" {
+			var response gen.AddressInternalTransactionListResponse
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Data) != 1 || response.Data[0].Depth != 2 ||
+				response.Data[0].Value == nil || *response.Data[0].Value != value {
+				t.Fatalf("internal response=%+v", response)
+			}
+		} else {
+			var response gen.AddressTokenTransferListResponse
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if len(response.Data) != 1 || response.Data[0].Standard != test.standard {
+				t.Fatalf("%s response=%+v", test.path, response)
+			}
+		}
+	}
 }
 
 func TestTokenCatalogResponseUsesStableSnapshotAndStringQuantities(t *testing.T) {
