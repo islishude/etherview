@@ -912,6 +912,30 @@ paths:
           $ref: "#/components/responses/Error"
         default:
           $ref: "#/components/responses/Error"
+  /home/stream:
+    get:
+      operationId: streamHomeSnapshots
+      tags: [system]
+      description: >-
+        Server-sent complete home-page snapshots. A subscriber receives the
+        current writer-authoritative snapshot immediately and a replacement
+        snapshot after committed head, reorganization, or sync-status events.
+        Each snapshot event uses the durable runtime-event ID as its SSE id;
+        reconnects receive the current snapshot rather than intermediate
+        historical snapshots.
+      responses:
+        "200":
+          description: >-
+            SSE snapshot stream. Each `snapshot` event's data field is one
+            HomeSnapshotResponse JSON object.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/HomeSnapshotResponse"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /verification/jobs:
     post:
       operationId: submitVerificationJob
@@ -2599,6 +2623,32 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/Status"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    HomeSnapshot:
+      type: object
+      additionalProperties: false
+      required: [status, blocks, transactions]
+      properties:
+        status:
+          $ref: "#/components/schemas/Status"
+        blocks:
+          type: array
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/Block"
+        transactions:
+          type: array
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/Transaction"
+    HomeSnapshotResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/HomeSnapshot"
         meta:
           $ref: "#/components/schemas/Meta"
     PublicConfigResponse:

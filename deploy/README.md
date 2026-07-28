@@ -60,6 +60,49 @@ monolith `all` or split `api` service; feature-off deployments with the
 variables unset do not pass either Secret. Run `etherview doctor` against the
 final API-role configuration before adding a paid route.
 
+## Full-stack Preview
+
+`compose.preview.yaml` runs the local Reth development chain and all seven
+application roles. It enables public verification and NFT metadata while
+leaving Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and
+object storage accelerators are not part of this deployment.
+
+```sh
+make start-preview
+curl -fsS http://127.0.0.1:8080/api/v1/config
+```
+
+Verification uses a Preview-only application image containing the Docker
+28.5.2 CLI. The verify role connects over mutual TLS to an unexposed,
+digest-pinned Docker-in-Docker daemon; it never mounts the host Docker socket.
+Before verify starts, a non-root one-shot service pulls and executes the pinned
+Solidity 0.8.30 and Vyper 0.4.3 images with the same network, filesystem,
+identity, CPU, memory, PID, and file-descriptor limits used for public compiler
+jobs. Image pull, architecture emulation, fixture compilation, daemon
+validation, or image inspection failure prevents verify from becoming ready.
+
+The official compiler images are `linux/amd64`. Native amd64 Docker works
+directly; Docker Desktop on Apple Silicon must provide amd64 emulation. The
+preflight performs real compilations so an unsupported host fails during
+startup instead of advertising verification.
+
+NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
+Override it without editing the checked-in configuration:
+
+```sh
+ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com make start-preview
+```
+
+The gateway must remain an absolute public HTTPS URL accepted by the metadata
+SSRF policy. Public gateways have no production availability commitment.
+
+`make recreate-preview` removes and rebuilds the seven application containers
+and reruns compiler preflight while preserving PostgreSQL, Reth, the compiler
+daemon, and its image cache. `make stop-preview` removes the deployment and all
+four persistent volumes. Override the application tag with
+`ETHERVIEW_PREVIEW_IMAGE`; this is intentionally separate from the production
+`ETHERVIEW_IMAGE` tag.
+
 The reproducible deployment smoke uses a deterministic anvil fixture container
 and two independent PostgreSQL volumes:
 

@@ -43,6 +43,12 @@ export function createExplorerClient(fetcher: Fetcher = dynamicFetch) {
   });
 }
 
+export function sameOriginAPIPath<Path extends keyof paths>(
+  path: Path,
+): `/api/v1${Path & string}` {
+  return `/api/v1${path}`;
+}
+
 export function requireEnvelope<T extends ApiEnvelope<unknown, ApiMeta>>(
   result: ClientResult<T>,
 ): T {

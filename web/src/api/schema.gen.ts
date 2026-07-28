@@ -374,6 +374,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/home/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Server-sent complete home-page snapshots. A subscriber receives the current writer-authoritative snapshot immediately and a replacement snapshot after committed head, reorganization, or sync-status events. Each snapshot event uses the durable runtime-event ID as its SSE id; reconnects receive the current snapshot rather than intermediate historical snapshots. */
+        get: operations["streamHomeSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/nfts/{address}/{token_id}": {
         parameters: {
             query?: never;
@@ -1045,6 +1062,15 @@ export interface components {
         };
         /** @description A 32-byte hash; responses use normalized lowercase hexadecimal. */
         Hash: string;
+        HomeSnapshot: {
+            blocks: components["schemas"]["Block"][];
+            status: components["schemas"]["Status"];
+            transactions: components["schemas"]["Transaction"][];
+        };
+        HomeSnapshotResponse: {
+            data: components["schemas"]["HomeSnapshot"];
+            meta: components["schemas"]["Meta"];
+        };
         Meta: {
             chain_id: components["schemas"]["Quantity"];
             coverage_end?: components["schemas"]["Quantity"];
@@ -2154,6 +2180,28 @@ export interface operations {
                     "application/json": components["schemas"]["GenesisAccountListResponse"];
                 };
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    streamHomeSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE snapshot stream. Each `snapshot` event's data field is one HomeSnapshotResponse JSON object. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["HomeSnapshotResponse"];
+                };
+            };
+            503: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };
     };

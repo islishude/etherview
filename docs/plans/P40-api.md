@@ -28,6 +28,7 @@ the agreed Etherscan V2 subset.
 | P40-T06 | done | P40-T02, P40-T03, P40-T04 | Agreed `/v2/api` Etherscan module/action compatibility | golden compatibility tests |
 | P40-T07 | done | P20-T11, P40-T02, P40-T03 | Transaction-scoped token transfer, log, trace identity, and state-change resources | contract, cursor, reorg, and capability tests |
 | P40-T08 | done | P40-T02, P40-T07 | Snapshot-stable address transaction, internal-call, ERC-20, and NFT activity resources | contract, cursor, reorg, and capability tests |
+| P40-T09 | done | P40-T02, P40-T05 | Writer-authoritative home snapshot and centralized SSE fanout | contract, replay, concurrency, and integration tests |
 
 ## Acceptance
 
@@ -46,6 +47,22 @@ None.
 
 ## Evidence
 
+- P40-T09: `/api/v1/home/stream` publishes a bounded complete home snapshot
+  with the durable runtime-event tail id. A single API-replica feed reads
+  status, coverage/finality, six canonical blocks, and six canonical
+  transactions from one writer-only repeatable-read transaction, subscribes
+  from that exact event id, coalesces queued events, retries failed refreshes
+  without relabeling stale data, and disconnects slow consumers.
+- P40-T09 verification: `go test ./internal/httpapi ./internal/query
+  ./internal/app ./internal/apiops` passes the public route inventory, SSE
+  envelope and headers, stable initial 503, startup/retry/current-snapshot
+  behavior, slow-subscriber isolation, bounded activity, empty-chain query,
+  writer component parity, and existing durable-event regressions.
+- P40-T09: the same four-package race run passes. The PostgreSQL integration
+  regression compiles and covers the event tail, six-item bounds, status and
+  coverage, canonical activity, and a two-block reorg in one snapshot; the
+  local integration gate reported its documented skip because
+  `INTEGRATION_DATABASE_URL` is unset.
 - P40-T08: OpenAPI, generated Go/TypeScript contracts, HTTP routing, API
   operation/x402 normalization, and migration-owned indexes now cover
   paginated address transactions, internal calls, ERC-20 transfers, and merged

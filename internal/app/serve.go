@@ -485,6 +485,24 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
+		homeReader, err := query.NewPostgresReader(db, queryOptions)
+		if err != nil {
+			return err
+		}
+		homeFeed, err := httpapi.NewHomeFeed(homeReader, broker, httpapi.HomeFeedOptions{
+			ChainID: cfg.Chain.ID,
+			Logger:  logger,
+		})
+		if err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(
+			components.RoleAPI,
+			"09-home-snapshot-feed",
+			func() (components.Service, error) { return homeFeed, nil },
+		); err != nil {
+			return err
+		}
 		var baseReader httpapi.Reader = reader
 		if readDB != db && nameResolver != nil {
 			writerSearchReader, err := query.NewPostgresReader(db, queryOptions)
@@ -605,7 +623,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Etherscan: compatibility, Events: broker, Mempool: pendingRepository,
+			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
+			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
 			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
@@ -971,6 +990,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 		switch role {
 		case components.RoleAPI:
 			add("08-runtime-event-relay")
+			add("09-home-snapshot-feed")
 			add("20-public-api")
 		case components.RoleSync:
 			if wakeEnabled {

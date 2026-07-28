@@ -94,6 +94,63 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(page.locator("#main-content")).toBeFocused();
 });
 
+test("home uses one atomic snapshot stream without REST polling", async ({
+  context,
+  page,
+}) => {
+  const session = `home-${Date.now()}-${Math.random()}`;
+  await context.addCookies([{
+    name: "etherview_e2e_home",
+    value: session,
+    url: "http://127.0.0.1:4173",
+  }]);
+  const dynamicRequests: string[] = [];
+  const streamRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (["/api/v1/status", "/api/v1/blocks", "/api/v1/transactions"].includes(pathname)) {
+      dynamicRequests.push(pathname);
+    }
+    if (pathname === "/api/v1/home/stream") {
+      streamRequests.push(pathname);
+    }
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "#2" })).toBeVisible();
+  await expect(page.getByText("0 – 2", { exact: true })).toBeVisible();
+  expect(streamRequests).toHaveLength(1);
+  expect(dynamicRequests).toEqual([]);
+
+  const advanced = await page.evaluate(async () => {
+    const response = await fetch("/__e2e/home/head", { method: "POST" });
+    return response.ok;
+  });
+  expect(advanced).toBe(true);
+  await expect(page.getByRole("link", { name: "#3" })).toBeVisible();
+  await expect(page.getByText("0 – 3", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Network head" }),
+  ).toContainText("3");
+  await page.waitForTimeout(2_200);
+  expect(dynamicRequests).toEqual([]);
+  expect(streamRequests).toHaveLength(1);
+
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  const scan = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(scan.violations).toEqual([]);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
 test("core explorer keeps canonical cursor pages and retained orphan context explicit", async ({
   page,
 }) => {

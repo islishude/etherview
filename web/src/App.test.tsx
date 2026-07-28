@@ -22,6 +22,39 @@ vi.mock("echarts/components", () => ({
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
 
+class AppEventSource {
+  static latest?: AppEventSource;
+
+  static current() {
+    return AppEventSource.latest;
+  }
+
+  private readonly listeners = new Map<string, Set<EventListener>>();
+
+  constructor(readonly url: string | URL) {
+    AppEventSource.latest = this;
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+    if (typeof listener !== "function") return;
+    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+    if (typeof listener === "function") this.listeners.get(type)?.delete(listener);
+  }
+
+  close() {}
+
+  snapshot(data: unknown) {
+    for (const listener of this.listeners.get("snapshot") ?? []) {
+      listener(new MessageEvent("snapshot", { data: JSON.stringify(data) }));
+    }
+  }
+}
+
 describe("embedded explorer shell", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
@@ -77,95 +110,95 @@ describe("embedded explorer shell", () => {
     const blockHash = `0x${"ab".repeat(32)}`;
     const transactionHash = `0x${"cd".repeat(32)}`;
     const address = `0x${"11".repeat(20)}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      const meta = { request_id: "web-test", chain_id: "1" };
+      if (path.startsWith("/api/v1/config")) {
+        return Response.json({
+          data: {
+            chain_id: "1",
+            chain_name: "Testnet",
+            native_symbol: "ETH",
+            native_name: "Ether",
+            native_decimals: 18,
+            features: {},
+          },
+          meta,
+        });
+      }
+      return Response.json(
+        { error: { code: "NOT_FOUND", message: "not found" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = String(input);
-        const meta = { request_id: "web-test", chain_id: "1" };
-        if (path.startsWith("/api/v1/config")) {
-          return Response.json({
-            data: {
-              chain_id: "1",
-              chain_name: "Testnet",
-              native_symbol: "ETH",
-              native_name: "Ether",
-              native_decimals: 18,
-              features: {},
-            },
-            meta,
-          });
-        }
-        if (path.startsWith("/api/v1/status")) {
-          return Response.json({
-            data: {
-              chain_id: "1",
-              core_ready: true,
-              latest_block: "12",
-              indexed_block: "12",
-              finalized_block: "10",
-              lag: "0",
-              completeness: {
-                core: "complete",
-                trace: "unavailable",
-                metadata: "pending",
-                state: "complete",
-              },
-            },
-            meta,
-          });
-        }
-        if (path.startsWith("/api/v1/blocks")) {
-          return Response.json({
-            data: [{
-              hash: blockHash,
-              number: "12",
-              parent_hash: `0x${"aa".repeat(32)}`,
-              timestamp: "2026-01-01T00:00:00Z",
-              transaction_count: 1,
-              gas_used: "21000",
-              canonical: true,
-              finality: "latest",
-              completeness: {
-                core: "complete",
-                trace: "unavailable",
-                metadata: "pending",
-                state: "complete",
-              },
-            }],
-            meta,
-          });
-        }
-        if (path.startsWith("/api/v1/transactions")) {
-          return Response.json({
-            data: [{
-              hash: transactionHash,
-              block_hash: blockHash,
-              block_number: "12",
-              transaction_index: 0,
-              from: address,
-              to: address,
-              nonce: "0",
-              value: "1",
-              gas: "21000",
-              input: "0x",
-              status: "success",
-              canonical: true,
-              finality: "latest",
-              completeness: {
-                core: "complete",
-                trace: "unavailable",
-                metadata: "pending",
-                state: "complete",
-              },
-            }],
-            meta,
-          });
-        }
-        return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
-      }),
+      "EventSource",
+      AppEventSource as unknown as typeof EventSource,
     );
+    const completeness = {
+      core: "complete",
+      trace: "unavailable",
+      metadata: "pending",
+      state: "complete",
+    };
 
+    AppEventSource.latest = undefined;
     renderExplorer("/");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const homeSource = AppEventSource.current();
+    expect(homeSource?.url).toBe("/api/v1/home/stream");
+    await act(async () => {
+      homeSource?.snapshot({
+        data: {
+          status: {
+            chain_id: "1",
+            core_ready: true,
+            latest_block: "12",
+            indexed_block: "12",
+            finalized_block: "10",
+            backfill_complete: true,
+            lag: "0",
+            completeness,
+          },
+          blocks: [{
+            hash: blockHash,
+            number: "12",
+            parent_hash: `0x${"aa".repeat(32)}`,
+            timestamp: "2026-01-01T00:00:00Z",
+            transaction_count: 1,
+            gas_used: "21000",
+            canonical: true,
+            finality: "latest",
+            completeness,
+          }],
+          transactions: [{
+            hash: transactionHash,
+            block_hash: blockHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: address,
+            nonce: "0",
+            value: "1",
+            gas: "21000",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "latest",
+            completeness,
+          }],
+        },
+        meta: {
+          request_id: "web-test",
+          chain_id: "1",
+          coverage_start: "0",
+          coverage_end: "12",
+        },
+      });
+    });
     expect(await screen.findByText("#12")).toBeVisible();
     expect(await screen.findByText("Testnet")).toBeVisible();
     expect(screen.getByText("0xcdcdcd…cdcdcd")).toBeVisible();
@@ -182,6 +215,9 @@ describe("embedded explorer shell", () => {
       "src",
       expect.stringMatching(/etherview-mark.*\.svg$/),
     );
+    expect(fetchMock.mock.calls.some(([input]) =>
+      /^\/api\/v1\/(status|blocks|transactions)(?:\?|$)/.test(String(input)),
+    )).toBe(false);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);

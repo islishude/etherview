@@ -155,6 +155,7 @@ type Options struct {
 	Etherscan             http.Handler
 	Metrics               http.Handler
 	Events                *events.Broker
+	HomeSnapshots         HomeSnapshotSource
 	Mempool               mempool.Reader
 	NFTMediaSource        metadata.NFTImageSource
 	NFTMediaProxy         *metadata.MediaProxy
@@ -185,6 +186,7 @@ type Handler struct {
 	etherscan             http.Handler
 	metrics               http.Handler
 	events                *events.Broker
+	homeSnapshots         HomeSnapshotSource
 	mempool               mempool.Reader
 	nftMediaSource        metadata.NFTImageSource
 	nftMediaProxy         *metadata.MediaProxy
@@ -233,6 +235,7 @@ func New(options Options) (*Handler, error) {
 		etherscan:             options.Etherscan,
 		metrics:               options.Metrics,
 		events:                options.Events,
+		homeSnapshots:         options.HomeSnapshots,
 		mempool:               options.Mempool,
 		nftMediaSource:        options.NFTMediaSource,
 		nftMediaProxy:         options.NFTMediaProxy,
@@ -349,6 +352,7 @@ func (h *Handler) routes() {
 	if h.events != nil {
 		h.mux.HandleFunc("GET /api/v1/events", h.eventStream)
 	}
+	h.mux.HandleFunc("GET /api/v1/home/stream", h.homeSnapshotStream)
 	if h.web != nil {
 		h.mux.Handle("/", h.web)
 	}
@@ -463,6 +467,89 @@ func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.Type, event.Data); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+type homeSnapshotResponse struct {
+	Data json.RawMessage `json:"data"`
+	Meta gen.Meta        `json:"meta"`
+}
+
+func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, r, http.StatusInternalServerError, "stream_unsupported", "streaming is unsupported", nil)
+		return
+	}
+	if h.homeSnapshots == nil {
+		writeError(
+			w, r, http.StatusServiceUnavailable,
+			"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+		)
+		return
+	}
+	channel, err := h.homeSnapshots.Subscribe(r.Context())
+	if err != nil {
+		writeError(
+			w, r, http.StatusServiceUnavailable,
+			"home_snapshot_unavailable", ErrHomeSnapshotUnavailable.Error(), nil,
+		)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case publication, open := <-channel:
+			if !open {
+				return
+			}
+			meta := h.meta(r)
+			meta.CoverageStart = &publication.CoverageStart
+			meta.CoverageEnd = &publication.CoverageEnd
+			encodedData := publication.EncodedData
+			if len(encodedData) == 0 {
+				encodedData, err = json.Marshal(publication.Data)
+				if err != nil {
+					h.logger.ErrorContext(
+						r.Context(), "home snapshot data encoding failed",
+						"request_id", requestIDFrom(r.Context()),
+					)
+					return
+				}
+			}
+			encoded, err := json.Marshal(homeSnapshotResponse{
+				Data: encodedData,
+				Meta: meta,
+			})
+			if err != nil || len(encoded) > maxHomeSnapshotBytes {
+				h.logger.ErrorContext(
+					r.Context(), "home snapshot response encoding failed",
+					"request_id", requestIDFrom(r.Context()),
+				)
+				return
+			}
+			if _, err := fmt.Fprintf(
+				w, "id: %d\nevent: snapshot\ndata: %s\n\n",
+				publication.EventID, encoded,
+			); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -648,31 +735,13 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		h.handleReaderError(w, r, err)
 		return
 	}
-	data := gen.Status{
-		ChainId:          quantity(h.cfg.Chain.ID),
-		CoreReady:        snapshot.CoreReady,
-		LatestBlock:      quantity(snapshot.LatestBlock),
-		IndexedBlock:     quantity(snapshot.IndexedBlock),
-		BackfillComplete: snapshot.BackfillComplete,
-		Lag:              quantity(saturatingSub(snapshot.LatestBlock, snapshot.IndexedBlock)),
-		Completeness:     snapshot.Completeness,
-	}
-	if snapshot.HighestCoveredKnown {
-		value := quantity(snapshot.HighestCoveredBlock)
-		data.HighestCoveredBlock = &value
-	}
-	if snapshot.SafeBlock != nil {
-		value := quantity(*snapshot.SafeBlock)
-		data.SafeBlock = &value
-	}
-	if snapshot.FinalizedBlock != nil {
-		value := quantity(*snapshot.FinalizedBlock)
-		data.FinalizedBlock = &value
-	}
 	meta := h.meta(r)
 	coverageStart, coverageEnd := quantity(snapshot.CoverageStart), quantity(snapshot.CoverageEnd)
 	meta.CoverageStart, meta.CoverageEnd = &coverageStart, &coverageEnd
-	writeJSON(w, http.StatusOK, gen.StatusResponse{Data: data, Meta: meta})
+	writeJSON(w, http.StatusOK, gen.StatusResponse{
+		Data: statusModel(h.cfg.Chain.ID, snapshot),
+		Meta: meta,
+	})
 }
 
 func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {

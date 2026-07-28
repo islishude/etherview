@@ -132,13 +132,13 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		wake  bool
 		want  []string
 	}{
-		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "20-public-api"}},
+		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "api NATS", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Adapters.NATSURL = "nats://127.0.0.1:4222"
-		}, want: []string{"00-operations-http", "02-durable-metrics", "04-optional-nats-wake", "08-runtime-event-relay", "20-public-api"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "04-optional-nats-wake", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "api with OTLP", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
-		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "20-public-api"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "10-core-sync", "12-genesis-state"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true

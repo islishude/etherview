@@ -34,6 +34,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T08 | done        | P50-T06       | Persistent transaction copy controls and receipt-backed creation address | query/frontend regressions and generation checks |
 | P50-T09 | done        | P50-T02       | Compact home, relative recent-block time, and shared brand icon          | frontend, embedded E2E, and generation checks |
 | P50-T10 | done        | P40-T08       | Address activity tabs, lazy assets, and contract-address entry           | frontend, embedded E2E, and generation checks |
+| P50-T11 | done        | P40-T09       | Atomic home snapshot EventSource with no REST polling fallback            | frontend, embedded E2E, and generation checks |
 
 ## Acceptance
 
@@ -56,6 +57,29 @@ None.
 
 ## Evidence
 
+- P50-T11: the home route owns exactly one same-origin `/api/v1/home/stream`
+  EventSource. A bounded strict validator accepts only complete status, block,
+  transaction, and coverage envelopes and replaces all three UI regions in
+  one state update. Initial failure is visible, while malformed messages and
+  reconnect errors preserve an existing snapshot; unmount closes the stream.
+  The local one-second relative-time clock remains independent of chain
+  events, and the home route has no REST polling or HTTP fallback.
+- P50-T11 verification: TypeScript lint, all 19 Vitest files (141 tests), and
+  the production build pass. The full embedded Playwright run passes all 9
+  flows; its dedicated home flow observes one SSE request, an atomic head,
+  metrics, recent-block, and recent-transaction update, and no `/status`,
+  `/blocks`, or `/transactions` requests during the monitoring window. It
+  also passes Axe at 390px in Chinese dark mode. The tagged PostgreSQL
+  integration test compiles and is ready for the disposable-database gate;
+  the local `make test-integration` run reported its documented skip because
+  `INTEGRATION_DATABASE_URL` is unset.
+- P50-T11 common gates: `make generate-check`, `make plan-check`, and
+  `git diff --check` pass. `make check` passed generation, Go and TypeScript
+  lint, ordinary and race tests, security scans, dependency audits, and
+  license checks; its final deployment check could not start because the
+  workspace sandbox denied Docker Buildx activity-cache writes. An
+  out-of-sandbox retry was unavailable because the workspace approval service
+  had no remaining credits.
 - P50-T10: the address summary now contains only address, name, account type,
   native balance, and nonce. Five query-string-addressable sections expose
   transactions, internal transactions, ERC-20 transfers, NFT transfers, and

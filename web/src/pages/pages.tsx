@@ -42,6 +42,7 @@ import {
   useVerificationJob,
   useVerifiedContract,
 } from "@/api/hooks";
+import { useHomeSnapshotStream } from "@/api/homeStream";
 import type {
   AggregateStats,
   AddressInternalTransaction,
@@ -136,9 +137,7 @@ function useCursorHistory(identity: string) {
 
 export function HomePage() {
   const { i18n, t } = useTranslation();
-  const status = useChainStatus();
-  const blocks = useBlocks(6);
-  const transactions = useTransactions(6);
+  const snapshot = useHomeSnapshotStream();
   const [relativeNow, setRelativeNow] = useState(() => Date.now());
   const locale = i18n.resolvedLanguage ?? "en";
 
@@ -149,29 +148,31 @@ export function HomePage() {
 
   return (
     <div className="page-stack">
-      <QueryNotice loading={status.isPending} error={status.error} />
+      <QueryNotice
+        loading={snapshot.isPending}
+        error={snapshot.data ? undefined : snapshot.error}
+      />
 
       <section className="metrics-grid" aria-label={t("home.metrics")}>
-        <Metric label={t("home.indexed")} value={formatInteger(status.data?.indexed_block, locale)} />
-        <Metric label={t("home.networkHead")} value={formatInteger(status.data?.latest_block, locale)} />
-        <Metric label={t("home.finality")} value={formatInteger(status.data?.finalized_block, locale)} />
+        <Metric label={t("home.indexed")} value={formatInteger(snapshot.data?.status.indexed_block, locale)} />
+        <Metric label={t("home.networkHead")} value={formatInteger(snapshot.data?.status.latest_block, locale)} />
+        <Metric label={t("home.finality")} value={formatInteger(snapshot.data?.status.finalized_block, locale)} />
         <Metric
           label={t("home.lag")}
-          value={status.data ? (status.data.core_ready && status.data.lag === "0" ? t("home.caughtUp") : t("home.syncing")) : "—"}
-          accent={status.data?.core_ready && status.data.lag === "0"}
+          value={snapshot.data ? (snapshot.data.status.core_ready && snapshot.data.status.lag === "0" ? t("home.caughtUp") : t("home.syncing")) : "—"}
+          accent={snapshot.data?.status.core_ready && snapshot.data.status.lag === "0"}
         />
       </section>
 
-      {status.data && <ChainContextPanel status={status.data} />}
+      {snapshot.data && <ChainContextPanel status={snapshot.data.status} />}
 
       <div className="activity-grid">
         <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
           <PanelHeading id="recent-blocks-title" title={t("home.recentBlocks")} to="/blocks" />
-          <QueryNotice compact loading={blocks.isPending} error={blocks.error} />
-          {blocks.data?.items.length === 0 && (
+          {snapshot.data?.blocks.length === 0 && (
             <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
           )}
-          {blocks.data?.items.map((block) => (
+          {snapshot.data?.blocks.map((block) => (
             <BlockRow block={block} key={block.hash} locale={locale} now={relativeNow} />
           ))}
         </section>
@@ -181,11 +182,10 @@ export function HomePage() {
             title={t("home.recentTransactions")}
             to="/transactions"
           />
-          <QueryNotice compact loading={transactions.isPending} error={transactions.error} />
-          {transactions.data?.items.length === 0 && (
+          {snapshot.data?.transactions.length === 0 && (
             <p className="empty-result compact-empty">{t("state.noTransactions")}</p>
           )}
-          {transactions.data?.items.map((transaction) => (
+          {snapshot.data?.transactions.map((transaction) => (
             <TransactionRow key={transaction.hash} transaction={transaction} />
           ))}
         </section>

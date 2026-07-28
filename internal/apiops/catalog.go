@@ -168,6 +168,7 @@ var catalog = []Spec{
 		limitParameter("20"),
 		boundedTextParameter("q", true, 1, 256, true)),
 	spec("streamHeadEvents", "GET", "/events", false),
+	spec("streamHomeSnapshots", "GET", "/home/stream", false),
 	spec("submitVerificationJob", "POST", "/verification/jobs", false),
 	spec("getVerificationJob", "GET", "/verification/jobs/{id}", true,
 		pathParameter("id", ParameterUUID)),

@@ -545,6 +545,7 @@ func TestRoutePatternUsesRegisteredMuxPatternsAndBoundsCatchAll(t *testing.T) {
 		{http.MethodPost, "/api/v1/verification/jobs/job-secret/sourcify", "", "/api/v1/verification/jobs/{id}/sourcify"},
 		{http.MethodGet, "/api/v1/sourcify/jobs/job-secret", "", "/api/v1/sourcify/jobs/{verification_id}"},
 		{http.MethodGet, "/api/v1/events", "", "/api/v1/events"},
+		{http.MethodGet, "/api/v1/home/stream", "", "/api/v1/home/stream"},
 		{http.MethodGet, "/v2/api", "", "/v2/api"},
 		{http.MethodGet, "/", "text/html", "/"},
 		{http.MethodGet, "/blocks/123456", "text/html", "/{spa...}"},

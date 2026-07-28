@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"maps"
 	"net/http"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/islishude/etherview/web"
@@ -29,6 +32,7 @@ const (
 
 func main() {
 	mux := http.NewServeMux()
+	homeStreams := &homeStreamHub{streams: make(map[string]*homeTestStream)}
 	mux.HandleFunc("GET /health/live", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, map[string]any{"status": "live"})
 	})
@@ -42,6 +46,55 @@ func main() {
 				"sourcify": false,
 			},
 		})
+	})
+	mux.HandleFunc("GET /api/v1/home/stream", func(response http.ResponseWriter, request *http.Request) {
+		stream := homeStreams.stream(homeStreamSession(request))
+		channel, unsubscribe := stream.subscribe()
+		defer unsubscribe()
+		response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache, no-transform")
+		response.Header().Set("X-Accel-Buffering", "no")
+		response.WriteHeader(http.StatusOK)
+		flusher, ok := response.(http.Flusher)
+		if !ok {
+			return
+		}
+		flusher.Flush()
+		heartbeat := time.NewTicker(15 * time.Second)
+		defer heartbeat.Stop()
+		for {
+			select {
+			case update, open := <-channel:
+				if !open {
+					return
+				}
+				if _, err := fmt.Fprintf(
+					response,
+					"id: %d\nevent: snapshot\ndata: %s\n\n",
+					update.id,
+					update.payload,
+				); err != nil {
+					return
+				}
+				flusher.Flush()
+			case <-heartbeat.C:
+				if _, err := fmt.Fprint(response, ": heartbeat\n\n"); err != nil {
+					return
+				}
+				flusher.Flush()
+			case <-request.Context().Done():
+				return
+			}
+		}
+	})
+	mux.HandleFunc("POST /__e2e/home/head", func(response http.ResponseWriter, request *http.Request) {
+		session := homeStreamSession(request)
+		if session == "" {
+			response.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		homeStreams.stream(session).advance()
+		writeJSON(response, map[string]string{"status": "advanced"})
 	})
 	mux.HandleFunc("GET /api/v1/status", func(response http.ResponseWriter, _ *http.Request) {
 		writeEnvelopeMeta(response, map[string]any{
@@ -430,6 +483,115 @@ func blockStat() map[string]any {
 
 func completeness() map[string]string {
 	return map[string]string{"core": "complete", "trace": "complete", "metadata": "complete", "state": "complete"}
+}
+
+type homeStreamHub struct {
+	mu      sync.Mutex
+	streams map[string]*homeTestStream
+}
+
+func (hub *homeStreamHub) stream(session string) *homeTestStream {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	stream := hub.streams[session]
+	if stream == nil {
+		stream = &homeTestStream{
+			eventID: 1, head: 2,
+			subscribers: make(map[uint64]chan homeTestUpdate),
+		}
+		hub.streams[session] = stream
+	}
+	return stream
+}
+
+type homeTestUpdate struct {
+	id      uint64
+	payload []byte
+}
+
+type homeTestStream struct {
+	mu          sync.Mutex
+	eventID     uint64
+	head        uint64
+	nextID      uint64
+	subscribers map[uint64]chan homeTestUpdate
+}
+
+func (stream *homeTestStream) subscribe() (<-chan homeTestUpdate, func()) {
+	stream.mu.Lock()
+	stream.nextID++
+	id := stream.nextID
+	channel := make(chan homeTestUpdate, 1)
+	channel <- stream.updateLocked()
+	stream.subscribers[id] = channel
+	stream.mu.Unlock()
+	return channel, func() {
+		stream.mu.Lock()
+		if current, exists := stream.subscribers[id]; exists && current == channel {
+			delete(stream.subscribers, id)
+			close(channel)
+		}
+		stream.mu.Unlock()
+	}
+}
+
+func (stream *homeTestStream) advance() {
+	stream.mu.Lock()
+	stream.eventID++
+	stream.head++
+	update := stream.updateLocked()
+	for id, subscriber := range stream.subscribers {
+		select {
+		case subscriber <- update:
+		default:
+			close(subscriber)
+			delete(stream.subscribers, id)
+		}
+	}
+	stream.mu.Unlock()
+}
+
+func (stream *homeTestStream) updateLocked() homeTestUpdate {
+	number := strconv.FormatUint(stream.head, 10)
+	hash := fmt.Sprintf("0x%064x", stream.head)
+	parent := fmt.Sprintf("0x%064x", stream.head-1)
+	transactionID := fmt.Sprintf("0x%064x", stream.head+1000)
+	if stream.head == 2 {
+		hash, parent, transactionID = secondHash, testHash, testTransactionHash
+	}
+	payload, err := json.Marshal(map[string]any{
+		"data": map[string]any{
+			"status": map[string]any{
+				"chain_id": "1", "core_ready": true,
+				"latest_block": number, "indexed_block": number,
+				"highest_covered_block": number, "backfill_complete": true,
+				"safe_block": number, "finalized_block": strconv.FormatUint(stream.head-1, 10),
+				"lag": "0", "completeness": completeness(),
+			},
+			"blocks": []any{
+				block(number, hash, parent, true, "latest", 1),
+			},
+			"transactions": []any{
+				transaction(transactionID, hash, number, "latest"),
+			},
+		},
+		"meta": map[string]any{
+			"request_id": "e2e-home", "chain_id": "1",
+			"coverage_start": "0", "coverage_end": number,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return homeTestUpdate{id: stream.eventID, payload: payload}
+}
+
+func homeStreamSession(request *http.Request) string {
+	cookie, err := request.Cookie("etherview_e2e_home")
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
 }
 
 func writeEnvelope(response http.ResponseWriter, data any) {

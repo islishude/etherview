@@ -88,6 +88,15 @@ func NewPostgresReader(db *sql.DB, options Options) (*PostgresReader, error) {
 }
 
 func (r *PostgresReader) Status(ctx context.Context) (httpapi.StatusSnapshot, error) {
+	return r.status(ctx, r.db, r.runtimeStatus, r.latestBlock)
+}
+
+func (r *PostgresReader) status(
+	ctx context.Context,
+	queryer searchQueryer,
+	runtimeStatus RuntimeStatusFunc,
+	latestBlock LatestBlockFunc,
+) (httpapi.StatusSnapshot, error) {
 	snapshot := httpapi.StatusSnapshot{
 		CoverageStart: r.startBlock,
 		CoverageEnd:   r.startBlock,
@@ -96,7 +105,7 @@ func (r *PostgresReader) Status(ctx context.Context) (httpapi.StatusSnapshot, er
 	var configuredStart, contiguousEnd, checkpointHeight, highestEnd sql.NullString
 	var contiguousHash, checkpointHash, highestHash []byte
 	var safeHeight, finalizedHeight sql.NullString
-	if err := r.db.QueryRowContext(ctx, statusStateSQL, r.chainID).Scan(
+	if err := queryer.QueryRowContext(ctx, statusStateSQL, r.chainID).Scan(
 		&configuredStart,
 		&contiguousEnd, &contiguousHash,
 		&checkpointHeight, &checkpointHash,
@@ -173,8 +182,8 @@ func (r *PostgresReader) Status(ctx context.Context) (httpapi.StatusSnapshot, er
 	indexedKnown := contiguousEnd.Valid
 	latestKnown := false
 	runtimeConsistent := true
-	if r.runtimeStatus != nil {
-		runtime, exists, err := r.runtimeStatus(ctx)
+	if runtimeStatus != nil {
+		runtime, exists, err := runtimeStatus(ctx)
 		if err != nil {
 			return httpapi.StatusSnapshot{}, fmt.Errorf("read durable sync runtime status: %w", err)
 		}
@@ -190,8 +199,8 @@ func (r *PostgresReader) Status(ctx context.Context) (httpapi.StatusSnapshot, er
 		if !runtime.Ready || !runtime.BackfillComplete {
 			runtimeConsistent = false
 		}
-	} else if r.latestBlock != nil {
-		latest, err := r.latestBlock(ctx)
+	} else if latestBlock != nil {
+		latest, err := latestBlock(ctx)
 		if err != nil {
 			return httpapi.StatusSnapshot{}, fmt.Errorf("read upstream latest block: %w", err)
 		}

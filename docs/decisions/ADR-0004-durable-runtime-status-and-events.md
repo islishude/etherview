@@ -57,6 +57,18 @@ public view.
   rejects configurations above 4096. Status writes prune older rows.
 - WebSocket new-head subscriptions only wake the authoritative polling path;
   they never write runtime status or public events directly.
+- API replicas may derive a complete home-page snapshot from the PostgreSQL
+  writer in one read-only repeatable-read transaction and fan it out through a
+  dedicated SSE stream. The derivation reads the durable runtime-event tail,
+  status, canonical blocks, and canonical transactions from the same snapshot.
+  One replica-local broadcaster performs the read per committed event
+  generation; individual browser subscribers never multiply database reads.
+- The complete-snapshot stream sends the current snapshot immediately and
+  replaces it after `head`, `reorg`, or `status` events. Reconnects receive the
+  current complete snapshot rather than replaying intermediate snapshots; the
+  existing compact `/api/v1/events` stream retains its durable replay contract.
+  A failed refresh retains the previously published snapshot without assigning
+  it a newer event ID and retries from PostgreSQL.
 - Native and compatibility API responses use `Cache-Control: no-store` for
   browsers and unmanaged intermediaries; an explicitly configured server-side
   cache remains behind the event invalidator. The SSE stream itself uses

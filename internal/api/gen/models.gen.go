@@ -1252,6 +1252,19 @@ type GenesisAccountListResponse struct {
 // Hash A 32-byte hash; responses use normalized lowercase hexadecimal.
 type Hash = string
 
+// HomeSnapshot defines model for HomeSnapshot.
+type HomeSnapshot struct {
+	Blocks       []Block       `json:"blocks"`
+	Status       Status        `json:"status"`
+	Transactions []Transaction `json:"transactions"`
+}
+
+// HomeSnapshotResponse defines model for HomeSnapshotResponse.
+type HomeSnapshotResponse struct {
+	Data HomeSnapshot `json:"data"`
+	Meta Meta         `json:"meta"`
+}
+
 // Meta defines model for Meta.
 type Meta struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.

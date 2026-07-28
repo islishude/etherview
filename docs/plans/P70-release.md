@@ -35,6 +35,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
+| P70-T15 | in_progress | P30, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
 
 ## Acceptance
 
