@@ -1524,6 +1524,11 @@ components:
       properties:
         hash:
           $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        confirmations:
+          $ref: "#/components/schemas/Quantity"
         block_hash:
           $ref: "#/components/schemas/Hash"
         block_number:
@@ -1542,12 +1547,21 @@ components:
           $ref: "#/components/schemas/Quantity"
         gas:
           $ref: "#/components/schemas/Quantity"
+        effective_gas_price:
+          $ref: "#/components/schemas/Quantity"
+          description: "Transaction effective gas price used on-chain (receipt effectiveGasPrice), serialized as wei. For London+ transactions this equals min(baseFeePerGas + tip, gasFeeCap); legacy/access-list transactions use gasPrice."
+        tx_fee_wei:
+          $ref: "#/components/schemas/Quantity"
+          description: "Total fee paid by sender in wei, computed as gas_used * effective_gas_price."
         gas_price:
           $ref: "#/components/schemas/Quantity"
         max_fee_per_gas:
           $ref: "#/components/schemas/Quantity"
         max_priority_fee_per_gas:
           $ref: "#/components/schemas/Quantity"
+        burned_wei:
+          $ref: "#/components/schemas/Quantity"
+          description: "Gas burned by protocol in wei, computed as gas_used * block.base_fee_per_gas. For pre-London blocks this is 0."
         type:
           type: string
         input:

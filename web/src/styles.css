@@ -1105,6 +1105,53 @@ tbody tr:hover {
   font-weight: 750;
 }
 
+.copyable-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.copyable-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.copyable-copy-button {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  line-height: 1;
+  transition: opacity 0.18s ease, max-width 0.18s ease, padding 0.18s ease;
+}
+
+.copyable-copy-button.copied {
+  color: var(--text);
+}
+
+.copyable-field:hover .copyable-copy-button,
+.copyable-field:focus-within .copyable-copy-button {
+  max-width: 3rem;
+  padding: 0.2rem 0.38rem;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.copyable-copy-button:hover,
+.copyable-copy-button:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
 .detail-item dd {
   min-width: 0;
   margin: 0;

@@ -36,7 +36,7 @@ func NewLogger(options LoggerOptions) *slog.Logger {
 	if level == nil {
 		level = slog.LevelInfo
 	}
-	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
+	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
 		AddSource: options.AddSource,
 		Level:     level,
 	})

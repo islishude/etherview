@@ -332,6 +332,9 @@ describe("embedded explorer shell", () => {
               nonce: "1",
               value: "2",
               gas: "21000",
+              effective_gas_price: "2000000000",
+              tx_fee_wei: "42000000000000",
+              burned_wei: "21000000000000",
               input: "0x",
               status: "success",
               canonical: true,
@@ -358,6 +361,12 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByRole("heading", { name: "Transaction summary", level: 2 })).toBeVisible();
     expect(await screen.findByText("Trace data is unavailable")).toBeVisible();
     expect(screen.getByText(/reported Unavailable at block 42/)).toBeVisible();
+    expect(screen.getByText("Effective gas price (gwei)")).toBeVisible();
+    expect(screen.getByText("Transaction fee (ETH)")).toBeVisible();
+    expect(screen.getByText("Burned (ETH)")).toBeVisible();
+    expect(screen.getByText("2")).toBeVisible();
+    expect(screen.getByText("0.000042")).toBeVisible();
+    expect(screen.getByText("0.000021")).toBeVisible();
     expect(screen.getByText(/Core indexed data remains available\./)).toBeVisible();
   });
 

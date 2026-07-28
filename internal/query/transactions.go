@@ -71,7 +71,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 	defer rows.Close() //nolint:errcheck
 	records := make([]transactionRecord, 0, limit+1)
 	for rows.Next() {
-		record, err := r.scanTransaction(rows)
+		record, err := r.scanTransaction(rows, cursor.SnapshotNumber)
 		if err != nil {
 			return nil, "", err
 		}
@@ -163,8 +163,8 @@ func (r *PostgresReader) validateTransactionCursor(ctx context.Context, tx *sql.
 	return nil
 }
 
-func (r *PostgresReader) scanTransaction(scanner rowScanner) (transactionRecord, error) {
-	var transactionJSON, receiptJSON []byte
+func (r *PostgresReader) scanTransaction(scanner rowScanner, tipNumber uint64) (transactionRecord, error) {
+	var transactionJSON, receiptJSON, blockRaw []byte
 	var blockNumberText string
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
@@ -172,13 +172,13 @@ func (r *PostgresReader) scanTransaction(scanner rowScanner) (transactionRecord,
 	var safeHeight, finalizedHeight sql.NullString
 	if err := scanner.Scan(
 		&transactionJSON, &receiptJSON, &blockNumberText, &blockHashBytes, &transactionIndex,
-		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight,
+		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight, &blockRaw,
 	); err != nil {
 		return transactionRecord{}, fmt.Errorf("scan transaction: %w", err)
 	}
 	model, err := r.transactionModel(
-		transactionJSON, receiptJSON, blockNumberText, blockHashBytes, transactionIndex,
-		transactionHashBytes, canonical, safeHeight, finalizedHeight,
+		transactionJSON, receiptJSON, blockRaw, blockNumberText, blockHashBytes, transactionIndex,
+		transactionHashBytes, canonical, safeHeight, finalizedHeight, tipNumber,
 	)
 	if err != nil {
 		return transactionRecord{}, err
@@ -211,12 +211,17 @@ SELECT
     inclusion.tx_hash,
     TRUE,
     finality.safe_number::text,
-    finality.finalized_number::text
+    finality.finalized_number::text,
+    block.raw
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
  AND canonical.number = inclusion.block_number
  AND canonical.block_hash = inclusion.block_hash
+JOIN blocks AS block
+  ON block.chain_id = inclusion.chain_id
+ AND block.number = inclusion.block_number
+ AND block.hash = inclusion.block_hash
 JOIN receipts AS receipt
   ON receipt.chain_id = inclusion.chain_id
  AND receipt.block_number = inclusion.block_number
@@ -238,12 +243,17 @@ SELECT
     inclusion.tx_hash,
     TRUE,
     finality.safe_number::text,
-    finality.finalized_number::text
+    finality.finalized_number::text,
+    block.raw
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
  AND canonical.number = inclusion.block_number
  AND canonical.block_hash = inclusion.block_hash
+JOIN blocks AS block
+  ON block.chain_id = inclusion.chain_id
+ AND block.number = inclusion.block_number
+ AND block.hash = inclusion.block_hash
 JOIN receipts AS receipt
   ON receipt.chain_id = inclusion.chain_id
  AND receipt.block_number = inclusion.block_number

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -48,7 +49,13 @@ import type {
   VerificationSubmission,
   VerifiedContract,
 } from "@/api/types";
-import { formatInteger, formatTimestamp, shorten } from "@/components/format";
+import {
+  formatGweiFromWei,
+  formatInteger,
+  formatNativeAmount,
+  formatTimestamp,
+  shorten,
+} from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
   chainsMatch,
@@ -320,6 +327,8 @@ export function BlocksPage() {
 
 export function GenesisPage() {
   const { i18n, t } = useTranslation();
+  const publicConfig = usePublicConfig();
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const pager = useCursorHistory("genesis");
   const accounts = useGenesisAccounts(
     CORE_PAGE_SIZE,
@@ -357,7 +366,7 @@ export function GenesisPage() {
                     </Link>
                   </td>
                   <td>{t(`accountType.${account.type}`)}</td>
-                  <td>{formatInteger(account.balance, locale)}</td>
+                  <td>{formatNativeAmount(account.balance, locale, nativeDecimals)}</td>
                   <td>{formatInteger(account.nonce, locale)}</td>
                   <td><code title={account.code_hash}>{shorten(account.code_hash)}</code></td>
                   <td><code title={account.storage_root}>{shorten(account.storage_root)}</code></td>
@@ -384,6 +393,8 @@ export function GenesisPage() {
 
 export function TransactionsPage() {
   const { i18n, t } = useTranslation();
+  const publicConfig = usePublicConfig();
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const pager = useCursorHistory("transactions");
   const transactions = useTransactions(
     CORE_PAGE_SIZE,
@@ -452,7 +463,7 @@ export function TransactionsPage() {
                       </Link>
                     ) : t("common.contractCreation")}
                   </td>
-                  <td><code>{formatInteger(transaction.value, locale)}</code></td>
+                  <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
                   <td><FinalityBadge finality={transaction.finality} /></td>
                 </tr>
               ))}
@@ -611,6 +622,8 @@ function TransactionDetailPage({ hash }: { hash: string }) {
   const { i18n, t } = useTranslation();
   const transaction = useTransaction(hash);
   const trace = useTransactionTrace(hash);
+  const publicConfig = usePublicConfig();
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
@@ -633,37 +646,56 @@ function TransactionDetailPage({ hash }: { hash: string }) {
               ) : undefined}
             />
             <Detail
-              label={t("detail.blockHash")}
-              mono
-              value={transaction.data.block_hash ? (
-                <Link to="/blocks/$blockID" params={{ blockID: transaction.data.block_hash }}>
-                  {transaction.data.block_hash}
-                </Link>
+              label={t("detail.confirmations")}
+              value={formatInteger(transaction.data.confirmations, locale)}
+            />
+            <Detail
+              label={t("detail.blockTimestamp")}
+              value={transaction.data.block_timestamp ? (
+                formatTimestamp(transaction.data.block_timestamp, locale)
               ) : undefined}
             />
             <Detail
               label={t("table.from")}
               mono
               value={(
-                <Link to="/address/$address" params={{ address: transaction.data.from }}>
-                  {transaction.data.from}
-                </Link>
+                <CopyableField value={transaction.data.from}>
+                  <Link to="/address/$address" params={{ address: transaction.data.from }}>
+                    {transaction.data.from}
+                  </Link>
+                </CopyableField>
               )}
             />
             <Detail
               label={t("table.to")}
               mono={Boolean(transaction.data.to)}
               value={transaction.data.to ? (
-                <Link to="/address/$address" params={{ address: transaction.data.to }}>
-                  {transaction.data.to}
-                </Link>
+                <CopyableField value={transaction.data.to}>
+                  <Link to="/address/$address" params={{ address: transaction.data.to }}>
+                    {transaction.data.to}
+                  </Link>
+                </CopyableField>
               ) : t("common.contractCreation")}
             />
             <Detail label={t("detail.nonce")} value={formatInteger(transaction.data.nonce, locale)} />
-            <Detail label={t("table.value")} value={formatInteger(transaction.data.value, locale)} />
+            <Detail
+              label={t("table.value")}
+              value={formatNativeAmount(transaction.data.value, locale, nativeDecimals)}
+            />
             <Detail label={t("detail.gasLimit")} value={formatInteger(transaction.data.gas, locale)} />
-            <Detail label={t("detail.gasPrice")} value={formatInteger(transaction.data.gas_price, locale)} />
-            <Detail label={t("detail.type")} value={transaction.data.type} />
+            <Detail
+              label={t("detail.effectiveGasPrice")}
+              value={formatGweiFromWei(transaction.data.effective_gas_price, locale)}
+            />
+            <Detail
+              label={t("detail.transactionFee")}
+              value={formatNativeAmount(transaction.data.tx_fee_wei, locale, nativeDecimals)}
+            />
+            <Detail
+              label={t("detail.burned")}
+              value={formatNativeAmount(transaction.data.burned_wei, locale, nativeDecimals)}
+            />
+            <Detail label={t("detail.type")} value={transactionTypeLabel(transaction.data.type, t)} />
             <Detail label={t("detail.input")} value={transaction.data.input} mono wide />
             <Detail label={t("detail.canonical")} value={yesNo(transaction.data.canonical, t)} />
             <Detail label={t("table.finality")} value={finalityLabel(transaction.data.finality, t)} />
@@ -671,7 +703,7 @@ function TransactionDetailPage({ hash }: { hash: string }) {
           <CompletenessPanel completeness={transaction.data.completeness} />
         </>
       )}
-
+ 
       <section className="detail-section" aria-labelledby="trace-title">
         <h2 id="trace-title">{t("detail.trace")}</h2>
         <QueryNotice loading={trace.isPending} error={trace.error} />
@@ -700,9 +732,29 @@ function TransactionDetailPage({ hash }: { hash: string }) {
                   <tr key={frame.path.join(".") || "root"}>
                     <td><code>{frame.path.join(".") || "root"}</code></td>
                     <td>{frame.call_type}</td>
-                    <td><code>{frame.from ? shorten(frame.from) : "—"}</code></td>
-                    <td><code>{frame.to ? shorten(frame.to) : frame.created_address ? shorten(frame.created_address) : "—"}</code></td>
-                    <td><code>{formatInteger(frame.value, locale)}</code></td>
+                    <td>
+                      {frame.from ? (
+                        <CopyableField value={frame.from}>
+                          <code>{shorten(frame.from)}</code>
+                        </CopyableField>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>
+                      {frame.to ? (
+                        <CopyableField value={frame.to}>
+                          <code>{shorten(frame.to)}</code>
+                        </CopyableField>
+                      ) : frame.created_address ? (
+                        <CopyableField value={frame.created_address}>
+                          <code>{shorten(frame.created_address)}</code>
+                        </CopyableField>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td><code>{formatNativeAmount(frame.value, locale, nativeDecimals)}</code></td>
                     <td>{frame.reverted ? frame.error ?? t("detail.reverted") : t("detail.succeeded")}</td>
                   </tr>
                 ))}
@@ -726,6 +778,8 @@ function AddressDetailPage({ address }: { address: string }) {
     nftPager.refreshGeneration,
     isAddress(address),
   );
+  const publicConfig = usePublicConfig();
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
@@ -737,7 +791,10 @@ function AddressDetailPage({ address }: { address: string }) {
             <Detail label={t("page.address")} value={account.data.address} mono />
             <Detail label={t("detail.name")} value={account.data.name} />
             <Detail label={t("detail.type")} value={accountTypeLabel(account.data.type, t)} />
-            <Detail label={t("detail.balance")} value={formatInteger(account.data.balance, locale)} />
+            <Detail
+              label={t("detail.nativeBalance")}
+              value={formatNativeAmount(account.data.balance, locale, nativeDecimals)}
+            />
             <Detail label={t("detail.nonce")} value={formatInteger(account.data.nonce, locale)} />
             <Detail
               label={t("detail.atBlock")}
@@ -1228,6 +1285,68 @@ function DetailList({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+function CopyableField({ children, value }: { children: React.ReactNode; value: string }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!copied) return;
+    timeoutRef.current = window.setTimeout(() => setCopied(false), 1200);
+    return () => {
+      if (timeoutRef.current !== undefined) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [copied]);
+
+  const copy = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        textarea.setAttribute("readonly", "");
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copiedToClipboard = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!copiedToClipboard) {
+          throw new Error("fallback copy failed");
+        }
+      }
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+
+    if (timeoutRef.current !== undefined) {
+      window.clearTimeout(timeoutRef.current);
+    }
+  };
+
+  return (
+    <span className="copyable-field">
+      <span className="copyable-content">{children}</span>
+      <button
+        aria-label={copied ? t("common.copied") : t("common.copy")}
+        className={copied ? "copyable-copy-button copied" : "copyable-copy-button"}
+        onClick={copy}
+        title={copied ? t("common.copied") : t("common.copy")}
+        type="button"
+      >
+        {copied ? "✓" : "⎘"}
+      </button>
+    </span>
+  );
+}
+
 function Detail({ label, value, mono, wide }: { label: string; value?: React.ReactNode; mono?: boolean; wide?: boolean }) {
   return (
     <div className={wide ? "detail-item wide" : "detail-item"}>
@@ -1290,6 +1409,24 @@ function transactionStatusLabel(value: string | undefined, t: Translate): string
     case "unknown": return t("transactionStatus.unknown");
     default: return t("common.indexed");
   }
+}
+
+function transactionTypeLabel(value: string | undefined, t: Translate): string {
+  if (!value) return "—";
+  const normalized = value.trim().toLowerCase();
+  const parsed = normalized.startsWith("0x")
+    ? Number.parseInt(normalized.slice(2), 16)
+    : Number.parseInt(normalized, 10);
+  if (!Number.isNaN(parsed)) {
+    switch (String(parsed)) {
+      case "0": return t("transactionType.legacy");
+      case "1": return t("transactionType.accessList");
+      case "2": return t("transactionType.dynamicFee");
+      case "3": return t("transactionType.blob");
+      case "4": return t("transactionType.eip7702");
+    }
+  }
+  return value;
 }
 
 function accountTypeLabel(value: string, t: Translate): string {

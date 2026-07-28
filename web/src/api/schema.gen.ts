@@ -1131,8 +1131,15 @@ export interface components {
         Transaction: {
             block_hash?: components["schemas"]["Hash"];
             block_number?: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp?: string;
+            /** @description Gas burned by protocol in wei, computed as gas_used * block.base_fee_per_gas. For pre-London blocks this is 0. */
+            burned_wei?: components["schemas"]["Quantity"];
             canonical: boolean;
             completeness: components["schemas"]["Completeness"];
+            confirmations?: components["schemas"]["Quantity"];
+            /** @description Transaction effective gas price used on-chain (receipt effectiveGasPrice), serialized as wei. For London+ transactions this equals min(baseFeePerGas + tip, gasFeeCap); legacy/access-list transactions use gasPrice. */
+            effective_gas_price?: components["schemas"]["Quantity"];
             finality: components["schemas"]["Finality"];
             from: components["schemas"]["Address"];
             gas: components["schemas"]["Quantity"];
@@ -1146,6 +1153,8 @@ export interface components {
             status?: "pending" | "success" | "failed" | "unknown";
             to?: components["schemas"]["Address"];
             transaction_index?: number;
+            /** @description Total fee paid by sender in wei, computed as gas_used * effective_gas_price. */
+            tx_fee_wei?: components["schemas"]["Quantity"];
             type?: string;
             value: components["schemas"]["Quantity"];
         };

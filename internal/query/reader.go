@@ -331,7 +331,16 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("invalid transaction hash: %w", err)
 	}
-	rows, err := r.db.QueryContext(ctx, transactionByHashSQL, r.chainID, hash.Bytes())
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return gen.Transaction{}, fmt.Errorf("begin stable transaction query: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	snapshot, err := r.currentBlockCursor(ctx, tx)
+	if err != nil {
+		return gen.Transaction{}, err
+	}
+	rows, err := tx.QueryContext(ctx, transactionByHashSQL, r.chainID, hash.Bytes())
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
 	}
@@ -342,8 +351,14 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 		}
 		return gen.Transaction{}, httpapi.ErrNotFound
 	}
-	record, err := r.scanTransaction(rows)
-	return record.Model, err
+	record, err := r.scanTransaction(rows, snapshot.SnapshotNumber)
+	if err != nil {
+		return gen.Transaction{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return gen.Transaction{}, fmt.Errorf("commit stable transaction query: %w", err)
+	}
+	return record.Model, nil
 }
 
 // Address state cannot be derived correctly from value transfers alone. Until
@@ -696,8 +711,13 @@ SELECT
     inclusion.tx_hash,
     (canonical.block_hash IS NOT NULL),
     finality.safe_number::text,
-    finality.finalized_number::text
+    finality.finalized_number::text,
+    block.raw
 FROM transaction_inclusions AS inclusion
+JOIN blocks AS block
+  ON block.chain_id = inclusion.chain_id
+ AND block.number = inclusion.block_number
+ AND block.hash = inclusion.block_hash
 JOIN receipts AS receipt
   ON receipt.chain_id = inclusion.chain_id
  AND receipt.block_number = inclusion.block_number

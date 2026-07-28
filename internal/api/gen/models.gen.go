@@ -1425,10 +1425,20 @@ type Transaction struct {
 	BlockHash *Hash `json:"block_hash,omitempty"`
 
 	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	BlockNumber  *Quantity    `json:"block_number,omitempty"`
+	BlockNumber    *Quantity  `json:"block_number,omitempty"`
+	BlockTimestamp *time.Time `json:"block_timestamp,omitempty"`
+
+	// BurnedWei A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BurnedWei    *Quantity    `json:"burned_wei,omitempty"`
 	Canonical    bool         `json:"canonical"`
 	Completeness Completeness `json:"completeness"`
-	Finality     Finality     `json:"finality"`
+
+	// Confirmations A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Confirmations *Quantity `json:"confirmations,omitempty"`
+
+	// EffectiveGasPrice A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	EffectiveGasPrice *Quantity `json:"effective_gas_price,omitempty"`
+	Finality          Finality  `json:"finality"`
 
 	// From A 20-byte address; responses use the EIP-55 checksum form.
 	From Address `json:"from"`
@@ -1456,7 +1466,10 @@ type Transaction struct {
 	// To A 20-byte address; responses use the EIP-55 checksum form.
 	To               *Address `json:"to,omitempty"`
 	TransactionIndex *int     `json:"transaction_index,omitempty"`
-	Type             *string  `json:"type,omitempty"`
+
+	// TxFeeWei A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TxFeeWei *Quantity `json:"tx_fee_wei,omitempty"`
+	Type     *string   `json:"type,omitempty"`
 
 	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Value Quantity `json:"value"`

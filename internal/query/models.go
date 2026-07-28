@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -133,12 +134,14 @@ func decodeStoredBlockProjection(raw []byte, destination *storedBlockProjection)
 
 func (r *PostgresReader) transactionModel(
 	transactionJSON, receiptJSON []byte,
+	blockRaw []byte,
 	blockNumberText string,
 	blockHashBytes []byte,
 	transactionIndex int64,
 	transactionHashBytes []byte,
 	canonical bool,
 	safeHeight, finalizedHeight sql.NullString,
+	tipNumber uint64,
 ) (gen.Transaction, error) {
 	blockNumber, err := parseDecimalUint64(blockNumberText)
 	if err != nil {
@@ -227,7 +230,54 @@ func (r *PostgresReader) transactionModel(
 		}
 	}
 	model.Status = &status
+
+	var blockBaseFee *big.Int
+	var blockTimestamp *time.Time
+	if len(blockRaw) > 0 {
+		var block storedBlockProjection
+		if err := decodeStoredBlockProjection(blockRaw, &block); err != nil {
+			return gen.Transaction{}, fmt.Errorf("decode transaction block raw JSON: %w", err)
+		}
+		if block.BaseFeePerGas != nil {
+			blockBaseFee = new(big.Int).Set(block.BaseFeePerGas.ToInt())
+		}
+		if block.Timestamp != nil {
+			parsed, err := quantityTime(uint64(*block.Timestamp))
+			if err != nil {
+				return gen.Transaction{}, fmt.Errorf("decode transaction block timestamp: %w", err)
+			}
+			blockTimestamp = &parsed
+		}
+	}
+	if blockTimestamp != nil {
+		model.BlockTimestamp = blockTimestamp
+	}
+	if canonical && tipNumber >= blockNumber {
+		confirmations := strconv.FormatUint((tipNumber - blockNumber + 1), 10)
+		model.Confirmations = &confirmations
+	}
+	effectiveGasPrice, err := chainbundle.TransactionEffectiveGasPrice(wire, blockBaseFee)
+	if err != nil {
+		return gen.Transaction{}, fmt.Errorf("derive transaction effective gas price: %w", err)
+	}
+	if effectiveGasPrice != nil {
+		model.EffectiveGasPrice = ptrQuantity(effectiveGasPrice.String())
+		txFeeWei := new(big.Int).Mul(effectiveGasPrice, new(big.Int).SetUint64(receipt.GasUsed))
+		model.TxFeeWei = ptrQuantity(txFeeWei.String())
+	}
+	if blockBaseFee != nil {
+		burnedWei := new(big.Int).Mul(blockBaseFee, new(big.Int).SetUint64(receipt.GasUsed))
+		model.BurnedWei = ptrQuantity(burnedWei.String())
+	} else {
+		model.BurnedWei = ptrQuantity("0")
+	}
+
 	return model, nil
+}
+
+func ptrQuantity(value string) *gen.Quantity {
+	quantity := gen.Quantity(value)
+	return &quantity
 }
 
 func decodeRawObject(raw []byte, destination any) error {

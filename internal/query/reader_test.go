@@ -253,19 +253,19 @@ func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(9),
+			columns:  columns(10),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0"},
-				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0"},
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0"},
+				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1)},
+				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1)},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0)},
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
 		queryExpectation{
 			contains: "inclusion.tx_index < $3",
-			columns:  columns(9),
+			columns:  columns(10),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0"},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0)},
 			},
 		},
 	)
@@ -334,10 +334,12 @@ func TestBlockRejectsRawIdentityMismatch(t *testing.T) {
 func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "FROM transaction_inclusions AS inclusion", columns: columns(9),
+		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}},
+	}, queryExpectation{
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
 		rows: [][]driver.Value{{
 			testTransactionRaw(2, 3, 7), testReceiptRaw(2, 3, 7, "0x1"),
-			"2", testHashBytes(3), int64(0), testTransactionHashBytes(7), true, "2", "1",
+			"2", testHashBytes(3), int64(0), testTransactionHashBytes(7), true, "2", "1", testBlockRaw(2, 3, 2, 1),
 		}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -357,6 +359,70 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	}
 	if transaction.Finality != gen.FinalitySafe || !transaction.Canonical {
 		t.Fatalf("transaction canonicality = %+v", transaction)
+	}
+
+	if transaction.EffectiveGasPrice == nil || *transaction.EffectiveGasPrice != "2000000000" {
+		t.Fatalf("effective_gas_price = %v, want %s", transaction.EffectiveGasPrice, "2000000000")
+	}
+	if transaction.TxFeeWei == nil || *transaction.TxFeeWei != "42000000000000" {
+		t.Fatalf("tx_fee_wei = %v, want %s", transaction.TxFeeWei, "42000000000000")
+	}
+	if transaction.BurnedWei == nil || *transaction.BurnedWei != "21000000000000" {
+		t.Fatalf("burned_wei = %v, want %s", transaction.BurnedWei, "21000000000000")
+	}
+	if transaction.BlockTimestamp == nil || transaction.BlockTimestamp.Unix() != 100 {
+		t.Fatalf("block_timestamp = %v", transaction.BlockTimestamp)
+	}
+	if transaction.Confirmations == nil || *transaction.Confirmations != "1" {
+		t.Fatalf("confirmations = %v", transaction.Confirmations)
+	}
+}
+
+func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFee(t *testing.T) {
+	t.Parallel()
+	db := testDatabase(t, queryExpectation{
+		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"1", testHashBytes(3)}},
+	}, queryExpectation{
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+		rows: [][]driver.Value{{
+			testLegacyTransactionRaw(1, 3, 11), testLegacyReceiptRawAt(1, 3, 11, 0, "0x1"),
+			"1", testHashBytes(3), int64(0), testLegacyTransactionHashBytes(11), true, "1", "0", testBlockRawWithoutBaseFee(1, 3, 0, 1),
+		}},
+	})
+	reader := testReader(t, db, Options{ChainID: 1})
+	transaction, err := reader.Transaction(context.Background(), testLegacyTransactionHash(11).Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.EffectiveGasPrice == nil || *transaction.EffectiveGasPrice != "1000000000" {
+		t.Fatalf("effective_gas_price = %v, want %s", transaction.EffectiveGasPrice, "1000000000")
+	}
+	if transaction.TxFeeWei == nil || *transaction.TxFeeWei != "21000000000000" {
+		t.Fatalf("tx_fee_wei = %v, want %s", transaction.TxFeeWei, "21000000000000")
+	}
+	if transaction.BurnedWei == nil || *transaction.BurnedWei != "0" {
+		t.Fatalf("burned_wei = %v, want %s", transaction.BurnedWei, "0")
+	}
+}
+
+func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
+	t.Parallel()
+	db := testDatabase(t, queryExpectation{
+		contains: "SELECT number::text, block_hash", columns: columns(2), rows: [][]driver.Value{{"3", testHashBytes(3)}},
+	}, queryExpectation{
+		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
+		rows: [][]driver.Value{{
+			testTransactionRaw(1, 2, 5), testReceiptRawAt(1, 2, 5, 0, "0x1"),
+			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", testBlockRawWithoutBaseFee(1, 2, 1, 0),
+		}},
+	})
+	reader := testReader(t, db, Options{ChainID: 1})
+	transaction, err := reader.Transaction(context.Background(), testTransactionHash(5).Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.Confirmations != nil {
+		t.Fatalf("confirmations = %v", transaction.Confirmations)
 	}
 }
 
@@ -616,6 +682,28 @@ func testBlockRaw(number uint64, hash, parent byte, transactionCount int) []byte
 	return data
 }
 
+func testBlockRawWithoutBaseFee(number uint64, hash, parent byte, transactionCount int) []byte {
+	transactions := make([]string, transactionCount)
+	for index := range transactions {
+		transactions[index] = testHash(byte(100 + index))
+	}
+	value := map[string]any{
+		"number":       fmt.Sprintf("0x%x", number),
+		"hash":         testHash(hash),
+		"parentHash":   testHash(parent),
+		"timestamp":    "0x64",
+		"miner":        "0x52908400098527886e0f7030069857d2e4169ee7",
+		"transactions": transactions,
+		"gasUsed":      "0x5208",
+		"gasLimit":     "0x1c9c380",
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 func testTransactionRaw(blockNumber uint64, blockHash, transactionHash byte) []byte {
 	return testTransactionRawAt(blockNumber, blockHash, transactionHash, 0)
 }
@@ -646,8 +734,16 @@ func testReceiptRaw(blockNumber uint64, blockHash, transactionHash byte, status 
 }
 
 func testReceiptRawAt(blockNumber uint64, blockHash, transactionHash byte, transactionIndex uint64, status string) []byte {
+	return testReceiptRawAtHash(blockNumber, blockHash, testTransactionHash(transactionHash).Hex(), "0x2", transactionIndex, status)
+}
+
+func testLegacyReceiptRawAt(blockNumber uint64, blockHash, transactionHash byte, transactionIndex uint64, status string) []byte {
+	return testReceiptRawAtHash(blockNumber, blockHash, testLegacyTransactionHash(transactionHash).Hex(), "0x0", transactionIndex, status)
+}
+
+func testReceiptRawAtHash(blockNumber uint64, blockHash byte, transactionHash string, transactionType string, transactionIndex uint64, status string) []byte {
 	value := map[string]any{
-		"transactionHash":   testTransactionHash(transactionHash).Hex(),
+		"transactionHash":   transactionHash,
 		"transactionIndex":  fmt.Sprintf("0x%x", transactionIndex),
 		"blockHash":         testHash(blockHash),
 		"blockNumber":       fmt.Sprintf("0x%x", blockNumber),
@@ -657,7 +753,7 @@ func testReceiptRawAt(blockNumber uint64, blockHash, transactionHash byte, trans
 		"logs":              []any{},
 		"logsBloom":         "0x" + strings.Repeat("00", types.BloomByteLength),
 		"status":            status,
-		"type":              "0x2",
+		"type":              transactionType,
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -689,12 +785,66 @@ func testSignedTransaction(seed byte) *types.Transaction {
 	return signed
 }
 
+func testLegacyTransaction(seed byte) *types.Transaction {
+	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		panic(err)
+	}
+	to := common.HexToAddress("0xde709f2102306220921060314715629080e2fb77")
+	transaction := types.NewTx(&types.LegacyTx{
+		Nonce:    uint64(seed) + 9,
+		GasPrice: big.NewInt(1_000_000_000),
+		Gas:      21_000,
+		To:       &to,
+		Value:    new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)),
+		Data:     []byte{0xde, 0xad, 0xbe, 0xef},
+	})
+	signed, err := types.SignTx(transaction, types.LatestSignerForChainID(big.NewInt(1)), key)
+	if err != nil {
+		panic(err)
+	}
+	return signed
+}
+
+func testLegacyTransactionRaw(blockNumber uint64, blockHash, transactionHash byte) []byte {
+	return testLegacyTransactionRawAt(blockNumber, blockHash, transactionHash, 0)
+}
+
+func testLegacyTransactionRawAt(blockNumber uint64, blockHash, transactionHash byte, transactionIndex uint64) []byte {
+	transaction := testLegacyTransaction(transactionHash)
+	encoded, err := transaction.MarshalJSON()
+	if err != nil {
+		panic(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		panic(err)
+	}
+	value["blockHash"] = testHash(blockHash)
+	value["blockNumber"] = fmt.Sprintf("0x%x", blockNumber)
+	value["transactionIndex"] = fmt.Sprintf("0x%x", transactionIndex)
+	value["from"] = testTransactionSender().Hex()
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 func testTransactionHash(seed byte) common.Hash {
 	return testSignedTransaction(seed).Hash()
 }
 
 func testTransactionHashBytes(seed byte) []byte {
 	return testTransactionHash(seed).Bytes()
+}
+
+func testLegacyTransactionHash(seed byte) common.Hash {
+	return testLegacyTransaction(seed).Hash()
+}
+
+func testLegacyTransactionHashBytes(seed byte) []byte {
+	return testLegacyTransactionHash(seed).Bytes()
 }
 
 func testTransactionSender() common.Address {
