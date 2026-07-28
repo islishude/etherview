@@ -55,6 +55,9 @@
 {{- if .Values.networkPolicy.allowExternalHTTPS }}
 {{- fail "networkPolicy.allowExternalHTTPS must be false when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
 {{- end }}
+{{- if and (eq .Values.mode "monolith") .Values.config.features.verification .Values.networkPolicy.allowCompilerHTTPS }}
+{{- fail "networkPolicy.allowCompilerHTTPS must be false in monolith mode when x402 billing is enabled; split the verify role or pre-populate the compiler cache" }}
+{{- end }}
 {{- $x402AdditionalEgressError := "networkPolicy.additionalEgress must explicitly exclude TCP/443 when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
 {{- range $ruleIndex, $rule := .Values.networkPolicy.additionalEgress }}
 {{- if not (kindIs "map" $rule) }}

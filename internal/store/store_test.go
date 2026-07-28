@@ -301,7 +301,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -314,6 +314,21 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			statusWriterSQL = migration.SQL
 		case "0026_address_activity_indexes":
 			addressActivitySQL = migration.SQL
+		case "0027_verifier_v2":
+			verifierV2SQL = migration.SQL
+		}
+	}
+	for _, fragment := range []string{
+		"DROP TABLE IF EXISTS verification_jobs CASCADE",
+		"CREATE TABLE compiler_catalog_generations",
+		"CREATE TABLE compiler_catalog_entries",
+		"CREATE TABLE verification_jobs",
+		"CREATE TABLE verification_results",
+		"CREATE TABLE verified_contracts",
+		"runtime_match,match_type",
+	} {
+		if !strings.Contains(verifierV2SQL, fragment) {
+			t.Errorf("verifier v2 migration missing %q", fragment)
 		}
 	}
 	for _, fragment := range []string{

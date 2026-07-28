@@ -42,6 +42,16 @@ USER 65532:65532
 ENTRYPOINT ["/loadtest"]
 CMD []
 
+# Generic verifier runner. Build and publish this target separately, pin its
+# digest in verification.runner_image, and pre-pull it on verify-role hosts.
+# Compiler binaries and Standard JSON enter only through the bounded frame on
+# stdin and are materialized in the container's tmpfs by compiler-runner.
+FROM gcr.io/distroless/base-debian13:nonroot AS compiler-runner
+COPY --from=go-builder --chown=nonroot:nonroot /go/bin/compiler-runner /compiler-runner
+USER 65532:65532
+ENTRYPOINT ["/compiler-runner"]
+CMD []
+
 # Keep production last so an unqualified `docker build .` still emits the
 # deployable Etherview image rather than a test-only tool.
 FROM gcr.io/distroless/base-debian13:nonroot AS production

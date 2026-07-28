@@ -289,7 +289,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await page.getByLabel("Job read API key", { exact: true }).fill(readAPIKey);
   await activateInView(page.getByRole("button", { name: "Load job", exact: true }));
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Yes", { exact: true })).toBeVisible();
+  await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
 
   await page.goto(`/contract/${address}?code_hash=${codeHash}`);
   await expect(page.getByText(/published-artifact reads remain available/)).toBeVisible();

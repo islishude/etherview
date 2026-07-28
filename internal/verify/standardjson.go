@@ -260,7 +260,7 @@ func validateStandardJSONTopLevel(document map[string]any, language Language) er
 		"settings": {},
 	}
 	switch language {
-	case LanguageSolidity:
+	case LanguageSolidity, LanguageYul:
 		allowed["auxiliaryInput"] = struct{}{}
 	case LanguageVyper:
 		allowed["interfaces"] = struct{}{}
@@ -472,10 +472,12 @@ func standardJSONLanguage(language Language) (string, error) {
 	switch language {
 	case LanguageSolidity:
 		return "Solidity", nil
+	case LanguageYul:
+		return "Yul", nil
 	case LanguageVyper:
 		return "Vyper", nil
 	default:
-		return "", errors.New("language must be solidity or vyper")
+		return "", errors.New("language must be solidity, yul, or vyper")
 	}
 }
 

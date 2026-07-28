@@ -47,10 +47,8 @@ const BILLABLE_OPERATIONS = [
   "getBlockStats",
   "getAggregateStats",
   "search",
-  "getVerificationJob",
+  "getVerifierJob",
   "getVerifiedContract",
-  "lookupSourcifyContract",
-  "getSourcifyJob",
 ] as const;
 
 interface BillingFilterForm {

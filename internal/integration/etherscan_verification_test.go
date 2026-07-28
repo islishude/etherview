@@ -68,7 +68,19 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create verification repository: %v", err)
 	}
-	verificationService, err := verify.NewService(verificationRepository, 1<<20)
+	generation, compilerDigest, _ := insertVerifierV2Compiler(t, ctx, db)
+	catalog, err := verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
+		Sources: map[verify.Language]string{
+			verify.LanguageSolidity: "https://compiler.example/list.json",
+		},
+		AllowedOrigins: []string{"https://compiler.example"},
+	})
+	if err != nil {
+		t.Fatalf("create verification catalog: %v", err)
+	}
+	verificationService, err := verify.NewService(verificationRepository, 1<<20, verify.ServiceOptions{
+		Catalog: catalog,
+	})
 	if err != nil {
 		t.Fatalf("create verification service: %v", err)
 	}
@@ -104,12 +116,20 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 		t.Fatalf("load durable verification job: found=%t error=%v", found, err)
 	}
 	wantCodeHash := "0x" + hex.EncodeToString(codeHash)
-	if job.Status != verify.JobQueued || job.Request.ChainID != 1 || job.Request.Address != strings.ToLower(address.String()) ||
-		job.Request.CodeHash != wantCodeHash || job.Request.AtBlockHash != testHash(7_101).String() ||
-		job.Request.CreationBytecode != hexutil.Encode(creationBytecode) ||
-		job.Request.RuntimeBytecode != hexutil.Encode(runtimeBytecode) ||
-		job.Request.ConstructorArgs != hex.EncodeToString(constructorArguments) || job.Request.LicenseType != "3" {
-		t.Fatalf("durable verification job = %+v", job)
+	if job.RequestV2 == nil {
+		t.Fatal("durable verification job has no verifier-v2 request")
+	}
+	request := job.RequestV2
+	if job.Status != verify.JobQueued || request.Kind != verify.JobAddress ||
+		request.Target == nil || request.Target.ChainID != 1 ||
+		request.Target.Address != strings.ToLower(address.String()) ||
+		request.Target.CodeHash != wantCodeHash ||
+		request.Target.AtBlockHash != testHash(7_101).String() ||
+		request.Target.CreationBytecode != hexutil.Encode(creationInput) ||
+		request.Target.RuntimeBytecode != hexutil.Encode(runtimeBytecode) ||
+		request.CatalogGenerationID != generation ||
+		request.CompilerDigest != hex.EncodeToString(compilerDigest[:]) {
+		t.Fatalf("durable verifier-v2 request = %+v", *request)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_jobs WHERE id = $1::uuid`, 1, guid)
 

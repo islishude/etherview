@@ -242,6 +242,10 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if and $root.Values.config.features.verification (or (eq $roleName "all") (eq $roleName "verify")) }}
+            - name: compiler-cache
+              mountPath: {{ $root.Values.config.verification.cache_directory | quote }}
+            {{- end }}
             {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
             - name: genesis-state
               mountPath: {{ $root.Values.genesisState.mountPath | quote }}
@@ -255,6 +259,16 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- if and $root.Values.config.features.verification (or (eq $roleName "all") (eq $roleName "verify")) }}
+        - name: compiler-cache
+          {{- if $root.Values.compilerCache.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ $root.Values.compilerCache.existingClaim | quote }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ $root.Values.compilerCache.sizeLimit | quote }}
+          {{- end }}
+        {{- end }}
         {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
         - name: genesis-state
           persistentVolumeClaim:

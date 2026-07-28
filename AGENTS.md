@@ -66,6 +66,15 @@ plan changes.
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
   `internal/db/queries/`. Regenerate outputs and never hand-edit generated
   files.
+- Contract verification compiles bounded Solidity/Yul/Vyper inputs twice with
+  one exact catalog compiler, discovers candidates automatically, and records
+  only declared auxdata/library/constructor/immutable transformations.
+  Address publication requires a canonical runtime match and an exact immutable
+  result. Dynamic compiler catalogs and artifacts are hostile external input;
+  automatic catalog discovery follows solc-bin's published platform list and
+  the validated runner image or private host; cached native/solc-js format must
+  match it, and jobs bind the platform, catalog generation, compiler SHA-256,
+  and sandbox-runner digest.
 
 ## Security and browser boundaries
 

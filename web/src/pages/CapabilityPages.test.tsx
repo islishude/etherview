@@ -241,15 +241,28 @@ describe("P50 capability pages", () => {
       if (path === "/api/v1/config") {
         return configResponse({ verification: false, sourcify: false });
       }
-      if (path === `/api/v1/verification/jobs/${jobID}`) {
+      if (path === `/api/v1/verifier/jobs/${jobID}`) {
         expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
         return Response.json({
           data: {
             id: jobID,
+            kind: "address",
             status: "succeeded",
-            result_kind: "exact",
-            runtime_match: "exact",
-            published: true,
+            outcome: {
+              kind: "verification_success",
+              file_name: "src/A.sol",
+              contract_name: "A",
+              language: "solidity",
+              compiler_version: "0.8.30",
+              settings: {},
+              sources: {},
+              compilation_artifacts: {},
+              creation_code_artifacts: {},
+              runtime_code_artifacts: {},
+              libraries: {},
+              is_blueprint: false,
+              runtime_match: { match_type: "full", transformations: [], values: {} },
+            },
             created_at: "2026-07-20T10:00:00Z",
             updated_at: "2026-07-20T10:00:01Z",
           },
@@ -269,7 +282,7 @@ describe("P50 capability pages", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Load job" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
-    expect(screen.getByText("Yes")).toBeVisible();
+    expect(screen.getAllByText("full").length).toBeGreaterThan(0);
     expect(fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs")).toBe(false);
     expect(String(fetcher.mock.calls.find(([input]) => String(input).includes(jobID))?.[0])).not.toContain(secret);
 
@@ -285,7 +298,7 @@ describe("P50 capability pages", () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({ verification: false });
-      if (path === `/api/v1/contracts/${address}/verification?code_hash=${codeHash}`) {
+      if (path === `/api/v1/contracts/${address}/verification`) {
         expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
         return Response.json({
           data: {
@@ -295,11 +308,18 @@ describe("P50 capability pages", () => {
             valid_from_block: "500",
             language: "solidity",
             compiler_version: "0.8.30",
-            match_kind: "exact",
+            file_name: "src/ReadOnly.sol",
+            kind: "verification_success",
+            runtime_match: { match_type: "full", transformations: [], values: {} },
             contract_name: "ReadOnlyArtifact",
             abi: [],
             sources: {},
             settings: {},
+            compilation_artifacts: {},
+            creation_code_artifacts: {},
+            runtime_code_artifacts: {},
+            libraries: {},
+            is_blueprint: false,
             created_at: "2026-07-20T10:00:00Z",
           },
           meta,
@@ -353,17 +373,13 @@ describe("P50 capability pages", () => {
     fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), {
       target: { value: duplicateInput },
     });
-    expect(
-      screen.getByLabelText(
-        "Allow a separate, explicitly confirmed later upload of these sources to Sourcify.",
-      ),
-    ).toBeVisible();
+    expect(screen.queryByText(/Sourcify upload/)).toBeNull();
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Standard JSON input contains a duplicate key and was not submitted.",
     );
-    expect(fetcher.mock.calls.some(([input]) => String(input) === "/api/v1/verification/jobs")).toBe(false);
+    expect(fetcher.mock.calls.some(([input]) => String(input).includes("/verification") && String(input).includes(address))).toBe(false);
     expect(fetcher.mock.calls.some(([input]) => String(input).includes("/sourcify"))).toBe(false);
   });
 

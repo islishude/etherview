@@ -44,6 +44,25 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.allowCompilerHTTPS .Values.config.features.verification }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "etherview.fullname" . }}-verifier-catalog
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "etherview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ ternary "all" "verify" (eq .Values.mode "monolith") }}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
 {{- if and .Values.networkPolicy.enabled .Values.config.features.x402_billing }}
 ---
 apiVersion: networking.k8s.io/v1

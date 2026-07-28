@@ -32,6 +32,9 @@ func TestHomeSnapshotIsWriterAuthoritativeBoundedAndReorgConsistent(t *testing.T
 
 	bundles := make([]chainbundle.Bundle, 0, 8)
 	parent := testHash(0)
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
 	for number := uint64(0); number < 8; number++ {
 		bundle := testBundle(
 			number,
@@ -40,7 +43,9 @@ func TestHomeSnapshotIsWriterAuthoritativeBoundedAndReorgConsistent(t *testing.T
 			testHash(21_000+number),
 			"home-snapshot",
 		)
-		commitCanonical(t, ctx, repository, bundle)
+		if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{bundle}); err != nil {
+			t.Fatalf("commit canonical segment at %d: %v", number, err)
+		}
 		bundles = append(bundles, bundle)
 		parent = bundle.Block.Hash()
 	}

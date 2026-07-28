@@ -63,28 +63,39 @@ final API-role configuration before adding a paid route.
 ## Full-stack Preview
 
 `compose.preview.yaml` runs the local Reth development chain and all seven
-application roles. It enables public verification and NFT metadata while
-leaving Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and
-object storage accelerators are not part of this deployment.
+application roles. It enables NFT metadata while leaving public verification,
+Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and object
+storage accelerators are not part of this deployment.
 
 ```sh
 make start-preview
 curl -fsS http://127.0.0.1:8080/api/v1/config
 ```
 
-Verification uses a Preview-only application image containing the Docker
-28.5.2 CLI. The verify role connects over mutual TLS to an unexposed,
-digest-pinned Docker-in-Docker daemon; it never mounts the host Docker socket.
-Before verify starts, a non-root one-shot service pulls and executes the pinned
-Solidity 0.8.30 and Vyper 0.4.3 images with the same network, filesystem,
-identity, CPU, memory, PID, and file-descriptor limits used for public compiler
-jobs. Image pull, architecture emulation, fixture compilation, daemon
-validation, or image inspection failure prevents verify from becoming ready.
-
-The official compiler images are `linux/amd64`. Native amd64 Docker works
-directly; Docker Desktop on Apple Silicon must provide amd64 emulation. The
-preflight performs real compilations so an unsupported host fails during
-startup instead of advertising verification.
+Verification v2 downloads checksum-pinned native compiler artifacts into the
+`compiler-cache` volume, then passes each compiler and Standard JSON request
+through framed stdin to one pre-pulled, digest-pinned generic runner image.
+Solidity catalog discovery defaults to `auto` and follows the platform
+directories published by
+[`argotorg/solc-bin`](https://github.com/argotorg/solc-bin):
+`bin`, `emscripten-asmjs`, `emscripten-wasm32`, `linux-amd64`, `linux-arm64`,
+`macosx-amd64`, `wasm`, and `windows-amd64`. Container mode reads the actual
+runner image platform; private process mode uses the host platform and can use
+Linux, macOS, or Windows native packages.
+It does not silently substitute a different CPU architecture when a version is
+absent from the matching catalog. Every invocation binds the selected catalog
+platform and validates ELF, Mach-O, or PE format before execution.
+The emscripten/WASM directories remain recognized catalog platforms but are
+not admitted as the plan's single-artifact compiler package: current builds
+require unlisted sidecar/runtime inputs and cannot satisfy the same immutable
+SHA-256 provenance. `catalog_urls.solidity` is only an optional approved-mirror
+override.
+Build that image with `docker build --target compiler-runner`; the verify-role
+host must provide an approved Docker or Podman client/daemon boundary. The
+compiler container runs without network access, with a read-only root,
+non-root identity, dropped capabilities, tmpfs, and bounded CPU, memory, PID,
+input, output, and cleanup behavior. The stock Preview deliberately does not
+mount the host container socket or advertise this boundary.
 
 NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
 Override it without editing the checked-in configuration:
@@ -97,9 +108,8 @@ The gateway must remain an absolute public HTTPS URL accepted by the metadata
 SSRF policy. Public gateways have no production availability commitment.
 
 `make recreate-preview` removes and rebuilds the seven application containers
-and reruns compiler preflight while preserving PostgreSQL, Reth, the compiler
-daemon, and its image cache. `make stop-preview` removes the deployment and all
-four persistent volumes. Override the application tag with
+while preserving PostgreSQL, Reth, and the compiler artifact cache.
+`make stop-preview` removes the deployment and all persistent volumes. Override the application tag with
 `ETHERVIEW_PREVIEW_IMAGE`; this is intentionally separate from the production
 `ETHERVIEW_IMAGE` tag.
 
@@ -132,6 +142,14 @@ test an alternate Foundry image tag, and set `ANVIL_ARGS` for extra local node
 flags.
 
 ## Helm
+
+### Verifier v2 upgrade
+
+Migration `0027_verifier_v2.sql` intentionally drops all v1 verification jobs,
+results, and published contracts before creating the v2 catalog, job, result,
+and publication contracts. Back up PostgreSQL before upgrading if historical
+verification data may be needed. There is no dual-read period, data rollback
+conversion, or compatibility route for the removed v1 REST API.
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
 `database-url` and optional `database-read-url`, `rpc-urls`, `api-key-pepper`,

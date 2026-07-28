@@ -589,16 +589,40 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
-      if (path === "/api/v1/verification/jobs" && init?.method === "POST") {
+      if (path === "/api/v1/verifier/compilers?language=solidity") {
+        return Response.json({ data: { language: "solidity", versions: ["0.8.30"] }, meta });
+      }
+      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json({
-          data: { id: jobID, status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+          data: { id: jobID, kind: "address", status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
           meta,
         }, { status: 202 });
       }
-      if (path === `/api/v1/verification/jobs/${jobID}`) {
+      if (path === `/api/v1/verifier/jobs/${jobID}`) {
         return Response.json({
-          data: { id: jobID, status: "succeeded", result_kind: "exact", runtime_match: "exact", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:02Z" },
+          data: {
+            id: jobID,
+            kind: "address",
+            status: "succeeded",
+            outcome: {
+              kind: "verification_success",
+              file_name: "src/Test.sol",
+              contract_name: "Test",
+              language: "solidity",
+              compiler_version: "0.8.30",
+              settings: {},
+              sources: {},
+              compilation_artifacts: {},
+              creation_code_artifacts: {},
+              runtime_code_artifacts: {},
+              libraries: {},
+              is_blueprint: false,
+              runtime_match: { match_type: "full", transformations: [], values: {} },
+            },
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:02Z",
+          },
           meta,
         });
       }
@@ -608,23 +632,24 @@ describe("embedded explorer shell", () => {
     renderExplorer("/verify");
 
     fireEvent.change(await screen.findByLabelText("Address"), { target: { value: address } });
-    fireEvent.change(screen.getByLabelText("Compiler version"), { target: { value: "0.8.30" } });
-    fireEvent.change(screen.getByLabelText("Contract identifier"), { target: { value: "src/Test.sol:Test" } });
+    expect(await screen.findByLabelText("Compiler version")).toHaveValue("0.8.30");
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
-    expect(screen.getAllByText("exact").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("full").length).toBeGreaterThan(0);
     expect(submittedBody).toMatchObject({
-      address,
       compiler_version: "0.8.30",
-      contract_identifier: "src/Test.sol:Test",
+      input_kind: "standard_json",
     });
+    expect(submittedBody).not.toHaveProperty("address");
     expect(submittedBody).not.toHaveProperty("code_hash");
     expect(submittedBody).not.toHaveProperty("at_block_hash");
     expect(submittedBody).not.toHaveProperty("creation_bytecode");
     expect(submittedBody).not.toHaveProperty("runtime_bytecode");
-    const protectedCalls = fetcher.mock.calls.filter(([input]) => String(input).includes("/verification/jobs"));
+    const protectedCalls = fetcher.mock.calls.filter(([input]) =>
+      String(input).includes("/verification") || String(input).includes("/verifier/jobs/"),
+    );
     expect(protectedCalls).toHaveLength(2);
     for (const [url, init] of protectedCalls) {
       expect(String(url)).not.toContain(secret);
@@ -656,7 +681,7 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
-      if (path === `/api/v1/contracts/${address}/verification?code_hash=${codeHash}`) {
+      if (path === `/api/v1/contracts/${address}/verification`) {
         expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
         return Response.json({
           data: {
@@ -665,11 +690,18 @@ describe("embedded explorer shell", () => {
             code_hash: codeHash,
             language: "solidity",
             compiler_version: "0.8.30",
+            file_name: "src/Hostile.sol",
             contract_name: "HostileText",
-            match_kind: "exact",
+            kind: "verification_success",
+            runtime_match: { match_type: "full", transformations: [], values: {} },
             abi: [{ type: "function", name: malicious }],
             sources: { "src/Hostile.sol": { content: malicious } },
             settings: { metadata: { note: "<script>window.__etherviewPwned=true</script>" } },
+            compilation_artifacts: {},
+            creation_code_artifacts: {},
+            runtime_code_artifacts: {},
+            libraries: {},
+            is_blueprint: false,
             valid_from_block: "12",
             created_at: "2026-01-01T00:00:00Z",
           },

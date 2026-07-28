@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,367 +9,182 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/verify"
 )
 
-type verificationRepository struct {
-	request     verify.Request
-	submission  verify.SubmissionOptions
-	job         verify.VerificationJob
-	contract    verify.VerifiedContract
-	submitCalls int
+type verificationV2Service struct {
+	submission verify.SubmissionV2
+	job        verify.VerificationJob
+	contract   verify.VerifiedContract
+}
+
+func (service *verificationV2Service) SubmitV2(
+	_ context.Context,
+	submission verify.SubmissionV2,
+) (verify.VerificationJob, bool, error) {
+	service.submission = submission
+	return service.job, true, nil
+}
+
+func (service *verificationV2Service) Job(_ context.Context, id string) (verify.VerificationJob, bool, error) {
+	return service.job, id == service.job.ID, nil
+}
+
+func (service *verificationV2Service) VerifiedContract(
+	_ context.Context,
+	chainID uint64,
+	address string,
+	codeHash string,
+) (verify.VerifiedContract, bool, error) {
+	found := chainID == service.contract.ChainID && address == service.contract.Address &&
+		codeHash == service.contract.CodeHash
+	return service.contract, found, nil
 }
 
 type verificationTargetResolver struct {
-	target  verify.VerificationTarget
-	err     error
-	address string
-	calls   int
+	target verify.VerificationTarget
 }
 
-func (resolver *verificationTargetResolver) ResolveVerificationTarget(_ context.Context, address string) (verify.VerificationTarget, error) {
-	resolver.calls++
-	resolver.address = address
-	return resolver.target, resolver.err
+func (resolver verificationTargetResolver) ResolveVerificationTarget(
+	context.Context,
+	string,
+) (verify.VerificationTarget, error) {
+	return resolver.target, nil
 }
 
-func (repository *verificationRepository) Submit(_ context.Context, request verify.Request, options ...verify.SubmissionOptions) (verify.VerificationJob, bool, error) {
-	repository.submitCalls++
-	repository.request = request
-	if len(options) == 1 {
-		repository.submission = options[0]
-	}
-	return repository.job, true, nil
+type compilerCatalogStub struct{}
+
+func (compilerCatalogStub) Versions(context.Context, verify.Language) ([]string, error) {
+	return []string{"0.8.30+commit.73712a01"}, nil
 }
 
-func (*verificationRepository) Claim(context.Context, string, time.Duration) (verify.VerificationLease, bool, error) {
-	return verify.VerificationLease{}, false, nil
-}
-
-func (*verificationRepository) Renew(context.Context, verify.VerificationLease, time.Duration) error {
-	return nil
-}
-
-func (*verificationRepository) BindCompiler(context.Context, verify.VerificationLease, verify.CompilerProvenance) error {
-	return nil
-}
-
-func (*verificationRepository) Complete(context.Context, verify.VerificationLease, verify.Completion) error {
-	return nil
-}
-
-func (*verificationRepository) Fail(context.Context, verify.VerificationLease, verify.ErrorCode) error {
-	return nil
-}
-
-func (repository *verificationRepository) Job(_ context.Context, id string) (verify.VerificationJob, bool, error) {
-	return repository.job, id == repository.job.ID, nil
-}
-
-func (repository *verificationRepository) VerifiedContract(_ context.Context, chainID uint64, address, codeHash string) (verify.VerifiedContract, bool, error) {
-	found := chainID == repository.contract.ChainID && address == repository.contract.Address && codeHash == repository.contract.CodeHash
-	return repository.contract, found, nil
-}
-
-func TestVerificationAPIRequiresKeyAndBindsServerChain(t *testing.T) {
+func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 	t.Parallel()
-	const (
-		storedAddress   = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"
-		checksumAddress = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
-	)
+	const address = "0x1111111111111111111111111111111111111111"
 	now := time.Unix(100, 0).UTC()
-	repository := &verificationRepository{
+	target := verify.VerificationTarget{
+		ChainID: 1, Address: address, CodeHash: "0x" + strings.Repeat("2", 64),
+		AtBlockHash:      "0x" + strings.Repeat("3", 64),
+		CreationBytecode: "0x6000", RuntimeBytecode: "0x6001",
+	}
+	service := &verificationV2Service{
 		job: verify.VerificationJob{
-			ID: "123e4567-e89b-42d3-a456-426614174000", Status: verify.JobQueued,
-			CreatedAt: now, UpdatedAt: now,
+			ID: "123e4567-e89b-42d3-a456-426614174000", Kind: verify.JobAddress,
+			Status: verify.JobQueued, CreatedAt: now, UpdatedAt: now,
 		},
 		contract: verify.VerifiedContract{
-			ChainID: 11155111, Address: storedAddress,
-			CodeHash: "0x" + strings.Repeat("2", 64), ValidFromBlock: 7,
-			Language: verify.LanguageSolidity, CompilerVersion: "0.8.30", MatchKind: verify.MatchExact,
-			ContractName: "Counter", ABI: json.RawMessage(`[]`), Sources: json.RawMessage(`{"Counter.sol":{"content":"contract Counter {}"}}`),
-			Settings: json.RawMessage(`{}`), CreatedAt: now,
+			ChainID: 1, Address: address, CodeHash: target.CodeHash, ValidFromBlock: 7,
+			Language: verify.LanguageSolidity, CompilerVersion: "0.8.30+commit.73712a01",
+			FileName: "Counter.sol", ContractName: "Counter",
+			ABI: json.RawMessage(`[]`), Sources: json.RawMessage(`{"Counter.sol":{"content":"contract Counter {}"}}`),
+			Settings: json.RawMessage(`{}`), CompilationArtifacts: json.RawMessage(`{}`),
+			CreationCodeArtifacts: json.RawMessage(`{}`), RuntimeCodeArtifacts: json.RawMessage(`{}`),
+			Libraries: map[string]string{}, IsBlueprint: false, CreatedAt: now,
 		},
 	}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cfg := config.Default()
-	cfg.Chain.ID = 11155111
-	runtimeBytecode := []byte{0x60, 0x00}
-	verificationCodeHash := testVerificationRuntimeHash(runtimeBytecode)
-	resolver := &verificationTargetResolver{target: verify.VerificationTarget{
-		ChainID: cfg.Chain.ID, Address: storedAddress,
-		CodeHash: verificationCodeHash, AtBlockHash: "0x" + strings.Repeat("3", 64),
-		CreationBytecode: "0x6000", RuntimeBytecode: "0x6000",
-	}}
+	cfg.Chain.ID = 1
 	handler, err := New(Options{
 		Config: cfg, Reader: fakeReader{}, VerificationReader: service,
-		VerificationSubmitter: service, VerificationTargets: resolver,
-		RequestID: func() string { return "request-verify" },
+		VerificationSubmitter: service, VerificationTargets: verificationTargetResolver{target: target},
+		CompilerCatalog: compilerCatalogStub{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{
-		"address":"` + storedAddress + `",
-		"language":"solidity",
-		"compiler_version":"0.8.30",
-		"contract_identifier":"Counter.sol:Counter",
-		"standard_json":{"language":"Solidity","sources":{"Counter.sol":{"content":"contract Counter {}"}},"settings":{}}
-	}`
-
-	unauthorized := httptest.NewRecorder()
-	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(body)))
-	if unauthorized.Code != http.StatusUnauthorized || !strings.Contains(unauthorized.Body.String(), "api_key_required") {
-		t.Fatalf("status=%d body=%s", unauthorized.Code, unauthorized.Body.String())
-	}
-
 	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
-	issued, err := manager.Create(context.Background(), "test", 100, 100)
+	key, err := manager.Create(context.Background(), "test", 10, 10)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := manager.Authenticate(context.Background(), issued.Token); err != nil {
-		t.Fatalf("created API key did not authenticate: %v", err)
 	}
 	protected := manager.Middleware(false, handler)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(body))
-	request.Header.Set("X-API-Key", issued.Token)
-	recorder := httptest.NewRecorder()
-	protected.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusAccepted || !strings.Contains(recorder.Body.String(), repository.job.ID) {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	body := `{
+		"language":"solidity",
+		"compiler_version":"0.8.30+commit.73712a01",
+		"input_kind":"standard_json",
+		"input":{"language":"Solidity","sources":{"Counter.sol":{"content":"contract Counter {}"}},"settings":{}}
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/contracts/"+address+"/verification", strings.NewReader(body))
+	request.Header.Set("X-API-Key", key.Token)
+	response := httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if resolver.calls != 1 || resolver.address != storedAddress || repository.request.ChainID != cfg.Chain.ID ||
-		repository.request.Address != repository.contract.Address || repository.request.CodeHash != verificationCodeHash ||
-		repository.request.AtBlockHash != resolver.target.AtBlockHash || repository.request.CreationBytecode != "0x6000" ||
-		repository.request.RuntimeBytecode != "0x6000" {
-		t.Fatalf("request was not server-bound: %#v", repository.request)
+	if service.submission.Kind != verify.JobAddress || service.submission.Target == nil ||
+		service.submission.Target.CodeHash != target.CodeHash ||
+		service.submission.Bytecodes[0].Runtime != target.RuntimeBytecode {
+		t.Fatalf("submission was not server-bound: %#v", service.submission)
 	}
 
-	contractRequest := httptest.NewRequest(http.MethodGet,
-		"/api/v1/contracts/"+repository.contract.Address+"/verification?code_hash="+repository.contract.CodeHash, nil)
-	contractRequest.Header.Set("X-API-Key", issued.Token)
-	recorder = httptest.NewRecorder()
-	protected.ServeHTTP(recorder, contractRequest)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Counter") {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	read := httptest.NewRequest(http.MethodGet, "/api/v1/contracts/"+address+"/verification", nil)
+	read.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, read)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Counter.sol") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	var response struct {
-		Data struct {
-			Address string `json:"address"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if response.Data.Address != checksumAddress {
-		t.Fatalf("address=%q want=%q", response.Data.Address, checksumAddress)
-	}
-}
 
-func testVerificationRuntimeHash(runtimeBytecode []byte) string {
-	return "0x" + hex.EncodeToString(crypto.Keccak256(runtimeBytecode))
-}
-
-func TestVerificationAPIRejectsUnknownFields(t *testing.T) {
-	t.Parallel()
-	repository := &verificationRepository{job: verify.VerificationJob{ID: "123e4567-e89b-42d3-a456-426614174000"}}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := &verificationTargetResolver{target: verify.VerificationTarget{
-		ChainID: 1, Address: "0x" + strings.Repeat("1", 40),
-		CodeHash: testVerificationRuntimeHash([]byte{0x60, 0x00}), AtBlockHash: "0x" + strings.Repeat("2", 64),
-		CreationBytecode: "0x6000", RuntimeBytecode: "0x6000",
-	}}
-	handler, err := New(Options{
-		Config: config.Default(), Reader: fakeReader{}, VerificationReader: service,
-		VerificationSubmitter: service, VerificationTargets: resolver,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
-	issued, err := manager.Create(context.Background(), "test", 100, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(`{"unexpected":true}`))
-	request.Header.Set("X-API-Key", issued.Token)
-	recorder := httptest.NewRecorder()
-	manager.Middleware(false, handler).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestVerificationRoutesReportDisabledCapability(t *testing.T) {
-	t.Parallel()
-	handler, err := New(Options{
-		Config: config.Default(), Reader: fakeReader{},
-		RequestID: func() string { return "request-disabled-verification" },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, request := range []*http.Request{
-		httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(`{}`)),
-		httptest.NewRequest(http.MethodGet, "/api/v1/verification/jobs/123e4567-e89b-42d3-a456-426614174000", nil),
-		httptest.NewRequest(http.MethodGet, "/api/v1/contracts/0x1111111111111111111111111111111111111111/verification?code_hash=0x"+strings.Repeat("2", 64), nil),
+	for _, oldPath := range []string{
+		"/api/v1/verification/jobs",
+		"/api/v1/sourcify/imports",
+		"/api/v1/sourcify/contracts/" + address,
 	} {
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), `"code":"verification_unavailable"`) {
-			t.Fatalf("%s %s: status=%d body=%s", request.Method, request.URL, recorder.Code, recorder.Body.String())
-		}
-		if contentType := recorder.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
-			t.Fatalf("%s %s: content type=%q", request.Method, request.URL, contentType)
+		response = httptest.NewRecorder()
+		protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, oldPath, nil))
+		if response.Code != http.StatusNotFound && response.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("legacy route %s status=%d", oldPath, response.Code)
 		}
 	}
 }
 
-func TestVerificationReadsRemainAvailableWhenPublicSubmissionIsDisabled(t *testing.T) {
+func TestVerifierV2SoloSourcifyAndCompilerRoutes(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(100, 0).UTC()
-	repository := &verificationRepository{job: verify.VerificationJob{
-		ID: "123e4567-e89b-42d3-a456-426614174000", Status: verify.JobQueued,
-		CreatedAt: now, UpdatedAt: now,
+	service := &verificationV2Service{job: verify.VerificationJob{
+		ID: "123e4567-e89b-42d3-a456-426614174000", Kind: verify.JobSolidityStandardJSON,
+		Status: verify.JobQueued, CreatedAt: now, UpdatedAt: now,
 	}}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
 	handler, err := New(Options{
 		Config: config.Default(), Reader: fakeReader{}, VerificationReader: service,
-		RequestID: func() string { return "read-only-verification" },
+		VerificationSubmitter: service, CompilerCatalog: compilerCatalogStub{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
-	issued, err := manager.Create(context.Background(), "reader", 100, 100)
+	key, err := manager.Create(context.Background(), "test", 10, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	protected := manager.Middleware(false, handler)
-
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/verification/jobs/"+repository.job.ID, nil)
-	request.Header.Set("X-API-Key", issued.Token)
-	recorder := httptest.NewRecorder()
-	protected.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), repository.job.ID) {
-		t.Fatalf("read status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(`{}`))
-	request.Header.Set("X-API-Key", issued.Token)
-	recorder = httptest.NewRecorder()
-	protected.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), "verification_unavailable") {
-		t.Fatalf("submit status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-
-	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/config", nil))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"verification":false`) {
-		t.Fatalf("config status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestVerificationSubmissionRejectsClientSelectedIdentityBeforeResolution(t *testing.T) {
-	t.Parallel()
-	repository := &verificationRepository{job: verify.VerificationJob{
-		ID: "123e4567-e89b-42d3-a456-426614174000", Status: verify.JobQueued,
-	}}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := &verificationTargetResolver{}
-	handler, err := New(Options{
-		Config: config.Default(), Reader: fakeReader{}, VerificationReader: service,
-		VerificationSubmitter: service, VerificationTargets: resolver,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
-	issued, err := manager.Create(context.Background(), "submitter", 100, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := `{
-		"address":"0x1111111111111111111111111111111111111111",
-		"code_hash":"0x` + strings.Repeat("2", 64) + `",
-		"language":"solidity","compiler_version":"0.8.30",
-		"contract_identifier":"A.sol:A",
-		"standard_json":{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}
+	solo := `{
+		"compiler_version":"0.8.30+commit.73712a01",
+		"input":{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}},
+		"bytecodes":{"runtime_bytecode":"0x6000"}
 	}`
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(body))
-	request.Header.Set("X-API-Key", issued.Token)
-	recorder := httptest.NewRecorder()
-	manager.Middleware(false, handler).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest || resolver.calls != 0 || repository.submitCalls != 0 {
-		t.Fatalf("status=%d resolver_calls=%d submit_calls=%d body=%s", recorder.Code, resolver.calls, repository.submitCalls, recorder.Body.String())
-	}
-}
-
-func TestVerificationSubmissionStripsOnlyCanonicalConstructorSuffix(t *testing.T) {
-	t.Parallel()
-	address := "0x1111111111111111111111111111111111111111"
-	runtime := []byte{0x60, 0x00}
-	repository := &verificationRepository{job: verify.VerificationJob{
-		ID: "123e4567-e89b-42d3-a456-426614174000", Status: verify.JobQueued,
-		CreatedAt: time.Unix(100, 0).UTC(), UpdatedAt: time.Unix(100, 0).UTC(),
-	}}
-	service, err := verify.NewService(repository, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := &verificationTargetResolver{target: verify.VerificationTarget{
-		ChainID: 1, Address: address, CodeHash: testVerificationRuntimeHash(runtime),
-		AtBlockHash:      "0x" + strings.Repeat("3", 64),
-		CreationBytecode: "0x6000aabb", RuntimeBytecode: "0x6000",
-	}}
-	handler, err := New(Options{
-		Config: config.Default(), Reader: fakeReader{}, VerificationReader: service,
-		VerificationSubmitter: service, VerificationTargets: resolver,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
-	issued, err := manager.Create(context.Background(), "submitter", 100, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	submit := func(arguments string) *httptest.ResponseRecorder {
-		body := `{
-			"address":"` + address + `","language":"solidity","compiler_version":"0.8.30",
-			"contract_identifier":"A.sol:A","constructor_arguments":"` + arguments + `",
-			"standard_json":{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}
-		}`
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/verification/jobs", strings.NewReader(body))
-		request.Header.Set("X-API-Key", issued.Token)
-		recorder := httptest.NewRecorder()
-		manager.Middleware(false, handler).ServeHTTP(recorder, request)
-		return recorder
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/verifier/solidity/standard-json", strings.NewReader(solo))
+	request.Header.Set("X-API-Key", key.Token)
+	response := httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || service.submission.Kind != verify.JobSolidityStandardJSON {
+		t.Fatalf("status=%d submission=%#v body=%s", response.Code, service.submission, response.Body.String())
 	}
 
-	recorder := submit("0xAABB")
-	if recorder.Code != http.StatusAccepted || repository.request.CreationBytecode != "0x6000" || repository.request.ConstructorArgs != "aabb" {
-		t.Fatalf("status=%d request=%#v body=%s", recorder.Code, repository.request, recorder.Body.String())
+	sourcify := `{"chain_id":"1","address":"0x1111111111111111111111111111111111111111","files":{"metadata.json":"{}"}}`
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/verifier/sourcify", strings.NewReader(sourcify))
+	request.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || service.submission.Kind != verify.JobSourcify {
+		t.Fatalf("status=%d submission=%#v body=%s", response.Code, service.submission, response.Body.String())
 	}
-	before := repository.submitCalls
-	recorder = submit("0xccdd")
-	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "invalid_constructor_arguments") || repository.submitCalls != before {
-		t.Fatalf("status=%d submit_calls=%d body=%s", recorder.Code, repository.submitCalls, recorder.Body.String())
+
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/verifier/compilers?language=yul", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "0.8.30") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

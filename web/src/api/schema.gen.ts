@@ -333,7 +333,7 @@ export interface paths {
         };
         get: operations["getVerifiedContract"];
         put?: never;
-        post?: never;
+        post: operations["submitAddressVerification"];
         delete?: never;
         options?: never;
         head?: never;
@@ -449,57 +449,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["search"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sourcify/contracts/{address}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Looks up the configured chain and address through the optional Sourcify adapter. The response is a bounded, validated summary and is not local verification or publication evidence. */
-        get: operations["lookupSourcifyContract"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sourcify/imports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Resolves the address to the newest exact canonical code and creation facts on this server's configured chain, then imports Sourcify compiler input only after its runtime identity matches that local target. The imported input enters the normal durable local verification pipeline and never opts in to a later Sourcify upload. */
-        post: operations["importSourcifyContract"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sourcify/jobs/{verification_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Returns the validated external Sourcify job state. Upstream diagnostic messages and error bodies are never exposed. */
-        get: operations["getSourcifyJob"];
         put?: never;
         post?: never;
         delete?: never;
@@ -716,30 +665,14 @@ export interface paths {
         patch: operations["updateCurrentUser"];
         trace?: never;
     };
-    "/verification/jobs": {
+    "/verifier/compilers": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        post: operations["submitVerificationJob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/verification/jobs/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getVerificationJob"];
+        get: operations["listVerifierCompilers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -748,7 +681,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/verification/jobs/{id}/sourcify": {
+    "/verifier/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getVerifierJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/lookup-methods": {
         parameters: {
             query?: never;
             header?: never;
@@ -757,8 +706,135 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Uploads the compiler input from a durable local verification job. Both its stored submit_to_sourcify opt-in and this call's explicit consent must be true. A successful response contains the external job ticket. */
-        post: operations["uploadVerificationJobToSourcify"];
+        post: operations["lookupVerifierMethods"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/solidity/batch/multipart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["batchVerifySolidityMultipart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/solidity/batch/standard-json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["batchVerifySolidityStandardJson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/solidity/multipart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifySolidityMultipart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/solidity/standard-json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifySolidityStandardJson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/sourcify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitSourcifyVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/sourcify/from-etherscan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitSourcifyFromEtherscan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/vyper/multipart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyVyperMultipart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/verifier/vyper/standard-json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyVyperStandardJson"];
         delete?: never;
         options?: never;
         head?: never;
@@ -834,6 +910,24 @@ export interface components {
             data: components["schemas"]["AddressTokenTransfer"][];
             meta: components["schemas"]["Meta"];
         };
+        AddressVerificationSubmission: {
+            compiler_version: string;
+            contract_name_hint?: string;
+            evm_version?: string;
+            input?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            input_kind: "multipart" | "standard_json";
+            language: components["schemas"]["VerifierLanguage"];
+            libraries?: {
+                [key: string]: components["schemas"]["Address"];
+            };
+            optimization_runs?: number;
+            sources?: {
+                [key: string]: string;
+            };
+        };
         AdminUserUpdate: {
             role?: components["schemas"]["UserRole"];
             status?: components["schemas"]["UserStatus"];
@@ -902,6 +996,11 @@ export interface components {
             /** Format: uuid */
             challenge_id: string;
             signature: string;
+        };
+        BatchResultsOutcome: {
+            /** @enum {string} */
+            kind: "batch_results";
+            results: (components["schemas"]["VerificationSuccess"] | components["schemas"]["VerificationFailureOutcome"])[];
         };
         /** @enum {string} */
         BillingAccess: "x402" | "api_key_or_x402";
@@ -1033,6 +1132,18 @@ export interface components {
             block_number: components["schemas"]["Quantity"];
             chain_id: components["schemas"]["Quantity"];
         };
+        CompilationFailureOutcome: {
+            /** @enum {string} */
+            kind: "compilation_failure";
+        };
+        CompilerCatalog: {
+            language: components["schemas"]["VerifierLanguage"];
+            versions: string[];
+        };
+        CompilerCatalogResponse: {
+            data: components["schemas"]["CompilerCatalog"];
+            meta: components["schemas"]["Meta"];
+        };
         Completeness: {
             core: components["schemas"]["StageState"];
             metadata: components["schemas"]["StageState"];
@@ -1071,12 +1182,36 @@ export interface components {
             data: components["schemas"]["HomeSnapshot"];
             meta: components["schemas"]["Meta"];
         };
+        LookupMethods: {
+            methods: components["schemas"]["MethodSource"][];
+        };
+        LookupMethodsRequest: {
+            abi: {
+                [key: string]: unknown;
+            }[];
+            bytecode: string;
+            file_ids: {
+                [key: string]: string;
+            };
+            source_map: string;
+        };
+        LookupMethodsResponse: {
+            data: components["schemas"]["LookupMethods"];
+            meta: components["schemas"]["Meta"];
+        };
         Meta: {
             chain_id: components["schemas"]["Quantity"];
             coverage_end?: components["schemas"]["Quantity"];
             coverage_start?: components["schemas"]["Quantity"];
             next_cursor?: components["schemas"]["OpaqueCursor"];
             request_id: string;
+        };
+        MethodSource: {
+            file_name: string;
+            length: number;
+            offset: number;
+            selector: string;
+            signature: string;
         };
         NFTBalance: {
             balance: components["schemas"]["Quantity"];
@@ -1177,53 +1312,22 @@ export interface components {
             data: components["schemas"]["SessionRevocation"];
             meta: components["schemas"]["Meta"];
         };
-        SourcifyContract: {
+        SourcifyFromEtherscanSubmission: {
             address: components["schemas"]["Address"];
             chain_id: components["schemas"]["Quantity"];
-            compiler_version?: string;
-            contract_identifier?: string;
-            creation_match?: components["schemas"]["SourcifyMatch"];
-            /** @enum {string} */
-            language?: "solidity" | "vyper";
-            match?: components["schemas"]["SourcifyMatch"];
-            runtime_match?: components["schemas"]["SourcifyMatch"];
         };
-        SourcifyContractResponse: {
-            data: components["schemas"]["SourcifyContract"];
-            meta: components["schemas"]["Meta"];
-        };
-        SourcifyImportRequest: {
+        SourcifySubmission: {
             address: components["schemas"]["Address"];
-            /** @description Optional constructor-argument suffix, accepted only when it matches the canonical creation input. */
-            constructor_arguments?: string;
+            chain_id: components["schemas"]["Quantity"];
+            files: {
+                [key: string]: string;
+            };
         };
-        SourcifyJob: {
-            contract?: components["schemas"]["SourcifyContract"];
+        SourcifySuccessOutcome: {
             /** @enum {string} */
-            state: "pending" | "succeeded" | "failed";
+            kind: "sourcify_success";
             /** Format: uuid */
             verification_id: string;
-        };
-        SourcifyJobResponse: {
-            data: components["schemas"]["SourcifyJob"];
-            meta: components["schemas"]["Meta"];
-        };
-        /** @enum {string} */
-        SourcifyMatch: "match" | "exact_match";
-        SourcifyTicket: {
-            /** Format: uuid */
-            verification_id: string;
-        };
-        SourcifyTicketResponse: {
-            data: components["schemas"]["SourcifyTicket"];
-            meta: components["schemas"]["Meta"];
-        };
-        SourcifyUploadRequest: {
-            /**
-             * @description Explicit consent for this irreversible external source upload.
-             * @enum {boolean}
-             */
-            consent: true;
         };
         /** @enum {string} */
         StageState: "complete" | "pending" | "unavailable" | "failed";
@@ -1443,16 +1547,19 @@ export interface components {
         UserRole: "user" | "admin";
         /** @enum {string} */
         UserStatus: "active" | "disabled";
+        VerificationFailureOutcome: {
+            /** @enum {string} */
+            kind: "verification_failure";
+        };
         VerificationJob: {
             /** Format: date-time */
             created_at: string;
-            creation_match?: components["schemas"]["VerificationMatch"];
             error_code?: string;
             /** Format: uuid */
             id: string;
-            published?: boolean;
-            result_kind?: components["schemas"]["VerificationMatch"];
-            runtime_match?: components["schemas"]["VerificationMatch"];
+            /** @enum {string} */
+            kind: "address" | "solidity_multipart" | "solidity_standard_json" | "solidity_batch_multipart" | "solidity_batch_standard_json" | "vyper_multipart" | "vyper_standard_json" | "sourcify" | "sourcify_from_etherscan";
+            outcome?: components["schemas"]["VerificationOutcome"];
             /** @enum {string} */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
             /** Format: date-time */
@@ -1462,54 +1569,138 @@ export interface components {
             data: components["schemas"]["VerificationJob"];
             meta: components["schemas"]["Meta"];
         };
-        /** @enum {string} */
-        VerificationMatch: "exact" | "metadata_only" | "mismatch";
-        VerificationSubmission: {
-            address: components["schemas"]["Address"];
-            compiler_version: string;
-            /** @description Optional constructor-argument suffix. The server accepts it only when it is an exact suffix of the canonical creation input and removes it before enqueueing. */
-            constructor_arguments?: string;
-            contract_identifier: string;
-            /** @enum {string} */
-            language: "solidity" | "vyper";
-            /**
-             * @description Optional Etherscan-compatible source-license identifier stored only as publication metadata.
-             * @enum {string}
-             */
-            license_type?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14";
-            /** @description Inline-source Standard JSON compiler input. The service preserves code-generation settings but replaces outputSelection with the bounded exact-target fields required for deterministic matching before persisting the request. */
-            standard_json: {
-                [key: string]: unknown;
-            };
-            /** @default false */
-            submit_to_sourcify: boolean;
+        VerificationMatchDetails: {
+            match_type: components["schemas"]["VerificationMatchType"];
+            transformations: components["schemas"]["VerificationTransformation"][];
+            values: components["schemas"]["VerificationTransformationValues"];
         };
-        VerifiedContract: {
-            abi: {
+        /** @enum {string} */
+        VerificationMatchType: "full" | "partial";
+        VerificationOutcome: components["schemas"]["CompilationFailureOutcome"] | components["schemas"]["VerificationFailureOutcome"] | components["schemas"]["VerificationSuccessOutcome"] | components["schemas"]["BatchResultsOutcome"] | components["schemas"]["SourcifySuccessOutcome"];
+        VerificationSuccess: {
+            abi?: {
                 [key: string]: unknown;
             }[];
-            address: components["schemas"]["Address"];
-            chain_id: components["schemas"]["Quantity"];
-            code_hash: components["schemas"]["Hash"];
+            compilation_artifacts: {
+                [key: string]: unknown;
+            };
             compiler_version: string;
+            constructor_arguments?: string;
             contract_name: string;
-            /** Format: date-time */
-            created_at: string;
+            creation_code_artifacts: {
+                [key: string]: unknown;
+            };
+            creation_match?: components["schemas"]["VerificationMatchDetails"];
+            file_name: string;
+            is_blueprint: boolean;
             /** @enum {string} */
-            language: "solidity" | "vyper";
-            match_kind: components["schemas"]["VerificationMatch"];
+            kind: "verification_success";
+            language: components["schemas"]["VerifierLanguage"];
+            libraries: {
+                [key: string]: string;
+            };
+            runtime_code_artifacts: {
+                [key: string]: unknown;
+            };
+            runtime_match?: components["schemas"]["VerificationMatchDetails"];
             settings: {
                 [key: string]: unknown;
             };
             sources: {
                 [key: string]: unknown;
             };
+        };
+        VerificationSuccessOutcome: components["schemas"]["VerificationSuccess"];
+        VerificationTransformation: {
+            id?: string;
+            /**
+             * Format: int64
+             * @description Byte offset, never a hexadecimal-character offset.
+             */
+            offset: number;
+            /** @enum {string} */
+            reason: "cborAuxdata" | "constructorArguments" | "immutable" | "library";
+            /** @enum {string} */
+            type: "insert" | "replace";
+        };
+        VerificationTransformationValues: {
+            cborAuxdata?: {
+                [key: string]: string;
+            };
+            constructorArguments?: string;
+            immutables?: {
+                [key: string]: string;
+            };
+            libraries?: {
+                [key: string]: string;
+            };
+        };
+        VerifiedContract: components["schemas"]["VerificationSuccess"] & {
+            address: components["schemas"]["Address"];
+            chain_id: components["schemas"]["Quantity"];
+            code_hash: components["schemas"]["Hash"];
+            /** Format: date-time */
+            created_at: string;
             valid_from_block: components["schemas"]["Quantity"];
             valid_to_block?: components["schemas"]["Quantity"];
         };
         VerifiedContractResponse: {
             data: components["schemas"]["VerifiedContract"];
             meta: components["schemas"]["Meta"];
+        };
+        VerifierBatchMultipartRequest: {
+            compiler_version: string;
+            contract_name_hint?: string;
+            contracts: components["schemas"]["VerifierBytecodes"][];
+            evm_version?: string;
+            language?: components["schemas"]["VerifierLanguage"];
+            libraries?: {
+                [key: string]: components["schemas"]["Address"];
+            };
+            optimization_runs?: number;
+            sources: {
+                [key: string]: string;
+            };
+        };
+        VerifierBatchStandardJSONRequest: {
+            compiler_version: string;
+            contract_name_hint?: string;
+            contracts: components["schemas"]["VerifierBytecodes"][];
+            input: {
+                [key: string]: unknown;
+            };
+            language?: components["schemas"]["VerifierLanguage"];
+        };
+        /** @description At least one creation or runtime bytecode must be non-empty. */
+        VerifierBytecodes: {
+            creation_bytecode?: string;
+            runtime_bytecode?: string;
+        };
+        /** @enum {string} */
+        VerifierLanguage: "solidity" | "yul" | "vyper";
+        VerifierMultipartRequest: {
+            bytecodes: components["schemas"]["VerifierBytecodes"];
+            compiler_version: string;
+            contract_name_hint?: string;
+            evm_version?: string;
+            language?: components["schemas"]["VerifierLanguage"];
+            libraries?: {
+                [key: string]: components["schemas"]["Address"];
+            };
+            optimization_runs?: number;
+            sources: {
+                [key: string]: string;
+            };
+        };
+        VerifierStandardJSONRequest: {
+            bytecodes: components["schemas"]["VerifierBytecodes"];
+            compiler_version: string;
+            contract_name_hint?: string;
+            /** @description Inline-source Standard JSON. URL sources and duplicate keys are rejected. */
+            input: {
+                [key: string]: unknown;
+            };
+            language?: components["schemas"]["VerifierLanguage"];
         };
     };
     responses: {
@@ -1530,6 +1721,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Verifier job accepted for asynchronous execution. */
+        VerificationAccepted: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["VerificationJobResponse"];
             };
         };
     };
@@ -2106,9 +2306,7 @@ export interface operations {
     };
     getVerifiedContract: {
         parameters: {
-            query: {
-                code_hash: components["schemas"]["Hash"];
-            };
+            query?: never;
             header?: {
                 /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
                 "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
@@ -2120,7 +2318,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Verified contract artifact bound to the requested code hash. */
+            /** @description Complete verified artifact for the current canonical runtime. */
             200: {
                 headers: {
                     "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
@@ -2131,6 +2329,33 @@ export interface operations {
                 };
             };
             402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    submitAddressVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressVerificationSubmission"];
+            };
+        };
+        responses: {
+            /** @description Address verification was accepted for asynchronous execution. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationJobResponse"];
+                };
+            };
             default: components["responses"]["Error"];
         };
     };
@@ -2332,97 +2557,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            402: components["responses"]["PaymentRequired"];
-            default: components["responses"]["Error"];
-        };
-    };
-    lookupSourcifyContract: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
-                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
-            };
-            path: {
-                address: components["parameters"]["Address"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Validated Sourcify contract summary. */
-            200: {
-                headers: {
-                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SourcifyContractResponse"];
-                };
-            };
-            402: components["responses"]["PaymentRequired"];
-            default: components["responses"]["Error"];
-        };
-    };
-    importSourcifyContract: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SourcifyImportRequest"];
-            };
-        };
-        responses: {
-            /** @description An equivalent local verification job already exists. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VerificationJobResponse"];
-                };
-            };
-            /** @description Imported verification job accepted for local execution. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VerificationJobResponse"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    getSourcifyJob: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
-                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
-            };
-            path: {
-                /** @description Sourcify verification ticket ID. */
-                verification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current external verification job state. */
-            200: {
-                headers: {
-                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SourcifyJobResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];
@@ -2801,41 +2935,30 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    submitVerificationJob: {
+    listVerifierCompilers: {
         parameters: {
-            query?: never;
+            query: {
+                language: components["schemas"]["VerifierLanguage"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerificationSubmission"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description An equivalent verification job already exists. */
+            /** @description Versions in the current sufficiently fresh compiler generation. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationJobResponse"];
-                };
-            };
-            /** @description Verification job accepted for asynchronous execution. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VerificationJobResponse"];
+                    "application/json": components["schemas"]["CompilerCatalogResponse"];
                 };
             };
             default: components["responses"]["Error"];
         };
     };
-    getVerificationJob: {
+    getVerifierJob: {
         parameters: {
             query?: never;
             header?: {
@@ -2849,7 +2972,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Current verification job state. */
+            /** @description Current verifier job state and terminal discriminated outcome. */
             200: {
                 headers: {
                     "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
@@ -2863,31 +2986,164 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    uploadVerificationJobToSourcify: {
+    lookupVerifierMethods: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description Durable local verification job ID. */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SourcifyUploadRequest"];
+                "application/json": components["schemas"]["LookupMethodsRequest"];
             };
         };
         responses: {
-            /** @description Sourcify accepted the upload and returned an external ticket. */
-            202: {
+            /** @description Methods that could be safely mapped to source locations. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SourcifyTicketResponse"];
+                    "application/json": components["schemas"]["LookupMethodsResponse"];
                 };
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    batchVerifySolidityMultipart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierBatchMultipartRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    batchVerifySolidityStandardJson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierBatchStandardJSONRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifySolidityMultipart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierMultipartRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifySolidityStandardJson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierStandardJSONRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    submitSourcifyVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcifySubmission"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    submitSourcifyFromEtherscan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcifyFromEtherscanSubmission"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyVyperMultipart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierMultipartRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyVyperStandardJson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifierStandardJSONRequest"];
+            };
+        };
+        responses: {
+            202: components["responses"]["VerificationAccepted"];
             default: components["responses"]["Error"];
         };
     };

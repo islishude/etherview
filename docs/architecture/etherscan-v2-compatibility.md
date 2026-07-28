@@ -146,11 +146,11 @@ and `contractaddress`, these fields are accepted:
 |---|---|
 | `sourceCode` | Required, non-empty, and within the configured verification input limit. It is plain source for `solidity-single-file` and an inline-source Standard JSON object for the JSON formats. Duplicate JSON keys and external source URLs are rejected. |
 | `codeformat` | Required: `solidity-single-file`, `solidity-standard-json-input`, or `vyper-json`. |
-| `contractname` | Required. A single Solidity file may use a bare contract name; Standard JSON uses `source:name`. Vyper's name must match the source filename. |
+| `contractname` | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name; Standard JSON uses `source:name`; Vyper uses the source filename. It can never make a weaker match win. |
 | `compilerversion` | Required. The optional `vyper:` prefix is removed for `vyper-json`; the resulting version must be allowlisted by the verification runtime. |
 | `optimizationUsed` | Optional `0` or `1`; it must not conflict with Standard JSON settings. |
 | `runs` | Optional canonical integer `0..1000000`, Solidity only; it must not conflict with Standard JSON settings. |
-| `constructorArguments` / `constructorArguements` | Optional even-length hexadecimal suffix, with or without `0x`. Both spellings are accepted only when they do not conflict. The suffix must exactly match the server's canonical creation input. |
+| `constructorArguments` / `constructorArguements` | Accepted for wire compatibility when it is valid even-length hexadecimal. Verifier v2 ignores the value and instead discovers, ABI-decodes, and re-encodes constructor arguments from canonical creation input. |
 | `evmVersion` / `evmversion` | Optional compiler EVM version; `default` means omitted. Both spellings are accepted only when they do not conflict. |
 | `licenseType` | Optional canonical integer `1..14`; defaults to `1`. It is publication metadata, not a compiler setting. |
 | `libraryname1..10`, `libraryaddress1..10` | Optional paired Solidity library bindings. Multi-file names are source-qualified and every address is validated. |
@@ -222,7 +222,8 @@ such; they are not forwarded upstream.
 - `getsourcecode.SourceCode` is the compact canonical stored sources object,
   not a reconstruction of the caller's original submission wrapper.
   `CompilerType` is `solc` or `vyper`; `ContractFileName` is present but empty;
-  and `MatchKind` (`exact` or `metadata_only`) is an Etherview extension.
+  and `MatchKind` (`full` or `partial`) reports verifier-v2 transformation
+  quality as an Etherview extension.
   `Proxy` remains `"0"`, while `Implementation`, `SwarmSource`, and
   `SimilarMatch` remain empty until authoritative corresponding facts exist.
 - Transaction and token rows do not guess a function signature:

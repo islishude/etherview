@@ -15,7 +15,7 @@ import (
 )
 
 type fakeVerificationService struct {
-	submitted     verify.Request
+	submitted     verify.SubmissionV2
 	submitJob     verify.VerificationJob
 	submitCreated bool
 	submitError   error
@@ -25,7 +25,7 @@ type fakeVerificationService struct {
 	jobError      error
 }
 
-func (service *fakeVerificationService) Submit(_ context.Context, request verify.Request) (verify.VerificationJob, bool, error) {
+func (service *fakeVerificationService) SubmitV2(_ context.Context, request verify.SubmissionV2) (verify.VerificationJob, bool, error) {
 	service.submitted = request
 	service.submitCalls++
 	return service.submitJob, service.submitCreated, service.submitError
@@ -79,13 +79,15 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 		t.Fatalf("result=%#v error=%v", result, err)
 	}
 	request := service.submitted
-	if service.submitCalls != 1 || request.ChainID != 1 || request.Address != strings.ToLower(testContract) ||
-		request.CodeHash != "0x"+hex.EncodeToString(codeHash) || request.AtBlockHash != testHash(32) ||
-		request.CreationBytecode != "0x6001" || request.RuntimeBytecode != "0x6002" ||
-		request.ConstructorArgs != "aabb" || request.LicenseType != "3" || request.SubmitToSourcify {
+	if service.submitCalls != 1 || request.Kind != verify.JobAddress || request.Target == nil ||
+		request.Target.ChainID != 1 || request.Target.Address != strings.ToLower(testContract) ||
+		request.Target.CodeHash != "0x"+hex.EncodeToString(codeHash) || request.Target.AtBlockHash != testHash(32) ||
+		request.Target.CreationBytecode != "0x6001aabb" || request.Target.RuntimeBytecode != "0x6002" ||
+		len(request.Bytecodes) != 1 || request.Bytecodes[0].Creation != "0x6001aabb" ||
+		request.Bytecodes[0].Runtime != "0x6002" {
 		t.Fatalf("submitted request=%+v", request)
 	}
-	if request.Language != verify.LanguageSolidity || request.ContractIdentifier != "A.sol:A" || request.CompilerVersion != "v0.8.30+commit.73712a01" {
+	if request.Language != verify.LanguageSolidity || request.ContractNameHint != "A.sol:A" || request.CompilerVersion != "v0.8.30+commit.73712a01" {
 		t.Fatalf("compiler identity=%+v", request)
 	}
 	var input struct {
@@ -112,7 +114,7 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	}
 }
 
-func TestSourceVerificationRejectsMissingProofAndConstructorMismatch(t *testing.T) {
+func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testing.T) {
 	t.Parallel()
 	base := url.Values{
 		"contractaddress": {testContract}, "sourceCode": {"contract A {}"},
@@ -137,8 +139,8 @@ func TestSourceVerificationRejectsMissingProofAndConstructorMismatch(t *testing.
 		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "0x6001aabb"}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = mismatch.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: mismatchValues})
-	if !errors.Is(err, ErrInvalidParameter) || service.submitCalls != 0 {
-		t.Fatalf("constructor mismatch error=%v submitCalls=%d", err, service.submitCalls)
+	if err != nil || service.submitCalls != 1 || service.submitted.Bytecodes[0].Creation != "0x6001aabb" {
+		t.Fatalf("constructor hint error=%v submitCalls=%d request=%+v", err, service.submitCalls, service.submitted)
 	}
 
 	corrupt := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
@@ -146,7 +148,7 @@ func TestSourceVerificationRejectsMissingProofAndConstructorMismatch(t *testing.
 		rows: [][]driver.Value{{testHashBytes(31), testHashBytes(32), runtimeBytecode, "0x6001"}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = corrupt.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: base})
-	if !errors.Is(err, ErrVerificationTargetUnavailable) || service.submitCalls != 0 {
+	if !errors.Is(err, ErrVerificationTargetUnavailable) || service.submitCalls != 1 {
 		t.Fatalf("corrupt code hash error=%v submitCalls=%d", err, service.submitCalls)
 	}
 }
@@ -278,7 +280,6 @@ func cloneURLValues(values url.Values) url.Values {
 func TestSourceVerificationStatusUsesEtherscanSemantics(t *testing.T) {
 	t.Parallel()
 	const guid = "123e4567-e89b-42d3-a456-426614174000"
-	exact, mismatch := verify.MatchExact, verify.MatchMismatch
 	for _, test := range []struct {
 		name   string
 		job    verify.VerificationJob
@@ -288,8 +289,8 @@ func TestSourceVerificationStatusUsesEtherscanSemantics(t *testing.T) {
 	}{
 		{name: "queued", job: verify.VerificationJob{Status: verify.JobQueued}, found: true, want: ErrPending},
 		{name: "running", job: verify.VerificationJob{Status: verify.JobRunning}, found: true, want: ErrPending},
-		{name: "verified", job: verify.VerificationJob{Status: verify.JobSucceeded, ResultKind: &exact}, found: true, result: "Pass - Verified"},
-		{name: "mismatch", job: verify.VerificationJob{Status: verify.JobSucceeded, ResultKind: &mismatch}, found: true, want: ErrVerificationFailed},
+		{name: "verified", job: verify.VerificationJob{Status: verify.JobSucceeded, Outcome: json.RawMessage(`{"kind":"verification_success"}`)}, found: true, result: "Pass - Verified"},
+		{name: "mismatch", job: verify.VerificationJob{Status: verify.JobSucceeded, Outcome: json.RawMessage(`{"kind":"verification_failure"}`)}, found: true, want: ErrVerificationFailed},
 		{name: "failed", job: verify.VerificationJob{Status: verify.JobFailed}, found: true, want: ErrVerificationFailed},
 		{name: "missing", found: false, want: ErrVerificationJobNotFound},
 	} {

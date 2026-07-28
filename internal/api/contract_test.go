@@ -84,13 +84,17 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		method   string
 		billable bool
 	}{
-		{path: "/verification/jobs", method: "post"},
-		{path: "/verification/jobs/{id}", method: "get", billable: true},
+		{path: "/contracts/{address}/verification", method: "post"},
 		{path: "/contracts/{address}/verification", method: "get", billable: true},
-		{path: "/sourcify/contracts/{address}", method: "get", billable: true},
-		{path: "/sourcify/imports", method: "post"},
-		{path: "/verification/jobs/{id}/sourcify", method: "post"},
-		{path: "/sourcify/jobs/{verification_id}", method: "get", billable: true},
+		{path: "/verifier/jobs/{id}", method: "get", billable: true},
+		{path: "/verifier/solidity/multipart", method: "post"},
+		{path: "/verifier/solidity/standard-json", method: "post"},
+		{path: "/verifier/solidity/batch/multipart", method: "post"},
+		{path: "/verifier/solidity/batch/standard-json", method: "post"},
+		{path: "/verifier/vyper/multipart", method: "post"},
+		{path: "/verifier/vyper/standard-json", method: "post"},
+		{path: "/verifier/sourcify", method: "post"},
+		{path: "/verifier/sourcify/from-etherscan", method: "post"},
 	} {
 		security := mappingValue(t, mappingValue(t, mappingValue(t, paths, operation.path), operation.method), "security")
 		wantRequirements := 1
@@ -106,14 +110,30 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		}
 	}
 
-	for _, schemaName := range []string{"VerificationSubmission", "SourcifyImportRequest"} {
+	for _, schemaName := range []string{
+		"AddressVerificationSubmission",
+		"VerifierMultipartRequest",
+		"VerifierStandardJSONRequest",
+	} {
 		properties := mappingValue(t, mappingValue(t, schemas, schemaName), "properties")
-		for _, forbidden := range []string{"code_hash", "at_block_hash", "creation_bytecode", "runtime_bytecode"} {
+		for _, forbidden := range []string{
+			"address", "code_hash", "at_block_hash", "contract_identifier",
+			"constructor_arguments", "submit_to_sourcify",
+		} {
 			if optionalMappingValue(properties, forbidden) != nil {
 				t.Fatalf("%s exposes server-owned field %q", schemaName, forbidden)
 			}
 		}
-		mappingValue(t, properties, "address")
+	}
+
+	for _, removed := range []string{
+		"/verification/jobs", "/verification/jobs/{id}",
+		"/sourcify/contracts/{address}", "/sourcify/imports",
+		"/verification/jobs/{id}/sourcify", "/sourcify/jobs/{verification_id}",
+	} {
+		if optionalMappingValue(paths, removed) != nil {
+			t.Fatalf("removed verifier-v1 path %q is still public", removed)
+		}
 	}
 }
 

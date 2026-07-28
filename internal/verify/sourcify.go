@@ -38,6 +38,9 @@ type SourcifyOptions struct {
 	Timeout          time.Duration
 	MaxRequestBytes  int
 	MaxResponseBytes int64
+	Attempts         int
+	PollInterval     time.Duration
+	MaxPolls         int
 }
 
 type SourcifyClient struct {
@@ -45,6 +48,14 @@ type SourcifyClient struct {
 	http             *http.Client
 	maxRequestBytes  int
 	maxResponseBytes int64
+	attempts         int
+	pollInterval     time.Duration
+	maxPolls         int
+}
+
+type SourcifyWorkflowResult struct {
+	VerificationID string
+	Successful     bool
 }
 
 type SourcifyBytecode struct {
@@ -252,13 +263,209 @@ func newSourcifyClient(
 	if maxResponse < 1 || maxResponse > 64<<20 {
 		return nil, errors.New("sourcify response limit must be between 1 and 67108864 bytes")
 	}
+	attempts := options.Attempts
+	if attempts == 0 {
+		attempts = 3
+	}
+	pollInterval := options.PollInterval
+	if pollInterval == 0 {
+		pollInterval = time.Second
+	}
+	maxPolls := options.MaxPolls
+	if maxPolls == 0 {
+		maxPolls = 120
+	}
+	if attempts < 1 || attempts > 10 || pollInterval < 10*time.Millisecond ||
+		pollInterval > time.Minute || maxPolls < 1 || maxPolls > 1000 {
+		return nil, errors.New("sourcify workflow retry or polling limits are invalid")
+	}
 	return &SourcifyClient{
 		baseURL: parsed,
 		http: restrictedOutboundClient(
 			unsafeHTTPClient, timeout, resolver, unsafeAllowPrivateNetworks,
 		),
 		maxRequestBytes: maxRequest, maxResponseBytes: maxResponse,
+		attempts: attempts, pollInterval: pollInterval, maxPolls: maxPolls,
 	}, nil
+}
+
+// RunV2 executes one explicit Sourcify workflow outside any database
+// transaction. A completed upstream rejection is a normal verification
+// outcome; transport and response-integrity failures remain system errors.
+func (c *SourcifyClient) RunV2(
+	ctx context.Context,
+	kind JobKind,
+	raw json.RawMessage,
+) (SourcifyWorkflowResult, error) {
+	if c == nil || !jsonObject(raw) || len(raw) > c.maxRequestBytes {
+		return SourcifyWorkflowResult{}, errors.New("invalid Sourcify workflow request")
+	}
+	var ticket SourcifyTicket
+	var submit func() error
+	switch kind {
+	case JobSourcify:
+		endpoint, payload, err := c.metadataSubmission(raw)
+		if err != nil {
+			return SourcifyWorkflowResult{}, err
+		}
+		submit = func() error {
+			return c.doJSON(ctx, http.MethodPost, endpoint, payload, http.StatusAccepted, &ticket)
+		}
+	case JobSourcifyFromEtherscan:
+		endpoint, err := c.etherscanSubmission(raw)
+		if err != nil {
+			return SourcifyWorkflowResult{}, err
+		}
+		submit = func() error {
+			return c.doJSON(ctx, http.MethodPost, endpoint, struct{}{}, http.StatusAccepted, &ticket)
+		}
+	default:
+		return SourcifyWorkflowResult{}, errors.New("invalid Sourcify workflow kind")
+	}
+	if err := c.retry(ctx, submit); err != nil {
+		if errors.Is(err, ErrSourcifyRejected) || errors.Is(err, ErrSourcifyAlreadyVerified) {
+			return SourcifyWorkflowResult{Successful: false}, nil
+		}
+		return SourcifyWorkflowResult{}, err
+	}
+	if !validSourcifyVerificationID(ticket.VerificationID) {
+		return SourcifyWorkflowResult{}, ErrSourcifyInvalidResponse
+	}
+	for poll := 0; poll < c.maxPolls; poll++ {
+		var job SourcifyJob
+		err := c.retry(ctx, func() error {
+			var statusErr error
+			job, statusErr = c.Status(ctx, ticket.VerificationID)
+			return statusErr
+		})
+		if err != nil {
+			return SourcifyWorkflowResult{}, err
+		}
+		if job.IsJobCompleted {
+			return SourcifyWorkflowResult{
+				VerificationID: ticket.VerificationID,
+				Successful:     job.ErrorCode == "" && sourcifyJobHasMatch(job.Contract),
+			}, nil
+		}
+		if err := waitForContext(ctx, c.pollInterval); err != nil {
+			return SourcifyWorkflowResult{}, err
+		}
+	}
+	return SourcifyWorkflowResult{}, ErrSourcifyUnavailable
+}
+
+func (c *SourcifyClient) metadataSubmission(
+	raw json.RawMessage,
+) (*url.URL, any, error) {
+	chainID, address, sources, metadata, err := validateSourcifyMetadataSubmission(raw, c.maxRequestBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	endpoint := c.endpoint(fmt.Sprintf(
+		"/v2/verify/metadata/%s/%s", chainID, strings.ToLower(address),
+	))
+	return endpoint, struct {
+		Sources  map[string]string `json:"sources"`
+		Metadata map[string]any    `json:"metadata"`
+	}{sources, metadata}, nil
+}
+
+func validateSourcifyMetadataSubmission(
+	raw json.RawMessage,
+	maximum int,
+) (string, string, map[string]string, map[string]any, error) {
+	var submission struct {
+		ChainID string            `json:"chain_id"`
+		Address string            `json:"address"`
+		Files   map[string]string `json:"files"`
+	}
+	if json.Unmarshal(raw, &submission) != nil || !canonicalChainID(submission.ChainID) ||
+		!fixedHex(submission.Address, 20) || len(submission.Files) == 0 ||
+		len(submission.Files) > maxStandardJSONSources {
+		return "", "", nil, nil, errors.New("invalid Sourcify metadata submission")
+	}
+	sources := make(map[string]string, len(submission.Files)-1)
+	var metadata map[string]any
+	for name, content := range submission.Files {
+		if !validStandardJSONSourceName(name) || len(content) > maximum {
+			return "", "", nil, nil, errors.New("invalid Sourcify source file")
+		}
+		var candidate map[string]any
+		looksLikeMetadata := validateUniqueJSON([]byte(content)) == nil &&
+			json.Unmarshal([]byte(content), &candidate) == nil &&
+			candidate["compiler"] != nil && candidate["settings"] != nil && candidate["output"] != nil
+		if looksLikeMetadata {
+			if metadata != nil {
+				return "", "", nil, nil, errors.New("multiple Sourcify metadata files are forbidden")
+			}
+			metadata = candidate
+			continue
+		}
+		sources[name] = content
+	}
+	if metadata == nil {
+		return "", "", nil, nil, errors.New("sourcify metadata file is required")
+	}
+	return submission.ChainID, submission.Address, sources, metadata, nil
+}
+
+func (c *SourcifyClient) etherscanSubmission(raw json.RawMessage) (*url.URL, error) {
+	chainID, address, err := validateSourcifyEtherscanSubmission(raw)
+	if err != nil {
+		return nil, err
+	}
+	return c.endpoint(fmt.Sprintf(
+		"/v2/verify/etherscan/%s/%s", chainID, strings.ToLower(address),
+	)), nil
+}
+
+func validateSourcifyEtherscanSubmission(raw json.RawMessage) (string, string, error) {
+	var submission struct {
+		ChainID string `json:"chain_id"`
+		Address string `json:"address"`
+	}
+	if json.Unmarshal(raw, &submission) != nil || !canonicalChainID(submission.ChainID) ||
+		!fixedHex(submission.Address, 20) {
+		return "", "", errors.New("invalid sourcify Etherscan submission")
+	}
+	return submission.ChainID, submission.Address, nil
+}
+
+func ValidateSourcifyV2Request(kind JobKind, raw json.RawMessage, maximum int) error {
+	if maximum <= 0 || len(raw) == 0 || len(raw) > maximum || !jsonObject(raw) {
+		return errors.New("sourcify request is invalid")
+	}
+	switch kind {
+	case JobSourcify:
+		_, _, _, _, err := validateSourcifyMetadataSubmission(raw, maximum)
+		return err
+	case JobSourcifyFromEtherscan:
+		_, _, err := validateSourcifyEtherscanSubmission(raw)
+		return err
+	default:
+		return errors.New("sourcify request kind is invalid")
+	}
+}
+
+func (c *SourcifyClient) retry(ctx context.Context, operation func() error) error {
+	var err error
+	for attempt := 0; attempt < c.attempts; attempt++ {
+		err = operation()
+		if err == nil || !errors.Is(err, ErrSourcifyUnavailable) {
+			return err
+		}
+		if attempt+1 < c.attempts {
+			if waitErr := waitForContext(ctx, c.pollInterval); waitErr != nil {
+				return waitErr
+			}
+		}
+	}
+	return err
+}
+
+func canonicalChainID(value string) bool {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	return err == nil && parsed > 0 && strconv.FormatUint(parsed, 10) == value
 }
 
 func (c *SourcifyClient) Lookup(ctx context.Context, chainID uint64, address string) (SourcifyContract, error) {

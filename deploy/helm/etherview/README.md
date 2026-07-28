@@ -1,5 +1,10 @@
 # Etherview Helm chart
 
+> Verifier v2 is a destructive verification-data upgrade. Migration `0027`
+> drops v1 verification jobs, results, and publications. Back up PostgreSQL
+> before upgrading; the chart does not provide dual reads or rollback data
+> conversion.
+
 The chart runs the production image either as one `all` Deployment or as the
 same component graph split into `api`, `sync`, `enrich`, `trace`, `verify`,
 `metadata`, and `maintenance` Deployments. `values-distributed.yaml` selects
@@ -183,17 +188,21 @@ runbook for the evidence boundary and tuning formula.
 ## Network policy
 
 The default NetworkPolicy admits the HTTP and metrics ports and permits DNS,
-PostgreSQL, and HTTPS egress. Add endpoint-specific rules under
+PostgreSQL, and optionally shared HTTPS egress. When contract verification and
+`networkPolicy.allowCompilerHTTPS` are both enabled, a separate policy grants
+TCP/443 only to the monolith `all` Pod or the distributed `verify` Pods for
+compiler catalogs and artifacts. Add endpoint-specific rules under
 `networkPolicy.additionalEgress` for NATS, Redis, plaintext/private RPC, or an
 S3-compatible service or PostgreSQL endpoint on another port. Setting
 `networkPolicy.enabled=false` is explicit and removes the policy.
 
-Billing cannot use the broad HTTPS rule. Set
+Billing cannot use shared broad HTTPS. Set
 `networkPolicy.allowExternalHTTPS=false`; put reviewed HTTPS RPC and adapter
-ranges in `networkPolicy.runtimeHTTPSCIDRs`, while billing renders a second
-NetworkPolicy selecting only `all`/`api` and allowing the configured
-facilitator CIDRs on TCP/443. The shared runtime rule preserves HTTPS access
-for split sync and worker roles without granting them the facilitator ranges.
+ranges in `networkPolicy.runtimeHTTPSCIDRs`. In monolith mode also disable
+`allowCompilerHTTPS` and pre-populate the cache, or use distributed mode so
+compiler HTTPS selects only `verify`. Billing renders a separate NetworkPolicy
+selecting only `all`/`api` and allowing the configured facilitator CIDRs on
+TCP/443.
 The chart rejects billing when NetworkPolicy is disabled, facilitator CIDRs
 are empty, broad HTTPS remains enabled, the runtime list contains an
 internet-wide CIDR, or it repeats a facilitator CIDR. Operators must also

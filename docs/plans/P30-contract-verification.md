@@ -4,9 +4,11 @@ Status: `done`
 
 ## Outcome
 
-Users can submit asynchronous Solidity and Vyper verification jobs whose
-compiler inputs are reproducible, sandboxed, code-hash-versioned, and optionally
-interoperable with Sourcify v2. External metadata access is SSRF-safe.
+Users can submit asynchronous Solidity, Yul, Vyper, batch, and Sourcify
+verification jobs through a Blockscout-style compile-and-transform workflow.
+Compiler inputs remain reproducible and sandboxed, address publication remains
+bound to canonical runtime code, and external catalog and metadata access is
+SSRF-safe.
 
 ## References
 
@@ -15,6 +17,7 @@ interoperable with Sourcify v2. External metadata access is SSRF-safe.
 - [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md)
 - [ADR-0016](../decisions/ADR-0016-compiler-supply-chain-and-sandbox.md)
 - [ADR-0017](../decisions/ADR-0017-sourcify-interoperability-boundary.md)
+- [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -28,6 +31,13 @@ interoperable with Sourcify v2. External metadata access is SSRF-safe.
 | P30-T05 | done | P20 | Safe HTTPS/IPFS NFT metadata and media proxy | SSRF/content tests |
 | P30-T06 | done | P20 | Configurable name-service resolver and operator labels | resolver/CLI tests |
 | P30-T07 | done | P30-T01, P30-T02 | Fail-closed compiler cleanup and immutable publication constraints | cleanup and PostgreSQL regressions |
+| P30-T08 | done | P30-T07 | v2 ADR, destructive verification schema, and governance reset | migration and plan checks |
+| P30-T09 | done | P30-T08 | Durable dynamic compiler catalog, checksum cache, and generic sandbox runner | catalog and sandbox security tests |
+| P30-T10 | done | P30-T09 | Dual compilation, automatic candidates, transformations, batch, blueprint, and method lookup | compiler and matcher fixtures |
+| P30-T11 | done | P30-T10 | Native asynchronous REST, Etherscan adaptation, and explicit Sourcify workflows | API and integration tests |
+| P30-T12 | done | P30-T11 | Verification UI, deployment configuration, egress, and operations guidance | browser and deployment tests |
+| P30-T13 | done | P30-T12 | Common, race, PostgreSQL, security, license, and parity closure | applicable repository gates |
+| P30-T14 | done | P30-T13 | Runner-platform-aware compiler catalog discovery and exact platform provenance | platform/catalog/provenance regressions |
 
 ## Acceptance
 
@@ -53,12 +63,95 @@ interoperable with Sourcify v2. External metadata access is SSRF-safe.
 - [x] Every newly successful verification job and verified-contract projection
       is backed by its exact immutable result; migration-only legacy rows cannot
       be used to create new unsourced publication.
+- [x] Solidity, Yul, and Vyper multipart or inline-only Standard JSON compile
+      twice, discover every bounded candidate, and expose deterministic
+      full/partial transformation evidence for solo and batch requests.
+- [x] Address submissions derive canonical creation/runtime facts on the
+      server and require a runtime match before atomically publishing the exact
+      immutable result.
+- [x] Compiler jobs pin an immutable catalog generation, compiler SHA-256, and
+      runner image digest; stale catalogs stop admission while the last
+      successful generation remains available during bounded refresh failures.
+- [x] Native REST, Etherscan status/source compatibility, explicit Sourcify
+      submission, compiler discovery, ERC-5202, and method lookup are available
+      without preserving the removed verifier-v1 routes or historical rows.
+- [x] Automatic Solidity catalog discovery follows the solc-bin platform
+      directories, binds the selected platform into catalog/job provenance,
+      and verifies the downloaded executable format before use.
 
 ## Current Blockers
 
-None. P30-T07 passed independent re-review and the applicable common gates.
+None.
 
 ## Evidence
+
+- P30-T08: ADR-0024 supersedes the conflicting verifier-v1 persistence,
+  compiler-image, and Sourcify-consent decisions. Migration
+  `0027_verifier_v2` deliberately removes the three historical verification
+  tables before creating immutable compiler generations, polymorphic leased
+  jobs, discriminated results, and runtime-match-gated publications.
+- P30-T08 verification: `go test ./internal/store -count=1`, `make plan-check`,
+  and `git diff --check` pass. Historical downstream plan dependencies now
+  reference the exact completed P30 work items, so reopening P30 does not
+  rewrite their evidence.
+- P30-T09: compiler catalogs are immutable PostgreSQL generations with an
+  atomic current head, hourly bounded refresh, 24-hour admission freshness,
+  HTTPS origin and public-address enforcement, and checksum-addressed `0500`
+  artifacts. The generic runner rechecks framed compiler bytes and digest in a
+  digest-pinned, networkless, read-only, non-root container with bounded
+  tmpfs/PID/CPU/memory/output and mandatory cleanup.
+- P30-T10: Solidity/Yul/Vyper normalization owns output selection and rejects
+  duplicate keys, source URLs, unsafe paths, and unbounded structures. Dual
+  compilation perturbs ordinary source content, requires stable candidate and
+  bytecode shape, strictly locates multiple CBOR auxdata ranges, and matches
+  declared libraries, repeated immutable values, canonical constructor tails,
+  one-sided bytecode, batches, ERC-5202 blueprints, and common method
+  dispatchers with deterministic quality/hint/name ordering.
+- P30-T11: the generated native contract/verifier REST surface replaces the
+  verifier-v1 and Sourcify-specific routes. Every submission returns
+  `202 + job_id`; successful workflow outcomes remain discriminated from
+  system failures. Address publication rechecks canonical runtime identity,
+  Etherscan treats contract name only as an equal-quality hint, and explicit
+  Sourcify jobs never write local publication evidence.
+- P30-T12: the embedded verification page now selects multipart or Standard
+  JSON and live compiler versions, and renders full/partial transformations.
+  Compose and Helm expose catalog origins/freshness, runner digest, compiler
+  cache, and verify-only catalog egress. Upgrade guidance warns that migration
+  0027 deletes all historical verifier rows and offers no dual-read or data
+  rollback.
+- P30-T13 verification: checksum-pinned solc 0.8.30 and Vyper 0.4.3 fixture
+  pairs cover real compiler output. `make generate-check`, `make plan-check`,
+  `make lint`, `make test`, `make test-race`, `make security-check`,
+  `make license-check`, and `make deployment-check` pass. A disposable
+  PostgreSQL 18 run of `make test-integration` passes the complete suite,
+  including fresh migration, destructive historical-data upgrade, immutable
+  results, lease reclaim, reorg rejection, and runtime-only publication.
+  `make test-e2e` passes all 9 embedded-browser tests after running Chrome
+  outside the filesystem/process sandbox. `make compose-runtime-smoke` passes
+  fresh monolith/distributed migration, API, embedded-SPA, replica-failover,
+  short-load, and output-parity checks with isolated state and cleanup.
+- P30-T14: Solidity catalog configuration now defaults to `auto`. Container
+  mode inspects the digest-pinned runner image and selects its Linux AMD64 or
+  ARM64 catalog; private process mode selects the native Linux, macOS AMD64, or
+  Windows AMD64 catalog. It never silently substitutes a different CPU
+  architecture when the selected catalog lacks a requested version. The
+  complete solc-bin directory vocabulary (`bin`, both Emscripten variants, both Linux
+  architectures, macOS AMD64, `wasm`, and Windows AMD64) is validated in the
+  persistent contract. Emscripten/WASM artifacts fail closed because the
+  current one-artifact provenance cannot authenticate their required runtime
+  wrapper/sidecar set.
+- P30-T14: each catalog entry, verification request, lease, and compiler
+  provenance carries the exact platform. PostgreSQL foreign keys prevent a job
+  from substituting the same version or digest from another platform, while
+  ELF, Mach-O, and PE inspection rejects mislabeled cached executables before
+  execution.
+- P30-T14 verification: focused platform/catalog/config tests, the complete Go
+  and web test suite, focused race tests, generated-contract checks, lint, and
+  deployment/Helm checks pass. Cross-compilation succeeds for Linux ARM64,
+  macOS AMD64/ARM64 hosts, and Windows AMD64. A real compiler-runner image
+  builds successfully and reports `linux/arm64`; a PostgreSQL 18 integration
+  run passes exact platform foreign-key binding and the full verification
+  integration package.
 
 - P30-T01: migration `0016_durable_verification_boundary` stores the exact
   request payload and complete-input digest, server-derived hard-isolation

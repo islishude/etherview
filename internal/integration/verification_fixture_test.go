@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// insertVerifiedContractFixture creates the immutable result provenance that a
-// production verified-contract projection requires. Tests that only exercise
-// readers still use a coherent publication boundary instead of bypassing it.
+// insertVerifiedContractFixture creates a coherent verifier-v2 job, immutable
+// result, and publication. Reader tests use the same provenance and source
+// trigger boundary as production instead of inserting an orphan projection.
 func insertVerifiedContractFixture(
 	t *testing.T,
 	ctx context.Context,
@@ -29,32 +29,60 @@ func insertVerifiedContractFixture(
 	jobID := uuid.NewString()
 	blockHash := sha256.Sum256([]byte("etherview:verification-fixture:block:" + jobID))
 	compilerDigest := sha256.Sum256([]byte("etherview:verification-fixture:compiler"))
+	runnerDigest := sha256.Sum256([]byte("etherview:verification-fixture:runner"))
+	catalogDigest := sha256.Sum256([]byte("etherview:verification-fixture:catalog"))
+	fileName := "Fixture.sol"
 	request := map[string]any{
-		"chain_id":            1,
-		"address":             "0x" + hex.EncodeToString(address),
-		"code_hash":           "0x" + hex.EncodeToString(codeHash),
-		"at_block_hash":       "0x" + hex.EncodeToString(blockHash[:]),
-		"language":            "solidity",
-		"compiler_version":    compilerVersion,
-		"contract_identifier": "Fixture.sol:" + contractName,
-		"standard_json": map[string]any{
-			"language": "Solidity",
-			"sources": map[string]any{
-				"Fixture.sol": map[string]any{"content": "contract " + contractName + " {}"},
-			},
-			"settings": map[string]any{},
+		"kind":                   "address",
+		"language":               "solidity",
+		"compiler_version":       compilerVersion,
+		"standard_json":          json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`),
+		"standard_json_variants": []json.RawMessage{json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`)},
+		"bytecodes":              []map[string]string{{"runtime_bytecode": "0x00"}},
+		"target": map[string]any{
+			"chain_id": 1, "address": "0x" + hex.EncodeToString(address),
+			"code_hash":        "0x" + hex.EncodeToString(codeHash),
+			"at_block_hash":    "0x" + hex.EncodeToString(blockHash[:]),
+			"runtime_bytecode": "0x00",
 		},
-		"creation_bytecode": "0x00",
-		"runtime_bytecode":  "0x00",
+		"catalog_generation_id": int64(1),
+		"compiler_platform":     "linux-amd64",
+		"compiler_sha256":       hex.EncodeToString(compilerDigest[:]),
+		"runner_sha256":         hex.EncodeToString(runnerDigest[:]),
 	}
 	requestPayload, err := json.Marshal(request)
 	if err != nil {
-		t.Fatalf("marshal verification fixture request: %v", err)
+		t.Fatalf("marshal verifier-v2 fixture request: %v", err)
 	}
-	digestInput := append([]byte("etherview:verification-request:v1\x00"), requestPayload...)
-	requestDigest := sha256.Sum256(digestInput)
-	result := `{"match":{"creation":"exact","runtime":"exact"},"published":true}`
-
+	requestDigest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), requestPayload...))
+	var sourceObject, settingsObject any
+	if err := json.Unmarshal([]byte(sources), &sourceObject); err != nil {
+		t.Fatalf("decode fixture sources: %v", err)
+	}
+	if err := json.Unmarshal([]byte(settings), &settingsObject); err != nil {
+		t.Fatalf("decode fixture settings: %v", err)
+	}
+	var abiValue any
+	if err := json.Unmarshal([]byte(abi), &abiValue); err != nil {
+		t.Fatalf("decode fixture ABI: %v", err)
+	}
+	outcomeObject := map[string]any{
+		"kind": "verification_success", "file_name": fileName,
+		"contract_name": contractName, "language": "solidity",
+		"compiler_version": compilerVersion, "abi": abiValue,
+		"sources": sourceObject, "settings": settingsObject,
+		"compilation_artifacts":   map[string]any{},
+		"creation_code_artifacts": map[string]any{},
+		"runtime_code_artifacts":  map[string]any{},
+		"runtime_match": map[string]any{
+			"match_type": "full", "transformations": []any{}, "values": map[string]any{},
+		},
+		"libraries": map[string]any{}, "is_blueprint": false,
+	}
+	outcome, err := json.Marshal(outcomeObject)
+	if err != nil {
+		t.Fatalf("marshal verifier-v2 fixture outcome: %v", err)
+	}
 	var validToValue any
 	if validTo != nil {
 		validToValue = int64(*validTo)
@@ -63,44 +91,78 @@ func insertVerifiedContractFixture(
 	if err != nil {
 		t.Fatalf("begin verified-contract fixture: %v", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
+	var generationID int64
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO compiler_catalog_generations (
+			language, source_url, catalog_digest, entry_count
+		) VALUES ('solidity', 'https://compiler.example/list.json', $1, 1)
+		ON CONFLICT (language, catalog_digest) DO UPDATE
+		SET source_url = compiler_catalog_generations.source_url
+		RETURNING id`, catalogDigest[:]).Scan(&generationID); err != nil {
+		t.Fatalf("insert fixture compiler generation: %v", err)
+	}
+	request["catalog_generation_id"] = generationID
+	requestPayload, err = json.Marshal(request)
+	if err != nil {
+		t.Fatalf("remarshal verifier-v2 fixture request: %v", err)
+	}
+	requestDigest = sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), requestPayload...))
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO compiler_catalog_entries (
+			generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes
+		) VALUES ($1, 'solidity', $2, 'linux-amd64', 'https://compiler.example/solc', $3, 209715200)
+		ON CONFLICT (generation_id, version) DO NOTHING`,
+		generationID, compilerVersion, compilerDigest[:],
+	); err != nil {
+		t.Fatalf("insert fixture compiler entry: %v", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verification_jobs (
-			id, chain_id, address, code_hash, block_hash, language,
-			compiler_version, request, request_payload, request_digest,
-			requires_hard_isolation, attempt_count, max_attempts,
-			compiler_kind, compiler_digest, compiler_hard_isolated,
-			status, result_kind, result
+			id, kind, language, catalog_language, compiler_version,
+			compiler_platform, catalog_generation_id, compiler_digest, runner_digest,
+			chain_id, address, code_hash, block_hash, request, request_payload,
+			request_digest, requires_hard_isolation, status, attempt_count,
+			max_attempts, outcome_kind, outcome
 		) VALUES (
-			$1::uuid, 1, $2, $3, $4, 'solidity', $5,
-			$6::jsonb, $7, $8, FALSE, 1, 3,
-			'container', $9, TRUE, 'succeeded', 'exact', $10::jsonb
-		)`, jobID, address, codeHash, blockHash[:], compilerVersion,
-		string(requestPayload), requestPayload, requestDigest[:], compilerDigest[:], result); err != nil {
-		t.Fatalf("insert verification fixture job: %v", err)
+			$1::uuid, 'address', 'solidity', 'solidity', $2, 'linux-amd64', $3, $4, $5,
+			1, $6, $7, $8, $9::jsonb, $10, $11, TRUE, 'succeeded', 1, 3,
+			'verification_success', $12::jsonb
+		)`, jobID, compilerVersion, generationID, compilerDigest[:], runnerDigest[:],
+		address, codeHash, blockHash[:], string(requestPayload), requestPayload,
+		requestDigest[:], string(outcome),
+	); err != nil {
+		t.Fatalf("insert verifier-v2 fixture job: %v", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verification_results (
-			job_id, chain_id, address, code_hash, block_hash, block_number,
-			request_digest, compiler_kind, compiler_digest, compiler_hard_isolated,
-			result_kind, result, contract_name, abi, sources, settings
+			job_id, request_digest, outcome_kind, outcome, file_name,
+			contract_name, language, compiler_version, match_type, abi, sources,
+			settings, compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts, libraries, is_blueprint
 		) VALUES (
-			$1::uuid, 1, $2, $3, $4, $5, $6, 'container', $7, TRUE,
-			'exact', $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb
-		)`, jobID, address, codeHash, blockHash[:], int64(validFrom), requestDigest[:],
-		compilerDigest[:], result, contractName, abi, sources, settings); err != nil {
-		t.Fatalf("insert immutable verification fixture result: %v", err)
+			$1::uuid, $2, 'verification_success', $3::jsonb, $4, $5,
+			'solidity', $6, 'full', $7::jsonb, $8::jsonb, $9::jsonb,
+			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
+		)`, jobID, requestDigest[:], string(outcome), fileName, contractName,
+		compilerVersion, abi, sources, settings,
+	); err != nil {
+		t.Fatalf("insert verifier-v2 fixture result: %v", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verified_contracts (
 			chain_id, address, code_hash, valid_from_block, valid_to_block,
-			language, compiler_version, match_kind, contract_name, abi,
-			sources, settings, verification_job_id, request_digest
+			verification_job_id, request_digest, file_name, contract_name,
+			language, compiler_version, match_type, abi, sources, settings,
+			compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts, libraries, is_blueprint
 		) VALUES (
-			1, $1, $2, $3, $4, 'solidity', $5, 'exact', $6,
-			$7::jsonb, $8::jsonb, $9::jsonb, $10::uuid, $11
-		)`, address, codeHash, int64(validFrom), validToValue, compilerVersion,
-		contractName, abi, sources, settings, jobID, requestDigest[:]); err != nil {
+			1, $1, $2, $3, $4, $5::uuid, $6, $7, $8, 'solidity', $9,
+			'full', $10::jsonb, $11::jsonb, $12::jsonb,
+			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
+		)`, address, codeHash, int64(validFrom), validToValue, jobID,
+		requestDigest[:], fileName, contractName, compilerVersion, abi, sources, settings,
+	); err != nil {
 		t.Fatalf("insert sourced verified-contract fixture: %v", err)
 	}
 	if err := tx.Commit(); err != nil {

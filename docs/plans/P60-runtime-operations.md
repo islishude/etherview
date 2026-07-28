@@ -27,7 +27,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 | P60-T03 | done | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | Compose smoke tests |
 | P60-T04 | done | P60-T01, P60-T02 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
 | P60-T05 | done | P10, P20, P30-T01, P30-T02, P30-T05, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
-| P60-T06 | done | P10–P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
+| P60-T06 | done | P10, P20, P30-T07, P40, P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
 
 ## Acceptance
 

@@ -596,7 +596,7 @@ func loadVerifiedABIBinding(
 		  AND abi IS NOT NULL
 		  AND valid_from_block <= $4::numeric
 		  AND (valid_to_block IS NULL OR valid_to_block >= $4::numeric)
-		ORDER BY (match_kind = 'exact') DESC, valid_from_block DESC
+		ORDER BY (match_type = 'full') DESC, valid_from_block DESC
 		LIMIT 1`, target.ChainID, sourceAddress[:], sourceCodeHash[:], strconv.FormatUint(target.BlockNumber, 10)).Scan(&abi, &fromText, &to)
 	if errors.Is(err, sql.ErrNoRows) {
 		return persistedABIBinding{}, false, nil

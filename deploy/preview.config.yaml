@@ -127,6 +127,16 @@ verification:
   container_memory: 512m
   container_cpus: "1"
   container_pids: 64
+  catalog_urls:
+    solidity: auto
+    vyper: https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json
+  allowed_download_origins:
+    - https://binaries.soliditylang.org
+    - https://raw.githubusercontent.com
+    - https://github.com
+  catalog_refresh_interval: 1h
+  catalog_max_staleness: 24h
+  runner_image: ""
   images: {}
   artifacts: {}
 
@@ -135,6 +145,9 @@ sourcify:
   timeout: 20s
   max_request_bytes: 5242880
   max_response_bytes: 33554432
+  attempts: 3
+  poll_interval: 1s
+  max_polls: 120
 
 adapters:
   namespace: etherview

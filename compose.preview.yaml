@@ -130,6 +130,10 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: verify
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+      - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+      - compiler-cache:/var/lib/etherview/compilers
     depends_on: *etherview-runtime-depends-on
     restart: unless-stopped
 
@@ -156,3 +160,4 @@ services:
 volumes:
   postgres-data:
   reth-data:
+  compiler-cache:

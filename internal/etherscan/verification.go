@@ -28,7 +28,7 @@ var compilerIdentifierPattern = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]{0,1
 // durable service used by the native API only when public verification is
 // enabled.
 type VerificationService interface {
-	Submit(context.Context, verify.Request) (verify.VerificationJob, bool, error)
+	SubmitV2(context.Context, verify.SubmissionV2) (verify.VerificationJob, bool, error)
 	Job(context.Context, string) (verify.VerificationJob, bool, error)
 }
 
@@ -61,22 +61,29 @@ func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values u
 	if err != nil {
 		return "", err
 	}
-	creation, err := stripConstructorArguments(target.creationBytecode, form.constructorArguments, maximum)
-	if err != nil {
-		return "", err
+	// Etherscan's constructorArguments and licenseType fields remain accepted at
+	// the compatibility boundary, but verifier v2 derives constructor arguments
+	// from the canonical creation input and does not persist either hint.
+	request := verify.SubmissionV2{
+		Kind:             verify.JobAddress,
+		Language:         form.language,
+		CompilerVersion:  form.compilerVersion,
+		StandardJSON:     form.standardJSON,
+		ContractNameHint: form.contractIdentifier,
+		Bytecodes: []verify.BytecodePair{{
+			Creation: target.creationBytecode,
+			Runtime:  "0x" + hex.EncodeToString(target.runtimeBytecode),
+		}},
+		Target: &verify.VerificationTarget{
+			ChainID:          b.chainID,
+			Address:          strings.ToLower(address),
+			CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
+			AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
+			CreationBytecode: target.creationBytecode,
+			RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
+		},
 	}
-	request := verify.Request{
-		ChainID: b.chainID, Address: strings.ToLower(address),
-		CodeHash:    "0x" + hex.EncodeToString(target.codeHash),
-		AtBlockHash: "0x" + hex.EncodeToString(target.blockHash),
-		Language:    form.language, CompilerVersion: form.compilerVersion,
-		ContractIdentifier: form.contractIdentifier, StandardJSON: form.standardJSON,
-		CreationBytecode: creation,
-		RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
-		ConstructorArgs:  form.constructorArguments, LicenseType: form.licenseType,
-		SubmitToSourcify: false,
-	}
-	job, _, err := b.verification.Submit(ctx, request)
+	job, _, err := b.verification.SubmitV2(ctx, request)
 	if err != nil {
 		return "", translateVerificationServiceError(err)
 	}
@@ -105,16 +112,20 @@ func (b *PostgresBackend) sourceVerificationStatus(ctx context.Context, values u
 	case verify.JobQueued, verify.JobRunning:
 		return "", ErrPending
 	case verify.JobSucceeded:
-		if job.ResultKind == nil {
-			return "", errors.New("succeeded verification job has no result kind")
+		var outcome struct {
+			Kind string `json:"kind"`
 		}
-		if *job.ResultKind == verify.MatchMismatch {
+		if len(job.Outcome) == 0 || json.Unmarshal(job.Outcome, &outcome) != nil {
+			return "", errors.New("succeeded verification job has no valid outcome")
+		}
+		switch outcome.Kind {
+		case "verification_success":
+			return "Pass - Verified", nil
+		case "compilation_failure", "verification_failure":
 			return "", ErrVerificationFailed
+		default:
+			return "", errors.New("succeeded verification job has an invalid outcome")
 		}
-		if *job.ResultKind != verify.MatchExact && *job.ResultKind != verify.MatchMetadataOnly {
-			return "", errors.New("succeeded verification job has an invalid result kind")
-		}
-		return "Pass - Verified", nil
 	case verify.JobFailed, verify.JobCancelled:
 		return "", ErrVerificationFailed
 	default:

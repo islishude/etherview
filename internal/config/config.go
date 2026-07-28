@@ -189,16 +189,21 @@ type SecurityConfig struct {
 // artifacts are reserved for explicitly private deployments and must use an
 // HTTPS URL plus a SHA-256 allowlist entry.
 type VerificationConfig struct {
-	MaxInputBytes    int                                    `yaml:"max_input_bytes"`
-	MaxOutputBytes   int                                    `yaml:"max_output_bytes"`
-	Timeout          time.Duration                          `yaml:"timeout"`
-	CacheDirectory   string                                 `yaml:"cache_directory"`
-	ContainerRuntime string                                 `yaml:"container_runtime"`
-	ContainerMemory  string                                 `yaml:"container_memory"`
-	ContainerCPUs    string                                 `yaml:"container_cpus"`
-	ContainerPIDs    int                                    `yaml:"container_pids"`
-	Artifacts        map[string]map[string]CompilerArtifact `yaml:"artifacts"`
-	Images           map[string]map[string]string           `yaml:"images"`
+	MaxInputBytes          int                                    `yaml:"max_input_bytes"`
+	MaxOutputBytes         int                                    `yaml:"max_output_bytes"`
+	Timeout                time.Duration                          `yaml:"timeout"`
+	CacheDirectory         string                                 `yaml:"cache_directory"`
+	ContainerRuntime       string                                 `yaml:"container_runtime"`
+	ContainerMemory        string                                 `yaml:"container_memory"`
+	ContainerCPUs          string                                 `yaml:"container_cpus"`
+	ContainerPIDs          int                                    `yaml:"container_pids"`
+	CatalogURLs            map[string]string                      `yaml:"catalog_urls"`
+	AllowedDownloadOrigins []string                               `yaml:"allowed_download_origins"`
+	CatalogRefreshInterval time.Duration                          `yaml:"catalog_refresh_interval"`
+	CatalogMaxStaleness    time.Duration                          `yaml:"catalog_max_staleness"`
+	RunnerImage            string                                 `yaml:"runner_image"`
+	Artifacts              map[string]map[string]CompilerArtifact `yaml:"artifacts"`
+	Images                 map[string]map[string]string           `yaml:"images"`
 }
 
 type CompilerArtifact struct {
@@ -208,13 +213,16 @@ type CompilerArtifact struct {
 }
 
 // SourcifyConfig bounds the optional external Sourcify v2 interoperability
-// adapter. Only API-role processes construct this client when the feature is
-// enabled; local verification and worker roles never depend on it.
+// adapter. The API role only persists explicit requests; the verify role owns
+// all upstream calls and polling.
 type SourcifyConfig struct {
 	BaseURL          string        `yaml:"base_url"`
 	Timeout          time.Duration `yaml:"timeout"`
 	MaxRequestBytes  int           `yaml:"max_request_bytes"`
 	MaxResponseBytes int64         `yaml:"max_response_bytes"`
+	Attempts         int           `yaml:"attempts"`
+	PollInterval     time.Duration `yaml:"poll_interval"`
+	MaxPolls         int           `yaml:"max_polls"`
 }
 
 // UserAuthConfig bounds server-created EIP-4361 challenges and absolute,
@@ -370,12 +378,26 @@ func Default() Config {
 			ContainerMemory:  "512m",
 			ContainerCPUs:    "1",
 			ContainerPIDs:    64,
+			CatalogURLs: map[string]string{
+				"solidity": "auto",
+				"vyper":    "https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json",
+			},
+			AllowedDownloadOrigins: []string{
+				"https://binaries.soliditylang.org",
+				"https://raw.githubusercontent.com",
+				"https://github.com",
+			},
+			CatalogRefreshInterval: time.Hour,
+			CatalogMaxStaleness:    24 * time.Hour,
 		},
 		Sourcify: SourcifyConfig{
 			BaseURL:          "https://sourcify.dev/server",
 			Timeout:          20 * time.Second,
 			MaxRequestBytes:  5 << 20,
 			MaxResponseBytes: 32 << 20,
+			Attempts:         3,
+			PollInterval:     time.Second,
+			MaxPolls:         120,
 		},
 		UserAuth: UserAuthConfig{
 			ChallengeTTL:      5 * time.Minute,
@@ -679,6 +701,16 @@ func (c Config) Validate() error {
 	if c.Verification.ContainerPIDs <= 0 || c.Verification.ContainerPIDs > 4096 {
 		errs = append(errs, errors.New("verification.container_pids must be between 1 and 4096"))
 	}
+	if c.Verification.CatalogRefreshInterval <= 0 || c.Verification.CatalogRefreshInterval > 24*time.Hour {
+		errs = append(errs, errors.New("verification.catalog_refresh_interval must be between 1ns and 24h"))
+	}
+	if c.Verification.CatalogMaxStaleness < c.Verification.CatalogRefreshInterval ||
+		c.Verification.CatalogMaxStaleness > 7*24*time.Hour {
+		errs = append(errs, errors.New("verification.catalog_max_staleness must be at least the refresh interval and at most 168h"))
+	}
+	if err := validateCompilerCatalogConfig(c.Verification); err != nil {
+		errs = append(errs, err)
+	}
 	if err := validateCompilerContainerResources(c.Verification); err != nil {
 		errs = append(errs, err)
 	}
@@ -824,15 +856,15 @@ func (c Config) ValidateForRoles(roles []string) error {
 	if needsVerificationWorker {
 		switch c.Security.CompilerSandbox {
 		case "container":
-			if len(c.Verification.Images) == 0 {
-				errs = append(errs, errors.New("verification.images is required by the verify role in container sandbox mode"))
+			if !validDigestPinnedImage(c.Verification.RunnerImage) {
+				errs = append(errs, errors.New("verification.runner_image must be digest-pinned for the verify role"))
 			}
 		case "process":
 			if c.Security.PublicVerification {
 				errs = append(errs, errors.New("process compiler sandbox cannot serve public verification"))
 			}
-			if strings.TrimSpace(c.Verification.CacheDirectory) == "" || len(c.Verification.Artifacts) == 0 {
-				errs = append(errs, errors.New("verification.cache_directory and artifacts are required by the verify role in process sandbox mode"))
+			if strings.TrimSpace(c.Verification.CacheDirectory) == "" {
+				errs = append(errs, errors.New("verification.cache_directory is required by the verify role in process sandbox mode"))
 			} else if !filepath.IsAbs(c.Verification.CacheDirectory) || filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
 				errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
 			}
@@ -855,6 +887,47 @@ func (c Config) ValidateForRoles(roles []string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func validateCompilerCatalogConfig(cfg VerificationConfig) error {
+	if len(cfg.CatalogURLs) != 2 || cfg.CatalogURLs["solidity"] == "" || cfg.CatalogURLs["vyper"] == "" {
+		return errors.New("verification.catalog_urls must define solidity and vyper")
+	}
+	allowed := make(map[string]struct{}, len(cfg.AllowedDownloadOrigins))
+	for _, raw := range cfg.AllowedDownloadOrigins {
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+			parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return errors.New("verification.allowed_download_origins must contain absolute HTTPS origins")
+		}
+		allowed[strings.ToLower(parsed.Scheme+"://"+parsed.Host)] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return errors.New("verification.allowed_download_origins is required")
+	}
+	for language, raw := range cfg.CatalogURLs {
+		if language == "solidity" && raw == "auto" {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+			parsed.Fragment != "" {
+			return errors.New("verification.catalog_urls must contain absolute HTTPS URLs")
+		}
+		if _, ok := allowed[strings.ToLower(parsed.Scheme+"://"+parsed.Host)]; !ok {
+			return errors.New("verification catalog URL origin is not allowlisted")
+		}
+	}
+	return nil
+}
+
+func validDigestPinnedImage(value string) bool {
+	parts := strings.Split(value, "@sha256:")
+	if len(parts) != 2 || parts[0] == "" || len(parts[1]) != 64 || parts[1] != strings.ToLower(parts[1]) {
+		return false
+	}
+	_, err := hex.DecodeString(parts[1])
+	return err == nil && !strings.Contains(parts[0], "://")
 }
 
 func validatePublicOrigin(raw string) error {
@@ -1169,6 +1242,15 @@ func validateSourcifyConfig(cfg SourcifyConfig) error {
 	if cfg.MaxResponseBytes < 1 || cfg.MaxResponseBytes > 64<<20 {
 		errs = append(errs, errors.New("sourcify.max_response_bytes must be between 1 and 67108864"))
 	}
+	if cfg.Attempts < 1 || cfg.Attempts > 10 {
+		errs = append(errs, errors.New("sourcify.attempts must be between 1 and 10"))
+	}
+	if cfg.PollInterval < 10*time.Millisecond || cfg.PollInterval > time.Minute {
+		errs = append(errs, errors.New("sourcify.poll_interval must be between 10ms and 1m"))
+	}
+	if cfg.MaxPolls < 1 || cfg.MaxPolls > 1000 {
+		errs = append(errs, errors.New("sourcify.max_polls must be between 1 and 1000"))
+	}
 	return errors.Join(errs...)
 }
 
@@ -1397,6 +1479,20 @@ func applyEnvironmentForRoles(
 	setString(lookup, "COMPILER_SANDBOX", &cfg.Security.CompilerSandbox)
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
 	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
+	setString(lookup, "VERIFICATION_RUNNER_IMAGE", &cfg.Verification.RunnerImage)
+	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			cfg.Verification.CatalogURLs["solidity"] = value
+		}
+	}
+	if value, ok := lookup(envPrefix + "VERIFICATION_VYPER_CATALOG_URL"); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			cfg.Verification.CatalogURLs["vyper"] = value
+		}
+	}
+	if value, ok := lookup(envPrefix + "VERIFICATION_ALLOWED_DOWNLOAD_ORIGINS"); ok {
+		cfg.Verification.AllowedDownloadOrigins = splitCSV(value)
+	}
 	setString(lookup, "SOURCIFY_BASE_URL", &cfg.Sourcify.BaseURL)
 	setString(lookup, "OBSERVABILITY_ENVIRONMENT", &cfg.Observability.Environment)
 	setExactString(lookup, "LOG_LEVEL", &cfg.Observability.LogLevel)
@@ -1509,7 +1605,19 @@ func applyEnvironmentForRoles(
 	if err := setInt(lookup, "VERIFICATION_MAX_OUTPUT_BYTES", &cfg.Verification.MaxOutputBytes); err != nil {
 		return err
 	}
+	if err := setDuration(lookup, "VERIFICATION_CATALOG_REFRESH_INTERVAL", &cfg.Verification.CatalogRefreshInterval); err != nil {
+		return err
+	}
+	if err := setDuration(lookup, "VERIFICATION_CATALOG_MAX_STALENESS", &cfg.Verification.CatalogMaxStaleness); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "SOURCIFY_MAX_REQUEST_BYTES", &cfg.Sourcify.MaxRequestBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "SOURCIFY_ATTEMPTS", &cfg.Sourcify.Attempts); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "SOURCIFY_MAX_POLLS", &cfg.Sourcify.MaxPolls); err != nil {
 		return err
 	}
 	if err := setInt(lookup, "X402_MAX_PAYMENT_HEADER_BYTES", &cfg.Billing.MaxPaymentHeaderBytes); err != nil {
@@ -1559,6 +1667,7 @@ func applyEnvironmentForRoles(
 		"ADAPTER_FAILURE_TTL":          &cfg.Adapters.FailureTTL,
 		"VERIFICATION_TIMEOUT":         &cfg.Verification.Timeout,
 		"SOURCIFY_TIMEOUT":             &cfg.Sourcify.Timeout,
+		"SOURCIFY_POLL_INTERVAL":       &cfg.Sourcify.PollInterval,
 		"TRACE_EXPORT_TIMEOUT":         &cfg.Observability.TraceExportTimeout,
 		"METRICS_REFRESH_INTERVAL":     &cfg.Observability.MetricsRefreshInterval,
 		"SYNC_PROGRESS_LOG_INTERVAL":   &cfg.Observability.SyncProgressLogInterval,

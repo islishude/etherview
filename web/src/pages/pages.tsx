@@ -39,6 +39,7 @@ import {
   useTransactionTrace,
   useTransactions,
   useSubmitVerification,
+  useCompilerCatalog,
   useVerificationJob,
   useVerifiedContract,
 } from "@/api/hooks";
@@ -56,6 +57,8 @@ import type {
   TokenEvent,
   TransactionSummary,
   VerificationJob,
+  VerificationMatchDetails,
+  VerificationSuccess,
   VerificationSubmission,
   VerifiedContract,
 } from "@/api/types";
@@ -2308,9 +2311,8 @@ function verificationJobStatusLabel(value: VerificationJob["status"], t: Transla
 
 function verificationMatchLabel(value: string | undefined, t: Translate): string {
   switch (value) {
-    case "exact": return t("verificationMatch.exact");
-    case "metadata_only": return t("verificationMatch.metadataOnly");
-    case "mismatch": return t("verificationMatch.mismatch");
+    case "full": return t("verificationMatch.full");
+    case "partial": return t("verificationMatch.partial");
     default: return "—";
   }
 }
@@ -2318,6 +2320,7 @@ function verificationMatchLabel(value: string | undefined, t: Translate): string
 function verificationLanguageLabel(value: string, t: Translate): string {
   switch (value) {
     case "solidity": return t("verificationLanguage.solidity");
+    case "yul": return t("verificationLanguage.yul");
     case "vyper": return t("verificationLanguage.vyper");
     default: return value;
   }
@@ -2556,13 +2559,15 @@ export function VerifyPage() {
   const [submittedAPIKey, setSubmittedAPIKey] = useState("");
   const [address, setAddress] = useState("");
   const [language, setLanguage] = useState<VerificationSubmission["language"]>("solidity");
+  const [inputKind, setInputKind] = useState<VerificationSubmission["input_kind"]>("standard_json");
   const [compilerVersion, setCompilerVersion] = useState("");
-  const [contractIdentifier, setContractIdentifier] = useState("");
-  const [constructorArguments, setConstructorArguments] = useState("");
   const [standardJSON, setStandardJSON] = useState('{\n  "language": "Solidity",\n  "sources": {},\n  "settings": {}\n}');
-  const [submitToSourcify, setSubmitToSourcify] = useState(false);
+  const [multipartSources, setMultipartSources] = useState('{\n  "Contract.sol": "contract Contract {}"\n}');
   const [formError, setFormError] = useState<string>();
-  const submission = useSubmitVerification(apiKey);
+  const submissionEnabled =
+    publicConfig.isSuccess && publicConfig.data.features.verification === true;
+  const compilerCatalog = useCompilerCatalog(language, submissionEnabled);
+  const submission = useSubmitVerification(address, apiKey);
   const job = useVerificationJob(
     submission.data?.id ?? "",
     submittedAPIKey,
@@ -2570,8 +2575,13 @@ export function VerifyPage() {
     Boolean(submission.data),
   );
   const currentJob = job.data ?? submission.data;
-  const submissionEnabled =
-    publicConfig.isSuccess && publicConfig.data.features.verification === true;
+
+  useEffect(() => {
+    const versions = compilerCatalog.data?.versions ?? [];
+    if (versions.length > 0 && !versions.includes(compilerVersion)) {
+      setCompilerVersion(versions[0] ?? "");
+    }
+  }, [compilerCatalog.data, compilerVersion]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2579,15 +2589,16 @@ export function VerifyPage() {
     submission.reset();
     if (!submissionEnabled) return;
 
-    if (new TextEncoder().encode(standardJSON).byteLength > MAX_STANDARD_JSON_BYTES) {
+    const rawInput = inputKind === "standard_json" ? standardJSON : multipartSources;
+    if (new TextEncoder().encode(rawInput).byteLength > MAX_STANDARD_JSON_BYTES) {
       setFormError(t("verification.inputTooLarge"));
       return;
     }
 
     let parsed: unknown;
     try {
-      assertNoDuplicateJSONKeys(standardJSON);
-      parsed = JSON.parse(standardJSON) as unknown;
+      assertNoDuplicateJSONKeys(rawInput);
+      parsed = JSON.parse(rawInput) as unknown;
     } catch (cause) {
       if (cause instanceof DuplicateJSONKeyError) {
         setFormError(t("verification.duplicateJSONKey"));
@@ -2611,24 +2622,31 @@ export function VerifyPage() {
     if (
       !apiKey ||
       !isAddress(address) ||
-      !compilerVersion.trim() ||
-      !contractIdentifier.trim() ||
-      !/^(?:0x)?[0-9a-fA-F]*$/.test(constructorArguments)
+      !compilerVersion.trim()
     ) {
       setFormError(t("verification.invalidFields"));
       return;
     }
+    if (
+      inputKind === "multipart" &&
+      (Object.keys(parsed).length === 0 || Object.values(parsed).some((value) => typeof value !== "string"))
+    ) {
+      setFormError(t("verification.invalidMultipart"));
+      return;
+    }
 
     setSubmittedAPIKey(apiKey);
-    submission.mutate({
-      address: getAddress(address),
+    const request: VerificationSubmission = {
       compiler_version: compilerVersion.trim(),
-      constructor_arguments: constructorArguments || undefined,
-      contract_identifier: contractIdentifier.trim(),
+      input_kind: inputKind,
       language,
-      standard_json: parsed as Record<string, unknown>,
-      submit_to_sourcify: submitToSourcify,
-    });
+    };
+    if (inputKind === "standard_json") {
+      request.input = parsed as Record<string, unknown>;
+    } else {
+      request.sources = parsed as Record<string, string>;
+    }
+    submission.mutate(request);
   };
 
   return (
@@ -2648,15 +2666,37 @@ export function VerifyPage() {
                 <span>{t("verification.language")}</span>
                 <select id="verification-language" value={language} onChange={(event) => setLanguage(event.target.value as VerificationSubmission["language"])}>
                   <option value="solidity">Solidity</option>
+                  <option value="yul">Yul</option>
                   <option value="vyper">Vyper</option>
                 </select>
               </label>
-              <FormField id="verification-compiler" label={t("verification.compilerVersion")} value={compilerVersion} onChange={setCompilerVersion} />
-              <FormField id="verification-contract" label={t("verification.contractIdentifier")} value={contractIdentifier} onChange={setContractIdentifier} />
-              <FormField id="verification-constructor" label={t("verification.constructorArguments")} value={constructorArguments} onChange={setConstructorArguments} wide />
-              <label className="field-control wide" htmlFor="verification-standard-json">
-                <span>{t("verification.standardJSON")}</span>
-                <textarea id="verification-standard-json" spellCheck={false} value={standardJSON} onChange={(event) => setStandardJSON(event.target.value)} />
+              <label className="field-control" htmlFor="verification-input-kind">
+                <span>{t("verification.inputKind")}</span>
+                <select id="verification-input-kind" value={inputKind} onChange={(event) => setInputKind(event.target.value as VerificationSubmission["input_kind"])}>
+                  <option value="standard_json">{t("verification.standardJSON")}</option>
+                  <option value="multipart">{t("verification.multipart")}</option>
+                </select>
+              </label>
+              <label className="field-control" htmlFor="verification-compiler">
+                <span>{t("verification.compilerVersion")}</span>
+                <select
+                  disabled={compilerCatalog.isPending || !compilerCatalog.data}
+                  id="verification-compiler"
+                  onChange={(event) => setCompilerVersion(event.target.value)}
+                  value={compilerVersion}
+                >
+                  {(compilerCatalog.data?.versions ?? []).map((version) => <option key={version} value={version}>{version}</option>)}
+                </select>
+                <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
+              </label>
+              <label className="field-control wide" htmlFor="verification-input">
+                <span>{inputKind === "standard_json" ? t("verification.standardJSON") : t("verification.multipartSources")}</span>
+                <textarea
+                  id="verification-input"
+                  spellCheck={false}
+                  value={inputKind === "standard_json" ? standardJSON : multipartSources}
+                  onChange={(event) => inputKind === "standard_json" ? setStandardJSON(event.target.value) : setMultipartSources(event.target.value)}
+                />
                 <small>{t("verification.sizeLimit")}</small>
               </label>
               <label className="field-control wide" htmlFor="verification-api-key">
@@ -2672,12 +2712,6 @@ export function VerifyPage() {
                 />
                 <small>{t("verification.apiKeyNotice")}</small>
               </label>
-              {publicConfig.data?.features.sourcify && (
-                <label className="checkbox-control wide">
-                  <input checked={submitToSourcify} onChange={(event) => setSubmitToSourcify(event.target.checked)} type="checkbox" />
-                  <span>{t("verification.sourcifyConsent")}</span>
-                </label>
-              )}
             </div>
             {(formError || submission.error) && (
               <p className="form-error" role="alert">{formError ?? errorMessage(submission.error, t("verification.submitFailed"))}</p>
@@ -2779,6 +2813,9 @@ function VerificationJobPanel({
 }) {
   const { t } = useTranslation();
   const headingID = useId();
+  const success = job?.outcome?.kind === "verification_success"
+    ? job.outcome as VerificationSuccess
+    : undefined;
   return (
     <section className="panel job-panel" aria-labelledby={headingID}>
       <h2 id={headingID}>{t("verification.job")}</h2>
@@ -2789,15 +2826,37 @@ function VerificationJobPanel({
       {job && (
         <dl className="job-details" aria-live="polite">
           <div><dt>{t("verification.jobID")}</dt><dd><code>{job.id}</code></dd></div>
+          <div><dt>{t("verification.jobKind")}</dt><dd><code>{job.kind}</code></dd></div>
           <div><dt>{t("table.status")}</dt><dd><span className={`job-status ${job.status}`}>{verificationJobStatusLabel(job.status, t)}</span></dd></div>
-          <div><dt>{t("verification.result")}</dt><dd>{verificationMatchLabel(job.result_kind, t)}</dd></div>
-          <div><dt>{t("verification.runtimeMatch")}</dt><dd>{verificationMatchLabel(job.runtime_match, t)}</dd></div>
-          <div><dt>{t("verification.creationMatch")}</dt><dd>{verificationMatchLabel(job.creation_match, t)}</dd></div>
-          <div><dt>{t("verification.published")}</dt><dd>{job.published === undefined ? "—" : yesNo(job.published, t)}</dd></div>
+          <div><dt>{t("verification.result")}</dt><dd><code>{job.outcome?.kind ?? "—"}</code></dd></div>
+          <div><dt>{t("verification.runtimeMatch")}</dt><dd>{verificationMatchLabel(success?.runtime_match?.match_type, t)}</dd></div>
+          <div><dt>{t("verification.creationMatch")}</dt><dd>{verificationMatchLabel(success?.creation_match?.match_type, t)}</dd></div>
           <div><dt>{t("verification.errorCode")}</dt><dd><code>{job.error_code ?? "—"}</code></dd></div>
           <div><dt>{t("verification.updated")}</dt><dd>{job.updated_at}</dd></div>
         </dl>
       )}
+      {success?.creation_match && (
+        <VerificationMatchView title={t("verification.creationTransformations")} match={success.creation_match} />
+      )}
+      {success?.runtime_match && (
+        <VerificationMatchView title={t("verification.runtimeTransformations")} match={success.runtime_match} />
+      )}
+      {job?.outcome?.kind === "batch_results" && (
+        <TextArtifact title={t("verification.batchResults")} value={job.outcome.results} />
+      )}
+    </section>
+  );
+}
+
+function VerificationMatchView({ title, match }: { title: string; match: VerificationMatchDetails }) {
+  return (
+    <section className="artifact-panel">
+      <h3>{title}</h3>
+      <p><code>{match.match_type}</code></p>
+      <pre tabIndex={0}>{JSON.stringify({
+        transformations: match.transformations,
+        values: match.values,
+      }, null, 2)}</pre>
     </section>
   );
 }
@@ -3010,31 +3069,25 @@ function SearchResultLink({ result }: { result: SearchResult }) {
 
 export function ContractPage({ address, codeHash }: { address: string; codeHash: string }) {
   const { t } = useTranslation();
-  const [codeHashInput, setCodeHashInput] = useState(codeHash);
   const [apiKey, setAPIKey] = useState("");
-  const [submittedCodeHash, setSubmittedCodeHash] = useState("");
   const [submittedAPIKey, setSubmittedAPIKey] = useState("");
   const [requestRevision, setRequestRevision] = useState(0);
   const [formError, setFormError] = useState<string>();
   const validAddress = isAddress(address);
   const contract = useVerifiedContract(
     address,
-    submittedCodeHash,
     submittedAPIKey,
     requestRevision,
     validAddress,
   );
 
-  useEffect(() => setCodeHashInput(codeHash), [codeHash]);
-
   const loadVerification = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(undefined);
-    if (!validAddress || !HASH_PATTERN.test(codeHashInput) || !apiKey) {
+    if (!validAddress || !apiKey) {
       setFormError(t("contracts.invalidRequest"));
       return;
     }
-    setSubmittedCodeHash(codeHashInput);
     setSubmittedAPIKey(apiKey);
     setRequestRevision((current) => current + 1);
   };
@@ -3046,10 +3099,6 @@ export function ContractPage({ address, codeHash }: { address: string; codeHash:
           <h2 id="verified-contract-title">{t("contracts.verifiedArtifact")}</h2>
           <p className="quiet">{t("contracts.readIndependent")}</p>
           <form className="contract-query-form" autoComplete="off" onSubmit={loadVerification}>
-            <label className="field-control" htmlFor="contract-detail-code-hash">
-              <span>{t("detail.codeHash")}</span>
-              <input id="contract-detail-code-hash" onChange={(event) => setCodeHashInput(event.target.value)} spellCheck={false} value={codeHashInput} />
-            </label>
             <label className="field-control" htmlFor="contract-detail-api-key">
               <span>{t("verification.apiKey")}</span>
               <input
@@ -3081,15 +3130,26 @@ function VerifiedContractView({ contract }: { contract: VerifiedContract }) {
     <div className="verified-artifacts">
       <DetailList label={t("contracts.identity") }>
         <Detail label={t("contracts.contractName")} value={contract.contract_name} />
+        <Detail label={t("contracts.fileName")} value={contract.file_name} />
         <Detail label={t("verification.language")} value={verificationLanguageLabel(contract.language, t)} />
         <Detail label={t("verification.compilerVersion")} value={contract.compiler_version} />
-        <Detail label={t("contracts.matchKind")} value={verificationMatchLabel(contract.match_kind, t)} />
+        <Detail label={t("contracts.matchKind")} value={verificationMatchLabel(contract.runtime_match?.match_type, t)} />
+        <Detail label={t("contracts.blueprint")} value={yesNo(contract.is_blueprint, t)} />
         <Detail label={t("detail.codeHash")} value={contract.code_hash} mono />
         <Detail label={t("contracts.validBlocks")} value={`${contract.valid_from_block} – ${contract.valid_to_block ?? "∞"}`} />
       </DetailList>
       <TextArtifact title={t("contracts.abi")} value={contract.abi} />
       <TextArtifact title={t("contracts.sources")} value={contract.sources} />
       <TextArtifact title={t("contracts.settings")} value={contract.settings} />
+      <TextArtifact title={t("contracts.compilationArtifacts")} value={contract.compilation_artifacts} />
+      <TextArtifact title={t("contracts.creationArtifacts")} value={contract.creation_code_artifacts} />
+      <TextArtifact title={t("contracts.runtimeArtifacts")} value={contract.runtime_code_artifacts} />
+      {contract.creation_match && (
+        <VerificationMatchView title={t("verification.creationTransformations")} match={contract.creation_match} />
+      )}
+      {contract.runtime_match && (
+        <VerificationMatchView title={t("verification.runtimeTransformations")} match={contract.runtime_match} />
+      )}
     </div>
   );
 }

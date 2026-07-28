@@ -131,18 +131,15 @@ type VerificationReader interface {
 }
 
 type VerificationSubmitter interface {
-	Submit(context.Context, verify.Request) (verify.VerificationJob, bool, error)
+	SubmitV2(context.Context, verify.SubmissionV2) (verify.VerificationJob, bool, error)
+}
+
+type CompilerCatalogReader interface {
+	Versions(context.Context, verify.Language) ([]string, error)
 }
 
 type VerificationTargetResolver interface {
 	ResolveVerificationTarget(context.Context, string) (verify.VerificationTarget, error)
-}
-
-type SourcifyAdapter interface {
-	Lookup(context.Context, uint64, string) (verify.SourcifyContract, error)
-	Import(context.Context, verify.VerificationTarget) (verify.Request, error)
-	Submit(context.Context, verify.SourcifyJobReader, string, bool) (verify.SourcifyTicket, error)
-	Status(context.Context, string) (verify.SourcifyJob, error)
 }
 
 type Options struct {
@@ -161,8 +158,8 @@ type Options struct {
 	NFTMediaProxy         *metadata.MediaProxy
 	VerificationReader    VerificationReader
 	VerificationSubmitter VerificationSubmitter
+	CompilerCatalog       CompilerCatalogReader
 	VerificationTargets   VerificationTargetResolver
-	Sourcify              SourcifyAdapter
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
 	Billing               *billing.HTTPDispatcher
@@ -192,8 +189,8 @@ type Handler struct {
 	nftMediaProxy         *metadata.MediaProxy
 	verificationReader    VerificationReader
 	verificationSubmitter VerificationSubmitter
+	compilerCatalog       CompilerCatalogReader
 	verificationTargets   VerificationTargetResolver
-	sourcify              SourcifyAdapter
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
 	billing               *billing.HTTPDispatcher
@@ -241,8 +238,8 @@ func New(options Options) (*Handler, error) {
 		nftMediaProxy:         options.NFTMediaProxy,
 		verificationReader:    options.VerificationReader,
 		verificationSubmitter: options.VerificationSubmitter,
+		compilerCatalog:       options.CompilerCatalog,
 		verificationTargets:   options.VerificationTargets,
-		sourcify:              options.Sourcify,
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
 		billing:               options.Billing,
@@ -339,13 +336,19 @@ func (h *Handler) routes() {
 	// Capability routes remain present when their backing service is disabled so
 	// clients receive a typed unavailable response instead of mistaking a 404
 	// for an empty or unsupported API surface.
-	h.mux.HandleFunc("POST /api/v1/verification/jobs", h.submitVerification)
-	h.handleBillable("getVerificationJob", h.verificationJob)
+	h.mux.HandleFunc("POST /api/v1/contracts/{address}/verification", h.submitAddressVerification)
+	h.mux.HandleFunc("POST /api/v1/verifier/solidity/multipart", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/solidity/standard-json", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/multipart", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/standard-json", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/vyper/multipart", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/vyper/standard-json", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/sourcify", h.submitVerifier)
+	h.mux.HandleFunc("POST /api/v1/verifier/sourcify/from-etherscan", h.submitVerifier)
+	h.mux.HandleFunc("GET /api/v1/verifier/compilers", h.verifierCompilers)
+	h.mux.HandleFunc("POST /api/v1/verifier/lookup-methods", h.lookupVerifierMethods)
+	h.handleBillable("getVerifierJob", h.verificationJob)
 	h.handleBillable("getVerifiedContract", h.verifiedContract)
-	h.handleBillable("lookupSourcifyContract", h.lookupSourcifyContract)
-	h.mux.HandleFunc("POST /api/v1/sourcify/imports", h.importSourcifyContract)
-	h.mux.HandleFunc("POST /api/v1/verification/jobs/{id}/sourcify", h.uploadVerificationJobToSourcify)
-	h.handleBillable("getSourcifyJob", h.sourcifyJob)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -750,7 +753,7 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"mempool":          h.cfg.Features.Mempool,
 		"historical_state": h.cfg.Features.HistoricalState,
 		"verification":     h.verificationSubmitter != nil && h.verificationTargets != nil,
-		"sourcify":         h.sourcify != nil,
+		"sourcify":         h.cfg.Features.Sourcify,
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
 		"user_auth":        h.cfg.Features.UserAuth,
@@ -1531,65 +1534,211 @@ func (h *Handler) transactionResourceRequest(
 	}, true
 }
 
-type verificationSubmission struct {
-	Address            string          `json:"address"`
-	Language           verify.Language `json:"language"`
-	CompilerVersion    string          `json:"compiler_version"`
-	ContractIdentifier string          `json:"contract_identifier"`
-	StandardJSON       json.RawMessage `json:"standard_json"`
-	ConstructorArgs    string          `json:"constructor_arguments"`
-	LicenseType        string          `json:"license_type"`
-	SubmitToSourcify   bool            `json:"submit_to_sourcify"`
+type verifierSubmission struct {
+	Language         verify.Language       `json:"language"`
+	CompilerVersion  string                `json:"compiler_version"`
+	InputKind        string                `json:"input_kind"`
+	Input            json.RawMessage       `json:"input"`
+	Sources          map[string]string     `json:"sources"`
+	EVMVersion       string                `json:"evm_version"`
+	OptimizationRuns *int                  `json:"optimization_runs"`
+	Libraries        map[string]string     `json:"libraries"`
+	Bytecodes        verify.BytecodePair   `json:"bytecodes"`
+	Contracts        []verify.BytecodePair `json:"contracts"`
+	ContractNameHint string                `json:"contract_name_hint"`
 }
 
-type sourcifyImportSubmission struct {
-	Address         string `json:"address"`
-	ConstructorArgs string `json:"constructor_arguments"`
-}
-
-type sourcifyUploadSubmission struct {
-	Consent bool `json:"consent"`
-}
-
-func (h *Handler) submitVerification(w http.ResponseWriter, r *http.Request) {
-	if !h.verificationSubmissionAvailable(w, r) {
+func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Request) {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
 		return
 	}
 	if !h.requireAPIKey(w, r) {
 		return
 	}
-	var submission verificationSubmission
-	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "verification request is invalid") {
+	address := strings.ToLower(r.PathValue("address"))
+	if !addressPattern.MatchString(address) {
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
 		return
 	}
-	if !addressPattern.MatchString(submission.Address) {
-		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "verification request is invalid", nil)
+	var submission verifierSubmission
+	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "address verification request is invalid") {
 		return
 	}
-	target, constructorArguments, err := h.resolveVerificationTarget(r.Context(), submission.Address, submission.ConstructorArgs)
-	if err != nil {
+	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
+	if err != nil || target.ChainID != h.cfg.Chain.ID || !strings.EqualFold(target.Address, address) {
 		h.handleVerificationTargetError(w, r, err)
 		return
 	}
-	request := verify.Request{
-		ChainID: target.ChainID, Address: target.Address,
-		CodeHash: target.CodeHash, AtBlockHash: target.AtBlockHash,
-		Language: submission.Language, CompilerVersion: submission.CompilerVersion,
-		ContractIdentifier: submission.ContractIdentifier, StandardJSON: submission.StandardJSON,
-		CreationBytecode: target.CreationBytecode, RuntimeBytecode: target.RuntimeBytecode,
-		ConstructorArgs: constructorArguments, LicenseType: submission.LicenseType,
-		SubmitToSourcify: submission.SubmitToSourcify,
+	request := verify.SubmissionV2{
+		Kind: verify.JobAddress, Language: submission.Language,
+		CompilerVersion: submission.CompilerVersion, ContractNameHint: submission.ContractNameHint,
+		Target: &target, Bytecodes: []verify.BytecodePair{{
+			Creation: target.CreationBytecode, Runtime: target.RuntimeBytecode,
+		}},
 	}
-	job, created, err := h.verificationSubmitter.Submit(r.Context(), request)
+	switch submission.InputKind {
+	case "standard_json":
+		request.StandardJSON = submission.Input
+	case "multipart":
+		request.Multipart = &verify.MultipartRequest{
+			Language: submission.Language, Sources: submission.Sources,
+			EVMVersion: submission.EVMVersion, OptimizationRuns: submission.OptimizationRuns,
+			Libraries: submission.Libraries,
+		}
+	default:
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "input_kind must be multipart or standard_json", nil)
+		return
+	}
+	h.submitV2(w, r, request)
+}
+
+func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
+	if h.verificationSubmitter == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
+		return
+	}
+	if !h.requireAPIKey(w, r) {
+		return
+	}
+	if r.Pattern == "POST /api/v1/verifier/sourcify" {
+		var submission struct {
+			ChainID string            `json:"chain_id"`
+			Address string            `json:"address"`
+			Files   map[string]string `json:"files"`
+		}
+		if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "Sourcify request is invalid") {
+			return
+		}
+		encoded, _ := json.Marshal(submission)
+		h.submitV2(w, r, verify.SubmissionV2{
+			Kind: verify.JobSourcify, SourcifyRequest: encoded,
+		})
+		return
+	}
+	if r.Pattern == "POST /api/v1/verifier/sourcify/from-etherscan" {
+		var submission struct {
+			ChainID string `json:"chain_id"`
+			Address string `json:"address"`
+		}
+		if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "Sourcify Etherscan request is invalid") {
+			return
+		}
+		encoded, _ := json.Marshal(submission)
+		h.submitV2(w, r, verify.SubmissionV2{
+			Kind: verify.JobSourcifyFromEtherscan, SourcifyRequest: encoded,
+		})
+		return
+	}
+	var submission verifierSubmission
+	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "verifier request is invalid") {
+		return
+	}
+	request := verify.SubmissionV2{
+		CompilerVersion:  submission.CompilerVersion,
+		ContractNameHint: submission.ContractNameHint,
+	}
+	switch r.Pattern {
+	case "POST /api/v1/verifier/solidity/multipart":
+		request.Kind, request.Language = verify.JobSolidityMultipart, submission.Language
+		if request.Language == "" {
+			request.Language = verify.LanguageSolidity
+		}
+		request.Multipart = multipartSubmission(request.Language, submission)
+		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+	case "POST /api/v1/verifier/solidity/standard-json":
+		request.Kind, request.Language = verify.JobSolidityStandardJSON, submission.Language
+		if request.Language == "" {
+			request.Language = verify.LanguageSolidity
+		}
+		request.StandardJSON = submission.Input
+		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+	case "POST /api/v1/verifier/solidity/batch/multipart":
+		request.Kind, request.Language = verify.JobSolidityBatchMultipart, submission.Language
+		if request.Language == "" {
+			request.Language = verify.LanguageSolidity
+		}
+		request.Multipart = multipartSubmission(request.Language, submission)
+		request.Bytecodes = submission.Contracts
+	case "POST /api/v1/verifier/solidity/batch/standard-json":
+		request.Kind, request.Language = verify.JobSolidityBatchStandardJSON, submission.Language
+		if request.Language == "" {
+			request.Language = verify.LanguageSolidity
+		}
+		request.StandardJSON = submission.Input
+		request.Bytecodes = submission.Contracts
+	case "POST /api/v1/verifier/vyper/multipart":
+		request.Kind, request.Language = verify.JobVyperMultipart, verify.LanguageVyper
+		request.Multipart = multipartSubmission(request.Language, submission)
+		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+	case "POST /api/v1/verifier/vyper/standard-json":
+		request.Kind, request.Language = verify.JobVyperStandardJSON, verify.LanguageVyper
+		request.StandardJSON = submission.Input
+		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+	default:
+		writeError(w, r, http.StatusNotFound, "not_found", "verifier route not found", nil)
+		return
+	}
+	h.submitV2(w, r, request)
+}
+
+func multipartSubmission(language verify.Language, submission verifierSubmission) *verify.MultipartRequest {
+	return &verify.MultipartRequest{
+		Language: language, Sources: submission.Sources, EVMVersion: submission.EVMVersion,
+		OptimizationRuns: submission.OptimizationRuns, Libraries: submission.Libraries,
+	}
+}
+
+func (h *Handler) submitV2(w http.ResponseWriter, r *http.Request, request verify.SubmissionV2) {
+	job, _, err := h.verificationSubmitter.SubmitV2(r.Context(), request)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
 	}
-	status := http.StatusOK
-	if created {
-		status = http.StatusAccepted
+	writeJSON(w, http.StatusAccepted, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
+}
+
+func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
+	if h.compilerCatalog == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "compiler_catalog_unavailable", "compiler catalog is unavailable", nil)
+		return
 	}
-	writeJSON(w, status, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
+	language := verify.Language(r.URL.Query().Get("language"))
+	if language != verify.LanguageSolidity && language != verify.LanguageYul && language != verify.LanguageVyper {
+		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity, yul, or vyper", nil)
+		return
+	}
+	versions, err := h.compilerCatalog.Versions(r.Context(), language)
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "compiler_catalog_unavailable", "compiler catalog is unavailable", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.CompilerCatalogResponse{
+		Data: gen.CompilerCatalog{Language: gen.VerifierLanguage(language), Versions: versions},
+		Meta: h.meta(r),
+	})
+}
+
+func (h *Handler) lookupVerifierMethods(w http.ResponseWriter, r *http.Request) {
+	var request verify.MethodLookupRequest
+	if !h.decodeBoundedJSON(w, r, &request, "invalid_method_lookup", "method lookup request is invalid") {
+		return
+	}
+	methods, err := verify.LookupMethods(request)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_method_lookup", "method lookup request is invalid", nil)
+		return
+	}
+	models := make([]gen.MethodSource, 0, len(methods))
+	for _, method := range methods {
+		models = append(models, gen.MethodSource{
+			Selector: method.Selector, Signature: method.Signature, FileName: method.FileName,
+			Offset: method.Offset, Length: method.Length,
+		})
+	}
+	writeJSON(w, http.StatusOK, gen.LookupMethodsResponse{
+		Data: gen.LookupMethods{Methods: models}, Meta: h.meta(r),
+	})
 }
 
 func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
@@ -1618,12 +1767,19 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAPIKey(w, r) {
 		return
 	}
-	address, codeHash := strings.ToLower(r.PathValue("address")), strings.ToLower(r.URL.Query().Get("code_hash"))
-	if !addressPattern.MatchString(address) || !hashPattern.MatchString(codeHash) {
-		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address and code_hash must be fixed-size hexadecimal values", nil)
+	address := strings.ToLower(r.PathValue("address"))
+	if !addressPattern.MatchString(address) || h.verificationTargets == nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address must be a fixed-size hexadecimal value", nil)
 		return
 	}
-	contract, found, err := h.verificationReader.VerifiedContract(r.Context(), h.cfg.Chain.ID, address, codeHash)
+	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
+	if err != nil {
+		h.handleVerificationTargetError(w, r, err)
+		return
+	}
+	contract, found, err := h.verificationReader.VerifiedContract(
+		r.Context(), h.cfg.Chain.ID, address, strings.ToLower(target.CodeHash),
+	)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -1649,24 +1805,6 @@ func (h *Handler) verificationReadAvailable(w http.ResponseWriter, r *http.Reque
 	return false
 }
 
-func (h *Handler) verificationSubmissionAvailable(w http.ResponseWriter, r *http.Request) bool {
-	if h.verificationSubmitter != nil && h.verificationTargets != nil {
-		return true
-	}
-	writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
-	return false
-}
-
-func (h *Handler) sourcifyAvailable(w http.ResponseWriter, r *http.Request) bool {
-	if h.sourcify != nil {
-		return true
-	}
-	writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify interoperability is unavailable", map[string]any{
-		"state": "unavailable", "reason": "feature_disabled",
-	})
-	return false
-}
-
 func (h *Handler) decodeBoundedJSON(w http.ResponseWriter, r *http.Request, destination any, code, message string) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxVerificationBody)
 	decoder := json.NewDecoder(r.Body)
@@ -1683,256 +1821,9 @@ func (h *Handler) decodeBoundedJSON(w http.ResponseWriter, r *http.Request, dest
 	return true
 }
 
-func (h *Handler) resolveVerificationTarget(
-	ctx context.Context,
-	address string,
-	constructorArguments string,
-) (verify.VerificationTarget, string, error) {
-	target, err := h.verificationTargets.ResolveVerificationTarget(ctx, strings.ToLower(address))
-	if err != nil {
-		return verify.VerificationTarget{}, "", err
-	}
-	if target.ChainID != h.cfg.Chain.ID || !strings.EqualFold(target.Address, address) {
-		return verify.VerificationTarget{}, "", verify.ErrVerificationTargetInvalid
-	}
-	return verify.BindConstructorArguments(target, constructorArguments, int(h.maxVerificationBody))
-}
-
 func (h *Handler) handleVerificationTargetError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, verify.ErrConstructorArgumentsMismatch) {
-		writeError(w, r, http.StatusBadRequest, "invalid_constructor_arguments", "constructor arguments do not match the canonical creation input", nil)
-		return
-	}
 	h.logger.ErrorContext(r.Context(), "resolve verification target", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
 	writeError(w, r, http.StatusServiceUnavailable, "verification_target_unavailable", "canonical contract code or creation facts are unavailable", nil)
-}
-
-func (h *Handler) lookupSourcifyContract(w http.ResponseWriter, r *http.Request) {
-	if !h.sourcifyAvailable(w, r) || !h.requireAPIKey(w, r) {
-		return
-	}
-	address := strings.ToLower(r.PathValue("address"))
-	if !addressPattern.MatchString(address) {
-		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address must be 20 bytes", nil)
-		return
-	}
-	contract, err := h.sourcify.Lookup(r.Context(), h.cfg.Chain.ID, address)
-	if err != nil {
-		h.handleSourcifyError(w, r, err)
-		return
-	}
-	model, err := sourcifyContractModel(contract)
-	if err != nil || contract.ChainID != h.chainID() {
-		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
-		return
-	}
-	writeJSON(w, http.StatusOK, gen.SourcifyContractResponse{Data: model, Meta: h.meta(r)})
-}
-
-func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request) {
-	if !h.sourcifyAvailable(w, r) || !h.verificationSubmissionAvailable(w, r) || !h.requireAPIKey(w, r) {
-		return
-	}
-	var submission sourcifyImportSubmission
-	if !h.decodeBoundedJSON(w, r, &submission, "invalid_sourcify_request", "Sourcify import request is invalid") {
-		return
-	}
-	if !addressPattern.MatchString(submission.Address) {
-		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "Sourcify import request is invalid", nil)
-		return
-	}
-	target, constructorArguments, err := h.resolveVerificationTarget(r.Context(), submission.Address, submission.ConstructorArgs)
-	if err != nil {
-		h.handleVerificationTargetError(w, r, err)
-		return
-	}
-	request, err := h.sourcify.Import(r.Context(), target)
-	if err != nil {
-		h.handleSourcifyError(w, r, err)
-		return
-	}
-	request.ConstructorArgs = constructorArguments
-	request.SubmitToSourcify = false
-	job, created, err := h.verificationSubmitter.Submit(r.Context(), request)
-	if err != nil {
-		h.handleVerificationError(w, r, err)
-		return
-	}
-	status := http.StatusOK
-	if created {
-		status = http.StatusAccepted
-	}
-	writeJSON(w, status, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
-}
-
-func (h *Handler) uploadVerificationJobToSourcify(w http.ResponseWriter, r *http.Request) {
-	if !h.sourcifyAvailable(w, r) || !h.verificationReadAvailable(w, r) || !h.requireAPIKey(w, r) {
-		return
-	}
-	var submission sourcifyUploadSubmission
-	if !h.decodeBoundedJSON(w, r, &submission, "invalid_sourcify_request", "Sourcify upload request is invalid") {
-		return
-	}
-	if !submission.Consent {
-		writeError(w, r, http.StatusBadRequest, "sourcify_consent_required", "explicit Sourcify upload consent is required", nil)
-		return
-	}
-	jobID := r.PathValue("id")
-	if _, err := uuid.Parse(jobID); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "local verification job ID is invalid", nil)
-		return
-	}
-	ticket, err := h.sourcify.Submit(r.Context(), h.verificationReader, jobID, submission.Consent)
-	if err != nil {
-		h.handleSourcifyError(w, r, err)
-		return
-	}
-	id, err := uuid.Parse(ticket.VerificationID)
-	if err != nil {
-		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, gen.SourcifyTicketResponse{
-		Data: gen.SourcifyTicket{VerificationId: id}, Meta: h.meta(r),
-	})
-}
-
-func (h *Handler) sourcifyJob(w http.ResponseWriter, r *http.Request) {
-	if !h.sourcifyAvailable(w, r) || !h.requireAPIKey(w, r) {
-		return
-	}
-	verificationID := r.PathValue("verification_id")
-	if _, err := uuid.Parse(verificationID); err != nil || verificationID != strings.ToLower(verificationID) {
-		writeError(w, r, http.StatusBadRequest, "invalid_sourcify_request", "Sourcify verification ID is invalid", nil)
-		return
-	}
-	job, err := h.sourcify.Status(r.Context(), verificationID)
-	if err != nil {
-		h.handleSourcifyError(w, r, err)
-		return
-	}
-	model, err := sourcifyJobModel(job, h.chainID())
-	if err != nil {
-		h.handleSourcifyError(w, r, verify.ErrSourcifyInvalidResponse)
-		return
-	}
-	writeJSON(w, http.StatusOK, gen.SourcifyJobResponse{Data: model, Meta: h.meta(r)})
-}
-
-func (h *Handler) handleSourcifyError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, verify.ErrConsentRequired):
-		writeError(w, r, http.StatusBadRequest, "sourcify_consent_required", "explicit Sourcify upload consent is required", nil)
-	case errors.Is(err, verify.ErrSourcifyNotFound), errors.Is(err, verify.ErrSourcifyRequestMissing):
-		writeError(w, r, http.StatusNotFound, "sourcify_not_found", "Sourcify contract or job is unavailable", nil)
-	case errors.Is(err, verify.ErrSourcifyTargetMismatch):
-		writeError(w, r, http.StatusConflict, "sourcify_target_mismatch", "Sourcify data does not match the canonical local target", nil)
-	case errors.Is(err, verify.ErrSourcifyAlreadyVerified):
-		writeError(w, r, http.StatusConflict, "sourcify_already_verified", "Sourcify already has a verified contract", nil)
-	case errors.Is(err, verify.ErrSourcifyRejected):
-		writeError(w, r, http.StatusBadRequest, "sourcify_rejected", "Sourcify rejected the request", nil)
-	case errors.Is(err, verify.ErrSourcifyUnavailable), errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify is unavailable", map[string]any{
-			"state": "unavailable", "reason": "upstream_unavailable",
-		})
-	case errors.Is(err, verify.ErrSourcifyInvalidResponse):
-		writeError(w, r, http.StatusBadGateway, "sourcify_invalid_response", "Sourcify returned an invalid response", nil)
-	default:
-		h.logger.ErrorContext(r.Context(), "Sourcify request failed", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
-		writeError(w, r, http.StatusInternalServerError, "sourcify_failed", "Sourcify request failed", nil)
-	}
-}
-
-func sourcifyContractModel(contract verify.SourcifyContract) (gen.SourcifyContract, error) {
-	address, err := checksumAddress(contract.Address)
-	if err != nil || !canonicalQuantity(contract.ChainID) {
-		return gen.SourcifyContract{}, verify.ErrSourcifyInvalidResponse
-	}
-	model := gen.SourcifyContract{ChainId: contract.ChainID, Address: address}
-	if model.Match, err = sourcifyMatchModel(contract.Match); err != nil {
-		return gen.SourcifyContract{}, err
-	}
-	if model.CreationMatch, err = sourcifyMatchModel(contract.CreationMatch); err != nil {
-		return gen.SourcifyContract{}, err
-	}
-	if model.RuntimeMatch, err = sourcifyMatchModel(contract.RuntimeMatch); err != nil {
-		return gen.SourcifyContract{}, err
-	}
-	if contract.Compilation.Language != "" {
-		var language gen.SourcifyContractLanguage
-		switch contract.Compilation.Language {
-		case "Solidity":
-			language = gen.SourcifyContractLanguageSolidity
-		case "Vyper":
-			language = gen.SourcifyContractLanguageVyper
-		default:
-			return gen.SourcifyContract{}, verify.ErrSourcifyInvalidResponse
-		}
-		model.Language = &language
-	}
-	if contract.Compilation.CompilerVersion != "" {
-		value := contract.Compilation.CompilerVersion
-		model.CompilerVersion = &value
-	}
-	if contract.Compilation.FullyQualifiedName != "" {
-		value := contract.Compilation.FullyQualifiedName
-		model.ContractIdentifier = &value
-	}
-	return model, nil
-}
-
-func sourcifyJobModel(job verify.SourcifyJob, chainID string) (gen.SourcifyJob, error) {
-	id, err := uuid.Parse(job.VerificationID)
-	if err != nil {
-		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
-	}
-	model := gen.SourcifyJob{VerificationId: id, State: gen.SourcifyJobStatePending}
-	if job.IsJobCompleted {
-		model.State = gen.SourcifyJobStateSucceeded
-		if job.ErrorCode != "" {
-			model.State = gen.SourcifyJobStateFailed
-		}
-	}
-	if job.Contract == nil {
-		return model, nil
-	}
-	if job.Contract.ChainID != chainID {
-		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
-	}
-	address, err := checksumAddress(job.Contract.Address)
-	if err != nil {
-		return gen.SourcifyJob{}, verify.ErrSourcifyInvalidResponse
-	}
-	contract := gen.SourcifyContract{ChainId: job.Contract.ChainID, Address: address}
-	if contract.Match, err = sourcifyOptionalMatchModel(job.Contract.Match); err != nil {
-		return gen.SourcifyJob{}, err
-	}
-	if contract.CreationMatch, err = sourcifyOptionalMatchModel(job.Contract.CreationMatch); err != nil {
-		return gen.SourcifyJob{}, err
-	}
-	if contract.RuntimeMatch, err = sourcifyOptionalMatchModel(job.Contract.RuntimeMatch); err != nil {
-		return gen.SourcifyJob{}, err
-	}
-	model.Contract = &contract
-	return model, nil
-}
-
-func sourcifyMatchModel(value string) (*gen.SourcifyMatch, error) {
-	if value == "" {
-		return nil, nil
-	}
-	match := gen.SourcifyMatch(value)
-	if !match.Valid() {
-		return nil, verify.ErrSourcifyInvalidResponse
-	}
-	return &match, nil
-}
-
-func sourcifyOptionalMatchModel(value *string) (*gen.SourcifyMatch, error) {
-	if value == nil {
-		return nil, nil
-	}
-	return sourcifyMatchModel(*value)
 }
 
 func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
@@ -1961,19 +1852,19 @@ func (h *Handler) handleVerificationError(w http.ResponseWriter, r *http.Request
 
 func verificationJobModel(job verify.VerificationJob) gen.VerificationJob {
 	id, _ := uuid.Parse(job.ID)
+	kind := gen.VerificationJobKind(job.Kind)
+	if job.Kind == "" {
+		kind = gen.VerificationJobKindAddress
+	}
 	model := gen.VerificationJob{
-		Id: id, Status: gen.VerificationJobStatus(job.Status),
+		Id: id, Kind: kind, Status: gen.VerificationJobStatus(job.Status),
 		CreatedAt: job.CreatedAt.UTC(), UpdatedAt: job.UpdatedAt.UTC(),
 	}
-	if job.ResultKind != nil {
-		value := gen.VerificationMatch(*job.ResultKind)
-		model.ResultKind = &value
-	}
-	if job.Result != nil {
-		creation, runtime := gen.VerificationMatch(job.Result.Match.Creation), gen.VerificationMatch(job.Result.Match.Runtime)
-		model.CreationMatch, model.RuntimeMatch = &creation, &runtime
-		published := job.Result.Published
-		model.Published = &published
+	if len(job.Outcome) > 0 {
+		var outcome gen.VerificationOutcome
+		if json.Unmarshal(job.Outcome, &outcome) == nil {
+			model.Outcome = &outcome
+		}
 	}
 	if job.ErrorCode != "" {
 		value := string(job.ErrorCode)
@@ -1984,7 +1875,7 @@ func verificationJobModel(job verify.VerificationJob) gen.VerificationJob {
 
 func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContract, error) {
 	var abi []map[string]any
-	var sources, settings map[string]any
+	var sources, settings, compilation, creationArtifacts, runtimeArtifacts map[string]any
 	address, err := checksumAddress(contract.Address)
 	if err != nil {
 		return gen.VerifiedContract{}, fmt.Errorf("checksum verified contract address: %w", err)
@@ -1998,18 +1889,66 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 	if err := json.Unmarshal(contract.Settings, &settings); err != nil {
 		return gen.VerifiedContract{}, err
 	}
+	if len(contract.CompilationArtifacts) == 0 {
+		contract.CompilationArtifacts = json.RawMessage(`{}`)
+	}
+	if len(contract.CreationCodeArtifacts) == 0 {
+		contract.CreationCodeArtifacts = json.RawMessage(`{}`)
+	}
+	if len(contract.RuntimeCodeArtifacts) == 0 {
+		contract.RuntimeCodeArtifacts = json.RawMessage(`{}`)
+	}
+	if err := json.Unmarshal(contract.CompilationArtifacts, &compilation); err != nil {
+		return gen.VerifiedContract{}, err
+	}
+	if err := json.Unmarshal(contract.CreationCodeArtifacts, &creationArtifacts); err != nil {
+		return gen.VerifiedContract{}, err
+	}
+	if err := json.Unmarshal(contract.RuntimeCodeArtifacts, &runtimeArtifacts); err != nil {
+		return gen.VerifiedContract{}, err
+	}
+	fileName := contract.FileName
+	if fileName == "" {
+		fileName = "unknown"
+	}
 	model := gen.VerifiedContract{
 		ChainId: strconv.FormatUint(contract.ChainID, 10), Address: address, CodeHash: contract.CodeHash,
-		ValidFromBlock: strconv.FormatUint(contract.ValidFromBlock, 10), Language: gen.VerifiedContractLanguage(contract.Language),
-		CompilerVersion: contract.CompilerVersion, MatchKind: gen.VerificationMatch(contract.MatchKind),
-		ContractName: contract.ContractName, Abi: abi, Sources: sources, Settings: settings,
-		CreatedAt: contract.CreatedAt.UTC(),
+		ValidFromBlock: strconv.FormatUint(contract.ValidFromBlock, 10),
+		Kind:           gen.VerifiedContractKindVerificationSuccess, Language: gen.VerifierLanguage(contract.Language),
+		CompilerVersion: contract.CompilerVersion, FileName: fileName,
+		ContractName: contract.ContractName, Abi: &abi, Sources: sources, Settings: settings,
+		CompilationArtifacts: compilation, CreationCodeArtifacts: creationArtifacts,
+		RuntimeCodeArtifacts: runtimeArtifacts, CreationMatch: matchDetailsModel(contract.CreationMatch),
+		RuntimeMatch: matchDetailsModel(contract.RuntimeMatch), Libraries: contract.Libraries,
+		IsBlueprint: contract.IsBlueprint, CreatedAt: contract.CreatedAt.UTC(),
+	}
+	if model.Libraries == nil {
+		model.Libraries = map[string]string{}
+	}
+	if contract.ConstructorArguments != "" {
+		value := contract.ConstructorArguments
+		model.ConstructorArguments = &value
 	}
 	if contract.ValidToBlock != nil {
 		value := strconv.FormatUint(*contract.ValidToBlock, 10)
 		model.ValidToBlock = &value
 	}
 	return model, nil
+}
+
+func matchDetailsModel(details *verify.VerificationMatchDetails) *gen.VerificationMatchDetails {
+	if details == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return nil
+	}
+	var model gen.VerificationMatchDetails
+	if json.Unmarshal(encoded, &model) != nil {
+		return nil
+	}
+	return &model
 }
 
 func checksumAddress(value string) (string, error) {

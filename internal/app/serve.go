@@ -250,7 +250,19 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 	var verificationRepository *verify.PostgresRepository
 	var verificationService *verify.Service
+	var compilerCatalog *verify.CompilerCatalog
 	if cfg.Features.Verification {
+		compilerCatalog, err = verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
+			Sources: map[verify.Language]string{
+				verify.LanguageSolidity: cfg.Verification.CatalogURLs["solidity"],
+				verify.LanguageVyper:    cfg.Verification.CatalogURLs["vyper"],
+			},
+			AllowedOrigins: cfg.Verification.AllowedDownloadOrigins,
+			Timeout:        cfg.Verification.Timeout, Freshness: cfg.Verification.CatalogMaxStaleness,
+		})
+		if err != nil {
+			return err
+		}
 		verificationRepository, err = verify.NewPostgresRepository(db, verify.RepositoryOptions{
 			MaxRequestBytes: cfg.Verification.MaxInputBytes,
 			MaxResultBytes:  cfg.Verification.MaxOutputBytes,
@@ -261,7 +273,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		verificationService, err = verify.NewService(
 			verificationRepository,
 			cfg.Verification.MaxInputBytes,
-			verify.ServiceOptions{RequiresHardIsolation: cfg.Security.PublicVerification},
+			verify.ServiceOptions{
+				RequiresHardIsolation: cfg.Security.PublicVerification,
+				Catalog:               compilerCatalog, RunnerImage: cfg.Verification.RunnerImage,
+			},
 		)
 		if err != nil {
 			return err
@@ -270,6 +285,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	publicVerification := publicVerificationService(cfg, verificationService)
 	verificationReader, verificationSubmitter, compatibilityVerification :=
 		verificationCapabilityInterfaces(verificationService, publicVerification)
+	sourcify, err := sourcifyClient(cfg)
+	if err != nil {
+		return err
+	}
 	lifecycle := components.NewLifecycle()
 	componentRegistry := components.NewRegistry()
 	var databaseHealth databasePinger = db
@@ -546,11 +565,6 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}
 			verificationTargets = authoritativeBackend
 		}
-		sourcify, err := sourcifyClient(cfg)
-		if err != nil {
-			return err
-		}
-		sourcifyAdapter := sourcifyCapabilityInterface(sourcify)
 		compatibility := etherscan.Handler{
 			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
 			MaxBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
@@ -626,8 +640,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
-			VerificationTargets: verificationTargets, Sourcify: sourcifyAdapter,
-			NFTMediaSource: mediaSource, NFTMediaProxy: mediaProxy,
+			CompilerCatalog:     compilerCatalog,
+			VerificationTargets: verificationTargets,
+			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
 			Billing: billingDispatcher, BillingReader: billingReader, Quota: quota,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
@@ -660,7 +675,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 
 	if roleSet[components.RoleVerify] && cfg.Features.Verification {
-		compiler, err := verificationCompiler(cfg)
+		compiler, err := verificationCompiler(cfg, compilerCatalog)
 		if err != nil {
 			return err
 		}
@@ -668,6 +683,26 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			if err := validator.ValidateRuntime(ctx); err != nil {
 				return fmt.Errorf("verification compiler sandbox is not ready: %w", err)
 			}
+		}
+		for _, language := range []verify.Language{verify.LanguageSolidity, verify.LanguageVyper} {
+			if _, refreshErr := compilerCatalog.Refresh(ctx, language); refreshErr != nil {
+				if _, retainedErr := compilerCatalog.Versions(ctx, language); retainedErr != nil {
+					return fmt.Errorf("refresh %s compiler catalog: %w", language, refreshErr)
+				}
+			}
+		}
+		catalogRefresher, err := verify.NewCatalogRefresher(
+			compilerCatalog, cfg.Verification.CatalogRefreshInterval,
+		)
+		if err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(
+			components.RoleVerify,
+			"35-compiler-catalog-refresher",
+			func() (components.Service, error) { return catalogRefresher, nil },
+		); err != nil {
+			return err
 		}
 		if err := registerWorkerPool(
 			componentRegistry,
@@ -680,7 +715,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 					ServiceName: serviceName, WorkerID: verificationWorkerID(index),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-					Public: cfg.Security.PublicVerification, Observer: businessObserver,
+					Public: cfg.Security.PublicVerification, Observer: businessObserver, Sourcify: sourcify,
 				})
 			},
 		); err != nil {

@@ -17,6 +17,7 @@ type Language string
 
 const (
 	LanguageSolidity Language = "solidity"
+	LanguageYul      Language = "yul"
 	LanguageVyper    Language = "vyper"
 )
 

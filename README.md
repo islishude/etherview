@@ -45,16 +45,16 @@ correctness and readiness do not depend on them. See
 authentication, billing, and deployment details.
 
 For the repository's full-stack Preview, including the local Reth development
-chain, all seven runtime roles, public contract verification, and NFT metadata:
+chain, all seven runtime roles, and NFT metadata:
 
 ```sh
 make start-preview
 ```
 
-The first start preloads and executes the digest-pinned Solidity and Vyper
-compiler images in a dedicated Docker-in-Docker sandbox. Use
-`make recreate-preview` to rebuild only the application roles and rerun compiler
-preflight while preserving PostgreSQL, Reth, and compiler caches. Use
+Public verification remains disabled until a digest-pinned generic runner and
+approved container runtime are supplied. Use
+`make recreate-preview` to rebuild only the application roles while preserving
+PostgreSQL, Reth, and compiler caches. Use
 `make stop-preview` to remove the complete Preview and its volumes. See the
 [deployment guide](deploy/README.md#full-stack-preview) for prerequisites,
 enabled features, and endpoint overrides.

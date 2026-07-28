@@ -1,6 +1,6 @@
 # ADR-0017: Sourcify Interoperability Boundary
 
-Status: accepted
+Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md)
 
 ## Context
 

@@ -60,10 +60,10 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	record.CompilerVersion = compilerVersion.String
 	record.MatchKind = matchKind.String
 	record.ContractName = contractName.String
-	if record.Language != "solidity" && record.Language != "vyper" {
+	if record.Language != "solidity" && record.Language != "yul" && record.Language != "vyper" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
-	if record.MatchKind != "exact" && record.MatchKind != "metadata_only" {
+	if record.MatchKind != "full" && record.MatchKind != "partial" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported match kind %q", record.MatchKind)
 	}
 	if strings.TrimSpace(record.CompilerVersion) == "" || strings.TrimSpace(record.ContractName) == "" {
@@ -388,12 +388,12 @@ WITH canonical_tip AS (
 )
 SELECT current_code.code_hash, verified.code_hash, verified.abi,
        verified.sources, verified.settings, verified.language,
-       verified.compiler_version, verified.match_kind, verified.contract_name
+       verified.compiler_version, verified.match_type, verified.contract_name
 FROM current_code
 LEFT JOIN LATERAL (
     SELECT verified.code_hash, verified.abi, verified.sources,
            verified.settings, verified.language, verified.compiler_version,
-           verified.match_kind, verified.contract_name
+           verified.match_type, verified.contract_name
     FROM verified_contracts AS verified
     WHERE verified.chain_id = $1::numeric
       AND verified.address = $2
@@ -401,7 +401,7 @@ LEFT JOIN LATERAL (
       AND verified.valid_from_block <= current_code.context_number
       AND (verified.valid_to_block IS NULL
            OR verified.valid_to_block >= current_code.context_number)
-	    ORDER BY (verified.match_kind = 'exact') DESC,
+	    ORDER BY (verified.match_type = 'full') DESC,
 	             verified.valid_from_block DESC,
 	             verified.request_digest ASC NULLS LAST,
 	             verified.created_at ASC

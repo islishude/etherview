@@ -4,4 +4,3 @@ generate:
   models: true
 output-options:
   skip-prune: false
-

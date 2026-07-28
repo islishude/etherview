@@ -69,6 +69,7 @@
   "required": [
     "image",
     "genesisState",
+    "compilerCache",
     "mode",
     "roles",
     "resources",
@@ -143,6 +144,15 @@
           ]
         },
         "fetchTimeout": {"$ref": "#/$defs/genesisFetchTimeout"}
+      }
+    },
+    "compilerCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["existingClaim", "sizeLimit"],
+      "properties": {
+        "existingClaim": {"type": "string"},
+        "sizeLimit": {"type": "string", "minLength": 1}
       }
     },
     "roles": {
@@ -564,10 +574,8 @@
                   "getBlockStats",
                   "getAggregateStats",
                   "search",
-                  "getVerificationJob",
-                  "getVerifiedContract",
-                  "lookupSourcifyContract",
-                  "getSourcifyJob"
+                  "getVerifierJob",
+                  "getVerifiedContract"
                 ]
               },
               "additionalProperties": {
@@ -650,12 +658,14 @@
       "required": [
         "enabled",
         "allowExternalHTTPS",
+        "allowCompilerHTTPS",
         "runtimeHTTPSCIDRs",
         "additionalEgress"
       ],
       "properties": {
         "enabled": {"type": "boolean"},
         "allowExternalHTTPS": {"type": "boolean"},
+        "allowCompilerHTTPS": {"type": "boolean"},
         "runtimeHTTPSCIDRs": {
           "type": "array",
           "uniqueItems": true,
@@ -852,6 +862,7 @@
             "required": [
               "enabled",
               "allowExternalHTTPS",
+              "allowCompilerHTTPS",
               "runtimeHTTPSCIDRs",
               "additionalEgress"
             ]

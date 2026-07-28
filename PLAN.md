@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Sandboxed Solidity/Vyper verification, Sourcify, and metadata safety |
+| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Blockscout-style Solidity/Yul/Vyper verification, dynamic compilers, and metadata safety |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
@@ -45,12 +45,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   search, adapter, and statistics enrichment uses exact-state and
   lease-fenced publication contracts. Reviewable commands and results remain in
   [P20 evidence](docs/plans/P20-enrichment.md#evidence).
-- P30 is complete: verification publication is immutable and exact-result
-  backed, compiler execution and cleanup fail closed, and Solidity, Vyper,
-  Sourcify, metadata, and name-resolution boundaries pass their targeted,
-  PostgreSQL, race, and common repository gates. Reviewable commands and
-  results remain in
-  [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
+- P30 is complete: the destructive verifier-v2 cutover provides bounded
+  automatic Solidity/Yul/Vyper candidate matching, a durable dynamic compiler
+  catalog and digest-pinned generic runner, native asynchronous REST and
+  explicit Sourcify workflows, and canonical-runtime-gated full/partial
+  publication. Reviewable commands and results remain in
+  [P30 evidence](docs/plans/P30-contract-verification.md#evidence), including
+  runner-platform-aware compiler artifact discovery and provenance.
 - P40 is complete: the native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
   subset pass their contract, race, security, and PostgreSQL coverage

@@ -33,6 +33,17 @@ func TestNormalizeRoles(t *testing.T) {
 	}
 }
 
+func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	if got := cfg.Verification.CatalogURLs["solidity"]; got != "auto" {
+		t.Fatalf("default Solidity catalog = %q, want auto", got)
+	}
+	if err := validateCompilerCatalogConfig(cfg.Verification); err != nil {
+		t.Fatalf("automatic catalog configuration is invalid: %v", err)
+	}
+}
+
 func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretPath := filepath.Join(dir, "database-url")
@@ -961,18 +972,16 @@ func TestEnrichRoleRequiresRPCForBlockPinnedTokenDetection(t *testing.T) {
 	}
 }
 
-func TestVerificationWorkerRequiresPinnedCompilerAllowlist(t *testing.T) {
+func TestVerificationWorkerRequiresDigestPinnedGenericRunner(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	cfg.Database.URL = "postgres://localhost/etherview"
 	cfg.Features.Verification = true
 	cfg.Security.CompilerSandbox = "container"
-	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "verification.images") {
+	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "verification.runner_image") {
 		t.Fatalf("unexpected missing image error: %v", err)
 	}
-	cfg.Verification.Images = map[string]map[string]string{
-		"solidity": {"0.8.30": "registry.example/solc@sha256:" + strings.Repeat("a", 64)},
-	}
+	cfg.Verification.RunnerImage = "registry.example/verifier-runner@sha256:" + strings.Repeat("a", 64)
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}

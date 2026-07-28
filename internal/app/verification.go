@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 
 	"github.com/islishude/etherview/internal/config"
@@ -12,36 +11,24 @@ import (
 	"github.com/islishude/etherview/internal/verify"
 )
 
-func verificationCompiler(cfg config.Config) (verify.Compiler, error) {
+func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (verify.Compiler, error) {
 	switch cfg.Security.CompilerSandbox {
 	case "process":
-		artifacts := make(map[verify.Language]map[string]verify.CompilerArtifact, len(cfg.Verification.Artifacts))
-		for language, versions := range cfg.Verification.Artifacts {
-			converted := make(map[string]verify.CompilerArtifact, len(versions))
-			for version, artifact := range versions {
-				converted[version] = verify.CompilerArtifact{
-					URL: artifact.URL, SHA256: artifact.SHA256, MaxBytes: artifact.MaxBytes,
-				}
-			}
-			artifacts[verify.Language(language)] = converted
-		}
-		return verify.ProcessCompiler{
+		return &verify.CatalogProcessCompiler{
+			Catalog: catalog,
 			Cache: &verify.CompilerCache{
-				Root: cfg.Verification.CacheDirectory, Artifacts: artifacts,
-				Timeout: cfg.Verification.Timeout,
+				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
 			},
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
-			MaxOutputBytes: cfg.Verification.MaxOutputBytes, Public: cfg.Security.PublicVerification,
+			MaxOutputBytes: cfg.Verification.MaxOutputBytes,
 		}, nil
 	case "container":
-		images := make(map[verify.Language]map[string]string, len(cfg.Verification.Images))
-		for language, versions := range cfg.Verification.Images {
-			converted := make(map[string]string, len(versions))
-			maps.Copy(converted, versions)
-			images[verify.Language(language)] = converted
-		}
-		return &verify.ContainerCompiler{
-			Runtime: cfg.Verification.ContainerRuntime, Images: images,
+		return &verify.CatalogRunnerCompiler{
+			Catalog: catalog,
+			Cache: &verify.CompilerCache{
+				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
+			},
+			Runtime: cfg.Verification.ContainerRuntime, RunnerImage: cfg.Verification.RunnerImage,
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 			MaxOutputBytes: cfg.Verification.MaxOutputBytes, Memory: cfg.Verification.ContainerMemory,
 			CPUs: cfg.Verification.ContainerCPUs, PIDs: cfg.Verification.ContainerPIDs,
@@ -94,18 +81,14 @@ func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
 		Timeout:          cfg.Sourcify.Timeout,
 		MaxRequestBytes:  cfg.Sourcify.MaxRequestBytes,
 		MaxResponseBytes: cfg.Sourcify.MaxResponseBytes,
+		Attempts:         cfg.Sourcify.Attempts,
+		PollInterval:     cfg.Sourcify.PollInterval,
+		MaxPolls:         cfg.Sourcify.MaxPolls,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure Sourcify client: %w", err)
 	}
 	return client, nil
-}
-
-func sourcifyCapabilityInterface(client *verify.SourcifyClient) httpapi.SourcifyAdapter {
-	if client == nil {
-		return nil
-	}
-	return client
 }
 
 func runtimeWorkerID(kind string) string {

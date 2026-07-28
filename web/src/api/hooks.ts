@@ -522,13 +522,14 @@ export function useAggregateStats(fromBlock: string, toBlock: string, enabled = 
   });
 }
 
-export function useSubmitVerification(apiKey: string) {
+export function useSubmitVerification(address: string, apiKey: string) {
   return useMutation({
     mutationFn: async (submission: VerificationSubmission) =>
       requireEnvelope(
-        await apiClient.POST("/verification/jobs", {
+        await apiClient.POST("/contracts/{address}/verification", {
           body: submission,
           headers: { "X-API-Key": apiKey },
+          params: { path: { address } },
         }),
       ).data,
     gcTime: 0,
@@ -546,7 +547,7 @@ export function useVerificationJob(
     queryKey: ["verification-job", id, requestRevision],
     queryFn: async () =>
       requireEnvelope(
-        await apiClient.GET("/verification/jobs/{id}", {
+        await apiClient.GET("/verifier/jobs/{id}", {
           params: { path: { id } },
           headers: { "X-API-Key": apiKey },
         }),
@@ -561,25 +562,42 @@ export function useVerificationJob(
   });
 }
 
+export function useCompilerCatalog(
+  language: VerificationSubmission["language"],
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["verifier-compilers", language],
+    queryFn: async () =>
+      requireEnvelope(
+        await apiClient.GET("/verifier/compilers", {
+          params: { query: { language } },
+        }),
+      ).data,
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 export function useVerifiedContract(
   address: string,
-  codeHash: string,
   apiKey: string,
   requestRevision: number,
   enabled = true,
 ) {
   return useQuery({
     // The revision retries an edited credential without placing that credential in the cache key.
-    queryKey: ["verified-contract", address, codeHash, requestRevision],
+    queryKey: ["verified-contract", address, requestRevision],
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/contracts/{address}/verification", {
-          params: { path: { address }, query: { code_hash: codeHash } },
+          params: { path: { address } },
           headers: { "X-API-Key": apiKey },
         }),
       ).data,
     enabled:
-      enabled && address.length > 0 && codeHash.length > 0 && apiKey.length > 0 && requestRevision > 0,
+      enabled && address.length > 0 && apiKey.length > 0 && requestRevision > 0,
     retry: false,
     gcTime: 0,
     staleTime: 30_000,

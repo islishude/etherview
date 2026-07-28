@@ -179,6 +179,12 @@ genesis_url_without_sha="$temporary_dir/genesis-url-without-sha.yaml"
   --set-string genesisState.fetchTimeout=1.5s >"$temporary_dir/genesis-timeout-fractional.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string genesisState.fetchTimeout=5m >"$temporary_dir/genesis-timeout-maximum.yaml"
+verifier_distributed="$temporary_dir/verifier-distributed.yaml"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set config.features.verification=true \
+  --set networkPolicy.allowExternalHTTPS=false \
+  >"$verifier_distributed"
 
 assert_kind_count "$monolith" Deployment 1
 assert_kind_count "$monolith" HorizontalPodAutoscaler 0
@@ -233,6 +239,12 @@ assert_contains "$distributed" "targetLabel: etherview_release"
 assert_contains "$distributed" 'replacement: "etherview"'
 assert_contains "$distributed" "targetLabel: etherview_namespace"
 assert_contains "$distributed" 'replacement: "explorer"'
+assert_kind_count "$verifier_distributed" NetworkPolicy 2
+assert_contains "$verifier_distributed" "name: etherview-verifier-catalog"
+assert_resource_occurrences "$verifier_distributed" etherview-verifier-catalog "app.kubernetes.io/component: verify" 1
+assert_resource_occurrences "$verifier_distributed" etherview-verifier-catalog "port: 443" 1
+assert_component_occurrences "$verifier_distributed" verify "name: compiler-cache" 2
+assert_component_occurrences "$verifier_distributed" api "name: compiler-cache" 0
 assert_all_alerts_scoped "$distributed"
 assert_occurrences "$distributed" 'etherview_release: "etherview"' 15
 assert_occurrences "$distributed" 'etherview_namespace: "explorer"' 15

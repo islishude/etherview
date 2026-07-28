@@ -430,47 +430,39 @@ size alone is not sufficient justification to weaken those invariants.
   relation locks in the production write order: immutable results, verified
   projections, then terminal job updates. See
   [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
-- Verification prepares one duplicate-key-free, inline-source Solidity/Vyper
-  Standard JSON input before digesting it, and the repository repeats the same
-  canonicalization for direct submissions. Caller code-generation settings are
-  preserved while `outputSelection` is replaced with a bounded, exact-target,
-  version-aware artifact set; legacy Vyper receives only the minimal required
-  non-target selections demanded by its formatter. Compiler output is fully
-  shape-checked even when the code will be recorded as a mismatch. Exact
-  matching normalizes only bounded compiler-declared immutable regions;
-  metadata-only matching additionally requires a complete language-specific
-  CBOR footer with identical executable bytes, and Solidity with
-  `metadata.appendCBOR=false` never treats a footer-shaped executable suffix as
-  metadata. Legacy Vyper without an
-  authenticated immutable size can match only a zero-length suffix. Unlinked
-  libraries, guessed suffixes, malformed reference maps, broad compiler
-  outputs, and heuristic metadata stripping are never publication evidence.
-- Compiler manifests admit only bounded Solidity/Vyper versions with canonical
-  non-zero SHA-256 identities. Private process-mode downloads use a proxy-free,
-  redirect-free, public-network-only HTTPS client and install through a
-  checksum-verified `0500` atomic cache entry under a non-writable absolute
-  root. Public workers become ready only after the allowlisted Docker/Podman
-  daemon and every digest-pinned image are locally inspectable. Each compile
-  forbids pulls and networking, uses a read-only non-root container with
-  bounded CPU, memory, PIDs, file descriptors, output, and temporary storage,
-  and accepts no outcome until its random container name has been forcibly
-  removed, including after a runtime panic. Failed or hung removal and
-  compiler-runtime invariant failures stop the worker without terminalizing
-  the lease. See
-  [ADR-0016](../decisions/ADR-0016-compiler-supply-chain-and-sandbox.md).
-- Sourcify v2 is an optional external interoperability adapter rather than a
-  verification trust root. Import accepts only an address and optional
-  constructor suffix, resolves the exact canonical local block/code target
-  from PostgreSQL, and proceeds only after Sourcify's chain/address/runtime
-  bytecode matches it. The result becomes a normal durable local verification
-  request; it cannot publish a contract directly. Source upload requires both
-  the persisted request opt-in and separate call-site consent. The
-  redirect-free, proxy-free, public-network-only client bounds and validates
-  the current v2 JSON shapes and exposes only stable redacted failures. It is
-  disabled by default and constructed only by API-role processes when
-  `features.sourcify` is enabled; verification workers and feature-off API
-  processes do not depend on the external service. See
-  [ADR-0017](../decisions/ADR-0017-sourcify-interoperability-boundary.md).
+- Verification prepares duplicate-key-free, inline-source Solidity, Yul, and
+  Vyper Standard JSON inputs with bounded server-owned outputs. It compiles the
+  original sources and one whitespace-modified copy with the same exact
+  compiler, uses their strictly validated differences to locate compiler
+  auxdata, and automatically compares every bounded candidate. Matches retain
+  Verifier Alliance-style auxdata, library, constructor, and immutable
+  transformations and are classified as full or partial. Address publication
+  requires a canonical runtime match and the exact immutable job result; a
+  creation-only result is never address publication evidence.
+- Compiler catalogs are bounded HTTPS documents refreshed into immutable
+  PostgreSQL generations. Accepted entries have canonical Solidity/Vyper
+  versions, allowed artifact origins, non-zero SHA-256 identities, and bounded
+  sizes. Artifacts install through the proxy-free, redirect-free,
+  public-network-only downloader into a checksum-verified `0500` cache. Public
+  Solidity discovery follows the platform directories actually published by
+  solc-bin. Container mode derives Linux AMD64/ARM64 from the validated runner
+  image; private process mode derives Linux, macOS, or Windows native packages
+  from the host, with approved mirrors only as overrides. A missing version
+  never causes an implicit cross-architecture substitution.
+  Compilation streams the artifact and Standard JSON into one pre-pulled,
+  digest-pinned generic runner, pins the selected platform, and verifies ELF,
+  Mach-O, or PE format before execution. Emscripten/WASM directories are
+  modeled but fail closed because their current sidecar inputs are not bound by
+  the one-artifact catalog checksum. Each compile forbids pulls and networking, uses
+  a read-only non-root container with bounded resources, and accepts no outcome
+  until its random container has been forcibly removed. See
+  [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
+- Sourcify v2 remains an optional interoperability adapter rather than a local
+  trust root. Calling its dedicated verification endpoint is explicit source
+  publication consent. Bounded asynchronous polling returns an external result
+  only; local address publication still requires the ordinary compiler,
+  transformation, runtime, lease, and canonicality checks. See
+  [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
 - Verification reads and submissions are separate runtime capabilities.
   Authenticated job and verified-artifact reads remain backed by PostgreSQL
   when public compilation submission is disabled; the public configuration

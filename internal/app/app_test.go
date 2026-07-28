@@ -398,14 +398,12 @@ func TestDisabledVerificationAndSourcifyRemainAbsentCapabilities(t *testing.T) {
 		disabledVerification,
 		disabledVerification,
 	)
-	sourcify := sourcifyCapabilityInterface(nil)
-	if reader != nil || submitter != nil || compatibility != nil || sourcify != nil {
+	if reader != nil || submitter != nil || compatibility != nil {
 		t.Fatalf(
-			"typed nil leaked across capability interfaces: reader=%T submitter=%T compatibility=%T sourcify=%T",
+			"typed nil leaked across capability interfaces: reader=%T submitter=%T compatibility=%T",
 			reader,
 			submitter,
 			compatibility,
-			sourcify,
 		)
 	}
 	readOnlyVerification := &verify.Service{}
@@ -425,7 +423,6 @@ func TestDisabledVerificationAndSourcifyRemainAbsentCapabilities(t *testing.T) {
 		VerificationReader:    reader,
 		VerificationSubmitter: submitter,
 		VerificationTargets:   appVerificationTargetResolver{},
-		Sourcify:              sourcify,
 	})
 	if err != nil {
 		t.Fatal(err)

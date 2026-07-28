@@ -90,8 +90,7 @@ func TestCanonicalResourceNormalizesEveryPathIdentity(t *testing.T) {
 		{"getTransaction", "/api/v1/transactions/0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "/api/v1/transactions/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		{"getAddress", "/api/v1/addresses/0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "/api/v1/addresses/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		{"getNFTOwner", "/api/v1/nfts/0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/42", "/api/v1/nfts/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/42"},
-		{"getVerificationJob", "/api/v1/verification/jobs/550E8400-E29B-41D4-A716-446655440000", "/api/v1/verification/jobs/550e8400-e29b-41d4-a716-446655440000"},
-		{"getSourcifyJob", "/api/v1/sourcify/jobs/550E8400-E29B-41D4-A716-446655440000", "/api/v1/sourcify/jobs/550e8400-e29b-41d4-a716-446655440000"},
+		{"getVerifierJob", "/api/v1/verifier/jobs/550E8400-E29B-41D4-A716-446655440000", "/api/v1/verifier/jobs/550e8400-e29b-41d4-a716-446655440000"},
 	}
 	for _, test := range tests {
 		t.Run(test.operation+"/"+test.path, func(t *testing.T) {
@@ -129,7 +128,6 @@ func TestCanonicalResourceRejectsAmbiguousOrInvalidParameters(t *testing.T) {
 		{"getBlockStats", "/api/v1/stats/blocks?from_block=1"},
 		{"getAggregateStats", "/api/v1/stats/summary?to_block=2"},
 		{"getBlockStats", "/api/v1/stats/blocks?from_block=01&to_block=2"},
-		{"getVerifiedContract", "/api/v1/contracts/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/verification"},
 		{"getVerifiedContract", "/api/v1/contracts/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/verification?code_hash=0x01"},
 		{"getBlock", "/api/v1/blocks/not-a-block"},
 	}

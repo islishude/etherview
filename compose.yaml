@@ -21,6 +21,15 @@ x-app-environment: &app-environment
   ETHERVIEW_FEATURE_X402_BILLING:
   ETHERVIEW_API_KEY_PEPPER: ${ETHERVIEW_API_KEY_PEPPER:-}
   ETHERVIEW_METADATA_IPFS_GATEWAY: ${ETHERVIEW_METADATA_IPFS_GATEWAY:-}
+  ETHERVIEW_VERIFICATION_RUNNER_IMAGE:
+  ETHERVIEW_VERIFICATION_SOLIDITY_CATALOG_URL:
+  ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL:
+  ETHERVIEW_VERIFICATION_ALLOWED_DOWNLOAD_ORIGINS:
+  ETHERVIEW_VERIFICATION_CATALOG_REFRESH_INTERVAL:
+  ETHERVIEW_VERIFICATION_CATALOG_MAX_STALENESS:
+  ETHERVIEW_SOURCIFY_ATTEMPTS:
+  ETHERVIEW_SOURCIFY_POLL_INTERVAL:
+  ETHERVIEW_SOURCIFY_MAX_POLLS:
   ETHERVIEW_ADAPTER_NAMESPACE: ${ETHERVIEW_ADAPTER_NAMESPACE:-etherview}
   ETHERVIEW_NATS_URL: ${ETHERVIEW_NATS_URL:-}
   ETHERVIEW_REDIS_URL: ${ETHERVIEW_REDIS_URL:-}
@@ -109,6 +118,9 @@ services:
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
+      - compiler-cache:/var/lib/etherview/compilers
 
   api:
     <<: *app
@@ -151,6 +163,9 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: verify
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
+      - compiler-cache:/var/lib/etherview/compilers
     profiles: ["distributed"]
 
   metadata:
@@ -200,3 +215,4 @@ volumes:
   postgres-data:
   nats-data:
   object-data:
+  compiler-cache:

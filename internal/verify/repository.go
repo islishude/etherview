@@ -32,6 +32,20 @@ const (
 	JobCancelled JobStatus = "cancelled"
 )
 
+type JobKind string
+
+const (
+	JobAddress                   JobKind = "address"
+	JobSolidityMultipart         JobKind = "solidity_multipart"
+	JobSolidityStandardJSON      JobKind = "solidity_standard_json"
+	JobSolidityBatchMultipart    JobKind = "solidity_batch_multipart"
+	JobSolidityBatchStandardJSON JobKind = "solidity_batch_standard_json"
+	JobVyperMultipart            JobKind = "vyper_multipart"
+	JobVyperStandardJSON         JobKind = "vyper_standard_json"
+	JobSourcify                  JobKind = "sourcify"
+	JobSourcifyFromEtherscan     JobKind = "sourcify_from_etherscan"
+)
+
 type ErrorCode string
 
 const (
@@ -64,7 +78,9 @@ type VerificationJobResult struct {
 
 type VerificationJob struct {
 	ID                    string
+	Kind                  JobKind
 	Request               Request
+	RequestV2             *SubmissionV2
 	RequestDigest         [sha256.Size]byte
 	RequiresHardIsolation bool
 	AttemptCount          int
@@ -73,6 +89,7 @@ type VerificationJob struct {
 	Status                JobStatus
 	ResultKind            *MatchKind
 	Result                *VerificationJobResult
+	Outcome               json.RawMessage
 	ErrorCode             ErrorCode
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
@@ -92,19 +109,29 @@ type Completion struct {
 }
 
 type VerifiedContract struct {
-	ChainID         uint64
-	Address         string
-	CodeHash        string
-	ValidFromBlock  uint64
-	ValidToBlock    *uint64
-	Language        Language
-	CompilerVersion string
-	MatchKind       MatchKind
-	ContractName    string
-	ABI             json.RawMessage
-	Sources         json.RawMessage
-	Settings        json.RawMessage
-	CreatedAt       time.Time
+	ChainID               uint64
+	Address               string
+	CodeHash              string
+	ValidFromBlock        uint64
+	ValidToBlock          *uint64
+	Language              Language
+	CompilerVersion       string
+	MatchKind             MatchKind
+	MatchType             VerificationMatchType
+	FileName              string
+	ContractName          string
+	ABI                   json.RawMessage
+	Sources               json.RawMessage
+	Settings              json.RawMessage
+	CompilationArtifacts  json.RawMessage
+	CreationCodeArtifacts json.RawMessage
+	RuntimeCodeArtifacts  json.RawMessage
+	CreationMatch         *VerificationMatchDetails
+	RuntimeMatch          *VerificationMatchDetails
+	ConstructorArguments  string
+	Libraries             map[string]string
+	IsBlueprint           bool
+	CreatedAt             time.Time
 }
 
 type Repository interface {
@@ -286,31 +313,6 @@ func (repository *PostgresRepository) encodeRequest(request Request) ([]byte, []
 	return encoded, address, codeHash, blockHash, nil
 }
 
-func (repository *PostgresRepository) Claim(ctx context.Context, workerID string, leaseFor time.Duration) (VerificationLease, bool, error) {
-	if repository == nil || repository.db == nil {
-		return VerificationLease{}, false, errors.New("claim using nil verification repository")
-	}
-	if strings.TrimSpace(workerID) == "" || len(workerID) > 128 {
-		return VerificationLease{}, false, errors.New("verification worker ID must contain between 1 and 128 bytes")
-	}
-	microseconds, err := positiveMicroseconds(leaseFor)
-	if err != nil {
-		return VerificationLease{}, false, fmt.Errorf("verification lease duration: %w", err)
-	}
-	token, err := randomToken(repository.random)
-	if err != nil {
-		return VerificationLease{}, false, fmt.Errorf("generate verification lease token: %w", err)
-	}
-	job, err := repository.scanJob(repository.db.QueryRowContext(ctx, claimVerificationSQL, workerID, token, microseconds))
-	if errors.Is(err, sql.ErrNoRows) {
-		return VerificationLease{}, false, nil
-	}
-	if err != nil {
-		return VerificationLease{}, false, fmt.Errorf("claim verification job: %w", err)
-	}
-	return VerificationLease{Job: job, Token: token}, true, nil
-}
-
 func (repository *PostgresRepository) Renew(ctx context.Context, lease VerificationLease, leaseFor time.Duration) error {
 	if repository == nil || repository.db == nil {
 		return errors.New("renew using nil verification repository")
@@ -329,301 +331,8 @@ func (repository *PostgresRepository) Renew(ctx context.Context, lease Verificat
 	return requireVerificationLease(result)
 }
 
-func (repository *PostgresRepository) BindCompiler(ctx context.Context, lease VerificationLease, provenance CompilerProvenance) error {
-	if repository == nil || repository.db == nil {
-		return errors.New("bind compiler using nil verification repository")
-	}
-	if err := validateVerificationLease(lease); err != nil {
-		return err
-	}
-	if !provenance.valid() {
-		return errors.New("verification compiler provenance is invalid")
-	}
-	tx, err := repository.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin verification compiler binding: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-	var (
-		requiresHard bool
-		kind         sql.NullString
-		digest       []byte
-		hard         sql.NullBool
-	)
-	if err := tx.QueryRowContext(ctx, selectVerificationCompilerSQL, lease.Job.ID, lease.Token).Scan(
-		&requiresHard, &kind, &digest, &hard,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrLeaseLost
-		}
-		return fmt.Errorf("lock verification compiler binding: %w", err)
-	}
-	if requiresHard && !provenance.HardIsolated {
-		return ErrSandboxRequired
-	}
-	if kind.Valid || len(digest) != 0 || hard.Valid {
-		if !kind.Valid || len(digest) != sha256.Size || !hard.Valid ||
-			CompilerKind(kind.String) != provenance.Kind ||
-			!equalDigest(digest, provenance.Digest) || hard.Bool != provenance.HardIsolated {
-			return ErrCompilerProvenanceConflict
-		}
-	}
-	result, err := tx.ExecContext(ctx, bindVerificationCompilerSQL,
-		lease.Job.ID, lease.Token, provenance.Kind, provenance.Digest[:], provenance.HardIsolated,
-	)
-	if err != nil {
-		return fmt.Errorf("bind verification compiler: %w", err)
-	}
-	if err := requireVerificationLease(result); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit verification compiler binding: %w", err)
-	}
-	return nil
-}
-
 func equalDigest(value []byte, digest [sha256.Size]byte) bool {
 	return len(value) == len(digest) && string(value) == string(digest[:])
-}
-
-func (repository *PostgresRepository) Complete(ctx context.Context, lease VerificationLease, completion Completion) error {
-	if repository == nil || repository.db == nil {
-		return errors.New("complete using nil verification repository")
-	}
-	if err := validateVerificationLease(lease); err != nil {
-		return err
-	}
-	if err := repository.validateCompletion(completion); err != nil {
-		return err
-	}
-	jobResult := VerificationJobResult{Match: completion.Match, Published: completion.Kind != MatchMismatch}
-	encodedResult, err := json.Marshal(jobResult)
-	if err != nil || len(encodedResult) > repository.options.MaxResultBytes {
-		return errors.New("verification result exceeds configured size limit")
-	}
-	tx, err := repository.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin verification completion: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-	job, err := repository.scanJob(tx.QueryRowContext(ctx, lockVerificationLeaseSQL, lease.Job.ID, lease.Token))
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrLeaseLost
-	}
-	if err != nil {
-		return fmt.Errorf("lock verification completion: %w", err)
-	}
-	if job.Compiler == nil {
-		return errors.New("verification completion has no compiler provenance")
-	}
-	blockNumber, err := repository.canonicalVerificationTarget(ctx, tx, job)
-	if errors.Is(err, sql.ErrNoRows) {
-		result, failErr := tx.ExecContext(ctx, failVerificationSQL,
-			job.ID, lease.Token, ErrorTargetNotCanonical,
-		)
-		if failErr != nil {
-			return fmt.Errorf("record stale verification target: %w", failErr)
-		}
-		if failErr := requireVerificationLease(result); failErr != nil {
-			return failErr
-		}
-		if failErr := tx.Commit(); failErr != nil {
-			return fmt.Errorf("commit stale verification target: %w", failErr)
-		}
-		return ErrTargetNotCanonical
-	}
-	if err != nil {
-		return err
-	}
-	if err := repository.insertVerificationResult(ctx, tx, job, blockNumber, completion, encodedResult); err != nil {
-		return err
-	}
-	if completion.Kind != MatchMismatch {
-		if err := repository.publishVerifiedContract(ctx, tx, job, blockNumber, completion); err != nil {
-			return err
-		}
-	}
-	result, err := tx.ExecContext(ctx, completeVerificationSQL,
-		job.ID, lease.Token, completion.Kind, string(encodedResult),
-	)
-	if err != nil {
-		return fmt.Errorf("complete verification job: %w", err)
-	}
-	if err := requireVerificationLease(result); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit verification completion: %w", err)
-	}
-	return nil
-}
-
-func (repository *PostgresRepository) validateCompletion(completion Completion) error {
-	if !validMatchResult(completion.Match) || !validMatchKind(completion.Kind) {
-		return errors.New("verification completion contains an invalid match result")
-	}
-	if completion.Kind != summarizeMatch(completion.Match) {
-		return errors.New("verification completion kind does not match creation/runtime results")
-	}
-	if completion.Kind == MatchMismatch {
-		if len(completion.Artifact.ABI) != 0 || len(completion.Sources) != 0 || len(completion.Settings) != 0 {
-			return errors.New("mismatch completion must not contain publishable ABI or sources")
-		}
-		return nil
-	}
-	if !jsonArray(completion.Artifact.ABI) || !jsonObject(completion.Sources) || !jsonObject(completion.Settings) {
-		return errors.New("verified completion requires an ABI array and source/settings objects")
-	}
-	total := len(completion.Artifact.ABI) + len(completion.Sources) + len(completion.Settings)
-	if total > repository.options.MaxResultBytes {
-		return errors.New("verified contract output exceeds configured size limit")
-	}
-	return nil
-}
-
-func (repository *PostgresRepository) canonicalVerificationTarget(ctx context.Context, tx *sql.Tx, job VerificationJob) (uint64, error) {
-	blockHash, _ := decodeFixedHex(job.Request.AtBlockHash, 32)
-	address, _ := decodeFixedHex(job.Request.Address, 20)
-	codeHash, _ := decodeFixedHex(job.Request.CodeHash, 32)
-	var blockNumberText string
-	if err := tx.QueryRowContext(ctx, verificationCanonicalTargetSQL,
-		strconv.FormatUint(job.Request.ChainID, 10), address, codeHash, blockHash,
-	).Scan(&blockNumberText); err != nil {
-		return 0, fmt.Errorf("resolve canonical verification target: %w", err)
-	}
-	blockNumber, err := strconv.ParseUint(blockNumberText, 10, 64)
-	if err != nil || strconv.FormatUint(blockNumber, 10) != blockNumberText {
-		return 0, errors.New("resolve canonical verification target: invalid block number")
-	}
-	return blockNumber, nil
-}
-
-func (repository *PostgresRepository) insertVerificationResult(
-	ctx context.Context,
-	tx *sql.Tx,
-	job VerificationJob,
-	blockNumber uint64,
-	completion Completion,
-	encodedResult []byte,
-) error {
-	address, _ := decodeFixedHex(job.Request.Address, 20)
-	codeHash, _ := decodeFixedHex(job.Request.CodeHash, 32)
-	blockHash, _ := decodeFixedHex(job.Request.AtBlockHash, 32)
-	var contractNameValue any
-	var abi, sources, settings any
-	if completion.Kind != MatchMismatch {
-		contractNameValue = contractName(job.Request.ContractIdentifier)
-		abi, sources, settings = string(completion.Artifact.ABI), string(completion.Sources), string(completion.Settings)
-	}
-	result, err := tx.ExecContext(ctx, insertVerificationResultSQL,
-		job.ID, strconv.FormatUint(job.Request.ChainID, 10), address, codeHash, blockHash,
-		strconv.FormatUint(blockNumber, 10), job.RequestDigest[:], job.Compiler.Kind,
-		job.Compiler.Digest[:], job.Compiler.HardIsolated, completion.Kind, string(encodedResult),
-		contractNameValue, abi, sources, settings,
-	)
-	if err != nil {
-		return fmt.Errorf("insert immutable verification result: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil || affected != 1 {
-		return errors.New("insert immutable verification result affected an unexpected row count")
-	}
-	return nil
-}
-
-func (repository *PostgresRepository) publishVerifiedContract(
-	ctx context.Context,
-	tx *sql.Tx,
-	job VerificationJob,
-	blockNumber uint64,
-	completion Completion,
-) error {
-	address, _ := decodeFixedHex(job.Request.Address, 20)
-	codeHash, _ := decodeFixedHex(job.Request.CodeHash, 32)
-	contractName := contractName(job.Request.ContractIdentifier)
-	if contractName == "" {
-		return errors.New("verified contract name is empty")
-	}
-	if _, err := tx.ExecContext(ctx, publishVerifiedContractSQL,
-		strconv.FormatUint(job.Request.ChainID, 10),
-		address,
-		codeHash,
-		strconv.FormatUint(blockNumber, 10),
-		job.Request.Language,
-		job.Request.CompilerVersion,
-		completion.Kind,
-		contractName,
-		string(completion.Artifact.ABI),
-		string(completion.Sources),
-		string(completion.Settings),
-		job.ID,
-		job.RequestDigest[:],
-	); err != nil {
-		return fmt.Errorf("publish verified contract: %w", err)
-	}
-	return nil
-}
-
-func (repository *PostgresRepository) Fail(ctx context.Context, lease VerificationLease, code ErrorCode) error {
-	if repository == nil || repository.db == nil {
-		return errors.New("fail using nil verification repository")
-	}
-	if err := validateVerificationLease(lease); err != nil {
-		return err
-	}
-	if !code.valid() {
-		return errors.New("verification error code is not allowlisted")
-	}
-	result, err := repository.db.ExecContext(ctx, failVerificationSQL, lease.Job.ID, lease.Token, code)
-	if err != nil {
-		return fmt.Errorf("fail verification job: %w", err)
-	}
-	return requireVerificationLease(result)
-}
-
-func (repository *PostgresRepository) Job(ctx context.Context, id string) (VerificationJob, bool, error) {
-	if repository == nil || repository.db == nil {
-		return VerificationJob{}, false, errors.New("query using nil verification repository")
-	}
-	if !validUUID(id) {
-		return VerificationJob{}, false, errors.New("verification job ID is invalid")
-	}
-	job, err := repository.scanJob(repository.db.QueryRowContext(ctx, selectVerificationJobSQL, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return VerificationJob{}, false, nil
-	}
-	if err != nil {
-		return VerificationJob{}, false, fmt.Errorf("query verification job: %w", err)
-	}
-	return job, true, nil
-}
-
-func (repository *PostgresRepository) VerifiedContract(ctx context.Context, chainID uint64, addressHex, codeHashHex string) (VerifiedContract, bool, error) {
-	if repository == nil || repository.db == nil {
-		return VerifiedContract{}, false, errors.New("query using nil verification repository")
-	}
-	if chainID == 0 {
-		return VerifiedContract{}, false, errors.New("chain ID is required")
-	}
-	address, err := decodeFixedHex(addressHex, 20)
-	if err != nil {
-		return VerifiedContract{}, false, err
-	}
-	codeHash, err := decodeFixedHex(codeHashHex, 32)
-	if err != nil {
-		return VerifiedContract{}, false, err
-	}
-	contract, err := repository.scanVerifiedContract(repository.db.QueryRowContext(ctx, selectVerifiedContractSQL,
-		strconv.FormatUint(chainID, 10), address, codeHash,
-	))
-	if errors.Is(err, sql.ErrNoRows) {
-		return VerifiedContract{}, false, nil
-	}
-	if err != nil {
-		return VerifiedContract{}, false, fmt.Errorf("query verified contract: %w", err)
-	}
-	return contract, true, nil
 }
 
 type rowScanner interface{ Scan(...any) error }
@@ -765,61 +474,6 @@ func (status JobStatus) valid() bool {
 	}
 }
 
-func (repository *PostgresRepository) scanVerifiedContract(row rowScanner) (VerifiedContract, error) {
-	var (
-		contract               VerifiedContract
-		chainIDText, fromText  string
-		toText                 sql.NullString
-		address, codeHash      []byte
-		language, kind         string
-		abi, sources, settings []byte
-	)
-	if err := row.Scan(
-		&chainIDText, &address, &codeHash, &fromText, &toText, &language,
-		&contract.CompilerVersion, &kind, &contract.ContractName,
-		&abi, &sources, &settings, &contract.CreatedAt,
-	); err != nil {
-		return VerifiedContract{}, err
-	}
-	chainID, err := strconv.ParseUint(chainIDText, 10, 64)
-	if err != nil || chainID == 0 {
-		return VerifiedContract{}, errors.New("verified contract contains invalid chain ID")
-	}
-	from, err := strconv.ParseUint(fromText, 10, 64)
-	if err != nil {
-		return VerifiedContract{}, errors.New("verified contract contains invalid start block")
-	}
-	if toText.Valid {
-		to, err := strconv.ParseUint(toText.String, 10, 64)
-		if err != nil || to < from {
-			return VerifiedContract{}, errors.New("verified contract contains invalid end block")
-		}
-		contract.ValidToBlock = &to
-	}
-	if len(address) != 20 || len(codeHash) != 32 || !jsonArray(abi) || !jsonObject(sources) || !jsonObject(settings) {
-		return VerifiedContract{}, errors.New("verified contract contains invalid persisted data")
-	}
-	if len(abi)+len(sources)+len(settings) > repository.options.MaxResultBytes {
-		return VerifiedContract{}, errors.New("verified contract exceeds configured output bound")
-	}
-	contract.ChainID = chainID
-	contract.Address = "0x" + hex.EncodeToString(address)
-	contract.CodeHash = "0x" + hex.EncodeToString(codeHash)
-	contract.ValidFromBlock = from
-	contract.Language = Language(language)
-	contract.MatchKind = MatchKind(kind)
-	if contract.Language != LanguageSolidity && contract.Language != LanguageVyper {
-		return VerifiedContract{}, errors.New("verified contract contains invalid language")
-	}
-	if contract.MatchKind != MatchExact && contract.MatchKind != MatchMetadataOnly {
-		return VerifiedContract{}, errors.New("verified contract contains invalid match kind")
-	}
-	contract.ABI = append(json.RawMessage(nil), abi...)
-	contract.Sources = append(json.RawMessage(nil), sources...)
-	contract.Settings = append(json.RawMessage(nil), settings...)
-	return contract, nil
-}
-
 func validateVerificationLease(lease VerificationLease) error {
 	if !validUUID(lease.Job.ID) {
 		return errors.New("verification lease job ID is invalid")
@@ -849,14 +503,6 @@ func summarizeMatch(result MatchResult) MatchKind {
 		return MatchExact
 	}
 	return MatchMetadataOnly
-}
-
-func contractName(identifier string) string {
-	separator := strings.LastIndex(identifier, ":")
-	if separator < 0 || separator == len(identifier)-1 {
-		return ""
-	}
-	return identifier[separator+1:]
 }
 
 func decodeFixedHex(value string, size int) ([]byte, error) {
@@ -927,13 +573,6 @@ created_at, updated_at, request_digest, requires_hard_isolation,
 attempt_count, max_attempts, compiler_kind, compiler_digest,
 compiler_hard_isolated`
 
-const claimedVerificationJobColumns = `
-job.id::text, job.chain_id::text, job.address, job.code_hash, job.block_hash, job.language,
-job.compiler_version, job.request_payload, job.status, job.result_kind, job.result, job.error_code,
-job.created_at, job.updated_at, job.request_digest, job.requires_hard_isolation,
-job.attempt_count, job.max_attempts, job.compiler_kind, job.compiler_digest,
-job.compiler_hard_isolated`
-
 var submitVerificationSQL = `
 	INSERT INTO verification_jobs (
 	    id, chain_id, address, code_hash, block_hash, language,
@@ -952,123 +591,14 @@ SELECT ` + verificationJobColumns + `
 	  AND request_digest = $5
 	  AND status IN ('queued', 'running', 'succeeded')`
 
-var selectVerificationJobSQL = `
-SELECT ` + verificationJobColumns + `
-FROM verification_jobs
-WHERE id = $1::uuid`
-
-var claimVerificationSQL = `
-WITH exhausted_candidate AS (
-	SELECT id
-	FROM verification_jobs
-	WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-	  AND attempt_count >= max_attempts
-	ORDER BY created_at, id
-	FOR UPDATE SKIP LOCKED
-	LIMIT 1
-), exhausted AS (
-	UPDATE verification_jobs AS job
-	SET status = 'failed', result_kind = NULL, result = NULL,
-	    error_code = 'attempts_exhausted', leased_by = NULL,
-	    lease_token = NULL, lease_expires_at = NULL,
-	    updated_at = clock_timestamp()
-	FROM exhausted_candidate
-	WHERE job.id = exhausted_candidate.id
-	RETURNING job.id
-), candidate AS (
-	    SELECT id
-	    FROM verification_jobs
-	    WHERE (status = 'queued'
-	       OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-	      AND attempt_count < max_attempts
-	      AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
-	    ORDER BY created_at, id
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
-UPDATE verification_jobs AS job
-SET status = 'running',
-    leased_by = $1,
-    lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-	    result_kind = NULL,
-	    result = NULL,
-	    error_code = NULL,
-	    attempt_count = job.attempt_count + 1,
-	    updated_at = clock_timestamp()
-FROM candidate
-WHERE job.id = candidate.id
-RETURNING ` + claimedVerificationJobColumns
-
 const renewVerificationSQL = `
 UPDATE verification_jobs
 SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
     updated_at = clock_timestamp()
 WHERE id = $1::uuid
   AND status = 'running'
-  AND lease_token = $2
+	  AND lease_token = $2
 	  AND lease_expires_at > clock_timestamp()`
-
-const selectVerificationCompilerSQL = `
-SELECT requires_hard_isolation, compiler_kind, compiler_digest, compiler_hard_isolated
-FROM verification_jobs
-WHERE id = $1::uuid
-  AND status = 'running'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-FOR UPDATE`
-
-const bindVerificationCompilerSQL = `
-UPDATE verification_jobs
-SET compiler_kind = $3,
-    compiler_digest = $4,
-    compiler_hard_isolated = $5,
-    updated_at = clock_timestamp()
-WHERE id = $1::uuid
-  AND status = 'running'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND (compiler_digest IS NULL OR
-       (compiler_kind = $3 AND compiler_digest = $4 AND compiler_hard_isolated = $5))`
-
-var lockVerificationLeaseSQL = `
-SELECT ` + verificationJobColumns + `
-FROM verification_jobs
-WHERE id = $1::uuid
-  AND status = 'running'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-FOR UPDATE`
-
-const completeVerificationSQL = `
-UPDATE verification_jobs
-SET status = 'succeeded',
-    result_kind = $3,
-    result = $4::jsonb,
-    error_code = NULL,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1::uuid
-  AND status = 'running'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()`
-
-const failVerificationSQL = `
-UPDATE verification_jobs
-SET status = 'failed',
-    result_kind = NULL,
-    result = NULL,
-    error_code = $3,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1::uuid
-  AND status = 'running'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()`
 
 const verificationCanonicalTargetSQL = `
 SELECT observation.block_number::text
@@ -1082,48 +612,4 @@ WHERE observation.chain_id = $1::numeric
   AND observation.code_hash = $3
   AND observation.block_hash = $4
   AND observation.canonical = TRUE
-	FOR SHARE OF observation, canonical`
-
-const insertVerificationResultSQL = `
-INSERT INTO verification_results (
-    job_id, chain_id, address, code_hash, block_hash, block_number,
-    request_digest, compiler_kind, compiler_digest, compiler_hard_isolated,
-    result_kind, result, contract_name, abi, sources, settings
-) VALUES (
-    $1::uuid, $2::numeric, $3, $4, $5, $6::numeric,
-    $7, $8, $9, $10, $11, $12::jsonb, $13, $14::jsonb, $15::jsonb, $16::jsonb
-)`
-
-const publishVerifiedContractSQL = `
-	INSERT INTO verified_contracts (
-	    chain_id, address, code_hash, valid_from_block, language,
-	    compiler_version, match_kind, contract_name, abi, sources, settings,
-	    verification_job_id, request_digest
-	) VALUES ($1::numeric, $2, $3, $4::numeric, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::uuid, $13)
-	ON CONFLICT (chain_id, address, code_hash, valid_from_block) DO UPDATE SET
-    language = EXCLUDED.language,
-    compiler_version = EXCLUDED.compiler_version,
-    match_kind = EXCLUDED.match_kind,
-    contract_name = EXCLUDED.contract_name,
-	    abi = EXCLUDED.abi,
-	    sources = EXCLUDED.sources,
-	    settings = EXCLUDED.settings,
-	    verification_job_id = EXCLUDED.verification_job_id,
-	    request_digest = EXCLUDED.request_digest
-	WHERE
-	    (verified_contracts.verification_job_id IS NULL AND
-	        (verified_contracts.match_kind <> 'exact' OR EXCLUDED.match_kind = 'exact')) OR
-	    (verified_contracts.match_kind <> 'exact' AND EXCLUDED.match_kind = 'exact') OR
-	    (verified_contracts.match_kind = EXCLUDED.match_kind AND
-	        verified_contracts.request_digest IS NOT NULL AND
-	        EXCLUDED.request_digest < verified_contracts.request_digest)`
-
-const selectVerifiedContractSQL = `
-SELECT chain_id::text, address, code_hash, valid_from_block::text,
-       valid_to_block::text, language, compiler_version, match_kind,
-       contract_name, abi, sources, settings, created_at
-FROM verified_contracts
-WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
-	ORDER BY (match_kind = 'exact') DESC, valid_from_block DESC,
-	         request_digest ASC NULLS LAST, created_at ASC
-	LIMIT 1`
+FOR SHARE OF observation, canonical`

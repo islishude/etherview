@@ -330,7 +330,7 @@ func main() {
 			"completeness": map[string]bool{"core": true, "stats": true, "token": true},
 		})
 	})
-	mux.HandleFunc("GET /api/v1/verification/jobs/{id}", func(response http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("GET /api/v1/verifier/jobs/{id}", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("id") != testVerificationJobID {
 			writeNotFound(response)
 			return
@@ -340,16 +340,26 @@ func main() {
 			return
 		}
 		writeEnvelope(response, map[string]any{
-			"id": testVerificationJobID, "status": "succeeded",
-			"result_kind": "exact", "runtime_match": "exact",
-			"creation_match": "exact", "published": true,
+			"id": testVerificationJobID, "kind": "address", "status": "succeeded",
+			"outcome": map[string]any{
+				"kind":      "verification_success",
+				"file_name": "ExampleCollectible.sol", "contract_name": "ExampleCollectible",
+				"language": "solidity", "compiler_version": "0.8.30",
+				"settings": map[string]any{}, "sources": map[string]any{},
+				"compilation_artifacts":   map[string]any{},
+				"creation_code_artifacts": map[string]any{},
+				"runtime_code_artifacts":  map[string]any{},
+				"libraries":               map[string]any{}, "is_blueprint": false,
+				"runtime_match": map[string]any{
+					"match_type": "full", "transformations": []any{}, "values": map[string]any{},
+				},
+			},
 			"created_at": "2026-07-23T00:00:00Z",
 			"updated_at": "2026-07-23T00:00:01Z",
 		})
 	})
 	mux.HandleFunc("GET /api/v1/contracts/{address}/verification", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("address") != testAddress ||
-			request.URL.Query().Get("code_hash") != testHash {
+		if request.PathValue("address") != testAddress {
 			writeNotFound(response)
 			return
 		}
@@ -358,15 +368,23 @@ func main() {
 			return
 		}
 		writeEnvelope(response, map[string]any{
+			"kind":     "verification_success",
 			"chain_id": "1", "address": testAddress, "code_hash": testHash,
 			"valid_from_block": "1", "language": "solidity",
-			"compiler_version": "0.8.30", "match_kind": "exact",
-			"contract_name": "ExampleCollectible",
-			"abi":           []any{map[string]any{"type": "function", "name": "ownerOf"}},
+			"compiler_version": "0.8.30", "file_name": "ExampleCollectible.sol",
+			"contract_name": "ExampleCollectible", "is_blueprint": false,
+			"abi": []any{map[string]any{"type": "function", "name": "ownerOf"}},
 			"sources": map[string]any{
 				"ExampleCollectible.sol": map[string]any{"content": "contract ExampleCollectible {}"},
 			},
-			"settings":   map[string]any{"optimizer": map[string]any{"enabled": true}},
+			"settings":                map[string]any{"optimizer": map[string]any{"enabled": true}},
+			"compilation_artifacts":   map[string]any{},
+			"creation_code_artifacts": map[string]any{},
+			"runtime_code_artifacts":  map[string]any{},
+			"libraries":               map[string]any{},
+			"runtime_match": map[string]any{
+				"match_type": "full", "transformations": []any{}, "values": map[string]any{},
+			},
 			"created_at": "2026-07-23T00:00:01Z",
 		})
 	})

@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/hex"
 	"strconv"
 	"strings"
 	"testing"
@@ -94,6 +95,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 			(2, 'enrichment', 'trace', 1, 'chain-2-queued-b', 'queued', NULL, NULL, NULL, NULL)`); err != nil {
 		t.Fatalf("insert durable metric fixtures: %v", err)
 	}
+	metricGeneration, metricCompilerDigest, metricRunnerDigest := insertVerifierV2Compiler(t, ctx, db)
 	if _, err := db.ExecContext(ctx, `
 		WITH fixture(id, chain_id, address, code_hash, block_hash, status) AS (
 			VALUES
@@ -108,12 +110,23 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 		), requests AS (
 			SELECT fixture.*,
 				jsonb_build_object(
-					'chain_id', chain_id::text,
-					'address', '0x' || encode(address, 'hex'),
-					'code_hash', '0x' || encode(code_hash, 'hex'),
-					'at_block_hash', '0x' || encode(block_hash, 'hex'),
+					'kind', 'address',
 					'language', 'solidity',
-					'compiler_version', '0.8.30'
+					'compiler_version', $1::text,
+					'standard_json', '{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}'::jsonb,
+					'standard_json_variants', jsonb_build_array('{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}'::jsonb),
+					'bytecodes', jsonb_build_array(jsonb_build_object('runtime_bytecode', '0x00')),
+					'target', jsonb_build_object(
+						'chain_id', chain_id::bigint,
+						'address', '0x' || encode(address, 'hex'),
+						'code_hash', '0x' || encode(code_hash, 'hex'),
+						'at_block_hash', '0x' || encode(block_hash, 'hex'),
+						'runtime_bytecode', '0x00'
+					),
+					'catalog_generation_id', $2::bigint,
+					'compiler_platform', 'linux-amd64',
+					'compiler_sha256', $3::text,
+					'runner_sha256', $4::text
 				) AS request
 			FROM fixture
 		), encoded AS (
@@ -121,19 +134,26 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 			FROM requests
 		)
 		INSERT INTO verification_jobs (
-			id, chain_id, address, code_hash, block_hash, language, compiler_version,
+			id, kind, chain_id, address, code_hash, block_hash, language,
+			catalog_language, compiler_version, compiler_platform, catalog_generation_id,
+			compiler_digest, runner_digest,
 			request, request_payload, request_digest, status, leased_by, lease_token,
 			lease_expires_at, attempt_count
 		)
-		SELECT id, chain_id, address, code_hash, block_hash, 'solidity', '0.8.30',
+		SELECT id, 'address', chain_id, address, code_hash, block_hash, 'solidity',
+			'solidity', $1, 'linux-amd64', $2, $5, $6,
 			request, request_payload,
-			sha256(convert_to('etherview:verification-request:v1', 'UTF8') || decode('00', 'hex') || request_payload),
+			sha256(convert_to('etherview:verification-request:v2', 'UTF8') || decode('00', 'hex') || request_payload),
 			status,
 			CASE WHEN status = 'running' THEN 'worker' END,
 			CASE WHEN status = 'running' THEN 'lease' END,
 			CASE WHEN status = 'running' THEN now() + interval '1 hour' END,
 			CASE WHEN status = 'running' THEN 1 ELSE 0 END
-		FROM encoded`); err != nil {
+		FROM encoded`,
+		"0.8.30+commit.73712a01", metricGeneration,
+		hex.EncodeToString(metricCompilerDigest[:]), hex.EncodeToString(metricRunnerDigest[:]),
+		metricCompilerDigest[:], metricRunnerDigest[:],
+	); err != nil {
 		t.Fatalf("insert verification metric fixtures: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `

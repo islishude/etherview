@@ -90,24 +90,22 @@ describe("generated OpenAPI client boundary", () => {
     );
     const client = createExplorerClient(fetcher);
     const body = {
-      address,
       compiler_version: "0.8.30",
-      constructor_arguments: "0xaabb",
-      contract_identifier: "Example.sol:Example",
+      input_kind: "standard_json" as const,
       language: "solidity" as const,
-      standard_json: { language: "Solidity" },
-      submit_to_sourcify: false,
+      input: { language: "Solidity" },
     };
 
     requireEnvelope(
-      await client.POST("/verification/jobs", {
+      await client.POST("/contracts/{address}/verification", {
         body,
         headers: { "X-API-Key": secret },
+        params: { path: { address } },
       }),
     );
 
     const [url, request] = fetcher.mock.calls[0] ?? [];
-    expect(url).toBe("/api/v1/verification/jobs");
+    expect(url).toBe(`/api/v1/contracts/${address}/verification`);
     expect(String(url)).not.toContain(secret);
     expect(request).toMatchObject({
       method: "POST",

@@ -4,8 +4,10 @@
 package gen
 
 import (
+	"encoding/json"
 	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -75,6 +77,39 @@ func (e AddressTokenTransferStandard) Valid() bool {
 	}
 }
 
+// Defines values for AddressVerificationSubmissionInputKind.
+const (
+	Multipart    AddressVerificationSubmissionInputKind = "multipart"
+	StandardJson AddressVerificationSubmissionInputKind = "standard_json"
+)
+
+// Valid indicates whether the value is a known member of the AddressVerificationSubmissionInputKind enum.
+func (e AddressVerificationSubmissionInputKind) Valid() bool {
+	switch e {
+	case Multipart:
+		return true
+	case StandardJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BatchResultsOutcomeKind.
+const (
+	BatchResults BatchResultsOutcomeKind = "batch_results"
+)
+
+// Valid indicates whether the value is a known member of the BatchResultsOutcomeKind enum.
+func (e BatchResultsOutcomeKind) Valid() bool {
+	switch e {
+	case BatchResults:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingAccess.
 const (
 	ApiKeyOrX402 BillingAccess = "api_key_or_x402"
@@ -110,13 +145,13 @@ func (e BillingConfigScheme) Valid() bool {
 
 // Defines values for BillingConfigX402Version.
 const (
-	BillingConfigX402VersionN2 BillingConfigX402Version = 2
+	N2 BillingConfigX402Version = 2
 )
 
 // Valid indicates whether the value is a known member of the BillingConfigX402Version enum.
 func (e BillingConfigX402Version) Valid() bool {
 	switch e {
-	case BillingConfigX402VersionN2:
+	case N2:
 		return true
 	default:
 		return false
@@ -147,6 +182,21 @@ func (e BillingPaymentState) Valid() bool {
 	case BillingPaymentStateSettling:
 		return true
 	case BillingPaymentStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CompilationFailureOutcomeKind.
+const (
+	CompilationFailure CompilationFailureOutcomeKind = "compilation_failure"
+)
+
+// Valid indicates whether the value is a known member of the CompilationFailureOutcomeKind enum.
+func (e CompilationFailureOutcomeKind) Valid() bool {
+	switch e {
+	case CompilationFailure:
 		return true
 	default:
 		return false
@@ -231,72 +281,15 @@ func (e SearchResultKind) Valid() bool {
 	}
 }
 
-// Defines values for SourcifyContractLanguage.
+// Defines values for SourcifySuccessOutcomeKind.
 const (
-	SourcifyContractLanguageSolidity SourcifyContractLanguage = "solidity"
-	SourcifyContractLanguageVyper    SourcifyContractLanguage = "vyper"
+	SourcifySuccess SourcifySuccessOutcomeKind = "sourcify_success"
 )
 
-// Valid indicates whether the value is a known member of the SourcifyContractLanguage enum.
-func (e SourcifyContractLanguage) Valid() bool {
+// Valid indicates whether the value is a known member of the SourcifySuccessOutcomeKind enum.
+func (e SourcifySuccessOutcomeKind) Valid() bool {
 	switch e {
-	case SourcifyContractLanguageSolidity:
-		return true
-	case SourcifyContractLanguageVyper:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SourcifyJobState.
-const (
-	SourcifyJobStateFailed    SourcifyJobState = "failed"
-	SourcifyJobStatePending   SourcifyJobState = "pending"
-	SourcifyJobStateSucceeded SourcifyJobState = "succeeded"
-)
-
-// Valid indicates whether the value is a known member of the SourcifyJobState enum.
-func (e SourcifyJobState) Valid() bool {
-	switch e {
-	case SourcifyJobStateFailed:
-		return true
-	case SourcifyJobStatePending:
-		return true
-	case SourcifyJobStateSucceeded:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SourcifyMatch.
-const (
-	ExactMatch SourcifyMatch = "exact_match"
-	Match      SourcifyMatch = "match"
-)
-
-// Valid indicates whether the value is a known member of the SourcifyMatch enum.
-func (e SourcifyMatch) Valid() bool {
-	switch e {
-	case ExactMatch:
-		return true
-	case Match:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SourcifyUploadRequestConsent.
-const (
-	True SourcifyUploadRequestConsent = true
-)
-
-// Valid indicates whether the value is a known member of the SourcifyUploadRequestConsent enum.
-func (e SourcifyUploadRequestConsent) Valid() bool {
-	switch e {
-	case True:
+	case SourcifySuccess:
 		return true
 	default:
 		return false
@@ -594,6 +587,60 @@ func (e UserStatus) Valid() bool {
 	}
 }
 
+// Defines values for VerificationFailureOutcomeKind.
+const (
+	VerificationFailure VerificationFailureOutcomeKind = "verification_failure"
+)
+
+// Valid indicates whether the value is a known member of the VerificationFailureOutcomeKind enum.
+func (e VerificationFailureOutcomeKind) Valid() bool {
+	switch e {
+	case VerificationFailure:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerificationJobKind.
+const (
+	VerificationJobKindAddress                   VerificationJobKind = "address"
+	VerificationJobKindSolidityBatchMultipart    VerificationJobKind = "solidity_batch_multipart"
+	VerificationJobKindSolidityBatchStandardJson VerificationJobKind = "solidity_batch_standard_json"
+	VerificationJobKindSolidityMultipart         VerificationJobKind = "solidity_multipart"
+	VerificationJobKindSolidityStandardJson      VerificationJobKind = "solidity_standard_json"
+	VerificationJobKindSourcify                  VerificationJobKind = "sourcify"
+	VerificationJobKindSourcifyFromEtherscan     VerificationJobKind = "sourcify_from_etherscan"
+	VerificationJobKindVyperMultipart            VerificationJobKind = "vyper_multipart"
+	VerificationJobKindVyperStandardJson         VerificationJobKind = "vyper_standard_json"
+)
+
+// Valid indicates whether the value is a known member of the VerificationJobKind enum.
+func (e VerificationJobKind) Valid() bool {
+	switch e {
+	case VerificationJobKindAddress:
+		return true
+	case VerificationJobKindSolidityBatchMultipart:
+		return true
+	case VerificationJobKindSolidityBatchStandardJson:
+		return true
+	case VerificationJobKindSolidityMultipart:
+		return true
+	case VerificationJobKindSolidityStandardJson:
+		return true
+	case VerificationJobKindSourcify:
+		return true
+	case VerificationJobKindSourcifyFromEtherscan:
+		return true
+	case VerificationJobKindVyperMultipart:
+		return true
+	case VerificationJobKindVyperStandardJson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VerificationJobStatus.
 const (
 	VerificationJobStatusCancelled VerificationJobStatus = "cancelled"
@@ -621,111 +668,111 @@ func (e VerificationJobStatus) Valid() bool {
 	}
 }
 
-// Defines values for VerificationMatch.
+// Defines values for VerificationMatchType.
 const (
-	VerificationMatchExact        VerificationMatch = "exact"
-	VerificationMatchMetadataOnly VerificationMatch = "metadata_only"
-	VerificationMatchMismatch     VerificationMatch = "mismatch"
+	Full    VerificationMatchType = "full"
+	Partial VerificationMatchType = "partial"
 )
 
-// Valid indicates whether the value is a known member of the VerificationMatch enum.
-func (e VerificationMatch) Valid() bool {
+// Valid indicates whether the value is a known member of the VerificationMatchType enum.
+func (e VerificationMatchType) Valid() bool {
 	switch e {
-	case VerificationMatchExact:
+	case Full:
 		return true
-	case VerificationMatchMetadataOnly:
-		return true
-	case VerificationMatchMismatch:
+	case Partial:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for VerificationSubmissionLanguage.
+// Defines values for VerificationSuccessKind.
 const (
-	VerificationSubmissionLanguageSolidity VerificationSubmissionLanguage = "solidity"
-	VerificationSubmissionLanguageVyper    VerificationSubmissionLanguage = "vyper"
+	VerificationSuccessKindVerificationSuccess VerificationSuccessKind = "verification_success"
 )
 
-// Valid indicates whether the value is a known member of the VerificationSubmissionLanguage enum.
-func (e VerificationSubmissionLanguage) Valid() bool {
+// Valid indicates whether the value is a known member of the VerificationSuccessKind enum.
+func (e VerificationSuccessKind) Valid() bool {
 	switch e {
-	case VerificationSubmissionLanguageSolidity:
-		return true
-	case VerificationSubmissionLanguageVyper:
+	case VerificationSuccessKindVerificationSuccess:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for VerificationSubmissionLicenseType.
+// Defines values for VerificationTransformationReason.
 const (
-	VerificationSubmissionLicenseTypeN1  VerificationSubmissionLicenseType = "1"
-	VerificationSubmissionLicenseTypeN10 VerificationSubmissionLicenseType = "10"
-	VerificationSubmissionLicenseTypeN11 VerificationSubmissionLicenseType = "11"
-	VerificationSubmissionLicenseTypeN12 VerificationSubmissionLicenseType = "12"
-	VerificationSubmissionLicenseTypeN13 VerificationSubmissionLicenseType = "13"
-	VerificationSubmissionLicenseTypeN14 VerificationSubmissionLicenseType = "14"
-	VerificationSubmissionLicenseTypeN2  VerificationSubmissionLicenseType = "2"
-	VerificationSubmissionLicenseTypeN3  VerificationSubmissionLicenseType = "3"
-	VerificationSubmissionLicenseTypeN4  VerificationSubmissionLicenseType = "4"
-	VerificationSubmissionLicenseTypeN5  VerificationSubmissionLicenseType = "5"
-	VerificationSubmissionLicenseTypeN6  VerificationSubmissionLicenseType = "6"
-	VerificationSubmissionLicenseTypeN7  VerificationSubmissionLicenseType = "7"
-	VerificationSubmissionLicenseTypeN8  VerificationSubmissionLicenseType = "8"
-	VerificationSubmissionLicenseTypeN9  VerificationSubmissionLicenseType = "9"
+	CborAuxdata          VerificationTransformationReason = "cborAuxdata"
+	ConstructorArguments VerificationTransformationReason = "constructorArguments"
+	Immutable            VerificationTransformationReason = "immutable"
+	Library              VerificationTransformationReason = "library"
 )
 
-// Valid indicates whether the value is a known member of the VerificationSubmissionLicenseType enum.
-func (e VerificationSubmissionLicenseType) Valid() bool {
+// Valid indicates whether the value is a known member of the VerificationTransformationReason enum.
+func (e VerificationTransformationReason) Valid() bool {
 	switch e {
-	case VerificationSubmissionLicenseTypeN1:
+	case CborAuxdata:
 		return true
-	case VerificationSubmissionLicenseTypeN10:
+	case ConstructorArguments:
 		return true
-	case VerificationSubmissionLicenseTypeN11:
+	case Immutable:
 		return true
-	case VerificationSubmissionLicenseTypeN12:
-		return true
-	case VerificationSubmissionLicenseTypeN13:
-		return true
-	case VerificationSubmissionLicenseTypeN14:
-		return true
-	case VerificationSubmissionLicenseTypeN2:
-		return true
-	case VerificationSubmissionLicenseTypeN3:
-		return true
-	case VerificationSubmissionLicenseTypeN4:
-		return true
-	case VerificationSubmissionLicenseTypeN5:
-		return true
-	case VerificationSubmissionLicenseTypeN6:
-		return true
-	case VerificationSubmissionLicenseTypeN7:
-		return true
-	case VerificationSubmissionLicenseTypeN8:
-		return true
-	case VerificationSubmissionLicenseTypeN9:
+	case Library:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for VerifiedContractLanguage.
+// Defines values for VerificationTransformationType.
 const (
-	VerifiedContractLanguageSolidity VerifiedContractLanguage = "solidity"
-	VerifiedContractLanguageVyper    VerifiedContractLanguage = "vyper"
+	Insert  VerificationTransformationType = "insert"
+	Replace VerificationTransformationType = "replace"
 )
 
-// Valid indicates whether the value is a known member of the VerifiedContractLanguage enum.
-func (e VerifiedContractLanguage) Valid() bool {
+// Valid indicates whether the value is a known member of the VerificationTransformationType enum.
+func (e VerificationTransformationType) Valid() bool {
 	switch e {
-	case VerifiedContractLanguageSolidity:
+	case Insert:
 		return true
-	case VerifiedContractLanguageVyper:
+	case Replace:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifiedContractKind.
+const (
+	VerifiedContractKindVerificationSuccess VerifiedContractKind = "verification_success"
+)
+
+// Valid indicates whether the value is a known member of the VerifiedContractKind enum.
+func (e VerifiedContractKind) Valid() bool {
+	switch e {
+	case VerifiedContractKindVerificationSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifierLanguage.
+const (
+	Solidity VerifierLanguage = "solidity"
+	Vyper    VerifierLanguage = "vyper"
+	Yul      VerifierLanguage = "yul"
+)
+
+// Valid indicates whether the value is a known member of the VerifierLanguage enum.
+func (e VerifierLanguage) Valid() bool {
+	switch e {
+	case Solidity:
+		return true
+	case Vyper:
+		return true
+	case Yul:
 		return true
 	default:
 		return false
@@ -873,6 +920,22 @@ type AddressTokenTransferListResponse struct {
 	Meta Meta                   `json:"meta"`
 }
 
+// AddressVerificationSubmission defines model for AddressVerificationSubmission.
+type AddressVerificationSubmission struct {
+	CompilerVersion  string                                 `json:"compiler_version"`
+	ContractNameHint *string                                `json:"contract_name_hint,omitempty"`
+	EvmVersion       *string                                `json:"evm_version,omitempty"`
+	Input            *map[string]interface{}                `json:"input,omitempty"`
+	InputKind        AddressVerificationSubmissionInputKind `json:"input_kind"`
+	Language         VerifierLanguage                       `json:"language"`
+	Libraries        *map[string]Address                    `json:"libraries,omitempty"`
+	OptimizationRuns *int                                   `json:"optimization_runs,omitempty"`
+	Sources          *map[string]string                     `json:"sources,omitempty"`
+}
+
+// AddressVerificationSubmissionInputKind defines model for AddressVerificationSubmission.InputKind.
+type AddressVerificationSubmissionInputKind string
+
 // AdminUserUpdate defines model for AdminUserUpdate.
 type AdminUserUpdate struct {
 	Role   *UserRole   `json:"role,omitempty"`
@@ -970,6 +1033,20 @@ type AuthSessionResponse struct {
 type AuthVerifyRequest struct {
 	ChallengeId openapi_types.UUID `json:"challenge_id"`
 	Signature   string             `json:"signature"`
+}
+
+// BatchResultsOutcome defines model for BatchResultsOutcome.
+type BatchResultsOutcome struct {
+	Kind    BatchResultsOutcomeKind            `json:"kind"`
+	Results []BatchResultsOutcome_Results_Item `json:"results"`
+}
+
+// BatchResultsOutcomeKind defines model for BatchResultsOutcome.Kind.
+type BatchResultsOutcomeKind string
+
+// BatchResultsOutcome_Results_Item defines model for BatchResultsOutcome.results.Item.
+type BatchResultsOutcome_Results_Item struct {
+	union json.RawMessage
 }
 
 // BillingAccess defines model for BillingAccess.
@@ -1199,6 +1276,26 @@ type CatalogSnapshot struct {
 	ChainId Quantity `json:"chain_id"`
 }
 
+// CompilationFailureOutcome defines model for CompilationFailureOutcome.
+type CompilationFailureOutcome struct {
+	Kind CompilationFailureOutcomeKind `json:"kind"`
+}
+
+// CompilationFailureOutcomeKind defines model for CompilationFailureOutcome.Kind.
+type CompilationFailureOutcomeKind string
+
+// CompilerCatalog defines model for CompilerCatalog.
+type CompilerCatalog struct {
+	Language VerifierLanguage `json:"language"`
+	Versions []string         `json:"versions"`
+}
+
+// CompilerCatalogResponse defines model for CompilerCatalogResponse.
+type CompilerCatalogResponse struct {
+	Data CompilerCatalog `json:"data"`
+	Meta Meta            `json:"meta"`
+}
+
 // Completeness defines model for Completeness.
 type Completeness struct {
 	Core     StageState `json:"core"`
@@ -1265,6 +1362,25 @@ type HomeSnapshotResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// LookupMethods defines model for LookupMethods.
+type LookupMethods struct {
+	Methods []MethodSource `json:"methods"`
+}
+
+// LookupMethodsRequest defines model for LookupMethodsRequest.
+type LookupMethodsRequest struct {
+	Abi       []map[string]interface{} `json:"abi"`
+	Bytecode  string                   `json:"bytecode"`
+	FileIds   map[string]string        `json:"file_ids"`
+	SourceMap string                   `json:"source_map"`
+}
+
+// LookupMethodsResponse defines model for LookupMethodsResponse.
+type LookupMethodsResponse struct {
+	Data LookupMethods `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
 // Meta defines model for Meta.
 type Meta struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -1279,6 +1395,15 @@ type Meta struct {
 	// NextCursor A bounded server-issued traversal token that clients must not decode or construct.
 	NextCursor *OpaqueCursor `json:"next_cursor,omitempty"`
 	RequestId  string        `json:"request_id"`
+}
+
+// MethodSource defines model for MethodSource.
+type MethodSource struct {
+	FileName  string `json:"file_name"`
+	Length    int    `json:"length"`
+	Offset    int    `json:"offset"`
+	Selector  string `json:"selector"`
+	Signature string `json:"signature"`
 }
 
 // NFTBalance defines model for NFTBalance.
@@ -1455,77 +1580,33 @@ type SessionRevocationResponse struct {
 	Meta Meta              `json:"meta"`
 }
 
-// SourcifyContract defines model for SourcifyContract.
-type SourcifyContract struct {
+// SourcifyFromEtherscanSubmission defines model for SourcifyFromEtherscanSubmission.
+type SourcifyFromEtherscanSubmission struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
 	Address Address `json:"address"`
 
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId            Quantity                  `json:"chain_id"`
-	CompilerVersion    *string                   `json:"compiler_version,omitempty"`
-	ContractIdentifier *string                   `json:"contract_identifier,omitempty"`
-	CreationMatch      *SourcifyMatch            `json:"creation_match,omitempty"`
-	Language           *SourcifyContractLanguage `json:"language,omitempty"`
-	Match              *SourcifyMatch            `json:"match,omitempty"`
-	RuntimeMatch       *SourcifyMatch            `json:"runtime_match,omitempty"`
+	ChainId Quantity `json:"chain_id"`
 }
 
-// SourcifyContractLanguage defines model for SourcifyContract.Language.
-type SourcifyContractLanguage string
-
-// SourcifyContractResponse defines model for SourcifyContractResponse.
-type SourcifyContractResponse struct {
-	Data SourcifyContract `json:"data"`
-	Meta Meta             `json:"meta"`
-}
-
-// SourcifyImportRequest defines model for SourcifyImportRequest.
-type SourcifyImportRequest struct {
+// SourcifySubmission defines model for SourcifySubmission.
+type SourcifySubmission struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
 	Address Address `json:"address"`
 
-	// ConstructorArguments Optional constructor-argument suffix, accepted only when it matches the canonical creation input.
-	ConstructorArguments *string `json:"constructor_arguments,omitempty"`
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity          `json:"chain_id"`
+	Files   map[string]string `json:"files"`
 }
 
-// SourcifyJob defines model for SourcifyJob.
-type SourcifyJob struct {
-	Contract       *SourcifyContract  `json:"contract,omitempty"`
-	State          SourcifyJobState   `json:"state"`
-	VerificationId openapi_types.UUID `json:"verification_id"`
+// SourcifySuccessOutcome defines model for SourcifySuccessOutcome.
+type SourcifySuccessOutcome struct {
+	Kind           SourcifySuccessOutcomeKind `json:"kind"`
+	VerificationId openapi_types.UUID         `json:"verification_id"`
 }
 
-// SourcifyJobState defines model for SourcifyJob.State.
-type SourcifyJobState string
-
-// SourcifyJobResponse defines model for SourcifyJobResponse.
-type SourcifyJobResponse struct {
-	Data SourcifyJob `json:"data"`
-	Meta Meta        `json:"meta"`
-}
-
-// SourcifyMatch defines model for SourcifyMatch.
-type SourcifyMatch string
-
-// SourcifyTicket defines model for SourcifyTicket.
-type SourcifyTicket struct {
-	VerificationId openapi_types.UUID `json:"verification_id"`
-}
-
-// SourcifyTicketResponse defines model for SourcifyTicketResponse.
-type SourcifyTicketResponse struct {
-	Data SourcifyTicket `json:"data"`
-	Meta Meta           `json:"meta"`
-}
-
-// SourcifyUploadRequest defines model for SourcifyUploadRequest.
-type SourcifyUploadRequest struct {
-	// Consent Explicit consent for this irreversible external source upload.
-	Consent SourcifyUploadRequestConsent `json:"consent"`
-}
-
-// SourcifyUploadRequestConsent Explicit consent for this irreversible external source upload.
-type SourcifyUploadRequestConsent bool
+// SourcifySuccessOutcomeKind defines model for SourcifySuccessOutcome.Kind.
+type SourcifySuccessOutcomeKind string
 
 // StageState defines model for StageState.
 type StageState string
@@ -1972,18 +2053,27 @@ type UserRole string
 // UserStatus defines model for UserStatus.
 type UserStatus string
 
+// VerificationFailureOutcome defines model for VerificationFailureOutcome.
+type VerificationFailureOutcome struct {
+	Kind VerificationFailureOutcomeKind `json:"kind"`
+}
+
+// VerificationFailureOutcomeKind defines model for VerificationFailureOutcome.Kind.
+type VerificationFailureOutcomeKind string
+
 // VerificationJob defines model for VerificationJob.
 type VerificationJob struct {
-	CreatedAt     time.Time             `json:"created_at"`
-	CreationMatch *VerificationMatch    `json:"creation_match,omitempty"`
-	ErrorCode     *string               `json:"error_code,omitempty"`
-	Id            openapi_types.UUID    `json:"id"`
-	Published     *bool                 `json:"published,omitempty"`
-	ResultKind    *VerificationMatch    `json:"result_kind,omitempty"`
-	RuntimeMatch  *VerificationMatch    `json:"runtime_match,omitempty"`
-	Status        VerificationJobStatus `json:"status"`
-	UpdatedAt     time.Time             `json:"updated_at"`
+	CreatedAt time.Time             `json:"created_at"`
+	ErrorCode *string               `json:"error_code,omitempty"`
+	Id        openapi_types.UUID    `json:"id"`
+	Kind      VerificationJobKind   `json:"kind"`
+	Outcome   *VerificationOutcome  `json:"outcome,omitempty"`
+	Status    VerificationJobStatus `json:"status"`
+	UpdatedAt time.Time             `json:"updated_at"`
 }
+
+// VerificationJobKind defines model for VerificationJob.Kind.
+type VerificationJobKind string
 
 // VerificationJobStatus defines model for VerificationJob.Status.
 type VerificationJobStatus string
@@ -1994,37 +2084,74 @@ type VerificationJobResponse struct {
 	Meta Meta            `json:"meta"`
 }
 
-// VerificationMatch defines model for VerificationMatch.
-type VerificationMatch string
-
-// VerificationSubmission defines model for VerificationSubmission.
-type VerificationSubmission struct {
-	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address         Address `json:"address"`
-	CompilerVersion string  `json:"compiler_version"`
-
-	// ConstructorArguments Optional constructor-argument suffix. The server accepts it only when it is an exact suffix of the canonical creation input and removes it before enqueueing.
-	ConstructorArguments *string                        `json:"constructor_arguments,omitempty"`
-	ContractIdentifier   string                         `json:"contract_identifier"`
-	Language             VerificationSubmissionLanguage `json:"language"`
-
-	// LicenseType Optional Etherscan-compatible source-license identifier stored only as publication metadata.
-	LicenseType *VerificationSubmissionLicenseType `json:"license_type,omitempty"`
-
-	// StandardJson Inline-source Standard JSON compiler input. The service preserves code-generation settings but replaces outputSelection with the bounded exact-target fields required for deterministic matching before persisting the request.
-	StandardJson     map[string]interface{} `json:"standard_json"`
-	SubmitToSourcify *bool                  `json:"submit_to_sourcify,omitempty"`
+// VerificationMatchDetails defines model for VerificationMatchDetails.
+type VerificationMatchDetails struct {
+	MatchType       VerificationMatchType            `json:"match_type"`
+	Transformations []VerificationTransformation     `json:"transformations"`
+	Values          VerificationTransformationValues `json:"values"`
 }
 
-// VerificationSubmissionLanguage defines model for VerificationSubmission.Language.
-type VerificationSubmissionLanguage string
+// VerificationMatchType defines model for VerificationMatchType.
+type VerificationMatchType string
 
-// VerificationSubmissionLicenseType Optional Etherscan-compatible source-license identifier stored only as publication metadata.
-type VerificationSubmissionLicenseType string
+// VerificationOutcome defines model for VerificationOutcome.
+type VerificationOutcome struct {
+	union json.RawMessage
+}
+
+// VerificationSuccess defines model for VerificationSuccess.
+type VerificationSuccess struct {
+	Abi                   *[]map[string]interface{} `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
+	CompilerVersion       string                    `json:"compiler_version"`
+	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
+	ContractName          string                    `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
+	FileName              string                    `json:"file_name"`
+	IsBlueprint           bool                      `json:"is_blueprint"`
+	Kind                  VerificationSuccessKind   `json:"kind"`
+	Language              VerifierLanguage          `json:"language"`
+	Libraries             map[string]string         `json:"libraries"`
+	RuntimeCodeArtifacts  map[string]interface{}    `json:"runtime_code_artifacts"`
+	RuntimeMatch          *VerificationMatchDetails `json:"runtime_match,omitempty"`
+	Settings              map[string]interface{}    `json:"settings"`
+	Sources               map[string]interface{}    `json:"sources"`
+}
+
+// VerificationSuccessKind defines model for VerificationSuccess.Kind.
+type VerificationSuccessKind string
+
+// VerificationSuccessOutcome defines model for VerificationSuccessOutcome.
+type VerificationSuccessOutcome = VerificationSuccess
+
+// VerificationTransformation defines model for VerificationTransformation.
+type VerificationTransformation struct {
+	Id *string `json:"id,omitempty"`
+
+	// Offset Byte offset, never a hexadecimal-character offset.
+	Offset int64                            `json:"offset"`
+	Reason VerificationTransformationReason `json:"reason"`
+	Type   VerificationTransformationType   `json:"type"`
+}
+
+// VerificationTransformationReason defines model for VerificationTransformation.Reason.
+type VerificationTransformationReason string
+
+// VerificationTransformationType defines model for VerificationTransformation.Type.
+type VerificationTransformationType string
+
+// VerificationTransformationValues defines model for VerificationTransformationValues.
+type VerificationTransformationValues struct {
+	CborAuxdata          *map[string]string `json:"cborAuxdata,omitempty"`
+	ConstructorArguments *string            `json:"constructorArguments,omitempty"`
+	Immutables           *map[string]string `json:"immutables,omitempty"`
+	Libraries            *map[string]string `json:"libraries,omitempty"`
+}
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi []map[string]interface{} `json:"abi"`
+	Abi *[]map[string]interface{} `json:"abi,omitempty"`
 
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
 	Address Address `json:"address"`
@@ -2033,14 +2160,23 @@ type VerifiedContract struct {
 	ChainId Quantity `json:"chain_id"`
 
 	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash        Hash                     `json:"code_hash"`
-	CompilerVersion string                   `json:"compiler_version"`
-	ContractName    string                   `json:"contract_name"`
-	CreatedAt       time.Time                `json:"created_at"`
-	Language        VerifiedContractLanguage `json:"language"`
-	MatchKind       VerificationMatch        `json:"match_kind"`
-	Settings        map[string]interface{}   `json:"settings"`
-	Sources         map[string]interface{}   `json:"sources"`
+	CodeHash              Hash                      `json:"code_hash"`
+	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
+	CompilerVersion       string                    `json:"compiler_version"`
+	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
+	ContractName          string                    `json:"contract_name"`
+	CreatedAt             time.Time                 `json:"created_at"`
+	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
+	FileName              string                    `json:"file_name"`
+	IsBlueprint           bool                      `json:"is_blueprint"`
+	Kind                  VerifiedContractKind      `json:"kind"`
+	Language              VerifierLanguage          `json:"language"`
+	Libraries             map[string]string         `json:"libraries"`
+	RuntimeCodeArtifacts  map[string]interface{}    `json:"runtime_code_artifacts"`
+	RuntimeMatch          *VerificationMatchDetails `json:"runtime_match,omitempty"`
+	Settings              map[string]interface{}    `json:"settings"`
+	Sources               map[string]interface{}    `json:"sources"`
 
 	// ValidFromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ValidFromBlock Quantity `json:"valid_from_block"`
@@ -2049,13 +2185,68 @@ type VerifiedContract struct {
 	ValidToBlock *Quantity `json:"valid_to_block,omitempty"`
 }
 
-// VerifiedContractLanguage defines model for VerifiedContract.Language.
-type VerifiedContractLanguage string
+// VerifiedContractKind defines model for VerifiedContract.Kind.
+type VerifiedContractKind string
 
 // VerifiedContractResponse defines model for VerifiedContractResponse.
 type VerifiedContractResponse struct {
 	Data VerifiedContract `json:"data"`
 	Meta Meta             `json:"meta"`
+}
+
+// VerifierBatchMultipartRequest defines model for VerifierBatchMultipartRequest.
+type VerifierBatchMultipartRequest struct {
+	CompilerVersion  string              `json:"compiler_version"`
+	ContractNameHint *string             `json:"contract_name_hint,omitempty"`
+	Contracts        []VerifierBytecodes `json:"contracts"`
+	EvmVersion       *string             `json:"evm_version,omitempty"`
+	Language         *VerifierLanguage   `json:"language,omitempty"`
+	Libraries        *map[string]Address `json:"libraries,omitempty"`
+	OptimizationRuns *int                `json:"optimization_runs,omitempty"`
+	Sources          map[string]string   `json:"sources"`
+}
+
+// VerifierBatchStandardJSONRequest defines model for VerifierBatchStandardJSONRequest.
+type VerifierBatchStandardJSONRequest struct {
+	CompilerVersion  string                 `json:"compiler_version"`
+	ContractNameHint *string                `json:"contract_name_hint,omitempty"`
+	Contracts        []VerifierBytecodes    `json:"contracts"`
+	Input            map[string]interface{} `json:"input"`
+	Language         *VerifierLanguage      `json:"language,omitempty"`
+}
+
+// VerifierBytecodes At least one creation or runtime bytecode must be non-empty.
+type VerifierBytecodes struct {
+	CreationBytecode *string `json:"creation_bytecode,omitempty"`
+	RuntimeBytecode  *string `json:"runtime_bytecode,omitempty"`
+}
+
+// VerifierLanguage defines model for VerifierLanguage.
+type VerifierLanguage string
+
+// VerifierMultipartRequest defines model for VerifierMultipartRequest.
+type VerifierMultipartRequest struct {
+	// Bytecodes At least one creation or runtime bytecode must be non-empty.
+	Bytecodes        VerifierBytecodes   `json:"bytecodes"`
+	CompilerVersion  string              `json:"compiler_version"`
+	ContractNameHint *string             `json:"contract_name_hint,omitempty"`
+	EvmVersion       *string             `json:"evm_version,omitempty"`
+	Language         *VerifierLanguage   `json:"language,omitempty"`
+	Libraries        *map[string]Address `json:"libraries,omitempty"`
+	OptimizationRuns *int                `json:"optimization_runs,omitempty"`
+	Sources          map[string]string   `json:"sources"`
+}
+
+// VerifierStandardJSONRequest defines model for VerifierStandardJSONRequest.
+type VerifierStandardJSONRequest struct {
+	// Bytecodes At least one creation or runtime bytecode must be non-empty.
+	Bytecodes        VerifierBytecodes `json:"bytecodes"`
+	CompilerVersion  string            `json:"compiler_version"`
+	ContractNameHint *string           `json:"contract_name_hint,omitempty"`
+
+	// Input Inline-source Standard JSON. URL sources and duplicate keys are rejected.
+	Input    map[string]interface{} `json:"input"`
+	Language *VerifierLanguage      `json:"language,omitempty"`
 }
 
 // BillingAssetFilter A 20-byte address; responses use the EIP-55 checksum form.
@@ -2102,6 +2293,9 @@ type Error = ErrorResponse
 
 // PaymentRequired defines model for PaymentRequired.
 type PaymentRequired = ErrorResponse
+
+// VerificationAccepted defines model for VerificationAccepted.
+type VerificationAccepted = VerificationJobResponse
 
 // GetAddressParams defines parameters for GetAddress.
 type GetAddressParams struct {
@@ -2228,8 +2422,6 @@ type GetBlockParams struct {
 
 // GetVerifiedContractParams defines parameters for GetVerifiedContract.
 type GetVerifiedContractParams struct {
-	CodeHash Hash `form:"code_hash" json:"code_hash"`
-
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
@@ -2266,18 +2458,6 @@ type SearchParams struct {
 	Limit  *SearchLimit `form:"limit,omitempty" json:"limit,omitempty"`
 	Cursor *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// LookupSourcifyContractParams defines parameters for LookupSourcifyContract.
-type LookupSourcifyContractParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
-}
-
-// GetSourcifyJobParams defines parameters for GetSourcifyJob.
-type GetSourcifyJobParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
@@ -2377,8 +2557,13 @@ type UpdateCurrentUserParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// GetVerificationJobParams defines parameters for GetVerificationJob.
-type GetVerificationJobParams struct {
+// ListVerifierCompilersParams defines parameters for ListVerifierCompilers.
+type ListVerifierCompilersParams struct {
+	Language VerifierLanguage `form:"language" json:"language"`
+}
+
+// GetVerifierJobParams defines parameters for GetVerifierJob.
+type GetVerifierJobParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
@@ -2392,14 +2577,237 @@ type CreateAuthChallengeJSONRequestBody = AuthChallengeRequest
 // VerifyAuthChallengeJSONRequestBody defines body for VerifyAuthChallenge for application/json ContentType.
 type VerifyAuthChallengeJSONRequestBody = AuthVerifyRequest
 
-// ImportSourcifyContractJSONRequestBody defines body for ImportSourcifyContract for application/json ContentType.
-type ImportSourcifyContractJSONRequestBody = SourcifyImportRequest
+// SubmitAddressVerificationJSONRequestBody defines body for SubmitAddressVerification for application/json ContentType.
+type SubmitAddressVerificationJSONRequestBody = AddressVerificationSubmission
 
 // UpdateCurrentUserJSONRequestBody defines body for UpdateCurrentUser for application/json ContentType.
 type UpdateCurrentUserJSONRequestBody = UserProfileUpdate
 
-// SubmitVerificationJobJSONRequestBody defines body for SubmitVerificationJob for application/json ContentType.
-type SubmitVerificationJobJSONRequestBody = VerificationSubmission
+// LookupVerifierMethodsJSONRequestBody defines body for LookupVerifierMethods for application/json ContentType.
+type LookupVerifierMethodsJSONRequestBody = LookupMethodsRequest
 
-// UploadVerificationJobToSourcifyJSONRequestBody defines body for UploadVerificationJobToSourcify for application/json ContentType.
-type UploadVerificationJobToSourcifyJSONRequestBody = SourcifyUploadRequest
+// BatchVerifySolidityMultipartJSONRequestBody defines body for BatchVerifySolidityMultipart for application/json ContentType.
+type BatchVerifySolidityMultipartJSONRequestBody = VerifierBatchMultipartRequest
+
+// BatchVerifySolidityStandardJsonJSONRequestBody defines body for BatchVerifySolidityStandardJson for application/json ContentType.
+type BatchVerifySolidityStandardJsonJSONRequestBody = VerifierBatchStandardJSONRequest
+
+// VerifySolidityMultipartJSONRequestBody defines body for VerifySolidityMultipart for application/json ContentType.
+type VerifySolidityMultipartJSONRequestBody = VerifierMultipartRequest
+
+// VerifySolidityStandardJsonJSONRequestBody defines body for VerifySolidityStandardJson for application/json ContentType.
+type VerifySolidityStandardJsonJSONRequestBody = VerifierStandardJSONRequest
+
+// SubmitSourcifyVerificationJSONRequestBody defines body for SubmitSourcifyVerification for application/json ContentType.
+type SubmitSourcifyVerificationJSONRequestBody = SourcifySubmission
+
+// SubmitSourcifyFromEtherscanJSONRequestBody defines body for SubmitSourcifyFromEtherscan for application/json ContentType.
+type SubmitSourcifyFromEtherscanJSONRequestBody = SourcifyFromEtherscanSubmission
+
+// VerifyVyperMultipartJSONRequestBody defines body for VerifyVyperMultipart for application/json ContentType.
+type VerifyVyperMultipartJSONRequestBody = VerifierMultipartRequest
+
+// VerifyVyperStandardJsonJSONRequestBody defines body for VerifyVyperStandardJson for application/json ContentType.
+type VerifyVyperStandardJsonJSONRequestBody = VerifierStandardJSONRequest
+
+// AsVerificationSuccess returns the union data inside the BatchResultsOutcome_Results_Item as a VerificationSuccess
+func (t BatchResultsOutcome_Results_Item) AsVerificationSuccess() (VerificationSuccess, error) {
+	var body VerificationSuccess
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVerificationSuccess overwrites any union data inside the BatchResultsOutcome_Results_Item as the provided VerificationSuccess
+func (t *BatchResultsOutcome_Results_Item) FromVerificationSuccess(v VerificationSuccess) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVerificationSuccess performs a merge with any union data inside the BatchResultsOutcome_Results_Item, using the provided VerificationSuccess
+func (t *BatchResultsOutcome_Results_Item) MergeVerificationSuccess(v VerificationSuccess) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVerificationFailureOutcome returns the union data inside the BatchResultsOutcome_Results_Item as a VerificationFailureOutcome
+func (t BatchResultsOutcome_Results_Item) AsVerificationFailureOutcome() (VerificationFailureOutcome, error) {
+	var body VerificationFailureOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVerificationFailureOutcome overwrites any union data inside the BatchResultsOutcome_Results_Item as the provided VerificationFailureOutcome
+func (t *BatchResultsOutcome_Results_Item) FromVerificationFailureOutcome(v VerificationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVerificationFailureOutcome performs a merge with any union data inside the BatchResultsOutcome_Results_Item, using the provided VerificationFailureOutcome
+func (t *BatchResultsOutcome_Results_Item) MergeVerificationFailureOutcome(v VerificationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t BatchResultsOutcome_Results_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *BatchResultsOutcome_Results_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsCompilationFailureOutcome returns the union data inside the VerificationOutcome as a CompilationFailureOutcome
+func (t VerificationOutcome) AsCompilationFailureOutcome() (CompilationFailureOutcome, error) {
+	var body CompilationFailureOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCompilationFailureOutcome overwrites any union data inside the VerificationOutcome as the provided CompilationFailureOutcome
+func (t *VerificationOutcome) FromCompilationFailureOutcome(v CompilationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCompilationFailureOutcome performs a merge with any union data inside the VerificationOutcome, using the provided CompilationFailureOutcome
+func (t *VerificationOutcome) MergeCompilationFailureOutcome(v CompilationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVerificationFailureOutcome returns the union data inside the VerificationOutcome as a VerificationFailureOutcome
+func (t VerificationOutcome) AsVerificationFailureOutcome() (VerificationFailureOutcome, error) {
+	var body VerificationFailureOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVerificationFailureOutcome overwrites any union data inside the VerificationOutcome as the provided VerificationFailureOutcome
+func (t *VerificationOutcome) FromVerificationFailureOutcome(v VerificationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVerificationFailureOutcome performs a merge with any union data inside the VerificationOutcome, using the provided VerificationFailureOutcome
+func (t *VerificationOutcome) MergeVerificationFailureOutcome(v VerificationFailureOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVerificationSuccessOutcome returns the union data inside the VerificationOutcome as a VerificationSuccessOutcome
+func (t VerificationOutcome) AsVerificationSuccessOutcome() (VerificationSuccessOutcome, error) {
+	var body VerificationSuccessOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVerificationSuccessOutcome overwrites any union data inside the VerificationOutcome as the provided VerificationSuccessOutcome
+func (t *VerificationOutcome) FromVerificationSuccessOutcome(v VerificationSuccessOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVerificationSuccessOutcome performs a merge with any union data inside the VerificationOutcome, using the provided VerificationSuccessOutcome
+func (t *VerificationOutcome) MergeVerificationSuccessOutcome(v VerificationSuccessOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsBatchResultsOutcome returns the union data inside the VerificationOutcome as a BatchResultsOutcome
+func (t VerificationOutcome) AsBatchResultsOutcome() (BatchResultsOutcome, error) {
+	var body BatchResultsOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromBatchResultsOutcome overwrites any union data inside the VerificationOutcome as the provided BatchResultsOutcome
+func (t *VerificationOutcome) FromBatchResultsOutcome(v BatchResultsOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeBatchResultsOutcome performs a merge with any union data inside the VerificationOutcome, using the provided BatchResultsOutcome
+func (t *VerificationOutcome) MergeBatchResultsOutcome(v BatchResultsOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSourcifySuccessOutcome returns the union data inside the VerificationOutcome as a SourcifySuccessOutcome
+func (t VerificationOutcome) AsSourcifySuccessOutcome() (SourcifySuccessOutcome, error) {
+	var body SourcifySuccessOutcome
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSourcifySuccessOutcome overwrites any union data inside the VerificationOutcome as the provided SourcifySuccessOutcome
+func (t *VerificationOutcome) FromSourcifySuccessOutcome(v SourcifySuccessOutcome) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSourcifySuccessOutcome performs a merge with any union data inside the VerificationOutcome, using the provided SourcifySuccessOutcome
+func (t *VerificationOutcome) MergeSourcifySuccessOutcome(v SourcifySuccessOutcome) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t VerificationOutcome) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *VerificationOutcome) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}

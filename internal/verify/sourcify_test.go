@@ -508,6 +508,90 @@ func TestSourcifyOptionAndRequestBounds(t *testing.T) {
 	}
 }
 
+func TestSourcifyV2MetadataWorkflowPollsToSuccess(t *testing.T) {
+	t.Parallel()
+	const (
+		verificationID = "123e4567-e89b-42d3-a456-426614174000"
+		address        = "0x1111111111111111111111111111111111111111"
+	)
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/server/v2/verify/metadata/1/" + address:
+			var payload struct {
+				Sources  map[string]string `json:"sources"`
+				Metadata map[string]any    `json:"metadata"`
+			}
+			if request.Method != http.MethodPost || json.NewDecoder(request.Body).Decode(&payload) != nil ||
+				payload.Sources["A.sol"] != "contract A {}" || payload.Metadata["compiler"] == nil {
+				t.Errorf("invalid metadata request")
+				writer.WriteHeader(http.StatusBadRequest)
+				_, _ = writer.Write([]byte(`{"customCode":"bad_request"}`))
+				return
+			}
+			writer.WriteHeader(http.StatusAccepted)
+			_, _ = writer.Write([]byte(`{"verificationId":"` + verificationID + `"}`))
+		case "/server/v2/verify/" + verificationID:
+			if polls.Add(1) == 1 {
+				_, _ = writer.Write([]byte(`{
+					"isJobCompleted":false,
+					"verificationId":"` + verificationID + `",
+					"contract":{
+						"match":null,"creationMatch":null,"runtimeMatch":null,
+						"chainId":"1","address":"` + address + `"
+					}
+				}`))
+				return
+			}
+			_, _ = writer.Write([]byte(`{
+				"isJobCompleted":true,
+				"verificationId":"` + verificationID + `",
+				"contract":{
+					"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"exact_match",
+					"chainId":"1","address":"` + address + `"
+				}
+			}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	client, err := newSourcifyClient(SourcifyOptions{
+		BaseURL: server.URL + "/server", Attempts: 3, PollInterval: 10 * time.Millisecond, MaxPolls: 3,
+	}, server.Client(), nil, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(`{
+		"chain_id":"1",
+		"address":"` + address + `",
+		"files":{
+			"metadata.json":"{\"compiler\":{\"version\":\"0.8.30\"},\"settings\":{},\"output\":{}}",
+			"A.sol":"contract A {}"
+		}
+	}`)
+	result, err := client.RunV2(context.Background(), JobSourcify, request)
+	if err != nil || !result.Successful || result.VerificationID != verificationID || polls.Load() != 2 {
+		t.Fatalf("result=%+v polls=%d error=%v", result, polls.Load(), err)
+	}
+}
+
+func TestValidateSourcifyV2RequestRejectsAmbiguousMetadata(t *testing.T) {
+	t.Parallel()
+	raw := json.RawMessage(`{
+		"chain_id":"1",
+		"address":"0x1111111111111111111111111111111111111111",
+		"files":{
+			"one.json":"{\"compiler\":{},\"settings\":{},\"output\":{}}",
+			"two.json":"{\"compiler\":{},\"settings\":{},\"output\":{}}"
+		}
+	}`)
+	if err := ValidateSourcifyV2Request(JobSourcify, raw, 1<<20); err == nil {
+		t.Fatal("ambiguous metadata was accepted")
+	}
+}
+
 func sourcifyContractFixture(address, creationBytecode, runtimeBytecode string) []byte {
 	return []byte(`{
 		"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"exact_match",

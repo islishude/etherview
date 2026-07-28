@@ -18,6 +18,13 @@ genesisState:
   sha256: ""
   fetchTimeout: 60s
 
+# Compiler artifacts are immutable and content-addressed. Mount this cache only
+# into all/verify Pods; use an existing ReadWriteMany claim for multiple verify
+# replicas or leave it empty for an ephemeral per-Pod cache.
+compilerCache:
+  existingClaim: ""
+  sizeLimit: 2Gi
+
 # monolith runs only the `all` deployment. distributed runs every enabled
 # non-all role from the same image and component implementations.
 mode: monolith
@@ -340,6 +347,16 @@ config:
     container_memory: 512m
     container_cpus: "1"
     container_pids: 64
+    catalog_urls:
+      solidity: auto
+      vyper: https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json
+    allowed_download_origins:
+      - https://binaries.soliditylang.org
+      - https://raw.githubusercontent.com
+      - https://github.com
+    catalog_refresh_interval: 1h
+    catalog_max_staleness: 24h
+    runner_image: ""
     artifacts: {}
     images: {}
   sourcify:
@@ -347,6 +364,9 @@ config:
     timeout: 20s
     max_request_bytes: 5242880
     max_response_bytes: 33554432
+    attempts: 3
+    poll_interval: 1s
+    max_polls: 120
   adapters:
     namespace: etherview
     nats_url: ""
@@ -391,6 +411,9 @@ prometheusRule:
 networkPolicy:
   enabled: true
   allowExternalHTTPS: true
+  # Catalog/artifact TCP/443 is rendered only for the all/verify component.
+  # Disable it when the cache/catalog are supplied out of band.
+  allowCompilerHTTPS: true
   # Explicit TCP/443 destinations for RPC and adapter traffic when broad HTTPS
   # is disabled. Keep these ranges disjoint from facilitator_allowed_cidrs.
   runtimeHTTPSCIDRs: []

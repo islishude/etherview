@@ -39,20 +39,37 @@ type CompilerKind string
 const (
 	CompilerProcess   CompilerKind = "process"
 	CompilerContainer CompilerKind = "container"
+	CompilerRunner    CompilerKind = "runner"
 )
 
 // CompilerProvenance identifies the exact allowlisted compiler artifact used
 // by a worker. Digest is the artifact or container image SHA-256, not a mutable
 // version label.
 type CompilerProvenance struct {
-	Kind         CompilerKind
-	Digest       [sha256.Size]byte
-	HardIsolated bool
+	Kind              CompilerKind
+	Digest            [sha256.Size]byte
+	RunnerDigest      [sha256.Size]byte
+	CatalogGeneration int64
+	Platform          string
+	ArtifactURL       string
+	ArtifactMaxBytes  int64
+	HardIsolated      bool
 }
 
 func (provenance CompilerProvenance) valid() bool {
-	return (provenance.Kind == CompilerProcess || provenance.Kind == CompilerContainer) &&
-		provenance.Digest != [sha256.Size]byte{}
+	switch provenance.Kind {
+	case CompilerProcess, CompilerContainer:
+		return provenance.Digest != [sha256.Size]byte{}
+	case CompilerRunner:
+		return provenance.Digest != [sha256.Size]byte{} &&
+			provenance.RunnerDigest != [sha256.Size]byte{} &&
+			provenance.CatalogGeneration > 0 &&
+			validCompilerPlatform(provenance.Platform) &&
+			provenance.ArtifactURL != "" &&
+			provenance.ArtifactMaxBytes > 0
+	default:
+		return false
+	}
 }
 
 // RuntimeValidator is implemented by compiler backends whose security
@@ -90,11 +107,36 @@ func (c *CompilerCache) Ensure(ctx context.Context, language Language, version s
 	if !ok {
 		return "", fmt.Errorf("compiler %s %s is not allowlisted", language, version)
 	}
+	return c.ensureArtifact(ctx, language, version, artifact, string(language)+"-"+version)
+}
+
+func (c *CompilerCache) EnsureCatalogEntry(ctx context.Context, entry CatalogEntry) (string, error) {
+	if entry.Language != LanguageSolidity && entry.Language != LanguageVyper {
+		return "", errors.New("catalog compiler language is invalid")
+	}
+	if entry.GenerationID <= 0 || !versionPattern.MatchString(entry.Version) ||
+		entry.ArtifactSHA256 == [sha256.Size]byte{} || !validCompilerPlatform(entry.Platform) {
+		return "", errors.New("catalog compiler entry is invalid")
+	}
+	artifact := CompilerArtifact{
+		URL: entry.ArtifactURL, SHA256: hex.EncodeToString(entry.ArtifactSHA256[:]),
+		MaxBytes: entry.MaxBytes,
+	}
+	cacheKey := string(entry.Language) + "-sha256-" + hex.EncodeToString(entry.ArtifactSHA256[:])
+	return c.ensureArtifact(ctx, entry.Language, entry.Version, artifact, cacheKey)
+}
+
+func (c *CompilerCache) ensureArtifact(
+	ctx context.Context,
+	language Language,
+	version string,
+	artifact CompilerArtifact,
+	key string,
+) (string, error) {
 	parsed, digest, maximum, err := validateCompilerArtifact(language, version, artifact, c.unsafeAllowHTTP)
 	if err != nil {
 		return "", err
 	}
-	key := string(language) + "-" + version
 	lock := c.lock(key)
 	lock.Lock()
 	defer lock.Unlock()

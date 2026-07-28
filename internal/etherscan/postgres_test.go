@@ -342,7 +342,7 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	abi := []byte(`[ { "type": "function", "name": "x", "inputs": [] } ]`)
 	sources := []byte(`{"A.sol":{"content":"contract A{}"}}`)
 	settings := []byte(`{"optimizer":{"enabled":true,"runs":200},"evmVersion":"paris","libraries":{"A.sol":{"L":"0x0000000000000000000000000000000000000001"}},"constructorArguments":"00","licenseType":"MIT"}`)
-	row := []driver.Value{codeHash, codeHash, abi, sources, settings, "solidity", "v0.8.30+commit.73712a01", "exact", "A"}
+	row := []driver.Value{codeHash, codeHash, abi, sources, settings, "solidity", "v0.8.30+commit.73712a01", "full", "A"}
 	db := fakeDatabase(t,
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
@@ -360,7 +360,7 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	source := sourceAny.([]sourceCodeResult)
 	if len(source) != 1 || source[0].SourceCode != string(sources) || source[0].CompilerType != "solc" ||
 		source[0].ContractFileName != "" || source[0].OptimizationUsed != "1" || source[0].Runs != "200" ||
-		source[0].EVMVersion != "paris" || source[0].MatchKind != "exact" {
+		source[0].EVMVersion != "paris" || source[0].MatchKind != "full" {
 		t.Fatalf("source=%+v", source)
 	}
 }
@@ -374,7 +374,7 @@ func TestVerifiedContractQueryBindsCanonicalCodeHashAndCurrentRange(t *testing.T
 		"verified.code_hash = current_code.code_hash",
 		"verified.valid_from_block <= current_code.context_number",
 		"verified.valid_to_block >= current_code.context_number",
-		"ORDER BY (verified.match_kind = 'exact') DESC, verified.valid_from_block DESC, verified.request_digest ASC NULLS LAST",
+		"ORDER BY (verified.match_type = 'full') DESC, verified.valid_from_block DESC, verified.request_digest ASC NULLS LAST",
 	} {
 		if !strings.Contains(query, compactSQL(required)) {
 			t.Fatalf("verified contract query does not contain %q: %s", compactSQL(required), query)
@@ -414,7 +414,7 @@ func TestVerifiedContractRejectsMismatchedStoredCodeHash(t *testing.T) {
 		contains: "verified.code_hash = current_code.code_hash", columns: fakeColumns(9),
 		rows: [][]driver.Value{{
 			testHashBytes(11), testHashBytes(12), []byte(`[]`), []byte(`{}`), []byte(`{}`),
-			"solidity", "v0.8.30+commit.73712a01", "exact", "A",
+			"solidity", "v0.8.30+commit.73712a01", "full", "A",
 		}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})

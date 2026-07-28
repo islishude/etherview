@@ -26,8 +26,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | ------- | ----------- | ------------- | ------------------------------------------------------------------------ | ------------------------- |
 | P50-T01 | done        | P00           | React/Vite routing, generated API client, i18n, theme, design primitives | frontend unit/build tests |
 | P50-T02 | done        | P40           | Home, blocks/orphans, transactions, addresses, and search pages          | Playwright core flows     |
-| P50-T03 | done        | P20, P30, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages      | capability UI tests       |
-| P50-T04 | done        | P30, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
+| P50-T03 | done        | P20, P30-T04, P40 | Token/NFT, contract, verify, charts, pending, and sync-status pages      | capability UI tests       |
+| P50-T04 | done        | P30-T01, P40      | EIP-6963 discovery and wallet-only contract read/write forms             | provider/mismatch tests   |
 | P50-T05 | done        | P50-T01       | Embedded assets, deep-link fallback, cache headers, CSP, accessibility   | binary E2E and a11y tests |
 | P50-T06 | done        | P40-T07       | Etherscan-inspired tabbed transaction detail system                      | frontend, embedded E2E, responsive and a11y tests |
 | P50-T07 | done        | P50-T02, P60-T03 | Numeric latest-page cursor, live-head Preview wake, and activity refresh | query/frontend regressions and Preview smoke |
