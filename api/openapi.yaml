@@ -1721,12 +1721,15 @@ components:
       properties:
         core:
           $ref: "#/components/schemas/StageState"
+          description: Current gap-free core indexing readiness.
         trace:
           $ref: "#/components/schemas/StageState"
+          description: Published trace@1 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage.
         metadata:
           $ref: "#/components/schemas/StageState"
         state:
           $ref: "#/components/schemas/StageState"
+          description: Configured historical-state RPC capability; transaction state differences have an independent per-transaction state.
     StageState:
       type: string
       enum: [complete, pending, unavailable, failed]

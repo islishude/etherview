@@ -16,6 +16,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0021: x402 request billing](../decisions/ADR-0021-x402-request-billing.md)
 - [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
 - [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
+- [ADR-0026: Current capability status and numeric canonical tips](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -38,6 +39,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
 | P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
 | P70-T16 | in_progress | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and Preview tests |
+| P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 
 ## Acceptance
 
@@ -86,6 +88,18 @@ and user/operator evidence sufficient for a production public release.
       The current Reth dev node's `debug_setHead` reselected its already stored
       descendants with identical hashes, so it did not supply this final live
       evidence.
+- [x] P70-T17: canonical state and ABI observation queries order numeric block
+      columns rather than text projections; address reads bind balance, nonce,
+      and account type to the highest canonical hash and reject a result if
+      canonicality changes across the RPC boundary.
+- [x] P70-T17: status State reports configured historical-state RPC capability,
+      while Trace reports the exact current indexed block's `trace@1`
+      publication state in the same PostgreSQL statement snapshot and cannot
+      reuse a replaced hash's result.
+- [x] P70-T17: generated API descriptions and the embedded bilingual status
+      page call the section “Data capabilities and current completeness” /
+      “数据能力与当前完整度” without changing the public response shape, same-origin
+      API boundary, or persistent schema.
 - [x] P70-T08: an optional bounded Genesis JSON source is authenticated against
       block zero and exposes exact EOA/predeploy account facts through
       PostgreSQL, proxy/ABI enrichment, native API, and the embedded block-zero
@@ -115,15 +129,49 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09, P70-T12, P70-T13, and P70-T14 are complete. P70-T16 remains
-`in_progress` only for a competing-hash Preview reorg run; its implementation,
-database reorg regression, performance target, browser suite, full common
-gates, and preserved-volume Preview backfill otherwise pass. P70-T06 and the
-v1 release remain blocked on P66 completion, conformance, security, release-CI,
-long-capacity, and documentation evidence.
+P70-T09, P70-T12, P70-T13, P70-T14, and P70-T17 are complete. P70-T16
+remains `in_progress` only for a competing-hash Preview reorg run; its
+implementation, database reorg regression, performance target, browser suite,
+full common gates, and preserved-volume Preview backfill otherwise pass.
+P70-T06 and the v1 release remain blocked on P66 completion, conformance,
+security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T17 implementation: `PostgresCanonicalSource.Tip` and both ABI history
+  lookups now order qualified numeric columns while converting quantities to
+  text only for scanning. Address state remains EIP-1898 block-hash pinned and
+  rechecks canonicality after RPC. Startup maps the configured historical-state
+  probe report to State, while the status reader joins the contiguous indexed
+  height and hash to the exact `trace@1` stage result in one statement and maps
+  `complete|unavailable|failed` without treating absent publication as
+  complete. ADR-0026 records these semantics; OpenAPI and the bilingual page
+  describe State as a capability rather than `state_diff@1` history.
+- P70-T17 regression evidence: focused ordinary and race tests for
+  `./internal/state`, `./internal/query`, `./internal/enrich`, and
+  `./internal/app` pass. PostgreSQL 18 integration covers canonical heights
+  99/100/169 plus same-height hash replacement, address canonicality change,
+  and ABI code/proxy observations at 99 versus 100/169. The full integration
+  suite, 142 web tests, all 9 embedded Playwright tests, `make
+  generate-check`, `make plan-check`, `make compose-runtime-smoke`, and `make
+  check` pass. The Playwright run used the documented bundled-Chromium
+  single-process fallback because the restricted macOS host aborted installed
+  Chrome's Mach bootstrap.
+- P70-T17 Preview evidence: the previously reported Preview containers and
+  their active project data volumes were absent before this run, so a fresh
+  PostgreSQL/Reth Preview was built rather than claiming preserved-volume
+  continuity. All seven application roles plus PostgreSQL and Reth are
+  running, and migration exited successfully. The final application-image
+  rebuild retained PostgreSQL container `e632b5046ee3` and Reth container
+  `2c5fa096bdc3` while recreating the application roles. A bounded poll at
+  height 142 returned zero lag with State and Trace both `complete`. Replaying
+  the exact signed transaction produced
+  `0x7cbf6ee5a54b9530a27f364a8283b36fd90af687c14453d901fd22e502a94960`;
+  the API reports it successful in block 6. Both address reads selected block
+  142 hash
+  `0x4f02c4eb8715c4d09e566fb7cab374f38a9640aac765eb190ceb33939ea8d198`.
+  At that same hash, the API and Reth both returned sender nonce `1`, and both
+  returned recipient balance `1000000000000000000` wei.
 - P70-T16 statistics and persistence: `stats@3` derives exact execution gas
   fees from verified receipt gas use and effective gas price, keeps blob fees
   independent, rejects incomplete or uint256-overflowing receipt facts

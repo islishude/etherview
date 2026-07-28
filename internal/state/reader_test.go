@@ -163,6 +163,28 @@ func TestReaderQueriesFixedCanonicalState(t *testing.T) {
 	}
 }
 
+func TestReaderRejectsStateObservedAcrossCanonicalChange(t *testing.T) {
+	t.Parallel()
+	service := &testStateRPC{}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state", Client: newTestStateClient(t, service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &Reader{
+		Base: testBaseReader{}, Pool: pool,
+		Canonical: testCanonical{
+			reference: CanonicalRef{Number: 169, Hash: testStateHash(169)},
+			canonical: false,
+		},
+	}
+	if _, err := reader.Address(t.Context(), "0x000000000000000000000000000000000000dead"); !errors.Is(err, httpapi.ErrNotReady) {
+		t.Fatalf("address state error = %v, want not ready", err)
+	}
+}
+
 func TestClassifyDelegatedEOA(t *testing.T) {
 	t.Parallel()
 	typeValue, hash, err := classifyCode(hexutil.MustDecode("0xef01000000000000000000000000000000000000000000"))

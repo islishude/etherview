@@ -48,10 +48,10 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 	var number string
 	var hashBytes []byte
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT number::text, block_hash
-		FROM canonical_blocks
-		WHERE chain_id = $1::numeric
-		ORDER BY number DESC
+		SELECT canonical.number::text, canonical.block_hash
+		FROM canonical_blocks AS canonical
+		WHERE canonical.chain_id = $1::numeric
+		ORDER BY canonical.number DESC
 		LIMIT 1`, s.ChainID).Scan(&number, &hashBytes)
 	if err == sql.ErrNoRows {
 		return CanonicalRef{}, httpapi.ErrNotReady

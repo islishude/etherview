@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/enrich"
@@ -69,6 +70,62 @@ func TestEnrichmentDispatcherAlwaysSchedulesABIStage(t *testing.T) {
 		if err := stage.Validate(); err != nil {
 			t.Errorf("trace-enabled stage %s is invalid: %v", stage, err)
 		}
+	}
+}
+
+func TestHistoricalStateCompletenessUsesConfiguredProbeEvidence(t *testing.T) {
+	t.Parallel()
+	stateEndpoint := config.RPCEndpoint{Name: "state", Purposes: []string{"state"}}
+	for _, test := range []struct {
+		name    string
+		enabled bool
+		build   *RPCBuild
+		want    gen.StageState
+	}{
+		{name: "disabled", want: gen.StageStateUnavailable},
+		{name: "enabled without RPC", enabled: true, want: gen.StageStateUnavailable},
+		{
+			name: "available", enabled: true,
+			build: &RPCBuild{Reports: map[string]ethrpc.CapabilityReport{
+				"state": {Methods: map[string]ethrpc.Availability{
+					ethrpc.CapabilityHistoricalState: ethrpc.AvailabilityAvailable,
+				}},
+			}},
+			want: gen.StageStateComplete,
+		},
+		{
+			name: "unknown", enabled: true,
+			build: &RPCBuild{Reports: map[string]ethrpc.CapabilityReport{
+				"state": {Methods: map[string]ethrpc.Availability{
+					ethrpc.CapabilityHistoricalState: ethrpc.AvailabilityUnknown,
+				}},
+			}},
+			want: gen.StageStatePending,
+		},
+		{
+			name: "missing report", enabled: true,
+			build: &RPCBuild{Reports: map[string]ethrpc.CapabilityReport{}},
+			want:  gen.StageStatePending,
+		},
+		{
+			name: "unavailable", enabled: true,
+			build: &RPCBuild{Reports: map[string]ethrpc.CapabilityReport{
+				"state": {Methods: map[string]ethrpc.Availability{
+					ethrpc.CapabilityHistoricalState: ethrpc.AvailabilityUnavailable,
+				}},
+			}},
+			want: gen.StageStateUnavailable,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := config.Default()
+			cfg.Features.HistoricalState = test.enabled
+			cfg.RPC.Endpoints = []config.RPCEndpoint{stateEndpoint}
+			if got := historicalStateCompleteness(cfg, test.build); got != test.want {
+				t.Fatalf("historical state completeness = %s, want %s", got, test.want)
+			}
+		})
 	}
 }
 

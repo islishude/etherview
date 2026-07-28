@@ -515,7 +515,9 @@ describe("P50 capability pages", () => {
     );
     renderExplorer("/status");
 
-    expect(await screen.findByRole("heading", { name: "Indexed data completeness" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Data capabilities and current completeness" }),
+    ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Configured optional features" })).toBeVisible();
     expect(screen.getByText("Core readiness")).toBeVisible();
     expect(screen.getByText("Lag (blocks)")).toBeVisible();
@@ -523,7 +525,7 @@ describe("P50 capability pages", () => {
     expect(screen.getByText("New public verification submissions")).toBeVisible();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(await screen.findByRole("heading", { name: "索引数据完整度" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "数据能力与当前完整度" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "已配置的可选功能" })).toBeVisible();
     expect(screen.getByText("历史精确状态")).toBeVisible();
     expect(screen.getByText("新的公开验证提交")).toBeVisible();

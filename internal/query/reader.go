@@ -104,13 +104,14 @@ func (r *PostgresReader) status(
 	}
 	var configuredStart, contiguousEnd, checkpointHeight, highestEnd sql.NullString
 	var contiguousHash, checkpointHash, highestHash []byte
-	var safeHeight, finalizedHeight sql.NullString
+	var safeHeight, finalizedHeight, traceState sql.NullString
 	if err := queryer.QueryRowContext(ctx, statusStateSQL, r.chainID).Scan(
 		&configuredStart,
 		&contiguousEnd, &contiguousHash,
 		&checkpointHeight, &checkpointHash,
 		&highestEnd, &highestHash,
 		&safeHeight, &finalizedHeight,
+		&traceState,
 	); err != nil {
 		return httpapi.StatusSnapshot{}, fmt.Errorf("query index status: %w", err)
 	}
@@ -176,6 +177,12 @@ func (r *PostgresReader) status(
 		}
 		if snapshot.FinalizedBlock != nil && *snapshot.FinalizedBlock > snapshot.HighestCoveredBlock {
 			return httpapi.StatusSnapshot{}, errors.New("finalized height exceeds canonical coverage")
+		}
+	}
+	if snapshot.Completeness.Trace == gen.StageStatePending {
+		snapshot.Completeness.Trace, err = currentTraceCompleteness(contiguousEnd.Valid, traceState)
+		if err != nil {
+			return httpapi.StatusSnapshot{}, err
 		}
 	}
 
@@ -546,10 +553,23 @@ func normalizeOptionalStage(state gen.StageState) (gen.StageState, error) {
 	if state == "" {
 		return gen.StageStateUnavailable, nil
 	}
-	if !state.Valid() || state == gen.StageStateComplete {
-		return "", fmt.Errorf("optional stage state %q must be pending, unavailable, or failed", state)
+	if !state.Valid() {
+		return "", fmt.Errorf("optional stage state %q is invalid", state)
 	}
 	return state, nil
+}
+
+func currentTraceCompleteness(indexed bool, state sql.NullString) (gen.StageState, error) {
+	if !indexed || !state.Valid {
+		return gen.StageStatePending, nil
+	}
+	result := gen.StageState(state.String)
+	switch result {
+	case gen.StageStateComplete, gen.StageStateUnavailable, gen.StageStateFailed:
+		return result, nil
+	default:
+		return "", fmt.Errorf("published trace stage state %q is invalid", state.String)
+	}
 }
 
 func parseDecimalUint64(value string) (uint64, error) {
@@ -614,7 +634,8 @@ SELECT
 	highest.range_end::text,
 	highest_block.block_hash,
     finality.safe_number::text,
-    finality.finalized_number::text
+    finality.finalized_number::text,
+    trace_result.state
 FROM (SELECT 1) AS singleton
 LEFT JOIN core_index_configuration AS configuration
   ON configuration.chain_id = $1::numeric
@@ -637,7 +658,13 @@ LEFT JOIN canonical_blocks AS highest_block
   ON highest_block.chain_id = $1::numeric
  AND highest_block.number = highest.range_end
 LEFT JOIN chain_finality AS finality
-  ON finality.chain_id = $1::numeric`
+  ON finality.chain_id = $1::numeric
+LEFT JOIN published_block_stage_results AS trace_result
+  ON trace_result.chain_id = $1::numeric
+ AND trace_result.block_number = contiguous.range_end
+ AND trace_result.block_hash = contiguous_block.block_hash
+ AND trace_result.stage = 'trace'
+ AND trace_result.stage_version = 1`
 
 const listBlocksSQL = `
 SELECT

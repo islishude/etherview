@@ -1245,9 +1245,12 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         Completeness: {
+            /** @description Current gap-free core indexing readiness. */
             core: components["schemas"]["StageState"];
             metadata: components["schemas"]["StageState"];
+            /** @description Configured historical-state RPC capability; transaction state differences have an independent per-transaction state. */
             state: components["schemas"]["StageState"];
+            /** @description Published trace@1 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
         };
         /** @description A canonical non-negative fixed-point decimal with at most 18 fractional digits. */

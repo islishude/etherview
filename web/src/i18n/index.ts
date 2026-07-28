@@ -860,7 +860,7 @@ const resources = {
         runtimeArtifacts: "Runtime code artifacts",
       },
       status: {
-        dataCapabilities: "Indexed data completeness",
+        dataCapabilities: "Data capabilities and current completeness",
         configuredFeatures: "Configured optional features",
         enabled: "Enabled",
         disabled: "Disabled",
@@ -1718,7 +1718,7 @@ const resources = {
         runtimeArtifacts: "运行时代码制品",
       },
       status: {
-        dataCapabilities: "索引数据完整度",
+        dataCapabilities: "数据能力与当前完整度",
         configuredFeatures: "已配置的可选功能",
         enabled: "已启用",
         disabled: "已关闭",

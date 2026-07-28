@@ -491,11 +491,11 @@ func resolveABICodeIdentity(ctx context.Context, tx *sql.Tx, job Job, address co
 	var blockNumberText string
 	var codeHashBytes []byte
 	err := tx.QueryRowContext(ctx, `
-		SELECT block_number::text, code_hash
-		FROM contract_code_observations
-		WHERE chain_id = $1::numeric AND address = $2 AND canonical
-		  AND block_number <= $3::numeric
-		ORDER BY block_number DESC, observed_at DESC
+		SELECT observation.block_number::text, observation.code_hash
+		FROM contract_code_observations AS observation
+		WHERE observation.chain_id = $1::numeric AND observation.address = $2 AND observation.canonical
+		  AND observation.block_number <= $3::numeric
+		ORDER BY observation.block_number DESC, observation.observed_at DESC
 		LIMIT 1`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&blockNumberText, &codeHashBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ABIIdentity{}, abiBlockRange{}, false, nil
@@ -623,12 +623,14 @@ func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, co
 	var fromText string
 	var implementationAddressBytes, implementationCodeHashBytes []byte
 	err := tx.QueryRowContext(ctx, `
-		SELECT block_number::text, implementation_address, implementation_code_hash
-		FROM proxy_observations
-		WHERE chain_id = $1::numeric AND proxy_address = $2 AND proxy_code_hash = $3
-		  AND canonical AND block_number <= $4::numeric
-		  AND implementation_address IS NOT NULL AND implementation_code_hash IS NOT NULL
-		ORDER BY block_number DESC
+		SELECT observation.block_number::text, observation.implementation_address, observation.implementation_code_hash
+		FROM proxy_observations AS observation
+		WHERE observation.chain_id = $1::numeric AND observation.proxy_address = $2
+		  AND observation.proxy_code_hash = $3 AND observation.canonical
+		  AND observation.block_number <= $4::numeric
+		  AND observation.implementation_address IS NOT NULL
+		  AND observation.implementation_code_hash IS NOT NULL
+		ORDER BY observation.block_number DESC
 		LIMIT 1`, target.ChainID, target.Address[:], target.CodeHash[:], strconv.FormatUint(target.BlockNumber, 10)).Scan(
 		&fromText, &implementationAddressBytes, &implementationCodeHashBytes,
 	)

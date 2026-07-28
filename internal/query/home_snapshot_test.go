@@ -23,8 +23,8 @@ func TestHomeSnapshotUsesOneTransactionAndReturnsBoundedCanonicalActivity(t *tes
 		},
 		queryExpectation{
 			contains: "configuration.configured_start::text",
-			columns:  columns(9), rows: [][]driver.Value{{
-				"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0",
+			columns:  columns(10), rows: [][]driver.Value{{
+				"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0", nil,
 			}},
 		},
 		queryExpectation{
@@ -82,8 +82,8 @@ func TestHomeSnapshotSupportsEmptyChainWithoutRuntimeEvents(t *testing.T) {
 		},
 		queryExpectation{
 			contains: "configuration.configured_start::text",
-			columns:  columns(9), rows: [][]driver.Value{{
-				"0", nil, nil, nil, nil, nil, nil, nil, nil,
+			columns:  columns(10), rows: [][]driver.Value{{
+				"0", nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			}},
 		},
 		queryExpectation{

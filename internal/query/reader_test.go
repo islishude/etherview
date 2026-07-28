@@ -61,8 +61,8 @@ func TestStatusReportsGapFreeCheckpointAndUpstreamHead(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(9), rows: [][]driver.Value{{
-			"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0",
+		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+			"0", "2", tipHash, "2", tipHash, "2", tipHash, "1", "0", nil,
 		}}},
 	)
 	reader := testReader(t, db, Options{
@@ -90,8 +90,8 @@ func TestStatusDoesNotClaimReadyAcrossCanonicalGap(t *testing.T) {
 	t.Parallel()
 	genesisHash, tipHash := testHashBytes(1), testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(9), rows: [][]driver.Value{{
-			"0", "0", genesisHash, "0", genesisHash, "2", tipHash, nil, nil,
+		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+			"0", "0", genesisHash, "0", genesisHash, "2", tipHash, nil, nil, nil,
 		}}},
 	)
 	reader := testReader(t, db, Options{
@@ -112,8 +112,8 @@ func TestStatusUsesDurableSplitRoleHeadAndReadiness(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(9)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(9), rows: [][]driver.Value{{
-			"0", "8", tipHash, "8", tipHash, "8", tipHash, nil, nil,
+		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+			"0", "8", tipHash, "8", tipHash, "8", tipHash, nil, nil, nil,
 		}}},
 	)
 	reader := testReader(t, db, Options{
@@ -138,8 +138,8 @@ func TestStatusDoesNotSubstituteCanonicalTipWhenRuntimeStatusIsMissing(t *testin
 	t.Parallel()
 	tipHash := testHashBytes(3)
 	db := testDatabase(t,
-		queryExpectation{contains: "configuration.configured_start::text", columns: columns(9), rows: [][]driver.Value{{
-			"0", "2", tipHash, "2", tipHash, "2", tipHash, nil, nil,
+		queryExpectation{contains: "configuration.configured_start::text", columns: columns(10), rows: [][]driver.Value{{
+			"0", "2", tipHash, "2", tipHash, "2", tipHash, nil, nil, nil,
 		}}},
 	)
 	reader := testReader(t, db, Options{
@@ -161,8 +161,8 @@ func TestStatusDoesNotTreatIsolatedLiveCoverageAsIndexedOrReady(t *testing.T) {
 	t.Parallel()
 	tipHash := testHashBytes(10)
 	db := testDatabase(t, queryExpectation{
-		contains: "configuration.configured_start::text", columns: columns(9),
-		rows: [][]driver.Value{{"0", nil, nil, nil, nil, "10", tipHash, nil, nil}},
+		contains: "configuration.configured_start::text", columns: columns(10),
+		rows: [][]driver.Value{{"0", nil, nil, nil, nil, "10", tipHash, nil, nil, nil}},
 	})
 	reader := testReader(t, db, Options{
 		ChainID: 1,
@@ -181,6 +181,71 @@ func TestStatusDoesNotTreatIsolatedLiveCoverageAsIndexedOrReady(t *testing.T) {
 		!snapshot.HighestCoveredKnown || snapshot.HighestCoveredBlock != 10 ||
 		snapshot.Completeness.Core != gen.StageStatePending {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestStatusReportsCurrentTracePublication(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		indexed   bool
+		stored    any
+		want      gen.StageState
+		wantError bool
+	}{
+		{name: "no indexed tip", want: gen.StageStatePending},
+		{name: "missing publication", indexed: true, want: gen.StageStatePending},
+		{name: "complete", indexed: true, stored: "complete", want: gen.StageStateComplete},
+		{name: "unavailable", indexed: true, stored: "unavailable", want: gen.StageStateUnavailable},
+		{name: "failed", indexed: true, stored: "failed", want: gen.StageStateFailed},
+		{name: "invalid", indexed: true, stored: "pending", wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var contiguousEnd any
+			var contiguousHash any
+			if test.indexed {
+				contiguousEnd = "169"
+				contiguousHash = testHashBytes(169)
+			}
+			db := testDatabase(t, queryExpectation{
+				contains: "trace_result.block_hash = contiguous_block.block_hash",
+				columns:  columns(10),
+				rows: [][]driver.Value{{
+					"0", contiguousEnd, contiguousHash,
+					contiguousEnd, contiguousHash,
+					contiguousEnd, contiguousHash,
+					nil, nil, test.stored,
+				}},
+			})
+			reader := testReader(t, db, Options{
+				ChainID: 1,
+				OptionalStages: gen.Completeness{
+					Trace: gen.StageStatePending,
+					State: gen.StageStateComplete,
+				},
+				LatestBlock: func(context.Context) (uint64, error) {
+					if test.indexed {
+						return 169, nil
+					}
+					return 0, nil
+				},
+			})
+			snapshot, err := reader.Status(t.Context())
+			if test.wantError {
+				if err == nil {
+					t.Fatal("invalid published trace state was accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if snapshot.Completeness.Trace != test.want ||
+				snapshot.Completeness.State != gen.StageStateComplete {
+				t.Fatalf("completeness = %+v, want trace=%s state=complete", snapshot.Completeness, test.want)
+			}
+		})
 	}
 }
 

@@ -315,7 +315,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
 
   await page.goto("/status");
-  await expect(page.getByRole("heading", { name: "Indexed data completeness", level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Data capabilities and current completeness", level: 2 }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Configured optional features", level: 2 })).toBeVisible();
   const verificationFeature = page
     .getByRole("listitem")

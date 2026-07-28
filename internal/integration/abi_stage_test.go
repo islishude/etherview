@@ -110,13 +110,86 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	}
 }
 
+func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	block99 := testBundle(99, testHash(90_099), testHash(0), testHash(91_099), "abi-height-99")
+	commitCanonical(t, ctx, repository, block99)
+	direct, proxy := testAddress(920), testAddress(921)
+	recipient, caller := testAddress(922), testAddress(923)
+	block100 := abiFixtureBundleAt(t, 100, block99.Block.Hash(), direct, proxy, recipient, caller, "abi-height-100")
+	commitCanonical(t, ctx, repository, block100)
+	ref99, ref100 := mustBlockRef(t, block99), mustBlockRef(t, block100)
+
+	oldDirectCode, currentDirectCode := testHash(92_099), testHash(92_100)
+	proxyCode := testHash(92_200)
+	oldImplementation, currentImplementation := testAddress(924), testAddress(925)
+	oldImplementationCode, currentImplementationCode := testHash(92_299), testHash(92_300)
+	insertABICodeObservation(t, ctx, db, ref99, direct, oldDirectCode)
+	insertABICodeObservation(t, ctx, db, ref100, direct, currentDirectCode)
+	insertABICodeObservation(t, ctx, db, ref99, proxy, proxyCode)
+	insertABICodeObservation(t, ctx, db, ref100, proxy, proxyCode)
+	insertABIProxyObservation(t, ctx, db, ref99, proxy, proxyCode, oldImplementation, oldImplementationCode)
+	insertABIProxyObservation(t, ctx, db, ref100, proxy, proxyCode, currentImplementation, currentImplementationCode)
+	insertABIVerifiedContract(t, ctx, db, direct, currentDirectCode)
+	insertABIVerifiedContract(t, ctx, db, currentImplementation, currentImplementationCode)
+
+	result, err := processor.Process(ctx, abiIntegrationJob(t, ref100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != enrich.ResultComplete {
+		t.Fatalf("ABI stage result = %+v", result)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2
+		  AND code_hash = $3 AND source = 'verified'
+		  AND valid_from_block = 100`,
+		1, mustBytes(t, ref100.Hash), mustBytes(t, direct), mustBytes(t, currentDirectCode))
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2
+		  AND code_hash = $3 AND source = 'proxy_implementation'
+		  AND source_address = $4 AND source_code_hash = $5
+		  AND valid_from_block = 100`,
+		1, mustBytes(t, ref100.Hash), mustBytes(t, proxy), mustBytes(t, proxyCode),
+		mustBytes(t, currentImplementation), mustBytes(t, currentImplementationCode))
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1
+		  AND (code_hash = $2 OR source_address = $3)`,
+		0, mustBytes(t, ref100.Hash), mustBytes(t, oldDirectCode), mustBytes(t, oldImplementation))
+}
+
 func abiFixtureBundle(t *testing.T, direct, proxy, recipient, caller common.Address) chainbundle.Bundle {
+	t.Helper()
+	return abiFixtureBundleAt(t, 1, testHash(70_000), direct, proxy, recipient, caller, "abi-block")
+}
+
+func abiFixtureBundleAt(
+	t *testing.T,
+	number uint64,
+	parent common.Hash,
+	direct, proxy, recipient, caller common.Address,
+	variant string,
+) chainbundle.Bundle {
 	t.Helper()
 	transferTopic := enrich.SignatureHash("Transfer(address,address,uint256)")
 	block, err := newIntegrationBundle(integrationBundleOptions{
-		Number:     1,
-		ParentHash: testHash(70_000),
-		ExtraData:  []byte("abi-block"),
+		Number:     number,
+		ParentHash: parent,
+		ExtraData:  []byte(variant),
 		Transactions: []integrationTransactionOptions{{
 			Type: types.DynamicFeeTxType,
 			To:   &direct,
@@ -132,7 +205,7 @@ func abiFixtureBundle(t *testing.T, direct, proxy, recipient, caller common.Addr
 			}},
 		}},
 		Withdrawals: []*types.Withdrawal{},
-		RawExtra:    map[string]any{"integrationVariant": "abi-block"},
+		RawExtra:    map[string]any{"integrationVariant": variant},
 	})
 	if err != nil {
 		t.Fatalf("build ABI fixture bundle: %v", err)

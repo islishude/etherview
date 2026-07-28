@@ -488,10 +488,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		completeness := configuredCompleteness(cfg)
-		if cfg.Features.Trace && (rpcBuild == nil || !traceRPCAvailable(rpcBuild.Pool)) {
-			completeness.Trace = gen.StageStateUnavailable
-		}
+		completeness := configuredCompleteness(cfg, rpcBuild)
 		queryOptions := query.Options{
 			ChainID: cfg.Chain.ID, StartBlock: cfg.Chain.StartBlock,
 			RuntimeStatus: func(callbackCtx context.Context) (query.RuntimeStatus, bool, error) {
@@ -1104,17 +1101,52 @@ func validateProductionComponentGraph(cfg config.Config, roles []components.Role
 	return nil
 }
 
-func configuredCompleteness(cfg config.Config) gen.Completeness {
-	stage := func(enabled bool) gen.StageState {
-		if enabled {
-			return gen.StageStatePending
-		}
-		return gen.StageStateUnavailable
+func configuredCompleteness(cfg config.Config, rpcBuild *RPCBuild) gen.Completeness {
+	trace := gen.StageStateUnavailable
+	if cfg.Features.Trace && rpcBuild != nil && traceRPCAvailable(rpcBuild.Pool) {
+		trace = gen.StageStatePending
 	}
 	return gen.Completeness{
-		Core: gen.StageStateComplete, Trace: stage(cfg.Features.Trace),
-		Metadata: stage(cfg.Features.NFTMetadata), State: stage(cfg.Features.HistoricalState),
+		Core: gen.StageStateComplete, Trace: trace,
+		Metadata: configuredStageState(cfg.Features.NFTMetadata),
+		State:    historicalStateCompleteness(cfg, rpcBuild),
 	}
+}
+
+func configuredStageState(enabled bool) gen.StageState {
+	if enabled {
+		return gen.StageStatePending
+	}
+	return gen.StageStateUnavailable
+}
+
+func historicalStateCompleteness(cfg config.Config, rpcBuild *RPCBuild) gen.StageState {
+	if !cfg.Features.HistoricalState || rpcBuild == nil {
+		return gen.StageStateUnavailable
+	}
+	stateEndpoint := false
+	unknown := false
+	for _, endpoint := range cfg.RPC.Endpoints {
+		if !rpcPurposes(endpoint.Purposes)[ethrpc.PurposeState] {
+			continue
+		}
+		stateEndpoint = true
+		report, exists := rpcBuild.Reports[endpoint.Name]
+		if !exists {
+			unknown = true
+			continue
+		}
+		switch report.Status(ethrpc.CapabilityHistoricalState) {
+		case ethrpc.AvailabilityAvailable:
+			return gen.StageStateComplete
+		case ethrpc.AvailabilityUnknown:
+			unknown = true
+		}
+	}
+	if stateEndpoint && unknown {
+		return gen.StageStatePending
+	}
+	return gen.StageStateUnavailable
 }
 
 func traceRPCAvailable(pool *ethrpc.Pool) bool {
