@@ -19,6 +19,7 @@ type Options struct {
 	MaxTraceDataBytes int
 	MaxTextBytes      int
 	NFTState          NFTStateReconciler
+	ERC20State        ERC20StateReconciler
 	TraceCache        accelerator.BlobStore
 	Logger            *slog.Logger
 }
@@ -48,6 +49,7 @@ type Postgres struct {
 	db         *sql.DB
 	options    Options
 	nftState   NFTStateReconciler
+	erc20State ERC20StateReconciler
 	traceCache accelerator.BlobStore
 	logger     *slog.Logger
 }
@@ -66,7 +68,7 @@ func NewPostgres(db *sql.DB, options Options) (*Postgres, error) {
 		logger = slog.Default()
 	}
 	return &Postgres{
-		db: db, options: options, nftState: options.NFTState,
+		db: db, options: options, nftState: options.NFTState, erc20State: options.ERC20State,
 		traceCache: options.TraceCache, logger: logger,
 	}, nil
 }

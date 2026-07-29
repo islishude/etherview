@@ -57,6 +57,15 @@ type nftBalanceCursor struct {
 	TokenID        string `json:"token_id"`
 }
 
+type erc20BalanceCursor struct {
+	Version        int    `json:"v"`
+	ChainID        string `json:"chain_id"`
+	Owner          string `json:"owner"`
+	SnapshotNumber string `json:"snapshot_number"`
+	SnapshotHash   string `json:"snapshot_hash"`
+	TokenAddress   string `json:"token_address"`
+}
+
 func encodeCursor(value any) (string, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {

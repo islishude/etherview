@@ -130,6 +130,7 @@ const allowedWalletMethods = new Set([
   "eth_requestAccounts",
   "eth_sendTransaction",
   "personal_sign",
+  "wallet_addEthereumChain",
 ]);
 
 function productionSources(directory: string): string[] {

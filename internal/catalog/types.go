@@ -240,6 +240,43 @@ type NFTBalancePage struct {
 	Snapshot   Snapshot
 }
 
+type ERC20Balance struct {
+	ChainID      string
+	Owner        string
+	TokenAddress string
+	Balance      string
+	Confidence   string
+	Name         *string
+	Symbol       *string
+	Decimals     *uint8
+}
+
+type ERC20BalanceCandidate struct {
+	TokenAddress string
+}
+
+type ERC20BalanceObservation struct {
+	Balance    string
+	Confidence string
+}
+
+type ERC20StateReconciler interface {
+	ERC20Balances(context.Context, Snapshot, string, []ERC20BalanceCandidate) ([]ERC20BalanceObservation, error)
+}
+
+type ERC20BalanceRequest struct {
+	ChainID string
+	Owner   string
+	Cursor  string
+	Limit   int
+}
+
+type ERC20BalancePage struct {
+	Items      []ERC20Balance
+	NextCursor string
+	Snapshot   Snapshot
+}
+
 type BlockStatsRequest struct {
 	ChainID   string
 	FromBlock string
@@ -375,6 +412,7 @@ type Reader interface {
 	TokenEvents(context.Context, TokenEventRequest) (TokenEventPage, error)
 	NFTOwner(context.Context, string, string, string) (NFTOwnership, error)
 	NFTBalances(context.Context, NFTBalanceRequest) (NFTBalancePage, error)
+	ERC20Balances(context.Context, ERC20BalanceRequest) (ERC20BalancePage, error)
 	BlockStats(context.Context, BlockStatsRequest) ([]BlockStat, error)
 	AggregateStats(context.Context, AggregateStatsRequest) (AggregateStats, error)
 	TransactionTrace(context.Context, string, string) (TransactionTrace, error)

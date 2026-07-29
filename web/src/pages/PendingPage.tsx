@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "@/api/client";
 import { usePendingTransactions, usePublicConfig } from "@/api/hooks";
 import type { PendingMeta, PendingTransaction } from "@/api/types";
-import { formatInteger, formatTimestamp, shorten } from "@/components/format";
+import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
 import { Page } from "@/pages/pages";
 
@@ -27,6 +27,8 @@ export function PendingPage() {
     refreshGeneration,
   );
   const locale = i18n.resolvedLanguage ?? "en";
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
+  const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const expiresAt = pending.data ? Date.parse(pending.data.meta.expires_at) : Number.NaN;
   const snapshotExpired = expiredSnapshot || (Number.isFinite(expiresAt) && expiresAt <= Date.now());
   const snapshot = snapshotExpired ? undefined : pending.data;
@@ -113,7 +115,12 @@ export function PendingPage() {
               {t("pending.empty")}
             </p>
           ) : (
-            <PendingTable transactions={snapshot.items} locale={locale} />
+            <PendingTable
+              transactions={snapshot.items}
+              locale={locale}
+              nativeDecimals={nativeDecimals}
+              nativeSymbol={nativeSymbol}
+            />
           )}
 
           <nav className="pending-pagination" aria-label={t("pending.pagination")}>
@@ -178,9 +185,13 @@ function PendingSnapshotSummary({ meta, locale }: { meta: PendingMeta; locale: s
 function PendingTable({
   transactions,
   locale,
+  nativeDecimals,
+  nativeSymbol,
 }: {
   transactions: PendingTransaction[];
   locale: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -193,7 +204,7 @@ function PendingTable({
             <th>{t("table.from")}</th>
             <th>{t("table.to")}</th>
             <th>{t("detail.nonce")}</th>
-            <th>{t("table.value")}</th>
+            <th>{t("table.value", { symbol: nativeSymbol })}</th>
             <th>{t("pending.fees")}</th>
             <th>{t("pending.firstSeen")}</th>
             <th>{t("pending.lastSeen")}</th>
@@ -218,7 +229,7 @@ function PendingTable({
                 )}
               </td>
               <td><code>{formatInteger(transaction.nonce, locale)}</code></td>
-              <td><code>{formatInteger(transaction.value, locale)}</code></td>
+              <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
               <td><PendingFees transaction={transaction} locale={locale} /></td>
               <td><time dateTime={transaction.first_seen_at}>{formatTimestamp(transaction.first_seen_at, locale)}</time></td>
               <td><time dateTime={transaction.last_seen_at}>{formatTimestamp(transaction.last_seen_at, locale)}</time></td>

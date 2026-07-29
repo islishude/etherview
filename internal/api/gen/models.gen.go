@@ -11,6 +11,45 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AddressOriginKind.
+const (
+	ContractCreation AddressOriginKind = "contract_creation"
+	Funding          AddressOriginKind = "funding"
+)
+
+// Valid indicates whether the value is a known member of the AddressOriginKind enum.
+func (e AddressOriginKind) Valid() bool {
+	switch e {
+	case ContractCreation:
+		return true
+	case Funding:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AddressOriginState.
+const (
+	AddressOriginStateFound       AddressOriginState = "found"
+	AddressOriginStateNotFound    AddressOriginState = "not_found"
+	AddressOriginStateUnavailable AddressOriginState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AddressOriginState enum.
+func (e AddressOriginState) Valid() bool {
+	switch e {
+	case AddressOriginStateFound:
+		return true
+	case AddressOriginStateNotFound:
+		return true
+	case AddressOriginStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddressSummaryType.
 const (
 	AddressSummaryTypeContract     AddressSummaryType = "contract"
@@ -979,6 +1018,24 @@ type AddressInternalTransactionListResponse struct {
 	Meta Meta                         `json:"meta"`
 }
 
+// AddressOrigin defines model for AddressOrigin.
+type AddressOrigin struct {
+	Kind AddressOriginKind `json:"kind"`
+
+	// SourceAddress A 20-byte address; responses use the EIP-55 checksum form.
+	SourceAddress *Address           `json:"source_address,omitempty"`
+	State         AddressOriginState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash *Hash `json:"transaction_hash,omitempty"`
+}
+
+// AddressOriginKind defines model for AddressOrigin.Kind.
+type AddressOriginKind string
+
+// AddressOriginState defines model for AddressOrigin.State.
+type AddressOriginState string
+
 // AddressResponse defines model for AddressResponse.
 type AddressResponse struct {
 	Data AddressSummary `json:"data"`
@@ -1002,8 +1059,9 @@ type AddressSummary struct {
 	Name         *string      `json:"name,omitempty"`
 
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Nonce Quantity           `json:"nonce"`
-	Type  AddressSummaryType `json:"type"`
+	Nonce  Quantity           `json:"nonce"`
+	Origin *AddressOrigin     `json:"origin,omitempty"`
+	Type   AddressSummaryType `json:"type"`
 }
 
 // AddressSummaryType defines model for AddressSummary.Type.
@@ -1552,6 +1610,33 @@ type Completeness struct {
 // Decimal A canonical non-negative fixed-point decimal with at most 18 fractional digits.
 type Decimal = string
 
+// ERC20Balance defines model for ERC20Balance.
+type ERC20Balance struct {
+	// Balance A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Balance Quantity `json:"balance"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// Confidence State observed by an exact block-hash RPC call and rechecked against canonicality.
+	Confidence StateConfidence `json:"confidence"`
+	Decimals   *int            `json:"decimals,omitempty"`
+	Name       *string         `json:"name,omitempty"`
+
+	// Owner A 20-byte address; responses use the EIP-55 checksum form.
+	Owner  Address `json:"owner"`
+	Symbol *string `json:"symbol,omitempty"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress Address `json:"token_address"`
+}
+
+// ERC20BalanceListResponse defines model for ERC20BalanceListResponse.
+type ERC20BalanceListResponse struct {
+	Data []ERC20Balance `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Error APIError `json:"error"`
@@ -1778,12 +1863,13 @@ type PendingTransactionListResponse struct {
 // PublicConfig defines model for PublicConfig.
 type PublicConfig struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId        Quantity        `json:"chain_id"`
-	ChainName      string          `json:"chain_name"`
-	Features       map[string]bool `json:"features"`
-	NativeDecimals int             `json:"native_decimals"`
-	NativeName     string          `json:"native_name"`
-	NativeSymbol   string          `json:"native_symbol"`
+	ChainId        Quantity              `json:"chain_id"`
+	ChainName      string                `json:"chain_name"`
+	Features       map[string]bool       `json:"features"`
+	NativeDecimals int                   `json:"native_decimals"`
+	NativeName     string                `json:"native_name"`
+	NativeSymbol   string                `json:"native_symbol"`
+	WalletAddChain *WalletAddChainConfig `json:"wallet_add_chain,omitempty"`
 }
 
 // PublicConfigResponse defines model for PublicConfigResponse.
@@ -2497,6 +2583,25 @@ type VerifierStandardJSONRequest struct {
 	Language *VerifierLanguage      `json:"language,omitempty"`
 }
 
+// WalletAddChainConfig defines model for WalletAddChainConfig.
+type WalletAddChainConfig struct {
+	BlockExplorerUrls *[]string `json:"block_explorer_urls,omitempty"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId        Quantity             `json:"chain_id"`
+	ChainName      string               `json:"chain_name"`
+	IconUrls       *[]string            `json:"icon_urls,omitempty"`
+	NativeCurrency WalletNativeCurrency `json:"native_currency"`
+	RpcUrls        []string             `json:"rpc_urls"`
+}
+
+// WalletNativeCurrency defines model for WalletNativeCurrency.
+type WalletNativeCurrency struct {
+	Decimals int    `json:"decimals"`
+	Name     string `json:"name"`
+	Symbol   string `json:"symbol"`
+}
+
 // BillingAssetFilter A 20-byte address; responses use the EIP-55 checksum form.
 type BillingAssetFilter = Address
 
@@ -2547,6 +2652,15 @@ type VerificationAccepted = VerificationJobResponse
 
 // GetAddressParams defines parameters for GetAddress.
 type GetAddressParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressERC20BalancesParams defines parameters for ListAddressERC20Balances.
+type ListAddressERC20BalancesParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

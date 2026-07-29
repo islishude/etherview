@@ -37,6 +37,104 @@ const HEX_QUANTITY_PATTERN = /^0x(?:0|[1-9a-f][0-9a-f]*)$/iu;
 const TRANSACTION_HASH_PATTERN = /^0x[0-9a-f]{64}$/iu;
 const WALLET_SIGNATURE_PATTERN = /^0x[0-9a-f]{130}$/iu;
 const MAX_UINT256 = (1n << 256n) - 1n;
+const MAX_ADD_CHAIN_URLS = 5;
+const MAX_ADD_CHAIN_URL_LENGTH = 2048;
+
+export interface AddEthereumChainParameter {
+  chainId: `0x${string}`;
+  chainName: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rpcUrls: string[];
+  blockExplorerUrls?: string[];
+  iconUrls?: string[];
+}
+
+export function buildAddEthereumChainParameter(value: unknown): AddEthereumChainParameter {
+  if (typeof value !== "object" || value === null) {
+    throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+  }
+  const candidate = value as Record<string, unknown>;
+  const chainID = normalizeChainID(candidate.chain_id);
+  const chainName = candidate.chain_name;
+  const nativeCurrency = candidate.native_currency;
+  if (
+    chainID === undefined ||
+    chainID === "0" ||
+    typeof chainName !== "string" ||
+    chainName.length < 1 ||
+    chainName.length > 128 ||
+    typeof nativeCurrency !== "object" ||
+    nativeCurrency === null
+  ) {
+    throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+  }
+  const native = nativeCurrency as Record<string, unknown>;
+  if (
+    typeof native.name !== "string" ||
+    native.name.length < 1 ||
+    native.name.length > 64 ||
+    typeof native.symbol !== "string" ||
+    !/^[\x21-\x7e]{2,6}$/u.test(native.symbol) ||
+    typeof native.decimals !== "number" ||
+    !Number.isInteger(native.decimals) ||
+    native.decimals < 0 ||
+    native.decimals > 255
+  ) {
+    throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+  }
+  const rpcUrls = parseAddChainURLs(candidate.rpc_urls, true);
+  const blockExplorerUrls = parseAddChainURLs(candidate.block_explorer_urls, false);
+  const iconUrls = parseAddChainURLs(candidate.icon_urls, false);
+  return {
+    chainId: `0x${BigInt(chainID).toString(16)}`,
+    chainName,
+    nativeCurrency: {
+      name: native.name,
+      symbol: native.symbol,
+      decimals: native.decimals,
+    },
+    rpcUrls,
+    ...(blockExplorerUrls ? { blockExplorerUrls } : {}),
+    ...(iconUrls ? { iconUrls } : {}),
+  };
+}
+
+function parseAddChainURLs(value: unknown, required: true): string[];
+function parseAddChainURLs(value: unknown, required: false): string[] | undefined;
+function parseAddChainURLs(value: unknown, required: boolean): string[] | undefined {
+  if (value === undefined && !required) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_ADD_CHAIN_URLS) {
+    throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+  }
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || item.length < 1 || item.length > MAX_ADD_CHAIN_URL_LENGTH) {
+      throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+    }
+    try {
+      const parsed = new URL(item);
+      if (
+        parsed.protocol !== "https:" ||
+        !parsed.hostname ||
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+      }
+    } catch (cause) {
+      if (cause instanceof WalletBoundaryError) throw cause;
+      throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+    }
+    urls.push(item);
+  }
+  return urls;
+}
 
 export function snapshotProviderDetail(value: unknown): EIP6963ProviderDetail | undefined {
   try {

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthChallenge } from "@/api/auth";
 import {
   assertWalletChain,
+  buildAddEthereumChainParameter,
   chainsMatch,
   EIP6963_ANNOUNCE_EVENT,
   EIP6963_REQUEST_EVENT,
@@ -117,6 +118,59 @@ describe("EIP-6963 wallet boundary", () => {
     expect(toWalletBoundaryError({ code: 4100 }).code).toBe("NOT_CONNECTED");
     expect(toWalletBoundaryError({ code: 4900 }).code).toBe("PROVIDER_DISCONNECTED");
     expect(toWalletBoundaryError({ code: 4901 }).code).toBe("CHAIN_MISMATCH");
+  });
+
+  it("builds one bounded EIP-3085 add-chain parameter", () => {
+    expect(buildAddEthereumChainParameter({
+      chain_id: "11155111",
+      chain_name: "Wallet Testnet",
+      native_currency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
+      rpc_urls: ["https://rpc.example"],
+      block_explorer_urls: ["https://explorer.example"],
+      icon_urls: ["https://assets.example/icon.png"],
+    })).toEqual({
+      chainId: "0xaa36a7",
+      chainName: "Wallet Testnet",
+      nativeCurrency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
+      rpcUrls: ["https://rpc.example"],
+      blockExplorerUrls: ["https://explorer.example"],
+      iconUrls: ["https://assets.example/icon.png"],
+    });
+    for (const rpcURL of [
+      "http://rpc.example",
+      "https://user:secret@rpc.example",
+      "https://rpc.example/?key=secret",
+      "https://rpc.example/#fragment",
+    ]) {
+      expect(() => buildAddEthereumChainParameter({
+        chain_id: "1",
+        chain_name: "Test",
+        native_currency: { name: "Test", symbol: "TST", decimals: 18 },
+        rpc_urls: [rpcURL],
+      })).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+    }
+  });
+
+  it("adds a configured network without requesting accounts or changing the active session", async () => {
+    const fake = createFakeProvider({ wallet_addEthereumChain: null });
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Add Test Wallet" }));
+    expect(await screen.findByText("added")).toBeVisible();
+    expect(fake.request).toHaveBeenCalledWith({
+      method: "wallet_addEthereumChain",
+      params: [{
+        chainId: "0x1",
+        chainName: "Wallet Testnet",
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+        rpcUrls: ["https://rpc.wallet.example"],
+      }],
+    });
+    expect(fake.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"))
+      .toBe(false);
+    expect(screen.queryByTestId("active-account")).not.toBeInTheDocument();
   });
 
   it("fails closed when the configured chain is unavailable, malformed, or mismatched", () => {
@@ -693,20 +747,36 @@ function WalletHarness() {
   return (
     <div>
       {wallet.providers.map((provider) => (
-        <button
-          key={provider.uuid}
-          type="button"
-          onClick={() => {
-            setOperationError(undefined);
-            void wallet.connect(provider.uuid).catch((cause: unknown) => {
-              setOperationError(
-                cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
-              );
-            });
-          }}
-        >
-          {provider.name}
-        </button>
+        <div key={provider.uuid}>
+          <button
+            type="button"
+            onClick={() => {
+              setOperationError(undefined);
+              void wallet.connect(provider.uuid).catch((cause: unknown) => {
+                setOperationError(
+                  cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+                );
+              });
+            }}
+          >
+            {provider.name}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOperationError(undefined);
+              void wallet.addChain(provider.uuid)
+                .then(() => setResult("added"))
+                .catch((cause: unknown) => {
+                  setOperationError(
+                    cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+                  );
+                });
+            }}
+          >
+            Add {provider.name}
+          </button>
+        </div>
       ))}
       {wallet.active && (
         <>
@@ -802,6 +872,12 @@ function renderWallet() {
     native_decimals: 18,
     native_name: "Ether",
     native_symbol: "ETH",
+    wallet_add_chain: {
+      chain_id: "1",
+      chain_name: "Wallet Testnet",
+      native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpc_urls: ["https://rpc.wallet.example"],
+    },
   });
   return render(
     <QueryClientProvider client={queryClient}>

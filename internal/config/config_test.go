@@ -44,6 +44,73 @@ func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
 	}
 }
 
+func TestWalletAddChainConfiguration(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Chain.NativeSymbol = "TST"
+	cfg.Wallet.AddChain = WalletAddChainConfig{
+		RPCURLs:           []string{"https://rpc.public.example"},
+		BlockExplorerURLs: []string{"https://explorer.example"},
+		IconURLs:          []string{"https://assets.example/network.png"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid wallet add-chain configuration: %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		url  string
+	}{
+		{name: "http", url: "http://rpc.example"},
+		{name: "credentials", url: "https://user:secret@rpc.example"},
+		{name: "query", url: "https://rpc.example/?key=secret"},
+		{name: "fragment", url: "https://rpc.example/#network"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := cfg
+			invalid.Wallet.AddChain.RPCURLs = []string{test.url}
+			if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "wallet.add_chain.rpc_urls") {
+				t.Fatalf("invalid public URL passed: %q error=%v", test.url, err)
+			}
+		})
+	}
+
+	metadataOnly := Default()
+	metadataOnly.Wallet.AddChain.IconURLs = []string{"https://assets.example/network.png"}
+	if err := metadataOnly.Validate(); err == nil || !strings.Contains(err.Error(), "requires at least one rpc_url") {
+		t.Fatalf("metadata-only wallet config error = %v", err)
+	}
+
+	tooMany := cfg
+	tooMany.Wallet.AddChain.RPCURLs = make([]string, 6)
+	for index := range tooMany.Wallet.AddChain.RPCURLs {
+		tooMany.Wallet.AddChain.RPCURLs[index] = "https://rpc.example"
+	}
+	if err := tooMany.Validate(); err == nil || !strings.Contains(err.Error(), "at most 5") {
+		t.Fatalf("unbounded wallet URL list error = %v", err)
+	}
+}
+
+func TestWalletAddChainEnvironment(t *testing.T) {
+	cfg := Default()
+	values := map[string]string{
+		"ETHERVIEW_WALLET_ADD_CHAIN_RPC_URLS":            "https://one.example, https://two.example",
+		"ETHERVIEW_WALLET_ADD_CHAIN_BLOCK_EXPLORER_URLS": "https://explorer.example",
+		"ETHERVIEW_WALLET_ADD_CHAIN_ICON_URLS":           "https://assets.example/icon.png",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.Wallet.AddChain.RPCURLs, []string{"https://one.example", "https://two.example"}) ||
+		!reflect.DeepEqual(cfg.Wallet.AddChain.BlockExplorerURLs, []string{"https://explorer.example"}) ||
+		!reflect.DeepEqual(cfg.Wallet.AddChain.IconURLs, []string{"https://assets.example/icon.png"}) {
+		t.Fatalf("unexpected wallet environment config: %#v", cfg.Wallet.AddChain)
+	}
+}
+
 func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretPath := filepath.Join(dir, "database-url")

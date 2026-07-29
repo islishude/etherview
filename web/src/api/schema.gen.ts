@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/erc20-balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressERC20Balances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}/erc20-transfers": {
         parameters: {
             query?: never;
@@ -903,6 +919,14 @@ export interface components {
             data: components["schemas"]["AddressInternalTransaction"][];
             meta: components["schemas"]["Meta"];
         };
+        AddressOrigin: {
+            /** @enum {string} */
+            kind: "contract_creation" | "funding";
+            source_address?: components["schemas"]["Address"];
+            /** @enum {string} */
+            state: "found" | "not_found" | "unavailable";
+            transaction_hash?: components["schemas"]["Hash"];
+        };
         AddressResponse: {
             data: components["schemas"]["AddressSummary"];
             meta: components["schemas"]["Meta"];
@@ -915,6 +939,7 @@ export interface components {
             completeness: components["schemas"]["Completeness"];
             name?: string;
             nonce: components["schemas"]["Quantity"];
+            origin?: components["schemas"]["AddressOrigin"];
             /** @enum {string} */
             type: "eoa" | "contract" | "delegated_eoa" | "unknown";
         };
@@ -1255,6 +1280,20 @@ export interface components {
         };
         /** @description A canonical non-negative fixed-point decimal with at most 18 fractional digits. */
         Decimal: string;
+        ERC20Balance: {
+            balance: components["schemas"]["Quantity"];
+            chain_id: components["schemas"]["Quantity"];
+            confidence: components["schemas"]["StateConfidence"];
+            decimals?: number;
+            name?: string;
+            owner: components["schemas"]["Address"];
+            symbol?: string;
+            token_address: components["schemas"]["Address"];
+        };
+        ERC20BalanceListResponse: {
+            data: components["schemas"]["ERC20Balance"][];
+            meta: components["schemas"]["Meta"];
+        };
         ErrorResponse: {
             error: components["schemas"]["APIError"];
         };
@@ -1389,6 +1428,7 @@ export interface components {
             native_decimals: number;
             native_name: string;
             native_symbol: string;
+            wallet_add_chain?: components["schemas"]["WalletAddChainConfig"];
         };
         PublicConfigResponse: {
             data: components["schemas"]["PublicConfig"];
@@ -1807,6 +1847,19 @@ export interface components {
             };
             language?: components["schemas"]["VerifierLanguage"];
         };
+        WalletAddChainConfig: {
+            block_explorer_urls?: string[];
+            chain_id: components["schemas"]["Quantity"];
+            chain_name: string;
+            icon_urls?: string[];
+            native_currency: components["schemas"]["WalletNativeCurrency"];
+            rpc_urls: string[];
+        };
+        WalletNativeCurrency: {
+            decimals: number;
+            name: string;
+            symbol: string;
+        };
     };
     responses: {
         /** @description Machine-readable error. */
@@ -1890,6 +1943,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AddressResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressERC20Balances: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Positive exact-block ERC-20 balances for an owner. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ERC20BalanceListResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

@@ -138,6 +138,27 @@ type fakeNFTState struct {
 	candidates   []NFTBalanceCandidate
 }
 
+type fakeERC20State struct {
+	observations []ERC20BalanceObservation
+	calls        int
+	snapshot     Snapshot
+	owner        string
+	candidates   []ERC20BalanceCandidate
+}
+
+func (state *fakeERC20State) ERC20Balances(
+	_ context.Context,
+	snapshot Snapshot,
+	owner string,
+	candidates []ERC20BalanceCandidate,
+) ([]ERC20BalanceObservation, error) {
+	state.calls++
+	state.snapshot = snapshot
+	state.owner = owner
+	state.candidates = append([]ERC20BalanceCandidate(nil), candidates...)
+	return append([]ERC20BalanceObservation(nil), state.observations...), nil
+}
+
 func (state *fakeNFTState) Owner(_ context.Context, snapshot Snapshot, _, _ string) (NFTOwnerObservation, error) {
 	state.ownerCalls++
 	state.snapshot = snapshot
@@ -403,6 +424,54 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 		}
 		assertCatalogConsumed(t, backend)
 	})
+}
+
+func TestERC20BalancesDiscoverCandidatesAndReturnOnlyExactPositiveState(t *testing.T) {
+	token := bytesOf(0xcc, 20)
+	zeroToken := bytesOf(0xdd, 20)
+	state := &fakeERC20State{observations: []ERC20BalanceObservation{
+		{Balance: "115792089237316195423570985008687907853269984665640564039457584007913129639935", Confidence: NFTStateConfidenceRPCExact},
+		{Balance: "0", Confidence: NFTStateConfidenceRPCExact},
+	}}
+	catalog, backend := openCatalogWithOptions(t, Options{ERC20State: state},
+		snapshotStep("100", bytesOf(0xaa, 32)),
+		stageStep("complete"),
+		catalogQueryStep{
+			contains: "FROM token_balance_deltas AS d",
+			rows: catalogRows(1,
+				[]driver.Value{token},
+				[]driver.Value{zeroToken},
+			),
+		},
+		catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc20", "90"))},
+		catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(zeroToken, "erc20", "95"))},
+	)
+	page, err := catalog.ERC20Balances(context.Background(), ERC20BalanceRequest{
+		ChainID: "1", Owner: "0x" + strings.Repeat("12", 20), Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 ||
+		page.Items[0].Balance != state.observations[0].Balance ||
+		page.Items[0].Decimals == nil || *page.Items[0].Decimals != 18 ||
+		page.Items[0].Symbol == nil || *page.Items[0].Symbol != "TKN" ||
+		page.Items[0].Confidence != NFTStateConfidenceRPCExact ||
+		state.calls != 1 || len(state.candidates) != 2 ||
+		state.snapshot.BlockHash != "0x"+strings.Repeat("aa", 32) {
+		t.Fatalf("page=%+v state=%+v", page, state)
+	}
+	backend.mu.Lock()
+	candidateQuery := backend.queries[2]
+	backend.mu.Unlock()
+	for _, guard := range []string{
+		"JOIN canonical_blocks", "d.token_id IS NULL", "d.canonical = TRUE",
+	} {
+		if !strings.Contains(candidateQuery, guard) {
+			t.Fatalf("candidate query lacks %q: %s", guard, candidateQuery)
+		}
+	}
+	assertCatalogConsumed(t, backend)
 }
 
 func statRow(block string) []driver.Value {

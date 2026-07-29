@@ -40,6 +40,13 @@ func main() {
 		writeEnvelope(response, map[string]any{
 			"chain_id": "1", "chain_name": "Ethereum", "native_symbol": "ETH",
 			"native_name": "Ether", "native_decimals": 18,
+			"wallet_add_chain": map[string]any{
+				"chain_id": "1", "chain_name": "Ethereum",
+				"native_currency": map[string]any{
+					"name": "Ether", "symbol": "ETH", "decimals": 18,
+				},
+				"rpc_urls": []string{"https://public-rpc.example"},
+			},
 			"features": map[string]bool{
 				"trace": true, "mempool": true, "historical_state": true,
 				"verification": false, "nft_metadata": true, "pricing": false,
@@ -193,6 +200,10 @@ func main() {
 			writeEnvelope(response, map[string]any{
 				"address": testAddress, "type": "contract", "balance": "900719925474099312345", "nonce": "1",
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"origin": map[string]any{
+					"kind": "contract_creation", "state": "found",
+					"source_address": testEOA, "transaction_hash": testTransactionHash,
+				},
 			})
 		case testEOA:
 			writeEnvelope(response, map[string]any{
@@ -247,6 +258,17 @@ func main() {
 		writeEnvelopeMeta(response, []any{map[string]any{
 			"chain_id": "1", "owner": testAddress, "token_address": testAddress,
 			"token_id": "1", "balance": "1", "confidence": "rpc_exact",
+		}}, map[string]any{"coverage_end": "2"})
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/erc20-balances", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelopeMeta(response, []any{map[string]any{
+			"chain_id": "1", "owner": testAddress, "token_address": testEOA,
+			"balance": "1234500", "confidence": "rpc_exact",
+			"name": "Example Token", "symbol": "EXT", "decimals": 4,
 		}}, map[string]any{"coverage_end": "2"})
 	})
 	mux.HandleFunc("GET /api/v1/tokens", func(response http.ResponseWriter, _ *http.Request) {

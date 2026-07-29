@@ -40,6 +40,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
 | P70-T16 | in_progress | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and Preview tests |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
+| P70-T18 | blocked | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
 
 ## Acceptance
 
@@ -133,11 +134,23 @@ P70-T09, P70-T12, P70-T13, P70-T14, and P70-T17 are complete. P70-T16
 remains `in_progress` only for a competing-hash Preview reorg run; its
 implementation, database reorg regression, performance target, browser suite,
 full common gates, and preserved-volume Preview backfill otherwise pass.
+P70-T18 is blocked until a disposable `INTEGRATION_DATABASE_URL` and a host
+that permits Chromium Mach bootstrap registration are available for the
+PostgreSQL and embedded Playwright reruns.
 P70-T06 and the v1 release remain blocked on P66 completion, conformance,
 security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T18: P40-T10 and P50-T12 implementation checks pass, including the full
+  ordinary Go suite, 144 Vitest tests, frontend lint/build, generated-contract
+  drift checks, plan and whitespace validation, and the aggregate `make check`
+  ordinary/race, security, license, Dockerfile, Compose, and Helm gates. The
+  PostgreSQL target currently reports its documented skip because
+  `INTEGRATION_DATABASE_URL` is unset. Every available Chromium executable
+  aborts before test execution because this host denies its macOS Mach
+  bootstrap registration; a browser-capable host and disposable migrated
+  database clear the two release-validation blockers.
 - P70-T17 implementation: `PostgresCanonicalSource.Tip` and both ABI history
   lookups now order qualified numeric columns while converting quantities to
   text only for scanning. Address state remains EIP-1898 block-hash pinned and

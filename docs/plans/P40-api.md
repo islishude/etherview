@@ -29,6 +29,7 @@ the agreed Etherscan V2 subset.
 | P40-T07 | done | P20-T11, P40-T02, P40-T03 | Transaction-scoped token transfer, log, trace identity, and state-change resources | contract, cursor, reorg, and capability tests |
 | P40-T08 | done | P40-T02, P40-T07 | Snapshot-stable address transaction, internal-call, ERC-20, and NFT activity resources | contract, cursor, reorg, and capability tests |
 | P40-T09 | done | P40-T02, P40-T05 | Writer-authoritative home snapshot and centralized SSE fanout | contract, replay, concurrency, and integration tests |
+| P40-T10 | done | P20, P40-T08 | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration | contract, state, cursor, reorg, and configuration tests |
 
 ## Acceptance
 
@@ -222,3 +223,16 @@ None.
   gitleaks reports no finding, and npm audit reports zero vulnerabilities.
 - P40-T06 commit/PR: none created; the user requested implementation and
   verification but did not request a commit or pull request.
+- P40-T10 implementation and focused verification are complete: generated
+  OpenAPI/Go/TypeScript contracts, address-origin coverage and reorg unit
+  regressions, exact ERC-20 fixed-block RPC and catalog regressions, public
+  wallet-config isolation, configuration boundaries, and HTTP operation
+  inventory all pass. `go test ./internal/config ./internal/query
+  ./internal/state ./internal/catalog ./internal/httpapi ./internal/apiops`
+  and `make generate-check` pass. The aggregate `make check` also passes its
+  plan, generation, lint, ordinary/race, security, license, Dockerfile,
+  Compose, and Helm gates.
+- P40-T10 release validation is tracked by P70-T18. The local
+  `make test-integration` invocation reported its documented `SKIP` because
+  `INTEGRATION_DATABASE_URL` is not configured; no production or developer
+  database was guessed or reused.

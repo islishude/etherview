@@ -15,25 +15,26 @@ import (
 )
 
 type fakeCatalog struct {
-	tokenPage  catalog.TokenPage
-	token      catalog.TokenContract
-	tokenErr   error
-	nftOwner   catalog.NFTOwnership
-	nftBalance catalog.NFTBalancePage
-	nftErr     error
-	trace      catalog.TransactionTrace
-	traceErr   error
-	txTokens   catalog.TransactionTokenEventPage
-	txLogs     catalog.TransactionLogPage
-	txState    catalog.TransactionStateChangePage
-	txRequest  catalog.TransactionResourceRequest
-	blockStats []catalog.BlockStat
-	aggregate  catalog.AggregateStats
-	statsErr   error
-	internal   catalog.AddressInternalTransactionPage
-	erc20      catalog.AddressTokenTransferPage
-	nftEvents  catalog.AddressTokenTransferPage
-	addressReq catalog.AddressActivityRequest
+	tokenPage    catalog.TokenPage
+	token        catalog.TokenContract
+	tokenErr     error
+	nftOwner     catalog.NFTOwnership
+	nftBalance   catalog.NFTBalancePage
+	erc20Balance catalog.ERC20BalancePage
+	nftErr       error
+	trace        catalog.TransactionTrace
+	traceErr     error
+	txTokens     catalog.TransactionTokenEventPage
+	txLogs       catalog.TransactionLogPage
+	txState      catalog.TransactionStateChangePage
+	txRequest    catalog.TransactionResourceRequest
+	blockStats   []catalog.BlockStat
+	aggregate    catalog.AggregateStats
+	statsErr     error
+	internal     catalog.AddressInternalTransactionPage
+	erc20        catalog.AddressTokenTransferPage
+	nftEvents    catalog.AddressTokenTransferPage
+	addressReq   catalog.AddressActivityRequest
 }
 
 func (fake *fakeCatalog) TokenContract(context.Context, string, string) (catalog.TokenContract, error) {
@@ -54,6 +55,10 @@ func (fake *fakeCatalog) NFTOwner(context.Context, string, string, string) (cata
 
 func (fake *fakeCatalog) NFTBalances(context.Context, catalog.NFTBalanceRequest) (catalog.NFTBalancePage, error) {
 	return fake.nftBalance, fake.nftErr
+}
+
+func (fake *fakeCatalog) ERC20Balances(context.Context, catalog.ERC20BalanceRequest) (catalog.ERC20BalancePage, error) {
+	return fake.erc20Balance, fake.nftErr
 }
 
 func (fake *fakeCatalog) BlockStats(context.Context, catalog.BlockStatsRequest) ([]catalog.BlockStat, error) {

@@ -46,6 +46,7 @@ var (
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	Chain         ChainConfig         `yaml:"chain"`
+	Wallet        WalletConfig        `yaml:"wallet"`
 	Database      DatabaseConfig      `yaml:"database"`
 	RPC           RPCConfig           `yaml:"rpc"`
 	Runtime       RuntimeConfig       `yaml:"runtime"`
@@ -84,6 +85,19 @@ type ChainConfig struct {
 	NativeName          string        `yaml:"native_name"`
 	NativeDecimals      uint8         `yaml:"native_decimals"`
 	MaxReorgDepth       uint64        `yaml:"max_reorg_depth"`
+}
+
+type WalletConfig struct {
+	AddChain WalletAddChainConfig `yaml:"add_chain"`
+}
+
+// WalletAddChainConfig contains only explicitly public URLs that may be sent
+// to an injected wallet. Server RPC endpoints are intentionally separate and
+// are never used as a fallback for this browser-facing configuration.
+type WalletAddChainConfig struct {
+	RPCURLs           []string `yaml:"rpc_urls"`
+	BlockExplorerURLs []string `yaml:"block_explorer_urls"`
+	IconURLs          []string `yaml:"icon_urls"`
 }
 
 type DatabaseConfig struct {
@@ -559,6 +573,28 @@ func (c Config) Validate() error {
 	if c.Chain.NativeSymbol == "" || c.Chain.NativeName == "" {
 		errs = append(errs, errors.New("chain native currency name and symbol are required"))
 	}
+	if len(c.Wallet.AddChain.RPCURLs) > 0 {
+		if len(c.Chain.NativeSymbol) < 2 || len(c.Chain.NativeSymbol) > 6 {
+			errs = append(errs, errors.New("wallet.add_chain requires chain.native_symbol to contain 2 to 6 characters"))
+		}
+	} else if len(c.Wallet.AddChain.BlockExplorerURLs) > 0 || len(c.Wallet.AddChain.IconURLs) > 0 {
+		errs = append(errs, errors.New("wallet.add_chain metadata requires at least one rpc_url"))
+	}
+	for name, values := range map[string][]string{
+		"wallet.add_chain.rpc_urls":            c.Wallet.AddChain.RPCURLs,
+		"wallet.add_chain.block_explorer_urls": c.Wallet.AddChain.BlockExplorerURLs,
+		"wallet.add_chain.icon_urls":           c.Wallet.AddChain.IconURLs,
+	} {
+		if len(values) > 5 {
+			errs = append(errs, fmt.Errorf("%s must contain at most 5 URLs", name))
+			continue
+		}
+		for index, value := range values {
+			if err := validateWalletURL(value); err != nil {
+				errs = append(errs, fmt.Errorf("%s[%d]: %w", name, index, err))
+			}
+		}
+	}
 	if c.Chain.MaxReorgDepth == 0 {
 		errs = append(errs, errors.New("chain.max_reorg_depth must be greater than zero"))
 	}
@@ -962,6 +998,32 @@ func validatePublicOrigin(raw string) error {
 		}
 	default:
 		return errors.New("server.public_url must use HTTP or HTTPS")
+	}
+	return nil
+}
+
+func validateWalletURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if raw == "" || len(raw) > 2048 || raw != strings.TrimSpace(raw) || err != nil || parsed == nil ||
+		parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+		parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
+		strings.HasSuffix(parsed.Host, ":") {
+		return errors.New("must be an absolute HTTPS URL without credentials, query, or fragment")
+	}
+	host := parsed.Hostname()
+	if strings.HasSuffix(host, ".") || strings.Contains(host, "%") {
+		return errors.New("host is invalid")
+	}
+	for index := range len(host) {
+		if host[index] > 0x7f {
+			return errors.New("host must be ASCII")
+		}
+	}
+	if port := parsed.Port(); port != "" {
+		number, parseErr := strconv.ParseUint(port, 10, 16)
+		if parseErr != nil || number == 0 {
+			return errors.New("port must be between 1 and 65535")
+		}
 	}
 	return nil
 }
@@ -1440,6 +1502,15 @@ func applyEnvironmentForRoles(
 	setString(lookup, "CHAIN_NAME", &cfg.Chain.Name)
 	setString(lookup, "CHAIN_NATIVE_SYMBOL", &cfg.Chain.NativeSymbol)
 	setString(lookup, "CHAIN_NATIVE_NAME", &cfg.Chain.NativeName)
+	if value, ok := lookup(envPrefix + "WALLET_ADD_CHAIN_RPC_URLS"); ok {
+		cfg.Wallet.AddChain.RPCURLs = splitCSV(value)
+	}
+	if value, ok := lookup(envPrefix + "WALLET_ADD_CHAIN_BLOCK_EXPLORER_URLS"); ok {
+		cfg.Wallet.AddChain.BlockExplorerURLs = splitCSV(value)
+	}
+	if value, ok := lookup(envPrefix + "WALLET_ADD_CHAIN_ICON_URLS"); ok {
+		cfg.Wallet.AddChain.IconURLs = splitCSV(value)
+	}
 	pepper, err := lookupValueOrFile("API_KEY_PEPPER", lookup, readFile)
 	if err != nil {
 		return err

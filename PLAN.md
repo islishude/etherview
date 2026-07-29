@@ -59,7 +59,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   identity, state-change resources, and snapshot-stable address activity
   across transactions, internal calls, ERC-20 transfers, and NFT transfers.
   P40-T09 adds a writer-authoritative complete home snapshot and centralized
-  SSE fanout without changing the durable `/events` replay protocol.
+  SSE fanout without changing the durable `/events` replay protocol. P40-T10
+  adds snapshot-bound address origins, exact ERC-20 balances, and isolated
+  public wallet-chain configuration.
 - P50 is complete: core and capability explorer pages, exact verification-job
   and published-artifact reads, EIP-6963 wallet discovery, session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
@@ -75,7 +77,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   independent pagination and a contract-only entry to the existing contract
   page while keeping state identity fields out of the address summary.
   P50-T11 replaces the home page's three REST polling loops with one atomic
-  same-origin full-snapshot EventSource and no HTTP fallback.
+  same-origin full-snapshot EventSource and no HTTP fallback. P50-T12 adds the
+  de-duplicated address header, QR/copy controls, origin and ERC-20 holdings,
+  configured native labels, and account-independent add-network flow.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

@@ -11,6 +11,7 @@ import type {
   ChartMetricSeries,
   ChartOverview,
   CursorPage,
+  ERC20Balance,
   GenesisAccount,
   NFTBalance,
   PendingSnapshot,
@@ -442,6 +443,33 @@ export function useAddressNFTBalances(
     queryFn: async (): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/nfts", {
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: 10_000,
+  });
+}
+
+export function useAddressERC20Balances(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["address", address, "erc20-balances", cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<ERC20Balance>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/erc20-balances", {
           params: { path: { address }, query: { limit, cursor } },
         }),
       );

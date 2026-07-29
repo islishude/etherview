@@ -35,6 +35,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T09 | done        | P50-T02       | Compact home, relative recent-block time, and shared brand icon          | frontend, embedded E2E, and generation checks |
 | P50-T10 | done        | P40-T08       | Address activity tabs, lazy assets, and contract-address entry           | frontend, embedded E2E, and generation checks |
 | P50-T11 | done        | P40-T09       | Atomic home snapshot EventSource with no REST polling fallback            | frontend, embedded E2E, and generation checks |
+| P50-T12 | done        | P40-T10       | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
 
 ## Acceptance
 
@@ -335,3 +336,15 @@ None.
   leak scans, the generated-client build, and focused security tests.
 - P50-T04 commit/PR: none created because this task did not request a commit or
   pull request; evidence is bound to the current working tree.
+- P50-T12 implementation and non-browser verification are complete:
+  Contract/Address headings, de-duplicated copy/QR header, origin states,
+  independent ERC-20/NFT holdings, configured native labels, and the
+  account-independent EIP-6963 add-network flow are covered by 144 passing
+  Vitest tests. `npm --prefix web run lint`, `npm --prefix web run build`, and
+  `make generate-check` pass. The aggregate `make check` also passes, including
+  the embedded asset build, full Go ordinary/race suites, security and license
+  scans, and deployment rendering.
+- P50-T12 browser release validation is tracked by P70-T18. Three
+  `make test-e2e` attempts, including an approved unsandboxed rerun and a
+  `PLAYWRIGHT_SINGLE_PROCESS=1` fallback, built the embedded binary but local
+  Chrome exited with `SIGABRT`; Playwright then reported `kill EPERM`.

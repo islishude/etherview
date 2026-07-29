@@ -394,6 +394,53 @@
             }
           }
         },
+        "wallet": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "add_chain": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rpc_urls",
+                "block_explorer_urls",
+                "icon_urls"
+              ],
+              "properties": {
+                "rpc_urls": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2048,
+                    "pattern": "^https://"
+                  }
+                },
+                "block_explorer_urls": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2048,
+                    "pattern": "^https://"
+                  }
+                },
+                "icon_urls": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2048,
+                    "pattern": "^https://"
+                  }
+                }
+              }
+            }
+          }
+        },
         "database": {
           "type": "object",
           "required": ["url"],

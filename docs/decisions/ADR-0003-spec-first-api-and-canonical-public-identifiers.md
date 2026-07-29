@@ -28,7 +28,8 @@ authoritative empty result.
   normalized chain ID.
 - The wallet boundary has a closed RPC allowlist: `eth_requestAccounts`,
   `eth_accounts`, `eth_chainId`, `eth_call`, `eth_sendTransaction`, and the
-  SIWE-only `personal_sign`.
+  SIWE-only `personal_sign`, plus `wallet_addEthereumChain` only through the
+  generated public add-chain configuration.
   Every contract operation rechecks the selected account and configured chain,
   binds `from` and `chainId` in its call object, bounds calldata/value/results,
   and rejects malformed provider responses without trusting provider-owned
@@ -38,6 +39,16 @@ authoritative empty result.
   hash or changed completion session is an unknown outcome that must be checked
   in the wallet before retrying. Provider error messages and data never reach
   the DOM; stable local codes select bilingual text.
+- `wallet_addEthereumChain` is independent of account connection and SIWE. It
+  never requests accounts, switches the active chain, or mutates the selected
+  wallet session. The wallet boundary validates and converts the generated
+  snake-case public object into one exact EIP-3085 camel-case parameter and
+  accepts only a `null` provider result as success. Chain identity, name, and
+  native currency come from the existing chain configuration. The capability
+  exists only when the operator supplies at least one separate public HTTPS RPC
+  URL; server `rpc.endpoints` are never copied into the public API. Every URL
+  list is bounded and rejects credentials, queries, fragments, and non-HTTPS
+  schemes so private routing material cannot enter the browser or wallet.
 - `personal_sign` is reachable only through the bounded
   `signSIWEChallenge(AuthChallenge)` capability defined by ADR-0020. The
   capability itself reads the generated public configuration and rejects

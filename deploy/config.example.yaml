@@ -28,6 +28,14 @@ chain:
   native_decimals: 18
   max_reorg_depth: 128
 
+wallet:
+  # Optional public EIP-3085 metadata. These URLs are returned by /api/v1/config
+  # and sent to injected wallets, so never place credentials in them.
+  add_chain:
+    rpc_urls: []
+    block_explorer_urls: []
+    icon_urls: []
+
 database:
   # Supply ETHERVIEW_DATABASE_URL or ETHERVIEW_DATABASE_URL_FILE at runtime.
   url: ""

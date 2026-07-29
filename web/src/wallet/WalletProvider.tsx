@@ -14,6 +14,7 @@ import type { AuthChallenge } from "@/api/auth";
 import { usePublicConfig } from "@/api/hooks";
 import {
   assertWalletChain,
+  buildAddEthereumChainParameter,
   EIP6963_ANNOUNCE_EVENT,
   EIP6963_REQUEST_EVENT,
   type EIP1193Provider,
@@ -66,9 +67,11 @@ interface WalletContextValue {
   providers: WalletOption[];
   active?: ActiveWallet;
   connecting: boolean;
+  addingChain: boolean;
   error?: WalletBoundaryErrorCode;
   discover: () => void;
   connect: (uuid: string) => Promise<void>;
+  addChain: (uuid: string) => Promise<void>;
   disconnect: () => void;
   readContract: (call: ContractCall, expectedChainID: string | undefined) => Promise<Hex>;
   sendTransaction: (
@@ -90,6 +93,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
   );
   const [internalActive, setInternalActive] = useState<InternalActiveWallet>();
   const [connecting, setConnecting] = useState(false);
+  const [addingChain, setAddingChain] = useState(false);
   const [error, setError] = useState<WalletBoundaryErrorCode>();
   const activeRef = useRef<InternalActiveWallet | undefined>(undefined);
   const connectionAttemptRef = useRef(0);
@@ -268,6 +272,29 @@ export function WalletProvider({ children }: PropsWithChildren) {
       }
     },
     [commitActive, providersByID],
+  );
+
+  const addChain = useCallback(
+    async (uuid: string) => {
+      const detail = providersByID.get(uuid);
+      if (!detail) throw new WalletBoundaryError("NOT_CONNECTED");
+      const parameter = buildAddEthereumChainParameter(publicConfig.data?.wallet_add_chain);
+      setAddingChain(true);
+      try {
+        const result = await requestProvider(detail.provider, {
+          method: "wallet_addEthereumChain",
+          params: [parameter],
+        });
+        if (result !== null) {
+          throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+        }
+      } catch (cause) {
+        throw toWalletBoundaryError(cause);
+      } finally {
+        setAddingChain(false);
+      }
+    },
+    [providersByID, publicConfig.data?.wallet_add_chain],
   );
 
   const requireProvider = useCallback(
@@ -453,9 +480,11 @@ export function WalletProvider({ children }: PropsWithChildren) {
           }
         : undefined,
       connecting,
+      addingChain,
       error,
       discover,
       connect,
+      addChain,
       disconnect,
       readContract,
       sendTransaction,
@@ -463,6 +492,8 @@ export function WalletProvider({ children }: PropsWithChildren) {
     }),
     [
       connect,
+      addChain,
+      addingChain,
       connecting,
       disconnect,
       discover,

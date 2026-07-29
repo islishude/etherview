@@ -247,6 +247,12 @@ config:
     native_name: Ether
     native_decimals: 18
     max_reorg_depth: 128
+  wallet:
+    # Optional public EIP-3085 values. Never place credentials in these URLs.
+    add_chain:
+      rpc_urls: []
+      block_explorer_urls: []
+      icon_urls: []
   database:
     url: ""
     # Keep both URLs empty in Helm values. The writer URL and optional reader

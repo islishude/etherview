@@ -104,6 +104,46 @@ func testHandler(t *testing.T, reader Reader) http.Handler {
 	return handler
 }
 
+func TestPublicConfigExposesOnlyExplicitWalletRPC(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Chain.ID = 11155111
+	cfg.Chain.Name = "Public Testnet"
+	cfg.Chain.NativeName = "Test Coin"
+	cfg.Chain.NativeSymbol = "TST"
+	cfg.RPC.Endpoints = []config.RPCEndpoint{{
+		Name: "private", URL: "https://private-rpc.internal.example",
+	}}
+	cfg.Wallet.AddChain.RPCURLs = []string{"https://public-rpc.example"}
+	cfg.Wallet.AddChain.BlockExplorerURLs = []string{"https://explorer.example"}
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{},
+		RequestID: func() string { return "request-wallet-config" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/config", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		`"chain_id":"11155111"`,
+		`"chain_name":"Public Testnet"`,
+		`"native_currency":{"decimals":18,"name":"Test Coin","symbol":"TST"}`,
+		`"rpc_urls":["https://public-rpc.example"]`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body lacks %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "private-rpc.internal.example") {
+		t.Fatalf("private server RPC leaked into public config: %s", body)
+	}
+}
+
 func TestStatusUsesStringQuantitiesAndCompleteness(t *testing.T) {
 	t.Parallel()
 	complete := gen.Completeness{Core: gen.StageStateComplete, Trace: gen.StageStateUnavailable, Metadata: gen.StageStatePending, State: gen.StageStateComplete}

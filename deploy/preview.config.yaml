@@ -20,6 +20,12 @@ chain:
   native_decimals: 18
   max_reorg_depth: 128
 
+wallet:
+  add_chain:
+    rpc_urls: []
+    block_explorer_urls: []
+    icon_urls: []
+
 database:
   url: ""
   read_url: ""

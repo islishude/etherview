@@ -36,6 +36,16 @@ type CanonicalSource interface {
 	IsCanonical(context.Context, CanonicalRef) (bool, error)
 }
 
+type AddressOriginReader interface {
+	AddressOrigin(
+		context.Context,
+		string,
+		gen.AddressSummaryType,
+		uint64,
+		common.Hash,
+	) (gen.AddressOrigin, error)
+}
+
 type PostgresCanonicalSource struct {
 	DB      *sql.DB
 	ChainID string
@@ -82,6 +92,7 @@ func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference Cano
 
 type Reader struct {
 	Base         httpapi.Reader
+	Origin       AddressOriginReader
 	Canonical    CanonicalSource
 	Pool         *ethrpc.Pool
 	Completeness gen.Completeness
@@ -180,10 +191,27 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 	if completeness.Metadata == "" {
 		completeness.Metadata = gen.StageStateUnavailable
 	}
+	origin := gen.AddressOrigin{Kind: gen.Funding, State: gen.AddressOriginStateUnavailable}
+	if accountType == gen.AddressSummaryTypeContract {
+		origin.Kind = gen.ContractCreation
+	}
+	if r.Origin != nil {
+		origin, err = r.Origin.AddressOrigin(ctx, checksummed, accountType, reference.Number, reference.Hash)
+		if err != nil {
+			return gen.AddressSummary{}, err
+		}
+		canonical, err = r.Canonical.IsCanonical(ctx, reference)
+		if err != nil {
+			return gen.AddressSummary{}, fmt.Errorf("recheck account origin block: %w", err)
+		}
+		if !canonical {
+			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during origin query", httpapi.ErrNotReady)
+		}
+	}
 	return gen.AddressSummary{
 		Address: checksummed, AtBlock: strings.ToLower(reference.Hash.Hex()),
 		Balance: balanceDecimal, Nonce: nonceDecimal, Type: accountType,
-		CodeHash: codeHash, Completeness: completeness,
+		CodeHash: codeHash, Origin: &origin, Completeness: completeness,
 	}, nil
 }
 

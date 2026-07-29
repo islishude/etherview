@@ -619,6 +619,29 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /addresses/{address}/erc20-balances:
+    get:
+      operationId: listAddressERC20Balances
+      tags: [addresses, tokens]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Positive exact-block ERC-20 balances for an owner.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ERC20BalanceListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /tokens:
     get:
       operationId: listTokens
@@ -1793,10 +1816,59 @@ components:
           type: integer
           minimum: 0
           maximum: 255
+        wallet_add_chain:
+          $ref: "#/components/schemas/WalletAddChainConfig"
         features:
           type: object
           additionalProperties:
             type: boolean
+    WalletNativeCurrency:
+      type: object
+      required: [name, symbol, decimals]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        symbol:
+          type: string
+          minLength: 2
+          maxLength: 6
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+    WalletAddChainConfig:
+      type: object
+      required: [chain_id, chain_name, native_currency, rpc_urls]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        chain_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        native_currency:
+          $ref: "#/components/schemas/WalletNativeCurrency"
+        rpc_urls:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            format: uri
+        block_explorer_urls:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uri
+        icon_urls:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uri
     Block:
       type: object
       required: [hash, number, parent_hash, timestamp, transaction_count, canonical, finality, completeness]
@@ -1990,8 +2062,24 @@ components:
           $ref: "#/components/schemas/Hash"
         name:
           type: string
+        origin:
+          $ref: "#/components/schemas/AddressOrigin"
         completeness:
           $ref: "#/components/schemas/Completeness"
+    AddressOrigin:
+      type: object
+      required: [kind, state]
+      properties:
+        kind:
+          type: string
+          enum: [contract_creation, funding]
+        state:
+          type: string
+          enum: [found, not_found, unavailable]
+        source_address:
+          $ref: "#/components/schemas/Address"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
     GenesisAccount:
       type: object
       required:
@@ -2154,6 +2242,28 @@ components:
           $ref: "#/components/schemas/Quantity"
         confidence:
           $ref: "#/components/schemas/StateConfidence"
+    ERC20Balance:
+      type: object
+      required: [chain_id, owner, token_address, balance, confidence]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        owner:
+          $ref: "#/components/schemas/Address"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        balance:
+          $ref: "#/components/schemas/Quantity"
+        confidence:
+          $ref: "#/components/schemas/StateConfidence"
+        name:
+          type: string
+        symbol:
+          type: string
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
     BlockStat:
       type: object
       required:
@@ -3349,6 +3459,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AddressTokenTransfer"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ERC20BalanceListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ERC20Balance"
         meta:
           $ref: "#/components/schemas/Meta"
     GenesisAccountListResponse:

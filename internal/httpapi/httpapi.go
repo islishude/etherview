@@ -331,6 +331,7 @@ func (h *Handler) routes() {
 	h.handleBillable("listAddressNFTTransfers", h.addressNFTTransfers)
 	if h.catalog != nil {
 		h.handleBillable("listAddressNFTBalances", h.nftBalances)
+		h.handleBillable("listAddressERC20Balances", h.erc20Balances)
 		h.handleBillable("listTokens", h.tokens)
 		h.handleBillable("getToken", h.token)
 		h.handleBillable("listTokenTransfers", h.tokenTransfers)
@@ -777,6 +778,26 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		NativeName:     h.cfg.Chain.NativeName,
 		NativeDecimals: int(h.cfg.Chain.NativeDecimals),
 		Features:       features,
+	}
+	if len(h.cfg.Wallet.AddChain.RPCURLs) > 0 {
+		var blockExplorerURLs, iconURLs *[]string
+		if len(h.cfg.Wallet.AddChain.BlockExplorerURLs) > 0 {
+			values := slices.Clone(h.cfg.Wallet.AddChain.BlockExplorerURLs)
+			blockExplorerURLs = &values
+		}
+		if len(h.cfg.Wallet.AddChain.IconURLs) > 0 {
+			values := slices.Clone(h.cfg.Wallet.AddChain.IconURLs)
+			iconURLs = &values
+		}
+		data.WalletAddChain = &gen.WalletAddChainConfig{
+			ChainId: quantity(h.cfg.Chain.ID), ChainName: h.cfg.Chain.Name,
+			NativeCurrency: gen.WalletNativeCurrency{
+				Name: h.cfg.Chain.NativeName, Symbol: h.cfg.Chain.NativeSymbol,
+				Decimals: int(h.cfg.Chain.NativeDecimals),
+			},
+			RpcUrls:           slices.Clone(h.cfg.Wallet.AddChain.RPCURLs),
+			BlockExplorerUrls: blockExplorerURLs, IconUrls: iconURLs,
+		}
 	}
 	writeJSON(w, http.StatusOK, gen.PublicConfigResponse{Data: data, Meta: h.meta(r)})
 }
@@ -1393,6 +1414,41 @@ func (h *Handler) nftBalances(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := h.catalogPageMeta(r, page.NextCursor, page.Snapshot)
 	writeJSON(w, http.StatusOK, gen.NFTBalanceListResponse{Data: items, Meta: meta})
+}
+
+func (h *Handler) erc20Balances(w http.ResponseWriter, r *http.Request) {
+	owner, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	limit, cursor, ok := parseCatalogPage(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.ERC20Balances(r.Context(), catalog.ERC20BalanceRequest{
+		ChainID: h.chainID(), Owner: owner, Cursor: cursor, Limit: limit,
+	})
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.ERC20Balance, len(page.Items))
+	for index, item := range page.Items {
+		var decimals *int
+		if item.Decimals != nil {
+			value := int(*item.Decimals)
+			decimals = &value
+		}
+		items[index] = gen.ERC20Balance{
+			ChainId: item.ChainID, Owner: item.Owner,
+			TokenAddress: item.TokenAddress, Balance: item.Balance,
+			Confidence: gen.StateConfidence(item.Confidence),
+			Name:       item.Name, Symbol: item.Symbol, Decimals: decimals,
+		}
+	}
+	writeJSON(w, http.StatusOK, gen.ERC20BalanceListResponse{
+		Data: items, Meta: h.catalogPageMeta(r, page.NextCursor, page.Snapshot),
+	})
 }
 
 func (h *Handler) blockStats(w http.ResponseWriter, r *http.Request) {

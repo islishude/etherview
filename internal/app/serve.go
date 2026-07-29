@@ -425,6 +425,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		var (
 			canonicalState state.CanonicalSource
 			nftState       catalog.NFTStateReconciler
+			erc20State     catalog.ERC20StateReconciler
 			nameResolver   query.NameResolver
 			priceProvider  etherscan.PriceProvider
 		)
@@ -463,10 +464,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			// Canonical state is a correctness fence around external RPC reads
 			// and exact observation writes. It must not inherit replica lag.
 			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
-			nftState, err = state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
-			if err != nil {
-				return err
+			stateReconciler, stateErr := state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
+			if stateErr != nil {
+				return stateErr
 			}
+			nftState = stateReconciler
+			erc20State = stateReconciler
 		}
 		var traceCache accelerator.BlobStore
 		if cfg.Adapters.S3Endpoint != "" {
@@ -480,7 +483,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 				return err
 			}
 		}
-		catalogReader, err := catalog.NewPostgres(readDB, catalog.Options{NFTState: nftState, TraceCache: traceCache, Logger: logger})
+		catalogReader, err := catalog.NewPostgres(readDB, catalog.Options{
+			NFTState: nftState, ERC20State: erc20State,
+			TraceCache: traceCache, Logger: logger,
+		})
 		if err != nil {
 			return err
 		}
@@ -537,7 +543,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if canonicalState != nil {
 			stateReader := &state.Reader{
 				Base: baseReader, Pool: rpcBuild.Pool, Completeness: completeness,
-				Canonical: canonicalState,
+				Canonical: canonicalState, Origin: reader,
 			}
 			publicReader = stateReader
 			compatibilityState = stateReader

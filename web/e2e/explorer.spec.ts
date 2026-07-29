@@ -208,9 +208,19 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   );
   expect(transactionOverflow).toBeLessThanOrEqual(1);
   await activateInView(page.getByRole("link", { name: address, exact: true }).first());
+  await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
   const addressSummary = page.getByRole("heading", { name: "Address summary" }).locator("..");
   await expect(addressSummary).toBeVisible();
-  await expect(addressSummary.getByText("900.719925474099312345", { exact: true })).toBeVisible();
+  await expect(addressSummary.getByText("900.719925474099312345 ETH", { exact: true })).toBeVisible();
+  await expect(addressSummary.getByText("Type", { exact: true })).toHaveCount(0);
+  await expect(addressSummary.getByText(address, { exact: true })).toHaveCount(0);
+  await expect(addressSummary.getByRole("link", { name: walletAccount })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Show QR code" }));
+  const qrDialog = page.getByRole("dialog", { name: "Address QR code" });
+  await expect(qrDialog).toBeFocused();
+  await expect(qrDialog.getByText(`ethereum:${address}@1`, { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(qrDialog).toHaveCount(0);
   await expect(page.getByText(/unavailable state is never displayed as zero/)).toBeVisible();
   await expect(page.getByText("Data completeness", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Code hash", { exact: true })).toHaveCount(0);
@@ -275,11 +285,14 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
 
   await page.goto(`/address/${address}?tab=assets`);
+  await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
+  await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Canonical NFT balances", level: 2 })).toBeVisible();
   await expect(page.getByText("Exact RPC observation", { exact: true })).toBeVisible();
 
   await page.goto(`/address/${walletAccount}`);
-  await expect(page.getByText("Externally owned account", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Address", level: 1 })).toBeVisible();
+  await expect(page.getByText("Externally owned account", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveCount(0);
 
   await page.goto("/verify");
@@ -1161,6 +1174,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
             }
             return transactionHash;
           }
+          if (method === "wallet_addEthereumChain") return null;
           throw new Error(`unexpected wallet method: ${method}`);
         },
         on(event: string, listener: (value: unknown) => void) {
@@ -1214,6 +1228,20 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await expect(page.getByText("Ethereum", { exact: true })).toBeVisible();
 
   recordWalletBoundary = true;
+  await activateInView(page.getByRole("button", { name: "Add Ethereum network" }));
+  await expect(page.getByText("Ethereum was added to the wallet.")).toBeVisible();
+  const addNetworkRequests = await page.evaluate(
+    () => (window as WalletWindow).__etherviewE2EWallet.requests,
+  );
+  expect(addNetworkRequests).toEqual([{
+    method: "wallet_addEthereumChain",
+    params: [{
+      chainId: "0x1",
+      chainName: "Ethereum",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: ["https://public-rpc.example"],
+    }],
+  }]);
   await activateInView(page.locator(".wallet-summary"));
   await expect(page.locator(".wallet-option")).toContainText(longWalletName);
   const providerMenuScan = await new AxeBuilder({ page })
@@ -1277,6 +1305,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
         "eth_chainId",
         "eth_requestAccounts",
         "eth_sendTransaction",
+        "wallet_addEthereumChain",
       ].includes(method),
     ),
   ).toBe(true);

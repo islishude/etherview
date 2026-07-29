@@ -222,7 +222,7 @@ describe("core explorer pages", () => {
     if (!addressLink) throw new Error("transaction address link is missing");
     await user.click(addressLink);
     expect(await screen.findByRole("heading", { name: "地址摘要" })).toBeVisible();
-    expect(screen.getByText("委托外部账户", { exact: true })).toBeVisible();
+    expect(screen.queryByText("委托外部账户", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("delegated_eoa", { exact: true })).not.toBeInTheDocument();
   });
 
@@ -671,7 +671,7 @@ describe("core explorer pages", () => {
     const detailSection = (await screen.findByText("Transaction summary"))
       .closest("section");
     if (!detailSection) throw new Error("transaction summary section is missing");
-    const detailValueLabel = await within(detailSection).findByText("Value");
+    const detailValueLabel = await within(detailSection).findByText("Value (ETH)");
     const detailValueRow = detailValueLabel.closest(".detail-item") as HTMLElement | null;
     if (!detailValueRow) throw new Error("transaction value detail row missing");
     expect(within(detailValueRow).getByText("2.1 ETH")).toBeVisible();
@@ -786,7 +786,7 @@ describe("core explorer pages", () => {
     const detailNativeBalance = await screen.findByText("Native balance (ETH)");
     const detailNativeBalanceRow = detailNativeBalance.closest(".detail-item") as HTMLElement | null;
     if (!detailNativeBalanceRow) throw new Error("address native balance row missing");
-    expect(within(detailNativeBalanceRow).getByText("1")).toBeVisible();
+    expect(within(detailNativeBalanceRow).getByText("1 ETH")).toBeVisible();
   });
 
   it("loads address activity tabs on demand and exposes contracts without summary hashes", async () => {
@@ -806,6 +806,12 @@ describe("core explorer pages", () => {
           at_block: canonicalHash,
           completeness: completeness(),
           code_hash: olderHash,
+          origin: {
+            kind: "contract_creation",
+            state: "found",
+            source_address: createdAddress,
+            transaction_hash: transactionHash,
+          },
         });
       }
       if (url.pathname === `/api/v1/addresses/${address}/transactions`) {
@@ -846,6 +852,18 @@ describe("core explorer pages", () => {
       if (url.pathname === `/api/v1/addresses/${address}/nfts`) {
         return envelope([]);
       }
+      if (url.pathname === `/api/v1/addresses/${address}/erc20-balances`) {
+        return envelope([{
+          chain_id: "1",
+          owner: address,
+          token_address: createdAddress,
+          balance: "1234500",
+          confidence: "rpc_exact",
+          name: "Asset Token",
+          symbol: "AST",
+          decimals: 4,
+        }]);
+      }
       return notFound();
     }));
 
@@ -855,24 +873,68 @@ describe("core explorer pages", () => {
       "href",
       `/contract/${address}?code_hash=${olderHash}`,
     );
+    expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
+    const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");
+    if (!summary) throw new Error("address summary is missing");
+    expect(within(summary).queryByText("Type")).not.toBeInTheDocument();
+    expect(within(summary).queryByText(address)).not.toBeInTheDocument();
+    expect(within(summary).getByRole("link", { name: createdAddress })).toHaveAttribute(
+      "href",
+      `/address/${createdAddress}?tab=transactions`,
+    );
+    expect(within(summary).getByRole("link", { name: transactionHash })).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show QR code" }));
+    const dialog = screen.getByRole("dialog", { name: "Address QR code" });
+    expect(dialog).toHaveFocus();
+    expect(within(dialog).getByText(`ethereum:${address}@1`)).toBeVisible();
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("Data completeness")).not.toBeInTheDocument();
     expect(screen.queryByText("Code hash")).not.toBeInTheDocument();
     expect(screen.queryByText("State block hash")).not.toBeInTheDocument();
-    expect(await screen.findByText("SELF")).toBeVisible();
+    const selfDirection = await screen.findByText("SELF");
+    expect(selfDirection).toBeVisible();
+    const transactionRow = selfDirection.closest("tr");
+    if (!transactionRow) throw new Error("address transaction row is missing");
+    expect(
+      within(transactionRow).queryByRole("link", { name: shorten(address) }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(transactionRow).getAllByRole("button", { name: "Copy" }),
+    ).toHaveLength(2);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/erc20-balances`);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "Internal Transactions" }));
-    expect(await screen.findByText("Created address")).toBeVisible();
-    expect(screen.getByText("OUT")).toBeVisible();
+    const createdLabel = await screen.findByText("Created address");
+    expect(createdLabel).toBeVisible();
+    const internalRow = createdLabel.closest("tr");
+    if (!internalRow) throw new Error("address internal transaction row is missing");
+    expect(
+      within(internalRow).queryByRole("link", { name: shorten(address) }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(internalRow).getByRole("link", { name: shorten(createdAddress) }),
+    ).toHaveAttribute("href", `/address/${createdAddress}?tab=transactions`);
+    expect(
+      within(internalRow).getAllByRole("button", { name: "Copy" }),
+    ).toHaveLength(2);
+    expect(within(internalRow).getByText("OUT")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
 
     await user.click(screen.getByRole("link", { name: "Assets" }));
     expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();
+    expect(await screen.findByText("Asset Token")).toBeVisible();
+    expect(screen.getByText("123.45 AST")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
   });
 
   it("renders ETH-formatted values on transactions list", async () => {
