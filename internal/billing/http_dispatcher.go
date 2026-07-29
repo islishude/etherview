@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -129,9 +130,7 @@ func NewHTTPDispatcher(options DispatcherOptions) (*HTTPDispatcher, error) {
 		now = time.Now
 	}
 	routes := make(map[string]config.BillingRouteConfig, len(cfg.Billing.Routes))
-	for operation, route := range cfg.Billing.Routes {
-		routes[operation] = route
-	}
+	maps.Copy(routes, cfg.Billing.Routes)
 	return &HTTPDispatcher{
 		publicOrigin:      strings.TrimSuffix(cfg.Server.PublicURL, "/"),
 		chainID:           cfg.Chain.ID,
@@ -349,10 +348,7 @@ func (dispatcher *HTTPDispatcher) ServePaid(
 		return
 	}
 
-	maxBodyBytes := dispatcher.maxBodyBytes
-	if spec.MaxResponseBytes < maxBodyBytes {
-		maxBodyBytes = spec.MaxResponseBytes
-	}
+	maxBodyBytes := min(spec.MaxResponseBytes, dispatcher.maxBodyBytes)
 	capture := newCapturedResponse(maxBodyBytes, dispatcher.maxHeaderBytes)
 	panicked := invokeCapturedHandler(
 		capture,

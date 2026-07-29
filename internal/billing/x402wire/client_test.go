@@ -51,7 +51,7 @@ func testPaymentAndRequirement(t *testing.T) (Payment, Requirement) {
 	return decodeTestPayment(t, codec, testSDKPayment(requirement)), requirement
 }
 
-func writeJSON(t *testing.T, writer http.ResponseWriter, status int, value interface{}) {
+func writeJSON(t *testing.T, writer http.ResponseWriter, status int, value any) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
@@ -214,7 +214,7 @@ func TestClientRawInterfaceRejectsAuthorizationMismatchBeforeNetwork(t *testing.
 	t.Parallel()
 	requirement := testRequirement(t)
 	sdkPayment := testSDKPayment(requirement)
-	sdkPayment.Payload["authorization"].(map[string]interface{})["value"] = "125001"
+	sdkPayment.Payload["authorization"].(map[string]any)["value"] = "125001"
 	payload := paymentJSON(t, sdkPayment)
 	client := &Client{}
 
@@ -237,7 +237,6 @@ func TestClientRawInterfaceRejectsAuthorizationMismatchBeforeNetwork(t *testing.
 			},
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			err := test.call()
@@ -401,7 +400,6 @@ func TestClientRejectsUnsafeConfiguration(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			options := valid
@@ -633,7 +631,6 @@ func TestClientStrictlyRejectsAmbiguousFacilitatorJSON(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewTLSServer(http.HandlerFunc(
@@ -791,7 +788,6 @@ func TestClientSettlementFailureClassification(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var calls atomic.Int32
@@ -854,7 +850,6 @@ func TestClientVerificationFailureClassification(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

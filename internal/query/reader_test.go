@@ -460,7 +460,6 @@ func TestTransactionReturnsOnlySuccessfulReceiptContractAddress(t *testing.T) {
 		{name: "successful creation", status: "0x1", wantContract: true, transactionSeed: 21},
 		{name: "failed creation", status: "0x0", transactionSeed: 22},
 	} {
-		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			transaction := testContractCreationTransaction(testCase.transactionSeed)
 			db := testDatabase(t, queryExpectation{

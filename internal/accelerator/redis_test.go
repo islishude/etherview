@@ -150,9 +150,7 @@ func TestRedisLimiterOutageCircuitBypassesRequestsAndAllowsOneRecoveryProbe(t *t
 
 	var bypasses sync.WaitGroup
 	for index := range 100 {
-		bypasses.Add(1)
-		go func() {
-			defer bypasses.Done()
+		bypasses.Go(func() {
 			if allowed, _ := limiter.Allow(
 				context.Background(),
 				"anonymous:bypass-"+strconv.Itoa(index),
@@ -160,7 +158,7 @@ func TestRedisLimiterOutageCircuitBypassesRequestsAndAllowsOneRecoveryProbe(t *t
 			); !allowed {
 				t.Errorf("circuit fallback rejected request %d", index)
 			}
-		}()
+		})
 	}
 	bypasses.Wait()
 	backend.mu.Lock()
@@ -179,11 +177,9 @@ func TestRedisLimiterOutageCircuitBypassesRequestsAndAllowsOneRecoveryProbe(t *t
 	<-probeStarted
 	var concurrent sync.WaitGroup
 	for index := range 100 {
-		concurrent.Add(1)
-		go func() {
-			defer concurrent.Done()
+		concurrent.Go(func() {
 			limiter.Allow(context.Background(), "anonymous:concurrent-"+strconv.Itoa(index), limit)
-		}()
+		})
 	}
 	concurrent.Wait()
 	close(probeRelease)

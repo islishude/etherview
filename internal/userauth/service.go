@@ -129,7 +129,7 @@ func (service *Service) CreateChallenge(ctx context.Context, address string) (Ch
 		canonicalAddress,
 		service.origin,
 		nonce,
-		map[string]interface{}{
+		map[string]any{
 			"scheme":         service.scheme,
 			"chainId":        service.chainIDInt,
 			"issuedAt":       issuedAt,

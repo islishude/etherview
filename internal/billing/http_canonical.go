@@ -235,8 +235,8 @@ func canonicalBlockIdentifier(value string) (string, error) {
 	}
 	base := 10
 	digits := value
-	if strings.HasPrefix(value, "0x") {
-		base, digits = 16, strings.TrimPrefix(value, "0x")
+	if after, ok := strings.CutPrefix(value, "0x"); ok {
+		base, digits = 16, after
 	}
 	if digits == "" {
 		return "", errInvalidCanonicalResource

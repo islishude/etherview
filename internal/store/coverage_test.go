@@ -180,7 +180,6 @@ func TestMemoryBackfillLeaseContentionHasSingleWinner(t *testing.T) {
 	results := make(chan result, contenders)
 	var wait sync.WaitGroup
 	for index := range contenders {
-		index := index
 		wait.Go(func() {
 			<-start
 			lease, claimed, err := repository.ClaimBackfillRange(

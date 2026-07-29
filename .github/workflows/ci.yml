@@ -54,6 +54,24 @@ jobs:
       - name: Run owned PostgreSQL migrations and integration tests
         run: make test-integration
 
+  hardhat3:
+    name: Hardhat 3 verification compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: e2e/hardhat3/package-lock.json
+      - name: Run the pinned Hardhat 3 Etherscan-provider flow
+        run: make toolchain-check test-hardhat3-verify
+
   browser:
     name: Embedded SPA browser E2E
     runs-on: ubuntu-24.04
@@ -99,7 +117,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            api/package-lock.json
+            web/package-lock.json
+            e2e/hardhat3/package-lock.json
       - name: Install pinned security and license tools
         run: make install-security-tools
       - name: Audit source and dependencies

@@ -5,6 +5,7 @@ package analytics
 import (
 	"errors"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 )
@@ -51,10 +52,8 @@ func Metrics() []Metric { return append([]Metric(nil), metricOrder...) }
 
 func ParseMetric(value string) (Metric, bool) {
 	metric := Metric(value)
-	for _, candidate := range metricOrder {
-		if metric == candidate {
-			return metric, true
-		}
+	if slices.Contains(metricOrder, metric) {
+		return metric, true
 	}
 	return "", false
 }

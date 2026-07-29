@@ -80,7 +80,7 @@ var supported = map[string]map[string]actionSpec{
 		"getsourcecode":          {addresses: []string{"address"}},
 		"getcontractcreation":    {required: []string{"contractaddresses"}},
 		"verifysourcecode":       {addresses: []string{"contractaddress"}, required: []string{"sourceCode", "codeformat", "contractname", "compilerversion"}, method: http.MethodPost, keyed: true},
-		"checkverifystatus":      {required: []string{"guid"}, method: http.MethodPost, keyed: true},
+		"checkverifystatus":      {required: []string{"guid"}, keyed: true},
 		"verifyproxycontract":    {addresses: []string{"address"}, optionalAddresses: []string{"expectedimplementation"}, method: http.MethodPost, keyed: true},
 		"checkproxyverification": {required: []string{"guid"}, method: http.MethodGet, keyed: true},
 	},

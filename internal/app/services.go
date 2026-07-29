@@ -186,7 +186,7 @@ func registerWorkerPool(
 	if count <= 0 {
 		return errors.New("worker pool count must be positive")
 	}
-	for index := 0; index < count; index++ {
+	for index := range count {
 		serviceName := indexedWorkerName(serviceBase, index)
 		worker, err := build(index, serviceName)
 		if err != nil {
@@ -210,7 +210,7 @@ func registerWorkerPool(
 }
 
 func addWorkerComponentKeys(add func(string), componentBase string, count int) {
-	for index := 0; index < count; index++ {
+	for index := range count {
 		add(workerComponentKey(componentBase, index))
 	}
 }

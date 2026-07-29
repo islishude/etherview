@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -170,10 +171,8 @@ func remotePathTraversesParent(escapedPath string) bool {
 	current := escapedPath
 	for {
 		normalized := strings.ReplaceAll(current, `\`, "/")
-		for _, segment := range strings.Split(normalized, "/") {
-			if segment == ".." {
-				return true
-			}
+		if slices.Contains(strings.Split(normalized, "/"), "..") {
+			return true
 		}
 		decoded, err := url.PathUnescape(current)
 		if err != nil || strings.ContainsRune(decoded, '\x00') {

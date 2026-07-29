@@ -373,9 +373,9 @@ func requestPaymentHeader(
 	}
 	payment := x402.PaymentPayload{
 		X402Version: x402wire.X402Version,
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"signature": "0x" + strings.Repeat("11", 65),
-			"authorization": map[string]interface{}{
+			"authorization": map[string]any{
 				"from": testPayer, "to": required.Accepts[0].PayTo,
 				"value":      required.Accepts[0].Amount,
 				"validAfter": "0", "validBefore": "9999999999",
@@ -970,7 +970,7 @@ func TestHTTPDispatcherVerificationAndSettlementFailuresAreFailClosed(t *testing
 
 func TestHTTPDispatcherSettlingDuplicateNeverRunsWork(t *testing.T) {
 	t.Parallel()
-	for _, failureCode := range []*string{nil, stringPointer("settlement_unknown")} {
+	for _, failureCode := range []*string{nil, new("settlement_unknown")} {
 		name := "nil"
 		if failureCode != nil {
 			name = *failureCode
@@ -1161,14 +1161,12 @@ func TestHTTPDispatcherOneAuthorizationOwnsOnlyOneOuterBinding(t *testing.T) {
 			results := make(chan reserveResult, len(variants))
 			var reserveGroup sync.WaitGroup
 			for index, variant := range variants {
-				reserveGroup.Add(1)
-				go func() {
-					defer reserveGroup.Done()
+				reserveGroup.Go(func() {
 					reservation, err := ledger.Reserve(context.Background(), variant)
 					results <- reserveResult{
 						index: index, reservation: reservation, err: err,
 					}
-				}()
+				})
 			}
 			reserveGroup.Wait()
 			close(results)
@@ -1223,4 +1221,5 @@ func alternateEligibleOperation(operation string) string {
 	return "listBlocks"
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }

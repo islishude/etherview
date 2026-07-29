@@ -33,10 +33,17 @@ until the Makefile target exists.
 - `make test-integration-race`: run the same owned database lifecycle with the
   Go race detector. This expensive variant is explicit and is not part of
   default CI.
+- `make test-hardhat3-verify`: install the exact dependency-locked Hardhat 3
+  verification fixture and run its Etherscan-provider flow against a Go-owned
+  real compatibility handler with in-memory authentication and a stateful fake
+  backend. It proves GET source lookup, POST Standard JSON submission, and GET
+  pending/success status polling without a chain, database, compiler, Hardhat
+  2, Blockscout, or Sourcify.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
-- `make security-check`: `govulncheck`, API-generator and frontend dependency
-  audits, secret scan, and security-focused tests. Both npm dependency trees
-  must report zero high-severity vulnerabilities; the API generator's
+- `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
+  fixture dependency audits, secret scan, and security-focused tests. All
+  three npm dependency trees must report zero high-severity vulnerabilities;
+  the API generator's
   transitive parser and glob dependencies are constrained by audited
   overrides.
 - `make license-check`: Go and production frontend dependency license policy.

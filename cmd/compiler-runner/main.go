@@ -74,8 +74,8 @@ func run(input io.Reader, output, diagnostics io.Writer) error {
 
 func baseCompilerVersion(version string) string {
 	version = strings.TrimPrefix(version, "v")
-	if separator := strings.IndexByte(version, '+'); separator >= 0 {
-		return version[:separator]
+	if before, _, ok := strings.Cut(version, "+"); ok {
+		return before
 	}
 	return version
 }

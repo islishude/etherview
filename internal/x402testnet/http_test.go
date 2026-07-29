@@ -150,17 +150,16 @@ func TestSettlementCallDataBindingPinsOfficialVRSVector(t *testing.T) {
 			wantDigest: "eaded9f5c2df8ba8e95494132c8161ea4eb72c5adcd08274ab579af2ef7d9596",
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			payload := x402.PaymentPayload{
 				X402Version: x402wire.X402Version,
-				Payload: map[string]interface{}{
+				Payload: map[string]any{
 					"signature": "0x" +
 						strings.Repeat("11", 32) +
 						strings.Repeat("22", 32) +
 						test.wireV,
-					"authorization": map[string]interface{}{
+					"authorization": map[string]any{
 						"from":        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 						"to":          httpTestRecipient,
 						"value":       httpTestAmount,
@@ -301,7 +300,6 @@ func TestExecutePaymentRejectsInvalidPaymentRequiredEnvelopeBeforeSigning(
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var requests atomic.Int32
@@ -403,7 +401,6 @@ func TestExecutePaymentRejectsHostileChallengeBounds(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var requests atomic.Int32
@@ -589,7 +586,6 @@ func TestExecutePaymentTreatsSignedResponseFailuresAsUnknown(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var requests atomic.Int32
@@ -885,7 +881,6 @@ func TestPaymentClientRejectsRedirectCookieCredentialAndProxyUse(t *testing.T) {
 		"",
 	)
 	for _, headerName := range []string{"Cookie", "X-API-Key"} {
-		headerName := headerName
 		t.Run(headerName, func(t *testing.T) {
 			t.Parallel()
 			var networkRequests atomic.Int32
@@ -1037,7 +1032,6 @@ func TestExecutePaymentRejectsInvalidConfigBeforeNetwork(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			options := base

@@ -316,41 +316,41 @@ func (aggregate *accumulator) add(hour hourRow) {
 func (aggregate *accumulator) value(metric Metric) *string {
 	switch metric {
 	case MetricTransactions:
-		return stringPointer(aggregate.tx.String())
+		return new(aggregate.tx.String())
 	case MetricFailedTransactions:
-		return stringPointer(aggregate.failed.String())
+		return new(aggregate.failed.String())
 	case MetricAverageTPS:
 		return fixedRatio(aggregate.tx, aggregate.intervals, 18)
 	case MetricERC20Transfers:
-		return stringPointer(aggregate.erc20.String())
+		return new(aggregate.erc20.String())
 	case MetricNFTTransfers:
-		return stringPointer(aggregate.nft.String())
+		return new(aggregate.nft.String())
 	case MetricContractCreations:
-		return stringPointer(aggregate.creations.String())
+		return new(aggregate.creations.String())
 	case MetricBlocks:
-		return stringPointer(strconv.FormatInt(aggregate.count, 10))
+		return new(strconv.FormatInt(aggregate.count, 10))
 	case MetricAverageBlockTime:
 		return fixedRatio(aggregate.intervals, big.NewInt(aggregate.intervalSamples), 18)
 	case MetricGasUsed:
-		return stringPointer(aggregate.gasUsed.String())
+		return new(aggregate.gasUsed.String())
 	case MetricGasUtilization:
 		return fixedRatio(new(big.Int).Mul(aggregate.gasUsed, big.NewInt(100)), aggregate.gasLimit, 18)
 	case MetricAverageBaseFee:
 		return fixedRatio(aggregate.baseFees, big.NewInt(aggregate.baseSamples), 18)
 	case MetricExecutionFees:
-		return stringPointer(aggregate.execution.String())
+		return new(aggregate.execution.String())
 	case MetricAverageTransactionFee:
 		return fixedRatio(aggregate.execution, aggregate.tx, 18)
 	case MetricPriorityFees:
-		return stringPointer(aggregate.priority.String())
+		return new(aggregate.priority.String())
 	case MetricBurnedFees:
-		return stringPointer(aggregate.burned.String())
+		return new(aggregate.burned.String())
 	case MetricBlobGasUsed:
-		return stringPointer(aggregate.blobGas.String())
+		return new(aggregate.blobGas.String())
 	case MetricAverageBlobBaseFee:
 		return fixedRatio(aggregate.blobBase, big.NewInt(aggregate.blobSamples), 18)
 	case MetricBlobBurnedFees:
-		return stringPointer(aggregate.blobBurned.String())
+		return new(aggregate.blobBurned.String())
 	default:
 		return nil
 	}
@@ -568,7 +568,8 @@ func canonicalPositiveIntegerOrZero(value string) bool {
 	return true
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }
 
 const snapshotSQL = `
 SELECT canonical.number::text, canonical.block_hash

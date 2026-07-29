@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"math/big"
 	"sort"
 	"testing"
@@ -42,7 +43,7 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 	published.process(t, ctx, genesis)
 	published.process(t, ctx, oldBlock)
 
-	now := base.Add(24 * time.Hour)
+	now := analyticsRollupTestTime(t, ctx, db, base.Add(24*time.Hour))
 	worker, err := analytics.NewRollupWorker(db, analytics.RollupWorkerOptions{
 		ChainID: 1, Now: func() time.Time { return now },
 	})
@@ -75,6 +76,7 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 		"historical analytics reorg",
 	)
 	published.process(t, ctx, replacement)
+	now = analyticsRollupTestTime(t, ctx, db, now)
 	recomputed, err := worker.RunOnce(ctx)
 	if err != nil || !recomputed.Published || !recomputed.BucketStart.Equal(base.Add(time.Hour)) {
 		t.Fatalf("reorg rollup=%+v error=%v", recomputed, err)
@@ -87,6 +89,29 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 	if err != nil || idle.Published || !idle.BucketStart.IsZero() {
 		t.Fatalf("idempotent idle rollup=%+v error=%v", idle, err)
 	}
+}
+
+func analyticsRollupTestTime(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	minimum time.Time,
+) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := db.QueryRowContext(ctx, `
+		SELECT GREATEST(
+		    $2::timestamptz,
+		    COALESCE(max(next_attempt_at), $2::timestamptz),
+		    COALESCE(max(dirtied_at), $2::timestamptz)
+		)
+		FROM chart_rollup_dirty_hours
+		WHERE chain_id = $1::numeric`,
+		"1", minimum,
+	).Scan(&now); err != nil {
+		t.Fatalf("read analytics dirty schedule: %v", err)
+	}
+	return now.UTC()
 }
 
 func TestHistoricalAnalyticsTenYearHourlyRollupQueryStaysBounded(t *testing.T) {

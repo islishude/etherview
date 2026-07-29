@@ -150,7 +150,7 @@ func parseSourceMap(raw string, instructionCount int) ([]sourceMapEntry, error) 
 		if len(fields) > 5 {
 			return nil, errors.New("method lookup source map is invalid")
 		}
-		for fieldIndex := 0; fieldIndex < 3; fieldIndex++ {
+		for fieldIndex := range 3 {
 			if fieldIndex >= len(fields) || fields[fieldIndex] == "" {
 				continue
 			}

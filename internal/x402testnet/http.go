@@ -711,8 +711,7 @@ func stablePaymentError(err error, paid bool) error {
 	if paid {
 		return boundaryError(codePaidOutcomeUnknown)
 	}
-	var stable *BoundaryError
-	if errors.As(err, &stable) {
+	if stable, ok := errors.AsType[*BoundaryError](err); ok {
 		return stable
 	}
 	return boundaryError(codePaymentSigningFailed)

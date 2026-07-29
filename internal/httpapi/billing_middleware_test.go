@@ -226,9 +226,9 @@ func paymentHeaderFromChallenge(t *testing.T, encoded string) string {
 	}
 	payment := x402.PaymentPayload{
 		X402Version: 2,
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"signature": "0x" + strings.Repeat("11", 65),
-			"authorization": map[string]interface{}{
+			"authorization": map[string]any{
 				"from": "0x3333333333333333333333333333333333333333",
 				"to":   required.Accepts[0].PayTo, "value": required.Accepts[0].Amount,
 				"validAfter": "0", "validBefore": "9999999999",

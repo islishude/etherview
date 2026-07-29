@@ -17,7 +17,6 @@ func TestExecutablePlatformReadsELFMachine(t *testing.T) {
 		"amd64": {machine: 62, want: CompilerPlatformLinuxAMD64},
 		"arm64": {machine: 183, want: CompilerPlatformLinuxARM64},
 	} {
-		name, test := name, test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "compiler")
@@ -47,7 +46,6 @@ func TestExecutablePlatformReadsNativeFormats(t *testing.T) {
 			want:    CompilerPlatformWindowsAMD64,
 		},
 	} {
-		name, test := name, test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "compiler")

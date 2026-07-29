@@ -22,8 +22,7 @@ func exactStateRPCError(ctx context.Context, method string, err error) error {
 	if ethrpc.IsMethodNotFound(err) {
 		return Unavailable(fmt.Errorf("%s with an EIP-1898 block hash is unavailable", method))
 	}
-	var typeError *json.UnmarshalTypeError
-	if errors.As(err, &typeError) {
+	if _, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 		if method == "eth_getCode" {
 			return Permanent(errors.New("eth_getCode returned invalid bytecode"))
 		}

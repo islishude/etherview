@@ -44,6 +44,8 @@ and user/operator evidence sufficient for a production public release.
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
 | P70-T19 | done | P20, P40, P50, P60 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
 | P70-T20 | in_progress | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
+| P70-T21 | done | P30-T11, P40-T06 | Hardhat 3 Etherscan-provider source-verification submission and GET status-polling compatibility | handler goldens, pinned Hardhat 3 provider test, security, documentation, and common gates |
+| P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
 
 ## Acceptance
 
@@ -97,6 +99,17 @@ and user/operator evidence sufficient for a production public release.
 - [ ] P70-T20: Preview Compose and Helm deliver certificate material only to
       API-capable main containers; enabled Helm probes, Service, and Ingress
       backend use HTTPS while external Ingress termination remains independent.
+- [x] P70-T21: the Etherscan V2 compatibility boundary accepts authenticated
+      Hardhat 3 source-verification submission by POST and status polling by
+      GET while retaining the existing authenticated POST status method.
+- [x] P70-T21: a dependency-locked Hardhat 3 provider regression exercises
+      unverified source lookup, Standard JSON submission, pending status, and
+      successful status against the real compatibility handler without adding
+      Hardhat 2 or multi-provider behavior.
+- [x] P70-T22: the historical analytics regression derives its worker clock
+      from PostgreSQL scheduling time, so a hard-coded date cannot make newly
+      dirtied hours appear deferred while newest-first and reorg assertions
+      retain deterministic historical buckets.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -152,9 +165,10 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09, P70-T12, P70-T13, P70-T14, P70-T16, P70-T17, P70-T18, and
-P70-T19 are complete. P70-T20 is in progress while the Preview-local wallet
-metadata path is aligned with its localhost RPC exception. P70-T16's
+P70-T09, P70-T12, P70-T13, P70-T14, P70-T16, P70-T17, P70-T18, P70-T19,
+P70-T21, and P70-T22 are complete. P70-T20 is in progress while the
+Preview-local wallet metadata path is aligned with its localhost RPC
+exception. P70-T16's
 deterministic production Compose reorg gate
 supersedes the non-distinct preserved-volume Preview attempt. P70-T18's
 embedded Playwright and managed PostgreSQL release validation both pass.
@@ -169,6 +183,32 @@ security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T22 regression: the newest-first/reorg integration fixture now advances
+  its injected worker clock to at least the maximum PostgreSQL
+  `next_attempt_at` and `dirtied_at` for the active dirty rows, both before the
+  initial rollups and after the replacement branch publishes. Historical block
+  timestamps remain fixed, so bucket identity and series assertions stay
+  deterministic without expiring when wall time passes a hard-coded date.
+- P70-T22 verification: the managed `./internal/integration` package passes
+  with all adjacent PostgreSQL regressions, and
+  `DOCKER_CONFIG=/tmp/etherview-docker-config make test-integration` passes
+  migrations plus all six integration-tagged packages. `make plan-check` and
+  `git diff --check` pass.
+- P70-T21 compatibility: `contract.checkverifystatus` accepts authenticated
+  GET and POST while source submission remains POST-only. Golden handler tests
+  cover both methods, query-key stripping, missing or invalid credentials,
+  wrong chain, missing GUID, and non-GET/POST rejection without backend
+  dispatch. The maintained compatibility matrix documents the Hardhat 3
+  `chainDescriptors` configuration and explicit `verify etherscan` command.
+- P70-T21 provider and gates: the dependency-locked
+  `hardhat@3.11.1`/`@nomicfoundation/hardhat-verify@3.0.21` regression drives
+  the official Etherscan provider through GET source lookup, POST Standard JSON
+  submission, GET pending status, and GET success status against the real
+  authenticated handler. `go test -race ./internal/etherscan ./internal/auth
+  ./internal/httpapi`, `make test-hardhat3-verify`, `make plan-check`,
+  `git diff --check`, and `make check` pass. The Hardhat fixture audit reports
+  no high or critical vulnerabilities; eight upstream low-severity findings
+  have no available fix.
 - P70-T20 runtime: `server.tls_cert_file` and `server.tls_key_file` accept
   paired absolute YAML or environment paths. The API loads one matching PEM
   key pair before binding, configures Go TLS with a TLS 1.2 minimum, serves

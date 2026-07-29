@@ -344,7 +344,7 @@ func boundedPrintableASCII(value string, minLength, maxLength int) bool {
 }
 
 func requirementToSDK(wire paymentRequirementWire) x402.PaymentRequirements {
-	extra := map[string]interface{}{
+	extra := map[string]any{
 		"name":    wire.Extra.Name,
 		"version": wire.Extra.Version,
 	}
@@ -394,17 +394,17 @@ func clonePayload(payload x402.PaymentPayload) x402.PaymentPayload {
 	return cloned
 }
 
-func cloneMap(input map[string]interface{}) map[string]interface{} {
+func cloneMap(input map[string]any) map[string]any {
 	if input == nil {
 		return nil
 	}
-	output := make(map[string]interface{}, len(input))
+	output := make(map[string]any, len(input))
 	for key, value := range input {
 		switch typed := value.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			output[key] = cloneMap(typed)
-		case []interface{}:
-			output[key] = append([]interface{}(nil), typed...)
+		case []any:
+			output[key] = append([]any(nil), typed...)
 		default:
 			output[key] = typed
 		}

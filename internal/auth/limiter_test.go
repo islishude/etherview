@@ -51,7 +51,6 @@ func TestTrustedProxySetRequiresCanonicalAddressesAndPrefixes(t *testing.T) {
 		"fe80::1%eth0",
 		"::ffff:192.0.2.1",
 	} {
-		value := value
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
 			if _, err := NewTrustedProxySet([]string{value}); err == nil {
@@ -117,7 +116,6 @@ func TestAnonymousIdentityTrustsOnlyBoundedValidForwardedChains(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			limiter := &captureLimiter{}
@@ -215,11 +213,9 @@ func TestMemoryLimiterConcurrentAnonymousCardinalityRemainsBounded(t *testing.T)
 	limit := Limit{Rate: 1, Burst: 1}
 	var wait sync.WaitGroup
 	for index := range 1_000 {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			limiter.Allow(context.Background(), "anonymous:client-"+time.Duration(index).String(), limit)
-		}()
+		})
 	}
 	wait.Wait()
 	limiter.mu.Lock()

@@ -127,7 +127,6 @@ func TestAccountScanAuthenticatesDynamicEffectiveGasPriceFromStoredHeader(t *tes
 		{name: "legacy omission derived", receipt: missing},
 		{name: "poisoned value rejected", receipt: poisoned, wantError: true},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			db := fakeDatabase(

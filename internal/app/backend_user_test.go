@@ -157,12 +157,14 @@ func TestAdminUserCommandOutputIsStableAndBounded(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func rolePointer(value userauth.Role) *userauth.Role {
-	return &value
+	return new(value)
 }
 
+//go:fix inline
 func statusPointer(value userauth.Status) *userauth.Status {
-	return &value
+	return new(value)
 }
 
 func equalOptionalRole(left, right *userauth.Role) bool {

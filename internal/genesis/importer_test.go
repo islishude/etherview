@@ -298,7 +298,6 @@ func TestParseDocumentUsesCoreGenesisJSONAuthority(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			if _, _, err := parseDocument([]byte(test.document), 777); err == nil {

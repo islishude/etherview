@@ -1883,7 +1883,7 @@ func parseEnvironmentRPCEndpoints(value string) ([]RPCEndpoint, error) {
 		return endpoints, nil
 	}
 	var endpoints []RPCEndpoint
-	for _, raw := range strings.Split(value, ",") {
+	for raw := range strings.SplitSeq(value, ",") {
 		raw = strings.TrimSpace(raw)
 		if raw != "" {
 			endpoints = append(endpoints, RPCEndpoint{

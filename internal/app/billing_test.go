@@ -109,7 +109,6 @@ func TestBillingUserResolverAssociatesActiveAndDisabledUsers(t *testing.T) {
 		userauth.StatusActive,
 		userauth.StatusDisabled,
 	} {
-		status := status
 		t.Run(string(status), func(t *testing.T) {
 			t.Parallel()
 			lookup := &stubBillingUserLookup{

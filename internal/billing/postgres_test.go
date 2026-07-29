@@ -129,7 +129,6 @@ func TestPaymentFromRowRejectsHostileDurableFacts(t *testing.T) {
 		},
 	}
 	for name, mutate := range tests {
-		name, mutate := name, mutate
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			row := valid

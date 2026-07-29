@@ -321,12 +321,10 @@ func SanitizeError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	var status rpc.HTTPError
-	if errors.As(err, &status) {
+	if status, ok := errors.AsType[rpc.HTTPError](err); ok {
 		return fmt.Errorf("JSON-RPC HTTP status %d", status.StatusCode)
 	}
-	var rpcErr rpc.Error
-	if errors.As(err, &rpcErr) {
+	if rpcErr, ok := errors.AsType[rpc.Error](err); ok {
 		return fmt.Errorf("JSON-RPC error code %d", rpcErr.ErrorCode())
 	}
 	if errors.Is(err, ErrInvalidResponse) {

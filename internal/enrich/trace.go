@@ -579,7 +579,7 @@ func validateTraceQuantity(value string) error {
 
 func compareTracePath(left, right []uint32) int {
 	limit := min(len(right), len(left))
-	for index := 0; index < limit; index++ {
+	for index := range limit {
 		if left[index] < right[index] {
 			return -1
 		}

@@ -3,6 +3,7 @@ package x402testnet
 import (
 	"bytes"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -74,7 +75,6 @@ func TestLoadConfigValidatesEveryPublicInputBeforeReadingSecrets(t *testing.T) {
 		{name: "ledger chain", key: "LEDGER_CHAIN_ID", value: "1"},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			values := cloneEnvironment(base)
 			values[testnetEnvPrefix+test.key] = test.value
@@ -168,7 +168,6 @@ func TestMatchesBuildRevisionRequiresExactCleanGitState(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			candidate := *valid
@@ -206,7 +205,6 @@ func TestLoadConfigRequiresEveryPublicInput(t *testing.T) {
 		"EXPECTED_MAX_TIMEOUT_SECONDS",
 		"LEDGER_CHAIN_ID",
 	} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			values := cloneEnvironment(base)
 			delete(values, testnetEnvPrefix+name)
@@ -232,7 +230,6 @@ func TestLoadConfigRejectsPlaintextSecretAlternatives(t *testing.T) {
 		"RPC_URL",
 		"WRITER_DATABASE_URL",
 	} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			values, _ := validConfigEnvironment(t)
 			values[testnetEnvPrefix+name] = "must-not-be-read"
@@ -258,7 +255,6 @@ func TestLoadConfigRequiresEverySecretFileInput(t *testing.T) {
 		"RPC_URL_FILE",
 		"WRITER_DATABASE_URL_FILE",
 	} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			values, _ := validConfigEnvironment(t)
 			delete(values, testnetEnvPrefix+name)
@@ -381,7 +377,6 @@ func TestLoadConfigValidatesSecretContentsAndPayer(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			values, _ := validConfigEnvironment(t)
 			test.mutate(t, values)
@@ -488,9 +483,7 @@ func mapLookup(values map[string]string) environmentLookup {
 
 func cloneEnvironment(source map[string]string) map[string]string {
 	clone := make(map[string]string, len(source))
-	for name, value := range source {
-		clone[name] = value
-	}
+	maps.Copy(clone, source)
 	return clone
 }
 

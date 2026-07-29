@@ -89,7 +89,7 @@ failed stage is not an empty success.
 | `getsourcecode` | `GET`, `POST` | `address` | None | Optional | Verified |
 | `getcontractcreation` | `GET`, `POST` | `contractaddresses`, a comma-separated list of 1 to 5 unique addresses | None | Optional | Core; factory `CREATE`/`CREATE2` rows need Trace. A definitive no-match additionally needs indexing from genesis, continuous Core coverage through the tip, and Trace through the tip. |
 | `verifysourcecode` | `POST` | `contractaddress` and the [source-verification form](#source-verification-form) | Form-specific fields below | Required | Public verification plus an exact current canonical code observation and canonical top-level or traced creation input |
-| `checkverifystatus` | `POST` | `guid`, a durable verification-job UUID | None | Required | Public verification |
+| `checkverifystatus` | `GET`, `POST` | `guid`, a durable verification-job UUID | None | Required | Public verification |
 | `verifyproxycontract` | `POST` | `address` | `expectedimplementation` | Required | Intentionally unavailable |
 | `checkproxyverification` | `GET` | `guid` | None | Required | Intentionally unavailable |
 
@@ -161,6 +161,52 @@ creation input from canonical PostgreSQL facts, and never grants Sourcify
 upload consent through this compatibility form. The returned GUID is the
 durable local verification-job UUID.
 
+### Hardhat 3
+
+Hardhat 3 projects use `@nomicfoundation/hardhat-verify` 3.x and point the
+chain descriptor's Etherscan API URL at the exact `/v2/api` boundary. Keep the
+API key in a Hardhat configuration variable or keystore rather than committing
+it to the project:
+
+```ts
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
+import { configVariable, defineConfig } from "hardhat/config";
+
+export default defineConfig({
+  plugins: [hardhatVerify],
+  verify: {
+    etherscan: {
+      apiKey: configVariable("ETHERVIEW_API_KEY"),
+    },
+  },
+  chainDescriptors: {
+    123456: {
+      name: "ExampleChain",
+      blockExplorers: {
+        etherscan: {
+          name: "Etherview",
+          url: "https://explorer.example.invalid",
+          apiUrl: "https://explorer.example.invalid/v2/api",
+        },
+      },
+    },
+  },
+});
+```
+
+Run the Etherscan provider explicitly:
+
+```sh
+npx hardhat verify etherscan --network example \
+  0x1234567890123456789012345678901234567890
+```
+
+The provider checks existing source with `GET`, submits Standard JSON with
+`POST`, and polls the returned GUID with `GET`. Running `hardhat verify`
+without the `etherscan` subtask also invokes Blockscout and Sourcify; that
+multi-provider behavior is outside this compatibility contract. Hardhat 2
+configuration and request behavior are not supported.
+
 ## API-Key and Error Boundary
 
 - `/v2/api` accepts a key through `X-API-Key`, the `apikey` query parameter,
@@ -207,9 +253,10 @@ such; they are not forwarded upstream.
 
 - Etherview is one-chain-per-deployment. `chainid` is mandatory and cannot
   select another chain behind the same endpoint.
-- Read actions accept both `GET` and `POST`. Source submission and source
-  status are POST-only; proxy submission is POST-only and proxy status is
-  GET-only. In particular, `checkverifystatus` is intentionally not a GET.
+- Read actions accept both `GET` and `POST`. Source submission is POST-only;
+  source status accepts both methods so Hardhat 3 can poll by GET while
+  existing Etherscan clients retain POST. Proxy submission is POST-only and
+  proxy status is GET-only.
 - Account, token, block, and statistics quantities are decimal strings. The
   `getLogs` result instead uses lowercase RPC-style hexadecimal strings for
   `blockNumber`, `timeStamp`, `gasPrice`, `gasUsed`, `logIndex`, and

@@ -83,8 +83,8 @@ func catalogArtifactPlatform(language Language, source string) (string, error) {
 	if err != nil {
 		return "", errors.New("compiler catalog source URL is invalid")
 	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	for _, part := range parts {
+	parts := strings.SplitSeq(strings.Trim(parsed.Path, "/"), "/")
+	for part := range parts {
 		if validCompilerPlatform(part) {
 			return part, nil
 		}

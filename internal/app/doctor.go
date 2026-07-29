@@ -71,8 +71,7 @@ func stableDoctorBillingError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var boundary *x402wire.BoundaryError
-	if errors.As(err, &boundary) {
+	if boundary, ok := errors.AsType[*x402wire.BoundaryError](err); ok {
 		switch boundary.Code {
 		case x402wire.CodeFacilitatorConfigInvalid,
 			x402wire.CodeFacilitatorUnavailable,

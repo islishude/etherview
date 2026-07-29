@@ -1,0 +1,17 @@
+{
+  "name": "etherview-hardhat3-verify-compatibility",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0",
+    "npm": ">=11.16.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-verify": "3.0.21",
+    "hardhat": "3.11.1"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0"
+  }
+}

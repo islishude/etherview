@@ -197,7 +197,7 @@ func TestCurrentUserBillingHistoryAuthenticatesAndBindsCursor(t *testing.T) {
 	second.ID = "00000000-0000-4000-8000-000000000002"
 	second.CreatedAt = first.CreatedAt.Add(-time.Minute)
 	second.UpdatedAt = second.CreatedAt
-	second.SettledAt = timePointer(second.CreatedAt)
+	second.SettledAt = new(second.CreatedAt)
 	reader := &fakeBillingReader{userPayments: []billing.Payment{first, second}}
 	handler, authenticator := enabledBillingHistoryHandler(
 		t, userauth.RoleUser, reader,
@@ -672,7 +672,7 @@ func billingTestPayment(now time.Time) billing.Payment {
 		}(),
 		UserID: &userID, APIKeyPrefix: &apiKeyPrefix,
 		TransactionHash: &transaction, State: billing.StateSettled,
-		SettledAt: timePointer(createdAt.Add(time.Minute)),
+		SettledAt: new(createdAt.Add(time.Minute)),
 		CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Minute),
 	}
 }
@@ -685,6 +685,7 @@ func repeatedBillingAddress(value byte) common.Address {
 	return address
 }
 
+//go:fix inline
 func timePointer(value time.Time) *time.Time {
-	return &value
+	return new(value)
 }

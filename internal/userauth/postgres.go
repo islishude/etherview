@@ -127,7 +127,7 @@ func (repository *PostgresRepository) CompleteLogin(
 		return Session{}, ErrChallengeInvalid
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		session, disabled, transactionErr := repository.completeLoginOnce(
 			ctx, challenge, challengeID, userID, sessionID, address, material,
 		)

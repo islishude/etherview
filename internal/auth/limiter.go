@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -246,9 +247,9 @@ func (m RateMiddleware) anonymousIdentity(request *http.Request) string {
 	if !ok || len(forwarded) == 0 {
 		return directIdentity
 	}
-	for index := len(forwarded) - 1; index >= 0; index-- {
-		if !m.TrustedProxies.contains(forwarded[index]) {
-			return forwarded[index].String()
+	for _, f := range slices.Backward(forwarded) {
+		if !m.TrustedProxies.contains(f) {
+			return f.String()
 		}
 	}
 	return forwarded[0].String()
@@ -265,7 +266,7 @@ func parseForwardedFor(values []string) ([]netip.Addr, bool) {
 		if totalBytes > maxForwardedForBytes {
 			return nil, false
 		}
-		for _, raw := range strings.Split(value, ",") {
+		for raw := range strings.SplitSeq(value, ",") {
 			if len(addresses) >= maxForwardedForHops {
 				return nil, false
 			}

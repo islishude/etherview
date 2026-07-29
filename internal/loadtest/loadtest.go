@@ -226,7 +226,7 @@ func schedule(ctx context.Context, started time.Time, rate int, total int64, job
 	}
 	defer timer.Stop()
 	var dropped int64
-	for index := int64(0); index < total; index++ {
+	for index := range total {
 		target := started.Add(time.Duration(index) * time.Second / time.Duration(rate))
 		if wait := time.Until(target); wait > 0 {
 			timer.Reset(wait)

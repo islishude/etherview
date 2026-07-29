@@ -38,8 +38,7 @@ func ErrorCode(err error) string {
 	if err == nil {
 		return ""
 	}
-	var boundary *BoundaryError
-	if errors.As(err, &boundary) {
+	if boundary, ok := errors.AsType[*BoundaryError](err); ok {
 		return boundary.Error()
 	}
 	return CodeFailed

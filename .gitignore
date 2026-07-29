@@ -10,6 +10,7 @@
 /web/playwright-report/
 /web/test-results/
 /api/node_modules/
+/e2e/hardhat3/node_modules/
 
 # Local runtime
 /.env

@@ -51,7 +51,7 @@ PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
-	test-schema-e2e test-soak test-x402-testnet \
+	test-hardhat3-verify test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
 	start-preview stop-preview recreate-preview
 
@@ -99,6 +99,10 @@ test-e2e: web-build
 
 test-race: web-build
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
+
+test-hardhat3-verify:
+	$(NPM) --prefix e2e/hardhat3 ci --ignore-scripts
+	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -184,6 +188,7 @@ security-check: security-tool-check web-build
 	fi
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
+	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
 license-tool-check:

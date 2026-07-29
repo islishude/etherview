@@ -138,7 +138,7 @@ func assertCatalogParameterIntegrity(t *testing.T, operation Spec) {
 		t.Errorf("%s query parameters are not sorted: %v", operation.ID, queryNames)
 	}
 	var placeholders []string
-	for _, part := range strings.Split(operation.OpenAPIPath, "/") {
+	for part := range strings.SplitSeq(operation.OpenAPIPath, "/") {
 		if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
 			placeholders = append(
 				placeholders,

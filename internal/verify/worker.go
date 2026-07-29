@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 )
@@ -308,8 +309,7 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			first, second, request.Language, request.CompilerVersion,
 		)
 		if err != nil {
-			var compilation CompilationFailure
-			if errors.As(err, &compilation) {
+			if _, ok := errors.AsType[CompilationFailure](err); ok {
 				sawCompilationFailure = true
 				continue
 			}
@@ -401,15 +401,11 @@ func verificationSuccessOutcome(
 	libraries := make(map[string]string)
 	constructor := ""
 	if result.Creation != nil {
-		for key, value := range result.Creation.Values.Libraries {
-			libraries[key] = value
-		}
+		maps.Copy(libraries, result.Creation.Values.Libraries)
 		constructor = result.Creation.Values.ConstructorArguments
 	}
 	if result.Runtime != nil {
-		for key, value := range result.Runtime.Values.Libraries {
-			libraries[key] = value
-		}
+		maps.Copy(libraries, result.Runtime.Values.Libraries)
 	}
 	outcome := map[string]any{
 		"kind":             "verification_success",

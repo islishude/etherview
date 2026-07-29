@@ -136,7 +136,6 @@ func TestDecodeBlockRejectsUintOverflowsWithoutPanicking(t *testing.T) {
 		{name: "set-code value", transactionType: types.SetCodeTxType, field: "value"},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			bundle, err := testfixture.New(testfixture.Options{
@@ -237,7 +236,6 @@ func TestDecodeBlockRejectsMissingAndNonCanonicalInclusion(t *testing.T) {
 		}},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			rawBlock := mutateBlockTransaction(t, bundle.RawBlock, 0, test.mutate)
@@ -258,7 +256,6 @@ func TestDecodeBlockRejectsMissingRequiredWireFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"miner", "mixHash", "nonce"} {
-		name := name
 		t.Run("header "+name, func(t *testing.T) {
 			t.Parallel()
 			rawBlock := mutateObject(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
@@ -339,7 +336,6 @@ func TestDecodeReceiptRejectsAmbiguousAndNonCanonicalFields(t *testing.T) {
 		}},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			raw := mutateObject(t, bundle.RawReceipts[0], test.mutate)
@@ -436,8 +432,6 @@ func TestReceiptEffectiveGasPriceIsAuthenticatedForTransactionTypesZeroThroughFo
 		t.Fatal(err)
 	}
 	for index, transaction := range bundle.Block.Transactions() {
-		index := index
-		transaction := transaction
 		t.Run(fmt.Sprintf("type %d", transaction.Type()), func(t *testing.T) {
 			t.Parallel()
 			expected, err := chainbundle.TransactionEffectiveGasPrice(
@@ -565,7 +559,6 @@ func TestTransactionEffectiveGasPriceUsesFeeCapMinimumWithoutMutation(t *testing
 		{name: "base fee plus tip", baseFee: big.NewInt(0), want: 1},
 		{name: "fee cap", baseFee: big.NewInt(10), want: 2},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			bundle, err := testfixture.New(testfixture.Options{

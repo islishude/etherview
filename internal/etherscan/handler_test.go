@@ -64,7 +64,7 @@ func compatibilityActionCases() []compatibilityActionCase {
 				"codeformat": {"solidity-single-file"}, "contractname": {"A"}, "compilerversion": {"v0.8.30"},
 			},
 		},
-		{module: "contract", action: "checkverifystatus", requiredMethod: http.MethodPost, keyed: true, values: url.Values{"guid": {guid}}},
+		{module: "contract", action: "checkverifystatus", keyed: true, values: url.Values{"guid": {guid}}},
 		{module: "contract", action: "verifyproxycontract", requiredMethod: http.MethodPost, keyed: true, values: url.Values{"address": {testContract}}},
 		{module: "contract", action: "checkproxyverification", requiredMethod: http.MethodGet, keyed: true, values: url.Values{"guid": {guid}}},
 
@@ -188,7 +188,11 @@ func TestCompatibilityKeyedActionsGoldenRejection(t *testing.T) {
 		t.Run(test.key(), func(t *testing.T) {
 			backend := &fakeBackend{result: "must not dispatch"}
 			recorder := httptest.NewRecorder()
-			Handler{ChainID: 1, Backend: backend}.ServeHTTP(recorder, compatibilityActionRequest(test.requiredMethod, test))
+			method := test.requiredMethod
+			if method == "" {
+				method = http.MethodGet
+			}
+			Handler{ChainID: 1, Backend: backend}.ServeHTTP(recorder, compatibilityActionRequest(method, test))
 			assertCompatibilityGolden(t, recorder, http.StatusOK, "{\"status\":\"0\",\"message\":\"NOTOK\",\"result\":\"API Key required\"}\n")
 			if backend.calls != 0 {
 				t.Fatalf("unauthenticated request dispatched %#v", backend.request)
@@ -285,12 +289,14 @@ func TestVerificationMethodMatrixAndAPIKeyBoundary(t *testing.T) {
 	}
 	const guid = "123e4567-e89b-42d3-a456-426614174000"
 	tests := []struct {
-		name   string
-		method string
-		values string
+		name        string
+		method      string
+		values      string
+		bothMethods bool
 	}{
 		{name: "submit source post", method: http.MethodPost, values: "module=contract&action=verifysourcecode&contractaddress=" + testContract + "&sourceCode=contract+A%7B%7D&codeformat=solidity-single-file&contractname=A&compilerversion=v0.8.30"},
-		{name: "source status post", method: http.MethodPost, values: "module=contract&action=checkverifystatus&guid=" + guid},
+		{name: "source status get", method: http.MethodGet, values: "module=contract&action=checkverifystatus&guid=" + guid, bothMethods: true},
+		{name: "source status post", method: http.MethodPost, values: "module=contract&action=checkverifystatus&guid=" + guid, bothMethods: true},
 		{name: "submit proxy post", method: http.MethodPost, values: "module=contract&action=verifyproxycontract&address=" + testContract},
 		{name: "proxy status get", method: http.MethodGet, values: "module=contract&action=checkproxyverification&guid=" + guid},
 	}
@@ -304,6 +310,9 @@ func TestVerificationMethodMatrixAndAPIKeyBoundary(t *testing.T) {
 			handler.ServeHTTP(recorder, request)
 			if backend.request.Action == "" || recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"result":"ok"`) {
 				t.Fatalf("method=%s request=%#v status=%d body=%s", test.method, backend.request, recorder.Code, recorder.Body.String())
+			}
+			if test.bothMethods {
+				return
 			}
 
 			wrongMethod := http.MethodPost
@@ -328,6 +337,59 @@ func TestVerificationMethodMatrixAndAPIKeyBoundary(t *testing.T) {
 	handler.ServeHTTP(recorder, verificationHandlerRequest(http.MethodPost, "module=contract&action=checkverifystatus&guid="+guid))
 	if backend.request.Action != "" || !strings.Contains(recorder.Body.String(), "API Key required") {
 		t.Fatalf("request=%#v body=%s", backend.request, recorder.Body.String())
+	}
+
+	backend = &fakeBackend{result: "should-not-dispatch"}
+	recorder = httptest.NewRecorder()
+	Handler{ChainID: 1, Backend: backend}.ServeHTTP(recorder,
+		httptest.NewRequest(http.MethodPut, "/v2/api?chainid=1&module=contract&action=checkverifystatus&guid="+guid, nil))
+	if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != "GET, POST" || backend.calls != 0 {
+		t.Fatalf("status=%d allow=%q calls=%d body=%s", recorder.Code, recorder.Header().Get("Allow"), backend.calls, recorder.Body.String())
+	}
+}
+
+func TestHardhat3VerificationStatusGETBoundary(t *testing.T) {
+	t.Parallel()
+	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: bytes.Repeat([]byte{8}, 32)}
+	issued, err := manager.Create(context.Background(), "hardhat-3-status", 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const guid = "123e4567-e89b-42d3-a456-426614174000"
+
+	for _, test := range []struct {
+		name       string
+		query      string
+		wantAction string
+	}{
+		{
+			name:       "query API key",
+			query:      "chainid=1&module=contract&action=checkverifystatus&guid=" + guid + "&apikey=" + url.QueryEscape(issued.Token),
+			wantAction: "checkverifystatus",
+		},
+		{name: "missing API key", query: "chainid=1&module=contract&action=checkverifystatus&guid=" + guid},
+		{name: "invalid API key", query: "chainid=1&module=contract&action=checkverifystatus&guid=" + guid + "&apikey=invalid"},
+		{name: "wrong chain", query: "chainid=2&module=contract&action=checkverifystatus&guid=" + guid + "&apikey=" + url.QueryEscape(issued.Token)},
+		{name: "missing guid", query: "chainid=1&module=contract&action=checkverifystatus&apikey=" + url.QueryEscape(issued.Token)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := &fakeBackend{result: "Pass - Verified"}
+			handler := manager.Middleware(false, Handler{ChainID: 1, Backend: backend})
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v2/api?"+test.query, nil))
+
+			if test.wantAction == "" {
+				if backend.calls != 0 || !strings.Contains(recorder.Body.String(), `"status":"0"`) {
+					t.Fatalf("calls=%d request=%#v status=%d body=%s", backend.calls, backend.request, recorder.Code, recorder.Body.String())
+				}
+				return
+			}
+			if recorder.Code != http.StatusOK || backend.calls != 1 || backend.request.Action != test.wantAction ||
+				backend.request.Values.Get("guid") != guid || backend.request.Values.Get("apikey") != "" ||
+				!strings.Contains(recorder.Body.String(), `"result":"Pass - Verified"`) {
+				t.Fatalf("calls=%d request=%#v status=%d body=%s", backend.calls, backend.request, recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
 

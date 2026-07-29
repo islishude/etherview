@@ -60,7 +60,6 @@ func TestGuardAllowsOutOfOrderBatchAndRejectsDuplicateID(t *testing.T) {
 		{name: "out of order"},
 		{name: "duplicate", duplicate: true, wantError: true},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -123,7 +122,6 @@ func TestGuardRejectsWrongSingleIDVersionAndTrailingJSON(t *testing.T) {
 		}},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -245,8 +243,7 @@ func TestGuardBoundsResponseAndRedactsHTTPBodyAndEndpoint(t *testing.T) {
 		t.Cleanup(client.Close)
 		var result string
 		rawError := client.CallContext(t.Context(), &result, "test")
-		var rpcError rpc.Error
-		if !errors.As(rawError, &rpcError) {
+		if _, ok := errors.AsType[rpc.Error](rawError); !ok {
 			t.Fatalf("CallContext() error = %v", rawError)
 		}
 		sanitized := SanitizeError(rawError)

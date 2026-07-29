@@ -28,7 +28,6 @@ func TestTrustedProxyConfigurationRequiresCanonicalIPOrCIDR(t *testing.T) {
 		"fe80::1%eth0",
 		"::ffff:192.0.2.1",
 	} {
-		value := value
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
 			cfg := Default()

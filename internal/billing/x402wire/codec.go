@@ -140,9 +140,9 @@ func decodePaymentJSON(decoded []byte) (Payment, error) {
 	sdkResource := resourceToSDK(resource)
 	sdkPayload := x402.PaymentPayload{
 		X402Version: X402Version,
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"signature": authorization.Signature,
-			"authorization": map[string]interface{}{
+			"authorization": map[string]any{
 				"from":        authorization.From,
 				"to":          authorization.To,
 				"value":       authorization.Value,
@@ -349,7 +349,7 @@ func (c *Codec) EncodePaymentResponse(response x402.SettleResponse) (string, err
 	return c.encodeHeader(PhaseSettle, wire)
 }
 
-func (c *Codec) encodeHeader(phase Phase, value interface{}) (string, error) {
+func (c *Codec) encodeHeader(phase Phase, value any) (string, error) {
 	encodedJSON, err := json.Marshal(value)
 	if err != nil {
 		return "", boundaryError(phase, FailureInvalid, CodeHeaderMalformed)
@@ -361,7 +361,7 @@ func (c *Codec) encodeHeader(phase Phase, value interface{}) (string, error) {
 	return base64.StdEncoding.EncodeToString(encodedJSON), nil
 }
 
-func decodeTypedJSON(data []byte, destination interface{}) error {
+func decodeTypedJSON(data []byte, destination any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()

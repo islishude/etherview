@@ -55,9 +55,9 @@ func testSDKPayment(requirement Requirement) x402.PaymentPayload {
 	accepted := requirement.SDK()
 	return x402.PaymentPayload{
 		X402Version: X402Version,
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"signature": "0x" + strings.ToUpper(testSignature[2:]),
-			"authorization": map[string]interface{}{
+			"authorization": map[string]any{
 				"from":        "0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa",
 				"to":          accepted.PayTo,
 				"value":       accepted.Amount,
@@ -247,7 +247,6 @@ func TestCodecRequiresOneStrictBoundedPaymentHeader(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := codec.DecodePaymentSignature(test.header)
@@ -273,7 +272,7 @@ func TestCodecRejectsAmbiguousAndUnsupportedPayloads(t *testing.T) {
 	withExtraTransferMethod.Accepted.Extra["assetTransferMethod"] = "permit2"
 
 	withExtension := testSDKPayment(requirement)
-	withExtension.Extensions = map[string]interface{}{"hostile": true}
+	withExtension.Extensions = map[string]any{"hostile": true}
 
 	withoutResource := testSDKPayment(requirement)
 	withoutResource.Resource = nil
@@ -347,7 +346,6 @@ func TestCodecRejectsAmbiguousAndUnsupportedPayloads(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			header := make(http.Header)
@@ -572,7 +570,6 @@ func TestCodecStrictlyDecodesPaymentRequiredAndResponseHeaders(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			header := make(http.Header)
@@ -720,7 +717,6 @@ func TestRequirementValidationCoversUint256AndCanonicalResource(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			value := base
@@ -801,18 +797,17 @@ func TestRequirementMatchRejectsEveryOuterBindingDifference(t *testing.T) {
 		{
 			name: "authorization recipient",
 			mutate: func(value *x402.PaymentPayload) {
-				value.Payload["authorization"].(map[string]interface{})["to"] = testPayer
+				value.Payload["authorization"].(map[string]any)["to"] = testPayer
 			},
 		},
 		{
 			name: "authorization amount",
 			mutate: func(value *x402.PaymentPayload) {
-				value.Payload["authorization"].(map[string]interface{})["value"] = "125001"
+				value.Payload["authorization"].(map[string]any)["value"] = "125001"
 			},
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			payment := testSDKPayment(requirement)
@@ -846,7 +841,7 @@ func TestFingerprintCreatesOneGlobalAuthorizationReplayFence(t *testing.T) {
 
 	secondPayment := testSDKPayment(requirement)
 	secondPayment.Payload["signature"] = "0x" + strings.Repeat("ab", 65)
-	authorization := secondPayment.Payload["authorization"].(map[string]interface{})
+	authorization := secondPayment.Payload["authorization"].(map[string]any)
 	authorization["from"] = testPayer
 	authorization["to"] = testRecipient
 	authorization["nonce"] = testNonce
@@ -890,7 +885,7 @@ func TestFingerprintCreatesOneGlobalAuthorizationReplayFence(t *testing.T) {
 	}
 	for _, test := range authorizationChanges {
 		payment := testSDKPayment(requirement)
-		payment.Payload["authorization"].(map[string]interface{})[test.field] = test.value
+		payment.Payload["authorization"].(map[string]any)[test.field] = test.value
 		changed := decodeTestPayment(t, codec, payment)
 		got, err := Fingerprint(pepper, changed)
 		if err != nil {
@@ -943,7 +938,6 @@ func TestFingerprintCreatesOneGlobalAuthorizationReplayFence(t *testing.T) {
 	}
 	outerPayments := make([]Payment, 0, len(outerChanges))
 	for _, test := range outerChanges {
-		test := test
 		payment := testSDKPayment(requirement)
 		test.mutate(&payment)
 		decoded := decodeTestPayment(t, codec, payment)
@@ -959,7 +953,6 @@ func TestFingerprintCreatesOneGlobalAuthorizationReplayFence(t *testing.T) {
 
 	results := make(chan [32]byte, len(outerPayments)*8)
 	for _, payment := range outerPayments {
-		payment := payment
 		for range 8 {
 			go func() {
 				got, fingerprintErr := Fingerprint(pepper, payment)
@@ -1007,7 +1000,6 @@ func TestFingerprintCreatesOneGlobalAuthorizationReplayFence(t *testing.T) {
 		},
 	}
 	for _, test := range domainChanges {
-		test := test
 		t.Run(test.name+" changes fingerprint", func(t *testing.T) {
 			t.Parallel()
 			payment := testSDKPayment(requirement)

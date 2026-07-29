@@ -32,7 +32,6 @@ func TestCompilerCatalogParsesSolidityAndVyperLists(t *testing.T) {
 			origin: "https://github.com",
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			catalog := &CompilerCatalog{
@@ -107,7 +106,6 @@ func TestCompilerCatalogRejectsUnsafeOrAmbiguousLists(t *testing.T) {
 		}]}`,
 	}
 	for name, raw := range tests {
-		name, raw := name, raw
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if _, err := base.parse(LanguageSolidity, "https://allowed.example/list.json", []byte(raw)); err == nil {

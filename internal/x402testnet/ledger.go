@@ -453,8 +453,9 @@ func matchesSettledEventChain(
 	return true
 }
 
+//go:fix inline
 func statePointer(value billing.State) *billing.State {
-	return &value
+	return new(value)
 }
 
 func sameStatePointer(left, right *billing.State) bool {
