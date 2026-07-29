@@ -4,6 +4,7 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -2400,6 +2401,8 @@ type Service struct {
 	server          *http.Server
 	listen          func(string, string) (net.Listener, error)
 	shutdownTimeout time.Duration
+	tlsCertFile     string
+	tlsKeyFile      string
 }
 
 func NewService(cfg config.Config, handler http.Handler, loggers ...*slog.Logger) *Service {
@@ -2419,18 +2422,40 @@ func NewService(cfg config.Config, handler http.Handler, loggers ...*slog.Logger
 		},
 		listen:          net.Listen,
 		shutdownTimeout: cfg.Server.ShutdownTimeout,
+		tlsCertFile:     cfg.Server.TLSCertFile,
+		tlsKeyFile:      cfg.Server.TLSKeyFile,
 	}
 }
 
 func (s *Service) Name() string { return "http-api" }
 
 func (s *Service) Run(ctx context.Context) error {
+	if (s.tlsCertFile == "") != (s.tlsKeyFile == "") {
+		return errors.New("API TLS certificate and key must be configured together")
+	}
+	tlsEnabled := s.tlsCertFile != "" && s.tlsKeyFile != ""
+	if tlsEnabled {
+		certificate, err := tls.LoadX509KeyPair(s.tlsCertFile, s.tlsKeyFile)
+		if err != nil {
+			return fmt.Errorf("load API TLS key pair: %w", err)
+		}
+		s.server.TLSConfig = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{certificate},
+		}
+	}
 	listener, err := s.listen("tcp", s.server.Addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- s.server.Serve(listener) }()
+	go func() {
+		if tlsEnabled {
+			done <- s.server.ServeTLS(listener, "", "")
+			return
+		}
+		done <- s.server.Serve(listener)
+	}()
 	select {
 	case err := <-done:
 		if errors.Is(err, http.ErrServerClosed) {

@@ -45,7 +45,7 @@ func main() {
 				"native_currency": map[string]any{
 					"name": "Ether", "symbol": "ETH", "decimals": 18,
 				},
-				"rpc_urls": []string{"https://public-rpc.example"},
+				"rpc_urls": []string{"http://localhost:8545"},
 			},
 			"features": map[string]bool{
 				"trace": true, "mempool": true, "historical_state": true,

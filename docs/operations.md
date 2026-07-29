@@ -12,6 +12,53 @@ on `server.metrics_address`. Readiness requires the shared component lifecycle
 and PostgreSQL. The API role additionally requires durable core readiness on
 its public listener.
 
+## API listener TLS
+
+The public `api`/`all` listener uses HTTP by default. To make the Go server
+serve HTTPS directly, configure both absolute paths:
+
+```yaml
+server:
+  public_url: https://explorer.example.com
+  tls_cert_file: /run/etherview-tls/tls.crt
+  tls_key_file: /run/etherview-tls/tls.key
+```
+
+`ETHERVIEW_SERVER_TLS_CERT_FILE` and
+`ETHERVIEW_SERVER_TLS_KEY_FILE` override the YAML paths. The process loads the
+PEM pair before opening `server.address`; an unreadable file, malformed
+certificate, or mismatched private key fails startup without an HTTP fallback.
+TLS 1.2 and 1.3 are supported. `server.metrics_address` remains HTTP.
+
+Certificate files are read once. After replacing them, restart the API process
+or roll the selected `all`/`api` Deployments. Monitor certificate expiry and
+perform client trust-chain and hostname checks at the public origin; the
+application does not issue, renew, or hot-reload certificates.
+
+The checked-in base Compose deployment remains HTTP and expects production TLS
+to terminate externally. For a locally trusted process-native HTTPS example,
+initialize and start the full-stack Preview:
+
+```sh
+make preview-cert
+make start-preview
+```
+
+The explicit certificate target runs `mkcert -install` and generates an
+ignored pair for `localhost`, `127.0.0.1`, and `::1`. Preview mounts that pair
+read-only only into the API service. Its public listener is
+`https://localhost:8080`, while `http://localhost:9090` remains the plain HTTP
+operations listener. The start and recreate targets only preflight the files;
+they do not modify the host trust store.
+
+For Helm, create or provision a TLS Secret independently, then enable
+`apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the
+client-to-Ingress certificate; `apiTLS` controls the Service-to-Pod hop.
+Controllers that do not honor `appProtocol: https` require their
+HTTPS-backend annotation. The Helm test uses an insecure cluster-local curl
+only because the public certificate normally does not name the Service DNS;
+it is not a substitute for external certificate verification.
+
 Logs default to JSON at the `info` level. Set `observability.log_level` to
 `debug`, `info`, `warn`, or `error`, and set `observability.log_format` to
 `json` or `text`. `ETHERVIEW_LOG_LEVEL` and `ETHERVIEW_LOG_FORMAT` override

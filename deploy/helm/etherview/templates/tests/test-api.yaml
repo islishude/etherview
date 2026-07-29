@@ -18,7 +18,13 @@ spec:
   containers:
     - name: curl
       image: curlimages/curl:8.16.0
+      {{- if .Values.apiTLS.enabled }}
+      # The serving certificate normally names the public origin rather than
+      # the cluster-local Service DNS name; this hook checks TLS reachability.
+      args: ["--fail", "--silent", "--insecure", "https://{{ include "etherview.fullname" . }}:{{ .Values.service.port }}/health/live"]
+      {{- else }}
       args: ["--fail", "--silent", "http://{{ include "etherview.fullname" . }}:{{ .Values.service.port }}/health/live"]
+      {{- end }}
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

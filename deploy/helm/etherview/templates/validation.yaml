@@ -3,6 +3,12 @@
 {{- fail (printf "roles.%s.autoscaling.maxReplicas must be greater than or equal to minReplicas" $roleName) }}
 {{- end }}
 {{- end }}
+{{- if and .Values.apiTLS.enabled (empty (.Values.apiTLS.existingSecret | trim)) }}
+{{- fail "apiTLS.existingSecret is required when process-native API TLS is enabled" }}
+{{- end }}
+{{- if and .Values.apiTLS.enabled .Values.config.server.public_url (not (hasPrefix "https://" .Values.config.server.public_url)) }}
+{{- fail "config.server.public_url must use HTTPS when apiTLS is enabled" }}
+{{- end }}
 {{- if and .Values.genesisState.existingClaim (ne (int64 .Values.config.chain.start_block) (int64 0)) }}
 {{- fail "genesisState.existingClaim requires config.chain.start_block=0" }}
 {{- end }}

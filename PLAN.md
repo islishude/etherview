@@ -79,7 +79,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P50-T11 replaces the home page's three REST polling loops with one atomic
   same-origin full-snapshot EventSource and no HTTP fallback. P50-T12 adds the
   de-duplicated address header, QR/copy controls, origin and ERC-20 holdings,
-  configured native labels, and account-independent add-network flow.
+  configured native labels, and account-independent add-network flow. P50-T13
+  consolidates that flow into the existing wallet menu and removes its
+  duplicate footer surface.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
@@ -108,7 +110,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   production Compose reorg; P70-T18's address/network release validation passes
   the embedded browser and managed PostgreSQL suites; P70-T19 replaces manual
   PostgreSQL setup and shell-heavy runtime smoke with Go-owned integration,
-  production-schema, and monolith/seven-role runtime E2E targets.
+  production-schema, and monolith/seven-role runtime E2E targets. P70-T20 adds
+  optional process-native TLS on API listeners, a Preview-local mkcert
+  workflow, role-scoped Helm certificate delivery, and production runtime
+  validation.
   Conformance, security, release CI, long-capacity, documentation, and artifact
   gates remain open.
 

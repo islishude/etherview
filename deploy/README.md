@@ -40,6 +40,12 @@ at startup and then at `maintenance.interval`. Its generation window and
 expired-observation delete batch are configured under `maintenance`; the sweep
 uses PostgreSQL only and a retryable failure does not withdraw readiness.
 
+The checked-in base Compose deployment remains HTTP and expects production TLS
+to terminate externally. The full-stack Preview below is the repository's
+local process-native HTTPS workflow. Custom deployments may still configure
+the application TLS file settings directly, but no separate production
+Compose TLS overlay is shipped.
+
 Wallet authentication is disabled by default. To enable it, set
 `features.user_auth: true` (or `ETHERVIEW_FEATURE_USER_AUTH=true`), configure
 `server.public_url` as the root public HTTPS origin, and supply an independent
@@ -68,9 +74,26 @@ Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and object
 storage accelerators are not part of this deployment.
 
 ```sh
+make preview-cert
 make start-preview
-curl -fsS http://127.0.0.1:8080/api/v1/config
+curl --cacert "$(mkcert -CAROOT)/rootCA.pem" \
+  -fsS https://localhost:8080/api/v1/config
 ```
+
+`make preview-cert` is an explicit, one-time local trust operation: it requires
+mkcert, installs mkcert's local CA, and generates an ignored certificate pair
+under `.local/preview-tls/` for `localhost`, `127.0.0.1`, and `::1`.
+`make start-preview` and `make recreate-preview` only check that both files
+exist; they never modify the host trust store. Preview mounts the pair
+read-only only into the API role. Rotate it by rerunning `make preview-cert`
+and then `make recreate-preview`. The public listener is
+`https://localhost:8080`; health and metrics on the operations listener remain
+plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
+the explicit curl CA path also works for curl builds that do not consult it.
+The add-network control advertises the local Reth endpoint as
+`http://localhost:8545`. Wallet metadata validation permits that exact
+Preview-local HTTP RPC exception only; production RPC URLs and every block
+explorer or icon URL remain HTTPS-only.
 
 Verification v2 downloads checksum-pinned native compiler artifacts into the
 `compiler-cache` volume, then passes each compiler and Standard JSON request
@@ -247,6 +270,17 @@ ports or include TCP/443, even when they carry a destination selector;
 explicit non-443 rules remain available for private dependencies. Hostname and
 certificate enforcement remains in the application because Kubernetes
 NetworkPolicy operates only at IP/port scope.
+
+Process-native API TLS is independent of public Ingress termination. Set
+`apiTLS.enabled=true` and `apiTLS.existingSecret` to a pre-existing Secret
+containing the configured `certificateKey` and `privateKeyKey` entries. The
+chart mounts it only into the selected `all`/`api` main container, switches
+the Service `appProtocol`, public probes, and Ingress backend port to HTTPS,
+and keeps the 9090 operations listener on HTTP. `ingress.tls` still configures
+the client-facing certificate. If the selected Ingress controller does not
+honor `appProtocol: https`, add its HTTPS-backend annotation under
+`ingress.annotations`. Rotate the Secret with a controlled `all`/`api`
+rollout; the chart intentionally does not checksum Secret contents.
 
 OTLP tracing remains disabled when the optional Secret key is absent. Set
 `config.observability.otlp_trace_insecure=true` only for an explicitly trusted

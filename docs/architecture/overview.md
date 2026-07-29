@@ -20,6 +20,15 @@ with PostgreSQL liveness. The API probe combines it with durable core-index
 readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
 
+The public API listener optionally serves TLS from one startup-loaded
+certificate/private-key pair as specified by
+[ADR-0027](../decisions/ADR-0027-process-native-api-tls.md). TLS is enabled
+only when both absolute certificate paths are configured, fails before binding
+on invalid material, and never falls back to HTTP. External Ingress
+termination remains supported, and an HTTPS `server.public_url` does not by
+itself select the listener protocol. The separate operations listener remains
+plain HTTP and never receives the API private key.
+
 Each role also runs the same writer-backed PostgreSQL operational metric
 collector. It reads only partial-indexed active durable-job, verification,
 repair, and x402 stale-settlement facts, excluding unbounded terminal history,

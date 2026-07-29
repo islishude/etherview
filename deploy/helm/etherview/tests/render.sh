@@ -142,6 +142,11 @@ genesis_distributed="$temporary_dir/genesis-distributed.yaml"
 genesis_url_monolith="$temporary_dir/genesis-url-monolith.yaml"
 genesis_url_distributed="$temporary_dir/genesis-url-distributed.yaml"
 genesis_url_without_sha="$temporary_dir/genesis-url-without-sha.yaml"
+tls_monolith="$temporary_dir/tls-monolith.yaml"
+tls_distributed="$temporary_dir/tls-distributed.yaml"
+tls_service="$temporary_dir/tls-service.yaml"
+tls_ingress="$temporary_dir/tls-ingress.yaml"
+tls_test="$temporary_dir/tls-test.yaml"
 
 "$helm_bin" template etherview "$chart_dir" --namespace explorer >"$monolith"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
@@ -173,6 +178,26 @@ genesis_url_without_sha="$temporary_dir/genesis-url-without-sha.yaml"
   --set-string genesisState.fetchTimeout=90s >"$genesis_url_distributed"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string genesisState.url=https://genesis.example/network.json >"$genesis_url_without_sha"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls >"$tls_monolith"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls >"$tls_distributed"
+"$helm_bin" template etherview "$chart_dir" \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls \
+  --show-only templates/service.yaml >"$tls_service"
+"$helm_bin" template etherview "$chart_dir" \
+  --set ingress.enabled=true \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls \
+  --show-only templates/ingress.yaml >"$tls_ingress"
+"$helm_bin" template etherview "$chart_dir" \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls \
+  --show-only templates/tests/test-api.yaml >"$tls_test"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string genesisState.fetchTimeout=1s >"$temporary_dir/genesis-timeout-minimum.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
@@ -218,6 +243,45 @@ assert_not_contains "$genesis_url_monolith" "claimName:"
 assert_occurrences "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_URL" 1
 assert_occurrences "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT" 1
 assert_not_contains "$genesis_url_without_sha" "name: ETHERVIEW_CHAIN_GENESIS_SHA256"
+
+# Process-native TLS remains disabled by default. When enabled, the certificate
+# Secret and paths exist only on the selected all/api main container; probes,
+# Service, Ingress backend, and the cluster-local hook use HTTPS.
+assert_not_contains "$monolith" "ETHERVIEW_SERVER_TLS_CERT_FILE"
+assert_not_contains "$distributed" "ETHERVIEW_SERVER_TLS_CERT_FILE"
+assert_not_contains "$monolith" "name: api-tls"
+assert_not_contains "$distributed" "name: api-tls"
+assert_occurrences "$tls_monolith" "name: ETHERVIEW_SERVER_TLS_CERT_FILE" 1
+assert_occurrences "$tls_monolith" "name: ETHERVIEW_SERVER_TLS_KEY_FILE" 1
+assert_occurrences "$tls_monolith" "name: api-tls" 2
+assert_occurrences "$tls_monolith" 'secretName: "etherview-api-tls"' 1
+assert_occurrences "$tls_monolith" "scheme: HTTPS" 3
+assert_occurrences "$tls_distributed" "name: ETHERVIEW_SERVER_TLS_CERT_FILE" 1
+assert_occurrences "$tls_distributed" "name: ETHERVIEW_SERVER_TLS_KEY_FILE" 1
+assert_component_occurrences "$tls_distributed" api "name: api-tls" 2
+for role in sync enrich trace verify metadata maintenance; do
+  assert_component_occurrences "$tls_distributed" "$role" "name: api-tls" 0
+  assert_component_occurrences "$tls_distributed" "$role" "ETHERVIEW_SERVER_TLS_KEY_FILE" 0
+done
+assert_occurrences "$tls_distributed" 'secretName: "etherview-api-tls"' 1
+assert_occurrences "$tls_distributed" "scheme: HTTPS" 3
+assert_contains "$tls_service" "name: https"
+assert_contains "$tls_service" "targetPort: https"
+assert_contains "$tls_service" "appProtocol: https"
+assert_contains "$tls_ingress" "name: https"
+assert_contains "$tls_test" '"--insecure"'
+expect_render_failure tls-without-secret --set apiTLS.enabled=true
+expect_template_failure tls-without-secret --set apiTLS.enabled=true
+expect_render_failure tls-with-http-public-url \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls \
+  --set-string config.server.public_url=http://localhost:8080
+expect_render_failure inline-tls-certificate-path \
+  --set-string config.server.tls_cert_file=/run/etherview-tls/tls.crt
+expect_render_failure empty-tls-certificate-key \
+  --set apiTLS.enabled=true \
+  --set-string apiTLS.existingSecret=etherview-api-tls \
+  --set-string apiTLS.certificateKey=
 
 assert_kind_count "$distributed" Deployment 7
 assert_kind_count "$distributed" HorizontalPodAutoscaler 5

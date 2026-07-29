@@ -36,6 +36,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T10 | done        | P40-T08       | Address activity tabs, lazy assets, and contract-address entry           | frontend, embedded E2E, and generation checks |
 | P50-T11 | done        | P40-T09       | Atomic home snapshot EventSource with no REST polling fallback            | frontend, embedded E2E, and generation checks |
 | P50-T12 | done        | P40-T10       | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
+| P50-T13 | done        | P50-T12       | Add-network flow consolidated into the wallet menu                         | frontend unit, embedded E2E, responsive and a11y tests |
 
 ## Acceptance
 
@@ -348,3 +349,21 @@ None.
   `make test-e2e` attempts, including an approved unsandboxed rerun and a
   `PLAYWRIGHT_SINGLE_PROCESS=1` fallback, built the embedded binary but local
   Chrome exited with `SIGABRT`; Playwright then reported `kill EPERM`.
+- P50-T13: the footer add-network control and its separate floating picker are
+  removed. The existing wallet popover now owns one configured network section
+  that prefers the active wallet, uses a sole discovered provider directly,
+  keeps multi-provider choice inline, disables cleanly without a provider, and
+  resets local chooser and result state when the menu closes. Account
+  connection, SIWE, public configuration, and the bounded wallet RPC contract
+  remain unchanged.
+- P50-T13 verification: the focused component suite passes 5 tests and the
+  complete frontend suite passes 20 files with 149 tests.
+  `npm --prefix web run lint`, `npm --prefix web run build`, and
+  `make generate-check` pass. The embedded browser fallback
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` passes
+  all 9 flows, including exact account-independent add-network RPC, 320-pixel
+  containment, bilingual dark/light rendering, keyboard behavior, and WCAG
+  2.1 A/AA scans. `make check` also passes generation, lint, ordinary/race
+  tests, security and license scans, Dockerfile/Compose validation, and Helm
+  lint/render checks; sandboxed cache/config reads emitted warnings without
+  changing their successful results.

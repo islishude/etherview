@@ -49,7 +49,7 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 	cfg := Default()
 	cfg.Chain.NativeSymbol = "TST"
 	cfg.Wallet.AddChain = WalletAddChainConfig{
-		RPCURLs:           []string{"https://rpc.public.example"},
+		RPCURLs:           []string{"https://rpc.public.example", "http://localhost:8545"},
 		BlockExplorerURLs: []string{"https://explorer.example"},
 		IconURLs:          []string{"https://assets.example/network.png"},
 	}
@@ -62,6 +62,9 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 		url  string
 	}{
 		{name: "http", url: "http://rpc.example"},
+		{name: "HTTP loopback address", url: "http://127.0.0.1:8545"},
+		{name: "HTTP internal hostname", url: "http://reth:8545"},
+		{name: "non-HTTP localhost", url: "ftp://localhost:8545"},
 		{name: "credentials", url: "https://user:secret@rpc.example"},
 		{name: "query", url: "https://rpc.example/?key=secret"},
 		{name: "fragment", url: "https://rpc.example/#network"},
@@ -71,6 +74,35 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 			invalid.Wallet.AddChain.RPCURLs = []string{test.url}
 			if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "wallet.add_chain.rpc_urls") {
 				t.Fatalf("invalid public URL passed: %q error=%v", test.url, err)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+		field  string
+	}{
+		{
+			name: "HTTP localhost block explorer",
+			mutate: func(invalid *Config) {
+				invalid.Wallet.AddChain.BlockExplorerURLs = []string{"http://localhost:8080"}
+			},
+			field: "wallet.add_chain.block_explorer_urls",
+		},
+		{
+			name: "HTTP localhost icon",
+			mutate: func(invalid *Config) {
+				invalid.Wallet.AddChain.IconURLs = []string{"http://localhost:8080/icon.png"}
+			},
+			field: "wallet.add_chain.icon_urls",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := cfg
+			test.mutate(&invalid)
+			if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("invalid public metadata URL passed: error=%v", err)
 			}
 		})
 	}
@@ -716,6 +748,94 @@ func TestGenesisFileRequiresAbsolutePathAndBlockZeroStart(t *testing.T) {
 	cfg.Chain.StartBlock = 0
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid genesis file config: %v", err)
+	}
+}
+
+func TestServerTLSConfiguration(t *testing.T) {
+	t.Parallel()
+	valid := Default()
+	valid.Server.PublicURL = "https://explorer.example"
+	valid.Server.TLSCertFile = "/run/etherview-tls/tls.crt"
+	valid.Server.TLSKeyFile = "/run/etherview-tls/tls.key"
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid server TLS configuration: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{
+			name: "certificate only",
+			mutate: func(cfg *Config) {
+				cfg.Server.TLSCertFile = "/run/etherview-tls/tls.crt"
+			},
+			want: "must be configured together",
+		},
+		{
+			name: "key only",
+			mutate: func(cfg *Config) {
+				cfg.Server.TLSKeyFile = "/run/etherview-tls/tls.key"
+			},
+			want: "must be configured together",
+		},
+		{
+			name: "relative certificate",
+			mutate: func(cfg *Config) {
+				cfg.Server.TLSCertFile = "tls.crt"
+				cfg.Server.TLSKeyFile = "/run/etherview-tls/tls.key"
+			},
+			want: "tls_cert_file must be an absolute path",
+		},
+		{
+			name: "relative key",
+			mutate: func(cfg *Config) {
+				cfg.Server.TLSCertFile = "/run/etherview-tls/tls.crt"
+				cfg.Server.TLSKeyFile = "tls.key"
+			},
+			want: "tls_key_file must be an absolute path",
+		},
+		{
+			name: "HTTP public origin",
+			mutate: func(cfg *Config) {
+				cfg.Server.PublicURL = "http://localhost:8080"
+				cfg.Server.TLSCertFile = "/run/etherview-tls/tls.crt"
+				cfg.Server.TLSKeyFile = "/run/etherview-tls/tls.key"
+			},
+			want: "public_url must use HTTPS",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("TLS validation error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestServerTLSEnvironment(t *testing.T) {
+	cfg := Default()
+	values := map[string]string{
+		"ETHERVIEW_SERVER_PUBLIC_URL":    "https://explorer.example",
+		"ETHERVIEW_SERVER_TLS_CERT_FILE": "/run/etherview-tls/tls.crt",
+		"ETHERVIEW_SERVER_TLS_KEY_FILE":  "/run/etherview-tls/tls.key",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.PublicURL != values["ETHERVIEW_SERVER_PUBLIC_URL"] ||
+		cfg.Server.TLSCertFile != values["ETHERVIEW_SERVER_TLS_CERT_FILE"] ||
+		cfg.Server.TLSKeyFile != values["ETHERVIEW_SERVER_TLS_KEY_FILE"] {
+		t.Fatalf("unexpected server TLS environment: %#v", cfg.Server)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("environment server TLS configuration: %v", err)
 	}
 }
 

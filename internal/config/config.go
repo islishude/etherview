@@ -67,6 +67,8 @@ type ServerConfig struct {
 	Address         string        `yaml:"address"`
 	MetricsAddress  string        `yaml:"metrics_address"`
 	PublicURL       string        `yaml:"public_url"`
+	TLSCertFile     string        `yaml:"tls_cert_file"`
+	TLSKeyFile      string        `yaml:"tls_key_file"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
@@ -529,6 +531,23 @@ func (c Config) Validate() error {
 			errs = append(errs, err)
 		}
 	}
+	certificateConfigured := c.Server.TLSCertFile != ""
+	keyConfigured := c.Server.TLSKeyFile != ""
+	if certificateConfigured != keyConfigured {
+		errs = append(errs, errors.New("server.tls_cert_file and server.tls_key_file must be configured together"))
+	}
+	if certificateConfigured && !filepath.IsAbs(c.Server.TLSCertFile) {
+		errs = append(errs, errors.New("server.tls_cert_file must be an absolute path"))
+	}
+	if keyConfigured && !filepath.IsAbs(c.Server.TLSKeyFile) {
+		errs = append(errs, errors.New("server.tls_key_file must be an absolute path"))
+	}
+	if certificateConfigured && keyConfigured && c.Server.PublicURL != "" {
+		publicURL, parseErr := url.Parse(c.Server.PublicURL)
+		if parseErr == nil && publicURL.Scheme != "https" {
+			errs = append(errs, errors.New("server.public_url must use HTTPS when server TLS is enabled"))
+		}
+	}
 	if c.Chain.ID == 0 {
 		errs = append(errs, errors.New("chain.id must be greater than zero"))
 	}
@@ -585,12 +604,13 @@ func (c Config) Validate() error {
 		"wallet.add_chain.block_explorer_urls": c.Wallet.AddChain.BlockExplorerURLs,
 		"wallet.add_chain.icon_urls":           c.Wallet.AddChain.IconURLs,
 	} {
+		allowLocalHTTP := name == "wallet.add_chain.rpc_urls"
 		if len(values) > 5 {
 			errs = append(errs, fmt.Errorf("%s must contain at most 5 URLs", name))
 			continue
 		}
 		for index, value := range values {
-			if err := validateWalletURL(value); err != nil {
+			if err := validateWalletURL(value, allowLocalHTTP); err != nil {
 				errs = append(errs, fmt.Errorf("%s[%d]: %w", name, index, err))
 			}
 		}
@@ -1002,12 +1022,17 @@ func validatePublicOrigin(raw string) error {
 	return nil
 }
 
-func validateWalletURL(raw string) error {
+func validateWalletURL(raw string, allowLocalHTTP bool) error {
 	parsed, err := url.Parse(raw)
 	if raw == "" || len(raw) > 2048 || raw != strings.TrimSpace(raw) || err != nil || parsed == nil ||
-		parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+		(parsed.Scheme != "https" &&
+			(!allowLocalHTTP || parsed.Scheme != "http" || parsed.Hostname() != "localhost")) ||
+		parsed.Hostname() == "" || parsed.User != nil ||
 		parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
 		strings.HasSuffix(parsed.Host, ":") {
+		if allowLocalHTTP {
+			return errors.New("must be an absolute HTTPS URL or HTTP localhost URL without credentials, query, or fragment")
+		}
 		return errors.New("must be an absolute HTTPS URL without credentials, query, or fragment")
 	}
 	host := parsed.Hostname()
@@ -1495,6 +1520,8 @@ func applyEnvironmentForRoles(
 	setString(lookup, "SERVER_ADDRESS", &cfg.Server.Address)
 	setString(lookup, "SERVER_METRICS_ADDRESS", &cfg.Server.MetricsAddress)
 	setString(lookup, "SERVER_PUBLIC_URL", &cfg.Server.PublicURL)
+	setString(lookup, "SERVER_TLS_CERT_FILE", &cfg.Server.TLSCertFile)
+	setString(lookup, "SERVER_TLS_KEY_FILE", &cfg.Server.TLSKeyFile)
 	setString(lookup, "CHAIN_GENESIS_HASH", &cfg.Chain.GenesisHash)
 	setString(lookup, "CHAIN_GENESIS_FILE", &cfg.Chain.GenesisFile)
 	setString(lookup, "CHAIN_GENESIS_URL", &cfg.Chain.GenesisURL)

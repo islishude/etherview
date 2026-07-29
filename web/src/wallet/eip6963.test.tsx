@@ -125,19 +125,22 @@ describe("EIP-6963 wallet boundary", () => {
       chain_id: "11155111",
       chain_name: "Wallet Testnet",
       native_currency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
-      rpc_urls: ["https://rpc.example"],
+      rpc_urls: ["https://rpc.example", "http://localhost:8545"],
       block_explorer_urls: ["https://explorer.example"],
       icon_urls: ["https://assets.example/icon.png"],
     })).toEqual({
       chainId: "0xaa36a7",
       chainName: "Wallet Testnet",
       nativeCurrency: { name: "Test Ether", symbol: "TETH", decimals: 18 },
-      rpcUrls: ["https://rpc.example"],
+      rpcUrls: ["https://rpc.example", "http://localhost:8545"],
       blockExplorerUrls: ["https://explorer.example"],
       iconUrls: ["https://assets.example/icon.png"],
     });
     for (const rpcURL of [
       "http://rpc.example",
+      "http://127.0.0.1:8545",
+      "http://reth:8545",
+      "ftp://localhost:8545",
       "https://user:secret@rpc.example",
       "https://rpc.example/?key=secret",
       "https://rpc.example/#fragment",
@@ -147,6 +150,15 @@ describe("EIP-6963 wallet boundary", () => {
         chain_name: "Test",
         native_currency: { name: "Test", symbol: "TST", decimals: 18 },
         rpc_urls: [rpcURL],
+      })).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+    }
+    for (const field of ["block_explorer_urls", "icon_urls"] as const) {
+      expect(() => buildAddEthereumChainParameter({
+        chain_id: "1",
+        chain_name: "Test",
+        native_currency: { name: "Test", symbol: "TST", decimals: 18 },
+        rpc_urls: ["https://rpc.example"],
+        [field]: ["http://localhost:8080"],
       })).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
     }
   });
@@ -165,7 +177,7 @@ describe("EIP-6963 wallet boundary", () => {
         chainId: "0x1",
         chainName: "Wallet Testnet",
         nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: ["https://rpc.wallet.example"],
+        rpcUrls: ["http://localhost:8545"],
       }],
     });
     expect(fake.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"))
@@ -876,7 +888,7 @@ function renderWallet() {
       chain_id: "1",
       chain_name: "Wallet Testnet",
       native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpc_urls: ["https://rpc.wallet.example"],
+      rpc_urls: ["http://localhost:8545"],
     },
   });
   return render(

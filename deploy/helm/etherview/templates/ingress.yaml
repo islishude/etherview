@@ -29,7 +29,7 @@ spec:
               service:
                 name: {{ include "etherview.fullname" $ }}
                 port:
-                  name: http
+                  name: {{ ternary "https" "http" $.Values.apiTLS.enabled }}
           {{- end }}
     {{- end }}
 {{- end }}

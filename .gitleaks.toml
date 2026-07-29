@@ -10,3 +10,7 @@ regexes = ['''^api_key_or_x402$''']
 description = "Helm x402 facilitator Secret key name, not a credential"
 targetRules = ["generic-api-key"]
 regexes = ['''^x402-facilitator-headers$''']
+
+[[allowlists]]
+description = "Ignored mkcert output for the local HTTPS Preview"
+paths = ['''^\.local/preview-tls/''']

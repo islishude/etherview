@@ -162,6 +162,15 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Optional TLS on the Go API listener itself. This is independent of
+# ingress.tls, which controls the client-to-Ingress hop. The named Secret must
+# already exist and is mounted only into all/api application containers.
+apiTLS:
+  enabled: false
+  existingSecret: ""
+  certificateKey: tls.crt
+  privateKeyKey: tls.key
+
 migration:
   enabled: true
   backoffLimit: 4
@@ -227,6 +236,10 @@ config:
     address: 0.0.0.0:8080
     metrics_address: 0.0.0.0:9090
     public_url: ""
+    # apiTLS supplies fixed Secret-backed paths through role-scoped
+    # environment variables. Keep these ConfigMap values empty.
+    tls_cert_file: ""
+    tls_key_file: ""
     shutdown_timeout: 20s
     read_timeout: 15s
     write_timeout: 30s

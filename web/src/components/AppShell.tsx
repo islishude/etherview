@@ -7,7 +7,6 @@ import { useAuth } from "@/auth/AuthProvider";
 import etherviewMark from "@/assets/etherview-mark.svg";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame } from "./DesignPrimitives";
-import { AddNetworkControl } from "./AddNetworkControl";
 import { WalletMenu } from "./WalletMenu";
 
 export function AppShell() {
@@ -130,10 +129,7 @@ export function AppShell() {
 
       <footer className="site-footer">
         <div className="shell-width footer-inner">
-          <div className="footer-left">
-            <span>Etherview</span>
-            <AddNetworkControl />
-          </div>
+          <span className="footer-brand">Etherview</span>
           <span>{t("footer.description")}</span>
         </div>
       </footer>

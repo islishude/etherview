@@ -6,11 +6,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -338,6 +346,9 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	}
 	h.writeJSONArtifact(mode+"-durable.json", result.durable)
 	h.writeJSONArtifact(mode+"-api.json", result.api)
+	if mode == "distributed" {
+		h.validateProcessNativeTLS(ctx)
+	}
 	return result
 }
 
@@ -440,6 +451,161 @@ func (h *harness) resolveAPI(ctx context.Context) {
 		h.t.Fatal(err)
 	}
 	h.baseURL = "http://" + binding
+}
+
+func (h *harness) validateProcessNativeTLS(ctx context.Context) {
+	h.t.Helper()
+	certificateFile, keyFile, roots := writeRuntimeTLSKeyPair(h.t)
+	overrideFile := writeRuntimeTLSComposeOverride(
+		h.t,
+		h.apiService,
+		certificateFile,
+		keyFile,
+	)
+	project := testcompose.New(
+		h.root,
+		h.project.Name,
+		"compose.yaml",
+		"e2e/runtime/compose.yaml",
+		overrideFile,
+	)
+	project.Profiles = append([]string(nil), h.project.Profiles...)
+	project.Env = make(map[string]string, len(h.project.Env))
+	for key, value := range h.project.Env {
+		project.Env[key] = value
+	}
+	if _, err := project.Run(ctx, "up", "-d", "--no-deps", "--force-recreate", h.apiService); err != nil {
+		h.t.Fatal(err)
+	}
+	binding, err := project.Port(ctx, h.apiService, 8080)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			ForceAttemptHTTP2: true,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    roots,
+			},
+		},
+	}
+	waitFor(h.t, ctx, "process-native HTTPS readiness", func() (bool, string, error) {
+		request, requestErr := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			"https://"+binding+"/health/ready",
+			nil,
+		)
+		if requestErr != nil {
+			return false, "", requestErr
+		}
+		response, requestErr := client.Do(request)
+		if requestErr != nil {
+			return false, requestErr.Error(), nil
+		}
+		defer func() { _ = response.Body.Close() }()
+		if response.StatusCode != http.StatusOK {
+			return false, response.Status, nil
+		}
+		if response.ProtoMajor != 2 || response.TLS == nil ||
+			response.TLS.Version < tls.VersionTLS12 {
+			return false, fmt.Sprintf("protocol=%s tls=%#v", response.Proto, response.TLS), nil
+		}
+		return true, response.Proto, nil
+	})
+}
+
+func writeRuntimeTLSComposeOverride(
+	t *testing.T,
+	service, certificateFile, keyFile string,
+) string {
+	t.Helper()
+	override := map[string]any{
+		"services": map[string]any{
+			service: map[string]any{
+				"environment": map[string]string{
+					"ETHERVIEW_SERVER_TLS_CERT_FILE": "/run/etherview-tls/tls.crt",
+					"ETHERVIEW_SERVER_TLS_KEY_FILE":  "/run/etherview-tls/tls.key",
+				},
+				"volumes": []map[string]any{
+					{
+						"type":      "bind",
+						"source":    certificateFile,
+						"target":    "/run/etherview-tls/tls.crt",
+						"read_only": true,
+					},
+					{
+						"type":      "bind",
+						"source":    keyFile,
+						"target":    "/run/etherview-tls/tls.key",
+						"read_only": true,
+					},
+				},
+			},
+		},
+	}
+	payload, err := json.Marshal(override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(t.TempDir(), "compose.runtime-tls.json")
+	if err := os.WriteFile(filename, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return filename
+}
+
+func writeRuntimeTLSKeyPair(t *testing.T) (string, string, *x509.CertPool) {
+	t.Helper()
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "localhost"},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:              []string{"localhost"},
+	}
+	certificateDER, err := x509.CreateCertificate(
+		rand.Reader,
+		template,
+		template,
+		&privateKey.PublicKey,
+		privateKey,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER})
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
+	directory := t.TempDir()
+	certificateFile := filepath.Join(directory, "tls.crt")
+	keyFile := filepath.Join(directory, "tls.key")
+	if err := os.WriteFile(certificateFile, certificatePEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, privateKeyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificatePEM) {
+		t.Fatal("append runtime TLS certificate")
+	}
+	return certificateFile, keyFile, roots
 }
 
 func (h *harness) waitReady(ctx context.Context) {

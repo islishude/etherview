@@ -114,6 +114,41 @@ The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
 
+## Process-native API TLS
+
+Ingress TLS and process-native TLS are separate hops. `ingress.tls` terminates
+the public client connection at the Ingress. To encrypt the API listener
+itself, first provision a separate Secret containing a certificate and private
+key, then configure:
+
+```yaml
+apiTLS:
+  enabled: true
+  existingSecret: etherview-api-tls
+  certificateKey: tls.crt
+  privateKeyKey: tls.key
+```
+
+The chart mounts that Secret read-only only into the `all` or `api` main
+container and injects fixed absolute file paths through
+`ETHERVIEW_SERVER_TLS_CERT_FILE` and
+`ETHERVIEW_SERVER_TLS_KEY_FILE`. Migration Jobs, schema init containers, and
+worker roles receive neither file. The application Service advertises
+`appProtocol: https`, and API startup, liveness, and readiness probes use
+HTTPS; the operations listener and metrics probes remain HTTP.
+
+When Ingress and `apiTLS` are both enabled, the backend hop must use HTTPS.
+Controllers that do not honor `appProtocol` require their controller-specific
+backend-protocol annotation under `ingress.annotations`. The Helm test skips
+hostname verification only for its cluster-local Service request because the
+serving certificate normally names the public host.
+
+The server loads one certificate/key pair before binding and does not
+hot-reload it. After Secret rotation, restart the selected `all`/`api`
+Deployments and verify the public certificate chain, hostname, and expiry.
+Setting `config.server.public_url` to HTTPS alone continues to mean external
+termination and does not enable process-native TLS.
+
 Changing the session pepper is a global session revocation. Restart every
 selected `all`/`api` Deployment promptly and wait for that rollout before
 asking users to sign in again; replicas running different pepper versions can

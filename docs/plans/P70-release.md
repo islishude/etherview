@@ -17,6 +17,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0022: Go-ethereum type and raw RPC ownership](../decisions/ADR-0022-go-ethereum-type-and-raw-rpc-ownership.md)
 - [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0026: Current capability status and numeric canonical tips](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
+- [ADR-0027: Process-native API TLS](../decisions/ADR-0027-process-native-api-tls.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -42,6 +43,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
 | P70-T19 | done | P20, P40, P50, P60 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
+| P70-T20 | in_progress | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
 
 ## Acceptance
 
@@ -88,6 +90,13 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T19: the managed integration, production-image schema, and full
       runtime E2E targets pass with a working Docker daemon; failures retain
       scenario artifacts and timestamped Compose logs.
+- [ ] P70-T20: configuring one absolute certificate/key pair makes only the
+      public `api`/`all` listener serve TLS 1.2+ with HTTP/2, fails before
+      binding on invalid material, and preserves default HTTP plus the plain
+      operations listener when TLS is absent.
+- [ ] P70-T20: Preview Compose and Helm deliver certificate material only to
+      API-capable main containers; enabled Helm probes, Service, and Ingress
+      backend use HTTPS while external Ingress termination remains independent.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -144,18 +153,52 @@ P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
 P70-T09, P70-T12, P70-T13, P70-T14, P70-T16, P70-T17, P70-T18, and
-P70-T19 are complete. P70-T16's deterministic production Compose reorg gate
+P70-T19 are complete. P70-T20 is in progress while the Preview-local wallet
+metadata path is aligned with its localhost RPC exception. P70-T16's
+deterministic production Compose reorg gate
 supersedes the non-distinct preserved-volume Preview attempt. P70-T18's
 embedded Playwright and managed PostgreSQL release validation both pass.
 P70-T19 replaces manually provisioned PostgreSQL and the shell-heavy Compose
 smoke workflow with owned disposable services and maintainable Go
 orchestration; its managed integration, production schema, and full runtime
 E2E targets pass.
+P70-T20 consolidates the local Compose HTTPS workflow into the full-stack
+Preview with explicit mkcert initialization.
 P70-T06 and the v1 release remain blocked on P66 completion, conformance,
 security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T20 runtime: `server.tls_cert_file` and `server.tls_key_file` accept
+  paired absolute YAML or environment paths. The API loads one matching PEM
+  key pair before binding, configures Go TLS with a TLS 1.2 minimum, serves
+  through `ServeTLS` with HTTP/2, and preserves the existing HTTP path when
+  both fields are empty. Partial, malformed, unreadable, or mismatched input
+  fails before listener creation without fallback; the operations listener is
+  unchanged.
+- P70-T20 deployment and documentation: the base Compose deployment remains
+  HTTP and the removed `compose.tls.yaml` is replaced by one Preview-local
+  workflow. `make preview-cert` explicitly installs mkcert trust and writes an
+  ignored localhost/loopback pair with a mode-0600 private key; Preview mounts
+  it read-only only into `api`, and start/recreate preflight it without changing
+  host trust. Helm's disabled-by-default `apiTLS` values retain role-scoped
+  Secret delivery and HTTPS probes, Service, Ingress backend, and test wiring.
+  ADR-0027 and maintained deployment/operations guidance describe both paths.
+- P70-T20 verification: focused ordinary and race tests for
+  `./internal/config`, `./internal/httpapi`, and `./internal/app` pass.
+  `make preview-cert`, `make start-preview`, `make compose-check`,
+  `make helm-check`, `make security-check`, `make plan-check`,
+  `GOLANGCI_LINT_CACHE=/tmp/etherview-golangci-lint-cache make check`, and
+  `git diff --check` pass. The local Preview returns trusted HTTPS readiness
+  with HTTP/2 while its plain HTTP operations readiness remains healthy. The
+  full check includes all 144 frontend tests, ordinary/race Go suites, audits,
+  licenses, generation, Docker build checks, and deployment rendering.
+- P70-T20 production E2E: `make test-runtime-e2e` rebuilds the production
+  image and passes the existing monolith and seven-role split scenarios. After
+  split parity, the Go harness creates a temporary test-only Compose override,
+  recreates only the API, and verifies a trusted TLS 1.2+ HTTP/2 readiness
+  response without mkcert. The complete run passes in 66.85 seconds: monolith
+  31.03 seconds and distributed 35.82 seconds.
 - P70-T19 implementation: `.github/scripts/compose.sh` and
   `.github/scripts/buildx.sh` select the Docker plugins or standalone
   binaries; `internal/testcompose` owns project arguments, random host-port

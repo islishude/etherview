@@ -91,6 +91,13 @@ services:
     environment:
       <<: *etherview-api-env
       ETHERVIEW_ROLES: api
+      ETHERVIEW_SERVER_TLS_CERT_FILE: /run/etherview-tls/tls.crt
+      ETHERVIEW_SERVER_TLS_KEY_FILE: /run/etherview-tls/tls.key
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+      - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+      - ./.local/preview-tls/tls.crt:/run/etherview-tls/tls.crt:ro
+      - ./.local/preview-tls/tls.key:/run/etherview-tls/tls.key:ro
     depends_on: *etherview-runtime-depends-on
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"

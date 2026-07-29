@@ -62,7 +62,11 @@ until the Makefile target exists.
   and changed hourly analytics, API/SSE/SPA behavior, RPC and PostgreSQL outage
   recovery, API process restart, bounded load, and final durable/public parity.
   The distributed scenario additionally proves config-only identity binding
-  and continues after one of two sync and enrichment replicas is stopped.
+  and continues after one of two sync and enrichment replicas is stopped. It
+  then recreates the production API with a Go-generated, test-only temporary
+  TLS Compose override and verifies trusted TLS 1.2+, HTTP/2, and readiness
+  without exposing the key to worker roles or depending on the local mkcert
+  trust store.
   A bounded test-only Go RPC adapter removes the orphan `blobGasPrice` field
   emitted by the pinned Anvil fixture when `blobGasUsed` is absent; complete
   blob-fee observations pass through unchanged, so production receipt

@@ -13,6 +13,9 @@
 {{- $enabled = and (ne $roleName "all") $role.enabled }}
 {{- end }}
 {{- if $enabled }}
+{{- $apiCapable := or (eq $roleName "all") (eq $roleName "api") }}
+{{- $apiTLS := and $root.Values.apiTLS.enabled $apiCapable }}
+{{- $apiPortName := ternary "https" "http" $apiTLS }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -99,6 +102,12 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.databaseReadURLKey | quote }}
                   optional: true
+            {{- if $apiTLS }}
+            - name: ETHERVIEW_SERVER_TLS_CERT_FILE
+              value: /run/etherview-tls/tls.crt
+            - name: ETHERVIEW_SERVER_TLS_KEY_FILE
+              value: /run/etherview-tls/tls.key
+            {{- end }}
             {{- end }}
             - name: ETHERVIEW_RPC_URLS
               valueFrom:
@@ -193,25 +202,34 @@ spec:
               containerPort: 9090
               protocol: TCP
           {{- if or (eq $roleName "all") (eq $roleName "api") }}
-            - name: http
+            - name: {{ $apiPortName }}
               containerPort: {{ $root.Values.service.targetPort }}
               protocol: TCP
           startupProbe:
             httpGet:
               path: /health/live
-              port: http
+              port: {{ $apiPortName }}
+              {{- if $apiTLS }}
+              scheme: HTTPS
+              {{- end }}
             failureThreshold: 30
             periodSeconds: 2
           livenessProbe:
             httpGet:
               path: /health/live
-              port: http
+              port: {{ $apiPortName }}
+              {{- if $apiTLS }}
+              scheme: HTTPS
+              {{- end }}
             periodSeconds: 10
             timeoutSeconds: 2
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: http
+              port: {{ $apiPortName }}
+              {{- if $apiTLS }}
+              scheme: HTTPS
+              {{- end }}
             periodSeconds: 5
             timeoutSeconds: 2
           {{- else }}
@@ -242,6 +260,11 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if $apiTLS }}
+            - name: api-tls
+              mountPath: /run/etherview-tls
+              readOnly: true
+            {{- end }}
             {{- if and $root.Values.config.features.verification (or (eq $roleName "all") (eq $roleName "verify")) }}
             - name: compiler-cache
               mountPath: {{ $root.Values.config.verification.cache_directory | quote }}
@@ -259,6 +282,17 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- if $apiTLS }}
+        - name: api-tls
+          secret:
+            secretName: {{ $root.Values.apiTLS.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ $root.Values.apiTLS.certificateKey | quote }}
+                path: tls.crt
+              - key: {{ $root.Values.apiTLS.privateKeyKey | quote }}
+                path: tls.key
+        {{- end }}
         {{- if and $root.Values.config.features.verification (or (eq $roleName "all") (eq $roleName "verify")) }}
         - name: compiler-cache
           {{- if $root.Values.compilerCache.existingClaim }}

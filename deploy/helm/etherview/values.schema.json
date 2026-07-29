@@ -76,6 +76,7 @@
     "deploymentStrategy",
     "podDisruptionBudget",
     "roleTopologySpread",
+    "apiTLS",
     "migration",
     "secrets",
     "externalSecret",
@@ -86,6 +87,17 @@
     "mode": {
       "type": "string",
       "enum": ["monolith", "distributed"]
+    },
+    "apiTLS": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "existingSecret", "certificateKey", "privateKeyKey"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "existingSecret": {"type": "string", "maxLength": 253},
+        "certificateKey": {"$ref": "#/$defs/secretKey"},
+        "privateKeyKey": {"$ref": "#/$defs/secretKey"}
+      }
     },
     "image": {
       "type": "object",
@@ -364,12 +376,20 @@
       "properties": {
         "server": {
           "type": "object",
-          "required": ["public_url"],
+          "required": ["public_url", "tls_cert_file", "tls_key_file"],
           "properties": {
             "public_url": {
               "type": "string",
               "maxLength": 2048,
               "description": "Root public HTTP(S) origin; required by user authentication and x402 billing."
+            },
+            "tls_cert_file": {
+              "const": "",
+              "description": "Use apiTLS so certificate paths are injected only into API-capable containers."
+            },
+            "tls_key_file": {
+              "const": "",
+              "description": "Use apiTLS so private-key paths are injected only into API-capable containers."
             }
           }
         },

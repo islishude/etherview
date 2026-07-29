@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -9,11 +9,13 @@ import {
 import { shorten } from "./format";
 import { walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
+import { AddNetworkControl } from "./AddNetworkControl";
 
 export function WalletMenu() {
   const { t } = useTranslation();
   const wallet = useWallet();
   const auth = useAuth();
+  const [open, setOpen] = useState(false);
   const summaryRef = useRef<HTMLElement | null>(null);
   const focusAfterTransition = useRef(false);
   const focusWithinMenu = useRef(false);
@@ -48,6 +50,9 @@ export function WalletMenu() {
         }}
         onFocusCapture={() => {
           focusWithinMenu.current = true;
+        }}
+        onToggle={(event) => {
+          setOpen(event.currentTarget.open);
         }}
       >
         <summary
@@ -120,6 +125,7 @@ export function WalletMenu() {
           )}
           {wallet.connecting && <p role="status">{t("actions.connecting")}</p>}
           {errorMessage && <p className="form-error">{errorMessage}</p>}
+          <AddNetworkControl menuOpen={open} />
           {auth.enabled && (
             <section
               className="wallet-auth-section"

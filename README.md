@@ -15,7 +15,7 @@ truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 - Native REST/SSE APIs, an Etherscan V2 compatibility subset, and an embedded
   bilingual explorer
 - API keys, SIWE wallet sessions, optional x402 billing, Prometheus metrics,
-  Compose, and Helm deployments
+  optional process-native API TLS, Compose, and Helm deployments
 
 Consensus-layer browsing, archived blob bodies, MEV accounting, and
 L2-specific batch semantics are outside the v1 core scope.
@@ -48,9 +48,14 @@ For the repository's full-stack Preview, including the local Reth development
 chain, all seven runtime roles, and NFT metadata:
 
 ```sh
+make preview-cert
 make start-preview
 ```
 
+`preview-cert` explicitly installs mkcert's local CA and writes the ignored
+localhost certificate pair used by Preview. Open
+<https://localhost:8080> after startup; the operations listener remains
+available over HTTP on <http://localhost:9090>.
 Public verification remains disabled until a digest-pinned generic runner and
 approved container runtime are supplied. Use
 `make recreate-preview` to rebuild only the application roles while preserving

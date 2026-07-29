@@ -1226,11 +1226,25 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await expect(page.getByLabel("Code hash (optional)")).toHaveValue("");
   await activateInView(page.getByRole("button", { name: "Open contract" }));
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-  await expect(page.getByText("Ethereum", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Etherview home" })
+      .getByText("Ethereum", { exact: true }),
+  ).toBeVisible();
 
   recordWalletBoundary = true;
-  await activateInView(page.getByRole("button", { name: "Add Ethereum network" }));
-  await expect(page.getByText("Ethereum was added to the wallet.")).toBeVisible();
+  await expect(
+    page.locator("footer").getByRole("button", { name: "Add Ethereum network" }),
+  ).toHaveCount(0);
+  await activateInView(page.locator(".wallet-summary"));
+  const walletPopover = page.locator(".wallet-popover");
+  const addNetworkButton = walletPopover.getByRole("button", {
+    name: "Add Ethereum network",
+  });
+  await expect(addNetworkButton).toBeVisible();
+  await activateInView(addNetworkButton);
+  await expect(
+    walletPopover.getByText("Ethereum was added to the wallet."),
+  ).toBeVisible();
   const addNetworkRequests = await page.evaluate(
     () => (window as WalletWindow).__etherviewE2EWallet.requests,
   );
@@ -1240,11 +1254,10 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
       chainId: "0x1",
       chainName: "Ethereum",
       nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpcUrls: ["https://public-rpc.example"],
+      rpcUrls: ["http://localhost:8545"],
     }],
   }]);
-  await activateInView(page.locator(".wallet-summary"));
-  await expect(page.locator(".wallet-option")).toContainText(longWalletName);
+  await expect(walletPopover.locator(".wallet-option")).toContainText(longWalletName);
   const providerMenuScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

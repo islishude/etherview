@@ -1715,11 +1715,23 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.wallet-network-section,
 .wallet-auth-section {
   display: grid;
   gap: 0.7rem;
   padding-top: 0.85rem;
   border-top: 1px solid var(--line);
+}
+
+.wallet-network-section .popover-heading {
+  gap: 0.75rem;
+}
+
+.wallet-network-section .popover-heading .quiet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wallet-auth-section p {
@@ -3097,55 +3109,63 @@ tbody tr:hover {
   font-size: 0.78rem;
 }
 
-.footer-left {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  align-items: center;
-}
-
-.footer-left > span:first-child {
+.footer-brand {
   color: var(--text);
   font-weight: 850;
 }
 
-.add-network-control {
-  position: relative;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.add-network-button {
-  padding: 0.38rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 0.42rem;
-  background: var(--surface-raised);
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-}
-
 .add-network-picker {
-  position: absolute;
-  z-index: 30;
-  bottom: calc(100% + 0.45rem);
-  left: 0;
   display: grid;
   gap: 0.45rem;
-  width: min(19rem, calc(100vw - 2rem));
-  max-height: 18rem;
-  padding: 0.75rem;
-  overflow: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 0.5rem;
+  padding-top: 0.1rem;
+}
+
+.add-network-option {
+  min-width: 0;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  color: var(--text);
+  text-align: left;
   background: var(--surface-raised);
-  box-shadow: 0 0.8rem 2.2rem rgb(0 0 0 / 0.2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.add-network-option:hover {
+  border-color: var(--brand);
+}
+
+.add-network-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.add-network-option > span:last-child {
+  min-width: 0;
+  display: grid;
+}
+
+.add-network-option strong,
+.add-network-option small {
+  overflow-wrap: anywhere;
+}
+
+.add-network-option small {
+  color: var(--text-soft);
 }
 
 .add-network-status {
-  max-width: 28rem;
+  min-height: 1.05rem;
   color: var(--text-soft);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.add-network-status.success {
+  color: var(--brand-strong);
 }
 
 .add-network-status.error {

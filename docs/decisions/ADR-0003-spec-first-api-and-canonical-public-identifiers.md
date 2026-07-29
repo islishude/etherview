@@ -45,10 +45,14 @@ authoritative empty result.
   snake-case public object into one exact EIP-3085 camel-case parameter and
   accepts only a `null` provider result as success. Chain identity, name, and
   native currency come from the existing chain configuration. The capability
-  exists only when the operator supplies at least one separate public HTTPS RPC
-  URL; server `rpc.endpoints` are never copied into the public API. Every URL
-  list is bounded and rejects credentials, queries, fragments, and non-HTTPS
-  schemes so private routing material cannot enter the browser or wallet.
+  exists only when the operator supplies at least one separate public RPC URL;
+  server `rpc.endpoints` are never copied into the public API. Production URLs
+  use HTTPS. The checked-in local Preview may advertise an HTTP RPC only when
+  its exact hostname is `localhost`; this narrow RPC-only exception does not
+  apply to loopback addresses, internal hostnames, block explorer URLs, or icon
+  URLs. Every URL list is bounded and rejects credentials, queries, fragments,
+  and every other non-HTTPS scheme so private routing material cannot enter the
+  browser or wallet.
 - `personal_sign` is reachable only through the bounded
   `signSIWEChallenge(AuthChallenge)` capability defined by ADR-0020. The
   capability itself reads the generated public configuration and rejects

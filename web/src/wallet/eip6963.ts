@@ -117,8 +117,10 @@ function parseAddChainURLs(value: unknown, required: boolean): string[] | undefi
     }
     try {
       const parsed = new URL(item);
+      const localPreviewRPC =
+        required && parsed.protocol === "http:" && parsed.hostname === "localhost";
       if (
-        parsed.protocol !== "https:" ||
+        (parsed.protocol !== "https:" && !localPreviewRPC) ||
         !parsed.hostname ||
         parsed.username ||
         parsed.password ||

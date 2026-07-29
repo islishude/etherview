@@ -7,6 +7,7 @@ DOCKER ?= docker
 BUILDX ?= .github/scripts/buildx.sh
 COMPOSE ?= .github/scripts/compose.sh
 HELM ?= helm
+MKCERT ?= mkcert
 
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
@@ -35,6 +36,9 @@ GENERATED_PATHS := \
 IMAGE ?= etherview:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
+PREVIEW_TLS_DIR ?= .local/preview-tls
+PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
+PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check
@@ -48,7 +52,8 @@ PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
 	test-schema-e2e test-soak test-x402-testnet \
-	web-build web-generate web-install web-lint web-test start-preview stop-preview recreate-preview
+	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
+	start-preview stop-preview recreate-preview
 
 go-build: web-build
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="$(GO_BUILD_LDFLAGS)" -o $(GO_BUILD_OUTPUT) ./cmd/etherview
@@ -215,12 +220,13 @@ docker-image-check:
 compose-check:
 	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
+	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
-		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const apiTargets = new Set(config.services.api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!config.services.api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const [name, service] of Object.entries(config.services)) if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name);'
+		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; const tlsKeys = ["ETHERVIEW_SERVER_TLS_CERT_FILE", "ETHERVIEW_SERVER_TLS_KEY_FILE"]; const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const api = config.services.api; const apiTargets = new Set(api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const key of tlsKeys) if (!api.environment[key]) throw new Error("Preview API TLS environment missing: " + key); for (const target of tlsTargets) if (!api.volumes.some((volume) => volume.target === target && volume.read_only)) throw new Error("Preview API read-only TLS mount missing: " + target); for (const [name, service] of Object.entries(config.services)) { if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name); if (name !== "api" && tlsKeys.some((key) => Object.hasOwn(service.environment || {}, key))) throw new Error("Preview TLS environment leaked to " + name); if (name !== "api" && (service.volumes || []).some((volume) => tlsTargets.includes(volume.target))) throw new Error("Preview TLS material leaked to " + name); }'
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
@@ -254,12 +260,27 @@ deployment-check: docker-check compose-check helm-check
 
 check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
-start-preview:
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up --build --wait --remove-orphans
+preview-cert:
+	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
+	@mkdir -p "$(PREVIEW_TLS_DIR)"
+	$(MKCERT) -install
+	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_TLS_CERT)" -key-file "$(PREVIEW_TLS_KEY)" \
+		etherview.localhost localhost 127.0.0.1 ::1
+	@chmod 600 "$(PREVIEW_TLS_KEY)"
+	@echo "preview-cert: wrote $(PREVIEW_TLS_CERT) and $(PREVIEW_TLS_KEY)"
+
+preview-cert-check:
+	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" || { \
+		echo "Preview TLS certificate missing; run 'make preview-cert' first"; \
+		exit 1; \
+	}
+
+start-preview: preview-cert-check docker-build
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up --no-build --wait --remove-orphans
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
-recreate-preview:
+recreate-preview: preview-cert-check docker-build
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml rm -fs $(PREVIEW_APP_SERVICES)
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up -d --build --remove-orphans $(PREVIEW_APP_SERVICES)
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up -d --no-build --remove-orphans $(PREVIEW_APP_SERVICES)
