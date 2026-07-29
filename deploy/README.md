@@ -69,27 +69,30 @@ final API-role configuration before adding a paid route.
 ## Full-stack Preview
 
 `compose.preview.yaml` runs the local Reth development chain and all seven
-application roles. It enables NFT metadata while leaving public verification,
-Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and object
-storage accelerators are not part of this deployment.
+application roles. It enables public verification and NFT metadata while
+leaving Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and
+object storage accelerators are not part of this deployment.
 
 ```sh
 make preview-cert
 make start-preview
-curl --cacert "$(mkcert -CAROOT)/rootCA.pem" \
+curl --cacert .local/preview-tls/rootCA.pem \
   -fsS https://localhost:8080/api/v1/config
 ```
 
 `make preview-cert` is an explicit, one-time local trust operation: it requires
 mkcert, installs mkcert's local CA, and generates an ignored certificate pair
-under `.local/preview-tls/` for `localhost`, `127.0.0.1`, and `::1`.
-`make start-preview` and `make recreate-preview` only check that both files
-exist; they never modify the host trust store. Preview mounts the pair
-read-only only into the API role. Rotate it by rerunning `make preview-cert`
-and then `make recreate-preview`. The public listener is
+under `.local/preview-tls/` for `localhost`, `127.0.0.1`, and `::1`. It also
+copies mkcert's public `rootCA.pem` there for deterministic command-line
+verification; it never copies `rootCA-key.pem`.
+`make start-preview` and `make recreate-preview` only check that those three
+public/certificate assets exist; they never modify the host trust store.
+Preview mounts only the certificate pair read-only into the API role. Rotate
+it by rerunning `make preview-cert` and then `make recreate-preview`. The public
+listener is
 `https://localhost:8080`; health and metrics on the operations listener remain
 plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
-the explicit curl CA path also works for curl builds that do not consult it.
+the checked-in command path also works for curl builds that do not consult it.
 The add-network control advertises the local Reth endpoint as
 `http://localhost:8545`. Wallet metadata validation permits that exact
 Preview-local HTTP RPC exception only; production RPC URLs and every block
@@ -113,12 +116,37 @@ not admitted as the plan's single-artifact compiler package: current builds
 require unlisted sidecar/runtime inputs and cannot satisfy the same immutable
 SHA-256 provenance. `catalog_urls.solidity` is only an optional approved-mirror
 override.
-Build that image with `docker build --target compiler-runner`; the verify-role
-host must provide an approved Docker or Podman client/daemon boundary. The
-compiler container runs without network access, with a read-only root,
-non-root identity, dropped capabilities, tmpfs, and bounded CPU, memory, PID,
-input, output, and cleanup behavior. The stock Preview deliberately does not
-mount the host container socket or advertise this boundary.
+`make start-preview` builds the generic runner for `linux/amd64`, resolves its
+exact local image content digest, and saves it under the ignored
+`.local/preview-compiler/` directory. Using AMD64 aligns both Solidity and the
+Blockscout Vyper catalog with one runner platform; non-AMD64 developer hosts
+therefore require container emulation, and preflight fails closed when the
+nested daemon cannot execute it. A digest-pinned, one-shot Docker CLI service
+loads that archive into a dedicated nested daemon and copies only its static
+client into a read-only verify-role volume. The API and verify roles receive
+the same exact runner reference, while no other application role can reach the
+compiler network. A networkless volume initializer retains only `CAP_CHOWN`;
+the following preflight and verify role both run as UID/GID 65532, and
+preflight proves that identity can write the compiler cache before verify
+starts. It also executes the runner once under the production CPU, memory,
+PID, network, capability, identity, and filesystem bounds. The compiler
+container runs without network access, with a read-only root, non-root
+identity, dropped capabilities, tmpfs, and bounded input, output, and cleanup
+behavior.
+
+Preview never mounts the host container socket, publishes the nested daemon,
+or gives it a host bind mount. The nested daemon is nevertheless a privileged
+container so it can enforce compiler cgroup limits; privilege gives that local
+tooling broad authority over the host kernel and devices. Run Preview only on
+a trusted development machine, and never copy this local-only boundary into
+the production Compose or Helm deployment.
+
+After Compose starts, a bounded Go-owned check probes all seven roles through
+their internal `/health/ready` endpoints, proves the exact runner is loaded in
+the isolated daemon, verifies the public HTTPS feature contract with the
+copied CA, and requires stable container identities and restart counts. A
+restarting role therefore makes `make start-preview` or
+`make recreate-preview` fail even when Compose's own `--wait` returns success.
 
 NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
 Override it without editing the checked-in configuration:
@@ -129,12 +157,18 @@ ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com make start-preview
 
 The gateway must remain an absolute public HTTPS URL accepted by the metadata
 SSRF policy. Public gateways have no production availability commitment.
+Compiler catalogs, compiler artifacts, and IPFS gateways are all subject to
+the same public-IP validation. Transparent or fake-IP DNS that maps those
+public hosts into the RFC 2544 benchmarking range `198.18.0.0/15` is rejected
+fail closed. Use a policy-approved environment and resolver; do not weaken
+`PublicIP`, hardcode resolver bypasses, or pin mutable DNS snapshots.
 
-`make recreate-preview` removes and rebuilds the seven application containers
-while preserving PostgreSQL, Reth, and the compiler artifact cache.
-`make stop-preview` removes the deployment and all persistent volumes. Override the application tag with
-`ETHERVIEW_PREVIEW_IMAGE`; this is intentionally separate from the production
-`ETHERVIEW_IMAGE` tag.
+`make recreate-preview` rebuilds the application and runner images, reloads the
+exact runner digest, and replaces the seven application containers while
+preserving PostgreSQL, Reth, the isolated compiler daemon state, and compiler
+artifact cache.
+`make stop-preview` removes the deployment and all persistent volumes. Override
+the application tag with `ETHERVIEW_IMAGE`.
 
 The reproducible deployment E2E uses a deterministic Anvil fixture and two
 independent PostgreSQL volumes:

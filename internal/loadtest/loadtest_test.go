@@ -246,6 +246,38 @@ func TestEvaluateUsesStrictP70LatencyAndErrorBoundaries(t *testing.T) {
 	}
 }
 
+func TestEvaluateP70ReferenceThroughputAllowsBoundedDrainAndRejects475RPS(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Rate: 500, Duration: 30 * time.Minute, RequestTimeout: 5 * time.Second,
+		MaximumErrorRate: 0.001, MaximumP95: 500 * time.Millisecond,
+		MinimumThroughputRatio: 0.99, MaximumLag: 2,
+	}
+	total := int64(cfg.Rate) * int64(cfg.Duration/time.Second)
+	// Strictly fewer than 0.1% errors may leave at most 899 failures. Even if
+	// the run uses its complete bounded drain budget, those successes remain
+	// above the reference target's 99% throughput floor.
+	errorsAtBoundary := total/1_000 - 1
+	successes := total - errorsAtBoundary
+	maximumElapsed := cfg.Duration + 2*cfg.RequestTimeout + loadDrainGrace
+	report := Report{
+		Requests: total, Successes: successes, Errors: errorsAtBoundary,
+		ErrorRate:       float64(errorsAtBoundary) / float64(total),
+		ThroughputRPS:   float64(successes) / maximumElapsed.Seconds(),
+		P95Milliseconds: 499.999, CoreLag: 2,
+		CoreReady: true, BackfillComplete: true,
+	}
+	if err := evaluate(cfg, report); err != nil {
+		t.Fatalf("bounded final drain was rejected: %v", err)
+	}
+
+	report.ThroughputRPS = 475
+	err := evaluate(cfg, report)
+	if err == nil || !strings.Contains(err.Error(), "below 495.000 rps") {
+		t.Fatalf("former 95%% throughput floor was accepted: %v", err)
+	}
+}
+
 func TestReadRuntimeStatusRejectsUnreadyAndMalformedResponses(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

@@ -1,6 +1,6 @@
 # P70 — Release
 
-Status: `in_progress`
+Status: `blocked`
 
 ## Outcome
 
@@ -24,11 +24,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | todo | P10–P66 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | todo | P10–P66 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | todo | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
-| P70-T04 | in_progress | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | todo | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T01 | blocked | P10–P66 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10–P66 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T04 | blocked | P60 | 500 RPS reference capacity report and tuning guide | load report |
+| P70-T05 | blocked | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -38,12 +38,12 @@ and user/operator evidence sufficient for a production public release.
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
-| P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
+| P70-T15 | blocked | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
 | P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
 | P70-T19 | done | P20, P40, P50, P60 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
-| P70-T20 | in_progress | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
+| P70-T20 | done | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
 | P70-T21 | done | P30-T11, P40-T06 | Hardhat 3 Etherscan-provider source-verification submission and GET status-polling compatibility | handler goldens, pinned Hardhat 3 provider test, security, documentation, and common gates |
 | P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
 
@@ -92,11 +92,11 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T19: the managed integration, production-image schema, and full
       runtime E2E targets pass with a working Docker daemon; failures retain
       scenario artifacts and timestamped Compose logs.
-- [ ] P70-T20: configuring one absolute certificate/key pair makes only the
+- [x] P70-T20: configuring one absolute certificate/key pair makes only the
       public `api`/`all` listener serve TLS 1.2+ with HTTP/2, fails before
       binding on invalid material, and preserves default HTTP plus the plain
       operations listener when TLS is absent.
-- [ ] P70-T20: Preview Compose and Helm deliver certificate material only to
+- [x] P70-T20: Preview Compose and Helm deliver certificate material only to
       API-capable main containers; enabled Helm probes, Service, and Ingress
       backend use HTTPS while external Ingress termination remains independent.
 - [x] P70-T21: the Etherscan V2 compatibility boundary accepts authenticated
@@ -156,33 +156,89 @@ and user/operator evidence sufficient for a production public release.
 
 ## Current Blockers
 
-P00 through P65 are complete, while P66 remains `in_progress`: P66-T08 is
-blocked on operator-provided Base Sepolia funding, payer credentials, a
-compatible staging facilitator and priced route, the matching writer and
-independent RPC endpoint, and the deployed image/build digest needed for live
-settlement and ledger reconciliation evidence.
+P00 through P65 are complete, while P66 is `blocked`: P66-T08 still needs
+operator-provided Base Sepolia funding, payer credentials, a compatible
+staging facilitator and priced route, the matching writer and independent RPC
+endpoint, and the deployed image/build digest. One preserved successful
+payment and writer/chain reconciliation report clears P66-T08 and makes P66
+`done`.
 
-P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
-while its reference-capacity tooling and final report are prepared.
+P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by their P66 dependency.
+They become claimable after the P66-T08 live report is recorded and P66 is
+`done`; none of their conformance, security, release-CI, or documentation
+deliverables is represented as complete before then.
 
-P70-T09, P70-T12, P70-T13, P70-T14, P70-T16, P70-T17, P70-T18, P70-T19,
-P70-T21, and P70-T22 are complete. P70-T20 is in progress while the
-Preview-local wallet metadata path is aligned with its localhost RPC
-exception. P70-T16's
-deterministic production Compose reorg gate
-supersedes the non-distinct preserved-volume Preview attempt. P70-T18's
-embedded Playwright and managed PostgreSQL release validation both pass.
-P70-T19 replaces manually provisioned PostgreSQL and the shell-heavy Compose
-smoke workflow with owned disposable services and maintainable Go
-orchestration; its managed integration, production schema, and full runtime
-E2E targets pass.
-P70-T20 consolidates the local Compose HTTPS workflow into the full-stack
-Preview with explicit mkcert initialization.
-P70-T06 and the v1 release remain blocked on P66 completion, conformance,
-security, release-CI, long-capacity, and documentation evidence.
+P70-T04 is blocked on an operator-provisioned reference environment for the
+final clean revision and image digest: at least two failure domains with room
+for the documented 9-to-18-pod topology, HA PostgreSQL sized for its connection
+budget, a named representative chain snapshot with cardinalities, healthy
+purpose-specific RPC behavior, and independent timestamp-aligned resource
+monitoring. Running the exact 500 RPS/30-minute target there and preserving the
+load report, resource peaks, monitoring data, and tuning guide clears the
+blocker.
+
+P70-T15 is blocked on Preview runtime evidence in an environment whose resolver
+returns the real public catalog, artifact, and metadata gateway addresses
+instead of intercepted `198.18.0.0/15` benchmark addresses, while retaining
+the fail-closed public-network policy. A fresh Preview start must keep all
+seven roles ready and demonstrate catalog publication, one real Solidity and
+one real Vyper compilation through the exact isolated runner, and one bounded
+public NFT metadata fetch before this item can become `done`.
+
+P70-T20 is complete, including the aligned `https://localhost:8080` browser,
+session-origin, and wallet explorer metadata contract. P70-T06 remains `todo`
+and dependency-gated until P70-T01 through P70-T05, P70-T08, and P70-T09 are
+all complete; the v1 release cannot close before those gates.
 
 ## Evidence
 
+- P70-T04 harness correction: `make test-soak` now fixes the release target at
+  500 RPS for 30 minutes with a five-second request timeout, p95 below 500 ms,
+  error rate below 0.1%, lag no greater than two, and at least 99% successful
+  throughput. The regression proves the bounded final drain can retain more
+  than 495 RPS while the former 475 RPS floor fails; dropped admissions and
+  failed responses still count as errors.
+- P70-T04 local calibration, not closure evidence: an isolated clean archive of
+  revision `5966347f873adccaf6aa744d1f9dc460298dd124` sustained 15,000/15,000
+  successful responses at 500.014 RPS for 30 seconds, with p95 3.356 ms, p99
+  7.433 ms, zero final lag, and ready/complete core status. It used a
+  single-host monolith, empty local chain, and sparse container observations,
+  so it neither represents the named reference topology/dataset nor satisfies
+  the 30-minute capacity acceptance gate.
+- P70-T20 final origin regression: Preview's public URL and wallet explorer
+  metadata now use the documented `https://localhost:8080` browser origin,
+  preserving exact SIWE origin checks and the localhost wallet-RPC exception.
+  Focused config/origin, HTTP API, and race tests plus Compose rendering pass.
+- P70-T15 implementation: Preview enables public verification and NFT metadata,
+  injects the same exact local runner content digest into API provenance and
+  the verify role, and fixes the verify component graph to start its compiler
+  catalog refresher. A networkless one-shot grants only the compiler cache and
+  client volumes to UID/GID 65532; an exact-pinned CLI then proves cache
+  writability, loads and executes the fixed `linux/amd64` runner under the
+  production sandbox limits, and exposes only a private nested-daemon network
+  to verify. No application container receives the host Docker socket.
+- P70-T15 bounded runtime evidence, not closure evidence: the exact
+  `etherview-compiler-runner@sha256:a3affbddab6c198b7eee69cfc9b4b6682aa5e9e2f3802e606e7881c51f2ff02e`
+  image loaded and executed as `linux/amd64`; cache ownership was
+  `65532:65532` with mode `0750`, and both volume init and compiler preflight
+  exited zero. Compose's own `--wait` returned success before verify entered a
+  catalog-download restart loop. The Go-owned Preview checker then rejected
+  that topology by inspecting every required service and one-shot, probing all
+  seven role readiness endpoints, checking the HTTPS feature contract and
+  exact runner binding, and observing restart stability.
+- P70-T15 blocker evidence: Docker's embedded resolver returned
+  `198.18.16.46` for `binaries.soliditylang.org`; the public-network policy
+  correctly rejected that RFC 2544 address and verify reported the stable
+  redacted `download compiler catalog` failure. No public-DNS bypass, weakened
+  `PublicIP` rule, or mutable address snapshot was added. Focused ordinary/race
+  tests, vet/lint, Compose rendering, production image-boundary checks, and
+  whitespace validation pass, but no real catalog, Solidity/Vyper compile, or
+  metadata fetch is claimed.
+- P70 final common gates: `make check`, `make docker-image-check`,
+  `make plan-check`, and `git diff --check` pass. The aggregate check covers
+  ordinary and race Go suites, all 149 frontend tests, generation drift,
+  vulnerability, secret, dependency, and license checks, Docker build
+  validation, Compose rendering, and Helm lint/render tests.
 - P70-T22 regression: the newest-first/reorg integration fixture now advances
   its injected worker clock to at least the maximum PostgreSQL
   `next_attempt_at` and `dirtied_at` for the active dirty rows, both before the

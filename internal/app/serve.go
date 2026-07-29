@@ -1068,6 +1068,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			}
 		case components.RoleVerify:
 			if cfg.Features.Verification {
+				add("35-compiler-catalog-refresher")
 				addWorkerComponentKeys(add, "40-contract-verification", cfg.Runtime.WorkerCount)
 			} else {
 				add("50-role-verify")

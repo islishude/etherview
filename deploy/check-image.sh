@@ -9,6 +9,11 @@ temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/etherview-image-check.XXXXXX")
 container_name="etherview-image-check-$$"
 container_created=false
 
+if ! grep -Fxq '/.local/' .dockerignore; then
+    echo "docker-image-check: local Preview artifacts must be excluded from the build context" >&2
+    exit 1
+fi
+
 cleanup() {
     exit_code=$?
     trap - EXIT INT TERM
@@ -61,7 +66,7 @@ do
     fi
 done
 
-forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|compiler|compilers)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
+forbidden_pattern='(^|/)(node|nodejs|npm|npx|corepack|pnpm|yarn|go|gofmt|solc|solcjs|vyper|vyper-json|compiler|compilers|docker|podman|containerd|nerdctl|runc)(/|$)|(^|/)node_modules(/|$)|(^|/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$|(^|/)(sh|bash|ash|dash|zsh|ksh|csh|tcsh|fish|busybox)$'
 if grep -E -i "$forbidden_pattern" "$temporary_directory/rootfs.txt" >"$temporary_directory/forbidden.txt"; then
     echo "docker-image-check: forbidden runtime/build/compiler payload found:" >&2
     sed -n '1,40p' "$temporary_directory/forbidden.txt" >&2

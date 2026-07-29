@@ -1,6 +1,6 @@
 # P66 — x402 API Billing
 
-Status: `in_progress`
+Status: `blocked`
 
 ## Outcome
 

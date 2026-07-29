@@ -1,6 +1,6 @@
 # Etherview Implementation Plan
 
-Status: `in_progress`
+Status: `blocked`
 
 ## Goal
 
@@ -24,8 +24,8 @@ batch semantics are not core v1 scope.
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
-| P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | in_progress | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
-| P70 | [Release](docs/plans/P70-release.md) | in_progress | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -93,13 +93,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   account/admin UX, role-scoped deployment Secrets, and operational/security
   closure pass unit, race, PostgreSQL, browser, Helm/Compose, image, license,
   and security evidence.
-- P66 is in progress: the additive ledger, reviewed v2 exact-EVM adapter,
+- P66 is blocked: the additive ledger, reviewed v2 exact-EVM adapter,
   replay-fenced capture and settlement middleware, free and administrative
   APIs, operator reconciliation, optional payer attribution, and embedded
   account/administrator views plus operational/deployment closure are
   complete. The payment protocol remains accountless; the explicit opt-in Base
   Sepolia transaction and reconciliation gate remains open.
-- P70 is in progress: P70-T07 completes the optional API read pool with
+- P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum
   ownership for recognized Ethereum protocol semantics under raw-first RPC,
@@ -110,12 +110,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   production Compose reorg; P70-T18's address/network release validation passes
   the embedded browser and managed PostgreSQL suites; P70-T19 replaces manual
   PostgreSQL setup and shell-heavy runtime smoke with Go-owned integration,
-  production-schema, and monolith/seven-role runtime E2E targets. P70-T20 adds
-  optional process-native TLS on API listeners, a Preview-local mkcert
-  workflow, role-scoped Helm certificate delivery, and production runtime
-  validation.
-  Conformance, security, release CI, long-capacity, documentation, and artifact
-  gates remain open.
+  production-schema, and monolith/seven-role runtime E2E targets. P70-T20
+  completes optional process-native TLS on API listeners, a Preview-local
+  mkcert workflow, role-scoped Helm certificate delivery, and production
+  runtime validation. P70-T04 still requires the named reference capacity
+  environment, and P70-T15 still requires public catalog and compiler runtime
+  evidence in a DNS-compatible Preview environment. P66 live-payment evidence
+  still gates conformance, security, release CI, documentation, and artifact
+  work.
 
 ## Global Release Gates
 

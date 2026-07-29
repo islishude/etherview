@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNormalizeRoles(t *testing.T) {
@@ -120,6 +122,37 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 	}
 	if err := tooMany.Validate(); err == nil || !strings.Contains(err.Error(), "at most 5") {
 		t.Fatalf("unbounded wallet URL list error = %v", err)
+	}
+}
+
+func TestPreviewPublicOriginMatchesBrowserAndWalletMetadata(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct {
+		Server struct {
+			PublicURL string `yaml:"public_url"`
+		} `yaml:"server"`
+		Wallet struct {
+			AddChain struct {
+				BlockExplorerURLs []string `yaml:"block_explorer_urls"`
+			} `yaml:"add_chain"`
+		} `yaml:"wallet"`
+	}
+	if err := yaml.Unmarshal(data, &preview); err != nil {
+		t.Fatal(err)
+	}
+	const browserOrigin = "https://localhost:8080"
+	if preview.Server.PublicURL != browserOrigin {
+		t.Fatalf("Preview public URL = %q, want documented browser origin %q", preview.Server.PublicURL, browserOrigin)
+	}
+	if !reflect.DeepEqual(preview.Wallet.AddChain.BlockExplorerURLs, []string{browserOrigin}) {
+		t.Fatalf(
+			"Preview wallet block explorer URLs = %#v, want public origin",
+			preview.Wallet.AddChain.BlockExplorerURLs,
+		)
 	}
 }
 

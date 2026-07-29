@@ -36,12 +36,21 @@ GENERATED_PATHS := \
 IMAGE ?= etherview:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
-PREVIEW_TLS_DIR ?= .local/preview-tls
+PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
+PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
+PREVIEW_CONFIG_URL ?= https://localhost:8080/api/v1/config
+PREVIEW_COMPILER_DIR := .local/preview-compiler
+PREVIEW_COMPILER_RUNNER_ARCHIVE := $(PREVIEW_COMPILER_DIR)/compiler-runner.tar
+PREVIEW_COMPILER_RUNNER_REFERENCE := $(PREVIEW_COMPILER_DIR)/runner-image.txt
+PREVIEW_COMPILER_RUNNER_REPOSITORY := etherview-compiler-runner
+PREVIEW_COMPILER_RUNNER_TAG := $(PREVIEW_COMPILER_RUNNER_REPOSITORY):preview
+PREVIEW_COMPILER_RUNNER_PLATFORM := linux/amd64
+PREVIEW_COMPILER_RUNNER_PLACEHOLDER := $(PREVIEW_COMPILER_RUNNER_REPOSITORY)@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check
+.NOTPARALLEL: check generate-check start-preview recreate-preview
 
 .PHONY: \
 	check compose-check deployment-check \
@@ -52,7 +61,7 @@ PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
 	test-hardhat3-verify test-schema-e2e test-soak test-x402-testnet \
-	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
+	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check preview-compiler \
 	start-preview stop-preview recreate-preview
 
 go-build: web-build
@@ -129,6 +138,11 @@ test-soak:
 	@ETHERVIEW_LOAD_RATE=500 \
 		ETHERVIEW_LOAD_DURATION=30m \
 		ETHERVIEW_LOAD_CONCURRENCY=512 \
+		ETHERVIEW_LOAD_REQUEST_TIMEOUT=5s \
+		ETHERVIEW_LOAD_MAX_P95=500ms \
+		ETHERVIEW_LOAD_MAX_ERROR_RATE=0.001 \
+		ETHERVIEW_LOAD_MIN_THROUGHPUT_RATIO=0.99 \
+		ETHERVIEW_LOAD_MAX_LAG=2 \
 		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
 		$(GO) run ./cmd/loadtest
 
@@ -229,9 +243,18 @@ compose-check:
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
+	ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; const tlsKeys = ["ETHERVIEW_SERVER_TLS_CERT_FILE", "ETHERVIEW_SERVER_TLS_KEY_FILE"]; const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const api = config.services.api; const apiTargets = new Set(api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const key of tlsKeys) if (!api.environment[key]) throw new Error("Preview API TLS environment missing: " + key); for (const target of tlsTargets) if (!api.volumes.some((volume) => volume.target === target && volume.read_only)) throw new Error("Preview API read-only TLS mount missing: " + target); for (const [name, service] of Object.entries(config.services)) { if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name); if (name !== "api" && tlsKeys.some((key) => Object.hasOwn(service.environment || {}, key))) throw new Error("Preview TLS environment leaked to " + name); if (name !== "api" && (service.volumes || []).some((volume) => tlsTargets.includes(volume.target))) throw new Error("Preview TLS material leaked to " + name); }'
+	@ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
+		$(NODE) .github/scripts/preview-compose-check.mjs
+	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
+		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
@@ -271,21 +294,88 @@ preview-cert:
 	$(MKCERT) -install
 	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_TLS_CERT)" -key-file "$(PREVIEW_TLS_KEY)" \
 		etherview.localhost localhost 127.0.0.1 ::1
+	@set -eu; \
+		ca_root="$$("$(MKCERT)" -CAROOT)"; \
+		test -r "$$ca_root/rootCA.pem" || { \
+			echo "preview-cert: mkcert public root CA is unreadable" >&2; \
+			exit 1; \
+		}; \
+		cp "$$ca_root/rootCA.pem" "$(PREVIEW_TLS_CA)"
 	@chmod 600 "$(PREVIEW_TLS_KEY)"
-	@echo "preview-cert: wrote $(PREVIEW_TLS_CERT) and $(PREVIEW_TLS_KEY)"
+	@chmod 644 "$(PREVIEW_TLS_CERT)" "$(PREVIEW_TLS_CA)"
+	@echo "preview-cert: wrote $(PREVIEW_TLS_CERT), $(PREVIEW_TLS_KEY), and public $(PREVIEW_TLS_CA)"
 
 preview-cert-check:
-	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" || { \
-		echo "Preview TLS certificate missing; run 'make preview-cert' first"; \
+	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" && test -r "$(PREVIEW_TLS_CA)" || { \
+		echo "Preview TLS certificate or public root CA missing; run 'make preview-cert' first"; \
 		exit 1; \
 	}
 
-start-preview: preview-cert-check docker-build
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up --no-build --wait --remove-orphans
+preview-check: preview-cert-check
+	@test -r "$(PREVIEW_COMPILER_RUNNER_REFERENCE)" || { \
+		echo "Preview compiler reference missing; run 'make preview-compiler' first"; \
+		exit 1; \
+	}
+	@set -eu; \
+		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
+		COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" $(GO) run ./cmd/previewcheck \
+			-root=. \
+			-project=etherview-preview \
+			-compose="$(COMPOSE)" \
+			-compose-file=compose.preview.yaml \
+			-docker="$(DOCKER)" \
+			-runner-image="$$runner_image" \
+			-config-url="$(PREVIEW_CONFIG_URL)" \
+			-ca-file="$(PREVIEW_TLS_CA)"
+
+preview-compiler:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "preview-compiler: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --platform "$(PREVIEW_COMPILER_RUNNER_PLATFORM)" \
+		--target compiler-runner \
+		--tag "$(PREVIEW_COMPILER_RUNNER_TAG)" .
+	@mkdir -p "$(PREVIEW_COMPILER_DIR)"
+	@set -eu; \
+		runner_id="$$( "$(DOCKER)" image inspect \
+			--format '{{.Id}}' "$(PREVIEW_COMPILER_RUNNER_TAG)" )"; \
+		case "$$runner_id" in \
+			sha256:*) ;; \
+			*) echo "preview-compiler: build did not produce an exact image content digest" >&2; exit 1 ;; \
+		esac; \
+		runner_digest="$${runner_id#sha256:}"; \
+		test "$${#runner_digest}" -eq 64 || { \
+			echo "preview-compiler: malformed runner digest" >&2; exit 1; \
+		}; \
+		runner_image="$(PREVIEW_COMPILER_RUNNER_REPOSITORY)@$$runner_id"; \
+		"$(DOCKER)" image inspect "$$runner_image" >/dev/null; \
+		archive_tmp="$(PREVIEW_COMPILER_RUNNER_ARCHIVE).tmp"; \
+		reference_tmp="$(PREVIEW_COMPILER_RUNNER_REFERENCE).tmp"; \
+		trap 'rm -f "$$archive_tmp" "$$reference_tmp"' EXIT INT TERM; \
+		"$(DOCKER)" image save --output "$$archive_tmp" "$(PREVIEW_COMPILER_RUNNER_TAG)"; \
+		chmod 0444 "$$archive_tmp"; \
+		printf '%s\n' "$$runner_image" >"$$reference_tmp"; \
+		mv -f "$$archive_tmp" "$(PREVIEW_COMPILER_RUNNER_ARCHIVE)"; \
+		mv -f "$$reference_tmp" "$(PREVIEW_COMPILER_RUNNER_REFERENCE)"; \
+		trap - EXIT INT TERM; \
+		echo "preview-compiler: prepared $$runner_image"
+
+start-preview: preview-cert-check docker-build preview-compiler
+	@set -eu; \
+		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
+		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
+			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+			up --no-build --wait --wait-timeout 180 --remove-orphans
+	@$(MAKE) --no-print-directory preview-check
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
-recreate-preview: preview-cert-check docker-build
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml rm -fs $(PREVIEW_APP_SERVICES)
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up -d --no-build --remove-orphans $(PREVIEW_APP_SERVICES)
+recreate-preview: preview-cert-check docker-build preview-compiler
+	@set -eu; \
+		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
+		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
+			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+			rm -fs compiler-volumes-init compiler-preflight $(PREVIEW_APP_SERVICES); \
+		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
+			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+			up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_APP_SERVICES)
+	@$(MAKE) --no-print-directory preview-check

@@ -424,10 +424,10 @@ func matchesSettledEventChain(
 		code string
 	}{
 		{nil, billing.StateReserved, "payment_reserved"},
-		{statePointer(billing.StateReserved), billing.StateVerified, "payment_verified"},
-		{statePointer(billing.StateVerified), billing.StateVerified, "handler_started"},
-		{statePointer(billing.StateVerified), billing.StateSettling, "settlement_started"},
-		{statePointer(billing.StateSettling), billing.StateSettled, "payment_settled"},
+		{new(billing.StateReserved), billing.StateVerified, "payment_verified"},
+		{new(billing.StateVerified), billing.StateVerified, "handler_started"},
+		{new(billing.StateVerified), billing.StateSettling, "settlement_started"},
+		{new(billing.StateSettling), billing.StateSettled, "payment_settled"},
 	}
 	if len(events) != len(expected) {
 		return false
@@ -451,11 +451,6 @@ func matchesSettledEventChain(
 		}
 	}
 	return true
-}
-
-//go:fix inline
-func statePointer(value billing.State) *billing.State {
-	return new(value)
 }
 
 func sameStatePointer(left, right *billing.State) bool {

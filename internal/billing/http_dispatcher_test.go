@@ -1220,6 +1220,3 @@ func alternateEligibleOperation(operation string) string {
 	}
 	return "listBlocks"
 }
-
-//go:fix inline
-func stringPointer(value string) *string { return new(value) }

@@ -23,12 +23,12 @@ func TestParseAdminUserCommand(t *testing.T) {
 		{
 			name: "set role", action: "set-role",
 			args:     []string{"--address", " " + address + " ", "--role", " ADMIN "},
-			wantRole: rolePointer(userauth.RoleAdmin),
+			wantRole: new(userauth.RoleAdmin),
 		},
 		{
 			name: "set status", action: "set-status",
 			args:       []string{"--status=DISABLED", "--address=" + address},
-			wantStatus: statusPointer(userauth.StatusDisabled),
+			wantStatus: new(userauth.StatusDisabled),
 		},
 		{
 			name: "revoke sessions", action: "revoke-sessions",
@@ -155,16 +155,6 @@ func TestAdminUserCommandOutputIsStableAndBounded(t *testing.T) {
 	if len(fields) != 4 {
 		t.Fatalf("top-level output fields = %v", fields)
 	}
-}
-
-//go:fix inline
-func rolePointer(value userauth.Role) *userauth.Role {
-	return new(value)
-}
-
-//go:fix inline
-func statusPointer(value userauth.Status) *userauth.Status {
-	return new(value)
 }
 
 func equalOptionalRole(left, right *userauth.Role) bool {

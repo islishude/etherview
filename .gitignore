@@ -17,6 +17,7 @@
 /.env.*
 !/.env.example
 /.local/preview-tls/
+/.local/preview-compiler/
 /data/
 *.log
 

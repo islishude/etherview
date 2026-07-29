@@ -346,12 +346,18 @@ ETHERVIEW_LOAD_PATHS='["/api/v1/status","/api/v1/blocks?limit=20&sort=desc"]' \
 make test-load >artifacts/load.json
 ```
 
-`make test-soak` selects the 500 RPS/30-minute P70 defaults. Both commands fail
-when their p95, error-rate, achieved-throughput, or final core-lag threshold is
-missed and emit a bounded JSON report. The driver uses a bounded admission
-queue and overall deadline; saturation drops count as failures instead of
-extending the run indefinitely. Its final status probe requires canonical
-string lag plus `core_ready=true` and `backfill_complete=true`. For
+`make test-soak` selects the 500 RPS/30-minute P70 defaults and fixes the
+reference gates at p95 below 500 ms, error rate below 0.1%, final lag no
+greater than two blocks, and at least 99% successful throughput (495 RPS).
+Its fixed five-second request timeout bounds the complete final drain to 11
+seconds, inside that 1% throughput allowance; this avoids making the result
+depend on the last few in-flight completions without accepting the former 475
+RPS floor. Both commands fail when their p95, error-rate, achieved-throughput,
+or final core-lag threshold is missed and emit a bounded JSON report. The
+driver uses a bounded admission queue and overall deadline; saturation drops
+count as failures instead of extending the run indefinitely. Its final status
+probe requires canonical string lag plus `core_ready=true` and
+`backfill_complete=true`. For
 authenticated routes, pass a server-readable key through `ETHERVIEW_LOAD_API_KEY_FILE` or
 `ETHERVIEW_LOAD_API_KEY`; the driver rejects credentialed URLs, cross-origin
 paths, redirects, and `apikey` query parameters.

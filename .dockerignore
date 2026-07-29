@@ -13,6 +13,7 @@
 .idea
 .vscode
 .tools
+/.local/
 AGENTS.md
 PLAN.md
 docs

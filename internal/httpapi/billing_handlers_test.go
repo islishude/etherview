@@ -684,8 +684,3 @@ func repeatedBillingAddress(value byte) common.Address {
 	}
 	return address
 }
-
-//go:fix inline
-func timePointer(value time.Time) *time.Time {
-	return new(value)
-}

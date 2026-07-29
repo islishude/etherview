@@ -1,7 +1,7 @@
 server:
   address: 0.0.0.0:8080
   metrics_address: 0.0.0.0:9090
-  public_url: https://etherview.localhost:8080
+  public_url: https://localhost:8080
   shutdown_timeout: 20s
   read_timeout: 15s
   write_timeout: 30s
@@ -23,7 +23,7 @@ chain:
 wallet:
   add_chain:
     rpc_urls: ["http://localhost:8545"]
-    block_explorer_urls: ["https://etherview.localhost:8080"]
+    block_explorer_urls: ["https://localhost:8080"]
     icon_urls: []
 
 database:
@@ -75,22 +75,22 @@ metadata:
   fetch_timeout: 10s
   max_document_bytes: 2097152
   max_redirects: 3
-  ipfs_gateway: ""
+  ipfs_gateway: https://ipfs.io
 
 features:
   trace: true
   mempool: true
   historical_state: true
-  verification: false
+  verification: true
   sourcify: false
-  nft_metadata: false
+  nft_metadata: true
   pricing: false
   user_auth: true
   x402_billing: false
 
 security:
-  public_verification: false
-  compiler_sandbox: disabled
+  public_verification: true
+  compiler_sandbox: container
   api_key_pepper: "NOT_A_SECRET_PEPPER_250e1b7feee4"
   anonymous_rate: 5
   anonymous_burst: 20
@@ -142,6 +142,8 @@ verification:
     - https://github.com
   catalog_refresh_interval: 1h
   catalog_max_staleness: 24h
+  # make start-preview injects the exact locally built image digest. Keeping
+  # the checked-in value empty prevents a stale identity from becoming config.
   runner_image: ""
   images: {}
   artifacts: {}

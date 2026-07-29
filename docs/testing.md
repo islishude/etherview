@@ -88,9 +88,15 @@ until the Makefile target exists.
   route mix as a JSON string array in `ETHERVIEW_LOAD_PATHS`, and describe the
   revision, dataset, hardware, and RPC model.
 - `make test-soak`: run the same driver at the P70 reference defaults of
-  500 RPS for 30 minutes. It is an executable harness, not release evidence by
-  itself; P70-T04 still requires the named reference deployment, dataset,
-  hardware, RPC behavior, and independently captured resource peaks.
+  500 RPS for 30 minutes. The target fixes a 5-second request timeout, p95
+  below 500 ms, error rate below 0.1%, final lag no greater than two blocks,
+  and successful throughput of at least 99% of target (495 RPS). The 1%
+  throughput allowance covers only the bounded final in-flight drain and
+  scheduler jitter; dropped admissions and failed responses remain errors, and
+  the former 475 RPS floor cannot pass. This is an executable harness, not
+  release evidence by itself; P70-T04 still requires the named reference
+  deployment, dataset, hardware, RPC behavior, and independently captured
+  resource peaks.
 - `make check`: source, unit/race, security, license, generation, and deployment
   gates. Browser, integration, parity, load, and soak suites are explicit
   opt-in targets because they require dedicated services or runtimes; CI runs

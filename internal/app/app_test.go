@@ -217,7 +217,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "verify enabled", role: components.RoleVerify, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "35-compiler-catalog-refresher",
 			"40-contract-verification-01", "40-contract-verification-02",
 			"40-contract-verification-03", "40-contract-verification-04",
 		}},
@@ -319,7 +319,7 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 		}},
 		{role: components.RoleVerify, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "35-compiler-catalog-refresher",
 			"40-contract-verification-01", "40-contract-verification-02",
 		}},
 		{role: components.RoleMetadata, want: []string{

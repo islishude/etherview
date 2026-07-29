@@ -568,9 +568,6 @@ func canonicalPositiveIntegerOrZero(value string) bool {
 	return true
 }
 
-//go:fix inline
-func stringPointer(value string) *string { return new(value) }
-
 const snapshotSQL = `
 SELECT canonical.number::text, canonical.block_hash
 FROM canonical_blocks AS canonical
