@@ -39,22 +39,6 @@ jobs:
     name: PostgreSQL integration
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: etherview
-          POSTGRES_USER: etherview
-          POSTGRES_PASSWORD: etherview
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U etherview -d etherview"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
-    env:
-      INTEGRATION_DATABASE_URL: postgres://etherview:etherview@127.0.0.1:5432/etherview?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -67,11 +51,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install npm dependencies
-        run: npm --prefix web ci
-      - name: Build frontend assets
-        run: make web-build
-      - name: Run migrations and integration tests
+      - name: Run owned PostgreSQL migrations and integration tests
         run: make test-integration
 
   browser:
@@ -128,7 +108,7 @@ jobs:
   deployment:
     name: Container, Compose, and Helm
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -147,7 +127,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=smock-check-${{ runner.os }}-${{ runner.arch }},ignore-error=true
       - name: Verify the production image boundary
         run: make docker-image-check
-      - name: Smoke test the PostgreSQL schema lifecycle
-        run: make compose-schema-smoke
-      - name: Smoke test monolith and distributed runtime parity
-        run: make compose-runtime-smoke
+      - name: Test the production-image PostgreSQL schema lifecycle
+        run: make test-schema-e2e
+      - name: Test production Compose behavior and topology parity
+        run: make test-runtime-e2e

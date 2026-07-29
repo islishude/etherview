@@ -25,9 +25,14 @@ until the Makefile target exists.
   PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e`; this opt-in fallback gives every
   test an isolated worker because a single-process browser cannot safely reuse
   test contexts. CI remains on the ordinary multi-process browser.
-- `make test-integration`: migrations and PostgreSQL integration tests against
-  the disposable database named by `INTEGRATION_DATABASE_URL`; the target
-  explicitly skips when no URL is supplied.
+- `make test-integration`: build the embedded SPA, then run real migrations and
+  every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
+  the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
+  volume afterward. Supplying the variable uses that explicitly disposable
+  external database instead.
+- `make test-integration-race`: run the same owned database lifecycle with the
+  Go race detector. This expensive variant is explicit and is not part of
+  default CI.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, API-generator and frontend dependency
   audits, secret scan, and security-focused tests. Both npm dependency trees
@@ -45,21 +50,27 @@ until the Makefile target exists.
   with the numeric non-root identity and hardened runtime flags, and scan its
   exported root filesystem for Node, package-manager, shell, Go, and
   Solidity/Vyper compiler payloads.
-- `make compose-schema-smoke`: migrate a disposable PostgreSQL Compose volume
-  and then verify exact schema compatibility through `migrate status`.
-- `make compose-runtime-smoke`: rebuild the current working tree's production
-  image, then use one anvil-backed deterministic fixture and two fresh
-  PostgreSQL volumes to run it first as a monolith and then as all seven split
-  roles. The distributed run uses two sync and two enrichment replicas. It
-  first starts the config-only verification role
-  against the fresh database, then starts the RPC-backed roles, stops one sync
-  and one enrichment replica, mines a new deterministic head, probes both
-  surviving role-local readiness endpoints, and requires the checkpoint, zero
-  lag, exact stage publications, and outbox delivery to catch up. A bounded
-  in-network public-API load phase must pass in both layouts. The target then
-  compares normalized PostgreSQL state, public API responses, and embedded-SPA
-  output. Verification, Sourcify, and pricing stay disabled because they
-  require separately approved compiler or external service boundaries.
+- `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
+  volume with the production image and verify exact compatibility through
+  `migrate status`.
+- `make test-runtime-e2e`: rebuild the current working tree's production image
+  and run the build-tagged Go E2E suite against the production Compose file in
+  monolith and all-seven-role layouts. Each layout gets a deterministic Anvil
+  chain and a fresh PostgreSQL volume. The suite verifies an exact pending
+  hash, contract creation and a failed call, all six deployed stage
+  publications, a distinct competing-hash reorg with orphan/journal retention
+  and changed hourly analytics, API/SSE/SPA behavior, RPC and PostgreSQL outage
+  recovery, API process restart, bounded load, and final durable/public parity.
+  The distributed scenario additionally proves config-only identity binding
+  and continues after one of two sync and enrichment replicas is stopped.
+  A bounded test-only Go RPC adapter removes the orphan `blobGasPrice` field
+  emitted by the pinned Anvil fixture when `blobGasUsed` is absent; complete
+  blob-fee observations pass through unchanged, so production receipt
+  validation remains strict.
+  Failure artifacts and timestamped Compose logs are retained automatically;
+  set `RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain successful artifacts too.
+  Verification, Sourcify, and pricing stay disabled because they require
+  separately approved compiler or external-service boundaries.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
   30-second smoke with p95, error-rate, throughput, and final core-lag
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the
@@ -72,8 +83,20 @@ until the Makefile target exists.
 - `make check`: source, unit/race, security, license, generation, and deployment
   gates. Browser, integration, parity, load, and soak suites are explicit
   opt-in targets because they require dedicated services or runtimes; CI runs
-  the browser, integration, and short runtime-parity suites, not the external
-  30-minute soak.
+  the browser, managed integration, schema, and runtime E2E suites, not the
+  external 30-minute soak.
+
+All Compose-facing targets use `.github/scripts/compose.sh`, and image builds
+use `.github/scripts/buildx.sh`. They prefer Docker's Compose and Buildx
+plugins and fall back to the standalone `docker-compose` and `docker-buildx`
+binaries. Set `COMPOSE`, `BUILDX`, or `DOCKER` to override those entry points.
+
+Keep lifecycle, readiness polling, API/RPC assertions, SQL state capture,
+normalization, parity comparison, and diagnostic artifacts in Go. Repository
+shell at this boundary is intentionally limited to the small Compose/Buildx
+selectors and the production-image payload inspection script. Extend
+`internal/testcompose`, the managed integration runner, or the build-tagged
+runtime suite instead of introducing a new shell smoke harness.
 
 For example:
 

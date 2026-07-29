@@ -104,6 +104,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   transport, persistence, and public-contract adapters; its focused,
   PostgreSQL, generation, security, license, Helm, Compose, ordinary, and race
   gates plus Docker image/runtime and aggregate common-gate verification pass.
+  P70-T16's execution analytics close with a deterministic competing-hash
+  production Compose reorg; P70-T18's address/network release validation passes
+  the embedded browser and managed PostgreSQL suites; P70-T19 replaces manual
+  PostgreSQL setup and shell-heavy runtime smoke with Go-owned integration,
+  production-schema, and monolith/seven-role runtime E2E targets.
   Conformance, security, release CI, long-capacity, documentation, and artifact
   gates remain open.
 

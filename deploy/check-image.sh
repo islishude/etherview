@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+# This intentionally stays a small image-boundary probe; service lifecycle and
+# behavioral assertions belong to the Go E2E suites.
 docker_command=${DOCKER:-docker}
 image=${IMAGE:-etherview:local}
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/etherview-image-check.XXXXXX")

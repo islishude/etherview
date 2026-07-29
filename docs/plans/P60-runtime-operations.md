@@ -24,7 +24,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 |---|---|---|---|---|
 | P60-T01 | done | P00 | Shared component lifecycle, role graph, readiness, graceful shutdown | lifecycle/parity tests |
 | P60-T02 | done | P20 | PostgreSQL job/outbox plus optional NATS, Redis, and S3 adapters | outage/fallback tests |
-| P60-T03 | done | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | Compose smoke tests |
+| P60-T03 | done | P00, P10, P40, P50 | Multi-stage non-root image and monolith/distributed Compose profiles | production Compose Go E2E |
 | P60-T04 | done | P60-T01, P60-T02 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
 | P60-T05 | done | P10, P20, P30-T01, P30-T02, P30-T05, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
 | P60-T06 | done | P10, P20, P30-T07, P40, P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
@@ -217,18 +217,19 @@ owned by P70 and is not implied by P60 completion.
 - P60-T03: the production Dockerfile builds the SPA and Go binary in separate
   stages, then copies only the runtime binary, embedded migrations, CA
   certificates, and timezone data into a distroless final image. The image
-  contract is enforced by `deploy/runtime-smoke/check-image.sh`, and
+  contract is enforced by `deploy/check-image.sh`, and
   `make docker-image-check` passes with user `65532:65532` and no forbidden
   runtime, build, shell, package-manager, or compiler payload.
-- P60-T03: `make compose-runtime-smoke` rebuilds the current working tree and
+- P60-T03: the historical `make compose-runtime-smoke` evidence was superseded
+  by `make test-runtime-e2e`, which rebuilds the current working tree and
   passes against independently migrated fresh PostgreSQL 18 databases. The
   monolith and seven-role runs each publish exact `proxy@1`, `abi@1`,
-  `token@1`, `stats@3`, and `trace@1` results for the final canonical block,
-  reach zero core lag with a drained outbox, and match the normalized
-  correctness projection, seven selected API responses, and embedded SPA
-  bytes. The distributed run first binds chain identity from a config-only
-  role, starts two sync and two enrichment replicas, stops one of each, and
-  proves the survivors process the next block.
+  `token@1`, `stats@3`, `trace@1`, and `state_diff@1` results for the final
+  canonical block, reach zero core lag with a drained outbox, and match
+  normalized durable and public API state. The distributed run first binds
+  chain identity from a config-only role, starts two sync and two enrichment
+  replicas, stops one of each, and proves the survivors process a
+  competing-hash reorg.
 - P60-T03: both runtime shapes pass the in-network 40 RPS short profile with
   120/120 successful requests, zero errors, zero core lag, ready core, and
   complete backfill. The final distributed report records 40.31 successful

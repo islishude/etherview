@@ -113,33 +113,38 @@ while preserving PostgreSQL, Reth, and the compiler artifact cache.
 `ETHERVIEW_PREVIEW_IMAGE`; this is intentionally separate from the production
 `ETHERVIEW_IMAGE` tag.
 
-The reproducible deployment smoke uses a deterministic anvil fixture container
-and two independent PostgreSQL volumes:
+The reproducible deployment E2E uses a deterministic Anvil fixture and two
+independent PostgreSQL volumes:
 
 ```sh
 make docker-image-check
-make compose-runtime-smoke
+make test-schema-e2e
+make test-runtime-e2e
 ```
 
-The runtime target rebuilds the current working tree and runs that same
-production image in monolith and seven-role distributed layouts with isolated
-configuration and PostgreSQL volumes. The distributed
-layout starts two sync and two enrichment replicas, stops one of each, mines a new
-anvil block, probes the surviving role-local readiness
-endpoints, and requires the core checkpoint, zero lag, drained outbox, and all
-five exact stage publications to advance before capture. Before the RPC roles
-start, the config-only verification role must bind the fresh database identity;
-after failover, a test-only non-root image runs a bounded public-API load phase
-inside each Compose network. The smoke then compares normalized PostgreSQL
-state (including search generations), API responses, and the embedded SPA.
-Trace, mempool, historical state, and NFT metadata are enabled. Verification,
-Sourcify, and pricing are explicitly disabled: public verification requires an
-approved external compiler sandbox/cache, while Sourcify and pricing require
-separate external-service fixtures.
+The schema target drives the production migration image from Go. The runtime
+target rebuilds the current working tree and drives the same production image
+in monolith and seven-role distributed layouts from a build-tagged Go test.
+The distributed layout starts two sync and enrichment replicas, stops one of
+each, and proves the survivors process a competing-hash reorg. Both layouts
+must publish all six deployed stages, retain the orphan branch, update hourly
+analytics, recover after RPC and PostgreSQL pauses plus an API restart, expose
+the same API/SSE/embedded-SPA behavior, pass bounded load, and finish with
+equivalent normalized durable and public state. Trace, mempool, historical
+state, and NFT metadata are enabled. Verification, Sourcify, and pricing are
+explicitly disabled: public verification requires an approved external
+compiler sandbox/cache, while Sourcify and pricing require separate
+external-service fixtures.
+
+The pinned Anvil fixture currently emits `blobGasPrice` without
+`blobGasUsed` on ordinary receipts. A bounded test-only Go RPC adapter removes
+only that orphan field and preserves complete blob-fee pairs; production
+receipt validation remains unchanged.
 
 For anvil configuration, override `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to pin or
-test an alternate Foundry image tag, and set `ANVIL_ARGS` for extra local node
-flags.
+test an alternate Foundry image tag. Set
+`RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain successful JSON snapshots and load
+reports; failure artifacts and Compose logs are always retained.
 
 ## Helm
 

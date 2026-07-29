@@ -34,14 +34,6 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && cp "$geth_module_dir/crypto/secp256k1/libsecp256k1/COPYING" /licenses/libsecp256k1-MIT.txt \
     && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 
-# The bounded public-API load driver uses a dedicated runtime-tools image. Nothing
-# from this stage enters production.
-FROM gcr.io/distroless/base-debian13:nonroot AS runtime-tools
-COPY --from=go-builder --chown=nonroot:nonroot /go/bin/loadtest /loadtest
-USER 65532:65532
-ENTRYPOINT ["/loadtest"]
-CMD []
-
 # Generic verifier runner. Build and publish this target separately, pin its
 # digest in verification.runner_image, and pre-pull it on verify-role hosts.
 # Compiler binaries and Standard JSON enter only through the bounded frame on

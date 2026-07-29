@@ -23,6 +23,11 @@ when their detailed invariants are not repeated here.
 Long-lived code TODOs must reference a plan item. Run `make plan-check` after
 plan changes.
 
+Completed-plan evidence is historical and may name commands or paths that were
+later superseded. Use the current `Makefile`, `docs/testing.md`, and maintained
+operator documentation as command truth; do not resurrect a removed test
+driver solely because an older evidence entry cites it.
+
 ## Architecture guardrails
 
 - PostgreSQL is the correctness authority for chain facts, canonicality, jobs,
@@ -116,6 +121,29 @@ evidence rules.
 - Run the smallest targeted tests first, then the applicable common gates.
   `make check` excludes service-backed, browser, parity, load, and soak suites;
   run their explicit targets when the change touches those boundaries.
+- `make test-integration` is self-contained: when
+  `INTEGRATION_DATABASE_URL` is empty, its Go runner owns a fresh PostgreSQL 18
+  Compose project, applies real migrations, runs only integration-tagged
+  packages, and removes the volume. Do not require developers to start
+  PostgreSQL manually or silently skip this target. A caller-supplied URL must
+  identify an explicitly disposable database. Use
+  `make test-integration-race` only when the database boundary needs the
+  explicit race variant.
+- `make test-schema-e2e` and `make test-runtime-e2e` are the production-image
+  deployment gates. The runtime suite is Go-owned and covers both the monolith
+  and the complete seven-role split topology, including exact pending identity,
+  six-stage publication, a distinct-hash reorg, dependency outages, restart,
+  bounded load, and durable/public parity. Extend this suite for new
+  cross-process behavior instead of adding another shell smoke driver.
+- Keep service orchestration, polling, API/RPC assertions, SQL state capture,
+  normalization, and diagnostics in Go. Shell under the test/deployment
+  boundary should remain limited to small portable selectors or image
+  inspection where direct process tooling is the contract.
+- All Makefile Compose and Buildx calls go through
+  `.github/scripts/compose.sh` and `.github/scripts/buildx.sh`. They prefer
+  Docker plugins and fall back to standalone binaries. Preserve the
+  `COMPOSE`, `BUILDX`, and `DOCKER` overrides rather than hard-coding one local
+  installation shape.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
   SPA changes; run `make plan-check` after governance changes.
 - A work item is complete only when its targeted tests and applicable common

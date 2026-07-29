@@ -38,9 +38,10 @@ and user/operator evidence sufficient for a production public release.
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
 | P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
-| P70-T16 | in_progress | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and Preview tests |
+| P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
-| P70-T18 | blocked | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
+| P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
+| P70-T19 | done | P20, P40, P50, P60 | Go-native managed PostgreSQL integration tests and production-Compose schema/runtime E2E orchestration | integration, schema, runtime, outage, reorg, parity, and load tests |
 
 ## Acceptance
 
@@ -75,6 +76,18 @@ and user/operator evidence sufficient for a production public release.
       report a completed durable transition; API request logging remains the
       existing per-request boundary and catalog success is logged only after an
       executed sweep.
+- [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
+      when no external disposable URL is supplied; the explicit race variant,
+      production-image schema E2E, and unified plugin/standalone Compose
+      selector share maintainable Go orchestration.
+- [x] P70-T19: the build-tagged production Compose E2E replaces the shell smoke
+      and drives monolith plus all seven split roles through exact pending,
+      contract creation/failure, six-stage publication, distinct-hash reorg and
+      analytics repair, replica survival, RPC/PostgreSQL outages, restart,
+      API/SSE/SPA, bounded-load, and final parity assertions.
+- [x] P70-T19: the managed integration, production-image schema, and full
+      runtime E2E targets pass with a working Docker daemon; failures retain
+      scenario artifacts and timestamped Compose logs.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -84,11 +97,11 @@ and user/operator evidence sufficient for a production public release.
       execution-layer metric allowlist, exact decimal values, URL-bound
       controls, zoom, CSV, and accessible table fallback without external
       resources.
-- [ ] P70-T16: the preserved-volume Preview produces a competing-hash reorg and
-      demonstrates the affected public rollup changing after detach/attach.
-      The current Reth dev node's `debug_setHead` reselected its already stored
-      descendants with identical hashes, so it did not supply this final live
-      evidence.
+- [x] P70-T16: the production Compose E2E creates two distinct hashes at the
+      same height, demonstrates the affected public rollup changing after
+      detach/attach, and verifies retained orphan and journal closure. This
+      deterministic gate replaces the non-distinct Reth `debug_setHead`
+      Preview attempt.
 - [x] P70-T17: canonical state and ABI observation queries order numeric block
       columns rather than text projections; address reads bind balance, nonce,
       and account type to the highest canonical hash and reject a result if
@@ -130,18 +143,40 @@ settlement and ledger reconciliation evidence.
 P70-T01 through P70-T03 and P70-T05 remain `todo`; P70-T04 is `in_progress`
 while its reference-capacity tooling and final report are prepared.
 
-P70-T09, P70-T12, P70-T13, P70-T14, and P70-T17 are complete. P70-T16
-remains `in_progress` only for a competing-hash Preview reorg run; its
-implementation, database reorg regression, performance target, browser suite,
-full common gates, and preserved-volume Preview backfill otherwise pass.
-P70-T18's embedded Playwright validation passes. It remains blocked only until
-a disposable `INTEGRATION_DATABASE_URL` is available for the PostgreSQL
-release-validation rerun.
+P70-T09, P70-T12, P70-T13, P70-T14, P70-T16, P70-T17, P70-T18, and
+P70-T19 are complete. P70-T16's deterministic production Compose reorg gate
+supersedes the non-distinct preserved-volume Preview attempt. P70-T18's
+embedded Playwright and managed PostgreSQL release validation both pass.
+P70-T19 replaces manually provisioned PostgreSQL and the shell-heavy Compose
+smoke workflow with owned disposable services and maintainable Go
+orchestration; its managed integration, production schema, and full runtime
+E2E targets pass.
 P70-T06 and the v1 release remain blocked on P66 completion, conformance,
 security, release-CI, long-capacity, and documentation evidence.
 
 ## Evidence
 
+- P70-T19 implementation: `.github/scripts/compose.sh` and
+  `.github/scripts/buildx.sh` select the Docker plugins or standalone
+  binaries; `internal/testcompose` owns project arguments, random host-port
+  resolution, lifecycle, and diagnostics.
+  `cmd/testintegration` provisions PostgreSQL 18 unless an explicit disposable
+  URL is supplied, while `cmd/testschemae2e` drives the production migration
+  image. The build-tagged `e2e/runtime` Go suite replaces the 651-line runtime
+  shell driver and its psql state script; the test-only load image stage is no
+  longer built. Its bounded Go RPC fixture adapter removes only Anvil's orphan
+  `blobGasPrice` observation and leaves complete blob-fee pairs untouched.
+- P70-T19 local verification: `go test ./...`,
+  `go test ./internal/testcompose ./cmd/testintegration
+  ./cmd/testschemae2e`, `go test -run '^$' -tags=runtimee2e ./e2e/runtime`,
+  focused ordinary/tagged `go vet` and `golangci-lint`, `make compose-check`,
+  `make plan-check`, and `git diff --check` pass. Compose and Buildx exercised
+  the available standalone binaries. `make test-integration` owns PostgreSQL
+  18, applies migrations through `0028`, and passes every integration-tagged
+  package; `make test-schema-e2e` validates the same schema through the
+  production image; `make test-runtime-e2e` passes monolith and all-seven-role
+  layouts with distinct-hash reorg, six-stage publication, outage/restart,
+  replica-survival, API/SSE/SPA, bounded-load, and final parity checks.
 - P70-T18: P40-T10 and P50-T12 implementation checks pass, including the full
   ordinary Go suite, 144 Vitest tests, frontend lint/build, generated-contract
   drift checks, plan and whitespace validation, and the aggregate `make check`
@@ -150,8 +185,8 @@ security, release-CI, long-capacity, and documentation evidence.
   named NFT region instead of assuming the label is unique across ERC-20 and
   NFT holdings. The focused capability flow and all 9 embedded Playwright
   cases pass with the documented bundled-Chromium single-process fallback.
-  PostgreSQL release validation remains blocked because
-  `INTEGRATION_DATABASE_URL` is unset.
+  The managed `make test-integration` PostgreSQL 18 lifecycle now passes the
+  release validation without requiring `INTEGRATION_DATABASE_URL`.
 - P70-T17 implementation: `PostgresCanonicalSource.Tip` and both ABI history
   lookups now order qualified numeric columns while converting quantities to
   text only for scanning. Address state remains EIP-1898 block-hash pinned and

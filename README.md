@@ -102,6 +102,19 @@ make test
 deployment gates. Service-backed and long-running suites are explicit targets;
 see [docs/testing.md](docs/testing.md).
 
+The service-backed release tests provision their own disposable dependencies:
+
+```sh
+make test-integration
+make test-schema-e2e
+make test-runtime-e2e
+```
+
+`make test-integration` starts and removes a fresh PostgreSQL 18 instance when
+`INTEGRATION_DATABASE_URL` is unset. The schema and runtime targets use the
+production image; the runtime E2E exercises both monolith and complete
+seven-role deployments. No manual PostgreSQL startup is required.
+
 ## Documentation
 
 - [Architecture](docs/architecture/overview.md)

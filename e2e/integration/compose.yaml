@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: etherview
+      POSTGRES_USER: etherview
+      POSTGRES_PASSWORD: etherview-integration
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etherview -d etherview"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    ports:
+      - target: 5432
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    restart: "no"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+volumes:
+  postgres-data:

@@ -4,11 +4,14 @@ GO ?= go
 NODE ?= node
 NPM ?= npm
 DOCKER ?= docker
+BUILDX ?= .github/scripts/buildx.sh
+COMPOSE ?= .github/scripts/compose.sh
 HELM ?= helm
 
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
 INTEGRATION_DATABASE_URL ?=
+INTEGRATION_GO_PACKAGES ?=
 GO_BUILD_OUTPUT ?= ./etherview
 GO_BUILD_FLAGS ?= -trimpath
 GO_BUILD_LDFLAGS ?= -s -w
@@ -30,7 +33,6 @@ GENERATED_PATHS := \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local
-RUNTIME_TOOLS_IMAGE ?= etherview-runtime-tools:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
 
@@ -38,13 +40,14 @@ PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
 .NOTPARALLEL: check generate-check
 
 .PHONY: \
-	check compose-check compose-runtime-smoke compose-schema-smoke deployment-check \
+	check compose-check deployment-check \
 	docker-build docker-check docker-image-check \
 	go-build generate generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
-	test-e2e test-integration test-load test-race test-soak test-x402-testnet \
+	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
+	test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test start-preview stop-preview recreate-preview
 
 go-build: web-build
@@ -92,20 +95,18 @@ test-e2e: web-build
 test-race: web-build
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-# Integration tests are explicitly skipped when no disposable PostgreSQL URL
-# is supplied. CI always supplies one and exercises both migration actions
-# before running integration-tagged tests.
-test-integration: export INTEGRATION_DATABASE_URL := $(INTEGRATION_DATABASE_URL)
-test-integration:
-	@set -eu; \
-	if [ -z "$$INTEGRATION_DATABASE_URL" ]; then \
-		echo "test-integration: SKIP (set INTEGRATION_DATABASE_URL to a disposable PostgreSQL database)"; \
-		exit 0; \
-	fi; \
-	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate up; \
-	ETHERVIEW_DATABASE_URL="$$INTEGRATION_DATABASE_URL" $(GO) run ./cmd/etherview migrate status; \
-	ETHERVIEW_TEST_DATABASE_URL="$$INTEGRATION_DATABASE_URL" \
-		$(GO) test -count=1 -tags=integration $(GO_PACKAGES)
+# Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
+# Compose project. Supplying a URL remains useful for an explicitly disposable
+# external database.
+test-integration: web-build
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)"
+
+test-integration-race: web-build
+	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
+		DOCKER="$(DOCKER)" GO="$(GO)" \
+		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race
 
 # This opt-in target sends exactly one real Base Sepolia payment. It is
 # intentionally absent from check, CI, and the ordinary integration suite.
@@ -201,55 +202,43 @@ license-check: license-tool-check web-install
 
 docker-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
-	$(DOCKER) buildx build --check .
+	DOCKER="$(DOCKER)" $(BUILDX) build --check .
 
 docker-build:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-build: docker is required"; exit 1; }
-	$(DOCKER) build --target production --tag "$(IMAGE)" .
+	DOCKER="$(DOCKER)" $(BUILDX) build --load --target production --tag "$(IMAGE)" .
 
 docker-image-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/runtime-smoke/check-image.sh
+	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
 
 compose-check:
-	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-check: Docker Compose v2 is required"; exit 1; }
+	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
-	$(DOCKER) compose --profile monolith config --quiet
-	$(DOCKER) compose --profile distributed config --quiet
-	$(DOCKER) compose --profile accelerators config --quiet
-	$(DOCKER) compose -f compose.preview.yaml config --quiet
-	@$(DOCKER) compose -f compose.preview.yaml config --format json | \
+	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const apiTargets = new Set(config.services.api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!config.services.api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const [name, service] of Object.entries(config.services)) if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name);'
-	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
-	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile distributed config --quiet
-	$(DOCKER) compose -f compose.yaml -f deploy/runtime-smoke/compose.yaml \
-		--profile distributed --profile runtime-tools config --quiet
 	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL; \
-		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
 	@ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS=7 ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS=1 ETHERVIEW_LOG_LEVEL=debug ETHERVIEW_LOG_FORMAT=text ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL=45s \
-		$(DOCKER) compose --env-file /dev/null --profile monolith config --format json | \
+		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; if (env.ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS !== "7" || env.ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS !== "1") throw new Error("Compose reader-pool overrides were not preserved"); if (env.ETHERVIEW_LOG_LEVEL !== "debug" || env.ETHERVIEW_LOG_FORMAT !== "text" || env.ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL !== "45s") throw new Error("Compose logging overrides were not preserved");'
 
-# This focused schema smoke keeps fresh migration compatibility independently runnable;
-# compose-runtime-smoke covers the complete application deployment shapes.
-compose-schema-smoke:
-	@set -eu; \
-	project="etherview-smoke-$$$$"; \
-	export POSTGRES_PASSWORD=etherview-smoke ETHERVIEW_IMAGE="$(IMAGE)"; \
-	cleanup() { $(DOCKER) compose -p "$$project" --profile distributed down --volumes --remove-orphans >/dev/null 2>&1 || true; }; \
-	trap cleanup EXIT INT TERM; \
-	$(DOCKER) compose -p "$$project" --profile distributed up -d --wait postgres; \
-	$(DOCKER) compose -p "$$project" --profile distributed run --rm --no-deps migration; \
-	$(DOCKER) compose -p "$$project" --profile distributed run --rm --no-deps migration \
-		migrate status --config=/etc/etherview/config.yaml
+test-schema-e2e: docker-build
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) run ./cmd/testschemae2e -root .
 
-compose-runtime-smoke: docker-build
-	@$(DOCKER) compose version >/dev/null 2>&1 || { echo "compose-runtime-smoke: Docker Compose v2 is required"; exit 1; }
-	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" RUNTIME_TOOLS_IMAGE="$(RUNTIME_TOOLS_IMAGE)" \
-		deploy/runtime-smoke/run.sh
+test-runtime-e2e: docker-build
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -tags=runtimee2e ./e2e/runtime
 
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }
@@ -266,11 +255,11 @@ deployment-check: docker-check compose-check helm-check
 check: toolchain-check security-tool-check license-tool-check plan-check generate-check lint test test-race security-check license-check deployment-check
 
 start-preview:
-	@$(DOCKER) compose -f compose.preview.yaml up --build --wait --remove-orphans
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up --build --wait --remove-orphans
 
 stop-preview:
-	@$(DOCKER) compose -f compose.preview.yaml down --volumes --remove-orphans
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
 recreate-preview:
-	@$(DOCKER) compose -f compose.preview.yaml rm -fs $(PREVIEW_APP_SERVICES)
-	@$(DOCKER) compose -f compose.preview.yaml up -d --build --remove-orphans $(PREVIEW_APP_SERVICES)
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml rm -fs $(PREVIEW_APP_SERVICES)
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml up -d --build --remove-orphans $(PREVIEW_APP_SERVICES)
