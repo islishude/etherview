@@ -78,8 +78,19 @@ until the Makefile target exists.
   emitted by the pinned Anvil fixture when `blobGasUsed` is absent; complete
   blob-fee observations pass through unchanged, so production receipt
   validation remains strict.
-  Failure artifacts and timestamped Compose logs are retained automatically;
-  set `RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain successful artifacts too.
+  Successful Compose lifecycle output is captured rather than streamed, so the
+  terminal shows only the current mode and phase. A failure prints the exact Go
+  assertion followed by one bounded summary containing the mode, phase,
+  diagnostic directory, and `compose ps` state. Each retained mode directory
+  contains `failure-summary.txt`, `compose-ps.txt`, the complete timestamped
+  `compose.log`, and any API, durable-state, or load-report JSON produced before
+  the failure. Failure artifacts are retained automatically; set
+  `RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain the same bundle for successful
+  modes too. CI uses the already loaded production image through the internal
+  `make test-runtime-e2e-prebuilt` target and uploads a failed run as
+  `runtime-e2e-diagnostics-<run-id>-<attempt>` for seven days. Developers
+  should continue to use `make test-runtime-e2e`, which rebuilds the current
+  working tree first.
   Verification, Sourcify, and pricing stay disabled because they require
   separately approved compiler or external-service boundaries.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,

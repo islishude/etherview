@@ -200,8 +200,16 @@ receipt validation remains unchanged.
 
 For anvil configuration, override `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to pin or
 test an alternate Foundry image tag. Set
-`RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain successful JSON snapshots and load
-reports; failure artifacts and Compose logs are always retained.
+`RUNTIME_E2E_KEEP_ARTIFACTS=true` to retain successful diagnostics too.
+Successful Compose commands are captured without streaming. On failure the
+terminal reports the exact mode and phase, the artifact directory, and one
+bounded `compose ps` table. That directory contains `failure-summary.txt`,
+`compose-ps.txt`, the complete timestamped `compose.log`, and any JSON
+snapshots or load reports produced before failure. CI reuses its previously
+built production image through `make test-runtime-e2e-prebuilt` and uploads
+this bundle as `runtime-e2e-diagnostics-<run-id>-<attempt>` for seven days;
+local development should continue to use `make test-runtime-e2e` so the image
+is rebuilt from the current working tree.
 
 ## Helm
 

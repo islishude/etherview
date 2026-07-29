@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -193,7 +194,7 @@ func assertRequest(t *testing.T, request etherscan.Request, action string, expec
 func cloneValues(values url.Values) url.Values {
 	cloned := make(url.Values, len(values))
 	for name, entries := range values {
-		cloned[name] = append([]string(nil), entries...)
+		cloned[name] = slices.Clone(entries)
 	}
 	return cloned
 }

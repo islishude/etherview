@@ -2,8 +2,10 @@ package testcompose
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +73,42 @@ func TestProjectPortNormalizesIPv4AndIPv6Bindings(t *testing.T) {
 				t.Fatalf("port = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestNewQuietCapturesWithoutStreaming(t *testing.T) {
+	project := NewQuiet("/repo", "runtime", "compose.yaml")
+	executor, ok := project.Executor.(OSExecutor)
+	if !ok {
+		t.Fatalf("quiet executor type = %T, want testcompose.OSExecutor", project.Executor)
+	}
+	if executor.Stdout != nil || executor.Stderr != nil {
+		t.Fatalf("quiet executor streams output: %#v", executor)
+	}
+
+	recorder := &recordingExecutor{output: []byte("captured output")}
+	project.Executor = recorder
+	output, err := project.Run(context.Background(), "ps", "--all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != "captured output" {
+		t.Fatalf("captured output = %q", output)
+	}
+}
+
+func TestProjectFailureIncludesCapturedOutputOnce(t *testing.T) {
+	project := NewQuiet("/repo", "runtime", "compose.yaml")
+	project.Executor = &recordingExecutor{
+		output: []byte("compose diagnostic"),
+		err:    errors.New("compose failed"),
+	}
+
+	_, err := project.Run(context.Background(), "up", "-d")
+	if err == nil {
+		t.Fatal("expected Compose failure")
+	}
+	if count := strings.Count(err.Error(), "compose diagnostic"); count != 1 {
+		t.Fatalf("captured output occurrences = %d, want 1: %v", count, err)
 	}
 }

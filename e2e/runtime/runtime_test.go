@@ -110,6 +110,7 @@ type harness struct {
 	t             *testing.T
 	root          string
 	mode          string
+	phase         string
 	project       *testcompose.Project
 	apiService    string
 	baseURL       string
@@ -175,13 +176,108 @@ func TestNormalizeAnvilReceipts(t *testing.T) {
 	}
 }
 
+func TestRuntimeTLSKeyPairPermissions(t *testing.T) {
+	certificateFile, keyFile, _ := writeRuntimeTLSKeyPair(t)
+	for _, filename := range []string{certificateFile, keyFile} {
+		info, err := os.Stat(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o444 {
+			t.Fatalf("%s mode = %#o, want 0444", filepath.Base(filename), got)
+		}
+	}
+}
+
+type diagnosticExecutor struct {
+	psOutput  []byte
+	psErr     error
+	logOutput []byte
+	logErr    error
+}
+
+func (e diagnosticExecutor) Run(_ context.Context, command testcompose.Command) ([]byte, error) {
+	for _, argument := range command.Args {
+		switch argument {
+		case "ps":
+			return e.psOutput, e.psErr
+		case "logs":
+			return e.logOutput, e.logErr
+		}
+	}
+	return nil, fmt.Errorf("unexpected diagnostic command: %v", command.Args)
+}
+
+func TestCaptureRuntimeDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		logErr          error
+		wantSummaryText string
+	}{
+		{name: "complete", wantSummaryText: "compose_logs_error=none"},
+		{
+			name:            "partial logs",
+			logErr:          errors.New("logs unavailable"),
+			wantSummaryText: `compose_logs_error=compose project "runtime": logs unavailable`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			artifacts := t.TempDir()
+			project := testcompose.NewQuiet("/repo", "runtime", "compose.yaml")
+			project.Compose = "compose"
+			project.Executor = diagnosticExecutor{
+				psOutput:  []byte("NAME STATUS\napi restarting\n"),
+				logOutput: []byte("api | partial service log\n"),
+				logErr:    test.logErr,
+			}
+			h := &harness{
+				t: t, mode: "distributed", phase: "process-native TLS",
+				project: project, artifacts: artifacts,
+			}
+
+			if got := h.captureDiagnostics(t.Context(), true); got != "NAME STATUS\napi restarting" {
+				t.Fatalf("terminal Compose state = %q", got)
+			}
+			assertArtifactContents(t, artifacts, "compose-ps.txt", "api restarting")
+			assertArtifactContents(t, artifacts, "compose.log", "partial service log")
+			summary := assertArtifactContents(
+				t,
+				artifacts,
+				"failure-summary.txt",
+				"status=failed\nmode=distributed\nphase=process-native TLS\nproject=runtime",
+			)
+			if !strings.Contains(summary, test.wantSummaryText) {
+				t.Fatalf("failure summary = %q, want %q", summary, test.wantSummaryText)
+			}
+			if strings.Contains(summary, "partial service log") {
+				t.Fatalf("failure summary included full service output: %q", summary)
+			}
+		})
+	}
+}
+
+func assertArtifactContents(
+	t *testing.T,
+	directory, name, want string,
+) string {
+	t.Helper()
+	contents, err := os.ReadFile(filepath.Join(directory, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(contents); !strings.Contains(got, want) {
+		t.Fatalf("%s = %q, want substring %q", name, got, want)
+	}
+	return string(contents)
+}
+
 func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp uint64) modeResult {
 	t.Helper()
 	artifacts, err := os.MkdirTemp("", "etherview-runtime-e2e-"+mode+"-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	project := testcompose.New(
+	project := testcompose.NewQuiet(
 		root,
 		testcompose.UniqueProjectName("etherview-runtime-"+mode),
 		"compose.yaml",
@@ -193,11 +289,11 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		t: t, root: root, mode: mode, project: project,
 		apiService: map[string]string{"monolith": "etherview", "distributed": "api"}[mode],
 		http:       &http.Client{Timeout: 5 * time.Second}, artifacts: artifacts,
-		baseTimestamp: baseTimestamp,
+		baseTimestamp: baseTimestamp, phase: "initialization",
 	}
 	t.Cleanup(func() { h.cleanup() })
 
-	t.Log("phase: deterministic fixture")
+	h.enterPhase("deterministic fixture")
 	{
 		if err := h.project.Up(ctx, "runtime-fixture"); err != nil {
 			t.Fatal(err)
@@ -216,7 +312,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
 
-	t.Log("phase: fresh production topology")
+	h.enterPhase("fresh production topology")
 	{
 		h.startTopology(ctx)
 		h.connectDatabase(ctx)
@@ -232,13 +328,13 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 	}
 
-	t.Log("phase: pending API exact hash")
+	h.enterPhase("pending API exact hash")
 	{
 		h.waitPending(ctx, h.fixture.pendingHash)
 	}
 
 	var firstRollup string
-	t.Log("phase: first branch publication")
+	h.enterPhase("first branch publication")
 	{
 		h.mine(ctx, h.baseTimestamp+2)
 		h.fixture.orphanHash = h.latestBlock(ctx).Hash
@@ -246,7 +342,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		firstRollup = h.waitRollup(ctx, 2, "")
 	}
 
-	t.Log("phase: competing-hash reorg and contract")
+	h.enterPhase("competing-hash reorg and contract")
 	{
 		var reverted bool
 		h.rpcCall(ctx, &reverted, "evm_revert", h.fixture.snapshotID)
@@ -288,7 +384,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		t.Logf("reorg rollup changed from %s to %s", firstRollup, changed)
 	}
 
-	t.Log("phase: RPC outage recovery")
+	h.enterPhase("RPC outage recovery")
 	{
 		before := h.canonicalHash(ctx, h.fixture.finalHeight)
 		h.compose(ctx, "pause", "runtime-fixture")
@@ -301,7 +397,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.waitReady(ctx)
 	}
 
-	t.Log("phase: PostgreSQL outage recovery")
+	h.enterPhase("PostgreSQL outage recovery")
 	{
 		h.compose(ctx, "pause", "postgres")
 		h.waitDatabaseUnavailable(ctx)
@@ -310,7 +406,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.waitCanonical(ctx, h.fixture.finalHeight, h.fixture.finalHash)
 	}
 
-	t.Log("phase: process restart")
+	h.enterPhase("process restart")
 	{
 		h.compose(ctx, "restart", h.apiService)
 		// A service published on host port 0 may receive a new ephemeral port
@@ -320,7 +416,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.waitCanonical(ctx, h.fixture.finalHeight, h.fixture.finalHash)
 	}
 
-	t.Log("phase: API, SSE, SPA, and bounded load")
+	h.enterPhase("API, SSE, SPA, and bounded load")
 	{
 		h.validateSSE(ctx)
 		report, err := loadtest.Run(ctx, loadtest.Config{
@@ -347,6 +443,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	h.writeJSONArtifact(mode+"-durable.json", result.durable)
 	h.writeJSONArtifact(mode+"-api.json", result.api)
 	if mode == "distributed" {
+		h.enterPhase("process-native TLS")
 		h.validateProcessNativeTLS(ctx)
 	}
 	return result
@@ -462,7 +559,7 @@ func (h *harness) validateProcessNativeTLS(ctx context.Context) {
 		certificateFile,
 		keyFile,
 	)
-	project := testcompose.New(
+	project := testcompose.NewQuiet(
 		h.root,
 		h.project.Name,
 		"compose.yaml",
@@ -595,10 +692,15 @@ func writeRuntimeTLSKeyPair(t *testing.T) (string, string, *x509.CertPool) {
 	directory := t.TempDir()
 	certificateFile := filepath.Join(directory, "tls.crt")
 	keyFile := filepath.Join(directory, "tls.key")
-	if err := os.WriteFile(certificateFile, certificatePEM, 0o600); err != nil {
+	// The production image runs as UID 65532. Native Linux bind mounts preserve
+	// the host file owner and mode, so owner-only files created by the test
+	// runner are unreadable in the container. The private 0700 temporary
+	// directory protects the host copies; expose only these two files to the
+	// API container as immutable read-only mounts.
+	if err := os.WriteFile(certificateFile, certificatePEM, 0o444); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(keyFile, privateKeyPEM, 0o600); err != nil {
+	if err := os.WriteFile(keyFile, privateKeyPEM, 0o444); err != nil {
 		t.Fatal(err)
 	}
 	roots := x509.NewCertPool()
@@ -1107,6 +1209,56 @@ func (h *harness) writeArtifact(name string, contents []byte) {
 	}
 }
 
+func (h *harness) enterPhase(phase string) {
+	h.phase = phase
+	h.t.Logf("phase: %s", phase)
+}
+
+func (h *harness) captureDiagnostics(ctx context.Context, failed bool) string {
+	psOutput, psErr := h.project.Run(ctx, "ps", "--all")
+	logOutput, logErr := h.project.Run(ctx, "logs", "--no-color", "--timestamps")
+	h.writeArtifact("compose-ps.txt", psOutput)
+	h.writeArtifact("compose.log", logOutput)
+
+	status := "retained"
+	if failed {
+		status = "failed"
+	}
+	summary := fmt.Sprintf(
+		"status=%s\nmode=%s\nphase=%s\nproject=%s\ncompose_ps_error=%s\ncompose_logs_error=%s\n",
+		status,
+		h.mode,
+		h.phase,
+		h.project.Name,
+		diagnosticError(psErr),
+		diagnosticError(logErr),
+	)
+	h.writeArtifact("failure-summary.txt", []byte(summary))
+
+	ps := strings.TrimSpace(string(psOutput))
+	if ps == "" {
+		if psErr != nil {
+			return "unavailable: " + diagnosticError(psErr)
+		}
+		return "(no containers)"
+	}
+	return ps
+}
+
+func diagnosticError(err error) string {
+	if err == nil {
+		return "none"
+	}
+	message := strings.TrimSpace(err.Error())
+	if first, _, found := strings.Cut(message, "\n"); found {
+		message = first
+	}
+	if message == "" {
+		return "unknown error"
+	}
+	return message
+}
+
 func (h *harness) cleanup() {
 	if h.rpc != nil {
 		h.rpc.Close()
@@ -1115,14 +1267,38 @@ func (h *harness) cleanup() {
 		h.db.Close()
 	}
 	failed := h.t.Failed()
-	if failed {
+	keepArtifacts := strings.EqualFold(os.Getenv("RUNTIME_E2E_KEEP_ARTIFACTS"), "true")
+	retainArtifacts := failed || keepArtifacts
+	if retainArtifacts {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		h.writeArtifact(h.mode+"-compose.log", []byte(h.project.Logs(ctx)))
+		ps := h.captureDiagnostics(ctx, failed)
 		cancel()
+		if failed {
+			h.t.Logf(
+				"runtime E2E failure: mode=%s phase=%s diagnostics=%s\ncompose ps:\n%s",
+				h.mode,
+				h.phase,
+				h.artifacts,
+				ps,
+			)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	if err := h.project.Down(ctx); err != nil {
 		h.t.Logf("cleanup Compose project: %v", err)
+		if !retainArtifacts {
+			h.phase = "cleanup"
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ps := h.captureDiagnostics(diagnosticCtx, true)
+			diagnosticCancel()
+			h.t.Logf(
+				"runtime E2E failure: mode=%s phase=%s diagnostics=%s\ncompose ps:\n%s",
+				h.mode,
+				h.phase,
+				h.artifacts,
+				ps,
+			)
+		}
 		failed = true
 	}
 	cancel()
@@ -1131,7 +1307,7 @@ func (h *harness) cleanup() {
 		_ = h.rpcProxy.server.Shutdown(ctx)
 		cancel()
 	}
-	if failed || strings.EqualFold(os.Getenv("RUNTIME_E2E_KEEP_ARTIFACTS"), "true") {
+	if failed || keepArtifacts {
 		h.t.Logf("runtime E2E artifacts retained at %s", h.artifacts)
 		return
 	}
@@ -1172,10 +1348,15 @@ func runHostCommand(t *testing.T, ctx context.Context, directory, name string, a
 	t.Helper()
 	command := exec.CommandContext(ctx, name, arguments...)
 	command.Dir = directory
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		t.Fatalf("%s %s: %v", name, strings.Join(arguments, " "), err)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf(
+			"%s %s: %v\n%s",
+			name,
+			strings.Join(arguments, " "),
+			err,
+			strings.TrimSpace(string(output)),
+		)
 	}
 }
 

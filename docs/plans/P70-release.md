@@ -46,6 +46,8 @@ and user/operator evidence sufficient for a production public release.
 | P70-T20 | done | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
 | P70-T21 | done | P30-T11, P40-T06 | Hardhat 3 Etherscan-provider source-verification submission and GET status-polling compatibility | handler goldens, pinned Hardhat 3 provider test, security, documentation, and common gates |
 | P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
+| P70-T23 | in_progress | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
+| P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
 
 ## Acceptance
 
@@ -110,6 +112,12 @@ and user/operator evidence sufficient for a production public release.
       from PostgreSQL scheduling time, so a hard-coded date cannot make newly
       dirtied hours appear deferred while newest-first and reorg assertions
       retain deterministic historical buckets.
+- [ ] P70-T23: the ephemeral TLS fixture remains private on the host while its
+      two read-only bind-mounted files are readable by the production image's
+      fixed non-root UID on native Linux Compose hosts.
+- [x] P70-T24: successful runtime E2E output contains only bounded phase
+      progress, while failures identify the exact mode and phase and retain one
+      complete redacted diagnostic bundle for local and CI inspection.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -192,6 +200,39 @@ all complete; the v1 release cannot close before those gates.
 
 ## Evidence
 
+- P70-T24 implementation and evidence: runtime Compose projects and host Docker
+  helpers now capture successful command output silently, record the active
+  mode and phase, and write `failure-summary.txt`, `compose-ps.txt`, and the
+  complete timestamped `compose.log` before teardown. The terminal retains only
+  the original Go failure, bounded summary, and one `compose ps`; CI reuses the
+  prebuilt image, retains successful topology evidence for final parity
+  failures, and uploads only failed-run diagnostics for seven days. Focused
+  executor and diagnostic regressions pass. Both `make test-runtime-e2e`
+  (70.675 seconds) and
+  `TMPDIR=/private/tmp RUNTIME_E2E_KEEP_ARTIFACTS=true make
+  test-runtime-e2e-prebuilt` (68.631 seconds) pass monolith, seven-role split,
+  reorg, recovery, load, TLS, and parity checks; the retained modes contain all
+  three diagnostic files plus API, durable-state, and load snapshots. `make
+  check`, `make plan-check`, and `git diff --check` pass. The first common-gate
+  attempt reached `npm audit` but encountered `ECONNRESET`; the complete rerun
+  with working registry access passed.
+- P70-T23 diagnosis: GitHub Actions job
+  [90600001114](https://github.com/islishude/etherview/actions/runs/30459040132/job/90600001114)
+  passed the production build, image-boundary, and PostgreSQL schema steps but
+  failed the runtime E2E after 4 minutes 37 seconds. The failure began with the
+  P70-T20 TLS runtime check: it created host-owned certificate and key files
+  with mode `0600`, then bind-mounted them into the production API container
+  running as UID/GID 65532. Native Linux preserves that ownership and mode, so
+  the API cannot read the key and HTTPS readiness consumes the three-minute
+  wait. Docker Desktop for macOS did not reproduce that host permission
+  boundary.
+- P70-T23 implementation and local evidence: the temporary directory remains
+  private while the two files are immutable mode `0444` and still mounted
+  read-only only into the API service. The focused file-mode regression,
+  `make test-runtime-e2e` (monolith and all seven split roles, including
+  process-native HTTPS), `make plan-check`, and `git diff --check` pass. The
+  exact native-Linux GitHub Actions rerun remains required before P70-T23 is
+  marked `done`.
 - P70-T04 harness correction: `make test-soak` now fixes the release target at
   500 RPS for 30 minutes with a five-second request timeout, p95 below 500 ms,
   error rate below 0.1%, lag no greater than two, and at least 99% successful

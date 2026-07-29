@@ -73,6 +73,15 @@ func New(root, name string, files ...string) *Project {
 	}
 }
 
+// NewQuiet returns a project that captures Compose output without streaming
+// successful lifecycle progress to the caller's terminal. Project.Run still
+// includes the captured output once when a command fails.
+func NewQuiet(root, name string, files ...string) *Project {
+	project := New(root, name, files...)
+	project.Executor = OSExecutor{}
+	return project
+}
+
 func UniqueProjectName(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", prefix, os.Getpid(), time.Now().UnixNano())
 }

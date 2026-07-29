@@ -60,7 +60,7 @@ PREVIEW_COMPILER_RUNNER_PLACEHOLDER := $(PREVIEW_COMPILER_RUNNER_REPOSITORY)@sha
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
-	test-hardhat3-verify test-schema-e2e test-soak test-x402-testnet \
+	test-runtime-e2e-prebuilt test-hardhat3-verify test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check preview-compiler \
 	start-preview stop-preview recreate-preview
 
@@ -271,6 +271,13 @@ test-schema-e2e: docker-build
 		$(GO) run ./cmd/testschemae2e -root .
 
 test-runtime-e2e: docker-build
+	@$(MAKE) --no-print-directory test-runtime-e2e-prebuilt
+
+test-runtime-e2e-prebuilt:
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-runtime-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first"; \
+		exit 1; \
+	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=runtimee2e ./e2e/runtime
 

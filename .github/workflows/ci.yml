@@ -151,4 +151,16 @@ jobs:
       - name: Test the production-image PostgreSQL schema lifecycle
         run: make test-schema-e2e
       - name: Test production Compose behavior and topology parity
-        run: make test-runtime-e2e
+        id: runtime-e2e
+        env:
+          RUNTIME_E2E_KEEP_ARTIFACTS: "true"
+          TMPDIR: ${{ runner.temp }}
+        run: make test-runtime-e2e-prebuilt
+      - name: Upload runtime E2E failure diagnostics
+        if: ${{ always() && steps.runtime-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-e2e-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-runtime-e2e-*
+          if-no-files-found: warn
+          retention-days: 7
