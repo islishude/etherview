@@ -287,8 +287,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
   await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Canonical NFT balances", level: 2 })).toBeVisible();
-  await expect(page.getByText("Exact RPC observation", { exact: true })).toBeVisible();
+  const nftBalances = page.getByRole("region", { name: "Canonical NFT balances" });
+  await expect(nftBalances.getByRole("heading", { name: "Canonical NFT balances", level: 2 })).toBeVisible();
+  await expect(nftBalances.getByText("Exact RPC observation", { exact: true })).toBeVisible();
 
   await page.goto(`/address/${walletAccount}`);
   await expect(page.getByRole("heading", { name: "Address", level: 1 })).toBeVisible();

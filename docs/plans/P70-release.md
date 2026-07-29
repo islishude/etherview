@@ -134,9 +134,9 @@ P70-T09, P70-T12, P70-T13, P70-T14, and P70-T17 are complete. P70-T16
 remains `in_progress` only for a competing-hash Preview reorg run; its
 implementation, database reorg regression, performance target, browser suite,
 full common gates, and preserved-volume Preview backfill otherwise pass.
-P70-T18 is blocked until a disposable `INTEGRATION_DATABASE_URL` and a host
-that permits Chromium Mach bootstrap registration are available for the
-PostgreSQL and embedded Playwright reruns.
+P70-T18's embedded Playwright validation passes. It remains blocked only until
+a disposable `INTEGRATION_DATABASE_URL` is available for the PostgreSQL
+release-validation rerun.
 P70-T06 and the v1 release remain blocked on P66 completion, conformance,
 security, release-CI, long-capacity, and documentation evidence.
 
@@ -146,11 +146,12 @@ security, release-CI, long-capacity, and documentation evidence.
   ordinary Go suite, 144 Vitest tests, frontend lint/build, generated-contract
   drift checks, plan and whitespace validation, and the aggregate `make check`
   ordinary/race, security, license, Dockerfile, Compose, and Helm gates. The
-  PostgreSQL target currently reports its documented skip because
-  `INTEGRATION_DATABASE_URL` is unset. Every available Chromium executable
-  aborts before test execution because this host denies its macOS Mach
-  bootstrap registration; a browser-capable host and disposable migrated
-  database clear the two release-validation blockers.
+  address-assets E2E now scopes its repeated exact-RPC confidence label to the
+  named NFT region instead of assuming the label is unique across ERC-20 and
+  NFT holdings. The focused capability flow and all 9 embedded Playwright
+  cases pass with the documented bundled-Chromium single-process fallback.
+  PostgreSQL release validation remains blocked because
+  `INTEGRATION_DATABASE_URL` is unset.
 - P70-T17 implementation: `PostgresCanonicalSource.Tip` and both ABI history
   lookups now order qualified numeric columns while converting quantities to
   text only for scanning. Address state remains EIP-1898 block-hash pinned and
