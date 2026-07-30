@@ -12,38 +12,22 @@ import (
 )
 
 func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (verify.Compiler, error) {
-	switch cfg.Security.CompilerSandbox {
-	case "process":
-		return &verify.CatalogProcessCompiler{
-			Catalog: catalog,
-			Cache: &verify.CompilerCache{
-				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
-				UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
-			},
-			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
-			MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-		}, nil
-	case "container":
-		return &verify.CatalogRunnerCompiler{
-			Catalog: catalog,
-			Cache: &verify.CompilerCache{
-				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
-				UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
-			},
-			Runtime: cfg.Verification.ContainerRuntime, RunnerImage: cfg.Verification.RunnerImage,
-			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
-			MaxOutputBytes: cfg.Verification.MaxOutputBytes, Memory: cfg.Verification.ContainerMemory,
-			CPUs: cfg.Verification.ContainerCPUs, PIDs: cfg.Verification.ContainerPIDs,
-		}, nil
-	case "disabled":
-		return nil, errors.New("verification compiler sandbox is disabled")
-	default:
-		return nil, fmt.Errorf("unsupported verification compiler sandbox %q", cfg.Security.CompilerSandbox)
+	if catalog == nil {
+		return nil, errors.New("verification compiler catalog is unavailable")
 	}
+	return &verify.SolcJSCompiler{
+		Catalog: catalog,
+		Cache: &verify.CompilerCache{
+			Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
+			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
+		},
+		Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
+		MaxOutputBytes: cfg.Verification.MaxOutputBytes,
+	}, nil
 }
 
 func verificationWorkerID(index int) string {
-	return runtimeWorkerID(indexedWorkerName("verify", index))
+	return runtimeWorkerID(indexedWorkerName("verification", index))
 }
 
 func publicVerificationService(cfg config.Config, service *verify.Service) *verify.Service {

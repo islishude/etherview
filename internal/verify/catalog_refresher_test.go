@@ -37,16 +37,14 @@ func TestCatalogRefresherRetainsLastSuccessfulGeneration(t *testing.T) {
 	}
 	// Use the same refresh loop behavior directly because the public minimum
 	// interval intentionally prevents a timing-dependent minute-long test.
-	for _, language := range []Language{LanguageSolidity, LanguageVyper} {
-		if _, refreshErr := refresher.catalog.Refresh(context.Background(), language); refreshErr != nil {
-			if _, retainedErr := refresher.catalog.Versions(context.Background(), language); retainedErr != nil {
-				t.Fatal(retainedErr)
-			}
+	if _, refreshErr := refresher.catalog.Refresh(context.Background(), LanguageSolidity); refreshErr != nil {
+		if _, retainedErr := refresher.catalog.Versions(context.Background(), LanguageSolidity); retainedErr != nil {
+			t.Fatal(retainedErr)
 		}
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
-	if catalog.refresh != 2 {
+	if catalog.refresh != 1 {
 		t.Fatalf("refresh calls=%d", catalog.refresh)
 	}
 }

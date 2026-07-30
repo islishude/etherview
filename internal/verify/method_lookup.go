@@ -38,8 +38,8 @@ type sourceMapEntry struct {
 	fileID int
 }
 
-// LookupMethods recognizes the common Solidity/Vyper selector dispatcher and
-// omits methods whose destination cannot be mapped safely.
+// LookupMethods recognizes the common selector dispatcher and omits methods
+// whose destination cannot be mapped safely.
 func LookupMethods(request MethodLookupRequest) ([]MethodSource, error) {
 	code, err := decodeBytecode(request.Bytecode)
 	if err != nil || len(code) == 0 {

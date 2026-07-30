@@ -27,7 +27,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            api/package-lock.json
+            compiler/package-lock.json
+            web/package-lock.json
 
       - name: Run deterministic common gates
         run: make install-lint-tools toolchain-check plan-check generate-check lint test test-race
@@ -55,11 +58,20 @@ jobs:
         run: make test-integration
 
   hardhat3:
-    name: Hardhat 3 verification compatibility
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    name: Hardhat 3 production verification E2E (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -69,8 +81,43 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: e2e/hardhat3/package-lock.json
-      - name: Run the pinned Hardhat 3 Etherscan-provider flow
-        run: make toolchain-check test-hardhat3-verify
+      - name: Build the production image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: production
+          push: false
+          load: true
+          tags: etherview:local
+          cache-from: type=gha,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-production-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Build the Hardhat test client
+        uses: docker/build-push-action@v7
+        with:
+          context: e2e/hardhat3
+          push: false
+          load: true
+          tags: etherview-hardhat3:local
+          cache-from: type=gha,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=hardhat3-client-${{ runner.os }}-${{ runner.arch }},ignore-error=true
+      - name: Verify the host-native production image boundary
+        run: make docker-image-check
+      - name: Run provider compatibility regression
+        run: make toolchain-check test-hardhat3-provider-compat
+      - name: Run production Hardhat 3 and proxy verification E2E
+        id: hardhat3-e2e
+        env:
+          RUNTIME_E2E_KEEP_ARTIFACTS: "true"
+          TMPDIR: ${{ runner.temp }}
+        run: make test-hardhat3-e2e-prebuilt
+      - name: Upload Hardhat 3 E2E failure diagnostics
+        if: ${{ always() && steps.hardhat3-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: hardhat3-e2e-diagnostics-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-hardhat3-e2e-*
+          if-no-files-found: warn
+          retention-days: 7
 
   browser:
     name: Embedded SPA browser E2E
@@ -119,6 +166,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             api/package-lock.json
+            compiler/package-lock.json
             web/package-lock.json
             e2e/hardhat3/package-lock.json
       - name: Install pinned security and license tools

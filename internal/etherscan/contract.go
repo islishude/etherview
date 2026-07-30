@@ -60,7 +60,7 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	record.CompilerVersion = compilerVersion.String
 	record.MatchKind = matchKind.String
 	record.ContractName = contractName.String
-	if record.Language != "solidity" && record.Language != "yul" && record.Language != "vyper" {
+	if record.Language != "solidity" && record.Language != "yul" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
 	if record.MatchKind != "full" && record.MatchKind != "partial" {
@@ -113,20 +113,43 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	if err != nil {
 		return nil, err
 	}
-	compilerType := "solc"
-	if record.Language == "vyper" {
-		compilerType = "vyper"
+	proxy, implementation, err := b.currentVerifiedProxy(ctx, values.Get("address"), record.CodeHash)
+	if err != nil {
+		return nil, err
 	}
 	return []sourceCodeResult{{
 		SourceCode: sources, ABI: abi, ContractName: record.ContractName,
-		CompilerVersion: record.CompilerVersion, CompilerType: compilerType,
+		CompilerVersion: record.CompilerVersion, CompilerType: "solc",
 		OptimizationUsed: settings.optimized,
 		Runs:             settings.runs, ConstructorArguments: settings.constructorArguments,
 		EVMVersion: settings.evmVersion, Library: settings.libraries,
 		ContractFileName: "", LicenseType: settings.licenseType,
-		Proxy: "0", Implementation: "",
+		Proxy: proxy, Implementation: implementation,
 		SwarmSource: "", SimilarMatch: "", MatchKind: record.MatchKind,
 	}}, nil
+}
+
+func (b *PostgresBackend) currentVerifiedProxy(
+	ctx context.Context,
+	rawAddress string,
+	codeHash []byte,
+) (string, string, error) {
+	_, address, err := parseAddressParameter(rawAddress, "address")
+	if err != nil {
+		return "", "", err
+	}
+	var implementation []byte
+	err = b.db.QueryRowContext(ctx, verifiedProxySQL, b.chain, address, codeHash).Scan(&implementation)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "0", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("query verified proxy binding: %w", err)
+	}
+	if len(implementation) != common.AddressLength {
+		return "", "", errors.New("stored verified proxy implementation is invalid")
+	}
+	return "1", common.BytesToAddress(implementation).Hex(), nil
 }
 
 type contractSettings struct {
@@ -407,6 +430,47 @@ LEFT JOIN LATERAL (
 	             verified.created_at ASC
     LIMIT 1
 ) AS verified ON TRUE`
+
+const verifiedProxySQL = `
+WITH canonical_tip AS (
+    SELECT number
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+    ORDER BY number DESC
+    LIMIT 1
+), current_proxy AS (
+    SELECT observation.proxy_code_hash, observation.block_hash,
+           observation.implementation_address,
+           observation.implementation_code_hash
+    FROM canonical_tip AS tip
+    JOIN LATERAL (
+        SELECT observation.*
+        FROM proxy_observations AS observation
+        JOIN canonical_blocks AS canonical
+          ON canonical.chain_id = observation.chain_id
+         AND canonical.number = observation.block_number
+         AND canonical.block_hash = observation.block_hash
+        WHERE observation.chain_id = $1::numeric
+          AND observation.proxy_address = $2
+          AND observation.canonical = TRUE
+          AND observation.confidence IN ('verified', 'high')
+          AND observation.implementation_address IS NOT NULL
+          AND observation.implementation_code_hash IS NOT NULL
+          AND observation.block_number <= tip.number
+        ORDER BY observation.block_number DESC, observation.block_hash DESC
+        LIMIT 1
+    ) AS observation ON TRUE
+)
+SELECT current_proxy.implementation_address
+FROM current_proxy
+JOIN verified_proxy_contracts AS verified
+  ON verified.chain_id = $1::numeric
+ AND verified.proxy_address = $2
+ AND verified.proxy_code_hash = current_proxy.proxy_code_hash
+ AND verified.observation_block_hash = current_proxy.block_hash
+ AND verified.implementation_address = current_proxy.implementation_address
+ AND verified.implementation_code_hash = current_proxy.implementation_code_hash
+WHERE current_proxy.proxy_code_hash = $3`
 
 const contractCreationSQL = `
 WITH candidates AS (

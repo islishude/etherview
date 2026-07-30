@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -46,6 +46,120 @@ type verificationTarget struct {
 	blockHash        []byte
 	runtimeBytecode  []byte
 	creationBytecode string
+}
+
+type proxyVerificationTarget struct {
+	proxyCodeHash          []byte
+	blockHash              []byte
+	kind                   string
+	implementationAddress  []byte
+	implementationCodeHash []byte
+	proxyVerified          bool
+	implementationVerified bool
+}
+
+func (b *PostgresBackend) submitProxyVerification(ctx context.Context, values url.Values) (string, error) {
+	if b.verification == nil {
+		return "", ErrVerificationUnavailable
+	}
+	address, addressBytes, err := parseAddressParameter(values.Get("address"), "address")
+	if err != nil {
+		return "", err
+	}
+	var target proxyVerificationTarget
+	err = b.db.QueryRowContext(ctx, proxyVerificationTargetSQL, b.chain, addressBytes).Scan(
+		&target.proxyCodeHash,
+		&target.blockHash,
+		&target.kind,
+		&target.implementationAddress,
+		&target.implementationCodeHash,
+		&target.proxyVerified,
+		&target.implementationVerified,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrProxyVerificationTargetUnavailable
+	}
+	if err != nil {
+		return "", fmt.Errorf("query proxy verification target: %w", err)
+	}
+	if len(target.proxyCodeHash) != 32 || len(target.blockHash) != 32 ||
+		len(target.implementationAddress) != 20 || len(target.implementationCodeHash) != 32 ||
+		(target.kind != "eip1167" && target.kind != "eip1967" && target.kind != "beacon") {
+		return "", ErrProxyVerificationTargetUnavailable
+	}
+	if !target.proxyVerified {
+		return "", ErrProxySourceUnverified
+	}
+	if !target.implementationVerified {
+		return "", ErrProxyImplementationUnverified
+	}
+	implementation := common.BytesToAddress(target.implementationAddress)
+	if expected := values.Get("expectedimplementation"); expected != "" {
+		parsedExpected, _, parseErr := parseAddressParameter(expected, "expectedimplementation")
+		if parseErr != nil {
+			return "", parseErr
+		}
+		if parsedExpected != implementation {
+			return "", ErrProxyExpectedImplementationMismatch
+		}
+	}
+	request := verify.SubmissionV2{
+		Kind: verify.JobProxy,
+		Target: &verify.VerificationTarget{
+			ChainID:     b.chainID,
+			Address:     strings.ToLower(address.Hex()),
+			CodeHash:    "0x" + hex.EncodeToString(target.proxyCodeHash),
+			AtBlockHash: "0x" + hex.EncodeToString(target.blockHash),
+		},
+		ProxyTarget: &verify.ProxyVerificationTarget{
+			Kind:                   target.kind,
+			ImplementationAddress:  strings.ToLower(implementation.Hex()),
+			ImplementationCodeHash: "0x" + hex.EncodeToString(target.implementationCodeHash),
+			ExpectedImplementation: strings.ToLower(implementation.Hex()),
+		},
+	}
+	job, _, err := b.verification.SubmitV2(ctx, request)
+	if err != nil {
+		return "", translateVerificationServiceError(err)
+	}
+	if !validVerificationGUID(job.ID) {
+		return "", errors.New("verification service returned an invalid proxy job ID")
+	}
+	return job.ID, nil
+}
+
+func (b *PostgresBackend) proxyVerificationStatus(ctx context.Context, values url.Values) (string, error) {
+	if b.verification == nil {
+		return "", ErrVerificationUnavailable
+	}
+	guid, err := oneVerificationValue(values, "guid", true)
+	if err != nil || !validVerificationGUID(guid) {
+		return "", invalidParameter("guid must be a UUID")
+	}
+	job, found, err := b.verification.Job(ctx, guid)
+	if err != nil {
+		return "", translateVerificationServiceError(err)
+	}
+	if !found || job.Kind != verify.JobProxy {
+		return "", ErrVerificationJobNotFound
+	}
+	switch job.Status {
+	case verify.JobQueued, verify.JobRunning:
+		return "", ErrPending
+	case verify.JobSucceeded:
+		var outcome struct {
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal(job.Outcome, &outcome) != nil ||
+			outcome.Kind != "proxy_verification_success" {
+			return "", errors.New("succeeded proxy verification job has an invalid outcome")
+		}
+		return "Pass - Verified", nil
+	case verify.JobFailed, verify.JobCancelled:
+		return "", ErrProxyVerificationFailed
+	default:
+		return "", errors.New("proxy verification job has an invalid status")
+	}
 }
 
 func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values url.Values) (string, error) {
@@ -105,7 +219,7 @@ func (b *PostgresBackend) sourceVerificationStatus(ctx context.Context, values u
 	if err != nil {
 		return "", translateVerificationServiceError(err)
 	}
-	if !found {
+	if !found || job.Kind == verify.JobProxy {
 		return "", ErrVerificationJobNotFound
 	}
 	switch job.Status {
@@ -247,11 +361,8 @@ func parseEtherscanVerificationForm(values url.Values, maximum int) (etherscanVe
 	language := verify.LanguageSolidity
 	switch codeFormat {
 	case "solidity-single-file", "solidity-standard-json-input":
-	case "vyper-json":
-		language = verify.LanguageVyper
-		compilerVersion = strings.TrimPrefix(compilerVersion, "vyper:")
 	default:
-		return etherscanVerificationForm{}, nil, "", invalidParameter("unsupported codeformat %q", codeFormat)
+		return etherscanVerificationForm{}, nil, "", invalidParameter("unsupported codeformat")
 	}
 	if compilerVersion == "" {
 		return etherscanVerificationForm{}, nil, "", invalidParameter("compilerversion is required")
@@ -329,9 +440,6 @@ func parseVerificationCompilerSettings(values url.Values, language verify.Langua
 		parsed, parseErr := strconv.ParseUint(runs, 10, 64)
 		if parseErr != nil || parsed > 1_000_000 || strconv.FormatUint(parsed, 10) != runs {
 			return settings, invalidParameter("runs must be between 0 and 1000000")
-		}
-		if language == verify.LanguageVyper {
-			return settings, invalidParameter("runs is not valid for vyper-json")
 		}
 		settings.runsSet, settings.runs = true, parsed
 	}
@@ -441,9 +549,6 @@ func standardCompilerInput(
 		return "", nil, invalidParameter("sourceCode must be one Standard JSON object")
 	}
 	wantLanguage := "Solidity"
-	if language == verify.LanguageVyper {
-		wantLanguage = "Vyper"
-	}
 	var actualLanguage string
 	if err := json.Unmarshal(document["language"], &actualLanguage); err != nil || actualLanguage != wantLanguage {
 		return "", nil, invalidParameter("Standard JSON language must be %s", wantLanguage)
@@ -465,12 +570,6 @@ func standardCompilerInput(
 	}
 	if _, exists := sourceDocuments[source]; !exists {
 		return "", nil, invalidParameter("contractname source %q is not present in Standard JSON", source)
-	}
-	if language == verify.LanguageVyper {
-		base := strings.TrimSuffix(path.Base(source), path.Ext(source))
-		if name != base {
-			return "", nil, invalidParameter("Vyper contract name must match source filename %q", base)
-		}
 	}
 	settings := make(map[string]any)
 	if rawSettings := document["settings"]; len(rawSettings) != 0 {
@@ -499,46 +598,36 @@ func standardCompilerInput(
 }
 
 func mergeCompilerSettings(settings map[string]any, language verify.Language, form verificationCompilerSettings, sources []string) error {
+	if language != verify.LanguageSolidity {
+		return invalidParameter("unsupported compiler language")
+	}
 	if form.evmVersion != "" {
 		if existing, exists := settings["evmVersion"]; exists && existing != form.evmVersion {
 			return invalidParameter("evmVersion conflicts with Standard JSON settings")
 		}
 		settings["evmVersion"] = form.evmVersion
 	}
-	if language == verify.LanguageSolidity {
-		if form.optimizationSet || form.runsSet {
-			optimizer, err := objectSetting(settings, "optimizer")
-			if err != nil {
-				return err
-			}
-			if form.optimizationSet {
-				if existing, exists := optimizer["enabled"]; exists && existing != form.optimized {
-					return invalidParameter("optimizationUsed conflicts with Standard JSON settings")
-				}
-				optimizer["enabled"] = form.optimized
-			}
-			if form.runsSet {
-				if existing, exists := optimizer["runs"]; exists && !sameJSONNumber(existing, form.runs) {
-					return invalidParameter("runs conflicts with Standard JSON settings")
-				}
-				optimizer["runs"] = form.runs
-			}
-			settings["optimizer"] = optimizer
-		}
-		if err := mergeLibraries(settings, form.libraries, sources); err != nil {
+	if form.optimizationSet || form.runsSet {
+		optimizer, err := objectSetting(settings, "optimizer")
+		if err != nil {
 			return err
 		}
-		return nil
-	}
-	if form.optimizationSet {
-		if existing, exists := settings["optimize"]; exists {
-			enabled, ok := vyperOptimizationEnabled(existing)
-			if !ok || enabled != form.optimized {
-				return invalidParameter("optimizationUsed conflicts with vyper-json settings")
+		if form.optimizationSet {
+			if existing, exists := optimizer["enabled"]; exists && existing != form.optimized {
+				return invalidParameter("optimizationUsed conflicts with Standard JSON settings")
 			}
-		} else {
-			settings["optimize"] = form.optimized
+			optimizer["enabled"] = form.optimized
 		}
+		if form.runsSet {
+			if existing, exists := optimizer["runs"]; exists && !sameJSONNumber(existing, form.runs) {
+				return invalidParameter("runs conflicts with Standard JSON settings")
+			}
+			optimizer["runs"] = form.runs
+		}
+		settings["optimizer"] = optimizer
+	}
+	if err := mergeLibraries(settings, form.libraries, sources); err != nil {
+		return err
 	}
 	return nil
 }
@@ -601,17 +690,6 @@ func mergeLibraries(settings map[string]any, additions []verificationLibrary, so
 	}
 	settings["libraries"] = libraries
 	return nil
-}
-
-func vyperOptimizationEnabled(value any) (bool, bool) {
-	switch value := value.(type) {
-	case bool:
-		return value, true
-	case string:
-		return value != "none", value == "none" || value == "gas" || value == "codesize"
-	default:
-		return false, false
-	}
 }
 
 func contractIdentifier(raw, fallbackSource string, sourceRequired bool) (string, string, error) {
@@ -790,5 +868,58 @@ LEFT JOIN LATERAL (
     ) AS candidate
     ORDER BY candidate.block_number DESC, candidate.tx_index DESC,
              candidate.source_rank DESC, candidate.trace_path DESC
+       LIMIT 1
+    ) AS creation ON TRUE`
+
+const proxyVerificationTargetSQL = `
+WITH canonical_tip AS (
+    SELECT number
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+    ORDER BY number DESC
     LIMIT 1
-) AS creation ON TRUE`
+), current_proxy AS (
+    SELECT observation.proxy_code_hash, observation.block_hash,
+           observation.proxy_kind, observation.implementation_address,
+           observation.implementation_code_hash, tip.number AS context_number
+    FROM canonical_tip AS tip
+    JOIN LATERAL (
+        SELECT observation.*
+        FROM proxy_observations AS observation
+        JOIN canonical_blocks AS canonical
+          ON canonical.chain_id = observation.chain_id
+         AND canonical.number = observation.block_number
+         AND canonical.block_hash = observation.block_hash
+        WHERE observation.chain_id = $1::numeric
+          AND observation.proxy_address = $2
+          AND observation.canonical = TRUE
+          AND observation.confidence IN ('verified', 'high')
+          AND observation.implementation_address IS NOT NULL
+          AND observation.implementation_code_hash IS NOT NULL
+          AND observation.block_number <= tip.number
+        ORDER BY observation.block_number DESC, observation.block_hash DESC
+        LIMIT 1
+    ) AS observation ON TRUE
+)
+SELECT current_proxy.proxy_code_hash, current_proxy.block_hash,
+       current_proxy.proxy_kind, current_proxy.implementation_address,
+       current_proxy.implementation_code_hash,
+       EXISTS (
+           SELECT 1 FROM verified_contracts AS verified
+           WHERE verified.chain_id = $1::numeric
+             AND verified.address = $2
+             AND verified.code_hash = current_proxy.proxy_code_hash
+             AND verified.valid_from_block <= current_proxy.context_number
+             AND (verified.valid_to_block IS NULL
+                  OR verified.valid_to_block >= current_proxy.context_number)
+       ),
+       EXISTS (
+           SELECT 1 FROM verified_contracts AS verified
+           WHERE verified.chain_id = $1::numeric
+             AND verified.address = current_proxy.implementation_address
+             AND verified.code_hash = current_proxy.implementation_code_hash
+             AND verified.valid_from_block <= current_proxy.context_number
+             AND (verified.valid_to_block IS NULL
+                  OR verified.valid_to_block >= current_proxy.context_number)
+       )
+FROM current_proxy`

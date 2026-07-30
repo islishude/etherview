@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"encoding/hex"
 	"strconv"
 	"strings"
 	"testing"
@@ -95,7 +94,6 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 			(2, 'enrichment', 'trace', 1, 'chain-2-queued-b', 'queued', NULL, NULL, NULL, NULL)`); err != nil {
 		t.Fatalf("insert durable metric fixtures: %v", err)
 	}
-	metricGeneration, metricCompilerDigest, metricRunnerDigest := insertVerifierV2Compiler(t, ctx, db)
 	if _, err := db.ExecContext(ctx, `
 		WITH fixture(id, chain_id, address, code_hash, block_hash, status) AS (
 			VALUES
@@ -122,11 +120,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 						'code_hash', '0x' || encode(code_hash, 'hex'),
 						'at_block_hash', '0x' || encode(block_hash, 'hex'),
 						'runtime_bytecode', '0x00'
-					),
-					'catalog_generation_id', $2::bigint,
-					'compiler_platform', 'linux-amd64',
-					'compiler_sha256', $3::text,
-					'runner_sha256', $4::text
+					)
 				) AS request
 			FROM fixture
 		), encoded AS (
@@ -135,14 +129,12 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 		)
 		INSERT INTO verification_jobs (
 			id, kind, chain_id, address, code_hash, block_hash, language,
-			catalog_language, compiler_version, compiler_platform, catalog_generation_id,
-			compiler_digest, runner_digest,
+			catalog_language, compiler_version,
 			request, request_payload, request_digest, status, leased_by, lease_token,
 			lease_expires_at, attempt_count
 		)
 		SELECT id, 'address', chain_id, address, code_hash, block_hash, 'solidity',
-			'solidity', $1, 'linux-amd64', $2, $5, $6,
-			request, request_payload,
+			'solidity', $1, request, request_payload,
 			sha256(convert_to('etherview:verification-request:v2', 'UTF8') || decode('00', 'hex') || request_payload),
 			status,
 			CASE WHEN status = 'running' THEN 'worker' END,
@@ -150,9 +142,7 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 			CASE WHEN status = 'running' THEN now() + interval '1 hour' END,
 			CASE WHEN status = 'running' THEN 1 ELSE 0 END
 		FROM encoded`,
-		"0.8.30+commit.73712a01", metricGeneration,
-		hex.EncodeToString(metricCompilerDigest[:]), hex.EncodeToString(metricRunnerDigest[:]),
-		metricCompilerDigest[:], metricRunnerDigest[:],
+		"0.8.30+commit.73712a01",
 	); err != nil {
 		t.Fatalf("insert verification metric fixtures: %v", err)
 	}

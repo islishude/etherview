@@ -857,38 +857,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/verifier/vyper/multipart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["verifyVyperMultipart"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/verifier/vyper/standard-json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["verifyVyperStandardJson"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1703,7 +1671,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "address" | "solidity_multipart" | "solidity_standard_json" | "solidity_batch_multipart" | "solidity_batch_standard_json" | "vyper_multipart" | "vyper_standard_json" | "sourcify" | "sourcify_from_etherscan";
+            kind: "address" | "solidity_multipart" | "solidity_standard_json" | "solidity_batch_multipart" | "solidity_batch_standard_json" | "sourcify" | "sourcify_from_etherscan";
             outcome?: components["schemas"]["VerificationOutcome"];
             /** @enum {string} */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -1822,7 +1790,7 @@ export interface components {
             runtime_bytecode?: string;
         };
         /** @enum {string} */
-        VerifierLanguage: "solidity" | "yul" | "vyper";
+        VerifierLanguage: "solidity" | "yul";
         VerifierMultipartRequest: {
             bytecodes: components["schemas"]["VerifierBytecodes"];
             compiler_version: string;
@@ -3356,40 +3324,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SourcifyFromEtherscanSubmission"];
-            };
-        };
-        responses: {
-            202: components["responses"]["VerificationAccepted"];
-            default: components["responses"]["Error"];
-        };
-    };
-    verifyVyperMultipart: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifierMultipartRequest"];
-            };
-        };
-        responses: {
-            202: components["responses"]["VerificationAccepted"];
-            default: components["responses"]["Error"];
-        };
-    };
-    verifyVyperStandardJson: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifierStandardJSONRequest"];
             };
         };
         responses: {

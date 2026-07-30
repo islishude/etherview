@@ -81,6 +81,14 @@ spec:
             severity: warning
           annotations:
             summary: Etherview verification jobs are repeatedly failing
+        - alert: EtherviewVerificationCompilerUnavailable
+          expr: min(etherview_verification_compiler_available{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) == 0
+          for: 5m
+          labels:
+            {{- include "etherview.alertScopeLabels" . | nindent 12 }}
+            severity: warning
+          annotations:
+            summary: An Etherview API verification worker has no validated compiler executor or fresh catalog
         - alert: EtherviewMetadataSSRFRejected
           expr: sum(increase(etherview_metadata_fetches_total{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}",result="ssrf_rejected"}[5m])) > 0
           labels:

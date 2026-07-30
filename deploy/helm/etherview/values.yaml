@@ -18,12 +18,10 @@ genesisState:
   sha256: ""
   fetchTimeout: 60s
 
-# Compiler artifacts are immutable and content-addressed. Mount this cache only
-# into all/verify Pods; use an existing ReadWriteMany claim for multiple verify
-# replicas or leave it empty for an ephemeral per-Pod cache.
+# Disposable, checksum-addressed solc-js artifacts. This memory-backed volume
+# is mounted only into the all/api application container.
 compilerCache:
-  existingClaim: ""
-  sizeLimit: 2Gi
+  sizeLimit: 256Mi
 
 # monolith runs only the `all` deployment. distributed runs every enabled
 # non-all role from the same image and component implementations.
@@ -89,14 +87,6 @@ roles:
       enabled: true
       minReplicas: 1
       maxReplicas: 8
-      targetCPUUtilizationPercentage: 75
-  verify:
-    enabled: true
-    replicas: 1
-    autoscaling:
-      enabled: true
-      minReplicas: 1
-      maxReplicas: 4
       targetCPUUtilizationPercentage: 75
   metadata:
     enabled: true
@@ -322,7 +312,6 @@ config:
     x402_billing: false
   security:
     public_verification: false
-    compiler_sandbox: disabled
     api_key_pepper: ""
     anonymous_rate: 5
     anonymous_burst: 20
@@ -361,23 +350,14 @@ config:
     max_input_bytes: 5242880
     max_output_bytes: 67108864
     timeout: 2m
-    cache_directory: /var/lib/etherview/compilers
-    container_runtime: docker
-    container_memory: 512m
-    container_cpus: "1"
-    container_pids: 64
+    worker_count: 1
+    cache_directory: /var/lib/etherview/compilers/cache
     catalog_urls:
       solidity: auto
-      vyper: https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json
     allowed_download_origins:
       - https://binaries.soliditylang.org
-      - https://raw.githubusercontent.com
-      - https://github.com
     catalog_refresh_interval: 1h
     catalog_max_staleness: 24h
-    runner_image: ""
-    artifacts: {}
-    images: {}
   sourcify:
     base_url: https://sourcify.dev/server
     timeout: 20s
@@ -430,9 +410,6 @@ prometheusRule:
 networkPolicy:
   enabled: true
   allowExternalHTTPS: true
-  # Catalog/artifact TCP/443 is rendered only for the all/verify component.
-  # Disable it when the cache/catalog are supplied out of band.
-  allowCompilerHTTPS: true
   # Explicit TCP/443 destinations for RPC and adapter traffic when broad HTTPS
   # is disabled. Keep these ranges disjoint from facilitator_allowed_cidrs.
   runtimeHTTPSCIDRs: []

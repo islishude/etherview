@@ -34,20 +34,15 @@ GENERATED_PATHS := \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local
+HARDHAT3_IMAGE ?= etherview-hardhat3:local
 HELM_CHART ?= deploy/helm/etherview
-PREVIEW_APP_SERVICES := api sync enrich trace verify metadata maintenance
+PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
+PREVIEW_RUNTIME_SERVICES := migration $(PREVIEW_APP_SERVICES)
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 PREVIEW_CONFIG_URL ?= https://etherview.localhost:8080/api/v1/config
-PREVIEW_COMPILER_DIR := .local/preview-compiler
-PREVIEW_COMPILER_RUNNER_ARCHIVE := $(PREVIEW_COMPILER_DIR)/compiler-runner.tar
-PREVIEW_COMPILER_RUNNER_REFERENCE := $(PREVIEW_COMPILER_DIR)/runner-image.txt
-PREVIEW_COMPILER_RUNNER_REPOSITORY := etherview-compiler-runner
-PREVIEW_COMPILER_RUNNER_TAG := $(PREVIEW_COMPILER_RUNNER_REPOSITORY):preview
-PREVIEW_COMPILER_RUNNER_PLATFORM := linux/amd64
-PREVIEW_COMPILER_RUNNER_PLACEHOLDER := $(PREVIEW_COMPILER_RUNNER_REPOSITORY)@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check start-preview recreate-preview
@@ -55,13 +50,15 @@ PREVIEW_COMPILER_RUNNER_PLACEHOLDER := $(PREVIEW_COMPILER_RUNNER_REPOSITORY)@sha
 .PHONY: \
 	check compose-check deployment-check \
 	docker-build docker-check docker-image-check \
-	go-build generate generate generate-check generate-go helm-check install-lint-tools install-security-tools \
+	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
 	license-check license-tool-check lint lint-go plan-check security-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
-	test-runtime-e2e-prebuilt test-hardhat3-verify test-schema-e2e test-soak test-x402-testnet \
-	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check preview-compiler \
+	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
+	test-hardhat3-e2e-prebuilt hardhat3-client-image-build \
+	test-schema-e2e test-soak test-x402-testnet \
+	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check \
 	start-preview stop-preview recreate-preview
 
 go-build: web-build
@@ -94,7 +91,7 @@ generate-check:
 			diff -ru "$$snapshot/$$path" "$$path"; \
 		done
 
-test-go: web-build
+test-go: web-build compiler-install
 	$(GO) test $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test: test-go web-test
@@ -106,12 +103,34 @@ test-e2e: web-build
 		$(GO) build -o "$$server_binary" ./web/e2e/server; \
 		ETHERVIEW_E2E_SERVER_BINARY="$$server_binary" $(NPM) --prefix web run test:e2e
 
-test-race: web-build
+test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-test-hardhat3-verify:
+test-hardhat3-provider-compat:
 	$(NPM) --prefix e2e/hardhat3 ci --ignore-scripts
 	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
+
+hardhat3-client-image-build:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "hardhat3-client-image-build: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" $(BUILDX) build --load \
+		--tag "$(HARDHAT3_IMAGE)" e2e/hardhat3
+
+test-hardhat3-e2e: docker-build hardhat3-client-image-build
+	@$(MAKE) --no-print-directory test-hardhat3-e2e-prebuilt
+
+test-hardhat3-e2e-prebuilt:
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@$(DOCKER) image inspect "$(HARDHAT3_IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-hardhat3-e2e-prebuilt: Hardhat client $(HARDHAT3_IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e' \
+		-run '^TestHardhat3ProductionE2E$$' ./e2e/runtime
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -149,6 +168,9 @@ test-soak:
 web-install:
 	$(NPM) --prefix web ci
 	$(NPM) --prefix api ci
+
+compiler-install:
+	$(NPM) --prefix compiler ci --ignore-scripts
 
 web-generate: web-install
 	$(NPM) --prefix api run generate:api
@@ -192,7 +214,7 @@ security-tool-check:
 	@command -v "$(GOVULNCHECK)" >/dev/null 2>&1 || { echo "security-check: missing $(GOVULNCHECK); run 'make install-security-tools'"; exit 1; }
 	@command -v "$(GITLEAKS)" >/dev/null 2>&1 || { echo "security-check: missing $(GITLEAKS); run 'make install-security-tools'"; exit 1; }
 
-security-check: security-tool-check web-build
+security-check: security-tool-check web-build compiler-install
 	$(GOVULNCHECK) $(GO_PACKAGES)
 	$(GITLEAKS) dir --no-banner --redact .
 	@if git rev-parse --verify HEAD >/dev/null 2>&1; then \
@@ -202,6 +224,7 @@ security-check: security-tool-check web-build
 	fi
 	$(NPM) --prefix api audit --audit-level=high
 	$(NPM) --prefix web audit --audit-level=high
+	$(NPM) --prefix compiler audit --audit-level=high
 	$(NPM) --prefix e2e/hardhat3 audit --audit-level=high
 	$(GO) test ./internal/app ./internal/auth ./internal/billing/... ./internal/cli ./internal/config ./internal/httpapi ./internal/jsonstrict ./internal/metadata ./internal/observability ./internal/userauth ./internal/verify ./web
 
@@ -210,7 +233,7 @@ license-tool-check:
 	@grep -Eq '"license-checker-rseidelsohn": "$(WEB_LICENSE_CHECKER_VERSION)"' web/package.json || { \
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
-license-check: license-tool-check web-install
+license-check: license-tool-check web-install compiler-install
 	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
 	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
@@ -222,6 +245,9 @@ license-check: license-tool-check web-install
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
 	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
 		--start web --production --excludePrivatePackages --summary \
+		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'
+	$(NPM) --prefix web exec -- license-checker-rseidelsohn \
+		--start compiler --production --excludePrivatePackages --summary \
 		--onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense'
 
 docker-check:
@@ -243,22 +269,34 @@ compose-check:
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
-	ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
+	@DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/compiler-compose-check.mjs
+	@DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/compiler-compose-check.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
-		$(NODE) -e 'const config = JSON.parse(require("fs").readFileSync(0, "utf8")); const roles = ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]; const tlsKeys = ["ETHERVIEW_SERVER_TLS_CERT_FILE", "ETHERVIEW_SERVER_TLS_KEY_FILE"]; const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"]; if (config.services.etherview) throw new Error("Preview monolith service must not exist"); for (const role of roles) { const service = config.services[role]; if (!service) throw new Error("missing Preview role service " + role); if (service.environment.ETHERVIEW_ROLES !== role) throw new Error("Preview role mismatch for " + role); if (!Object.hasOwn(service.environment, "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL")) throw new Error("Preview sync progress interval override missing from " + role); if (!service.command.includes("--roles=" + role)) throw new Error("Preview command mismatch for " + role); for (const dependency of ["postgres", "migration", "reth"]) if (!service.depends_on[dependency]) throw new Error("Preview " + role + " missing dependency " + dependency); if (role !== "api" && service.ports?.length) throw new Error("Preview worker must not publish ports: " + role); } const api = config.services.api; const apiTargets = new Set(api.ports.map((port) => port.target)); if (apiTargets.size !== 2 || !apiTargets.has(8080) || !apiTargets.has(9090)) throw new Error("Preview API must publish only application and metrics ports"); if (!api.environment.ETHERVIEW_SESSION_PEPPER) throw new Error("Preview API session pepper is required"); for (const key of tlsKeys) if (!api.environment[key]) throw new Error("Preview API TLS environment missing: " + key); for (const target of tlsTargets) if (!api.volumes.some((volume) => volume.target === target && volume.read_only)) throw new Error("Preview API read-only TLS mount missing: " + target); for (const [name, service] of Object.entries(config.services)) { if (name !== "api" && Object.hasOwn(service.environment || {}, "ETHERVIEW_SESSION_PEPPER")) throw new Error("Preview session pepper leaked to " + name); if (name !== "api" && tlsKeys.some((key) => Object.hasOwn(service.environment || {}, key))) throw new Error("Preview TLS environment leaked to " + name); if (name !== "api" && (service.volumes || []).some((volume) => tlsTargets.includes(volume.target))) throw new Error("Preview TLS material leaked to " + name); }'
-	@ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
-		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
-		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
 		$(NODE) .github/scripts/preview-compose-check.mjs
 	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
-		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$(PREVIEW_COMPILER_RUNNER_PLACEHOLDER)" \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
-		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
+		$(NODE) -e 'const services = JSON.parse(require("fs").readFileSync(0, "utf8")).services; for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) if (services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY !== "https://gateway.example.com") throw new Error("Preview metadata gateway override missing from " + role);'
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
 		--profile distributed config --quiet
+	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+	ETHERVIEW_HARDHAT3_API_SERVICE=etherview \
+	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/hardhat3/compose.yaml --profile monolith --profile hardhat-client config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=monolith ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+	ETHERVIEW_HARDHAT3_API_SERVICE=api \
+	ETHERVIEW_HARDHAT3_ARTIFACT_DIR=/tmp/etherview-hardhat3-compose-check \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
+		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
+		$(NODE) .github/scripts/hardhat3-compose-check.mjs
 	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL; \
 		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'
@@ -319,70 +357,24 @@ preview-cert-check:
 	}
 
 preview-check: preview-cert-check
-	@test -r "$(PREVIEW_COMPILER_RUNNER_REFERENCE)" || { \
-		echo "Preview compiler reference missing; run 'make preview-compiler' first"; \
-		exit 1; \
-	}
-	@set -eu; \
-		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
-		COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" $(GO) run ./cmd/previewcheck \
-			-root=. \
-			-project=etherview-preview \
-			-compose="$(COMPOSE)" \
-			-compose-file=compose.preview.yaml \
-			-docker="$(DOCKER)" \
-			-runner-image="$$runner_image" \
-			-config-url="$(PREVIEW_CONFIG_URL)" \
-			-ca-file="$(PREVIEW_TLS_CA)"
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" $(GO) run ./cmd/previewcheck \
+		-root=. \
+		-project=etherview-preview \
+		-docker="$(DOCKER)" \
+		-config-url="$(PREVIEW_CONFIG_URL)" \
+		-ca-file="$(PREVIEW_TLS_CA)"
 
-preview-compiler:
-	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "preview-compiler: docker is required"; exit 1; }
-	DOCKER="$(DOCKER)" $(BUILDX) build --load --platform "$(PREVIEW_COMPILER_RUNNER_PLATFORM)" \
-		--target compiler-runner \
-		--tag "$(PREVIEW_COMPILER_RUNNER_TAG)" .
-	@mkdir -p "$(PREVIEW_COMPILER_DIR)"
-	@set -eu; \
-		runner_id="$$( "$(DOCKER)" image inspect \
-			--format '{{.Id}}' "$(PREVIEW_COMPILER_RUNNER_TAG)" )"; \
-		case "$$runner_id" in \
-			sha256:*) ;; \
-			*) echo "preview-compiler: build did not produce an exact image content digest" >&2; exit 1 ;; \
-		esac; \
-		runner_digest="$${runner_id#sha256:}"; \
-		test "$${#runner_digest}" -eq 64 || { \
-			echo "preview-compiler: malformed runner digest" >&2; exit 1; \
-		}; \
-		runner_image="$(PREVIEW_COMPILER_RUNNER_REPOSITORY)@$$runner_id"; \
-		"$(DOCKER)" image inspect "$$runner_image" >/dev/null; \
-		archive_tmp="$(PREVIEW_COMPILER_RUNNER_ARCHIVE).tmp"; \
-		reference_tmp="$(PREVIEW_COMPILER_RUNNER_REFERENCE).tmp"; \
-		trap 'rm -f "$$archive_tmp" "$$reference_tmp"' EXIT INT TERM; \
-		"$(DOCKER)" image save --output "$$archive_tmp" "$(PREVIEW_COMPILER_RUNNER_TAG)"; \
-		chmod 0444 "$$archive_tmp"; \
-		printf '%s\n' "$$runner_image" >"$$reference_tmp"; \
-		mv -f "$$archive_tmp" "$(PREVIEW_COMPILER_RUNNER_ARCHIVE)"; \
-		mv -f "$$reference_tmp" "$(PREVIEW_COMPILER_RUNNER_REFERENCE)"; \
-		trap - EXIT INT TERM; \
-		echo "preview-compiler: prepared $$runner_image"
-
-start-preview: preview-cert-check docker-build preview-compiler
-	@set -eu; \
-		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
-		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
-			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
-			up --no-build --wait --wait-timeout 180 --remove-orphans
+start-preview: preview-cert-check docker-build
+	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		up --no-build --wait --wait-timeout 180 --remove-orphans
 	@$(MAKE) --no-print-directory preview-check
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
-recreate-preview: preview-cert-check docker-build preview-compiler
-	@set -eu; \
-		runner_image="$$(sed -n '1p' "$(PREVIEW_COMPILER_RUNNER_REFERENCE)")"; \
-		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
-			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
-			rm -fs compiler-volumes-init compiler-preflight $(PREVIEW_APP_SERVICES); \
-		ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="$$runner_image" \
-			DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
-			up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_APP_SERVICES)
+recreate-preview: preview-cert-check docker-build
+	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		rm -fs $(PREVIEW_RUNTIME_SERVICES)
+	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	@$(MAKE) --no-print-directory preview-check

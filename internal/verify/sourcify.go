@@ -751,15 +751,14 @@ func decodeSourcifyCompilation(raw json.RawMessage) (SourcifyCompilation, bool) 
 	if !languageOK || !compilerOK || !versionOK || !nameOK || !identifierOK {
 		return SourcifyCompilation{}, false
 	}
-	if languagePresent && language != "Solidity" && language != "Vyper" && language != "Fe" {
+	if languagePresent && language != "Solidity" && language != "Fe" {
 		return SourcifyCompilation{}, false
 	}
 	if compilerPresent && !boundedSourcifyText(compiler, 128) {
 		return SourcifyCompilation{}, false
 	}
 	if languagePresent && compilerPresent &&
-		((language == "Solidity" && compiler != "solc") ||
-			(language == "Vyper" && compiler != "vyper")) {
+		language == "Solidity" && compiler != "solc" {
 		return SourcifyCompilation{}, false
 	}
 	if versionPresent && (!sourcifyCompilerVersionPattern.MatchString(version) || len(version) > 128) {
@@ -787,8 +786,8 @@ func validSourcifyImportCompilation(contract SourcifyContract, language Language
 		standardJSONLanguageMatches(contract.StandardJSON, language) &&
 		sourcifyCompilerVersionPattern.MatchString(contract.Compilation.CompilerVersion) &&
 		validContractIdentifier(contract.Compilation.FullyQualifiedName) &&
-		(language != LanguageSolidity || contract.Compilation.Compiler == "solc") &&
-		(language != LanguageVyper || contract.Compilation.Compiler == "vyper")
+		language == LanguageSolidity &&
+		contract.Compilation.Compiler == "solc"
 }
 
 func validDurableSourcifyJob(job VerificationJob, expectedID string) bool {
@@ -800,7 +799,7 @@ func validDurableSourcifyJob(job VerificationJob, expectedID string) bool {
 	if err != nil || len(encoded) > 64<<20 {
 		return false
 	}
-	digest := verificationRequestDigest(encoded, job.RequiresHardIsolation)
+	digest := verificationRequestDigest(encoded)
 	return bytes.Equal(job.RequestDigest[:], digest[:])
 }
 
@@ -832,8 +831,6 @@ func standardJSONLanguageMatches(raw json.RawMessage, language Language) bool {
 	switch language {
 	case LanguageSolidity:
 		return header.Language == "Solidity"
-	case LanguageVyper:
-		return header.Language == "Vyper"
 	default:
 		return false
 	}
@@ -843,8 +840,6 @@ func sourcifyLanguage(value string) (Language, bool) {
 	switch value {
 	case "Solidity":
 		return LanguageSolidity, true
-	case "Vyper":
-		return LanguageVyper, true
 	default:
 		return "", false
 	}

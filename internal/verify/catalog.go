@@ -27,6 +27,7 @@ const (
 
 var (
 	ErrCompilerCatalogStale       = errors.New("compiler catalog is stale")
+	ErrCompilerCatalogUnavailable = errors.New("compiler catalog is unavailable")
 	ErrCompilerVersionUnavailable = errors.New("compiler version is unavailable")
 )
 
@@ -72,6 +73,15 @@ func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCa
 	if db == nil {
 		return nil, errors.New("compiler catalog requires a database")
 	}
+	catalog, err := newCompilerCatalogParser(options)
+	if err != nil {
+		return nil, err
+	}
+	catalog.db = db
+	return catalog, nil
+}
+
+func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog, error) {
 	if options.MaxCatalogBytes <= 0 {
 		options.MaxCatalogBytes = defaultCatalogBytes
 	}
@@ -97,15 +107,16 @@ func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCa
 		options.Timeout = 20 * time.Second
 	}
 	if options.Platform == "" {
-		var err error
-		options.Platform, err = NativeCompilerPlatform()
-		if err != nil {
-			return nil, err
-		}
+		options.Platform = CompilerPlatformEmscriptenWASM32
 	}
-	if !validCompilerPlatform(options.Platform) {
-		return nil, errors.New("compiler catalog platform is unsupported")
+	if options.Platform != CompilerPlatformEmscriptenWASM32 {
+		return nil, errors.New("compiler catalog platform must be emscripten-wasm32")
 	}
+	sources := make(map[Language]string, len(options.Sources))
+	for language, source := range options.Sources {
+		sources[language] = source
+	}
+	options.Sources = sources
 	origins := make(map[string]struct{}, len(options.AllowedOrigins))
 	for _, raw := range options.AllowedOrigins {
 		origin, err := canonicalCatalogOrigin(raw, options.unsafeAllowHTTP)
@@ -119,7 +130,7 @@ func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCa
 	}
 	automaticSources := make(map[Language]bool, len(options.Sources))
 	for language, raw := range options.Sources {
-		if language != LanguageSolidity && language != LanguageVyper {
+		if language != LanguageSolidity {
 			return nil, fmt.Errorf("compiler catalog language %q is unsupported", language)
 		}
 		automaticSources[language] = strings.TrimSpace(raw) == "" ||
@@ -142,14 +153,15 @@ func NewCompilerCatalog(db *sql.DB, options CompilerCatalogOptions) (*CompilerCa
 		}
 	}
 	return &CompilerCatalog{
-		db: db, options: options, origins: origins, automaticSources: automaticSources,
+		options: options, origins: origins, automaticSources: automaticSources,
 	}, nil
 }
 
-// SetPlatform resolves automatic catalog sources from the platform reported by
-// the validated runner image. Explicit approved-mirror URLs remain unchanged.
+// SetPlatform accepts only the architecture-neutral solc-js artifact identity.
+// It remains available for callers that construct a catalog before deciding
+// whether the source is automatic or an approved mirror.
 func (catalog *CompilerCatalog) SetPlatform(platform string) error {
-	if catalog == nil || !validCompilerPlatform(platform) {
+	if catalog == nil || platform != CompilerPlatformEmscriptenWASM32 {
 		return errors.New("compiler catalog platform is unsupported")
 	}
 	catalog.sourceMu.Lock()
@@ -432,6 +444,18 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 		&entry.ArtifactURL, &digest, &entry.MaxBytes, &entry.FetchedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
+		var exists bool
+		headErr := catalog.db.QueryRowContext(
+			ctx,
+			`SELECT EXISTS (SELECT 1 FROM compiler_catalog_heads WHERE language = $1)`,
+			language,
+		).Scan(&exists)
+		if headErr != nil {
+			return CatalogEntry{}, fmt.Errorf("check compiler catalog availability: %w", headErr)
+		}
+		if !exists {
+			return CatalogEntry{}, ErrCompilerCatalogUnavailable
+		}
 		return CatalogEntry{}, ErrCompilerVersionUnavailable
 	}
 	if err != nil {
@@ -481,7 +505,7 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 		return nil, fmt.Errorf("read compiler catalog: %w", err)
 	}
 	if len(versions) == 0 {
-		return nil, ErrCompilerVersionUnavailable
+		return nil, ErrCompilerCatalogUnavailable
 	}
 	if time.Since(fetchedAt) > catalog.options.Freshness {
 		return nil, ErrCompilerCatalogStale

@@ -34,17 +34,14 @@ func (refresher *CatalogRefresher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(refresher.interval)
 	defer ticker.Stop()
 	for {
+		_, refreshErr := refresher.catalog.Refresh(ctx, LanguageSolidity)
+		if refreshErr != nil {
+			_, _ = refresher.catalog.Versions(ctx, LanguageSolidity)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			for _, language := range []Language{LanguageSolidity, LanguageVyper} {
-				if _, err := refresher.catalog.Refresh(ctx, language); err != nil {
-					if _, retainedErr := refresher.catalog.Versions(ctx, language); retainedErr != nil {
-						return errors.Join(err, retainedErr)
-					}
-				}
-			}
 		}
 	}
 }

@@ -44,21 +44,26 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
-{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.allowCompilerHTTPS .Values.config.features.verification }}
+{{- if and .Values.networkPolicy.enabled .Values.config.features.verification }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "etherview.fullname" . }}-verifier-catalog
+  name: {{ include "etherview.fullname" . }}-compiler-catalog
   labels:
     {{- include "etherview.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
       {{- include "etherview.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: {{ ternary "all" "verify" (eq .Values.mode "monolith") }}
+      app.kubernetes.io/component: {{ ternary "all" "api" (eq .Values.mode "monolith") }}
   policyTypes: [Egress]
   egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
     - ports:
         - protocol: TCP
           port: 443

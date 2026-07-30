@@ -354,8 +354,6 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/standard-json", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/multipart", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/solidity/batch/standard-json", h.submitVerifier)
-	h.mux.HandleFunc("POST /api/v1/verifier/vyper/multipart", h.submitVerifier)
-	h.mux.HandleFunc("POST /api/v1/verifier/vyper/standard-json", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/sourcify", h.submitVerifier)
 	h.mux.HandleFunc("POST /api/v1/verifier/sourcify/from-etherscan", h.submitVerifier)
 	h.mux.HandleFunc("GET /api/v1/verifier/compilers", h.verifierCompilers)
@@ -1804,14 +1802,6 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 		}
 		request.StandardJSON = submission.Input
 		request.Bytecodes = submission.Contracts
-	case "POST /api/v1/verifier/vyper/multipart":
-		request.Kind, request.Language = verify.JobVyperMultipart, verify.LanguageVyper
-		request.Multipart = multipartSubmission(request.Language, submission)
-		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
-	case "POST /api/v1/verifier/vyper/standard-json":
-		request.Kind, request.Language = verify.JobVyperStandardJSON, verify.LanguageVyper
-		request.StandardJSON = submission.Input
-		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
 	default:
 		writeError(w, r, http.StatusNotFound, "not_found", "verifier route not found", nil)
 		return
@@ -1841,8 +1831,8 @@ func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	language := verify.Language(r.URL.Query().Get("language"))
-	if language != verify.LanguageSolidity && language != verify.LanguageYul && language != verify.LanguageVyper {
-		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity, yul, or vyper", nil)
+	if language != verify.LanguageSolidity && language != verify.LanguageYul {
+		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity or yul", nil)
 		return
 	}
 	versions, err := h.compilerCatalog.Versions(r.Context(), language)

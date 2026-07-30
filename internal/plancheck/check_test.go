@@ -47,6 +47,21 @@ func TestCheckCompletedPlanFixture(t *testing.T) {
 	}
 }
 
+func TestCheckAcceptsSupersededWorkItemAsSatisfiedDependency(t *testing.T) {
+	t.Parallel()
+
+	root := copyFixture(t, "valid")
+	planPath := filepath.Join(root, "docs", "plans", "P00-foundation.md")
+	replaceInFile(t, planPath, "| P00-T01 | in_progress |", "| P00-T01 | superseded |")
+	replaceInFile(t, planPath, "| P00-T02 | todo |", "| P00-T02 | in_progress |")
+	replaceInFile(t, planPath, "None yet.", "- P00-T01: superseded by P00-T02.")
+
+	report := Check(root)
+	if !report.OK() {
+		t.Fatalf("superseded fixture failed:\n%s", diagnosticText(report))
+	}
+}
+
 func TestCheckInvalidFixture(t *testing.T) {
 	t.Parallel()
 

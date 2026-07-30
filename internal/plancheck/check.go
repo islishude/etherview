@@ -37,6 +37,7 @@ var allowedItemStatuses = map[string]bool{
 	"blocked":     true,
 	"done":        true,
 	"dropped":     true,
+	"superseded":  true,
 }
 
 // Diagnostic describes one actionable plan validation error.
@@ -442,7 +443,7 @@ func (c *checker) validateDependencies() {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s dependency %s does not resolve", item.id, dependency))
 					} else if dependency == plan.id {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s cannot depend on its containing plan %s", item.id, dependency))
-					} else if isActiveItem(item.status) && dependencyPlan.status != "done" {
+					} else if isActiveItem(item.status) && !isSatisfiedDependency(dependencyPlan.status) {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s is %s but dependency plan %s is %s", item.id, item.status, dependency, dependencyPlan.status))
 					}
 				case workItemIDPattern.MatchString(dependency):
@@ -451,7 +452,7 @@ func (c *checker) validateDependencies() {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s dependency %s does not resolve", item.id, dependency))
 					} else if dependency == item.id {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s depends on itself", item.id))
-					} else if isActiveItem(item.status) && dependencyItem.status != "done" {
+					} else if isActiveItem(item.status) && !isSatisfiedDependency(dependencyItem.status) {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s is %s but dependency %s is %s", item.id, item.status, dependency, dependencyItem.status))
 					}
 				default:
@@ -562,7 +563,7 @@ func (c *checker) validateStateAndEvidence() {
 			case "blocked":
 				blocked = true
 			}
-			if item.status != "done" && item.status != "dropped" {
+			if item.status != "done" && item.status != "dropped" && item.status != "superseded" {
 				allFinished = false
 			}
 			if item.status == "done" && !sectionMentions(plan.evidence, item.id) {
@@ -570,6 +571,9 @@ func (c *checker) validateStateAndEvidence() {
 			}
 			if item.status == "dropped" && !sectionMentions(plan.evidence, item.id) {
 				c.add(plan.path, item.line, fmt.Sprintf("dropped work item %s must have evidence that mentions its ID and reason", item.id))
+			}
+			if item.status == "superseded" && !sectionMentions(plan.evidence, item.id) {
+				c.add(plan.path, item.line, fmt.Sprintf("superseded work item %s must have evidence that mentions its ID and replacement", item.id))
 			}
 			if item.status == "blocked" && !sectionMentions(plan.blockers, item.id) {
 				c.add(plan.path, item.line, fmt.Sprintf("blocked work item %s must be described in Current Blockers", item.id))
@@ -976,4 +980,8 @@ func sectionMentions(lines []numberedLine, id string) bool {
 
 func isActiveItem(status string) bool {
 	return status == "in_progress" || status == "done"
+}
+
+func isSatisfiedDependency(status string) bool {
+	return status == "done" || status == "superseded"
 }

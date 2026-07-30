@@ -106,11 +106,6 @@ services:
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
 
-  verify:
-    environment: *runtime-e2e-environment
-    depends_on: *runtime-fixture-dependency
-    extra_hosts: ["host.docker.internal:host-gateway"]
-
   metadata:
     environment: *runtime-e2e-environment
     depends_on: *runtime-fixture-dependency

@@ -59,7 +59,6 @@ features:
 
 security:
   public_verification: false
-  compiler_sandbox: disabled
   # High anonymous limits are appropriate only on an isolated benchmark
   # ingress. A production-like test should use an API key with a named quota.
   anonymous_rate: 1000

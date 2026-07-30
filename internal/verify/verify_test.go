@@ -69,9 +69,16 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 		Root:                       t.TempDir(),
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
-		Artifacts:                  map[Language]map[string]CompilerArtifact{LanguageSolidity: {"1.2.3": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}}},
 	}
-	path, err := cache.Ensure(context.Background(), LanguageSolidity, "1.2.3")
+	entry := CatalogEntry{
+		Language:       LanguageSolidity,
+		Version:        "1.2.3",
+		Platform:       CompilerPlatformEmscriptenWASM32,
+		ArtifactURL:    server.URL,
+		ArtifactSHA256: digest,
+		MaxBytes:       1 << 20,
+	}
+	path, err := cache.EnsureCatalogEntry(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,72 +86,14 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	if err != nil || string(data) != string(payload) {
 		t.Fatalf("data=%q err=%v", data, err)
 	}
-	if _, err := cache.Ensure(context.Background(), LanguageVyper, "1.2.3"); err == nil {
+	entry.Language = Language("vyper")
+	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil {
 		t.Fatal("expected allowlist rejection")
 	}
-	cache.Artifacts[LanguageSolidity]["bad"] = CompilerArtifact{URL: server.URL, SHA256: strings.Repeat("f", 64)}
-	if _, err := cache.Ensure(context.Background(), LanguageSolidity, "bad"); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+	entry.Language = LanguageSolidity
+	entry.ArtifactSHA256 = [sha256.Size]byte{1}
+	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestProcessCompilerRejectsPublicExecution(t *testing.T) {
-	t.Parallel()
-	compiler := ProcessCompiler{Public: true, Cache: &CompilerCache{}}
-	if _, err := compiler.Compile(context.Background(), LanguageSolidity, "1", []byte(`{}`)); err != ErrSandboxRequired {
-		t.Fatalf("got %v", err)
-	}
-}
-
-func TestCompilerProvenanceUsesPinnedArtifactDigest(t *testing.T) {
-	digestHex := strings.Repeat("01", 32)
-	process := ProcessCompiler{Cache: &CompilerCache{Artifacts: map[Language]map[string]CompilerArtifact{
-		LanguageSolidity: {"0.8.30": {URL: "https://compiler.example/solc", SHA256: digestHex}},
-	}}}
-	provenance, err := process.Provenance(LanguageSolidity, "0.8.30")
-	if err != nil || provenance.Kind != CompilerProcess || provenance.HardIsolated ||
-		hex.EncodeToString(provenance.Digest[:]) != digestHex {
-		t.Fatalf("process provenance=%+v error=%v", provenance, err)
-	}
-
-	container := ContainerCompiler{
-		Runtime: "unavailable-runtime",
-		Images: map[Language]map[string]string{
-			LanguageSolidity: {"0.8.30": "registry.invalid/solc@sha256:" + digestHex},
-		},
-	}
-	provenance, err = container.Provenance(LanguageSolidity, "0.8.30")
-	if err != nil || provenance.Kind != CompilerContainer || provenance.HardIsolated ||
-		hex.EncodeToString(provenance.Digest[:]) != digestHex {
-		t.Fatalf("container provenance=%+v error=%v", provenance, err)
-	}
-	container.Images[LanguageSolidity]["0.8.30"] = "registry.invalid/solc:latest"
-	if _, err := container.Provenance(LanguageSolidity, "0.8.30"); err == nil {
-		t.Fatal("mutable container image produced compiler provenance")
-	}
-}
-
-func TestContainerRequiresDigest(t *testing.T) {
-	t.Parallel()
-	compiler := ContainerCompiler{Images: map[Language]map[string]string{LanguageSolidity: {"1": "solc:latest"}}}
-	if _, err := compiler.Compile(context.Background(), LanguageSolidity, "1", []byte(`{}`)); err == nil || !strings.Contains(err.Error(), "pinned by digest") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestContainerIsolationRejectsUntrustedOrMissingRuntime(t *testing.T) {
-	t.Parallel()
-	compiler := ContainerCompiler{Runtime: "/tmp/docker-wrapper"}
-	if compiler.HardIsolated() {
-		t.Fatal("arbitrary runtime executable was treated as hard isolation")
-	}
-	if err := compiler.ValidateRuntime(context.Background()); err == nil || !strings.Contains(err.Error(), "not allowlisted") {
-		t.Fatalf("unexpected runtime error: %v", err)
-	}
-
-	compiler.Runtime = "etherview-runtime-that-does-not-exist"
-	if compiler.HardIsolated() {
-		t.Fatal("missing runtime was treated as hard isolation")
 	}
 }
 
@@ -280,8 +229,15 @@ func TestRequestValidationRejectsInvalidEtherscanMetadata(t *testing.T) {
 
 func TestCompilerCacheUsesSafeFilename(t *testing.T) {
 	t.Parallel()
-	cache := CompilerCache{Root: filepath.Join(t.TempDir(), "cache"), Artifacts: map[Language]map[string]CompilerArtifact{}}
-	if _, err := cache.Ensure(context.Background(), LanguageSolidity, "../../bad"); err == nil {
+	cache := CompilerCache{Root: filepath.Join(t.TempDir(), "cache")}
+	if _, err := cache.EnsureCatalogEntry(context.Background(), CatalogEntry{
+		Language:       LanguageSolidity,
+		Version:        "../../bad",
+		Platform:       CompilerPlatformEmscriptenWASM32,
+		ArtifactURL:    "https://compiler.example/soljson.js",
+		ArtifactSHA256: sha256.Sum256([]byte("soljson")),
+		MaxBytes:       1 << 20,
+	}); err == nil {
 		t.Fatal("expected version rejection")
 	}
 }

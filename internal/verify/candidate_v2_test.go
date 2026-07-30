@@ -3,6 +3,8 @@ package verify
 import (
 	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -99,43 +101,19 @@ func TestExtractCandidatesFromChecksumPinnedSolidityFixture(t *testing.T) {
 	}
 }
 
-func TestExtractCandidatesFromChecksumPinnedVyperFixture(t *testing.T) {
-	t.Parallel()
-	candidates, err := ExtractCandidatesV2(
-		readCompilerJSONFixture(t, "vyper", "output.metadata.json"),
-		readCompilerJSONFixture(t, "vyper", "output.metadata-comment.json"),
-		LanguageVyper,
-		"0.4.3+commit.bff19ea2",
-	)
-	if err != nil {
-		t.Fatalf("extract pinned Vyper fixture candidates: %v", err)
-	}
-	if len(candidates) != 1 ||
-		candidates[0].FullyQualifiedName() != "contracts/Target.vy:Target" {
-		t.Fatalf("pinned Vyper candidates = %#v", candidates)
-	}
-	if len(candidates[0].creationAuxdata) == 0 || len(candidates[0].runtimeAuxdata) != 0 {
-		t.Fatalf(
-			"Vyper auxdata counts creation=%d runtime=%d",
-			len(candidates[0].creationAuxdata),
-			len(candidates[0].runtimeAuxdata),
-		)
-	}
-	matches, err := VerifyCandidateArtifacts(candidates, BytecodePair{
-		Creation: candidates[0].CreationBytecode,
-		Runtime:  candidates[0].RuntimeBytecode,
-	}, "", false)
-	if err != nil || len(matches) != 1 ||
-		matches[0].Creation != nil ||
-		matches[0].Runtime == nil ||
-		matches[0].Runtime.MatchType != VerificationMatchPartial {
-		t.Fatalf("Vyper fixture match = %#v, error = %v", matches, err)
-	}
-}
-
 type candidateOutputFixture struct {
 	creation []byte
 	runtime  []byte
+}
+
+func readCompilerJSONFixture(t *testing.T, path ...string) json.RawMessage {
+	t.Helper()
+	segments := append([]string{"testdata", "compiler"}, path...)
+	value, err := os.ReadFile(filepath.Join(segments...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return json.RawMessage(value)
 }
 
 func candidateCompilerOutput(

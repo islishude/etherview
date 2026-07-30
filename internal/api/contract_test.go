@@ -91,8 +91,6 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		{path: "/verifier/solidity/standard-json", method: "post"},
 		{path: "/verifier/solidity/batch/multipart", method: "post"},
 		{path: "/verifier/solidity/batch/standard-json", method: "post"},
-		{path: "/verifier/vyper/multipart", method: "post"},
-		{path: "/verifier/vyper/standard-json", method: "post"},
 		{path: "/verifier/sourcify", method: "post"},
 		{path: "/verifier/sourcify/from-etherscan", method: "post"},
 	} {
@@ -130,9 +128,10 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		"/verification/jobs", "/verification/jobs/{id}",
 		"/sourcify/contracts/{address}", "/sourcify/imports",
 		"/verification/jobs/{id}/sourcify", "/sourcify/jobs/{verification_id}",
+		"/verifier/vyper/multipart", "/verifier/vyper/standard-json",
 	} {
 		if optionalMappingValue(paths, removed) != nil {
-			t.Fatalf("removed verifier-v1 path %q is still public", removed)
+			t.Fatalf("removed verifier path %q is still public", removed)
 		}
 	}
 }

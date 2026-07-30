@@ -45,10 +45,11 @@ the [operations runbook](../operations.md).
 
 ```text
 Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
-                    |                         |       -> enrich/trace/verify/metadata
+                    |                         |       -> enrich/trace/metadata
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
+API verification workers -> restricted Node subprocess -> approved solc-js catalogs/artifacts
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
@@ -418,8 +419,11 @@ size alone is not sufficient justification to weaken those invariants.
   The server derives code, code hash, block hash, and creation input from
   canonical PostgreSQL facts, verifies the stored runtime hash, then returns
   the durable verification-job UUID as the compatibility GUID. Source submit
-  and status use POST; proxy status uses GET, but both proxy operations report
-  unavailable until a durable proxy verification workflow exists.
+  uses POST and source status permits GET or POST. Proxy submission uses POST
+  and proxy status uses GET. Proxy jobs pin the exact canonical proxy mapping
+  and require source publications for both code identities; an API-owned worker
+  performs no compilation for them and atomically publishes an immutable
+  binding only after rechecking canonicality and both sources.
 - Native and compatibility verification both resolve the current canonical
   code, block, runtime bytecode, and creation input from PostgreSQL; native
   callers cannot submit those identities. An optional constructor-argument
@@ -428,19 +432,21 @@ size alone is not sufficient justification to weaken those invariants.
   differs from its Keccak-256 digest. A durable submission
   digest covers the exact request payload and the server-derived public sandbox
   requirement; only the same active or successful digest is idempotent. A
-  worker binds the job to its compiler artifact digest before execution, and
-  expired leases stop at their persisted attempt budget. Successful worker
-  output is publishable only when the completion transaction finds an exact
-  canonical code observation for the request's chain, address, code hash, and
-  block hash. A stale target becomes a stable terminal failure, while successful
-  results are immutable provenance rows projected deterministically to the
-  verified-contract read model. Publication-guard migrations freeze concurrent
-  DML before replacing guards or validating data by taking write-conflicting
+  leased API worker resolves and binds the job to one exact catalog generation,
+  `emscripten-wasm32` artifact identity, compiler digest, and runtime executor
+  digest before execution, and expired leases
+  stop at their persisted attempt budget. Successful worker output is
+  publishable only when the completion transaction finds an exact canonical
+  code observation for the request's chain, address, code hash, and block hash.
+  A stale target becomes a stable terminal failure, while successful results are
+  immutable provenance rows projected deterministically to the verified
+  contract read model. Publication-guard migrations freeze concurrent DML
+  before replacing guards or validating data by taking write-conflicting
   relation locks in the production write order: immutable results, verified
   projections, then terminal job updates. See
   [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md).
-- Verification prepares duplicate-key-free, inline-source Solidity, Yul, and
-  Vyper Standard JSON inputs with bounded server-owned outputs. It compiles the
+- Verification prepares duplicate-key-free, inline-source Solidity and Yul
+  Standard JSON inputs with bounded server-owned outputs. It compiles the
   original sources and one whitespace-modified copy with the same exact
   compiler, uses their strictly validated differences to locate compiler
   auxdata, and automatically compares every bounded candidate. Matches retain
@@ -448,24 +454,31 @@ size alone is not sufficient justification to weaken those invariants.
   transformations and are classified as full or partial. Address publication
   requires a canonical runtime match and the exact immutable job result; a
   creation-only result is never address publication evidence.
-- Compiler catalogs are bounded HTTPS documents refreshed into immutable
-  PostgreSQL generations. Accepted entries have canonical Solidity/Vyper
-  versions, allowed artifact origins, non-zero SHA-256 identities, and bounded
-  sizes. Artifacts install through the proxy-free, redirect-free,
-  public-network-only downloader into a checksum-verified `0500` cache. Public
-  Solidity discovery follows the platform directories actually published by
-  solc-bin. Container mode derives Linux AMD64/ARM64 from the validated runner
-  image; private process mode derives Linux, macOS, or Windows native packages
-  from the host, with approved mirrors only as overrides. A missing version
-  never causes an implicit cross-architecture substitution.
-  Compilation streams the artifact and Standard JSON into one pre-pulled,
-  digest-pinned generic runner, pins the selected platform, and verifies ELF,
-  Mach-O, or PE format before execution. Emscripten/WASM directories are
-  modeled but fail closed because their current sidecar inputs are not bound by
-  the one-artifact catalog checksum. Each compile forbids pulls and networking, uses
-  a read-only non-root container with bounded resources, and accepts no outcome
-  until its random container has been forcibly removed. See
-  [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
+- The `all` or `api` process owns official catalog discovery, checksum-addressed
+  artifact caching, and execution. Only the published
+  `emscripten-wasm32/list.json` catalog is accepted; this is an
+  architecture-independent compiler artifact format, not a Docker or CPU
+  platform. Resolution validates approved HTTPS origins, redirects, catalog
+  size, artifact size, and SHA-256. The API persists the generation, artifact
+  identity, compiler digest, executor kind/policy, and executor digest, then
+  atomically binds that complete identity under the worker lease.
+- The production image includes an exact Node 26.5.0 executable, the
+  `solc@0.8.36` wrapper dependency, and a canonical read-only runtime manifest.
+  Startup verifies every manifest path and digest and performs a permission
+  self-test. Each deterministic compilation is a separate subprocess with a
+  minimal environment, private temporary directory, 384 MiB V8 heap,
+  input/output/time bounds, and whole-process-group termination. The subprocess
+  may read only its runtime and selected compiler artifact and receives no
+  network, child-process, worker, addon, WASI, FFI, or inspector permission.
+  The permission model is defense in depth for trusted checksum-pinned solc-js,
+  not a claim that Node isolates malicious JavaScript.
+- API readiness is independent of temporary catalog availability. When no
+  validated catalog generation is available, the version surface reports
+  unavailable and compiler jobs remain retryable rather than being executed
+  with an unbound artifact. Proxy or Sourcify jobs may continue. There is no
+  standalone runner, runner network, native compiler fallback, or CPU-platform
+  selection. See
+  [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).
 - Sourcify v2 remains an optional interoperability adapter rather than a local
   trust root. Calling its dedicated verification endpoint is explicit source
   publication consent. Bounded asynchronous polling returns an external result

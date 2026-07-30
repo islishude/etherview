@@ -2,6 +2,13 @@
 
 Status: `done`
 
+Current-state note: [P70-T29](P70-release.md) and
+[ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md) supersede the
+historical runner, native platform, and Vyper portions of this completed plan.
+The supported languages are now Solidity and Yul; migration `0031` deletes
+Vyper data. The detailed evidence below remains historical and must not be
+used as current deployment guidance.
+
 ## Outcome
 
 Users can submit asynchronous Solidity, Yul, Vyper, batch, and Sourcify

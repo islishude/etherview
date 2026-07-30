@@ -205,7 +205,7 @@ func TestVerificationFormRejectsAmbiguousOrConflictingInput(t *testing.T) {
 	}
 }
 
-func TestVyperVerificationFormNormalizesCompilerAndOutput(t *testing.T) {
+func TestVyperVerificationFormIsStablyUnsupported(t *testing.T) {
 	t.Parallel()
 	values := url.Values{
 		"contractaddress": {testContract},
@@ -213,25 +213,10 @@ func TestVyperVerificationFormNormalizesCompilerAndOutput(t *testing.T) {
 		"codeformat":      {"vyper-json"}, "contractname": {"A.vy:A"},
 		"compilerversion": {"vyper:0.4.0"}, "optimizationUsed": {"1"},
 	}
-	form, _, _, err := parseEtherscanVerificationForm(values, 1<<20)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if form.language != verify.LanguageVyper || form.compilerVersion != "0.4.0" || form.contractIdentifier != "A.vy:A" {
-		t.Fatalf("form=%+v", form)
-	}
-	var input struct {
-		Settings struct {
-			OutputSelection map[string][]string `json:"outputSelection"`
-		} `json:"settings"`
-	}
-	if err := json.Unmarshal(form.standardJSON, &input); err != nil {
-		t.Fatal(err)
-	}
-	got := strings.Join(input.Settings.OutputSelection["A.vy"], ",")
-	want := "abi,metadata,evm.bytecode.object,evm.deployedBytecode.object"
-	if got != want || len(input.Settings.OutputSelection) != 1 {
-		t.Fatalf("Vyper output selection=%s, want %s", form.standardJSON, want)
+	_, _, _, err := parseEtherscanVerificationForm(values, 1<<20)
+	if !errors.Is(err, ErrInvalidParameter) ||
+		err.Error() != "invalid parameter: unsupported codeformat" {
+		t.Fatalf("Vyper error=%v", err)
 	}
 }
 
@@ -305,14 +290,75 @@ func TestSourceVerificationStatusUsesEtherscanSemantics(t *testing.T) {
 	}
 }
 
-func TestProxyVerificationRemainsExplicitlyUnavailable(t *testing.T) {
+func TestProxyVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	t.Parallel()
-	backend := testPostgresBackend(t, fakeDatabase(t), PostgresOptions{ChainID: 1, Verification: &fakeVerificationService{}})
-	for _, action := range []string{"verifyproxycontract", "checkproxyverification"} {
-		_, err := backend.Execute(context.Background(), Request{Module: "contract", Action: action})
-		if !errors.Is(err, ErrProxyVerificationUnavailable) || !errors.Is(err, ErrVerificationUnavailable) {
-			t.Fatalf("%s error=%v", action, err)
-		}
+	const jobID = "123e4567-e89b-42d3-a456-426614174000"
+	proxyCodeHash := testHashBytes(81)
+	blockHash := testHashBytes(82)
+	implementation := testAddressBytes(testSender)
+	implementationCodeHash := testHashBytes(84)
+	service := &fakeVerificationService{
+		submitJob: verify.VerificationJob{ID: jobID, Kind: verify.JobProxy, Status: verify.JobQueued},
+	}
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM current_proxy", columns: fakeColumns(7),
+		rows: [][]driver.Value{{
+			proxyCodeHash, blockHash, "eip1967", implementation,
+			implementationCodeHash, true, true,
+		}},
+	}), PostgresOptions{ChainID: 1, Verification: service})
+	result, err := backend.Execute(context.Background(), Request{
+		Module: "contract", Action: "verifyproxycontract",
+		Values: url.Values{
+			"address":                {testContract},
+			"expectedimplementation": {"0x" + hex.EncodeToString(implementation)},
+		},
+	})
+	if err != nil || result != jobID {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	request := service.submitted
+	if request.Kind != verify.JobProxy || request.Target == nil || request.ProxyTarget == nil ||
+		request.Target.Address != strings.ToLower(testContract) ||
+		request.Target.CodeHash != "0x"+hex.EncodeToString(proxyCodeHash) ||
+		request.Target.AtBlockHash != "0x"+hex.EncodeToString(blockHash) ||
+		request.ProxyTarget.Kind != "eip1967" ||
+		request.ProxyTarget.ImplementationAddress != "0x"+hex.EncodeToString(implementation) ||
+		request.ProxyTarget.ImplementationCodeHash != "0x"+hex.EncodeToString(implementationCodeHash) {
+		t.Fatalf("proxy request=%+v", request)
+	}
+}
+
+func TestProxyVerificationStatusUsesDedicatedJobKind(t *testing.T) {
+	t.Parallel()
+	const guid = "123e4567-e89b-42d3-a456-426614174000"
+	for _, test := range []struct {
+		name   string
+		job    verify.VerificationJob
+		found  bool
+		result string
+		want   error
+	}{
+		{name: "queued", found: true, job: verify.VerificationJob{Kind: verify.JobProxy, Status: verify.JobQueued}, want: ErrPending},
+		{name: "verified", found: true, job: verify.VerificationJob{
+			Kind: verify.JobProxy, Status: verify.JobSucceeded,
+			Outcome: json.RawMessage(`{"kind":"proxy_verification_success"}`),
+		}, result: "Pass - Verified"},
+		{name: "failed", found: true, job: verify.VerificationJob{Kind: verify.JobProxy, Status: verify.JobFailed}, want: ErrProxyVerificationFailed},
+		{name: "source job", found: true, job: verify.VerificationJob{Kind: verify.JobAddress, Status: verify.JobSucceeded}, want: ErrVerificationJobNotFound},
+		{name: "missing", want: ErrVerificationJobNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &fakeVerificationService{job: test.job, jobFound: test.found}
+			backend := testPostgresBackend(t, fakeDatabase(t), PostgresOptions{ChainID: 1, Verification: service})
+			result, err := backend.Execute(context.Background(), Request{
+				Module: "contract", Action: "checkproxyverification",
+				Values: url.Values{"guid": {guid}},
+			})
+			if result != test.result || !errors.Is(err, test.want) {
+				t.Fatalf("result=%#v error=%v, want result=%q error=%v", result, err, test.result, test.want)
+			}
+		})
 	}
 }
 

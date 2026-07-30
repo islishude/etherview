@@ -137,8 +137,10 @@ func (b *PostgresBackend) Execute(ctx context.Context, request Request) (any, er
 		return b.submitSourceVerification(ctx, request.Values)
 	case "contract.checkverifystatus":
 		return b.sourceVerificationStatus(ctx, request.Values)
-	case "contract.verifyproxycontract", "contract.checkproxyverification":
-		return nil, ErrProxyVerificationUnavailable
+	case "contract.verifyproxycontract":
+		return b.submitProxyVerification(ctx, request.Values)
+	case "contract.checkproxyverification":
+		return b.proxyVerificationStatus(ctx, request.Values)
 
 	case "token.tokensupply":
 		return b.tokenSupply(ctx, request.Values)

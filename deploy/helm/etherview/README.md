@@ -1,15 +1,18 @@
 # Etherview Helm chart
 
-> Verifier v2 is a destructive verification-data upgrade. Migration `0027`
-> drops v1 verification jobs, results, and publications. Back up PostgreSQL
-> before upgrading; the chart does not provide dual reads or rollback data
-> conversion.
+> Verifier migrations `0027` and `0031` are destructive verification-data
+> upgrades. Migration `0031` deletes every Vyper record and dependent proxy
+> publication. Stop old verifier workers and back up PostgreSQL before the
+> single-version cutover; the chart does not provide dual reads or rollback
+> data conversion.
 
 The chart runs the production image either as one `all` Deployment or as the
-same component graph split into `api`, `sync`, `enrich`, `trace`, `verify`,
-`metadata`, and `maintenance` Deployments. `values-distributed.yaml` selects
-the split layout. Each autoscaled role has its own `autoscaling/v2` HPA; roles
-that own singleton work are one replica by default.
+same component graph split into `api`, `sync`, `enrich`, `trace`, `metadata`,
+and `maintenance` Deployments. `values-distributed.yaml` selects the split
+layout. Each autoscaled role has its own `autoscaling/v2` HPA; roles that own
+singleton work are one replica by default. When public verification is enabled,
+the `all` or `api` Deployment owns the durable verification worker pool,
+checksum cache, and restricted Node/solc-js subprocess executor.
 
 Install or upgrade with Job waiting enabled so the release command observes
 the migration result:
@@ -199,8 +202,9 @@ traffic needs a distinct upstream or per-process rate policy.
 route mix. It enables redundant API, sync, enrichment, and maintenance roles,
 two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
 hard hostname-spread constraint with at least two eligible domains. Optional
-trace, verification, and metadata roles remain disabled so their external
-capability budgets can be measured separately. The profile's maximum 18 Pods
+trace and metadata roles plus public verification remain
+disabled so their external capability budgets can be measured separately. The
+profile's maximum 18 Pods
 and 12-connection writer pool cap require up to 216 application PostgreSQL
 connections at steady state. Its maximum 8 API Pods add 96 connections when a
 same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
@@ -220,24 +224,42 @@ HA. The generated role constraint and the legacy free-form
 The reference profile is not the P70 500 RPS result; see the operations
 runbook for the evidence boundary and tuning formula.
 
+## Compiler executor
+
+Public source verification requires NetworkPolicy. The selected `all` or `api`
+Pods receive a memory-backed compiler cache and own official
+`emscripten-wasm32` catalog discovery, checksum validation, and execution in a
+fresh permission-restricted Node subprocess. The exact Node executable,
+solc-js wrapper/dependency tree, and canonical read-only runtime manifest are
+part of the production image for its native architecture. There is no runner
+Deployment, Service, image value, runtime class, native compiler fallback, or
+CPU-platform setting.
+
+A dedicated policy selects only `all` or `api` and permits DNS plus TCP/443 for
+approved compiler catalogs and artifacts. Other worker roles receive neither
+the cache nor this egress. Catalog outages do not withdraw API readiness:
+version discovery reports unavailable and compiler jobs remain retryable. The
+`etherview_verification_compiler_available` metric and bundled alert expose the
+condition. Application Pods never require a Docker daemon, Docker socket, or
+Kubernetes API access to execute compilers.
+
 ## Network policy
 
-The default NetworkPolicy admits the HTTP and metrics ports and permits DNS,
-PostgreSQL, and optionally shared HTTPS egress. When contract verification and
-`networkPolicy.allowCompilerHTTPS` are both enabled, a separate policy grants
-TCP/443 only to the monolith `all` Pod or the distributed `verify` Pods for
-compiler catalogs and artifacts. Add endpoint-specific rules under
+The default application NetworkPolicy admits the HTTP and metrics ports and
+permits DNS, PostgreSQL, and optionally shared HTTPS egress. Public verification
+adds a dedicated policy selecting only `all`/`api` and allowing DNS plus
+TCP/443 for approved compiler catalogs and artifacts. Add endpoint-specific application rules under
 `networkPolicy.additionalEgress` for NATS, Redis, plaintext/private RPC, or an
 S3-compatible service or PostgreSQL endpoint on another port. Setting
-`networkPolicy.enabled=false` is explicit and removes the policy.
+`networkPolicy.enabled=false` is explicit and is rejected while public
+verification is enabled.
 
 Billing cannot use shared broad HTTPS. Set
 `networkPolicy.allowExternalHTTPS=false`; put reviewed HTTPS RPC and adapter
-ranges in `networkPolicy.runtimeHTTPSCIDRs`. In monolith mode also disable
-`allowCompilerHTTPS` and pre-populate the cache, or use distributed mode so
-compiler HTTPS selects only `verify`. Billing renders a separate NetworkPolicy
-selecting only `all`/`api` and allowing the configured facilitator CIDRs on
-TCP/443.
+ranges in `networkPolicy.runtimeHTTPSCIDRs`. Compiler downloads remain scoped
+to the selected `all`/`api` Pods and do not broaden other roles. Billing
+renders a separate NetworkPolicy selecting only `all`/`api` and allowing the
+configured facilitator CIDRs on TCP/443.
 The chart rejects billing when NetworkPolicy is disabled, facilitator CIDRs
 are empty, broad HTTPS remains enabled, the runtime list contains an
 internet-wide CIDR, or it repeats a facilitator CIDR. Operators must also

@@ -505,7 +505,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 
 func (h *harness) startTopology(ctx context.Context) {
 	if h.mode == "distributed" {
-		h.compose(ctx, "up", "-d", "--wait", "--wait-timeout", "90", "verify")
+		h.compose(ctx, "up", "-d", "--wait", "--wait-timeout", "90", "api")
 		h.connectDatabase(ctx)
 		waitFor(h.t, ctx, "config-only role identity bind", func() (bool, string, error) {
 			var identity string

@@ -1,5 +1,6 @@
 // Package verify implements reproducible, asynchronous contract verification
-// primitives. Runtime services must execute public compilers in a hard sandbox.
+// primitives. Runtime services execute checksum-pinned solc-js in the
+// API-owned trusted-subprocess boundary defined by ADR-0031.
 package verify
 
 import (
@@ -18,13 +19,11 @@ type Language string
 const (
 	LanguageSolidity Language = "solidity"
 	LanguageYul      Language = "yul"
-	LanguageVyper    Language = "vyper"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
 
 var (
-	ErrSandboxRequired = errors.New("public verification requires hard compiler isolation")
 	ErrConsentRequired = errors.New("sourcify submission requires explicit consent")
 )
 
@@ -61,8 +60,8 @@ func (r Request) Validate(maxInputBytes int) error {
 	if !fixedHex(r.AtBlockHash, 32) {
 		errs = append(errs, errors.New("block hash must be 32 bytes"))
 	}
-	if r.Language != LanguageSolidity && r.Language != LanguageVyper {
-		errs = append(errs, errors.New("language must be solidity or vyper"))
+	if r.Language != LanguageSolidity {
+		errs = append(errs, errors.New("language must be solidity"))
 	}
 	if !versionPattern.MatchString(r.CompilerVersion) {
 		errs = append(errs, errors.New("compiler version is invalid"))
@@ -132,10 +131,6 @@ type MatchResult struct {
 
 func validMatchKind(kind MatchKind) bool {
 	return kind == MatchExact || kind == MatchMetadataOnly || kind == MatchMismatch
-}
-
-func validMatchResult(result MatchResult) bool {
-	return validMatchKind(result.Creation) && validMatchKind(result.Runtime)
 }
 
 func jsonObject(value json.RawMessage) bool {

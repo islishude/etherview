@@ -90,8 +90,8 @@ failed stage is not an empty success.
 | `getcontractcreation` | `GET`, `POST` | `contractaddresses`, a comma-separated list of 1 to 5 unique addresses | None | Optional | Core; factory `CREATE`/`CREATE2` rows need Trace. A definitive no-match additionally needs indexing from genesis, continuous Core coverage through the tip, and Trace through the tip. |
 | `verifysourcecode` | `POST` | `contractaddress` and the [source-verification form](#source-verification-form) | Form-specific fields below | Required | Public verification plus an exact current canonical code observation and canonical top-level or traced creation input |
 | `checkverifystatus` | `GET`, `POST` | `guid`, a durable verification-job UUID | None | Required | Public verification |
-| `verifyproxycontract` | `POST` | `address` | `expectedimplementation` | Required | Intentionally unavailable |
-| `checkproxyverification` | `GET` | `guid` | None | Required | Intentionally unavailable |
+| `verifyproxycontract` | `POST` | `address` | `expectedimplementation` | Required | Public verification; current complete high-confidence proxy observation and exact source publications for proxy and implementation |
+| `checkproxyverification` | `GET` | `guid` | None | Required | Public verification and a proxy-kind durable verification job |
 
 ### `transaction`
 
@@ -145,9 +145,9 @@ and `contractaddress`, these fields are accepted:
 | Parameter | Rule |
 |---|---|
 | `sourceCode` | Required, non-empty, and within the configured verification input limit. It is plain source for `solidity-single-file` and an inline-source Standard JSON object for the JSON formats. Duplicate JSON keys and external source URLs are rejected. |
-| `codeformat` | Required: `solidity-single-file`, `solidity-standard-json-input`, or `vyper-json`. |
-| `contractname` | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name; Standard JSON uses `source:name`; Vyper uses the source filename. It can never make a weaker match win. |
-| `compilerversion` | Required. The optional `vyper:` prefix is removed for `vyper-json`; the resulting version must be allowlisted by the verification runtime. |
+| `codeformat` | Required: `solidity-single-file` or `solidity-standard-json-input`. `vyper-json` returns the stable unsupported-codeformat error and does not create a job. |
+| `contractname` | Required. It is only a same-quality candidate hint: a single Solidity file may use a bare contract name and Standard JSON uses `source:name`. It can never make a weaker match win. |
+| `compilerversion` | Required and normalized at submission. The API-owned catalog resolves availability asynchronously; an unavailable version produces a terminal verification failure after the GUID is returned. |
 | `optimizationUsed` | Optional `0` or `1`; it must not conflict with Standard JSON settings. |
 | `runs` | Optional canonical integer `0..1000000`, Solidity only; it must not conflict with Standard JSON settings. |
 | `constructorArguments` / `constructorArguements` | Accepted for wire compatibility when it is valid even-length hexadecimal. Verifier v2 ignores the value and instead discovers, ABI-decodes, and re-encodes constructor arguments from canonical creation input. |
@@ -216,8 +216,7 @@ configuration and request behavior are not supported.
   action validation and is never forwarded to the backend.
 - `verifysourcecode`, `checkverifystatus`, `verifyproxycontract`, and
   `checkproxyverification` require an authenticated key. Authentication and
-  rate limiting happen before action dispatch, including for the intentionally
-  unavailable proxy operations.
+  rate limiting happen before action dispatch.
 - Compatibility successes use `{ "status": "1", "message": "OK",
   "result": ... }`. Ordinary validation, not-found, pending, and capability
   failures normally retain HTTP 200 with `status: "0"`. Request parsing can
@@ -226,13 +225,29 @@ configuration and request behavior are not supported.
   failures return 500. Every one of those boundary responses still uses the
   Etherscan `{status,message,result}` envelope.
 
+## Proxy Verification
+
+`verifyproxycontract` resolves the current canonical EIP-1167, EIP-1967, or
+beacon observation from the writer. Both the proxy code identity and resolved
+implementation code identity must already have exact source publications. A
+supplied `expectedimplementation` must equal the resolved implementation. A
+valid submission returns the durable proxy-job UUID and equivalent active or
+successful requests are idempotent.
+
+`checkproxyverification` accepts only a proxy-kind GUID. Queued or running
+requests return `Pending in queue`, success returns `Pass - Verified`, terminal
+failure returns `Fail - Unable to verify proxy contract`, and a missing or
+wrong-kind GUID returns `Unable to locate verification request`. The worker
+does not compile proxy jobs: it rechecks canonicality, the exact mapping, and
+both source publications before atomically creating the immutable result and
+binding. `getsourcecode` exposes `Proxy: "1"` and a checksummed
+`Implementation` only while that exact binding is current; `getabi` still
+returns the queried proxy's own ABI.
+
 ## Registered but Intentionally Unavailable
 
 These are stable negative capabilities, not empty datasets:
 
-- `contract.verifyproxycontract` and `contract.checkproxyverification` always
-  report `proxy verification workflow unavailable`. Proxy/code discovery is
-  not a durable GUID-addressable source-verification workflow.
 - `token.tokenholderlist` always reports `state capability unavailable`.
   Standard JSON-RPC cannot enumerate all current ERC-20 holders, and
   event-derived deltas are not authoritative current state.
@@ -268,7 +283,7 @@ such; they are not forwarded upstream.
   lists then require published completeness over that same canonical range.
 - `getsourcecode.SourceCode` is the compact canonical stored sources object,
   not a reconstruction of the caller's original submission wrapper.
-  `CompilerType` is `solc` or `vyper`; `ContractFileName` is present but empty;
+  `CompilerType` is `solc`; `ContractFileName` is present but empty;
   and `MatchKind` (`full` or `partial`) reports verifier-v2 transformation
   quality as an Etherview extension.
   `Proxy` remains `"0"`, while `Implementation`, `SwarmSource`, and

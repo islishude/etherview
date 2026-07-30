@@ -90,7 +90,6 @@ features:
 
 security:
   public_verification: true
-  compiler_sandbox: container
   api_key_pepper: "NOT_A_SECRET_PEPPER_250e1b7feee4"
   anonymous_rate: 5
   anonymous_burst: 20
@@ -128,25 +127,15 @@ verification:
   max_input_bytes: 5242880
   max_output_bytes: 67108864
   timeout: 2m
-  cache_directory: /var/lib/etherview/compilers
-  container_runtime: docker
-  container_memory: 512m
-  container_cpus: "1"
-  container_pids: 64
+  worker_count: 1
+  # The API process owns the Node executor and its disposable artifact cache.
+  cache_directory: /var/lib/etherview/compilers/cache
   catalog_urls:
     solidity: auto
-    vyper: https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json
   allowed_download_origins:
     - https://binaries.soliditylang.org
-    - https://raw.githubusercontent.com
-    - https://github.com
   catalog_refresh_interval: 1h
   catalog_max_staleness: 24h
-  # make start-preview injects the exact locally built image digest. Keeping
-  # the checked-in value empty prevents a stale identity from becoming config.
-  runner_image: ""
-  images: {}
-  artifacts: {}
 
 sourcify:
   base_url: https://sourcify.dev/server

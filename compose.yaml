@@ -21,12 +21,6 @@ x-app-environment: &app-environment
   ETHERVIEW_FEATURE_X402_BILLING:
   ETHERVIEW_API_KEY_PEPPER: ${ETHERVIEW_API_KEY_PEPPER:-}
   ETHERVIEW_METADATA_IPFS_GATEWAY: ${ETHERVIEW_METADATA_IPFS_GATEWAY:-}
-  ETHERVIEW_VERIFICATION_RUNNER_IMAGE:
-  ETHERVIEW_VERIFICATION_SOLIDITY_CATALOG_URL:
-  ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL:
-  ETHERVIEW_VERIFICATION_ALLOWED_DOWNLOAD_ORIGINS:
-  ETHERVIEW_VERIFICATION_CATALOG_REFRESH_INTERVAL:
-  ETHERVIEW_VERIFICATION_CATALOG_MAX_STALENESS:
   ETHERVIEW_SOURCIFY_ATTEMPTS:
   ETHERVIEW_SOURCIFY_POLL_INTERVAL:
   ETHERVIEW_SOURCIFY_MAX_POLLS:
@@ -58,6 +52,7 @@ x-api-environment: &api-environment
   # feature is disabled and the operator leaves them unset.
   ETHERVIEW_X402_FINGERPRINT_PEPPER:
   ETHERVIEW_X402_FACILITATOR_HEADERS:
+  ETHERVIEW_VERIFICATION_WORKER_COUNT:
 
 x-app: &app
   image: ${ETHERVIEW_IMAGE:-etherview:local}
@@ -115,12 +110,12 @@ services:
       <<: *api-environment
       ETHERVIEW_ROLES: all
     profiles: ["monolith"]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
-    volumes:
-      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
-      - compiler-cache:/var/lib/etherview/compilers
 
   api:
     <<: *app
@@ -129,6 +124,9 @@ services:
       <<: *api-environment
       ETHERVIEW_ROLES: api
     profiles: ["distributed"]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
@@ -155,17 +153,6 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: trace
-    profiles: ["distributed"]
-
-  verify:
-    <<: *app
-    command: ["serve", "--roles=verify", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *app-environment
-      ETHERVIEW_ROLES: verify
-    volumes:
-      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
-      - compiler-cache:/var/lib/etherview/compilers
     profiles: ["distributed"]
 
   metadata:
@@ -215,4 +202,3 @@ volumes:
   postgres-data:
   nats-data:
   object-data:
-  compiler-cache:

@@ -86,7 +86,7 @@ func TestRegistryDeduplicatesSharedService(t *testing.T) {
 func TestRegistryMonolithGraphEqualsUnionOfSplitRoleGraphs(t *testing.T) {
 	t.Parallel()
 	registry := NewRegistry()
-	roles := []Role{RoleAPI, RoleSync, RoleEnrich, RoleTrace, RoleVerify, RoleMetadata, RoleMaintenance}
+	roles := []Role{RoleAPI, RoleSync, RoleEnrich, RoleTrace, RoleMetadata, RoleMaintenance}
 	for _, role := range roles {
 		if err := registry.Register(role, "00-operations-http", namedFactory("operations-http")); err != nil {
 			t.Fatal(err)

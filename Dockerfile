@@ -10,6 +10,29 @@ COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.js
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
+FROM node:26.5.0-bookworm-slim AS compiler-builder
+WORKDIR /opt/etherview/compiler
+COPY compiler/package.json compiler/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY compiler/compile.mjs ./compile.mjs
+COPY compiler/build-manifest.mjs /tmp/build-manifest.mjs
+RUN mkdir -p lib \
+    && for library in libatomic.so.1 libstdc++.so.6 libgcc_s.so.1; do \
+        library_path="$(ldd /usr/local/bin/node | awk -v name="$library" '$1 == name { print $3 }')"; \
+        test -f "$library_path"; \
+        cp -L "$library_path" "lib/$library"; \
+    done \
+    && rm -rf node_modules/.bin \
+    && test -z "$(find . -type l -print -quit)" \
+    && node /tmp/build-manifest.mjs \
+        /usr/local/bin/node \
+        /opt/etherview/compiler \
+        /opt/etherview/compiler/runtime-manifest.json \
+    && find /opt/etherview/compiler -type d -exec chmod 0555 {} + \
+    && find /opt/etherview/compiler -type f -exec chmod 0444 {} + \
+    && chmod 0555 /opt/etherview
+
 FROM golang:1.26.5 AS go-builder
 WORKDIR /src
 RUN apt-get update \
@@ -24,8 +47,10 @@ COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go install -trimpath -ldflags="-s -w" ./cmd/... \
-    && geth_module_dir="$(go list -m -f '{{.Dir}}' github.com/ethereum/go-ethereum)" \
+    go install -trimpath -ldflags="-s -w" ./cmd/...
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    geth_module_dir="$(go list -m -f '{{.Dir}}' github.com/ethereum/go-ethereum)" \
     && mkdir -p /licenses \
     && cp "$geth_module_dir/COPYING.LESSER" /licenses/go-ethereum-LGPL-3.0-or-later.txt \
     && cp "$geth_module_dir/crypto/bn256/LICENSE" /licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt \
@@ -34,18 +59,6 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && cp "$geth_module_dir/crypto/secp256k1/libsecp256k1/COPYING" /licenses/libsecp256k1-MIT.txt \
     && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt
 
-# Generic verifier runner. Build and publish this target separately, pin its
-# digest in verification.runner_image, and pre-pull it on verify-role hosts.
-# Compiler binaries and Standard JSON enter only through the bounded frame on
-# stdin and are materialized in the container's tmpfs by compiler-runner.
-FROM gcr.io/distroless/base-debian13:nonroot AS compiler-runner
-COPY --from=go-builder --chown=nonroot:nonroot /go/bin/compiler-runner /compiler-runner
-USER 65532:65532
-ENTRYPOINT ["/compiler-runner"]
-CMD []
-
-# Keep production last so an unqualified `docker build .` still emits the
-# deployable Etherview image rather than a test-only tool.
 FROM gcr.io/distroless/base-debian13:nonroot AS production
 ARG VERSION=dev
 ARG REVISION=unknown
@@ -62,6 +75,8 @@ COPY --chown=nonroot:nonroot THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
 COPY --from=go-builder --chown=nonroot:nonroot /licenses /licenses
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
+COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0555 /usr/local/bin/node /usr/local/bin/node
+COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview /opt/etherview
 USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/etherview"]

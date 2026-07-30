@@ -19,10 +19,7 @@ func main() {
 	var options previewcheck.Options
 	flag.StringVar(&options.Root, "root", ".", "repository root")
 	flag.StringVar(&options.ProjectName, "project", "etherview-preview", "Docker Compose project name")
-	flag.StringVar(&options.ComposeFile, "compose-file", "compose.preview.yaml", "Preview Compose file")
-	flag.StringVar(&options.ComposeCommand, "compose", "", "Compose wrapper path (defaults to the repository wrapper)")
 	flag.StringVar(&options.DockerCommand, "docker", dockerDefault(), "Docker CLI path")
-	flag.StringVar(&options.RunnerImage, "runner-image", "", "exact compiler runner repository@sha256 digest reference")
 	flag.StringVar(&options.ConfigURL, "config-url", "https://etherview.localhost:8080/api/v1/config", "public Preview HTTPS config URL")
 	flag.StringVar(&options.CAFile, "ca-file", "", "optional PEM CA file for the Preview certificate")
 	flag.BoolVar(&options.InsecureSkipVerify, "insecure", false, "explicitly allow the local Preview certificate without verification")

@@ -1,6 +1,11 @@
 # ADR-0016: Compiler Supply Chain and Sandbox
 
-Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md)
+Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md) and
+[ADR-0031](ADR-0031-api-owned-solc-js-executor.md)
+
+The process/container runner design below is historical. Current production
+uses checksum-pinned `emscripten-wasm32` solc-js artifacts in an API-owned,
+permission-restricted Node subprocess and does not select a CPU platform.
 
 ## Context
 

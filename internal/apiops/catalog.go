@@ -188,8 +188,6 @@ var catalog = []Spec{
 	spec("verifySolidityStandardJson", "POST", "/verifier/solidity/standard-json", false),
 	spec("batchVerifySolidityMultipart", "POST", "/verifier/solidity/batch/multipart", false),
 	spec("batchVerifySolidityStandardJson", "POST", "/verifier/solidity/batch/standard-json", false),
-	spec("verifyVyperMultipart", "POST", "/verifier/vyper/multipart", false),
-	spec("verifyVyperStandardJson", "POST", "/verifier/vyper/standard-json", false),
 	spec("listVerifierCompilers", "GET", "/verifier/compilers", false,
 		requiredQueryParameter("language", ParameterText)),
 	spec("lookupVerifierMethods", "POST", "/verifier/lookup-methods", false),

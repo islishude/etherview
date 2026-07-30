@@ -1,0 +1,35 @@
+x-hardhat-verification-environment: &hardhat-verification-environment
+  ETHERVIEW_FEATURE_VERIFICATION: "true"
+  ETHERVIEW_PUBLIC_VERIFICATION: "true"
+  ETHERVIEW_POLL_INTERVAL: 2s
+  ETHERVIEW_API_KEY_PEPPER: hardhat3-e2e-api-key-pepper-00000000000000000000000000000000
+  # CI/local Docker DNS may route reviewed public hosts through a synthetic
+  # private address. Origin, TLS, size, and checksum validation remain active.
+  ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
+
+services:
+  etherview:
+    environment:
+      <<: *hardhat-verification-environment
+      ETHERVIEW_ROLES: all
+
+  api:
+    environment:
+      <<: *hardhat-verification-environment
+      ETHERVIEW_ROLES: api
+
+  hardhat:
+    image: ${ETHERVIEW_HARDHAT3_IMAGE}
+    profiles: ["hardhat-client"]
+    working_dir: /workspace
+    environment:
+      ETHERVIEW_HARDHAT3_RPC_URL: http://runtime-fixture:8545
+      ETHERVIEW_HARDHAT3_EXPLORER_URL: http://${ETHERVIEW_HARDHAT3_API_SERVICE}:8080
+      ETHERVIEW_HARDHAT3_API_URL: http://${ETHERVIEW_HARDHAT3_API_SERVICE}:8080/v2/api
+      ETHERVIEW_HARDHAT3_DEPLOYMENT_FILE: /e2e-output/deployment.json
+    volumes:
+      - hardhat-build:/workspace/build
+      - ${ETHERVIEW_HARDHAT3_ARTIFACT_DIR}:/e2e-output
+
+volumes:
+  hardhat-build:

@@ -29,7 +29,7 @@ func insertVerifiedContractFixture(
 	jobID := uuid.NewString()
 	blockHash := sha256.Sum256([]byte("etherview:verification-fixture:block:" + jobID))
 	compilerDigest := sha256.Sum256([]byte("etherview:verification-fixture:compiler"))
-	runnerDigest := sha256.Sum256([]byte("etherview:verification-fixture:runner"))
+	executorDigest := sha256.Sum256([]byte("etherview:verification-fixture:solcjs-executor"))
 	catalogDigest := sha256.Sum256([]byte("etherview:verification-fixture:catalog"))
 	fileName := "Fixture.sol"
 	request := map[string]any{
@@ -45,10 +45,6 @@ func insertVerifiedContractFixture(
 			"at_block_hash":    "0x" + hex.EncodeToString(blockHash[:]),
 			"runtime_bytecode": "0x00",
 		},
-		"catalog_generation_id": int64(1),
-		"compiler_platform":     "linux-amd64",
-		"compiler_sha256":       hex.EncodeToString(compilerDigest[:]),
-		"runner_sha256":         hex.EncodeToString(runnerDigest[:]),
 	}
 	requestPayload, err := json.Marshal(request)
 	if err != nil {
@@ -102,16 +98,10 @@ func insertVerifiedContractFixture(
 		RETURNING id`, catalogDigest[:]).Scan(&generationID); err != nil {
 		t.Fatalf("insert fixture compiler generation: %v", err)
 	}
-	request["catalog_generation_id"] = generationID
-	requestPayload, err = json.Marshal(request)
-	if err != nil {
-		t.Fatalf("remarshal verifier-v2 fixture request: %v", err)
-	}
-	requestDigest = sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), requestPayload...))
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO compiler_catalog_entries (
 			generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes
-		) VALUES ($1, 'solidity', $2, 'linux-amd64', 'https://compiler.example/solc', $3, 209715200)
+		) VALUES ($1, 'solidity', $2, 'emscripten-wasm32', 'https://compiler.example/soljson.js', $3, 209715200)
 		ON CONFLICT (generation_id, version) DO NOTHING`,
 		generationID, compilerVersion, compilerDigest[:],
 	); err != nil {
@@ -120,19 +110,31 @@ func insertVerifiedContractFixture(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version,
-			compiler_platform, catalog_generation_id, compiler_digest, runner_digest,
 			chain_id, address, code_hash, block_hash, request, request_payload,
-			request_digest, requires_hard_isolation, status, attempt_count,
-			max_attempts, outcome_kind, outcome
+			request_digest, status, leased_by, lease_token, lease_expires_at,
+			attempt_count, max_attempts
 		) VALUES (
-			$1::uuid, 'address', 'solidity', 'solidity', $2, 'linux-amd64', $3, $4, $5,
-			1, $6, $7, $8, $9::jsonb, $10, $11, TRUE, 'succeeded', 1, 3,
-			'verification_success', $12::jsonb
-		)`, jobID, compilerVersion, generationID, compilerDigest[:], runnerDigest[:],
-		address, codeHash, blockHash[:], string(requestPayload), requestPayload,
-		requestDigest[:], string(outcome),
+			$1::uuid, 'address', 'solidity', 'solidity', $2,
+			1, $3, $4, $5, $6::jsonb, $7, $8, 'running',
+			'fixture-worker', 'fixture-lease', clock_timestamp() + interval '1 hour',
+			1, 3
+		)`, jobID, compilerVersion, address, codeHash, blockHash[:],
+		string(requestPayload), requestPayload, requestDigest[:],
 	); err != nil {
 		t.Fatalf("insert verifier-v2 fixture job: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE verification_jobs
+		SET compiler_platform = 'emscripten-wasm32',
+		    catalog_generation_id = $2,
+		    compiler_digest = $3,
+		    executor_kind = 'node_solcjs_v1',
+		    execution_policy = 'trusted_subprocess',
+		    executor_digest = $4
+		WHERE id = $1::uuid`,
+		jobID, generationID, compilerDigest[:], executorDigest[:],
+	); err != nil {
+		t.Fatalf("bind verifier-v2 fixture compiler: %v", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verification_results (
@@ -164,6 +166,16 @@ func insertVerifiedContractFixture(
 		requestDigest[:], fileName, contractName, compilerVersion, abi, sources, settings,
 	); err != nil {
 		t.Fatalf("insert sourced verified-contract fixture: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE verification_jobs
+		SET status = 'succeeded', leased_by = NULL, lease_token = NULL,
+		    lease_expires_at = NULL, outcome_kind = 'verification_success',
+		    outcome = $2::jsonb
+		WHERE id = $1::uuid`,
+		jobID, string(outcome),
+	); err != nil {
+		t.Fatalf("complete verifier-v2 fixture job: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit verified-contract fixture: %v", err)

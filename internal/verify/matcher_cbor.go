@@ -57,30 +57,6 @@ func decodeExclusiveMapFooter(bytecode []byte) (decodedFooter, bool) {
 	}, true
 }
 
-func decodeInclusiveArrayFooter(bytecode []byte) (decodedFooter, []cbor.RawMessage, bool) {
-	if len(bytecode) < 3 {
-		return decodedFooter{}, nil, false
-	}
-	totalLength := int(binary.BigEndian.Uint16(bytecode[len(bytecode)-2:]))
-	if totalLength < 3 || totalLength > maxCompilerFooterBytes || totalLength > len(bytecode) {
-		return decodedFooter{}, nil, false
-	}
-	start := len(bytecode) - totalLength
-	payload := bytecode[start : len(bytecode)-2]
-	if !validCompleteCBOR(payload) {
-		return decodedFooter{}, nil, false
-	}
-	var value []cbor.RawMessage
-	if err := matcherCBORMode.Unmarshal(payload, &value); err != nil || len(value) == 0 {
-		return decodedFooter{}, nil, false
-	}
-	return decodedFooter{
-		Start:   start,
-		Payload: append([]byte(nil), payload...),
-		Raw:     append([]byte(nil), bytecode[start:]...),
-	}, value, true
-}
-
 // Decoding into RawMessage intentionally leaves descendants opaque. Decode a
 // second time into a complete tree so the bounded mode enforces duplicate-key,
 // tag, nesting, and collection rules at every depth of compiler metadata.

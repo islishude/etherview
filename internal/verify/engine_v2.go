@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/fxamacker/cbor/v2"
 )
 
 type VerificationMatchType string
@@ -142,16 +141,6 @@ func auxdataRangeEndingAt(code []byte, end int, language Language) (int, bool) {
 		}
 		start = end - encodedLength - 2
 		var value map[string]json.RawMessage
-		if !validCompleteCBOR(code[start:end-2]) ||
-			matcherCBORMode.Unmarshal(code[start:end-2], &value) != nil || len(value) == 0 {
-			return 0, false
-		}
-	case LanguageVyper:
-		if encodedLength < 3 || encodedLength > maxCompilerFooterBytes || encodedLength > end {
-			return 0, false
-		}
-		start = end - encodedLength
-		var value []cbor.RawMessage
 		if !validCompleteCBOR(code[start:end-2]) ||
 			matcherCBORMode.Unmarshal(code[start:end-2], &value) != nil || len(value) == 0 {
 			return 0, false

@@ -124,7 +124,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			if parseErr != nil {
 				return fmt.Errorf("parse configured genesis hash: %w", parseErr)
 			}
-			// API/verify-only processes must be able to participate in a fresh
+			// API-only processes must be able to participate in a fresh
 			// split deployment without racing the first RPC-backed role. Every
 			// role receives the same server configuration; BindChainIdentity
 			// serializes the exact pair and rejects any discovered mismatch.
@@ -252,12 +252,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	var verificationRepository *verify.PostgresRepository
 	var verificationService *verify.Service
 	var compilerCatalog *verify.CompilerCatalog
-	if cfg.Features.Verification {
+	if cfg.Features.Verification && roleSet[components.RoleAPI] {
 		compilerCatalog, err = verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
 			Sources: map[verify.Language]string{
 				verify.LanguageSolidity: cfg.Verification.CatalogURLs["solidity"],
-				verify.LanguageVyper:    cfg.Verification.CatalogURLs["vyper"],
 			},
+			Platform:       verify.CompilerPlatformEmscriptenWASM32,
 			AllowedOrigins: cfg.Verification.AllowedDownloadOrigins,
 			Timeout:        cfg.Verification.Timeout, Freshness: cfg.Verification.CatalogMaxStaleness,
 			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
@@ -275,10 +275,6 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		verificationService, err = verify.NewService(
 			verificationRepository,
 			cfg.Verification.MaxInputBytes,
-			verify.ServiceOptions{
-				RequiresHardIsolation: cfg.Security.PublicVerification,
-				Catalog:               compilerCatalog, RunnerImage: cfg.Verification.RunnerImage,
-			},
 		)
 		if err != nil {
 			return err
@@ -684,22 +680,17 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 	}
 
-	if roleSet[components.RoleVerify] && cfg.Features.Verification {
+	if roleSet[components.RoleAPI] && cfg.Features.Verification {
 		compiler, err := verificationCompiler(cfg, compilerCatalog)
 		if err != nil {
 			return err
 		}
-		if validator, ok := compiler.(verify.RuntimeValidator); ok {
-			if err := validator.ValidateRuntime(ctx); err != nil {
-				return fmt.Errorf("verification compiler sandbox is not ready: %w", err)
-			}
+		runtimeValidator, ok := compiler.(verify.RuntimeValidator)
+		if !ok {
+			return errors.New("solc-js verification compiler lacks runtime validation")
 		}
-		for _, language := range []verify.Language{verify.LanguageSolidity, verify.LanguageVyper} {
-			if _, refreshErr := compilerCatalog.Refresh(ctx, language); refreshErr != nil {
-				if _, retainedErr := compilerCatalog.Versions(ctx, language); retainedErr != nil {
-					return fmt.Errorf("refresh %s compiler catalog: %w", language, refreshErr)
-				}
-			}
+		if err := runtimeValidator.ValidateRuntime(ctx); err != nil {
+			return fmt.Errorf("validate solc-js runtime: %w", err)
 		}
 		catalogRefresher, err := verify.NewCatalogRefresher(
 			compilerCatalog, cfg.Verification.CatalogRefreshInterval,
@@ -708,7 +699,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 		if err := componentRegistry.Register(
-			components.RoleVerify,
+			components.RoleAPI,
 			"35-compiler-catalog-refresher",
 			func() (components.Service, error) { return catalogRefresher, nil },
 		); err != nil {
@@ -716,16 +707,16 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		if err := registerWorkerPool(
 			componentRegistry,
-			components.RoleVerify,
+			components.RoleAPI,
 			"40-contract-verification",
 			"contract-verification-worker",
-			cfg.Runtime.WorkerCount,
+			cfg.Verification.WorkerCount,
 			func(index int, serviceName string) (components.Service, error) {
 				return verify.NewWorker(verificationRepository, compiler, verify.WorkerOptions{
 					ServiceName: serviceName, WorkerID: verificationWorkerID(index),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-					Public: cfg.Security.PublicVerification, Observer: businessObserver, Sourcify: sourcify,
+					Observer: businessObserver, Sourcify: sourcify,
 				})
 			},
 		); err != nil {
@@ -896,14 +887,13 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 
 	for _, role := range []components.Role{
-		components.RoleEnrich, components.RoleTrace, components.RoleVerify,
-		components.RoleMetadata,
+		components.RoleEnrich, components.RoleTrace, components.RoleMetadata,
 	} {
 		if !roleSet[role] {
 			continue
 		}
 		if role == components.RoleEnrich || role == components.RoleTrace && cfg.Features.Trace ||
-			role == components.RoleVerify && cfg.Features.Verification || role == components.RoleMetadata && cfg.Features.NFTMetadata {
+			role == components.RoleMetadata && cfg.Features.NFTMetadata {
 			continue
 		}
 		role := role
@@ -1049,6 +1039,12 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			add("08-runtime-event-relay")
 			add("09-home-snapshot-feed")
 			add("20-public-api")
+			if cfg.Features.Verification {
+				add("35-compiler-catalog-refresher")
+				addWorkerComponentKeys(
+					add, "40-contract-verification", cfg.Verification.WorkerCount,
+				)
+			}
 		case components.RoleSync:
 			if wakeEnabled {
 				add("05-new-head-wake")
@@ -1066,13 +1062,6 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				addWorkerComponentKeys(add, "37-trace-enrichment", cfg.Runtime.WorkerCount)
 			} else {
 				add("50-role-trace")
-			}
-		case components.RoleVerify:
-			if cfg.Features.Verification {
-				add("35-compiler-catalog-refresher")
-				addWorkerComponentKeys(add, "40-contract-verification", cfg.Runtime.WorkerCount)
-			} else {
-				add("50-role-verify")
 			}
 		case components.RoleMetadata:
 			if cfg.Features.NFTMetadata {

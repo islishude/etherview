@@ -18,7 +18,11 @@ x-etherview-app-env: &etherview-app-env
 x-etherview-api-env: &etherview-api-env
   <<: *etherview-app-env
   ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
-  ETHERVIEW_VERIFICATION_RUNNER_IMAGE: ${ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE:-etherview-compiler-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+  ETHERVIEW_VERIFICATION_WORKER_COUNT:
+  # Docker Desktop fake-IP DNS maps public compiler hosts into 198.18/15.
+  # This Preview-only escape hatch retains exact HTTPS-origin, TLS, size, and
+  # SHA-256 validation and is deliberately absent from every other role.
+  ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
 
 x-etherview-service: &etherview-service
   image: ${ETHERVIEW_IMAGE:-etherview:local}
@@ -81,114 +85,6 @@ services:
       - "${RETH_WS_PORT:-8546}:8546"
     restart: unless-stopped
 
-  # Named volumes start as root-owned. This networkless one-shot init retains
-  # only CAP_CHOWN long enough to hand the client/cache roots to the same
-  # non-root identity used by the production image.
-  compiler-volumes-init:
-    image: docker:29.6.2-cli@sha256:be132a9f282288de4afaf63379dff75711fda0147c6b72a9df44e51841402144
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        for directory in /runtime-client /compiler-cache; do
-          chown 0:0 "$${directory}"
-          chmod 0750 "$${directory}"
-          chown 65532:65532 "$${directory}"
-        done
-    network_mode: none
-    read_only: true
-    restart: "no"
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - compiler-runtime-client:/runtime-client
-      - compiler-cache:/compiler-cache
-
-  # Preview uses a dedicated nested daemon instead of exposing the host socket
-  # to an application container. Privilege is intentionally confined to this
-  # local-only service so its daemon can enforce the compiler cgroup limits.
-  compiler-runtime:
-    image: docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
-    command: ["--host=tcp://0.0.0.0:2375", "--tls=false"]
-    environment:
-      DOCKER_TLS_CERTDIR: ""
-    privileged: true
-    healthcheck:
-      test: ["CMD", "docker", "info"]
-      interval: 2s
-      timeout: 5s
-      retries: 30
-      start_period: 5s
-    networks:
-      - compiler-runtime
-    restart: unless-stopped
-    volumes:
-      - compiler-runtime-data:/var/lib/docker
-
-  # This one-shot preflight copies only the static client into a verify-only
-  # volume, loads the locally built runner archive, and proves the exact digest
-  # exists in the isolated daemon before the verify role may start.
-  compiler-preflight:
-    image: docker:29.6.2-cli@sha256:be132a9f282288de4afaf63379dff75711fda0147c6b72a9df44e51841402144
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        cp /usr/local/bin/docker /runtime-client/docker
-        chmod 0555 /runtime-client/docker
-        probe=/compiler-cache/.preview-write-probe
-        trap 'rm -f "$${probe}"' EXIT INT TERM
-        (umask 077 && : >"$${probe}")
-        rm "$${probe}"
-        docker image load --input /runtime/compiler-runner.tar >/dev/null
-        docker image inspect "$${ETHERVIEW_VERIFICATION_RUNNER_IMAGE}" >/dev/null
-        test "$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$${ETHERVIEW_VERIFICATION_RUNNER_IMAGE}")" = linux/amd64
-        smoke=etherview-compiler-70707070707070707070707070707070
-        docker rm -f "$${smoke}" >/dev/null 2>&1 || true
-        trap 'rm -f "$${probe}"; docker rm -f "$${smoke}" >/dev/null 2>&1 || true' EXIT INT TERM
-        docker create --pull=never --platform=linux/amd64 --name="$${smoke}" \
-          --network=none --read-only --cap-drop=ALL \
-          --security-opt=no-new-privileges --user=65532:65532 \
-          --memory=512m --memory-swap=512m --cpus=1 --pids-limit=64 \
-          --ulimit=nofile=64:64 --ulimit=core=0 \
-          --tmpfs=/tmp:rw,exec,nosuid,nodev,size=272m,mode=0700 \
-          "$${ETHERVIEW_VERIFICATION_RUNNER_IMAGE}" >/dev/null
-        set +e
-        docker start --attach "$${smoke}" </dev/null >/dev/null 2>&1
-        smoke_status=$$?
-        set -e
-        test "$${smoke_status}" -eq 1
-        test "$$(docker inspect --format '{{.State.ExitCode}}' "$${smoke}")" -eq 1
-        test -z "$$(docker inspect --format '{{.State.Error}}' "$${smoke}")"
-        docker rm -f "$${smoke}" >/dev/null
-        trap - EXIT INT TERM
-    environment:
-      DOCKER_HOST: tcp://compiler-runtime:2375
-      ETHERVIEW_VERIFICATION_RUNNER_IMAGE: ${ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE:-etherview-compiler-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000}
-      HOME: /tmp
-    user: "65532:65532"
-    depends_on:
-      compiler-volumes-init:
-        condition: service_completed_successfully
-      compiler-runtime:
-        condition: service_healthy
-    networks:
-      - compiler-runtime
-    read_only: true
-    restart: "no"
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1m,mode=0700,uid=65532,gid=65532
-    volumes:
-      - ./.local/preview-compiler/compiler-runner.tar:/runtime/compiler-runner.tar:ro
-      - compiler-runtime-client:/runtime-client
-      - compiler-cache:/compiler-cache
-
   migration:
     <<: *etherview-service
     command: ["migrate", "up", "--config=/etc/etherview/config.yaml"]
@@ -210,6 +106,9 @@ services:
       - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
       - ./.local/preview-tls/tls.crt:/run/etherview-tls/tls.crt:ro
       - ./.local/preview-tls/tls.key:/run/etherview-tls/tls.key:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
     depends_on: *etherview-runtime-depends-on
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
@@ -243,36 +142,6 @@ services:
     depends_on: *etherview-runtime-depends-on
     restart: unless-stopped
 
-  verify:
-    <<: *etherview-service
-    command: ["serve", "--roles=verify", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: verify
-      DOCKER_HOST: tcp://compiler-runtime:2375
-      ETHERVIEW_VERIFICATION_RUNNER_IMAGE: ${ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE:-etherview-compiler-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000}
-      # Local transparent proxies may resolve public compiler hosts into their
-      # fake-IP range. This Preview-only exception must never enter production.
-      ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
-      PATH: /runtime-client:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    volumes:
-      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
-      - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
-      - compiler-cache:/var/lib/etherview/compilers
-      - compiler-runtime-client:/runtime-client:ro
-    depends_on:
-      <<: *etherview-runtime-depends-on
-      compiler-preflight:
-        condition: service_completed_successfully
-    networks:
-      default:
-        # Catalog and artifact downloads must keep the ordinary application
-        # network as their only egress route.
-        gw_priority: 1
-      compiler-runtime:
-        gw_priority: 0
-    restart: unless-stopped
-
   metadata:
     <<: *etherview-service
     command:
@@ -296,10 +165,3 @@ services:
 volumes:
   postgres-data:
   reth-data:
-  compiler-cache:
-  compiler-runtime-client:
-  compiler-runtime-data:
-
-networks:
-  compiler-runtime:
-    internal: true

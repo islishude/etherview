@@ -1174,40 +1174,6 @@ paths:
           $ref: "#/components/responses/VerificationAccepted"
         default:
           $ref: "#/components/responses/Error"
-  /verifier/vyper/multipart:
-    post:
-      operationId: verifyVyperMultipart
-      tags: [verification]
-      security:
-        - APIKey: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VerifierMultipartRequest"
-      responses:
-        "202":
-          $ref: "#/components/responses/VerificationAccepted"
-        default:
-          $ref: "#/components/responses/Error"
-  /verifier/vyper/standard-json:
-    post:
-      operationId: verifyVyperStandardJson
-      tags: [verification]
-      security:
-        - APIKey: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VerifierStandardJSONRequest"
-      responses:
-        "202":
-          $ref: "#/components/responses/VerificationAccepted"
-        default:
-          $ref: "#/components/responses/Error"
   /verifier/compilers:
     get:
       operationId: listVerifierCompilers
@@ -2794,7 +2760,7 @@ components:
           type: boolean
     VerifierLanguage:
       type: string
-      enum: [solidity, yul, vyper]
+      enum: [solidity, yul]
     VerifierBytecodes:
       type: object
       additionalProperties: false
@@ -3164,8 +3130,6 @@ components:
             - solidity_standard_json
             - solidity_batch_multipart
             - solidity_batch_standard_json
-            - vyper_multipart
-            - vyper_standard_json
             - sourcify
             - sourcify_from_etherscan
         status:

@@ -23,33 +23,35 @@ type Registry struct {
 	version string
 	role    string
 
-	httpRequests           map[requestKey]uint64
-	httpDuration           map[requestKey]*histogram
-	httpPanics             map[pair]uint64
-	syncLag                float64
-	reorgDepth             float64
-	syncHalted             map[string]float64
-	rpcRequests            map[pair]uint64
-	jobsPending            map[string]float64
-	durableJobs            map[pair]float64
-	verificationCurrent    map[string]float64
-	repairCurrent          map[pair]float64
-	repairOldestQueued     float64
-	billingSettling        map[pair]float64
-	durableSnapshotReady   bool
-	metricsRefreshFailures uint64
-	metricsLastRefresh     float64
-	enrichmentJobs         map[pair]uint64
-	traceJobs              map[string]uint64
-	verifyJobs             map[string]uint64
-	metadata               map[string]uint64
-	maintenance            map[pair]uint64
-	analyticsRollups       map[string]uint64
-	analyticsDirtyHours    float64
-	analyticsOldestDirty   float64
-	analyticsBackfill      float64
-	rateLimits             map[string]uint64
-	x402Requests           map[pair]uint64
+	httpRequests                  map[requestKey]uint64
+	httpDuration                  map[requestKey]*histogram
+	httpPanics                    map[pair]uint64
+	syncLag                       float64
+	reorgDepth                    float64
+	syncHalted                    map[string]float64
+	rpcRequests                   map[pair]uint64
+	jobsPending                   map[string]float64
+	durableJobs                   map[pair]float64
+	verificationCurrent           map[string]float64
+	verificationCompilerAvailable float64
+	verificationCompilerSeen      bool
+	repairCurrent                 map[pair]float64
+	repairOldestQueued            float64
+	billingSettling               map[pair]float64
+	durableSnapshotReady          bool
+	metricsRefreshFailures        uint64
+	metricsLastRefresh            float64
+	enrichmentJobs                map[pair]uint64
+	traceJobs                     map[string]uint64
+	verifyJobs                    map[string]uint64
+	metadata                      map[string]uint64
+	maintenance                   map[pair]uint64
+	analyticsRollups              map[string]uint64
+	analyticsDirtyHours           float64
+	analyticsOldestDirty          float64
+	analyticsBackfill             float64
+	rateLimits                    map[string]uint64
+	x402Requests                  map[pair]uint64
 }
 
 type requestKey struct {
@@ -178,6 +180,18 @@ func (registry *Registry) RecordVerificationJob(result string) {
 	registry.increment(registry.verifyJobs, boundedJobResult(result))
 }
 
+// SetVerificationCompilerAvailable records whether the API worker currently
+// has both a validated executor runtime and a fresh compiler catalog.
+func (registry *Registry) SetVerificationCompilerAvailable(available bool) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.verificationCompilerSeen = true
+	registry.verificationCompilerAvailable = 0
+	if available {
+		registry.verificationCompilerAvailable = 1
+	}
+}
+
 // RecordMetadataFetch increments a normalized metadata-fetch result.
 func (registry *Registry) RecordMetadataFetch(result string) {
 	registry.increment(registry.metadata, boundedJobResult(result))
@@ -303,6 +317,10 @@ func (registry *Registry) Gather() string {
 	writeGaugeMap(&output, "etherview_jobs_pending", "Durable PostgreSQL jobs waiting by queue.", "queue", registry.jobsPending)
 	writePairGauges(&output, "etherview_durable_jobs", "Active durable PostgreSQL backlog grouped by stage and status.", "stage", "status", registry.durableJobs)
 	writeGaugeMap(&output, "etherview_verification_jobs", "Active verification backlog grouped by status.", "status", registry.verificationCurrent)
+	writeHelp(&output, "etherview_verification_compiler_available", "Whether the API verification worker has a validated executor runtime and a fresh compiler catalog.", "gauge")
+	if registry.verificationCompilerSeen {
+		fmt.Fprintf(&output, "etherview_verification_compiler_available %s\n", formatFloat(registry.verificationCompilerAvailable))
+	}
 	writePairGauges(&output, "etherview_repair_requests", "Active repair and reindex backlog grouped by operation and status.", "operation", "status", registry.repairCurrent)
 	writePairGauges(&output, "etherview_x402_stale_settling_payments", "Writer-backed x402 settlements requiring operator reconciliation.", "operation", "reason", registry.billingSettling)
 	writeHelp(&output, "etherview_repair_oldest_queued_seconds", "Age of the oldest queued repair or reindex request.", "gauge")

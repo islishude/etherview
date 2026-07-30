@@ -3,6 +3,24 @@
 {{- fail (printf "roles.%s.autoscaling.maxReplicas must be greater than or equal to minReplicas" $roleName) }}
 {{- end }}
 {{- end }}
+{{- if .Values.config.security.public_verification }}
+{{- if not .Values.config.features.verification }}
+{{- fail "config.features.verification must be true when public verification is enabled" }}
+{{- end }}
+{{- end }}
+{{- if .Values.config.features.verification }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when verification is enabled" }}
+{{- end }}
+{{- if .Values.networkPolicy.allowExternalHTTPS }}
+{{- fail "networkPolicy.allowExternalHTTPS must be false when verification is enabled; the chart grants catalog HTTPS egress only to all/api" }}
+{{- end }}
+{{- range $runtimeCIDR := .Values.networkPolicy.runtimeHTTPSCIDRs }}
+{{- if or (eq $runtimeCIDR "0.0.0.0/0") (eq $runtimeCIDR "::/0") }}
+{{- fail "networkPolicy.runtimeHTTPSCIDRs must not contain an internet-wide CIDR when verification is enabled" }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.apiTLS.enabled (empty (.Values.apiTLS.existingSecret | trim)) }}
 {{- fail "apiTLS.existingSecret is required when process-native API TLS is enabled" }}
 {{- end }}
@@ -60,9 +78,6 @@
 {{- end }}
 {{- if .Values.networkPolicy.allowExternalHTTPS }}
 {{- fail "networkPolicy.allowExternalHTTPS must be false when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
-{{- end }}
-{{- if and (eq .Values.mode "monolith") .Values.config.features.verification .Values.networkPolicy.allowCompilerHTTPS }}
-{{- fail "networkPolicy.allowCompilerHTTPS must be false in monolith mode when x402 billing is enabled; split the verify role or pre-populate the compiler cache" }}
 {{- end }}
 {{- $x402AdditionalEgressError := "networkPolicy.additionalEgress must explicitly exclude TCP/443 when x402 billing is enabled; use facilitator_allowed_cidrs for API-only TCP/443 egress" }}
 {{- range $ruleIndex, $rule := .Values.networkPolicy.additionalEgress }}

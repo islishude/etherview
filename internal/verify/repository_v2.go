@@ -16,7 +16,6 @@ import (
 func (repository *PostgresRepository) SubmitV2(
 	ctx context.Context,
 	request SubmissionV2,
-	requiresHardIsolation bool,
 ) (VerificationJob, bool, error) {
 	encoded, err := json.Marshal(request)
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
@@ -30,32 +29,17 @@ func (repository *PostgresRepository) SubmitV2(
 	var language, version, platform any
 	var catalogLanguage any
 	var generation any
-	var compilerDigest, runnerDigest any
-	if request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan {
-		if !validCompilerPlatform(request.CompilerPlatform) {
-			return VerificationJob{}, false, errors.New("v2 compiler platform is invalid")
-		}
-		language, version, platform, generation = request.Language, request.CompilerVersion,
-			request.CompilerPlatform, request.CatalogGenerationID
+	var compilerDigest any
+	if request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
+		request.Kind != JobProxy {
+		language, version = request.Language, request.CompilerVersion
 		catalogLanguage = request.Language
 		if request.Language == LanguageYul {
 			catalogLanguage = LanguageSolidity
 		}
-		decoded, decodeErr := hex.DecodeString(request.CompilerDigest)
-		if decodeErr != nil || len(decoded) != sha256.Size {
-			return VerificationJob{}, false, errors.New("v2 compiler digest is invalid")
-		}
-		compilerDigest = decoded
-		if request.RunnerDigest != "" {
-			decodedRunner, runnerErr := hex.DecodeString(request.RunnerDigest)
-			if runnerErr != nil || len(decodedRunner) != sha256.Size {
-				return VerificationJob{}, false, errors.New("v2 runner digest is invalid")
-			}
-			runnerDigest = decodedRunner
-		}
 	}
 	var chainID, address, codeHash, blockHash any
-	if request.Kind == JobAddress {
+	if request.Kind == JobAddress || request.Kind == JobProxy {
 		chainID = strconv.FormatUint(request.Target.ChainID, 10)
 		address, _ = decodeFixedHex(request.Target.Address, 20)
 		codeHash, _ = decodeFixedHex(request.Target.CodeHash, 32)
@@ -65,19 +49,20 @@ func (repository *PostgresRepository) SubmitV2(
 		INSERT INTO verification_jobs (
 			id, kind, language, catalog_language, compiler_version, compiler_platform,
 			catalog_generation_id,
-			compiler_digest, runner_digest, chain_id, address, code_hash, block_hash,
-			request, request_payload, request_digest, requires_hard_isolation, max_attempts
+			compiler_digest, executor_kind, execution_policy, executor_digest,
+			chain_id, address, code_hash, block_hash,
+			request, request_payload, request_digest, max_attempts
 		) VALUES (
-			$1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11, $12, $13,
-			$14::jsonb, $15, $16, $17, $18
+			$1::uuid, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL,
+			$9::numeric, $10, $11, $12, $13::jsonb, $14, $15, $16
 		)
 		ON CONFLICT (request_digest) WHERE status IN ('queued', 'running', 'succeeded')
 		DO NOTHING
 		RETURNING `+v2VerificationJobColumns,
 		id, request.Kind, language, catalogLanguage, version, platform, generation,
-		compilerDigest, runnerDigest,
+		compilerDigest,
 		chainID, address, codeHash, blockHash, string(encoded), encoded, digest[:],
-		requiresHardIsolation, repository.options.MaxAttempts,
+		repository.options.MaxAttempts,
 	))
 	created := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
@@ -99,6 +84,24 @@ func (repository *PostgresRepository) Claim(
 	workerID string,
 	leaseFor time.Duration,
 ) (VerificationLease, bool, error) {
+	return repository.claimRunnable(ctx, workerID, leaseFor, true)
+}
+
+func (repository *PostgresRepository) ClaimRunnable(
+	ctx context.Context,
+	workerID string,
+	leaseFor time.Duration,
+	compilerAvailable bool,
+) (VerificationLease, bool, error) {
+	return repository.claimRunnable(ctx, workerID, leaseFor, compilerAvailable)
+}
+
+func (repository *PostgresRepository) claimRunnable(
+	ctx context.Context,
+	workerID string,
+	leaseFor time.Duration,
+	compilerAvailable bool,
+) (VerificationLease, bool, error) {
 	if strings.TrimSpace(workerID) == "" || len(workerID) > 128 {
 		return VerificationLease{}, false, errors.New("verification worker ID is invalid")
 	}
@@ -119,6 +122,7 @@ func (repository *PostgresRepository) Claim(
 			WHERE id = (
 				SELECT id FROM verification_jobs
 				WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
+				  AND ($4 OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan'))
 				  AND attempt_count >= max_attempts
 				ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
 			)
@@ -126,6 +130,7 @@ func (repository *PostgresRepository) Claim(
 		), candidate AS (
 			SELECT id FROM verification_jobs
 			WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
+			  AND ($4 OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan'))
 			  AND attempt_count < max_attempts
 			  AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
 			ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -136,7 +141,7 @@ func (repository *PostgresRepository) Claim(
 		    attempt_count = job.attempt_count + 1, updated_at = clock_timestamp()
 		FROM candidate WHERE job.id = candidate.id
 		RETURNING `+v2ClaimedVerificationJobColumns,
-		workerID, token, microseconds,
+		workerID, token, microseconds, compilerAvailable,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerificationLease{}, false, nil
@@ -158,23 +163,52 @@ func (repository *PostgresRepository) BindCompiler(
 	if lease.Job.RequestV2 == nil || !provenance.valid() {
 		return errors.New("v2 compiler binding is invalid")
 	}
-	request := lease.Job.RequestV2
-	if request.CatalogGenerationID != provenance.CatalogGeneration ||
-		request.CompilerDigest != hex.EncodeToString(provenance.Digest[:]) ||
-		(request.RunnerDigest != "" && request.RunnerDigest != hex.EncodeToString(provenance.RunnerDigest[:])) ||
-		(lease.Job.RequiresHardIsolation && !provenance.HardIsolated) {
+	if provenance.Kind != CompilerSolcJS ||
+		provenance.ExecutorKind != SolcJSExecutorKind ||
+		provenance.ExecutionPolicy != TrustedSubprocessPolicy ||
+		provenance.ExecutorDigest == [sha256.Size]byte{} {
 		return ErrCompilerProvenanceConflict
 	}
-	var exists bool
-	err := repository.db.QueryRowContext(ctx, `
+	result, err := repository.db.ExecContext(ctx, `
+		UPDATE verification_jobs
+		SET compiler_platform = $3, catalog_generation_id = $4,
+		    compiler_digest = $5, executor_kind = $6,
+		    execution_policy = $7, executor_digest = $8,
+		    updated_at = clock_timestamp()
+		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
+		  AND lease_expires_at > clock_timestamp()
+		  AND (
+		    (compiler_platform IS NULL AND catalog_generation_id IS NULL
+		     AND compiler_digest IS NULL AND executor_kind IS NULL
+		     AND execution_policy IS NULL AND executor_digest IS NULL)
+		    OR
+		    (compiler_platform = $3 AND catalog_generation_id = $4
+		     AND compiler_digest = $5 AND executor_kind = $6
+		     AND execution_policy = $7 AND executor_digest = $8)
+		  )
+	`, lease.Job.ID, lease.Token, provenance.Platform,
+		provenance.CatalogGeneration, provenance.Digest[:],
+		provenance.ExecutorKind, provenance.ExecutionPolicy,
+		provenance.ExecutorDigest[:])
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 1 {
+		return nil
+	}
+	var leaseOwned bool
+	err = repository.db.QueryRowContext(ctx, `
 		SELECT TRUE FROM verification_jobs
 		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
 		  AND lease_expires_at > clock_timestamp()
-	`, lease.Job.ID, lease.Token).Scan(&exists)
+	`, lease.Job.ID, lease.Token).Scan(&leaseOwned)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return ErrCompilerProvenanceConflict
 }
 
 func (repository *PostgresRepository) CompleteV2(
@@ -279,14 +313,6 @@ func (repository *PostgresRepository) CompleteV2(
 	return tx.Commit()
 }
 
-func (repository *PostgresRepository) Complete(
-	context.Context,
-	VerificationLease,
-	Completion,
-) error {
-	return errors.New("legacy verification completion is disabled")
-}
-
 func (repository *PostgresRepository) Fail(
 	ctx context.Context,
 	lease VerificationLease,
@@ -329,13 +355,13 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 	var job VerificationJob
 	var payload, digest []byte
 	var outcomeKind, outcome, errorCode sql.NullString
-	var language, version, platform sql.NullString
+	var language, version, platform, executorKind, executionPolicy sql.NullString
 	var generation sql.NullInt64
-	var compilerDigest, runnerDigest []byte
+	var compilerDigest, executorDigest []byte
 	if err := row.Scan(
 		&job.ID, &job.Kind, &language, &version, &platform, &generation,
-		&compilerDigest, &runnerDigest, &payload, &digest,
-		&job.RequiresHardIsolation, &job.Status, &outcomeKind, &outcome, &errorCode,
+		&compilerDigest, &executorKind, &executionPolicy, &executorDigest,
+		&payload, &digest, &job.Status, &outcomeKind, &outcome, &errorCode,
 		&job.AttemptCount, &job.MaxAttempts, &job.CreatedAt, &job.UpdatedAt,
 	); err != nil {
 		return VerificationJob{}, err
@@ -355,10 +381,49 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 	if language.Valid {
 		job.RequestV2.Language = Language(language.String)
 		job.RequestV2.CompilerVersion = version.String
-		job.RequestV2.CompilerPlatform = platform.String
-		job.RequestV2.CatalogGenerationID = generation.Int64
-		job.RequestV2.CompilerDigest = hex.EncodeToString(compilerDigest)
-		job.RequestV2.RunnerDigest = hex.EncodeToString(runnerDigest)
+		bound := platform.Valid || generation.Valid || len(compilerDigest) > 0
+		if bound {
+			if !platform.Valid || !generation.Valid || generation.Int64 <= 0 ||
+				len(compilerDigest) != sha256.Size ||
+				!executorKind.Valid || !executionPolicy.Valid {
+				return VerificationJob{}, errors.New("stored compiler provenance is incomplete")
+			}
+			job.RequestV2.CompilerPlatform = platform.String
+			job.RequestV2.CatalogGenerationID = generation.Int64
+			job.RequestV2.CompilerDigest = hex.EncodeToString(compilerDigest)
+			job.RequestV2.ExecutorKind = executorKind.String
+			job.RequestV2.ExecutionPolicy = executionPolicy.String
+			if len(executorDigest) > 0 {
+				if len(executorDigest) != sha256.Size {
+					return VerificationJob{}, errors.New("stored executor digest is invalid")
+				}
+				job.RequestV2.ExecutorDigest = hex.EncodeToString(executorDigest)
+			}
+			provenance := CompilerProvenance{
+				CatalogGeneration: generation.Int64,
+				Platform:          platform.String,
+				ExecutorKind:      executorKind.String,
+				ExecutionPolicy:   executionPolicy.String,
+			}
+			copy(provenance.Digest[:], compilerDigest)
+			if len(executorDigest) == sha256.Size {
+				copy(provenance.ExecutorDigest[:], executorDigest)
+			}
+			switch executorKind.String {
+			case SolcJSExecutorKind:
+				provenance.Kind = CompilerSolcJS
+			case "legacy_runner":
+				provenance.Kind = CompilerLegacyRunner
+			case "legacy_process":
+				provenance.Kind = CompilerLegacyProcess
+			default:
+				return VerificationJob{}, errors.New("stored executor kind is invalid")
+			}
+			if !provenance.valid() {
+				return VerificationJob{}, errors.New("stored compiler provenance is invalid")
+			}
+			job.Compiler = &provenance
+		}
 	}
 	return job, nil
 }
@@ -435,15 +500,16 @@ func (repository *PostgresRepository) VerifiedContract(
 
 const v2VerificationJobColumns = `
 id::text, kind, language, compiler_version, compiler_platform, catalog_generation_id,
-compiler_digest, runner_digest, request_payload, request_digest,
-requires_hard_isolation, status, outcome_kind, outcome, error_code,
+compiler_digest, executor_kind, execution_policy, executor_digest,
+request_payload, request_digest, status, outcome_kind, outcome, error_code,
 attempt_count, max_attempts, created_at, updated_at`
 
 const v2ClaimedVerificationJobColumns = `
 job.id::text, job.kind, job.language, job.compiler_version, job.compiler_platform,
 job.catalog_generation_id,
-job.compiler_digest, job.runner_digest, job.request_payload, job.request_digest,
-job.requires_hard_isolation, job.status, job.outcome_kind, job.outcome, job.error_code,
+job.compiler_digest, job.executor_kind, job.execution_policy, job.executor_digest,
+job.request_payload, job.request_digest,
+job.status, job.outcome_kind, job.outcome, job.error_code,
 job.attempt_count, job.max_attempts, job.created_at, job.updated_at`
 
 type v2ResultFields struct {

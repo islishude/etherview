@@ -2,6 +2,11 @@
 
 Status: accepted
 
+ADR-0031 supersedes this decision where it requires Vyper, native executable
+platform selection, hard compiler isolation, runner images, or runner
+provenance. The remaining catalog-integrity, dual-compilation, matching,
+canonical-publication, and hostile-input requirements stay accepted.
+
 ## Context
 
 The first contract-verification implementation requires one caller-selected

@@ -34,13 +34,6 @@ const (
 	maximumRuntimeBackfillBatchBlocks = 256
 )
 
-var (
-	compilerVersionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
-	compilerImagePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$`)
-	compilerMemoryPattern  = regexp.MustCompile(`^([1-9][0-9]*)([bkmg])$`)
-	compilerCPUsPattern    = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$`)
-)
-
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.
 type Config struct {
@@ -192,7 +185,6 @@ type FeatureConfig struct {
 
 type SecurityConfig struct {
 	PublicVerification bool     `yaml:"public_verification"`
-	CompilerSandbox    string   `yaml:"compiler_sandbox"`
 	APIKeyPepper       string   `yaml:"api_key_pepper"`
 	AnonymousRate      int      `yaml:"anonymous_rate"`
 	AnonymousBurst     int      `yaml:"anonymous_burst"`
@@ -200,38 +192,27 @@ type SecurityConfig struct {
 	TrustedProxies     []string `yaml:"trusted_proxies"`
 }
 
-// VerificationConfig describes reproducible compiler execution. Public
-// verification only accepts digest-pinned container images. Process compiler
-// artifacts are reserved for explicitly private deployments and must use an
-// HTTPS URL plus a SHA-256 allowlist entry.
+// VerificationConfig describes reproducible, checksum-bound solc-js
+// compilation owned by API-capable processes.
 type VerificationConfig struct {
-	MaxInputBytes                      int                                    `yaml:"max_input_bytes"`
-	MaxOutputBytes                     int                                    `yaml:"max_output_bytes"`
-	Timeout                            time.Duration                          `yaml:"timeout"`
-	CacheDirectory                     string                                 `yaml:"cache_directory"`
-	ContainerRuntime                   string                                 `yaml:"container_runtime"`
-	ContainerMemory                    string                                 `yaml:"container_memory"`
-	ContainerCPUs                      string                                 `yaml:"container_cpus"`
-	ContainerPIDs                      int                                    `yaml:"container_pids"`
-	CatalogURLs                        map[string]string                      `yaml:"catalog_urls"`
-	AllowedDownloadOrigins             []string                               `yaml:"allowed_download_origins"`
-	UnsafeAllowPrivateDownloadNetworks bool                                   `yaml:"unsafe_allow_private_download_networks"`
-	CatalogRefreshInterval             time.Duration                          `yaml:"catalog_refresh_interval"`
-	CatalogMaxStaleness                time.Duration                          `yaml:"catalog_max_staleness"`
-	RunnerImage                        string                                 `yaml:"runner_image"`
-	Artifacts                          map[string]map[string]CompilerArtifact `yaml:"artifacts"`
-	Images                             map[string]map[string]string           `yaml:"images"`
-}
-
-type CompilerArtifact struct {
-	URL      string `yaml:"url"`
-	SHA256   string `yaml:"sha256"`
-	MaxBytes int64  `yaml:"max_bytes"`
+	MaxInputBytes          int               `yaml:"max_input_bytes"`
+	MaxOutputBytes         int               `yaml:"max_output_bytes"`
+	WorkerCount            int               `yaml:"worker_count"`
+	Timeout                time.Duration     `yaml:"timeout"`
+	CacheDirectory         string            `yaml:"cache_directory"`
+	CatalogURLs            map[string]string `yaml:"catalog_urls"`
+	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
+	CatalogRefreshInterval time.Duration     `yaml:"catalog_refresh_interval"`
+	CatalogMaxStaleness    time.Duration     `yaml:"catalog_max_staleness"`
+	// UnsafeAllowPrivateDownloadNetworks exists only for explicit local
+	// Preview/E2E environments whose DNS proxy uses synthetic private
+	// addresses. HTTPS origin allowlisting, TLS, size, and SHA-256 checks remain
+	// mandatory.
+	UnsafeAllowPrivateDownloadNetworks bool `yaml:"unsafe_allow_private_download_networks"`
 }
 
 // SourcifyConfig bounds the optional external Sourcify v2 interoperability
-// adapter. The API role only persists explicit requests; the verify role owns
-// all upstream calls and polling.
+// adapter. API/all workers own explicit requests and bounded upstream polling.
 type SourcifyConfig struct {
 	BaseURL          string        `yaml:"base_url"`
 	Timeout          time.Duration `yaml:"timeout"`
@@ -382,27 +363,20 @@ func Default() Config {
 			PriceFreshness: 5 * time.Minute, NameFreshness: 24 * time.Hour, FailureTTL: 30 * time.Second,
 		},
 		Security: SecurityConfig{
-			CompilerSandbox: "disabled",
-			AnonymousRate:   5,
-			AnonymousBurst:  20,
+			AnonymousRate:  5,
+			AnonymousBurst: 20,
 		},
 		Verification: VerificationConfig{
-			MaxInputBytes:    5 << 20,
-			MaxOutputBytes:   64 << 20,
-			Timeout:          2 * time.Minute,
-			CacheDirectory:   "/var/lib/etherview/compilers",
-			ContainerRuntime: "docker",
-			ContainerMemory:  "512m",
-			ContainerCPUs:    "1",
-			ContainerPIDs:    64,
+			MaxInputBytes:  5 << 20,
+			MaxOutputBytes: 64 << 20,
+			WorkerCount:    1,
+			Timeout:        2 * time.Minute,
+			CacheDirectory: "/var/lib/etherview/compilers/cache",
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
-				"vyper":    "https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json",
 			},
 			AllowedDownloadOrigins: []string{
 				"https://binaries.soliditylang.org",
-				"https://raw.githubusercontent.com",
-				"https://github.com",
 			},
 			CatalogRefreshInterval: time.Hour,
 			CatalogMaxStaleness:    24 * time.Hour,
@@ -707,17 +681,8 @@ func (c Config) Validate() error {
 	if _, err := NormalizeRoles(c.Runtime.Roles); err != nil {
 		errs = append(errs, err)
 	}
-	if c.Security.CompilerSandbox != "disabled" && c.Security.CompilerSandbox != "process" && c.Security.CompilerSandbox != "container" {
-		errs = append(errs, errors.New("security.compiler_sandbox must be disabled, process, or container"))
-	}
-	if c.Security.PublicVerification && c.Security.CompilerSandbox != "container" {
-		errs = append(errs, errors.New("public verification requires a container compiler sandbox"))
-	}
 	if c.Security.PublicVerification && !c.Features.Verification {
 		errs = append(errs, errors.New("public verification requires features.verification"))
-	}
-	if c.Security.CompilerSandbox == "container" && c.Verification.ContainerRuntime != "docker" && c.Verification.ContainerRuntime != "podman" {
-		errs = append(errs, errors.New("verification.container_runtime must be docker or podman in container sandbox mode"))
 	}
 	if c.Security.PublicVerification && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("public verification requires API key authentication"))
@@ -752,11 +717,11 @@ func (c Config) Validate() error {
 	if c.Verification.MaxOutputBytes <= 0 || c.Verification.MaxOutputBytes > 256<<20 {
 		errs = append(errs, errors.New("verification.max_output_bytes must be between 1 and 268435456"))
 	}
+	if c.Verification.WorkerCount <= 0 || c.Verification.WorkerCount > 64 {
+		errs = append(errs, errors.New("verification.worker_count must be between 1 and 64"))
+	}
 	if c.Verification.Timeout <= 0 || c.Verification.Timeout > 30*time.Minute {
 		errs = append(errs, errors.New("verification.timeout must be between 1ns and 30m"))
-	}
-	if c.Verification.ContainerPIDs <= 0 || c.Verification.ContainerPIDs > 4096 {
-		errs = append(errs, errors.New("verification.container_pids must be between 1 and 4096"))
 	}
 	if c.Verification.CatalogRefreshInterval <= 0 || c.Verification.CatalogRefreshInterval > 24*time.Hour {
 		errs = append(errs, errors.New("verification.catalog_refresh_interval must be between 1ns and 24h"))
@@ -766,12 +731,6 @@ func (c Config) Validate() error {
 		errs = append(errs, errors.New("verification.catalog_max_staleness must be at least the refresh interval and at most 168h"))
 	}
 	if err := validateCompilerCatalogConfig(c.Verification); err != nil {
-		errs = append(errs, err)
-	}
-	if err := validateCompilerContainerResources(c.Verification); err != nil {
-		errs = append(errs, err)
-	}
-	if err := validateCompilerAllowlist(c.Verification); err != nil {
 		errs = append(errs, err)
 	}
 	if c.Features.Sourcify && (!c.Features.Verification || !c.Security.PublicVerification) {
@@ -897,7 +856,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
 			needsRPC = true
 		}
-		if role == "verify" && c.Features.Verification {
+		if role == "api" && c.Features.Verification {
 			needsVerificationWorker = true
 		}
 		if role == "api" && c.Features.Verification {
@@ -911,23 +870,17 @@ func (c Config) ValidateForRoles(roles []string) error {
 		errs = append(errs, errors.New("at least one rpc endpoint is required for selected roles"))
 	}
 	if needsVerificationWorker {
-		switch c.Security.CompilerSandbox {
-		case "container":
-			if !validDigestPinnedImage(c.Verification.RunnerImage) {
-				errs = append(errs, errors.New("verification.runner_image must be digest-pinned for the verify role"))
-			}
-		case "process":
-			if c.Security.PublicVerification {
-				errs = append(errs, errors.New("process compiler sandbox cannot serve public verification"))
-			}
-			if strings.TrimSpace(c.Verification.CacheDirectory) == "" {
-				errs = append(errs, errors.New("verification.cache_directory is required by the verify role in process sandbox mode"))
-			} else if !filepath.IsAbs(c.Verification.CacheDirectory) || filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
-				errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
-			}
-		default:
-			errs = append(errs, errors.New("verification feature requires a configured compiler sandbox for the verify role"))
+		if strings.TrimSpace(c.Verification.CacheDirectory) == "" {
+			errs = append(errs, errors.New("verification.cache_directory is required by the api verification worker"))
+		} else if !filepath.IsAbs(c.Verification.CacheDirectory) ||
+			filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
+			errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
 		}
+	}
+	if c.Verification.UnsafeAllowPrivateDownloadNetworks && !needsVerificationWorker {
+		errs = append(errs, errors.New(
+			"verification.unsafe_allow_private_download_networks requires an api verification worker",
+		))
 	}
 	if needsVerificationReadAuth && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("API role verification reads require API key authentication"))
@@ -947,8 +900,8 @@ func (c Config) ValidateForRoles(roles []string) error {
 }
 
 func validateCompilerCatalogConfig(cfg VerificationConfig) error {
-	if len(cfg.CatalogURLs) != 2 || cfg.CatalogURLs["solidity"] == "" || cfg.CatalogURLs["vyper"] == "" {
-		return errors.New("verification.catalog_urls must define solidity and vyper")
+	if len(cfg.CatalogURLs) != 1 || cfg.CatalogURLs["solidity"] == "" {
+		return errors.New("verification.catalog_urls must define only solidity")
 	}
 	allowed := make(map[string]struct{}, len(cfg.AllowedDownloadOrigins))
 	for _, raw := range cfg.AllowedDownloadOrigins {
@@ -963,7 +916,10 @@ func validateCompilerCatalogConfig(cfg VerificationConfig) error {
 		return errors.New("verification.allowed_download_origins is required")
 	}
 	for language, raw := range cfg.CatalogURLs {
-		if language == "solidity" && raw == "auto" {
+		if language != "solidity" {
+			return errors.New("verification.catalog_urls must define only solidity")
+		}
+		if raw == "auto" {
 			continue
 		}
 		parsed, err := url.Parse(raw)
@@ -976,15 +932,6 @@ func validateCompilerCatalogConfig(cfg VerificationConfig) error {
 		}
 	}
 	return nil
-}
-
-func validDigestPinnedImage(value string) bool {
-	parts := strings.Split(value, "@sha256:")
-	if len(parts) != 2 || parts[0] == "" || len(parts[1]) != 64 || parts[1] != strings.ToLower(parts[1]) {
-		return false
-	}
-	_, err := hex.DecodeString(parts[1])
-	return err == nil && !strings.Contains(parts[0], "://")
 }
 
 func validatePublicOrigin(raw string) error {
@@ -1216,86 +1163,6 @@ func forbiddenFacilitatorHeader(name string) bool {
 	}
 }
 
-func validateCompilerAllowlist(cfg VerificationConfig) error {
-	var errs []error
-	for language, versions := range cfg.Artifacts {
-		if language != "solidity" && language != "vyper" {
-			errs = append(errs, fmt.Errorf("verification artifact language %q is unsupported", language))
-		}
-		if len(versions) == 0 {
-			errs = append(errs, fmt.Errorf("verification artifact language %q has no versions", language))
-		}
-		for version, artifact := range versions {
-			if !compilerVersionPattern.MatchString(version) {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s has an invalid version", language, version))
-			}
-			u, err := url.Parse(strings.TrimSpace(artifact.URL))
-			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || len(u.String()) > 4096 {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s must use an absolute HTTPS URL", language, version))
-			}
-			digest, digestErr := decodeNonzeroSHA256(artifact.SHA256)
-			if digestErr != nil || artifact.SHA256 != strings.ToLower(artifact.SHA256) || allZero(digest) {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s has an invalid SHA-256", language, version))
-			}
-			if artifact.MaxBytes < 0 || artifact.MaxBytes > 1<<30 {
-				errs = append(errs, fmt.Errorf("verification artifact %s/%s max_bytes must be zero or between 1 and 1073741824", language, version))
-			}
-		}
-	}
-	for language, versions := range cfg.Images {
-		if language != "solidity" && language != "vyper" {
-			errs = append(errs, fmt.Errorf("verification image language %q is unsupported", language))
-		}
-		if len(versions) == 0 {
-			errs = append(errs, fmt.Errorf("verification image language %q has no versions", language))
-		}
-		for version, image := range versions {
-			parts := strings.Split(image, "@sha256:")
-			if !compilerVersionPattern.MatchString(version) || len(parts) != 2 ||
-				!compilerImagePattern.MatchString(parts[0]) || strings.Contains(parts[0], "//") || strings.Contains(parts[0], "..") {
-				errs = append(errs, fmt.Errorf("verification image %s/%s must be pinned by SHA-256 digest", language, version))
-				continue
-			}
-			digest, err := decodeNonzeroSHA256(parts[1])
-			if err != nil || parts[1] != strings.ToLower(parts[1]) || allZero(digest) {
-				errs = append(errs, fmt.Errorf("verification image %s/%s has an invalid digest", language, version))
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func validateCompilerContainerResources(cfg VerificationConfig) error {
-	match := compilerMemoryPattern.FindStringSubmatch(cfg.ContainerMemory)
-	if len(match) != 3 {
-		return errors.New("verification.container_memory is invalid")
-	}
-	amount, err := strconv.ParseUint(match[1], 10, 64)
-	if err != nil {
-		return errors.New("verification.container_memory is invalid")
-	}
-	multiplier := uint64(1)
-	switch match[2] {
-	case "k":
-		multiplier = 1 << 10
-	case "m":
-		multiplier = 1 << 20
-	case "g":
-		multiplier = 1 << 30
-	}
-	if amount > ^uint64(0)/multiplier || amount*multiplier < 64<<20 || amount*multiplier > 16<<30 {
-		return errors.New("verification.container_memory must be between 64m and 16g")
-	}
-	if !compilerCPUsPattern.MatchString(cfg.ContainerCPUs) {
-		return errors.New("verification.container_cpus is invalid")
-	}
-	cpus, err := strconv.ParseFloat(cfg.ContainerCPUs, 64)
-	if err != nil || cpus <= 0 || cpus > 64 {
-		return errors.New("verification.container_cpus must be greater than zero and at most 64")
-	}
-	return nil
-}
-
 func decodeNonzeroSHA256(value string) ([]byte, error) {
 	if len(value) != 64 {
 		return nil, errors.New("invalid SHA-256")
@@ -1437,7 +1304,7 @@ func (e RPCEndpoint) Validate() error {
 	return errors.Join(errs...)
 }
 
-var allowedRoles = []string{"api", "sync", "enrich", "trace", "verify", "metadata", "maintenance"}
+var allowedRoles = []string{"api", "sync", "enrich", "trace", "metadata", "maintenance"}
 
 // NormalizeRoles validates roles, expands all, removes duplicates, and returns
 // roles in stable architectural order.
@@ -1457,6 +1324,9 @@ func NormalizeRoles(input []string) ([]string, error) {
 					wanted[item] = true
 				}
 				continue
+			}
+			if role == "verify" {
+				return nil, errors.New(`runtime role "verify" was removed; use the api role with its solc-js executor`)
 			}
 			known := slices.Contains(allowedRoles, role)
 			if !known {
@@ -1487,6 +1357,16 @@ func applyEnvironmentForRoles(
 	readFile func(string) ([]byte, error),
 	forcedRoles []string,
 ) error {
+	for _, removed := range []string{
+		"COMPILER_SANDBOX",
+		"VERIFICATION_RUNNER_ENDPOINT",
+		"VERIFICATION_RUNNER_IMAGE",
+		"VERIFICATION_VYPER_CATALOG_URL",
+	} {
+		if _, exists := lookup(envPrefix + removed); exists {
+			return fmt.Errorf("%s%s is no longer supported", envPrefix, removed)
+		}
+	}
 	if err := setBool(lookup, "FEATURE_USER_AUTH", &cfg.Features.UserAuth); err != nil {
 		return err
 	}
@@ -1575,18 +1455,10 @@ func applyEnvironmentForRoles(
 			cfg.Billing.FacilitatorHeaders = headers
 		}
 	}
-	setString(lookup, "COMPILER_SANDBOX", &cfg.Security.CompilerSandbox)
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
-	setString(lookup, "COMPILER_CONTAINER_RUNTIME", &cfg.Verification.ContainerRuntime)
-	setString(lookup, "VERIFICATION_RUNNER_IMAGE", &cfg.Verification.RunnerImage)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value
-		}
-	}
-	if value, ok := lookup(envPrefix + "VERIFICATION_VYPER_CATALOG_URL"); ok {
-		if value = strings.TrimSpace(value); value != "" {
-			cfg.Verification.CatalogURLs["vyper"] = value
 		}
 	}
 	if value, ok := lookup(envPrefix + "VERIFICATION_ALLOWED_DOWNLOAD_ORIGINS"); ok {
@@ -1702,6 +1574,9 @@ func applyEnvironmentForRoles(
 		return err
 	}
 	if err := setInt(lookup, "VERIFICATION_MAX_OUTPUT_BYTES", &cfg.Verification.MaxOutputBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_WORKER_COUNT", &cfg.Verification.WorkerCount); err != nil {
 		return err
 	}
 	if err := setDuration(lookup, "VERIFICATION_CATALOG_REFRESH_INTERVAL", &cfg.Verification.CatalogRefreshInterval); err != nil {

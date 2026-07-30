@@ -124,7 +124,7 @@ const resources = {
         status: "Indexer status",
         statusDescription: "Core coverage and optional enrichment completeness are tracked independently.",
         verify: "Verify contract",
-        verifyDescription: "Submit Solidity or Vyper source for isolated, code-hash-bound verification.",
+        verifyDescription: "Submit Solidity or Yul source for bounded, code-hash-bound verification.",
         block: "Block",
         transaction: "Transaction",
         transactionDetails: "Transaction details",
@@ -275,7 +275,6 @@ const resources = {
       verificationLanguage: {
         solidity: "Solidity",
         yul: "Yul",
-        vyper: "Vyper",
       },
       capabilityName: {
         genesisState: "Genesis state",
@@ -1013,7 +1012,7 @@ const resources = {
         status: "索引器状态",
         statusDescription: "核心覆盖与可选增强的完整度分别跟踪。",
         verify: "验证合约",
-        verifyDescription: "提交 Solidity 或 Vyper 源码，在隔离环境中按代码哈希验证。",
+        verifyDescription: "提交 Solidity 或 Yul 源码，在资源受限环境中按代码哈希验证。",
         block: "区块",
         transaction: "交易",
         transactionDetails: "交易详情",
@@ -1164,7 +1163,6 @@ const resources = {
       verificationLanguage: {
         solidity: "Solidity",
         yul: "Yul",
-        vyper: "Vyper",
       },
       capabilityName: {
         genesisState: "创世状态",

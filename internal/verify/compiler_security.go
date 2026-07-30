@@ -2,9 +2,7 @@ package verify
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,9 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,13 +25,6 @@ const (
 	defaultCompilerTimeout       = 2 * time.Minute
 )
 
-var (
-	containerMemoryPattern = regexp.MustCompile(`^([1-9][0-9]*)([bkmg])$`)
-	containerCPUsPattern   = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$`)
-	containerImagePattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$`)
-	containerNamePattern   = regexp.MustCompile(`^etherview-compiler-[0-9a-f]{32}$`)
-)
-
 type outboundResolver interface {
 	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
 }
@@ -47,7 +35,7 @@ func validateCompilerArtifact(
 	artifact CompilerArtifact,
 	allowHTTP bool,
 ) (*url.URL, [sha256.Size]byte, int64, error) {
-	if language != LanguageSolidity && language != LanguageVyper {
+	if language != LanguageSolidity {
 		return nil, [sha256.Size]byte{}, 0, fmt.Errorf("language %q is not allowlisted", language)
 	}
 	if !versionPattern.MatchString(version) {
@@ -72,26 +60,6 @@ func validateCompilerArtifact(
 	return parsed, digest, maximum, nil
 }
 
-func validateProcessManifest(artifacts map[Language]map[string]CompilerArtifact) error {
-	if len(artifacts) == 0 {
-		return errors.New("compiler artifacts are required")
-	}
-	for language, versions := range artifacts {
-		if language != LanguageSolidity && language != LanguageVyper {
-			return fmt.Errorf("language %q is not allowlisted", language)
-		}
-		if len(versions) == 0 {
-			return fmt.Errorf("compiler artifacts for %s are required", language)
-		}
-		for version, artifact := range versions {
-			if _, _, _, err := validateCompilerArtifact(language, version, artifact, false); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func secureCompilerCacheRoot(root string) error {
 	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return errors.New("compiler cache root must be an absolute clean path")
@@ -108,7 +76,7 @@ func secureCompilerCacheRoot(root string) error {
 
 func validCompilerCacheFile(path string, expected [sha256.Size]byte, maximum int64) bool {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o500 || info.Size() < 1 || info.Size() > maximum {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o400 || info.Size() < 1 || info.Size() > maximum {
 		return false
 	}
 	file, err := os.Open(path)
@@ -117,7 +85,7 @@ func validCompilerCacheFile(path string, expected [sha256.Size]byte, maximum int
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o500 {
+	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o400 {
 		return false
 	}
 	hasher := sha256.New()
@@ -189,108 +157,4 @@ func dialRestrictedOutboundHost(
 		}
 	}
 	return nil, errors.New("dial restricted outbound host")
-}
-
-func parseContainerImage(image string) ([sha256.Size]byte, error) {
-	var zero [sha256.Size]byte
-	if strings.Count(image, "@sha256:") != 1 {
-		return zero, errors.New("compiler container image must be pinned by digest")
-	}
-	parts := strings.SplitN(image, "@sha256:", 2)
-	if !containerImagePattern.MatchString(parts[0]) || strings.Contains(parts[0], "//") || strings.Contains(parts[0], "..") {
-		return zero, errors.New("compiler container image name is invalid")
-	}
-	if parts[1] != strings.ToLower(parts[1]) {
-		return zero, errors.New("compiler container image digest is invalid")
-	}
-	digest, err := decodeCompilerDigest(parts[1])
-	if err != nil {
-		return zero, errors.New("compiler container image digest is invalid")
-	}
-	return digest, nil
-}
-
-func validateContainerManifest(images map[Language]map[string]string) (map[Language]map[string]string, error) {
-	if len(images) == 0 {
-		return nil, errors.New("compiler container images are required")
-	}
-	validated := make(map[Language]map[string]string, len(images))
-	for language, versions := range images {
-		if language != LanguageSolidity && language != LanguageVyper {
-			return nil, fmt.Errorf("language %q is not allowlisted", language)
-		}
-		if len(versions) == 0 {
-			return nil, fmt.Errorf("compiler container images for %s are required", language)
-		}
-		validated[language] = make(map[string]string, len(versions))
-		for version, image := range versions {
-			if !versionPattern.MatchString(version) {
-				return nil, errors.New("invalid compiler version")
-			}
-			if _, err := parseContainerImage(image); err != nil {
-				return nil, err
-			}
-			validated[language][version] = image
-		}
-	}
-	return validated, nil
-}
-
-func sortedCompilerLanguages(images map[Language]map[string]string) []Language {
-	languages := make([]Language, 0, len(images))
-	for language := range images {
-		languages = append(languages, language)
-	}
-	slices.Sort(languages)
-	return languages
-}
-
-func validateContainerResources(memory, cpus string, pids int) error {
-	match := containerMemoryPattern.FindStringSubmatch(memory)
-	if len(match) != 3 {
-		return errors.New("compiler container memory limit is invalid")
-	}
-	amount, err := strconv.ParseUint(match[1], 10, 64)
-	if err != nil {
-		return errors.New("compiler container memory limit is invalid")
-	}
-	multiplier := uint64(1)
-	switch match[2] {
-	case "k":
-		multiplier = 1 << 10
-	case "m":
-		multiplier = 1 << 20
-	case "g":
-		multiplier = 1 << 30
-	}
-	if amount > ^uint64(0)/multiplier {
-		return errors.New("compiler container memory limit is invalid")
-	}
-	bytes := amount * multiplier
-	if bytes < 64<<20 || bytes > 16<<30 {
-		return errors.New("compiler container memory limit must be between 64m and 16g")
-	}
-	if !containerCPUsPattern.MatchString(cpus) {
-		return errors.New("compiler container CPU limit is invalid")
-	}
-	cpuValue, err := strconv.ParseFloat(cpus, 64)
-	if err != nil || cpuValue <= 0 || cpuValue > 64 {
-		return errors.New("compiler container CPU limit must be greater than zero and at most 64")
-	}
-	if pids < 1 || pids > 4096 {
-		return errors.New("compiler container PID limit must be between 1 and 4096")
-	}
-	return nil
-}
-
-func randomCompilerContainerName() (string, error) {
-	var value [16]byte
-	if _, err := io.ReadFull(rand.Reader, value[:]); err != nil {
-		return "", errors.New("generate compiler container name")
-	}
-	return "etherview-compiler-" + hex.EncodeToString(value[:]), nil
-}
-
-func validCompilerContainerName(value string) bool {
-	return containerNamePattern.MatchString(value)
 }

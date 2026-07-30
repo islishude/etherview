@@ -1,6 +1,12 @@
 # ADR-0014: Durable Verification Identity and Publication
 
-Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md)
+Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md) and
+[ADR-0031](ADR-0031-api-owned-solc-js-executor.md)
+
+The Vyper and hard-isolation details below are retained as historical design
+evidence only. Current verification supports Solidity/Yul through the trusted
+solc-js subprocess model; future Vyper considerations are recorded separately
+in [the non-commitment design note](../architecture/future-vyper-verification.md).
 
 ## Context
 

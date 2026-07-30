@@ -346,6 +346,7 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	db := fakeDatabase(t,
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
+		sqlExpectation{contains: "JOIN verified_proxy_contracts AS verified", columns: fakeColumns(1)},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	values := url.Values{"address": {testContract}}

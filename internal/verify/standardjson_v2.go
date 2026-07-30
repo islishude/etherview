@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path"
 	"sort"
 )
 
@@ -67,30 +66,9 @@ func PrepareVerifierStandardJSON(
 	if !ok || len(sources) == 0 || len(sources) > maxStandardJSONSources {
 		return nil, fmt.Errorf("standard JSON sources must contain between 1 and %d entries", maxStandardJSONSources)
 	}
-	var vyperCompiler vyperVersion
-	if language == LanguageVyper {
-		var valid bool
-		vyperCompiler, valid = parseVyperVersion(compilerVersion)
-		if !valid {
-			return nil, errors.New("vyper compiler version must be semantic")
-		}
-	}
 	for sourceName, rawSource := range sources {
 		if !validStandardJSONSourceName(sourceName) {
 			return nil, errors.New("standard JSON source name is invalid")
-		}
-		if language == LanguageVyper {
-			if !validVyperStandardJSONPath(sourceName) {
-				return nil, errors.New("vyper source path must be a clean relative POSIX path")
-			}
-			extension := path.Ext(sourceName)
-			if vyperCompiler.atLeast(0, 4, 0) {
-				if extension != ".vy" && extension != ".vyi" {
-					return nil, errors.New("vyper sources must use .vy or .vyi filenames")
-				}
-			} else if extension != ".vy" {
-				return nil, errors.New("vyper before 0.4.0 requires .vy sources")
-			}
 		}
 		source, ok := rawSource.(map[string]any)
 		if !ok || len(source) > 2 {
@@ -145,30 +123,8 @@ func PrepareVerifierStandardJSON(
 				"*": append([]string(nil), verifierRequiredOutputs...),
 			},
 		}
-	case LanguageVyper:
-		if vyperCompiler.atLeast(0, 4, 0) {
-			if rawPaths, exists := settings["search_paths"]; exists {
-				paths, valid := rawPaths.([]any)
-				if !valid || len(paths) != 1 || paths[0] != "." {
-					return nil, errors.New("vyper search paths must contain only the virtual root")
-				}
-			}
-			settings["search_paths"] = []string{"."}
-		} else if _, exists := settings["search_paths"]; exists {
-			return nil, errors.New("vyper search paths require compiler 0.4.0 or newer")
-		}
-		if err := validateVyperInlineInputs(document, sources, vyperCompiler); err != nil {
-			return nil, err
-		}
-		selection := make(map[string]any)
-		for sourceName := range sources {
-			if path.Ext(sourceName) == ".vy" {
-				selection[sourceName] = append([]string(nil), vyperRequiredOutputsForVersion(vyperCompiler)...)
-			}
-		}
-		settings["outputSelection"] = selection
 	default:
-		return nil, errors.New("language must be solidity, yul, or vyper")
+		return nil, errors.New("language must be solidity or yul")
 	}
 	document["settings"] = settings
 	prepared, err := json.Marshal(document)
@@ -204,11 +160,7 @@ func validateCallerOutputSelection(settings map[string]any, language Language) e
 				return errors.New("standard JSON outputSelection is too large")
 			}
 			for contract, rawOutputs := range value {
-				validContract := validStandardJSONContractSelector(contract)
-				if language == LanguageVyper {
-					validContract = validVyperContractSelector(contract)
-				}
-				if !validContract {
+				if !validStandardJSONContractSelector(contract) {
 					return errors.New("standard JSON outputSelection contract selector is invalid")
 				}
 				outputs, err := standardJSONOutputNames(rawOutputs)

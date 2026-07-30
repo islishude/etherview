@@ -18,7 +18,6 @@ const (
 	RoleSync        Role = "sync"
 	RoleEnrich      Role = "enrich"
 	RoleTrace       Role = "trace"
-	RoleVerify      Role = "verify"
 	RoleMetadata    Role = "metadata"
 	RoleMaintenance Role = "maintenance"
 )

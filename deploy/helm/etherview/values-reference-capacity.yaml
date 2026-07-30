@@ -27,8 +27,6 @@ roles:
       targetCPUUtilizationPercentage: 70
   trace:
     enabled: false
-  verify:
-    enabled: false
   metadata:
     enabled: false
   maintenance:

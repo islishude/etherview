@@ -175,8 +175,7 @@ func compilerContractDocuments(output json.RawMessage) (map[string]json.RawMessa
 			return nil, errCompilerOutputMalformed
 		}
 		for contractName, rawContract := range byName {
-			if !solidityContractNamePattern.MatchString(contractName) &&
-				!vyperContractNamePattern.MatchString(contractName) {
+			if !solidityContractNamePattern.MatchString(contractName) {
 				return nil, errCompilerOutputMalformed
 			}
 			flattened[fileName+"\x00"+contractName] = rawContract

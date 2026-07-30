@@ -18,6 +18,10 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0025: Historical execution analytics](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0026: Current capability status and numeric canonical tips](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
 - [ADR-0027: Process-native API TLS](../decisions/ADR-0027-process-native-api-tls.md)
+- [ADR-0028: Durable proxy verification and real Hardhat E2E](../decisions/ADR-0028-proxy-verification-and-hardhat-e2e.md)
+- [ADR-0029: Daemonless remote compiler runner](../decisions/ADR-0029-daemonless-remote-compiler-runner.md)
+- [ADR-0030: API-integrated verifier and self-contained runner](../decisions/ADR-0030-api-integrated-verifier-and-self-contained-runner.md)
+- [ADR-0031: API-owned architecture-neutral solc-js executor](../decisions/ADR-0031-api-owned-solc-js-executor.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -38,7 +42,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
-| P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
+| P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with the architecture-neutral compiler runtime | Compose render, production-image boundary, and Preview runtime tests |
 | P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
@@ -50,6 +54,9 @@ and user/operator evidence sufficient for a production public release.
 | P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
 | P70-T25 | done | P50-T13 | Center the full-width account action in the wallet menu | focused frontend regression and lint |
 | P70-T26 | done | P70-T20 | Align the branded Preview browser origin with SIWE, wallet metadata, TLS checks, and operator documentation | focused config/origin tests, Compose rendering, and live Preview challenge |
+| P70-T27 | done | P20-T03, P30-T11, P40-T06, P60-T03, P70-T21 | Durable proxy-verification compatibility plus real Hardhat 3 production-path E2E | handler, PostgreSQL, migration, monolith/split Compose, and real compiler gates |
+| P70-T28 | superseded | P30-T14, P60 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
+| P70-T29 | in_progress | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
 
 ## Acceptance
 
@@ -120,6 +127,26 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T24: successful runtime E2E output contains only bounded phase
       progress, while failures identify the exact mode and phase and retain one
       complete redacted diagnostic bundle for local and CI inspection.
+- [x] P70-T27: proxy verification is a durable GUID-addressable workflow bound
+      to exact canonical proxy and implementation identities, and the real
+      Hardhat 3 gate drives Anvil, PostgreSQL, production roles, the official
+      solc-js executor in monolith and split topologies.
+- [x] P70-T29: `api`/`all` validate the canonical Node 26.5.0,
+      `solc@0.8.36`, wrapper, dependency, and shared-library manifest before
+      work; each checksum-pinned official soljson input runs in a fresh,
+      permission-restricted, process-group-fenced subprocess and binds complete
+      compiler plus executor provenance once.
+- [x] P70-T29: Makefile, Docker, Compose, Preview, Helm, and CI contain no
+      compiler runner, runner reference file, or fixed CPU platform; only
+      `api`/`all` receive the disposable cache and bounded compiler-catalog
+      egress, while host-native images preserve `emscripten-wasm32` solely as
+      compiler artifact provenance.
+- [x] P70-T29: migration 0031 removes all Vyper records and dependent proxy
+      publications, terminates active legacy-runner work with
+      `executor_migrated`, preserves terminal Solidity history, renames and
+      constrains executor provenance, and rejects later Vyper writes; public
+      OpenAPI, generated clients, UI, and compatibility submission expose only
+      Solidity/Yul.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -187,14 +214,19 @@ monitoring. Running the exact 500 RPS/30-minute target there and preserving the
 load report, resource peaks, monitoring data, and tuning guide clears the
 blocker.
 
-P70-T15 is in progress with an explicit Preview-only verification-download
-exception for local transparent-proxy fake IPs. The exception must remain
-disabled by default, apply only to the Preview `verify` role, and leave API,
-metadata, production Compose, and the shared public-network policy unchanged.
-A fresh Preview start must keep all seven roles ready and demonstrate catalog
-publication, one real Solidity and one real Vyper compilation through the
-exact isolated runner, and one bounded public NFT metadata fetch before this
-item can become `done`.
+P70-T15 remains in progress only for one bounded public NFT metadata fetch. Its
+Preview compiler portion now passes through P70-T29: a fresh host-native ARM64
+Preview kept all six application roles stable without a runner, resolved 105
+official Solidity entries, and verified a deployed Solidity 0.8.30 contract
+through the public HTTPS compatibility endpoint.
+
+P70-T27 is complete: the real Hardhat CLI proxy workflow, including Solidity,
+Yul, upgrade invalidation, and rebinding, passes in both monolith and
+six-application-role split topologies. P70-T28 is superseded by P70-T29.
+P70-T29 remains in progress only until the final revision's native
+`ubuntu-24.04` AMD64 and `ubuntu-24.04-arm` CI matrix jobs pass. The workflow
+builds each host-native image without a platform override; local emulation or a
+fixed cross-platform build is not substitute evidence.
 
 P70-T20 is complete for process-native TLS. P70-T26 now aligns the branded
 Preview browser, session-origin, wallet explorer metadata, and readiness-check contract.
@@ -204,6 +236,109 @@ those gates.
 
 ## Evidence
 
+- P70-T29 implementation and local ARM64 evidence: ADR-0031 replaces the
+  runner with an API-owned trusted solc-js subprocess and migration 0031
+  replaces runner provenance with immutable executor kind, policy, and digest.
+  The exact Node 26.5.0, `solc@0.8.36` wrapper, dependency tree, shared
+  libraries, and runtime manifest are read-only in the production image; the
+  image boundary reports UID/GID 65532, ARM64, the exact Node version, and a
+  hardened root filesystem with no npm, npx, corepack, shell, native solc,
+  Vyper, Go toolchain, or container client.
+  `make test-integration-race` applied all migrations through 0031 to a fresh
+  PostgreSQL 18 database and passed the destructive Vyper/proxy cleanup,
+  terminal Solidity preservation, active legacy-job termination, new-language
+  rejection, and immutable executor-source regressions. `make
+  test-schema-e2e`, `make test-runtime-e2e-prebuilt`, `make
+  test-hardhat3-provider-compat`, `make docker-image-check`, and the final
+  `make check` pass.
+- P70-T29 Preview and real compiler evidence: `make recreate-preview` rebuilt
+  the current host-native production image and started it with `--no-build`;
+  the complete six-application-role topology plus PostgreSQL and Reth passed
+  the 15-second stability checker with no runner container. Docker reported
+  host `aarch64` and image `arm64`. A signed Preview deployment at
+  `0x5fbdb2315678afecb367f032d93f642f64180aa3` verified through the public
+  HTTPS Etherscan-compatible endpoint. PostgreSQL recorded
+  `0.8.30+commit.73712a01`, `emscripten-wasm32`, generation 1, the official
+  compiler SHA-256, `node_solcjs_v1`, `trusted_subprocess`, the runtime executor
+  digest, and `verification_success`; the catalog contained 105 entries.
+  `make test-hardhat3-e2e` then rebuilt the exact current application and
+  client images and passed monolith in 112.85 seconds and distributed in
+  119.54 seconds, including one Yul compile, three Solidity address
+  verifications, proxy upgrade invalidation/rebinding, and topology parity.
+  Native AMD64 and ARM64 CI evidence for this final revision remains pending,
+  so P70-T29 stays `in_progress`.
+- P70-T27 closure evidence: the same current-source Hardhat run exercised the
+  official compiler catalog, durable proxy GUID/status API, incorrect expected
+  implementation rejection without a job, two immutable proxy publications,
+  upgrade invalidation, implementation V2 verification, rebinding, and exact
+  database parity in both production topologies. Together with the handler,
+  PostgreSQL migration, reorg, idempotency, and concurrency regressions in
+  `make check` and `make test-integration-race`, this completes P70-T27.
+- Historical pre-0031 P70-T28 implementation evidence: ADR-0030 superseded
+  ADR-0029 only
+  for verification-role, readiness, protocol, and catalog/cache ownership
+  decisions. The API now owns a coordinator and independently bounded worker
+  pool; runner protocol v4 resolves, downloads, validates, caches, and executes
+  one exact compiler while PostgreSQL migration 0030 permits only one atomic
+  empty-to-complete provenance binding. Production Compose, Preview, Helm, and
+  runtime tests contain six application roles plus the standalone
+  credential-free runner and no `verify` workload, Docker socket/CLI, DinD, or
+  compiler preflight. Focused normal/race tests, `go test ./...`, the managed
+  PostgreSQL integration runner, production-image schema E2E, production
+  monolith/six-role runtime E2E, Compose and Helm checks, and direct generated
+  Go/TypeScript/frontend reproducibility checks pass.
+  A bounded real Hardhat run using the current sources and a temporary
+  build-only correction for the unavailable `node:26.5.1-alpine` base reached
+  real CLI compile, implementation/proxy deployment, six-stage indexing,
+  production CLI API-key creation, public verification submission, and a
+  durable running lease. The exact runner download network resolved
+  `binaries.soliditylang.org` to transparent-DNS fake IP `198.18.16.46`, so
+  allowlisted catalog resolution failed closed; the API stayed ready, renewed
+  the lease, published no failure, and used no fixture or process fallback.
+  The split Hardhat scenario therefore was not reached. Exact aggregate Make
+  gates are additionally blocked on this host by the unavailable
+  `node:26.5.1-alpine` image and missing host Node/npm; equivalent bounded
+  checks did not replace those gates. At that point P70-T28, P70-T27, and
+  P70-T15 remained `in_progress`.
+- Historical pre-0031 P70-T27 bounded evidence: the Etherscan-compatible
+  `verifyproxycontract` submission and `checkproxyverification` polling
+  endpoints now use durable proxy jobs, stable public status/error mappings,
+  canonical high-confidence proxy observations, and exact verified proxy and
+  implementation code identities. The verify worker rechecks canonicality,
+  mappings, and both source publications under its lease before atomically
+  publishing an immutable proxy result and binding; current source-code reads
+  expose proxy metadata only while that exact binding remains canonical.
+  Handler, repository, migration-trigger, reorg, upgrade, wrong-kind GUID,
+  idempotency, and concurrency regressions pass through focused tests,
+  `make test-integration`, and `make test-schema-e2e`. The independent Hardhat
+  client image and both production topologies are wired to submit and poll the
+  workflow, but the real gate could not progress beyond application startup
+  because the official Solidity catalog download failed closed in the local
+  transparent-DNS environment. P70-T27 therefore remained `in_progress` at
+  that point.
+- Historical pre-0031 P70-T28 implementation evidence: ADR-0029 replaced
+  application-controlled compiler containers with a versioned internal HTTP
+  runner. The worker retains official catalog/artifact download, platform and
+  SHA-256 validation, cache ownership, dual compilation, and immutable
+  `runner_digest`; one request transfers the compiler once and executes up to
+  two Standard JSON inputs sequentially. The credential-free runner enforces
+  one request per replica, bounded frames and outputs, a sanitized environment,
+  process-group cancellation, and fatal cleanup uncertainty. Compose and
+  Preview now contain an ordinary networkless runner service and no daemon,
+  socket, CLI, privileged service, preflight, client volume, or runner archive.
+  Helm renders the same protocol as an independent Deployment/Service with
+  no Secret, persistent volume, or service-account token, deny-all egress, and
+  optional runner-only RuntimeClass. Focused normal/race tests,
+  `make compose-check`, `make helm-check`,
+  `make test-hardhat3-provider-compat`, `make test-integration`,
+  `make test-schema-e2e`, `make generate-check`, `make plan-check`,
+  `make deployment-check`, and `make check` pass.
+  `make test-hardhat3-e2e` built the production, runner, and independent
+  Hardhat images; the runner became healthy, but the monolith application
+  failed closed while downloading the official Solidity catalog under the
+  local transparent-DNS environment. No fixture compiler or process fallback
+  was used, so at that point P70-T28, P70-T27, and P70-T15 remained
+  `in_progress` pending the required real compiler/Preview evidence.
 - P70-T26: Preview now uses `https://etherview.localhost:8080` consistently
   for its browser entry point, exact SIWE origin, wallet explorer metadata,
   readiness checker, and maintained operator documentation. The existing
@@ -272,7 +407,8 @@ those gates.
   metadata now use the documented `https://localhost:8080` browser origin,
   preserving exact SIWE origin checks and the localhost wallet-RPC exception.
   Focused config/origin, HTTP API, and race tests plus Compose rendering pass.
-- P70-T15 implementation: Preview enables public verification and NFT metadata,
+- Historical pre-0031 P70-T15 implementation: Preview enabled public
+  verification and NFT metadata,
   injects the same exact local runner content digest into API provenance and
   the verify role, and fixes the verify component graph to start its compiler
   catalog refresher. A networkless one-shot grants only the compiler cache and
@@ -280,7 +416,8 @@ those gates.
   writability, loads and executes the fixed `linux/amd64` runner under the
   production sandbox limits, and exposes only a private nested-daemon network
   to verify. No application container receives the host Docker socket.
-- P70-T15 bounded runtime evidence, not closure evidence: the exact
+- Historical pre-0031 P70-T15 bounded runtime evidence, not closure evidence:
+  the exact
   `etherview-compiler-runner@sha256:a3affbddab6c198b7eee69cfc9b4b6682aa5e9e2f3802e606e7881c51f2ff02e`
   image loaded and executed as `linux/amd64`; cache ownership was
   `65532:65532` with mode `0750`, and both volume init and compiler preflight
@@ -289,7 +426,8 @@ those gates.
   that topology by inspecting every required service and one-shot, probing all
   seven role readiness endpoints, checking the HTTPS feature contract and
   exact runner binding, and observing restart stability.
-- P70-T15 blocker evidence: Docker's embedded resolver returned
+- Historical pre-0031 P70-T15 blocker evidence: Docker's embedded resolver
+  returned
   `198.18.16.46` for `binaries.soliditylang.org`; the public-network policy
   correctly rejected that RFC 2544 address and verify reported the stable
   redacted `download compiler catalog` failure. No public-DNS bypass, weakened
@@ -297,7 +435,8 @@ those gates.
   tests, vet/lint, Compose rendering, production image-boundary checks, and
   whitespace validation pass, but no real catalog, Solidity/Vyper compile, or
   metadata fetch is claimed.
-- P70-T15 Preview fake-IP repair: only the Preview `verify` role sets the
+- Historical pre-0031 P70-T15 Preview fake-IP repair: only the Preview
+  `verify` role set the
   explicit `ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS`
   escape hatch. It is disabled by default and absent from API, metadata, all
   other Preview roles, base Compose, and Helm. Focused config, verification,
@@ -307,11 +446,11 @@ those gates.
   the complete topology passed the 15-second restart-stability check, verify
   remained running with restart count zero, and PostgreSQL published Solidity
   generation 1 with 94 entries and Vyper generation 2 with 52 entries. This
-  removes the catalog restart blocker; real compiler execution and bounded NFT
-  metadata evidence remain before closure.
+  removed the catalog restart blocker at that time; real compiler execution
+  and bounded NFT metadata evidence still remained.
 - P70 final common gates: `make check`, `make docker-image-check`,
   `make plan-check`, and `git diff --check` pass. The aggregate check covers
-  ordinary and race Go suites, all 149 frontend tests, generation drift,
+  ordinary and race Go suites, all 156 frontend tests, generation drift,
   vulnerability, secret, dependency, and license checks, Docker build
   validation, Compose rendering, and Helm lint/render tests.
 - P70-T22 regression: the newest-first/reorg integration fixture now advances

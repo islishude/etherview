@@ -54,6 +54,28 @@ func TestBusinessObserverLogsBoundedDurableTransitionsAndPreservesMetrics(t *tes
 	}
 }
 
+func TestBusinessObserverExposesCompilerAvailabilityWithoutBusinessLogSpam(t *testing.T) {
+	t.Parallel()
+	registry := NewRegistry("test", "api")
+	var output bytes.Buffer
+	observer := NewBusinessObserver(registry, slog.New(slog.NewJSONHandler(&output, nil)))
+	observer.RecordVerificationCompiler(false)
+	if metrics := registry.Gather(); !strings.Contains(
+		metrics, "etherview_verification_compiler_available 0",
+	) {
+		t.Fatalf("unavailable compiler metric is absent:\n%s", metrics)
+	}
+	observer.RecordVerificationCompiler(true)
+	if metrics := registry.Gather(); !strings.Contains(
+		metrics, "etherview_verification_compiler_available 1",
+	) {
+		t.Fatalf("recovered compiler metric is absent:\n%s", metrics)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("compiler polling emitted business-transition logs: %s", output.String())
+	}
+}
+
 func TestBusinessObserverUsesInfoOnlyForNonFailureOutcomes(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

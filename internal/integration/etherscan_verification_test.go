@@ -68,19 +68,7 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create verification repository: %v", err)
 	}
-	generation, compilerDigest, _ := insertVerifierV2Compiler(t, ctx, db)
-	catalog, err := verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
-		Sources: map[verify.Language]string{
-			verify.LanguageSolidity: "https://compiler.example/list.json",
-		},
-		AllowedOrigins: []string{"https://compiler.example"},
-	})
-	if err != nil {
-		t.Fatalf("create verification catalog: %v", err)
-	}
-	verificationService, err := verify.NewService(verificationRepository, 1<<20, verify.ServiceOptions{
-		Catalog: catalog,
-	})
+	verificationService, err := verify.NewService(verificationRepository, 1<<20)
 	if err != nil {
 		t.Fatalf("create verification service: %v", err)
 	}
@@ -127,8 +115,12 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 		request.Target.AtBlockHash != testHash(7_101).String() ||
 		request.Target.CreationBytecode != hexutil.Encode(creationInput) ||
 		request.Target.RuntimeBytecode != hexutil.Encode(runtimeBytecode) ||
-		request.CatalogGenerationID != generation ||
-		request.CompilerDigest != hex.EncodeToString(compilerDigest[:]) {
+		request.CatalogGenerationID != 0 ||
+		request.CompilerPlatform != "" ||
+		request.CompilerDigest != "" ||
+		request.ExecutorKind != "" ||
+		request.ExecutionPolicy != "" ||
+		request.ExecutorDigest != "" {
 		t.Fatalf("durable verifier-v2 request = %+v", *request)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_jobs WHERE id = $1::uuid`, 1, guid)

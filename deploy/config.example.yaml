@@ -118,7 +118,6 @@ features:
 
 security:
   public_verification: false
-  compiler_sandbox: disabled
   # Supply ETHERVIEW_API_KEY_PEPPER or ETHERVIEW_API_KEY_PEPPER_FILE. The
   # value must contain at least 32 bytes and is never returned by the API.
   api_key_pepper: ""
@@ -166,33 +165,23 @@ verification:
   max_input_bytes: 5242880
   max_output_bytes: 67108864
   timeout: 2m
-  cache_directory: /var/lib/etherview/compilers
-  container_runtime: docker
-  container_memory: 512m
-  container_cpus: "1"
-  container_pids: 64
+  # Every API/all replica runs this many durable verification consumers.
+  worker_count: 1
+  # API/all owns an architecture-native Node subprocess and stores only
+  # checksum-addressed official solc-js artifacts in this private cache.
+  cache_directory: /var/lib/etherview/compilers/cache
   catalog_urls:
-    # "auto" selects an official solc-bin platform from the validated runner
-    # image (container mode) or host OS/architecture (private process mode).
-    # An explicit HTTPS platform list remains an approved-mirror override.
+    # "auto" always selects the official architecture-neutral
+    # emscripten-wasm32 list. An explicit HTTPS list is a mirror override.
     solidity: auto
-    vyper: https://raw.githubusercontent.com/blockscout/solc-bin/main/vyper.list.json
   allowed_download_origins:
     - https://binaries.soliditylang.org
-    - https://raw.githubusercontent.com
-    - https://github.com
   catalog_refresh_interval: 1h
   catalog_max_staleness: 24h
-  # Public verification requires one pre-pulled, digest-pinned generic runner.
-  runner_image: ""
-  # Deprecated verifier-v1 fields; catalog-backed process/container modes
-  # ignore manually enumerated images and artifacts.
-  images: {}
-  artifacts: {}
 
 # Optional Sourcify v2 interoperability. Set ETHERVIEW_FEATURE_SOURCIFY=true
 # only with authenticated public verification enabled. API processes persist
-# explicit requests; verify-role processes own restricted upstream calls.
+# explicit requests and API/all workers own restricted upstream calls.
 sourcify:
   base_url: https://sourcify.dev/server
   timeout: 20s

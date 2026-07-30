@@ -1,7 +1,8 @@
 // Package previewcheck validates the live Preview Compose topology without
 // relying on Docker Compose's --wait result. It inspects the actual containers,
-// proves the exact compiler runner is present in the isolated daemon, checks
-// the public HTTPS feature contract, and observes a final stability window.
+// proves the production application image matches the Docker host architecture,
+// checks the public HTTPS feature contract, and observes a final stability
+// window.
 package previewcheck
 
 import (
@@ -18,7 +19,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -32,6 +32,9 @@ const (
 	maxConfigBodyBytes     = 1 << 20
 	roleProbeTimeout       = 20 * time.Second
 	roleProbeImage         = "docker:29.6.2-cli@sha256:be132a9f282288de4afaf63379dff75711fda0147c6b72a9df44e51841402144"
+	compilerCachePath      = "/var/lib/etherview/compilers"
+	compilerLibraryPath    = "/opt/etherview/compiler/lib"
+	expectedNodeVersion    = "v26.5.0"
 )
 
 var (
@@ -40,20 +43,14 @@ var (
 		"sync",
 		"enrich",
 		"trace",
-		"verify",
 		"metadata",
 		"maintenance",
 		"reth",
 		"postgres",
-		"compiler-runtime",
 	}
 	oneShotServices = []string{
 		"migration",
-		"compiler-volumes-init",
-		"compiler-preflight",
 	}
-	digestPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]*$`)
 )
 
 // Executor is the process boundary used by Check. Implementations must return
@@ -83,10 +80,7 @@ func (OSExecutor) Run(ctx context.Context, command testcompose.Command) ([]byte,
 type Options struct {
 	Root               string
 	ProjectName        string
-	ComposeFile        string
-	ComposeCommand     string
 	DockerCommand      string
-	RunnerImage        string
 	ConfigURL          string
 	CAFile             string
 	InsecureSkipVerify bool
@@ -99,7 +93,6 @@ type Options struct {
 
 type runtime struct {
 	options Options
-	project *testcompose.Project
 	client  *http.Client
 }
 
@@ -109,6 +102,7 @@ type snapshot struct {
 
 type container struct {
 	ID           string                     `json:"id"`
+	ImageID      string                     `json:"image_id"`
 	Service      string                     `json:"service"`
 	Status       string                     `json:"status"`
 	Running      bool                       `json:"running"`
@@ -117,6 +111,8 @@ type container struct {
 	Health       string                     `json:"health"`
 	RestartCount int                        `json:"restart_count"`
 	Networks     map[string]json.RawMessage `json:"networks"`
+	Environment  []string                   `json:"environment"`
+	Tmpfs        map[string]string          `json:"tmpfs"`
 }
 
 type publicConfigResponse struct {
@@ -160,13 +156,9 @@ func newRuntime(options Options) (*runtime, error) {
 	if strings.TrimSpace(options.ProjectName) == "" {
 		options.ProjectName = "etherview-preview"
 	}
-	if strings.TrimSpace(options.ComposeFile) == "" {
-		options.ComposeFile = "compose.preview.yaml"
-	}
 	if strings.TrimSpace(options.DockerCommand) == "" {
 		options.DockerCommand = "docker"
 	}
-	options.RunnerImage = strings.TrimSpace(options.RunnerImage)
 	if strings.TrimSpace(options.ConfigURL) == "" {
 		options.ConfigURL = "https://etherview.localhost:8080/api/v1/config"
 	}
@@ -191,9 +183,6 @@ func newRuntime(options Options) (*runtime, error) {
 	if options.StabilityWindow <= 0 || options.StabilityWindow >= options.Timeout {
 		return nil, errors.New("stability window must be greater than zero and shorter than the timeout")
 	}
-	if err := validateRunnerImage(options.RunnerImage); err != nil {
-		return nil, err
-	}
 	parsedURL, err := url.Parse(options.ConfigURL)
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" ||
 		parsedURL.Path != "/api/v1/config" || parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
@@ -203,14 +192,6 @@ func newRuntime(options Options) (*runtime, error) {
 		return nil, errors.New("CA file and insecure TLS mode are mutually exclusive")
 	}
 
-	project := testcompose.New(options.Root, options.ProjectName, options.ComposeFile)
-	if strings.TrimSpace(options.ComposeCommand) != "" {
-		project.Compose = options.ComposeCommand
-	}
-	project.Env = map[string]string{
-		"ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE": options.RunnerImage,
-	}
-
 	client := options.HTTPClient
 	if client == nil {
 		client, err = previewHTTPClient(options.Root, options.CAFile, options.InsecureSkipVerify)
@@ -218,16 +199,7 @@ func newRuntime(options Options) (*runtime, error) {
 			return nil, err
 		}
 	}
-	return &runtime{options: options, project: project, client: client}, nil
-}
-
-func validateRunnerImage(image string) error {
-	image = strings.TrimSpace(image)
-	repository, digest, ok := strings.Cut(image, "@sha256:")
-	if !ok || !repositoryPattern.MatchString(repository) || !digestPattern.MatchString(digest) {
-		return errors.New("runner image must be an exact repository@sha256 digest reference")
-	}
-	return nil
+	return &runtime{options: options, client: client}, nil
 }
 
 func previewHTTPClient(root, caFile string, insecure bool) (*http.Client, error) {
@@ -274,7 +246,7 @@ func (r *runtime) waitReady(ctx context.Context) (snapshot, error) {
 			err = assess(current)
 		}
 		if err == nil {
-			err = r.verifyRunnerBindings(ctx, current)
+			err = r.verifyCompilerRuntime(ctx, current)
 		}
 		if err == nil {
 			if probeErr := r.verifyRoleReadiness(ctx, current); probeErr != nil {
@@ -327,8 +299,8 @@ func (r *runtime) observeStability(ctx context.Context, baseline snapshot) error
 		if time.Now().Before(stableUntil) {
 			continue
 		}
-		if err := r.verifyRunnerBindings(ctx, current); err != nil {
-			return fmt.Errorf("preview lost compiler runner binding: %w", err)
+		if err := r.verifyCompilerRuntime(ctx, current); err != nil {
+			return fmt.Errorf("preview lost native compiler runtime: %w", err)
 		}
 		if err := r.verifyPublicConfig(ctx); err != nil {
 			return fmt.Errorf("preview lost public feature contract: %w", err)
@@ -338,25 +310,23 @@ func (r *runtime) observeStability(ctx context.Context, baseline snapshot) error
 }
 
 func (r *runtime) inspect(ctx context.Context) (snapshot, error) {
-	command, err := r.project.Command("ps", "-a", "-q")
+	output, err := r.options.Executor.Run(ctx, testcompose.Command{
+		Name: r.options.DockerCommand,
+		Args: []string{
+			"container", "ls", "--all", "--quiet", "--filter",
+			"label=com.docker.compose.project=" + r.options.ProjectName,
+		},
+		Dir: r.options.Root,
+	})
 	if err != nil {
-		return snapshot{}, err
-	}
-	command.Env = withEnvironment(
-		command.Env,
-		"ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE",
-		r.options.RunnerImage,
-	)
-	output, err := r.options.Executor.Run(ctx, command)
-	if err != nil {
-		return snapshot{}, &pendingError{err: errors.New("compose project enumeration failed")}
+		return snapshot{}, &pendingError{err: errors.New("docker compose project enumeration failed")}
 	}
 	ids := strings.Fields(string(output))
 	if len(ids) == 0 {
 		return snapshot{}, &pendingError{err: errors.New("compose project has no containers")}
 	}
 
-	const inspectFormat = `{"id":{{json .Id}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"status":{{json .State.Status}},"running":{{.State.Running}},"restarting":{{.State.Restarting}},"exit_code":{{.State.ExitCode}},"health":{{with (index .State "Health")}}{{json .Status}}{{else}}""{{end}},"restart_count":{{.RestartCount}},"networks":{{json .NetworkSettings.Networks}}}`
+	const inspectFormat = `{"id":{{json .Id}},"image_id":{{json .Image}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"status":{{json .State.Status}},"running":{{.State.Running}},"restarting":{{.State.Restarting}},"exit_code":{{.State.ExitCode}},"health":{{with (index .State "Health")}}{{json .Status}}{{else}}""{{end}},"restart_count":{{.RestartCount}},"networks":{{json .NetworkSettings.Networks}},"environment":{{json .Config.Env}},"tmpfs":{{json (index .HostConfig "Tmpfs")}}}`
 	arguments := []string{"inspect", "--format", inspectFormat}
 	arguments = append(arguments, ids...)
 	output, err = r.options.Executor.Run(ctx, testcompose.Command{
@@ -374,7 +344,7 @@ func (r *runtime) inspect(ctx context.Context) (snapshot, error) {
 		if err := decoder.Decode(&value); err != nil {
 			return snapshot{}, errors.New("docker container inspection returned invalid JSON")
 		}
-		if value.Service == "" || value.ID == "" {
+		if value.Service == "" || value.ID == "" || value.ImageID == "" {
 			return snapshot{}, errors.New("docker container inspection omitted Compose identity")
 		}
 		if _, exists := containers[value.Service]; exists {
@@ -389,6 +359,18 @@ func (r *runtime) inspect(ctx context.Context) (snapshot, error) {
 }
 
 func assess(current snapshot) error {
+	expected := make(map[string]struct{}, len(runningServices)+len(oneShotServices))
+	for _, service := range runningServices {
+		expected[service] = struct{}{}
+	}
+	for _, service := range oneShotServices {
+		expected[service] = struct{}{}
+	}
+	for service := range current.containers {
+		if _, ok := expected[service]; !ok {
+			return fmt.Errorf("unexpected Compose service %q is still present", service)
+		}
+	}
 	for _, service := range runningServices {
 		value, exists := current.containers[service]
 		if !exists {
@@ -420,49 +402,100 @@ func assess(current snapshot) error {
 	return nil
 }
 
-func (r *runtime) verifyRunnerBindings(ctx context.Context, current snapshot) error {
-	expected := "ETHERVIEW_VERIFICATION_RUNNER_IMAGE=" + r.options.RunnerImage
-	template := fmt.Sprintf(`{{range .Config.Env}}{{if eq . %q}}{{println "present"}}{{end}}{{end}}`, expected)
-	for _, service := range []string{"api", "verify"} {
+func (r *runtime) verifyCompilerRuntime(ctx context.Context, current snapshot) error {
+	api, exists := current.containers["api"]
+	if !exists {
+		return &pendingError{err: errors.New("API service is absent")}
+	}
+	for _, service := range []string{"api", "sync", "enrich", "trace", "metadata", "maintenance"} {
 		value, exists := current.containers[service]
 		if !exists {
 			return &pendingError{err: fmt.Errorf("required service %q is absent", service)}
 		}
-		output, err := r.options.Executor.Run(ctx, testcompose.Command{
-			Name: r.options.DockerCommand,
-			Args: []string{"inspect", "--format", template, value.ID},
-			Dir:  r.options.Root,
-		})
-		if err != nil {
-			return &pendingError{err: fmt.Errorf("runner binding inspection failed for %q", service)}
+		if value.ImageID != api.ImageID {
+			return fmt.Errorf("application service %q does not use the API production image", service)
 		}
-		if strings.TrimSpace(string(output)) != "present" {
-			return fmt.Errorf("service %q does not use the requested exact runner image", service)
+		_, hasCompilerCache := value.Tmpfs[compilerCachePath]
+		if service == "api" && !hasCompilerCache {
+			return errors.New("API must receive exactly one private compiler cache")
+		}
+		if service != "api" && hasCompilerCache {
+			return fmt.Errorf("service %q must not receive the compiler cache", service)
+		}
+		unsafeDownloadException := false
+		for _, entry := range value.Environment {
+			key, environmentValue, _ := strings.Cut(entry, "=")
+			switch key {
+			case "ETHERVIEW_COMPILER_SANDBOX",
+				"ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
+				"ETHERVIEW_VERIFICATION_RUNNER_IMAGE":
+				return fmt.Errorf("service %q still receives removed compiler configuration", service)
+			}
+			if key == "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS" {
+				if service != "api" || environmentValue != "true" {
+					return fmt.Errorf("service %q has an invalid compiler download exception", service)
+				}
+				unsafeDownloadException = true
+			}
+		}
+		if service == "api" && !unsafeDownloadException {
+			return errors.New("API must receive the scoped Preview compiler download exception")
 		}
 	}
 
-	runtimeContainer := current.containers["compiler-runtime"]
-	output, err := r.options.Executor.Run(ctx, testcompose.Command{
+	imageArchitecture, err := r.options.Executor.Run(ctx, testcompose.Command{
 		Name: r.options.DockerCommand,
 		Args: []string{
-			"exec",
-			runtimeContainer.ID,
-			"docker",
-			"image",
-			"inspect",
-			"--format",
-			"{{.Id}}",
-			r.options.RunnerImage,
+			"exec", "--env", "LD_LIBRARY_PATH=" + compilerLibraryPath,
+			api.ID, "/usr/local/bin/node", "--print", "process.arch",
 		},
 		Dir: r.options.Root,
 	})
 	if err != nil {
-		return &pendingError{err: errors.New("exact compiler runner is unavailable in the isolated daemon")}
+		return &pendingError{err: errors.New("application runtime architecture is unavailable")}
 	}
-	if strings.TrimSpace(string(output)) == "" {
-		return errors.New("isolated daemon returned no compiler runner identity")
+	hostArchitecture, err := r.options.Executor.Run(ctx, testcompose.Command{
+		Name: r.options.DockerCommand,
+		Args: []string{"info", "--format", "{{.Architecture}}"},
+		Dir:  r.options.Root,
+	})
+	if err != nil {
+		return &pendingError{err: errors.New("docker host architecture is unavailable")}
+	}
+	imageArch := normalizeArchitecture(string(imageArchitecture))
+	hostArch := normalizeArchitecture(string(hostArchitecture))
+	if imageArch == "" || hostArch == "" || imageArch != hostArch {
+		return fmt.Errorf(
+			"preview application image architecture %q does not match docker host architecture %q",
+			imageArch, hostArch,
+		)
+	}
+	nodeVersion, err := r.options.Executor.Run(ctx, testcompose.Command{
+		Name: r.options.DockerCommand,
+		Args: []string{
+			"exec", "--env", "LD_LIBRARY_PATH=" + compilerLibraryPath,
+			api.ID, "/usr/local/bin/node", "--version",
+		},
+		Dir: r.options.Root,
+	})
+	if err != nil {
+		return &pendingError{err: errors.New("preview Node runtime is unavailable")}
+	}
+	if strings.TrimSpace(string(nodeVersion)) != expectedNodeVersion {
+		return errors.New("preview Node runtime version is invalid")
 	}
 	return nil
+}
+
+func normalizeArchitecture(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "amd64", "x86_64", "x86-64":
+		return "amd64"
+	case "arm64", "aarch64":
+		return "arm64"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 func (r *runtime) verifyRoleReadiness(ctx context.Context, current snapshot) error {
@@ -472,7 +505,7 @@ func (r *runtime) verifyRoleReadiness(ctx context.Context, current snapshot) err
 	}
 	probeContext, cancel := context.WithTimeout(ctx, roleProbeTimeout)
 	defer cancel()
-	const script = `for role in api sync enrich trace verify metadata maintenance; do
+	const script = `for role in api sync enrich trace metadata maintenance; do
 	wget -q -T 2 -O /dev/null "http://${role}:9090/health/ready"
 done`
 	_, err = r.options.Executor.Run(probeContext, testcompose.Command{
@@ -504,7 +537,7 @@ done`
 }
 
 func sharedApplicationNetwork(current snapshot) (string, error) {
-	services := []string{"api", "sync", "enrich", "trace", "verify", "metadata", "maintenance", "reth", "postgres"}
+	services := []string{"api", "sync", "enrich", "trace", "metadata", "maintenance", "reth", "postgres"}
 	api, exists := current.containers["api"]
 	if !exists || len(api.Networks) == 0 {
 		return "", errors.New("API service has no inspected application network")
@@ -586,15 +619,4 @@ func waitInterval(ctx context.Context, interval time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func withEnvironment(environment []string, key, value string) []string {
-	prefix := key + "="
-	filtered := make([]string, 0, len(environment)+1)
-	for _, entry := range environment {
-		if !strings.HasPrefix(entry, prefix) {
-			filtered = append(filtered, entry)
-		}
-	}
-	return append(filtered, prefix+value)
 }

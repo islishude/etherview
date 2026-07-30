@@ -33,6 +33,10 @@ func TestNormalizeRoles(t *testing.T) {
 	if _, err := NormalizeRoles([]string{"api", "unknown"}); err == nil {
 		t.Fatal("expected unknown role error")
 	}
+	if _, err := NormalizeRoles([]string{"verify"}); err == nil ||
+		!strings.Contains(err.Error(), "use the api role") {
+		t.Fatalf("removed verify role error = %v", err)
+	}
 }
 
 func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
@@ -176,30 +180,51 @@ func TestWalletAddChainEnvironment(t *testing.T) {
 	}
 }
 
-func TestVerificationUnsafePrivateDownloadEnvironment(t *testing.T) {
+func TestRemovedCompilerEnvironmentIsRejected(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{
+		"ETHERVIEW_COMPILER_SANDBOX",
+		"ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
+		"ETHERVIEW_VERIFICATION_RUNNER_IMAGE",
+		"ETHERVIEW_VERIFICATION_VYPER_CATALOG_URL",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			err := applyEnvironment(&cfg, func(key string) (string, bool) {
+				return "removed", key == name
+			}, nil)
+			if err == nil || !strings.Contains(err.Error(), "no longer supported") {
+				t.Fatalf("%s error=%v", name, err)
+			}
+		})
+	}
+}
+
+func TestPreviewCompilerDownloadNetworkExceptionIsExplicitAndAPIScoped(t *testing.T) {
+	t.Parallel()
 	cfg := Default()
-	if cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
-		t.Fatal("unsafe private verification downloads must be disabled by default")
-	}
-	values := map[string]string{
-		"ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": "true",
-	}
-	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
-		value, ok := values[key]
-		return value, ok
-	}, nil); err != nil {
+	err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		if key == "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS" {
+			return "true", true
+		}
+		return "", false
+	}, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
-		t.Fatal("unsafe private verification download environment was not applied")
+		t.Fatal("explicit compiler download network exception was not applied")
 	}
-
-	values["ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS"] = "sometimes"
-	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
-		value, ok := values[key]
-		return value, ok
-	}, nil); err == nil {
-		t.Fatal("invalid unsafe private verification download boolean passed")
+	cfg.Database.URL = "postgres://localhost/etherview"
+	cfg.Features.Verification = true
+	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
+		t.Fatalf("API-scoped compiler download exception failed validation: %v", err)
+	}
+	if err := cfg.ValidateForRoles([]string{"sync"}); err == nil ||
+		!strings.Contains(err.Error(), "requires an api verification worker") {
+		t.Fatalf("non-API compiler download exception error = %v", err)
 	}
 }
 
@@ -666,7 +691,6 @@ func TestSourcifyConfigurationIsHTTPSBoundedAndExplicit(t *testing.T) {
 	}
 	cfg.Features.Verification = true
 	cfg.Security.PublicVerification = true
-	cfg.Security.CompilerSandbox = "container"
 	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid enabled Sourcify config failed: %v", err)
@@ -1196,13 +1220,9 @@ func TestAPIVerificationReadsRequireAPIKeyAuthentication(t *testing.T) {
 		!strings.Contains(err.Error(), "verification reads require API key authentication") {
 		t.Fatalf("unexpected missing verification read authentication error: %v", err)
 	}
-	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil ||
-		!strings.Contains(err.Error(), "configured compiler sandbox") {
-		t.Fatalf("verify-only role bypassed its independent sandbox requirement: %v", err)
-	}
 	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
 	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
-		t.Fatalf("authenticated API-only verification reads failed validation: %v", err)
+		t.Fatalf("authenticated API verification worker failed validation: %v", err)
 	}
 }
 
@@ -1219,186 +1239,45 @@ func TestEnrichRoleRequiresRPCForBlockPinnedTokenDetection(t *testing.T) {
 	}
 }
 
-func TestVerificationWorkerRequiresDigestPinnedGenericRunner(t *testing.T) {
-	t.Parallel()
-	cfg := Default()
-	cfg.Database.URL = "postgres://localhost/etherview"
-	cfg.Features.Verification = true
-	cfg.Security.CompilerSandbox = "container"
-	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "verification.runner_image") {
-		t.Fatalf("unexpected missing image error: %v", err)
-	}
-	cfg.Verification.RunnerImage = "registry.example/verifier-runner@sha256:" + strings.Repeat("a", 64)
-	if err := cfg.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if err := cfg.ValidateForRoles([]string{"verify"}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPublicVerificationRequiresAPIKeyAndContainerIsolation(t *testing.T) {
+func TestPublicVerificationRequiresFeatureAndAPIKey(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	cfg.Security.PublicVerification = true
 	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "container compiler sandbox") || !strings.Contains(err.Error(), "API key") {
+	if err == nil || !strings.Contains(err.Error(), "features.verification") ||
+		!strings.Contains(err.Error(), "API key") {
 		t.Fatalf("unexpected public verification error: %v", err)
 	}
 }
 
-func TestContainerSandboxRejectsUntrustedRuntimeExecutable(t *testing.T) {
+func TestRemovedCompilerYAMLFieldsAreUnknown(t *testing.T) {
 	t.Parallel()
-	cfg := Default()
-	cfg.Security.CompilerSandbox = "container"
-	cfg.Verification.ContainerRuntime = "/tmp/docker-wrapper"
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "must be docker or podman") {
-		t.Fatalf("unexpected runtime validation error: %v", err)
-	}
-}
-
-func TestCompilerAllowlistRejectsUnpinnedOrInsecureArtifacts(t *testing.T) {
-	t.Parallel()
-	cfg := Default()
-	cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-		"solidity": {"0.8.30": {URL: "http://compiler.example/solc", SHA256: "bad"}},
-	}
-	cfg.Verification.Images = map[string]map[string]string{
-		"vyper": {"0.4.0": "registry.example/vyper:latest"},
-	}
-	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "HTTPS") || !strings.Contains(err.Error(), "pinned") {
-		t.Fatalf("unexpected compiler allowlist error: %v", err)
-	}
-}
-
-func TestCompilerAllowlistRejectsNoncanonicalSupplyChainInputs(t *testing.T) {
-	t.Parallel()
-	validDigest := strings.Repeat("a", 64)
-	tests := []struct {
-		name string
-		edit func(*Config)
-		want string
-	}{
-		{
-			name: "zero artifact digest",
-			edit: func(cfg *Config) {
-				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: strings.Repeat("0", 64)}},
-				}
-			},
-			want: "invalid SHA-256",
-		},
-		{
-			name: "uppercase artifact digest",
-			edit: func(cfg *Config) {
-				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: strings.Repeat("A", 64)}},
-				}
-			},
-			want: "invalid SHA-256",
-		},
-		{
-			name: "fragmented artifact URL",
-			edit: func(cfg *Config) {
-				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-					"solidity": {"0.8.30": {URL: "https://compiler.example/solc#fragment", SHA256: validDigest}},
-				}
-			},
-			want: "absolute HTTPS URL",
-		},
-		{
-			name: "oversized artifact",
-			edit: func(cfg *Config) {
-				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-					"solidity": {"0.8.30": {URL: "https://compiler.example/solc", SHA256: validDigest, MaxBytes: 1<<30 + 1}},
-				}
-			},
-			want: "max_bytes",
-		},
-		{
-			name: "invalid compiler version",
-			edit: func(cfg *Config) {
-				cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-					"solidity": {"../../solc": {URL: "https://compiler.example/solc", SHA256: validDigest}},
-				}
-			},
-			want: "invalid version",
-		},
-		{
-			name: "zero image digest",
-			edit: func(cfg *Config) {
-				cfg.Verification.Images = map[string]map[string]string{
-					"vyper": {"0.4.0": "registry.example/vyper@sha256:" + strings.Repeat("0", 64)},
-				}
-			},
-			want: "invalid digest",
-		},
-		{
-			name: "ambiguous image digest",
-			edit: func(cfg *Config) {
-				cfg.Verification.Images = map[string]map[string]string{
-					"vyper": {"0.4.0": "registry.example/vyper@sha256:" + validDigest + "@sha256:" + validDigest},
-				}
-			},
-			want: "pinned by SHA-256",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			cfg := Default()
-			test.edit(&cfg)
-			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error=%v, want %q", err, test.want)
-			}
-		})
-	}
-}
-
-func TestCompilerContainerResourceLimitsAreValidated(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct {
-		name   string
-		memory string
-		cpus   string
-		want   string
-	}{
-		{name: "unbounded memory", memory: "0", cpus: "1", want: "container_memory"},
-		{name: "too little memory", memory: "63m", cpus: "1", want: "container_memory"},
-		{name: "too much memory", memory: "17g", cpus: "1", want: "container_memory"},
-		{name: "invalid CPUs", memory: "512m", cpus: "all", want: "container_cpus"},
-		{name: "zero CPUs", memory: "512m", cpus: "0", want: "container_cpus"},
-		{name: "too many CPUs", memory: "512m", cpus: "65", want: "container_cpus"},
+	for _, document := range []string{
+		"security:\n  compiler_sandbox: remote\n",
+		"verification:\n  runner_endpoint: http://compiler-runner:8091\n",
+		"verification:\n  runner_image: image@sha256:deadbeef\n",
+		"verification:\n  artifacts: {}\n",
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			cfg := Default()
-			cfg.Verification.ContainerMemory = test.memory
-			cfg.Verification.ContainerCPUs = test.cpus
-			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error=%v, want %q", err, test.want)
-			}
-		})
+		var cfg Config
+		decoder := yaml.NewDecoder(strings.NewReader(document))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&cfg); err == nil {
+			t.Fatalf("removed compiler field was accepted: %s", document)
+		}
 	}
 }
 
-func TestProcessCompilerRoleRequiresAbsoluteCache(t *testing.T) {
+func TestVerificationWorkerRequiresAbsoluteCache(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	cfg.Database.URL = "postgres://localhost/etherview"
 	cfg.Features.Verification = true
-	cfg.Security.CompilerSandbox = "process"
 	cfg.Verification.CacheDirectory = "relative/cache"
-	cfg.Verification.Artifacts = map[string]map[string]CompilerArtifact{
-		"solidity": {"0.8.30": {
-			URL: "https://compiler.example/solc", SHA256: strings.Repeat("a", 64), MaxBytes: 100 << 20,
-		}},
-	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.ValidateForRoles([]string{"verify"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
+	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+	if err := cfg.ValidateForRoles([]string{"api"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
 		t.Fatalf("unexpected cache path error: %v", err)
 	}
 }

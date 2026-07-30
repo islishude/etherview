@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -23,11 +24,11 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 			NFTMetadata  bool `yaml:"nft_metadata"`
 		} `yaml:"features"`
 		Security struct {
-			PublicVerification bool   `yaml:"public_verification"`
-			CompilerSandbox    string `yaml:"compiler_sandbox"`
+			PublicVerification bool `yaml:"public_verification"`
 		} `yaml:"security"`
 		Verification struct {
-			RunnerImage string `yaml:"runner_image"`
+			CacheDirectory string            `yaml:"cache_directory"`
+			CatalogURLs    map[string]string `yaml:"catalog_urls"`
 		} `yaml:"verification"`
 	}
 	if err := yaml.Unmarshal(data, &preview); err != nil {
@@ -36,11 +37,21 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 	if !preview.Features.Verification || !preview.Security.PublicVerification {
 		t.Fatal("Preview public verification must be enabled")
 	}
-	if preview.Security.CompilerSandbox != "container" {
-		t.Fatalf("Preview compiler sandbox = %q, want container", preview.Security.CompilerSandbox)
+	if preview.Verification.CacheDirectory != "/var/lib/etherview/compilers/cache" ||
+		preview.Verification.CatalogURLs["solidity"] != "auto" {
+		t.Fatalf(
+			"Preview compiler cache=%q catalog=%v",
+			preview.Verification.CacheDirectory,
+			preview.Verification.CatalogURLs,
+		)
 	}
-	if preview.Verification.RunnerImage != "" {
-		t.Fatalf("Preview runner image must be injected by its preflight, got %q", preview.Verification.RunnerImage)
+	text := string(data)
+	for _, removed := range []string{
+		"compiler_sandbox", "runner_endpoint", "runner_image", "vyper",
+	} {
+		if strings.Contains(text, removed) {
+			t.Fatalf("Preview config retains removed field %q", removed)
+		}
 	}
 	if !preview.Features.NFTMetadata || preview.Metadata.IPFSGateway != "https://ipfs.io" {
 		t.Fatalf(

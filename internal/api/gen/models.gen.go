@@ -764,8 +764,6 @@ const (
 	VerificationJobKindSolidityStandardJson      VerificationJobKind = "solidity_standard_json"
 	VerificationJobKindSourcify                  VerificationJobKind = "sourcify"
 	VerificationJobKindSourcifyFromEtherscan     VerificationJobKind = "sourcify_from_etherscan"
-	VerificationJobKindVyperMultipart            VerificationJobKind = "vyper_multipart"
-	VerificationJobKindVyperStandardJson         VerificationJobKind = "vyper_standard_json"
 )
 
 // Valid indicates whether the value is a known member of the VerificationJobKind enum.
@@ -784,10 +782,6 @@ func (e VerificationJobKind) Valid() bool {
 	case VerificationJobKindSourcify:
 		return true
 	case VerificationJobKindSourcifyFromEtherscan:
-		return true
-	case VerificationJobKindVyperMultipart:
-		return true
-	case VerificationJobKindVyperStandardJson:
 		return true
 	default:
 		return false
@@ -914,7 +908,6 @@ func (e VerifiedContractKind) Valid() bool {
 // Defines values for VerifierLanguage.
 const (
 	Solidity VerifierLanguage = "solidity"
-	Vyper    VerifierLanguage = "vyper"
 	Yul      VerifierLanguage = "yul"
 )
 
@@ -922,8 +915,6 @@ const (
 func (e VerifierLanguage) Valid() bool {
 	switch e {
 	case Solidity:
-		return true
-	case Vyper:
 		return true
 	case Yul:
 		return true
@@ -2984,12 +2975,6 @@ type SubmitSourcifyVerificationJSONRequestBody = SourcifySubmission
 
 // SubmitSourcifyFromEtherscanJSONRequestBody defines body for SubmitSourcifyFromEtherscan for application/json ContentType.
 type SubmitSourcifyFromEtherscanJSONRequestBody = SourcifyFromEtherscanSubmission
-
-// VerifyVyperMultipartJSONRequestBody defines body for VerifyVyperMultipart for application/json ContentType.
-type VerifyVyperMultipartJSONRequestBody = VerifierMultipartRequest
-
-// VerifyVyperStandardJsonJSONRequestBody defines body for VerifyVyperStandardJson for application/json ContentType.
-type VerifyVyperStandardJsonJSONRequestBody = VerifierStandardJSONRequest
 
 // AsVerificationSuccess returns the union data inside the BatchResultsOutcome_Results_Item as a VerificationSuccess
 func (t BatchResultsOutcome_Results_Item) AsVerificationSuccess() (VerificationSuccess, error) {

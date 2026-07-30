@@ -11,7 +11,7 @@ truth. Redis, NATS, and S3-compatible storage are optional accelerators.
 
 - Reorg-safe block, transaction, receipt, log, withdrawal, and mempool indexing
 - Block-scoped traces, ABI/proxy decoding, tokens, NFTs, balances, and statistics
-- Solidity/Vyper contract verification and optional Sourcify interoperability
+- Solidity/Yul contract verification and optional Sourcify interoperability
 - Native REST/SSE APIs, an Etherscan V2 compatibility subset, and an embedded
   bilingual explorer
 - API keys, SIWE wallet sessions, optional x402 billing, Prometheus metrics,
@@ -45,7 +45,8 @@ correctness and readiness do not depend on them. See
 authentication, billing, and deployment details.
 
 For the repository's full-stack Preview, including the local Reth development
-chain, all seven runtime roles, public verification, and NFT metadata:
+chain, all six application roles, host-native public verification, and NFT
+metadata:
 
 ```sh
 make preview-cert
@@ -57,12 +58,14 @@ localhost certificate pair plus a public CA copy used by Preview readiness
 checks. Open
 <https://etherview.localhost:8080> after startup; the operations listener remains
 available over HTTP on <http://localhost:9090>.
-Preview builds a digest-pinned generic runner and loads it into an isolated
-local compiler daemon without mounting the host container socket. That daemon
-is privileged local development tooling; see the deployment guide for its
-explicit trust boundary. Use `make recreate-preview` to rebuild the application
-roles and runner while preserving PostgreSQL, Reth, and compiler caches. Use
-`make stop-preview` to remove the complete Preview and its volumes. See the
+Preview builds the production image for the current Docker host architecture.
+The `api` process downloads checksum-pinned `emscripten-wasm32` solc-js
+artifacts and executes each bounded Standard JSON compilation in a fresh,
+permission-restricted Node subprocess. There is no standalone runner, Docker
+socket, nested runtime, or compiler CPU-platform selection. Use
+`make recreate-preview` to rebuild the application roles while preserving
+PostgreSQL and Reth; the compiler cache is disposable. Use `make stop-preview`
+to remove the complete Preview and its volumes. See the
 [deployment guide](deploy/README.md#full-stack-preview) for prerequisites,
 enabled features, and endpoint overrides.
 
@@ -120,7 +123,7 @@ make test-runtime-e2e
 `make test-integration` starts and removes a fresh PostgreSQL 18 instance when
 `INTEGRATION_DATABASE_URL` is unset. The schema and runtime targets use the
 production image; the runtime E2E exercises both monolith and complete
-seven-role deployments. No manual PostgreSQL startup is required.
+six-application-role deployments. No manual PostgreSQL startup is required.
 
 ## Documentation
 

@@ -213,13 +213,12 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 			"37-trace-enrichment-03", "37-trace-enrichment-04",
 		}},
-		{name: "verify disabled", role: components.RoleVerify, want: []string{"00-operations-http", "02-durable-metrics", "50-role-verify"}},
-		{name: "verify enabled", role: components.RoleVerify, setup: func(cfg *config.Config) {
+		{name: "api with solc-js verification", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "35-compiler-catalog-refresher",
-			"40-contract-verification-01", "40-contract-verification-02",
-			"40-contract-verification-03", "40-contract-verification-04",
+			"00-operations-http", "02-durable-metrics", "08-runtime-event-relay",
+			"09-home-snapshot-feed", "20-public-api",
+			"35-compiler-catalog-refresher", "40-contract-verification-01",
 		}},
 		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "02-durable-metrics", "50-role-metadata"}},
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
@@ -302,6 +301,7 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Runtime.WorkerCount = 2
+	cfg.Verification.WorkerCount = 2
 	cfg.Features.Trace = true
 	cfg.Features.Verification = true
 	cfg.Features.NFTMetadata = true
@@ -318,8 +318,10 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"00-operations-http", "02-durable-metrics",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 		}},
-		{role: components.RoleVerify, want: []string{
-			"00-operations-http", "02-durable-metrics", "35-compiler-catalog-refresher",
+		{role: components.RoleAPI, want: []string{
+			"00-operations-http", "02-durable-metrics",
+			"08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api",
+			"35-compiler-catalog-refresher",
 			"40-contract-verification-01", "40-contract-verification-02",
 		}},
 		{role: components.RoleMetadata, want: []string{

@@ -33,12 +33,30 @@ until the Makefile target exists.
 - `make test-integration-race`: run the same owned database lifecycle with the
   Go race detector. This expensive variant is explicit and is not part of
   default CI.
-- `make test-hardhat3-verify`: install the exact dependency-locked Hardhat 3
-  verification fixture and run its Etherscan-provider flow against a Go-owned
-  real compatibility handler with in-memory authentication and a stateful fake
-  backend. It proves GET source lookup, POST Standard JSON submission, and GET
-  pending/success status polling without a chain, database, compiler, Hardhat
-  2, Blockscout, or Sourcify.
+- `make test-hardhat3-provider-compat`: install the exact dependency-locked
+  Hardhat 3 fixture and run its Etherscan-provider flow against a Go-owned real
+  compatibility handler with in-memory authentication and a stateful fake
+  backend. This is the fast provider-wire regression only; it has no chain,
+  database, compiler, or production process.
+- `make test-hardhat3-e2e`: rebuild the host-native production application and
+  independent Hardhat client images, then run the real Hardhat CLI against independent
+  Anvil/PostgreSQL datasets in monolith and complete six-application-role
+  layouts. It compiles and deploys an implementation plus EIP-1967 proxy,
+  verifies both sources through the public compatibility API and official
+  compiler catalog, polls durable proxy verification, upgrades and rebinds the
+  proxy, and checks normalized public/persistent parity. The `all` or `api`
+  process consumes the durable job, resolves and checksum-validates the
+  architecture-independent `emscripten-wasm32` artifact, and runs each bounded
+  Standard JSON compilation in a fresh permission-restricted Node subprocess.
+  No application or test client receives a Docker socket or CLI. The test
+  fails when the official catalog or compiler cannot be downloaded. CI builds
+  and exercises the native production image independently on AMD64 and ARM64;
+  no deployment or test field fixes a container platform. CI uses
+  `make test-hardhat3-e2e-prebuilt` after loading both images. Redacted
+  Hardhat output, Compose state/logs, and proxy summaries are retained on
+  failure. The E2E-only API environment permits Docker fake-IP download
+  networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
+  checks; the base deployment never receives that escape hatch.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture dependency audits, secret scan, and security-focused tests. All
@@ -53,18 +71,21 @@ until the Makefile target exists.
   require a non-empty facilitator CIDR policy with broad HTTPS egress disabled.
   It also checks release/namespace-scoped x402 process-counter and
   writer-backed stale-settlement alerts.
-- `make docker-build docker-image-check`: build the production target, run it
-  with the numeric non-root identity and hardened runtime flags, and scan its
-  exported root filesystem for Node, package-manager, shell, Go, and
-  Solidity/Vyper compiler payloads.
+- `make docker-build docker-image-check`: build the production target for the
+  Docker host architecture, run it with the numeric non-root identity and
+  hardened runtime flags, validate the exact Node/compiler runtime manifest
+  and self-test, and scan its exported root filesystem. The image contains the
+  pinned Node executable and read-only solc-js wrapper/dependency tree, but no
+  npm, npx, corepack, shell, Go toolchain, native solc, or Vyper payload.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
   `migrate status`.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
-  monolith and all-seven-role layouts. Each layout gets a deterministic Anvil
-  chain and a fresh PostgreSQL volume. The suite verifies an exact pending
-  hash, contract creation and a failed call, all six deployed stage
+  monolith and all-six-application-role layouts. Each layout gets a
+  deterministic Anvil chain and a fresh PostgreSQL volume. The suite verifies
+  an exact pending hash, contract creation and a failed call, all six deployed
+  stage
   publications, a distinct competing-hash reorg with orphan/journal retention
   and changed hourly analytics, API/SSE/SPA behavior, RPC and PostgreSQL outage
   recovery, API process restart, bounded load, and final durable/public parity.

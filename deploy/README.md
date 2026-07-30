@@ -19,6 +19,10 @@ The `monolith` profile starts PostgreSQL, a migration run, and one
 `serve --roles=all` process. The `distributed` profile starts the same migration
 and one process per role. Add `--profile accelerators` only when developing an
 optional adapter; those services are intentionally absent from `depends_on`.
+Public verification additionally uses `--profile verification`. The selected
+`all` or `api` process owns the checksum-verified solc-js cache and restricted
+Node subprocess executor; there is no standalone compiler service or image
+reference.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
 unreachable; create the configured S3 bucket before expecting trace-cache hits.
@@ -68,10 +72,11 @@ final API-role configuration before adding a paid route.
 
 ## Full-stack Preview
 
-`compose.preview.yaml` runs the local Reth development chain and all seven
-application roles. It enables public verification and NFT metadata while
-leaving Sourcify, pricing, and x402 billing disabled. Optional NATS, Redis, and
-object storage accelerators are not part of this deployment.
+`compose.preview.yaml` runs the local Reth development chain and all six
+application roles. It enables public
+verification and NFT metadata while leaving Sourcify, pricing, and x402 billing
+disabled. Optional NATS, Redis, and object storage accelerators are not part of
+this deployment.
 
 ```sh
 make preview-cert
@@ -99,55 +104,31 @@ The add-network control advertises the local Reth endpoint as
 Preview-local HTTP RPC exception only; production RPC URLs and every block
 explorer or icon URL remain HTTPS-only.
 
-Verification v2 downloads checksum-pinned native compiler artifacts into the
-`compiler-cache` volume, then passes each compiler and Standard JSON request
-through framed stdin to one pre-pulled, digest-pinned generic runner image.
-Solidity catalog discovery defaults to `auto` and follows the platform
-directories published by
-[`argotorg/solc-bin`](https://github.com/argotorg/solc-bin):
-`bin`, `emscripten-asmjs`, `emscripten-wasm32`, `linux-amd64`, `linux-arm64`,
-`macosx-amd64`, `wasm`, and `windows-amd64`. Container mode reads the actual
-runner image platform; private process mode uses the host platform and can use
-Linux, macOS, or Windows native packages.
-It does not silently substitute a different CPU architecture when a version is
-absent from the matching catalog. Every invocation binds the selected catalog
-platform and validates ELF, Mach-O, or PE format before execution.
-The emscripten/WASM directories remain recognized catalog platforms but are
-not admitted as the plan's single-artifact compiler package: current builds
-require unlisted sidecar/runtime inputs and cannot satisfy the same immutable
-SHA-256 provenance. `catalog_urls.solidity` is only an optional approved-mirror
-override.
-`make start-preview` builds the generic runner for `linux/amd64`, resolves its
-exact local image content digest, and saves it under the ignored
-`.local/preview-compiler/` directory. Using AMD64 aligns both Solidity and the
-Blockscout Vyper catalog with one runner platform; non-AMD64 developer hosts
-therefore require container emulation, and preflight fails closed when the
-nested daemon cannot execute it. A digest-pinned, one-shot Docker CLI service
-loads that archive into a dedicated nested daemon and copies only its static
-client into a read-only verify-role volume. The API and verify roles receive
-the same exact runner reference, while no other application role can reach the
-compiler network. A networkless volume initializer retains only `CAP_CHOWN`;
-the following preflight and verify role both run as UID/GID 65532, and
-preflight proves that identity can write the compiler cache before verify
-starts. It also executes the runner once under the production CPU, memory,
-PID, network, capability, identity, and filesystem bounds. The compiler
-container runs without network access, with a read-only root, non-root
-identity, dropped capabilities, tmpfs, and bounded input, output, and cleanup
-behavior.
+Verification v2 treats user-supplied Solidity/Yul input as hostile while
+trusting only checksum-pinned official solc-js artifacts. The `api` process
+owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
+and redirect checks, checksum-pinned download, a disposable compiler cache,
+and execution. Each compile starts a fresh Node subprocess with a minimal
+environment, private temporary directory, read-only permissions, bounded
+heap/input/output/time, and process-group cleanup. The subprocess receives no
+network, child-process, worker, addon, WASI, FFI, or inspector permission.
+Node's permission model is defense in depth, not a JavaScript security
+boundary. Every bound job records the exact catalog generation, artifact
+format, compiler SHA-256, and runtime executor digest.
 
-Preview never mounts the host container socket, publishes the nested daemon,
-or gives it a host bind mount. The nested daemon is nevertheless a privileged
-container so it can enforce compiler cgroup limits; privilege gives that local
-tooling broad authority over the host kernel and devices. Run Preview only on
-a trusted development machine, and never copy this local-only boundary into
-the production Compose or Helm deployment.
-
-After Compose starts, a bounded Go-owned check probes all seven roles through
-their internal `/health/ready` endpoints, proves the exact runner is loaded in
-the isolated daemon, verifies the public HTTPS feature contract with the
-copied CA, and requires stable container identities and restart counts. A
-restarting role therefore makes `make start-preview` or
-`make recreate-preview` fail even when Compose's own `--wait` returns success.
+`make start-preview` builds the production application image for the current
+Docker host architecture and then starts Compose with `--no-build`. It removes
+orphan containers from this Compose project and clears only obsolete local
+runner-reference files; it does not delete unrelated images. No Docker daemon,
+socket, CLI, nested container runtime, privileged service, standalone compiler
+container, or CPU-platform selection participates in compiler execution.
+After Compose starts, the bounded Go-owned check probes all six application
+roles, verifies that each container image matches the Docker host architecture,
+checks the bundled Node runtime, verifies the public HTTPS feature contract
+with the copied CA, and requires stable container identities and restart
+counts. A restarting process therefore makes
+`make start-preview` or `make recreate-preview` fail even when Compose's own
+`--wait` returns success.
 
 NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
 Override it without editing the checked-in configuration:
@@ -159,21 +140,19 @@ ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com make start-preview
 The gateway must remain an absolute public HTTPS URL accepted by the metadata
 SSRF policy. Public gateways have no production availability commitment.
 Compiler catalogs, compiler artifacts, and IPFS gateways are all subject to
-the same public-IP validation. Transparent or fake-IP DNS that maps those
-public hosts into the RFC 2544 benchmarking range `198.18.0.0/15` is rejected
-fail closed. Use a policy-approved environment and resolver; do not weaken
-`PublicIP`, hardcode resolver bypasses, or pin mutable DNS snapshots.
-The checked-in Preview Compose file is the sole exception: its `verify` role
-sets `ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true` so a
-local transparent proxy's fake IPs can reach the fixed compiler download
-origins. This disables the compiler downloader's private-network rejection for
-that role only. It is unsafe for production, does not apply to NFT metadata,
-and must not be copied into the base Compose or Helm deployment.
+public-IP validation. Transparent or fake-IP DNS that maps public hosts into
+the RFC 2544 benchmarking range `198.18.0.0/15` is rejected by default. The
+checked-in Preview passes
+`ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true` only to
+`api` so Docker Desktop's fake-IP proxy can be used. The exception never
+broadens the HTTPS origin allowlist, disables TLS, permits redirects, or skips
+artifact size/SHA-256 checks; it is absent from the other Preview roles, base
+Compose, and Helm. Do not enable it in production or use it to admit an
+unreviewed compiler origin.
 
-`make recreate-preview` rebuilds the application and runner images, reloads the
-exact runner digest, and replaces the seven application containers while
-preserving PostgreSQL, Reth, the isolated compiler daemon state, and compiler
-artifact cache.
+`make recreate-preview` rebuilds the host-native production image and replaces
+the six application containers while preserving PostgreSQL and Reth. The
+API-owned compiler cache is intentionally disposable.
 `make stop-preview` removes the deployment and all persistent volumes. Override
 the application tag with `ETHERVIEW_IMAGE`.
 
@@ -188,7 +167,8 @@ make test-runtime-e2e
 
 The schema target drives the production migration image from Go. The runtime
 target rebuilds the current working tree and drives the same production image
-in monolith and seven-role distributed layouts from a build-tagged Go test.
+in monolith and six-application-role distributed layouts from a build-tagged
+Go test.
 The distributed layout starts two sync and enrichment replicas, stops one of
 each, and proves the survivors process a competing-hash reorg. Both layouts
 must publish all six deployed stages, retain the orphan branch, update hourly
@@ -196,9 +176,8 @@ analytics, recover after RPC and PostgreSQL pauses plus an API restart, expose
 the same API/SSE/embedded-SPA behavior, pass bounded load, and finish with
 equivalent normalized durable and public state. Trace, mempool, historical
 state, and NFT metadata are enabled. Verification, Sourcify, and pricing are
-explicitly disabled: public verification requires an approved external
-compiler sandbox/cache, while Sourcify and pricing require separate
-external-service fixtures.
+explicitly disabled in this ordinary runtime suite because they require the
+official external compiler catalog or other external-service fixtures.
 
 The pinned Anvil fixture currently emits `blobGasPrice` without
 `blobGasUsed` on ordinary receipts. A bounded test-only Go RPC adapter removes
@@ -227,6 +206,14 @@ results, and published contracts before creating the v2 catalog, job, result,
 and publication contracts. Back up PostgreSQL before upgrading if historical
 verification data may be needed. There is no dual-read period, data rollback
 conversion, or compatibility route for the removed v1 REST API.
+
+Migration `0031_solcjs_executor.sql` is a second irreversible verification-data
+cutover. Stop every old verifier worker, back up PostgreSQL, and deploy the
+migration with the new application as one change; old and new versions cannot
+run together. The migration deletes all Vyper catalogs, jobs, results,
+verified contracts, and dependent proxy publications, and terminates active
+legacy-runner compiler jobs with `executor_migrated`. Vyper data can be
+recovered only by restoring the pre-upgrade backup.
 
 The chart expects an existing Kubernetes Secret (default name `etherview`) with
 `database-url` and optional `database-read-url`, `rpc-urls`, `api-key-pepper`,
@@ -341,13 +328,15 @@ metric staleness, alerts, and repair/reindex response.
 
 ## Image properties
 
-The Dockerfile builds the SPA with Node, compiles one static Go binary, and then
-copies only that binary into a distroless non-root image. The production stage
-contains no Node runtime, package manager, Solidity/Vyper compiler, source tree,
-or shell. Public compiler execution therefore requires a separately approved
-sandbox runtime and must not be added to this image.
+The Dockerfile builds the SPA, compiles one static Go binary, and assembles a
+distroless non-root image for BuildKit's target architecture. The production
+stage contains the application binary plus an exact Node 26.5.0 executable,
+the read-only solc-js wrapper/dependency tree, and its canonical runtime
+manifest. It contains no npm, npx, corepack, shell, native solc, Vyper, Go
+toolchain, or source tree.
 
 `make docker-image-check` enforces that boundary by inspecting the configured
 user, executing the binary as UID/GID 65532 with a read-only filesystem,
 dropped capabilities, and no-new-privileges, and scanning the exported root
-filesystem for build, package-manager, shell, and compiler payloads.
+filesystem for forbidden build, package-manager, shell, and native compiler
+payloads while validating the bundled executor manifest and self-test.

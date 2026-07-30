@@ -19,7 +19,7 @@ batch semantics are not core v1 scope.
 | P00 | [Foundation](docs/plans/P00-foundation.md) | done | — | Governance, toolchain, config, CLI, migrations, CI, and embedded SPA skeleton |
 | P10 | [Indexing](docs/plans/P10-indexing.md) | done | P00 | Full-history core indexing, canonicality, finality, reorgs, and repair |
 | P20 | [Enrichment](docs/plans/P20-enrichment.md) | done | P10 | Tokens, NFTs, ABI/proxy decoding, traces, balances, and statistics |
-| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Blockscout-style Solidity/Yul/Vyper verification, dynamic compilers, and metadata safety |
+| P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Verification foundation; the current surface is Solidity/Yul with architecture-neutral solc-js |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
@@ -45,13 +45,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   search, adapter, and statistics enrichment uses exact-state and
   lease-fenced publication contracts. Reviewable commands and results remain in
   [P20 evidence](docs/plans/P20-enrichment.md#evidence).
-- P30 is complete: the destructive verifier-v2 cutover provides bounded
-  automatic Solidity/Yul/Vyper candidate matching, a durable dynamic compiler
-  catalog and digest-pinned generic runner, native asynchronous REST and
-  explicit Sourcify workflows, and canonical-runtime-gated full/partial
-  publication. Reviewable commands and results remain in
-  [P30 evidence](docs/plans/P30-contract-verification.md#evidence), including
-  runner-platform-aware compiler artifact discovery and provenance.
+- P30 is complete as historical verifier-v2 foundation. P70-T29 supersedes its
+  runner and language boundaries: the maintained surface is bounded automatic
+  Solidity/Yul matching with official architecture-neutral solc-js,
+  asynchronous REST and explicit Sourcify workflows, and
+  canonical-runtime-gated full/partial publication. Historical evidence
+  remains in [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
 - P40 is complete: the native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
   subset pass their contract, race, security, and PostgreSQL coverage
@@ -112,15 +111,18 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   production Compose reorg; P70-T18's address/network release validation passes
   the embedded browser and managed PostgreSQL suites; P70-T19 replaces manual
   PostgreSQL setup and shell-heavy runtime smoke with Go-owned integration,
-  production-schema, and monolith/seven-role runtime E2E targets. P70-T20
+  production-schema, and monolith/six-role runtime E2E targets. P70-T20
   completes optional process-native TLS on API listeners, a Preview-local
   mkcert workflow, role-scoped Helm certificate delivery, and production
   runtime validation. P70-T04 still requires the named reference capacity
-  environment, and P70-T15 has restored Preview catalog publication through
-  its explicitly unsafe local fake-IP exception but still requires real
-  Solidity/Vyper execution and NFT metadata evidence. P66 live-payment evidence
-  still gates conformance, security, release CI, documentation, and artifact
-  work.
+  environment. P70-T29 has replaced the superseded remote runner with the
+  host-native API-owned Node/solc-js executor and removed the obsolete language
+  surface. Its ARM64 Preview, production-image, migration, runtime, and real
+  Hardhat monolith/split evidence passes; native AMD64 and ARM64 CI results for
+  the final revision remain outstanding, so the item stays `in_progress`.
+  P70-T27's complete real Hardhat proxy gate now passes in both topologies.
+  P66 live-payment evidence still gates conformance, security, release CI,
+  documentation, and artifact work.
 
 ## Global Release Gates
 

@@ -16,7 +16,6 @@ type WorkerOptions struct {
 	LeaseDuration  time.Duration
 	PollInterval   time.Duration
 	MaxOutputBytes int
-	Public         bool
 	Observer       VerificationObserver
 	Sourcify       SourcifyWorkflow
 }
@@ -28,6 +27,10 @@ type SourcifyWorkflow interface {
 // VerificationObserver receives only controlled terminal/result labels.
 type VerificationObserver interface {
 	RecordVerificationJob(result string)
+}
+
+type verificationAvailabilityObserver interface {
+	RecordVerificationCompiler(available bool)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -70,9 +73,6 @@ func NewWorker(repository Repository, compiler Compiler, options WorkerOptions) 
 	if options.LeaseDuration < 3*time.Millisecond || options.PollInterval <= 0 || options.MaxOutputBytes <= 0 {
 		return nil, errors.New("verification worker limits are invalid")
 	}
-	if options.Public && !compiler.HardIsolated() {
-		return nil, ErrSandboxRequired
-	}
 	return &Worker{repository: repository, compiler: compiler, options: options}, nil
 }
 
@@ -91,7 +91,7 @@ func (worker *Worker) Run(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		found, err := worker.ProcessOne(ctx)
+		found, err := worker.processOneRunnable(ctx, worker.compilerAvailable(ctx))
 		if err != nil {
 			return err
 		}
@@ -104,7 +104,48 @@ func (worker *Worker) Run(ctx context.Context) error {
 }
 
 func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
-	lease, found, err := worker.repository.Claim(ctx, worker.options.WorkerID, worker.options.LeaseDuration)
+	return worker.processOneRunnable(ctx, true)
+}
+
+type runnableVerificationClaimer interface {
+	ClaimRunnable(context.Context, string, time.Duration, bool) (VerificationLease, bool, error)
+}
+
+func (worker *Worker) compilerAvailable(ctx context.Context) bool {
+	if runtime, ok := worker.compiler.(interface {
+		CompilerAvailable(context.Context) bool
+	}); ok {
+		return runtime.CompilerAvailable(ctx)
+	}
+	runtime, ok := worker.compiler.(interface{ Ready() bool })
+	if !ok {
+		return true
+	}
+	return runtime.Ready()
+}
+
+func (worker *Worker) processOneRunnable(
+	ctx context.Context,
+	compilerAvailable bool,
+) (bool, error) {
+	if observer, ok := worker.options.Observer.(verificationAvailabilityObserver); ok {
+		observer.RecordVerificationCompiler(compilerAvailable)
+	}
+	var lease VerificationLease
+	var found bool
+	var err error
+	if repository, ok := worker.repository.(runnableVerificationClaimer); ok {
+		lease, found, err = repository.ClaimRunnable(
+			ctx, worker.options.WorkerID, worker.options.LeaseDuration, compilerAvailable,
+		)
+	} else {
+		if !compilerAvailable {
+			return false, nil
+		}
+		lease, found, err = worker.repository.Claim(
+			ctx, worker.options.WorkerID, worker.options.LeaseDuration,
+		)
+	}
 	if err != nil || !found {
 		return found, err
 	}
@@ -115,132 +156,11 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	return true, err
 }
 
-type compileOutcome struct {
-	completion *Completion
-	errorCode  ErrorCode
-	cancelled  bool
-	fatal      error
-}
-
-const compilerCancellationCleanupTimeout = 8 * time.Second
-
 func (worker *Worker) processLease(ctx context.Context, lease VerificationLease) error {
-	if lease.Job.RequestV2 != nil {
-		return worker.processLeaseV2(ctx, lease)
+	if lease.Job.RequestV2 == nil {
+		return errors.New("verification job payload is invalid")
 	}
-	provenance, err := worker.compiler.Provenance(
-		lease.Job.Request.Language, lease.Job.Request.CompilerVersion,
-	)
-	if err != nil {
-		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
-	}
-	if lease.Job.RequiresHardIsolation && !provenance.HardIsolated {
-		return worker.failLease(ctx, lease, ErrorSandboxRequired)
-	}
-	if err := worker.repository.BindCompiler(ctx, lease, provenance); err != nil {
-		switch {
-		case errors.Is(err, ErrSandboxRequired):
-			return worker.failLease(ctx, lease, ErrorSandboxRequired)
-		case errors.Is(err, ErrCompilerProvenanceConflict):
-			return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
-		default:
-			return fmt.Errorf("bind verification compiler: %w", err)
-		}
-	}
-	lease.Job.Compiler = &provenance
-	compileContext, cancel := context.WithCancel(ctx)
-	defer cancel()
-	finished := make(chan compileOutcome, 1)
-	go func() {
-		outcome := compileOutcome{}
-		defer func() {
-			if recover() != nil {
-				outcome = compileOutcome{fatal: ErrCompilerRuntime}
-			}
-			finished <- outcome
-		}()
-		output, err := worker.compiler.Compile(
-			compileContext,
-			lease.Job.Request.Language,
-			lease.Job.Request.CompilerVersion,
-			lease.Job.Request.StandardJSON,
-		)
-		if err != nil {
-			if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
-				if errors.Is(err, ErrCompilerCleanup) {
-					outcome.fatal = ErrCompilerCleanup
-				} else {
-					outcome.fatal = ErrCompilerRuntime
-				}
-				return
-			}
-			if compileContext.Err() != nil {
-				outcome.cancelled = true
-				return
-			}
-			outcome.errorCode = ErrorCompileFailed
-			return
-		}
-		completion, code := buildCompletion(lease.Job.Request, output, worker.options.MaxOutputBytes)
-		if code != "" {
-			outcome.errorCode = code
-			return
-		}
-		outcome.completion = &completion
-	}()
-
-	heartbeat := time.NewTicker(worker.options.LeaseDuration / 3)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			cancel()
-			outcome, ok := waitForCompilerCleanup(finished)
-			if !ok {
-				return ErrCompilerCleanup
-			}
-			if outcome.fatal != nil {
-				return outcome.fatal
-			}
-			return ctx.Err()
-		case <-heartbeat.C:
-			if err := worker.repository.Renew(ctx, lease, worker.options.LeaseDuration); err != nil {
-				cancel()
-				outcome, ok := waitForCompilerCleanup(finished)
-				if !ok {
-					return ErrCompilerCleanup
-				}
-				if outcome.fatal != nil {
-					return outcome.fatal
-				}
-				return fmt.Errorf("renew verification lease: %w", err)
-			}
-		case outcome := <-finished:
-			if outcome.fatal != nil {
-				return outcome.fatal
-			}
-			if outcome.cancelled {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				return errors.New("verification compiler cancelled")
-			}
-			if outcome.errorCode != "" {
-				return worker.failLease(ctx, lease, outcome.errorCode)
-			}
-			if outcome.completion == nil {
-				return errors.New("verification compiler returned no outcome")
-			}
-			if err := worker.repository.Complete(ctx, lease, *outcome.completion); errors.Is(err, ErrTargetNotCanonical) {
-				worker.observe("stale_target")
-				return nil
-			} else if err != nil {
-				return fmt.Errorf("complete verification job: %w", err)
-			}
-			worker.observe("succeeded")
-			return nil
-		}
-	}
+	return worker.processLeaseV2(ctx, lease)
 }
 
 type v2CompletionRepository interface {
@@ -253,6 +173,22 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		return errors.New("verification v2 completion repository is unavailable")
 	}
 	request := lease.Job.RequestV2
+	if request.Kind == JobProxy {
+		proxyRepository, ok := worker.repository.(interface {
+			CompleteProxyV2(context.Context, VerificationLease) error
+		})
+		if !ok {
+			return errors.New("proxy verification completion repository is unavailable")
+		}
+		if err := proxyRepository.CompleteProxyV2(ctx, lease); err != nil {
+			if errors.Is(err, ErrTargetNotCanonical) {
+				return worker.failLease(ctx, lease, ErrorTargetNotCanonical)
+			}
+			return err
+		}
+		worker.observe("succeeded")
+		return nil
+	}
 	if request.Kind == JobSourcify || request.Kind == JobSourcifyFromEtherscan {
 		if worker.options.Sourcify == nil {
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
@@ -270,18 +206,18 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			"kind": "sourcify_success", "verification_id": result.VerificationID,
 		})
 	}
-	var provenance CompilerProvenance
-	var err error
-	if pinned, ok := worker.compiler.(PinnedCompiler); ok {
-		provenance, err = pinned.Resolve(ctx, request.Language, request.CompilerVersion)
-	} else {
-		provenance, err = worker.compiler.Provenance(request.Language, request.CompilerVersion)
-	}
+	provenance, err := worker.resolveCompilerV2(ctx, lease)
 	if err != nil {
+		if errors.Is(err, ErrCompilerVersionUnavailable) {
+			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
+		}
+		if transientCompilerError(err) || errors.Is(err, context.Canceled) {
+			return err
+		}
 		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 	}
 	if provenance.CatalogGeneration > 0 &&
-		(request.CompilerPlatform == "" || provenance.Platform != request.CompilerPlatform) {
+		request.CompilerPlatform != "" && provenance.Platform != request.CompilerPlatform {
 		return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
 	}
 	if err := worker.repository.BindCompiler(ctx, lease, provenance); err != nil {
@@ -294,9 +230,14 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		if err != nil {
 			return worker.failLease(ctx, lease, ErrorCompilerOutput)
 		}
-		first, second, err := worker.compilePairV2(ctx, request, provenance, input, modified)
+		first, second, err := worker.compilePairV2WithRetry(
+			ctx, lease, request, provenance, input, modified,
+		)
 		if err != nil {
 			if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
+				return err
+			}
+			if transientCompilerError(err) || errors.Is(err, context.Canceled) {
 				return err
 			}
 			// Compiler-process, cache, sandbox, timeout, cancellation, and
@@ -369,6 +310,11 @@ func (worker *Worker) compilePairV2(
 	provenance CompilerProvenance,
 	firstInput, secondInput []byte,
 ) ([]byte, []byte, error) {
+	if paired, ok := worker.compiler.(PinnedPairCompiler); ok {
+		return paired.CompilePairPinned(
+			ctx, request.Language, request.CompilerVersion, provenance, firstInput, secondInput,
+		)
+	}
 	compile := func(input []byte) ([]byte, error) {
 		if pinned, ok := worker.compiler.(PinnedCompiler); ok {
 			return pinned.CompilePinned(ctx, request.Language, request.CompilerVersion, provenance, input)
@@ -384,6 +330,131 @@ func (worker *Worker) compilePairV2(
 		return nil, nil, err
 	}
 	return first, second, nil
+}
+
+func (worker *Worker) resolveCompilerV2(
+	ctx context.Context,
+	lease VerificationLease,
+) (CompilerProvenance, error) {
+	if lease.Job.Compiler != nil {
+		return *lease.Job.Compiler, nil
+	}
+	request := lease.Job.RequestV2
+	delay := time.Second
+	for {
+		provenance, err := runWithLeaseHeartbeat(
+			ctx, worker, lease,
+			func(operationContext context.Context) (CompilerProvenance, error) {
+				if pinned, ok := worker.compiler.(PinnedCompiler); ok {
+					return pinned.Resolve(
+						operationContext, request.Language, request.CompilerVersion,
+					)
+				}
+				return worker.compiler.Provenance(request.Language, request.CompilerVersion)
+			},
+		)
+		if !transientCompilerError(err) {
+			return provenance, err
+		}
+		if err := worker.waitForCompilerRetry(ctx, lease, delay); err != nil {
+			return CompilerProvenance{}, err
+		}
+		delay = min(2*delay, 30*time.Second)
+	}
+}
+
+func (worker *Worker) compilePairV2WithRetry(
+	ctx context.Context,
+	lease VerificationLease,
+	request *SubmissionV2,
+	provenance CompilerProvenance,
+	firstInput, secondInput []byte,
+) ([]byte, []byte, error) {
+	delay := time.Second
+	for {
+		type pair struct {
+			first  []byte
+			second []byte
+		}
+		outputs, err := runWithLeaseHeartbeat(
+			ctx, worker, lease,
+			func(operationContext context.Context) (pair, error) {
+				first, second, compileErr := worker.compilePairV2(
+					operationContext, request, provenance, firstInput, secondInput,
+				)
+				return pair{first: first, second: second}, compileErr
+			},
+		)
+		if !transientCompilerError(err) {
+			return outputs.first, outputs.second, err
+		}
+		if err := worker.waitForCompilerRetry(ctx, lease, delay); err != nil {
+			return nil, nil, err
+		}
+		delay = min(2*delay, 30*time.Second)
+	}
+}
+
+func transientCompilerError(err error) bool {
+	return errors.Is(err, ErrCompilerCatalogStale) ||
+		errors.Is(err, ErrCompilerCatalogUnavailable)
+}
+
+func (worker *Worker) waitForCompilerRetry(
+	ctx context.Context,
+	lease VerificationLease,
+	delay time.Duration,
+) error {
+	_, err := runWithLeaseHeartbeat(
+		ctx, worker, lease,
+		func(operationContext context.Context) (struct{}, error) {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-operationContext.Done():
+				return struct{}{}, operationContext.Err()
+			case <-timer.C:
+				return struct{}{}, nil
+			}
+		},
+	)
+	return err
+}
+
+func runWithLeaseHeartbeat[T any](
+	ctx context.Context,
+	worker *Worker,
+	lease VerificationLease,
+	operation func(context.Context) (T, error),
+) (T, error) {
+	var zero T
+	operationContext, cancel := context.WithCancel(ctx)
+	renewed := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(worker.options.LeaseDuration / 3)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-operationContext.Done():
+				renewed <- nil
+				return
+			case <-ticker.C:
+				if err := worker.repository.Renew(
+					ctx, lease, worker.options.LeaseDuration,
+				); err != nil {
+					cancel()
+					renewed <- err
+					return
+				}
+			}
+		}
+	}()
+	value, err := operation(operationContext)
+	cancel()
+	if renewalErr := <-renewed; renewalErr != nil {
+		return zero, renewalErr
+	}
+	return value, err
 }
 
 func verificationSuccessOutcome(
@@ -449,17 +520,6 @@ func (worker *Worker) completeOutcomeV2(
 	return nil
 }
 
-func waitForCompilerCleanup(finished <-chan compileOutcome) (compileOutcome, bool) {
-	timer := time.NewTimer(compilerCancellationCleanupTimeout)
-	defer timer.Stop()
-	select {
-	case outcome := <-finished:
-		return outcome, true
-	case <-timer.C:
-		return compileOutcome{}, false
-	}
-}
-
 func (worker *Worker) failLease(ctx context.Context, lease VerificationLease, code ErrorCode) error {
 	if err := worker.repository.Fail(ctx, lease, code); err != nil {
 		return fmt.Errorf("fail verification job: %w", err)
@@ -481,90 +541,6 @@ func (worker *Worker) observe(result string) {
 	if worker.options.Observer != nil {
 		worker.options.Observer.RecordVerificationJob(result)
 	}
-}
-
-func buildCompletion(request Request, compilerOutput []byte, maximum int) (Completion, ErrorCode) {
-	if len(compilerOutput) == 0 {
-		return Completion{}, ErrorCompilerOutput
-	}
-	if maximum <= 0 || len(compilerOutput) > maximum {
-		return Completion{}, ErrorCompilerTooLarge
-	}
-	artifact, err := ExtractArtifact(
-		compilerOutput,
-		request.Language,
-		request.CompilerVersion,
-		request.ContractIdentifier,
-	)
-	if err != nil {
-		return Completion{}, ErrorCompilerOutput
-	}
-	sources, settings, err := extractSourcesAndSettings(request)
-	if err != nil {
-		return Completion{}, ErrorCompilerOutput
-	}
-	match, err := MatchArtifact(request, artifact)
-	if err != nil {
-		if errors.Is(err, errCompilerOutputMalformed) ||
-			errors.Is(err, errCompiledCodeMalformed) ||
-			errors.Is(err, errCompilerVersionMalformed) {
-			return Completion{}, ErrorCompilerOutput
-		}
-		return Completion{}, ErrorMatchFailed
-	}
-	kind := summarizeMatch(match)
-	completion := Completion{Kind: kind, Match: match}
-	if kind == MatchMismatch {
-		return completion, ""
-	}
-	completion.Artifact = artifact
-	completion.Sources = sources
-	completion.Settings = settings
-	return completion, ""
-}
-
-func extractSourcesAndSettings(request Request) (json.RawMessage, json.RawMessage, error) {
-	var input struct {
-		Sources  json.RawMessage `json:"sources"`
-		Settings json.RawMessage `json:"settings"`
-	}
-	if err := json.Unmarshal(request.StandardJSON, &input); err != nil {
-		return nil, nil, errors.New("standard JSON is invalid")
-	}
-	if !jsonObject(input.Sources) {
-		return nil, nil, errors.New("standard JSON sources must be an object")
-	}
-	if len(input.Settings) == 0 {
-		input.Settings = json.RawMessage(`{}`)
-	}
-	if !jsonObject(input.Settings) {
-		return nil, nil, errors.New("standard JSON settings must be an object")
-	}
-	if request.ConstructorArgs != "" || request.LicenseType != "" {
-		var settings map[string]json.RawMessage
-		if err := json.Unmarshal(input.Settings, &settings); err != nil {
-			return nil, nil, errors.New("standard JSON settings must be an object")
-		}
-		for key, value := range map[string]string{
-			"constructorArguments": request.ConstructorArgs,
-			"licenseType":          request.LicenseType,
-		} {
-			if value == "" {
-				continue
-			}
-			encoded, err := json.Marshal(value)
-			if err != nil {
-				return nil, nil, errors.New("verification metadata is invalid")
-			}
-			settings[key] = encoded
-		}
-		encoded, err := json.Marshal(settings)
-		if err != nil {
-			return nil, nil, errors.New("verification settings are invalid")
-		}
-		input.Settings = encoded
-	}
-	return append(json.RawMessage(nil), input.Sources...), append(json.RawMessage(nil), input.Settings...), nil
 }
 
 func waitForContext(ctx context.Context, duration time.Duration) error {

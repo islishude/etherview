@@ -95,6 +95,16 @@ func TestReplicaAwareEtherscanBackendRoutesAuthoritativeActions(t *testing.T) {
 			writerCalls: 1,
 		},
 		{
+			name:        "proxy verification submission",
+			request:     etherscan.Request{Module: "contract", Action: "verifyproxycontract"},
+			writerCalls: 1,
+		},
+		{
+			name:        "proxy verification status remains authoritative",
+			request:     etherscan.Request{Module: "contract", Action: "checkproxyverification"},
+			writerCalls: 1,
+		},
+		{
 			name:        "future contract action fails closed to writer",
 			request:     etherscan.Request{Module: "contract", Action: "future-action"},
 			writerCalls: 1,

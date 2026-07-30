@@ -2658,7 +2658,6 @@ function verificationLanguageLabel(value: string, t: Translate): string {
   switch (value) {
     case "solidity": return t("verificationLanguage.solidity");
     case "yul": return t("verificationLanguage.yul");
-    case "vyper": return t("verificationLanguage.vyper");
     default: return value;
   }
 }
@@ -2799,7 +2798,6 @@ export function VerifyPage() {
                 <select id="verification-language" value={language} onChange={(event) => setLanguage(event.target.value as VerificationSubmission["language"])}>
                   <option value="solidity">Solidity</option>
                   <option value="yul">Yul</option>
-                  <option value="vyper">Vyper</option>
                 </select>
               </label>
               <label className="field-control" htmlFor="verification-input-kind">

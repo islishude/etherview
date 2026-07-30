@@ -36,6 +36,12 @@ func (observer *BusinessObserver) RecordVerificationJob(result string) {
 	observer.log("verification job transitioned", slog.Attr{}, result)
 }
 
+func (observer *BusinessObserver) RecordVerificationCompiler(available bool) {
+	if observer != nil && observer.registry != nil {
+		observer.registry.SetVerificationCompilerAvailable(available)
+	}
+}
+
 func (observer *BusinessObserver) RecordMetadataFetch(result string) {
 	result = boundedJobResult(result)
 	if observer != nil && observer.registry != nil {

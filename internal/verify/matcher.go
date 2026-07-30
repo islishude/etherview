@@ -21,7 +21,6 @@ var (
 	errCompilerTargetMissing    = errors.New("compiler output target is missing")
 	errCompiledCodeMalformed    = errors.New("compiler output bytecode is malformed")
 	errOnchainCodeMalformed     = errors.New("on-chain bytecode is malformed")
-	errCompilerVersionMalformed = errors.New("compiler version is invalid")
 )
 
 type bytecodeRange struct {
@@ -34,32 +33,22 @@ type Artifact struct {
 	RuntimeBytecode  string
 	ABI              json.RawMessage
 	Metadata         json.RawMessage
-	Layout           json.RawMessage
 
 	language            Language
 	immutableReferences map[string][]bytecodeRange
-	vyperImmutableSize  int
-	vyperLayoutPresent  bool
-	vyperVersion        vyperVersion
-	vyperVersionPresent bool
 }
 
-// ExtractArtifact validates and selects one exact Solidity or Vyper Standard
-// JSON compiler output target. Compiler-provided diagnostics and malformed
-// fields never cross the stable error boundary.
+// ExtractArtifact validates and selects one exact Solidity Standard JSON
+// compiler output target. Compiler-provided diagnostics and malformed fields
+// never cross the stable error boundary.
 func ExtractArtifact(
 	output json.RawMessage,
 	language Language,
-	compilerVersion string,
+	_ string,
 	identifier string,
 ) (Artifact, error) {
-	var parsedVyperVersion vyperVersion
-	if language == LanguageVyper {
-		var versionOK bool
-		parsedVyperVersion, versionOK = parseVyperVersion(compilerVersion)
-		if !versionOK {
-			return Artifact{}, errCompilerVersionMalformed
-		}
+	if language != LanguageSolidity {
+		return Artifact{}, errCompilerOutputMalformed
 	}
 	source, name, err := parseStandardJSONContractIdentifier(identifier, language)
 	if err != nil {
@@ -93,8 +82,7 @@ func ExtractArtifact(
 		return Artifact{}, errCompilerOutputMalformed
 	}
 
-	metadataRequired := language != LanguageVyper || parsedVyperVersion.atLeast(0, 3, 10)
-	metadata, err := validateCompilerMetadata(contract["metadata"], language, metadataRequired)
+	metadata, err := validateCompilerMetadata(contract["metadata"])
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -104,7 +92,7 @@ func ExtractArtifact(
 	}
 	creation, creationLinks, creationImmutables, err := parseCompilerBytecode(
 		evm["bytecode"],
-		language == LanguageSolidity,
+		true,
 		false,
 	)
 	if err != nil {
@@ -112,58 +100,31 @@ func ExtractArtifact(
 	}
 	runtime, runtimeLinks, immutableReferences, err := parseCompilerBytecode(
 		evm["deployedBytecode"],
-		language == LanguageSolidity,
-		language == LanguageSolidity,
+		true,
+		true,
 	)
 	if err != nil {
 		return Artifact{}, err
 	}
-	if len(creationLinks) != 0 || len(runtimeLinks) != 0 || len(creationImmutables) != 0 ||
-		(language == LanguageVyper && len(immutableReferences) != 0) {
+	if len(creationLinks) != 0 || len(runtimeLinks) != 0 || len(creationImmutables) != 0 {
 		return Artifact{}, errCompiledCodeMalformed
 	}
 
 	artifact := Artifact{
-		CreationBytecode:    creation,
-		RuntimeBytecode:     runtime,
-		ABI:                 append(json.RawMessage(nil), contract["abi"]...),
-		Metadata:            metadata,
-		language:            language,
-		vyperVersion:        parsedVyperVersion,
-		vyperVersionPresent: language == LanguageVyper,
+		CreationBytecode: creation,
+		RuntimeBytecode:  runtime,
+		ABI:              append(json.RawMessage(nil), contract["abi"]...),
+		Metadata:         metadata,
+		language:         language,
 	}
-	switch language {
-	case LanguageSolidity:
-		compiledRuntime, decodeErr := decodeBytecode(runtime)
-		if decodeErr != nil || len(compiledRuntime) == 0 {
-			return Artifact{}, errCompiledCodeMalformed
-		}
-		if err := validateImmutableReferences(immutableReferences, compiledRuntime); err != nil {
-			return Artifact{}, err
-		}
-		artifact.immutableReferences = immutableReferences
-	case LanguageVyper:
-		layout := contract["layout"]
-		layoutRequired := parsedVyperVersion.atLeast(0, 4, 1)
-		if len(layout) == 0 {
-			if layoutRequired {
-				return Artifact{}, errCompilerOutputMalformed
-			}
-		} else {
-			if !jsonObject(layout) {
-				return Artifact{}, errCompilerOutputMalformed
-			}
-			immutableSize, layoutErr := parseVyperImmutableLayout(layout)
-			if layoutErr != nil {
-				return Artifact{}, layoutErr
-			}
-			artifact.Layout = append(json.RawMessage(nil), layout...)
-			artifact.vyperImmutableSize = immutableSize
-			artifact.vyperLayoutPresent = true
-		}
-	default:
-		return Artifact{}, errCompilerOutputMalformed
+	compiledRuntime, decodeErr := decodeBytecode(runtime)
+	if decodeErr != nil || len(compiledRuntime) == 0 {
+		return Artifact{}, errCompiledCodeMalformed
 	}
+	if err := validateImmutableReferences(immutableReferences, compiledRuntime); err != nil {
+		return Artifact{}, err
+	}
+	artifact.immutableReferences = immutableReferences
 	return artifact, nil
 }
 
@@ -190,26 +151,13 @@ func validateCompilerDiagnostics(raw json.RawMessage) error {
 	return nil
 }
 
-func validateCompilerMetadata(raw json.RawMessage, language Language, required bool) (json.RawMessage, error) {
-	switch language {
-	case LanguageSolidity:
-		var encoded string
-		if err := json.Unmarshal(raw, &encoded); err != nil || !jsonObject(json.RawMessage(encoded)) ||
-			validateUniqueJSON([]byte(encoded)) != nil {
-			return nil, errCompilerOutputMalformed
-		}
-		return json.RawMessage(append([]byte(nil), encoded...)), nil
-	case LanguageVyper:
-		if len(raw) == 0 && !required {
-			return nil, nil
-		}
-		if !jsonObject(raw) {
-			return nil, errCompilerOutputMalformed
-		}
-		return append(json.RawMessage(nil), raw...), nil
-	default:
+func validateCompilerMetadata(raw json.RawMessage) (json.RawMessage, error) {
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err != nil || !jsonObject(json.RawMessage(encoded)) ||
+		validateUniqueJSON([]byte(encoded)) != nil {
 		return nil, errCompilerOutputMalformed
 	}
+	return json.RawMessage(append([]byte(nil), encoded...)), nil
 }
 
 func parseCompilerBytecode(
@@ -379,8 +327,7 @@ func MatchArtifact(request Request, artifact Artifact) (MatchResult, error) {
 	if artifact.language != "" && artifact.language != request.Language {
 		return MatchResult{}, errors.New("compiler artifact language mismatch")
 	}
-	switch request.Language {
-	case LanguageSolidity:
+	if request.Language == LanguageSolidity {
 		metadataEnabled, err := solidityBytecodeMetadataEnabled(request.StandardJSON)
 		if err != nil {
 			return MatchResult{}, err
@@ -404,11 +351,8 @@ func MatchArtifact(request Request, artifact Artifact) (MatchResult, error) {
 			return MatchResult{}, err
 		}
 		return MatchResult{Creation: creation, Runtime: runtime}, nil
-	case LanguageVyper:
-		return matchVyperArtifact(request, artifact)
-	default:
-		return MatchResult{}, errors.New("unsupported compiler artifact language")
 	}
+	return MatchResult{}, errors.New("unsupported compiler artifact language")
 }
 
 func matchSolidityBytecode(

@@ -71,15 +71,17 @@ driver solely because an older evidence entry cites it.
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
   `internal/db/queries/`. Regenerate outputs and never hand-edit generated
   files.
-- Contract verification compiles bounded Solidity/Yul/Vyper inputs twice with
-  one exact catalog compiler, discovers candidates automatically, and records
-  only declared auxdata/library/constructor/immutable transformations.
-  Address publication requires a canonical runtime match and an exact immutable
-  result. Dynamic compiler catalogs and artifacts are hostile external input;
-  automatic catalog discovery follows solc-bin's published platform list and
-  the validated runner image or private host; cached native/solc-js format must
-  match it, and jobs bind the platform, catalog generation, compiler SHA-256,
-  and sandbox-runner digest.
+- Contract verification compiles bounded Solidity/Yul inputs twice with one
+  exact official `emscripten-wasm32` solc-js artifact, discovers candidates
+  automatically, and records only declared
+  auxdata/library/constructor/immutable transformations. Address publication
+  requires a canonical runtime match and an exact immutable result. Dynamic
+  compiler catalogs and artifacts are hostile external input: validate the
+  catalog generation and artifact SHA-256 before caching, and bind each leased
+  job to the artifact format, catalog generation, compiler SHA-256, executor
+  kind/policy, and runtime executor digest. The bundled Node permission model
+  is defense in depth for trusted checksum-authenticated solc-js, not an
+  isolation claim for malicious JavaScript.
 
 ## Security and browser boundaries
 
@@ -131,9 +133,9 @@ evidence rules.
   explicit race variant.
 - `make test-schema-e2e` and `make test-runtime-e2e` are the production-image
   deployment gates. The runtime suite is Go-owned and covers both the monolith
-  and the complete seven-role split topology, including exact pending identity,
-  six-stage publication, a distinct-hash reorg, dependency outages, restart,
-  bounded load, and durable/public parity. Extend this suite for new
+  and the complete six-application-role split topology, including exact pending
+  identity, six-stage publication, a distinct-hash reorg, dependency outages,
+  restart, bounded load, and durable/public parity. Extend this suite for new
   cross-process behavior instead of adding another shell smoke driver.
 - Keep service orchestration, polling, API/RPC assertions, SQL state capture,
   normalization, and diagnostics in Go. Shell under the test/deployment

@@ -17,23 +17,27 @@ import (
 )
 
 var (
-	ErrNotFound                      = errors.New("not found")
-	ErrTraceUnavailable              = errors.New("trace unavailable")
-	ErrPriceUnavailable              = errors.New("price unavailable")
-	ErrStateUnavailable              = errors.New("state unavailable")
-	ErrStatusUnavailable             = errors.New("receipt status unavailable")
-	ErrEstimateUnavailable           = errors.New("block time estimate unavailable")
-	ErrBlockAlreadyPassed            = errors.New("block number already passed")
-	ErrSupplyUnavailable             = errors.New("supply unavailable")
-	ErrTokenUnavailable              = errors.New("token index unavailable")
-	ErrUncleUnavailable              = errors.New("uncle index unavailable")
-	ErrVerificationUnavailable       = errors.New("verification workflow unavailable")
-	ErrVerificationTargetUnavailable = fmt.Errorf("%w: canonical code or creation facts unavailable", ErrVerificationUnavailable)
-	ErrProxyVerificationUnavailable  = fmt.Errorf("%w: durable proxy verification is unavailable", ErrVerificationUnavailable)
-	ErrVerificationJobNotFound       = errors.New("verification job not found")
-	ErrVerificationFailed            = errors.New("verification failed")
-	ErrContractUnverified            = errors.New("contract source code not verified")
-	ErrPending                       = errors.New("result pending")
+	ErrNotFound                            = errors.New("not found")
+	ErrTraceUnavailable                    = errors.New("trace unavailable")
+	ErrPriceUnavailable                    = errors.New("price unavailable")
+	ErrStateUnavailable                    = errors.New("state unavailable")
+	ErrStatusUnavailable                   = errors.New("receipt status unavailable")
+	ErrEstimateUnavailable                 = errors.New("block time estimate unavailable")
+	ErrBlockAlreadyPassed                  = errors.New("block number already passed")
+	ErrSupplyUnavailable                   = errors.New("supply unavailable")
+	ErrTokenUnavailable                    = errors.New("token index unavailable")
+	ErrUncleUnavailable                    = errors.New("uncle index unavailable")
+	ErrVerificationUnavailable             = errors.New("verification workflow unavailable")
+	ErrVerificationTargetUnavailable       = fmt.Errorf("%w: canonical code or creation facts unavailable", ErrVerificationUnavailable)
+	ErrProxyVerificationTargetUnavailable  = errors.New("proxy verification target unavailable")
+	ErrProxySourceUnverified               = errors.New("proxy source code not verified")
+	ErrProxyImplementationUnverified       = errors.New("proxy implementation source code not verified")
+	ErrProxyExpectedImplementationMismatch = errors.New("expected implementation does not match canonical proxy implementation")
+	ErrProxyVerificationFailed             = errors.New("proxy verification failed")
+	ErrVerificationJobNotFound             = errors.New("verification job not found")
+	ErrVerificationFailed                  = errors.New("verification failed")
+	ErrContractUnverified                  = errors.New("contract source code not verified")
+	ErrPending                             = errors.New("result pending")
 )
 
 var (
@@ -249,8 +253,16 @@ func (h Handler) writeBackendError(w http.ResponseWriter, err error) {
 		h.writeError(w, "token index capability unavailable")
 	case errors.Is(err, ErrUncleUnavailable):
 		h.writeError(w, "uncle index capability unavailable")
-	case errors.Is(err, ErrProxyVerificationUnavailable):
-		h.writeError(w, "proxy verification workflow unavailable")
+	case errors.Is(err, ErrProxyVerificationTargetUnavailable):
+		h.writeError(w, "proxy verification target unavailable")
+	case errors.Is(err, ErrProxySourceUnverified):
+		h.writeError(w, "proxy source code not verified")
+	case errors.Is(err, ErrProxyImplementationUnverified):
+		h.writeError(w, "proxy implementation source code not verified")
+	case errors.Is(err, ErrProxyExpectedImplementationMismatch):
+		h.writeError(w, "expected implementation does not match canonical proxy implementation")
+	case errors.Is(err, ErrProxyVerificationFailed):
+		h.writeError(w, "Fail - Unable to verify proxy contract")
 	case errors.Is(err, ErrVerificationTargetUnavailable):
 		h.writeError(w, "verification target state unavailable")
 	case errors.Is(err, ErrVerificationUnavailable):

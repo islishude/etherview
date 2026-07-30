@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strings"
 )
 
 type ServiceErrorCode string
@@ -33,42 +33,22 @@ func (err ServiceError) Error() string {
 func (err ServiceError) Unwrap() error { return err.cause }
 
 type Service struct {
-	repository            Repository
-	maxInputBytes         int
-	requiresHardIsolation bool
-	catalog               *CompilerCatalog
-	runnerImage           string
+	repository    Repository
+	maxInputBytes int
 }
 
-type ServiceOptions struct {
-	RequiresHardIsolation bool
-	Catalog               *CompilerCatalog
-	RunnerImage           string
-}
-
-func NewService(repository Repository, maxInputBytes int, optionSets ...ServiceOptions) (*Service, error) {
+func NewService(repository Repository, maxInputBytes int) (*Service, error) {
 	if repository == nil {
 		return nil, errors.New("verification service requires a repository")
-	}
-	if len(optionSets) > 1 {
-		return nil, errors.New("verification service accepts at most one option set")
-	}
-	var options ServiceOptions
-	if len(optionSets) == 1 {
-		options = optionSets[0]
 	}
 	if maxInputBytes <= 0 {
 		maxInputBytes = 5 << 20
 	}
-	return &Service{
-		repository: repository, maxInputBytes: maxInputBytes,
-		requiresHardIsolation: options.RequiresHardIsolation,
-		catalog:               options.Catalog, runnerImage: options.RunnerImage,
-	}, nil
+	return &Service{repository: repository, maxInputBytes: maxInputBytes}, nil
 }
 
 type v2SubmissionRepository interface {
-	SubmitV2(context.Context, SubmissionV2, bool) (VerificationJob, bool, error)
+	SubmitV2(context.Context, SubmissionV2) (VerificationJob, bool, error)
 }
 
 func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (VerificationJob, bool, error) {
@@ -79,27 +59,28 @@ func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (Ver
 	if err := service.prepareV2(ctx, &request); err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
 	}
-	job, created, err := repository.SubmitV2(ctx, request, service.requiresHardIsolation)
+	job, created, err := repository.SubmitV2(ctx, request)
 	if err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
 	}
 	return job, created, nil
 }
 
-func (service *Service) prepareV2(ctx context.Context, request *SubmissionV2) error {
+func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) error {
 	if request == nil {
 		return errors.New("verification request is required")
 	}
 	switch request.Kind {
 	case JobSourcify, JobSourcifyFromEtherscan:
 		return ValidateSourcifyV2Request(request.Kind, request.SourcifyRequest, service.maxInputBytes)
+	case JobProxy:
+		return validateProxyVerificationSubmission(request)
 	case JobAddress, JobSolidityMultipart, JobSolidityStandardJSON,
-		JobSolidityBatchMultipart, JobSolidityBatchStandardJSON,
-		JobVyperMultipart, JobVyperStandardJSON:
+		JobSolidityBatchMultipart, JobSolidityBatchStandardJSON:
 	default:
 		return errors.New("verification job kind is invalid")
 	}
-	if request.Language != LanguageSolidity && request.Language != LanguageYul && request.Language != LanguageVyper {
+	if request.Language != LanguageSolidity && request.Language != LanguageYul {
 		return errors.New("verification language is invalid")
 	}
 	if !versionPattern.MatchString(normalizeCompilerVersion(request.CompilerVersion)) {
@@ -144,55 +125,51 @@ func (service *Service) prepareV2(ctx context.Context, request *SubmissionV2) er
 			return errors.New("address verification target is invalid")
 		}
 	}
-	if service.catalog == nil {
-		return errors.New("compiler catalog is unavailable")
-	}
-	entry, err := service.catalog.Lookup(ctx, request.Language, request.CompilerVersion)
-	if err != nil {
-		return err
-	}
-	request.CatalogGenerationID = entry.GenerationID
-	request.CompilerPlatform = entry.Platform
-	request.CompilerDigest = fmt.Sprintf("%x", entry.ArtifactSHA256)
-	if service.requiresHardIsolation {
-		digest, err := parseContainerImage(service.runnerImage)
-		if err != nil {
-			return err
-		}
-		request.RunnerDigest = fmt.Sprintf("%x", digest)
-	}
+	request.CatalogGenerationID = 0
+	request.CompilerPlatform = ""
+	request.CompilerDigest = ""
+	request.ExecutorKind = ""
+	request.ExecutionPolicy = ""
+	request.ExecutorDigest = ""
 	return nil
 }
 
-func (service *Service) Submit(ctx context.Context, request Request) (VerificationJob, bool, error) {
-	if service == nil || service.repository == nil {
-		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: errors.New("nil repository")}
+func validateProxyVerificationSubmission(request *SubmissionV2) error {
+	if request.Target == nil || request.Target.ChainID == 0 ||
+		!fixedHex(request.Target.Address, 20) ||
+		!fixedHex(request.Target.CodeHash, 32) ||
+		!fixedHex(request.Target.AtBlockHash, 32) ||
+		request.ProxyTarget == nil ||
+		!fixedHex(request.ProxyTarget.ImplementationAddress, 20) ||
+		!fixedHex(request.ProxyTarget.ImplementationCodeHash, 32) {
+		return errors.New("proxy verification target is invalid")
 	}
-	standardJSON, err := PrepareStandardJSON(
-		request.StandardJSON,
-		request.Language,
-		request.CompilerVersion,
-		request.ContractIdentifier,
-		service.maxInputBytes,
-	)
-	if err != nil {
-		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
+	switch request.ProxyTarget.Kind {
+	case "eip1167", "eip1967", "beacon":
+	default:
+		return errors.New("proxy verification kind is invalid")
 	}
-	request.StandardJSON = standardJSON
-	encoded, err := json.Marshal(request)
-	if err != nil || len(encoded) > service.maxInputBytes {
-		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: errors.New("encoded request exceeds limit")}
-	}
-	if err := request.Validate(service.maxInputBytes); err != nil {
-		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
-	}
-	job, created, err := service.repository.Submit(ctx, request, SubmissionOptions{
-		RequiresHardIsolation: service.requiresHardIsolation,
-	})
-	if err != nil {
-		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
-	}
-	return job, created, nil
+	request.Target.Address = strings.ToLower(request.Target.Address)
+	request.Target.CodeHash = strings.ToLower(request.Target.CodeHash)
+	request.Target.AtBlockHash = strings.ToLower(request.Target.AtBlockHash)
+	request.ProxyTarget.ImplementationAddress = strings.ToLower(request.ProxyTarget.ImplementationAddress)
+	request.ProxyTarget.ImplementationCodeHash = strings.ToLower(request.ProxyTarget.ImplementationCodeHash)
+	request.ProxyTarget.ExpectedImplementation = request.ProxyTarget.ImplementationAddress
+	request.Language = ""
+	request.CompilerVersion = ""
+	request.StandardJSON = nil
+	request.StandardJSONVariants = nil
+	request.Multipart = nil
+	request.Bytecodes = nil
+	request.ContractNameHint = ""
+	request.SourcifyRequest = nil
+	request.CatalogGenerationID = 0
+	request.CompilerPlatform = ""
+	request.CompilerDigest = ""
+	request.ExecutorKind = ""
+	request.ExecutionPolicy = ""
+	request.ExecutorDigest = ""
+	return nil
 }
 
 func (service *Service) Job(ctx context.Context, id string) (VerificationJob, bool, error) {

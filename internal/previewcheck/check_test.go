@@ -15,26 +15,23 @@ import (
 )
 
 type fakeExecutor struct {
-	inspectCalls int
-	snapshots    [][]container
-	commands     []testcompose.Command
-	innerDigest  string
-	probeCalls   int
-	probeFailsAt int
+	inspectCalls      int
+	snapshots         [][]container
+	commands          []testcompose.Command
+	hostArchitecture  string
+	imageArchitecture string
+	nodeVersion       string
+	probeCalls        int
+	probeFailsAt      int
 }
 
 func (e *fakeExecutor) Run(_ context.Context, command testcompose.Command) ([]byte, error) {
 	e.commands = append(e.commands, command)
-	if slices.Contains(command.Args, "ps") {
+	if len(command.Args) >= 2 &&
+		command.Args[0] == "container" && command.Args[1] == "ls" {
 		return []byte("container-ids\n"), nil
 	}
 	if len(command.Args) > 0 && command.Args[0] == "inspect" {
-		if slices.Contains(command.Args, "present") ||
-			slices.ContainsFunc(command.Args, func(value string) bool {
-				return strings.Contains(value, `println "present"`)
-			}) {
-			return []byte("present\n"), nil
-		}
 		index := min(e.inspectCalls, len(e.snapshots)-1)
 		e.inspectCalls++
 		var output strings.Builder
@@ -45,11 +42,26 @@ func (e *fakeExecutor) Run(_ context.Context, command testcompose.Command) ([]by
 		}
 		return []byte(output.String()), nil
 	}
-	if len(command.Args) > 0 && command.Args[0] == "exec" {
-		if e.innerDigest == "" {
-			return nil, errors.New("runner absent")
+	if len(command.Args) > 0 && command.Args[0] == "info" {
+		architecture := e.hostArchitecture
+		if architecture == "" {
+			architecture = "aarch64"
 		}
-		return []byte(e.innerDigest + "\n"), nil
+		return []byte(architecture + "\n"), nil
+	}
+	if len(command.Args) > 0 && command.Args[0] == "exec" {
+		if slices.Contains(command.Args, "process.arch") {
+			architecture := e.imageArchitecture
+			if architecture == "" {
+				architecture = "arm64"
+			}
+			return []byte(architecture + "\n"), nil
+		}
+		version := e.nodeVersion
+		if version == "" {
+			version = expectedNodeVersion
+		}
+		return []byte(version + "\n"), nil
 	}
 	if len(command.Args) > 0 && command.Args[0] == "run" {
 		e.probeCalls++
@@ -61,20 +73,13 @@ func (e *fakeExecutor) Run(_ context.Context, command testcompose.Command) ([]by
 	return nil, errors.New("unexpected command")
 }
 
-func TestCheckAcceptsCompleteStablePreview(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+func TestCheckAcceptsCompleteStableNativePreview(t *testing.T) {
 	server := featureServer(t, true, true)
-	executor := &fakeExecutor{
-		snapshots:   [][]container{healthyContainers(0)},
-		innerDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}
+	executor := &fakeExecutor{snapshots: [][]container{healthyContainers(0)}}
 	err := Check(context.Background(), Options{
 		Root:            "/repo",
 		ProjectName:     "preview",
-		ComposeFile:     "compose.preview.yaml",
-		ComposeCommand:  "/repo/.github/scripts/compose.sh",
 		DockerCommand:   "/usr/bin/docker",
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -89,27 +94,42 @@ func TestCheckAcceptsCompleteStablePreview(t *testing.T) {
 		t.Fatalf("inspect calls = %d, want readiness plus stability inspection", executor.inspectCalls)
 	}
 	if !slices.ContainsFunc(executor.commands, func(command testcompose.Command) bool {
-		return command.Name == "/repo/.github/scripts/compose.sh" &&
-			slices.Contains(command.Args, "-p") &&
-			slices.Contains(command.Args, "preview") &&
-			slices.Contains(command.Env, "ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE="+runner)
+		return command.Name == "/usr/bin/docker" &&
+			slices.Contains(command.Args, "label=com.docker.compose.project=preview")
 	}) {
-		t.Fatal("Compose command did not preserve project, wrapper, and exact runner environment")
+		t.Fatal("checker did not enumerate every container in the exact Compose project")
+	}
+	if !slices.ContainsFunc(executor.commands, func(command testcompose.Command) bool {
+		return command.Name == "/usr/bin/docker" &&
+			slices.Equal(command.Args, []string{
+				"exec", "--env", "LD_LIBRARY_PATH=" + compilerLibraryPath,
+				"api-id", "/usr/local/bin/node", "--print", "process.arch",
+			})
+	}) {
+		t.Fatal("checker did not execute the bundled Node runtime architecture probe")
+	}
+	if !slices.ContainsFunc(executor.commands, func(command testcompose.Command) bool {
+		return command.Name == "/usr/bin/docker" &&
+			slices.Equal(command.Args, []string{
+				"exec", "--env", "LD_LIBRARY_PATH=" + compilerLibraryPath,
+				"api-id", "/usr/local/bin/node", "--version",
+			})
+	}) {
+		t.Fatal("checker did not execute the bundled Node runtime")
 	}
 	if !slices.ContainsFunc(executor.commands, secureRoleProbeCommand) {
 		t.Fatal("checker did not issue the pinned, bounded application-role readiness probe")
 	}
 }
 
-func TestCheckAcceptsExactReferenceWhenDaemonImageIDDiffers(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:abababababababababababababababababababababababababababababababab"
+func TestCheckRejectsNonNativeApplicationImage(t *testing.T) {
 	server := featureServer(t, true, true)
 	executor := &fakeExecutor{
-		snapshots:   [][]container{healthyContainers(0)},
-		innerDigest: "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+		snapshots:         [][]container{healthyContainers(0)},
+		hostArchitecture:  "aarch64",
+		imageArchitecture: "amd64",
 	}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -117,50 +137,106 @@ func TestCheckAcceptsExactReferenceWhenDaemonImageIDDiffers(t *testing.T) {
 		Executor:        executor,
 		HTTPClient:      server.Client(),
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "does not match docker host architecture") {
+		t.Fatalf("error = %v, want native-architecture mismatch", err)
 	}
 }
 
-func TestCheckRejectsFailedCompilerPreflightImmediately(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+func TestCheckRejectsOrphanService(t *testing.T) {
 	containers := healthyContainers(0)
-	for index := range containers {
-		if containers[index].Service == "compiler-preflight" {
-			containers[index].ExitCode = 17
-		}
-	}
+	containers = append(containers, container{
+		ID: "orphan-id", ImageID: "sha256:orphan", Service: "compiler-runner",
+		Status: "running", Running: true,
+	})
 	executor := &fakeExecutor{snapshots: [][]container{containers}}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       "https://etherview.localhost:8080/api/v1/config",
 		Timeout:         time.Second,
 		PollInterval:    time.Millisecond,
 		StabilityWindow: time.Millisecond,
 		Executor:        executor,
 	})
-	if err == nil || !strings.Contains(err.Error(), `one-shot service "compiler-preflight" exited nonzero`) {
-		t.Fatalf("error = %v, want failed preflight", err)
+	if err == nil || !strings.Contains(err.Error(), `unexpected Compose service "compiler-runner"`) {
+		t.Fatalf("error = %v, want orphan service rejection", err)
+	}
+}
+
+func TestCheckRejectsFailedMigrationImmediately(t *testing.T) {
+	containers := healthyContainers(0)
+	for index := range containers {
+		if containers[index].Service == "migration" {
+			containers[index].ExitCode = 17
+		}
+	}
+	executor := &fakeExecutor{snapshots: [][]container{containers}}
+	err := Check(context.Background(), Options{
+		ConfigURL:       "https://etherview.localhost:8080/api/v1/config",
+		Timeout:         time.Second,
+		PollInterval:    time.Millisecond,
+		StabilityWindow: time.Millisecond,
+		Executor:        executor,
+	})
+	if err == nil || !strings.Contains(err.Error(), `one-shot service "migration" exited nonzero`) {
+		t.Fatalf("error = %v, want failed migration", err)
+	}
+}
+
+func TestCheckRejectsCompilerCacheLeak(t *testing.T) {
+	containers := healthyContainers(0)
+	for index := range containers {
+		if containers[index].Service == "sync" {
+			containers[index].Tmpfs = map[string]string{
+				compilerCachePath: "rw,nosuid,nodev,noexec",
+			}
+		}
+	}
+	executor := &fakeExecutor{snapshots: [][]container{containers}}
+	err := Check(context.Background(), Options{
+		ConfigURL:       "https://etherview.localhost:8080/api/v1/config",
+		Timeout:         time.Second,
+		PollInterval:    time.Millisecond,
+		StabilityWindow: time.Millisecond,
+		Executor:        executor,
+	})
+	if err == nil || !strings.Contains(err.Error(), `"sync" must not receive the compiler cache`) {
+		t.Fatalf("error = %v, want compiler-cache scope rejection", err)
+	}
+}
+
+func TestCheckRejectsRemovedCompilerEnvironment(t *testing.T) {
+	containers := healthyContainers(0)
+	for index := range containers {
+		if containers[index].Service == "api" {
+			containers[index].Environment = append(
+				containers[index].Environment,
+				"ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT=http://legacy",
+			)
+		}
+	}
+	executor := &fakeExecutor{snapshots: [][]container{containers}}
+	err := Check(context.Background(), Options{
+		ConfigURL:       "https://etherview.localhost:8080/api/v1/config",
+		Timeout:         time.Second,
+		PollInterval:    time.Millisecond,
+		StabilityWindow: time.Millisecond,
+		Executor:        executor,
+	})
+	if err == nil || !strings.Contains(err.Error(), "removed compiler configuration") {
+		t.Fatalf("error = %v, want removed compiler environment rejection", err)
 	}
 }
 
 func TestCheckRejectsRestartCountChangeDuringStability(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 	server := featureServer(t, true, true)
 	before := healthyContainers(0)
 	after := healthyContainers(0)
 	for index := range after {
-		if after[index].Service == "verify" {
+		if after[index].Service == "api" {
 			after[index].RestartCount = 1
 		}
 	}
-	executor := &fakeExecutor{
-		snapshots:    [][]container{before, after},
-		innerDigest:  "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-		inspectCalls: 0,
-	}
+	executor := &fakeExecutor{snapshots: [][]container{before, after}}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -168,20 +244,15 @@ func TestCheckRejectsRestartCountChangeDuringStability(t *testing.T) {
 		Executor:        executor,
 		HTTPClient:      server.Client(),
 	})
-	if err == nil || !strings.Contains(err.Error(), `service "verify" restart count changed`) {
+	if err == nil || !strings.Contains(err.Error(), `service "api" restart count changed`) {
 		t.Fatalf("error = %v, want restart-count change", err)
 	}
 }
 
 func TestCheckRejectsDisabledPublicFeatures(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	server := featureServer(t, true, false)
-	executor := &fakeExecutor{
-		snapshots:   [][]container{healthyContainers(0)},
-		innerDigest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-	}
+	executor := &fakeExecutor{snapshots: [][]container{healthyContainers(0)}}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -195,15 +266,12 @@ func TestCheckRejectsDisabledPublicFeatures(t *testing.T) {
 }
 
 func TestCheckRetriesRoleReadinessBeforeBaseline(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	server := featureServer(t, true, true)
 	executor := &fakeExecutor{
 		snapshots:    [][]container{healthyContainers(0)},
-		innerDigest:  "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
 		probeFailsAt: 1,
 	}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -220,15 +288,12 @@ func TestCheckRetriesRoleReadinessBeforeBaseline(t *testing.T) {
 }
 
 func TestCheckRejectsRoleReadinessLossDuringStability(t *testing.T) {
-	const runner = "etherview-compiler-runner@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	server := featureServer(t, true, true)
 	executor := &fakeExecutor{
 		snapshots:    [][]container{healthyContainers(0)},
-		innerDigest:  "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 		probeFailsAt: 2,
 	}
 	err := Check(context.Background(), Options{
-		RunnerImage:     runner,
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
 		PollInterval:    time.Millisecond,
@@ -241,15 +306,12 @@ func TestCheckRejectsRoleReadinessLossDuringStability(t *testing.T) {
 	}
 }
 
-func TestValidateRunnerImageRequiresExactDigest(t *testing.T) {
-	for _, value := range []string{
-		"",
-		"etherview-compiler-runner:preview",
-		"etherview-compiler-runner@sha256:abc",
-		"etherview-compiler-runner@sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+func TestNormalizeArchitecture(t *testing.T) {
+	for input, expected := range map[string]string{
+		"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64",
 	} {
-		if err := validateRunnerImage(value); err == nil {
-			t.Fatalf("validateRunnerImage(%q) succeeded", value)
+		if actual := normalizeArchitecture(input); actual != expected {
+			t.Fatalf("normalizeArchitecture(%q) = %q, want %q", input, actual, expected)
 		}
 	}
 }
@@ -277,35 +339,49 @@ func featureServer(t *testing.T, verification, nftMetadata bool) *httptest.Serve
 
 func healthyContainers(restartCount int) []container {
 	values := make([]container, 0, len(runningServices)+len(oneShotServices))
+	applicationServices := map[string]struct{}{
+		"api": {}, "sync": {}, "enrich": {}, "trace": {}, "metadata": {}, "maintenance": {},
+	}
 	for _, service := range runningServices {
 		health := ""
-		networks := map[string]json.RawMessage{
-			"preview_default": json.RawMessage(`{}`),
-		}
-		if service == "postgres" || service == "compiler-runtime" {
+		if service == "postgres" {
 			health = "healthy"
 		}
-		if service == "compiler-runtime" {
-			networks = map[string]json.RawMessage{
-				"preview_compiler-runtime": json.RawMessage(`{}`),
-			}
+		imageID := "sha256:" + service
+		environment := []string(nil)
+		tmpfs := map[string]string(nil)
+		if _, application := applicationServices[service]; application {
+			imageID = "sha256:application"
+			environment = []string{"ETHERVIEW_ROLES=" + service}
 		}
-		if service == "verify" {
-			networks["preview_compiler-runtime"] = json.RawMessage(`{}`)
+		if service == "api" {
+			tmpfs = map[string]string{
+				compilerCachePath: "rw,nosuid,nodev,noexec",
+			}
+			environment = append(
+				environment,
+				"ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true",
+			)
 		}
 		values = append(values, container{
 			ID:           service + "-id",
+			ImageID:      imageID,
 			Service:      service,
 			Status:       "running",
 			Running:      true,
 			Health:       health,
 			RestartCount: restartCount,
-			Networks:     networks,
+			Networks: map[string]json.RawMessage{
+				"preview_default": json.RawMessage(`{}`),
+			},
+			Environment: environment,
+			Tmpfs:       tmpfs,
 		})
 	}
 	for _, service := range oneShotServices {
 		values = append(values, container{
 			ID:           service + "-id",
+			ImageID:      "sha256:application",
 			Service:      service,
 			Status:       "exited",
 			ExitCode:     0,
@@ -316,7 +392,10 @@ func healthyContainers(restartCount int) []container {
 }
 
 func secureRoleProbeCommand(command testcompose.Command) bool {
-	if command.Name != "/usr/bin/docker" || len(command.Args) == 0 || command.Args[0] != "run" {
+	if command.Name != "docker" && command.Name != "/usr/bin/docker" {
+		return false
+	}
+	if len(command.Args) == 0 || command.Args[0] != "run" {
 		return false
 	}
 	for _, argument := range []string{

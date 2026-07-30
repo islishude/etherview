@@ -236,7 +236,7 @@ func TestUserAuthRequiresCanonicalOriginAndAPIRoleSecret(t *testing.T) {
 		!strings.Contains(err.Error(), "session pepper") {
 		t.Fatalf("missing API session pepper error = %v", err)
 	}
-	if err := cfg.ValidateForRoles([]string{"verify"}); err != nil {
+	if err := cfg.ValidateForRoles([]string{"metadata"}); err != nil {
 		t.Fatalf("non-API role requires session Secret: %v", err)
 	}
 	cfg.UserAuth.SessionPepper = strings.Repeat("s", 32)

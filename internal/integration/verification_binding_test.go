@@ -3,12 +3,15 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,7 +41,7 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		) VALUES (1, $1, 1, $2, $3, $4, TRUE)`,
 		address, mustBytes(t, testHash(7_201)), codeHash, runtime,
 	)
-	generation, compilerDigest, runnerDigest := insertVerifierV2Compiler(t, ctx, db)
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
 	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{
 		MaxRequestBytes: 1 << 20, MaxResultBytes: 1 << 20,
 	})
@@ -46,14 +49,13 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		t.Fatalf("create verification repository: %v", err)
 	}
 	submission := verifierV2AddressSubmission(
-		generation, compilerDigest, runnerDigest, address, codeHash,
-		mustBytes(t, testHash(7_201)), runtime,
+		address, codeHash, mustBytes(t, testHash(7_201)), runtime,
 	)
-	job, created, err := repository.SubmitV2(ctx, submission, true)
+	job, created, err := repository.SubmitV2(ctx, submission)
 	if err != nil || !created {
 		t.Fatalf("submit verifier-v2 job: created=%t error=%v", created, err)
 	}
-	duplicate, created, err := repository.SubmitV2(ctx, submission, true)
+	duplicate, created, err := repository.SubmitV2(ctx, submission)
 	if err != nil || created || duplicate.ID != job.ID {
 		t.Fatalf("deduplicate verifier-v2 job: created=%t id=%s error=%v", created, duplicate.ID, err)
 	}
@@ -61,12 +63,7 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 	if err != nil || !found {
 		t.Fatalf("claim verifier-v2 job: found=%t error=%v", found, err)
 	}
-	provenance := verify.CompilerProvenance{
-		Kind: verify.CompilerRunner, Digest: compilerDigest, RunnerDigest: runnerDigest,
-		CatalogGeneration: generation, Platform: verify.CompilerPlatformLinuxAMD64,
-		ArtifactURL:      "https://compiler.example/solc",
-		ArtifactMaxBytes: 209715200, HardIsolated: true,
-	}
+	provenance := solcJSProvenance(generation, compilerDigest, executorDigest)
 	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
 		t.Fatalf("bind verifier-v2 compiler: %v", err)
 	}
@@ -116,28 +113,24 @@ func TestVerifierV2RejectsAddressPublicationAfterCanonicalIdentityChanges(t *tes
 		) VALUES (1, $1, 1, $2, $3, $4, FALSE)`,
 		address, mustBytes(t, testHash(7_301)), codeHash, runtime,
 	)
-	generation, compilerDigest, runnerDigest := insertVerifierV2Compiler(t, ctx, db)
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
 	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("create verification repository: %v", err)
 	}
 	submission := verifierV2AddressSubmission(
-		generation, compilerDigest, runnerDigest, address, codeHash,
-		mustBytes(t, testHash(7_301)), runtime,
+		address, codeHash, mustBytes(t, testHash(7_301)), runtime,
 	)
-	if _, _, err := repository.SubmitV2(ctx, submission, true); err != nil {
+	if _, _, err := repository.SubmitV2(ctx, submission); err != nil {
 		t.Fatalf("submit stale verifier-v2 job: %v", err)
 	}
 	lease, found, err := repository.Claim(ctx, "integration-verifier-v2-stale", time.Minute)
 	if err != nil || !found {
 		t.Fatalf("claim stale verifier-v2 job: found=%t error=%v", found, err)
 	}
-	if err := repository.BindCompiler(ctx, lease, verify.CompilerProvenance{
-		Kind: verify.CompilerRunner, Digest: compilerDigest, RunnerDigest: runnerDigest,
-		CatalogGeneration: generation, Platform: verify.CompilerPlatformLinuxAMD64,
-		ArtifactURL:      "https://compiler.example/solc",
-		ArtifactMaxBytes: 209715200, HardIsolated: true,
-	}); err != nil {
+	if err := repository.BindCompiler(
+		ctx, lease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
 		t.Fatalf("bind stale verifier-v2 compiler: %v", err)
 	}
 	err = repository.CompleteV2(ctx, lease, "verification_success", verifierV2SuccessOutcome(t, "partial"))
@@ -152,7 +145,7 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	generation, compilerDigest, runnerDigest := insertVerifierV2Compiler(t, ctx, db)
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
 	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("create verification repository: %v", err)
@@ -164,23 +157,28 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 		StandardJSONVariants: []json.RawMessage{
 			json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
 		},
-		Bytecodes:           []verify.BytecodePair{{Runtime: "0x6001"}},
-		CatalogGenerationID: generation,
-		CompilerPlatform:    verify.CompilerPlatformLinuxAMD64,
-		CompilerDigest:      hex.EncodeToString(compilerDigest[:]),
-		RunnerDigest:        hex.EncodeToString(runnerDigest[:]),
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
 	}
-	if _, _, err := repository.SubmitV2(ctx, submission, true); err != nil {
+	job, _, err := repository.SubmitV2(ctx, submission)
+	if err != nil {
 		t.Fatalf("submit reclaim job: %v", err)
 	}
-	wrongPlatform := submission
-	wrongPlatform.CompilerPlatform = verify.CompilerPlatformWindowsAMD64
-	if _, _, err := repository.SubmitV2(ctx, wrongPlatform, true); err == nil {
-		t.Fatal("job accepted a compiler platform not bound to its catalog entry")
+	if _, err := db.ExecContext(ctx, `
+		UPDATE verification_jobs
+		SET compiler_platform = $2, catalog_generation_id = $3,
+		    compiler_digest = $4
+		WHERE id = $1::uuid`,
+		job.ID, verify.CompilerPlatformEmscriptenWASM32, generation, compilerDigest[:],
+	); err == nil {
+		t.Fatal("migration trigger accepted provenance binding without an active lease")
 	}
 	first, found, err := repository.Claim(ctx, "worker-a", 10*time.Millisecond)
 	if err != nil || !found {
 		t.Fatalf("first claim: found=%t error=%v", found, err)
+	}
+	provenance := solcJSProvenance(generation, compilerDigest, executorDigest)
+	if err := repository.BindCompiler(ctx, first, provenance); err != nil {
+		t.Fatalf("bind compiler before lease expiry: %v", err)
 	}
 	execFixture(t, ctx, db, `
 		UPDATE verification_jobs
@@ -193,50 +191,602 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 			found, second.Job.ID, second.Job.AttemptCount, err)
 	}
 	if second.Job.RequestV2.CatalogGenerationID != generation ||
-		second.Job.RequestV2.CompilerPlatform != verify.CompilerPlatformLinuxAMD64 ||
+		second.Job.RequestV2.CompilerPlatform != verify.CompilerPlatformEmscriptenWASM32 ||
 		second.Job.RequestV2.CompilerDigest != hex.EncodeToString(compilerDigest[:]) ||
-		second.Job.RequestV2.RunnerDigest != hex.EncodeToString(runnerDigest[:]) {
+		second.Job.RequestV2.ExecutorKind != verify.SolcJSExecutorKind ||
+		second.Job.RequestV2.ExecutionPolicy != verify.TrustedSubprocessPolicy ||
+		second.Job.RequestV2.ExecutorDigest != hex.EncodeToString(executorDigest[:]) {
 		t.Fatalf("reclaim changed pinned provenance: %#v", second.Job.RequestV2)
+	}
+	if second.Job.Compiler == nil ||
+		second.Job.Compiler.CatalogGeneration != generation ||
+		second.Job.Compiler.Platform != verify.CompilerPlatformEmscriptenWASM32 ||
+		second.Job.Compiler.Digest != compilerDigest ||
+		second.Job.Compiler.ExecutorDigest != executorDigest ||
+		second.Job.Compiler.ExecutorKind != verify.SolcJSExecutorKind ||
+		second.Job.Compiler.ExecutionPolicy != verify.TrustedSubprocessPolicy {
+		t.Fatalf("reclaim lost bound compiler: %#v", second.Job.Compiler)
+	}
+	conflicting := provenance
+	conflicting.Digest = sha256.Sum256([]byte("different compiler"))
+	if err := repository.BindCompiler(ctx, second, conflicting); !errors.Is(err, verify.ErrCompilerProvenanceConflict) {
+		t.Fatalf("rebind compiler error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE verification_jobs
+		SET compiler_digest = decode(repeat('42', 32), 'hex')
+		WHERE id = $1::uuid`, second.Job.ID); err == nil {
+		t.Fatal("migration trigger accepted a compiler provenance rewrite")
 	}
 }
 
-func TestVerifierV2MigrationDeletesHistoricalVerificationData(t *testing.T) {
+func TestVerifierV2CatalogOutageLeavesCompilerQueuedAndClaimsProxy(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	execFixture(t, ctx, db, `DROP TABLE verified_contracts, verification_results, verification_jobs`)
-	execFixture(t, ctx, db, `DROP TABLE compiler_catalog_heads, compiler_catalog_entries, compiler_catalog_generations`)
-	execFixture(t, ctx, db, `
-		CREATE TABLE verification_jobs (id UUID PRIMARY KEY, payload TEXT NOT NULL);
-		CREATE TABLE verification_results (job_id UUID PRIMARY KEY, payload TEXT NOT NULL);
-		CREATE TABLE verified_contracts (address BYTEA PRIMARY KEY, payload TEXT NOT NULL);
-		INSERT INTO verification_jobs VALUES
-			('00000000-0000-4000-8000-000000000027', 'historical-job');
-		INSERT INTO verification_results VALUES
-			('00000000-0000-4000-8000-000000000027', 'historical-result');
-		INSERT INTO verified_contracts VALUES
-			(decode(repeat('27', 20), 'hex'), 'historical-publication');
-		DELETE FROM etherview_schema_migrations WHERE version = '0027_verifier_v2'`,
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BindChainIdentity(ctx, db, "1", testHash(7_401)); err != nil {
+		t.Fatalf("bind selective-claim chain: %v", err)
+	}
+	compile, created, err := repository.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobSolidityStandardJSON, Language: verify.LanguageSolidity,
+		CompilerVersion: "0.8.30+commit.73712a01",
+		StandardJSON:    json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		StandardJSONVariants: []json.RawMessage{
+			json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		},
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit compiler job: created=%t error=%v", created, err)
+	}
+	proxy, created, err := repository.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobProxy,
+		Target: &verify.VerificationTarget{
+			ChainID: 1, Address: "0x" + strings.Repeat("11", 20),
+			CodeHash:    "0x" + strings.Repeat("22", 32),
+			AtBlockHash: "0x" + strings.Repeat("33", 32),
+		},
+		ProxyTarget: &verify.ProxyVerificationTarget{
+			Kind: "eip1967", ImplementationAddress: "0x" + strings.Repeat("44", 20),
+			ImplementationCodeHash: "0x" + strings.Repeat("55", 32),
+			ExpectedImplementation: "0x" + strings.Repeat("44", 20),
+		},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit proxy job: created=%t error=%v", created, err)
+	}
+	lease, found, err := repository.ClaimRunnable(ctx, "api-catalog-offline", time.Minute, false)
+	if err != nil || !found || lease.Job.ID != proxy.ID || lease.Job.Kind != verify.JobProxy {
+		t.Fatalf("catalog-offline claim: lease=%+v found=%t error=%v", lease, found, err)
+	}
+	queued, found, err := repository.Job(ctx, compile.ID)
+	if err != nil || !found || queued.Status != verify.JobQueued || queued.AttemptCount != 0 {
+		t.Fatalf("compiler job while catalog unavailable: job=%+v found=%t error=%v", queued, found, err)
+	}
+	compileLease, found, err := repository.ClaimRunnable(ctx, "api-catalog-recovered", time.Minute, true)
+	if err != nil || !found || compileLease.Job.ID != compile.ID {
+		t.Fatalf("catalog-recovered claim: lease=%+v found=%t error=%v", compileLease, found, err)
+	}
+}
+
+func TestVerifierV2CatalogGenerationIsArchitectureNeutral(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	generation, compilerDigest, _ := insertVerifierV2Compiler(t, ctx, db)
+	catalog, err := verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
+		Sources: map[verify.Language]string{
+			verify.LanguageSolidity: "https://compiler.example/emscripten-wasm32/list.json",
+		},
+		Platform:       verify.CompilerPlatformEmscriptenWASM32,
+		AllowedOrigins: []string{"https://compiler.example"},
+		Freshness:      time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := catalog.Lookup(
+		ctx, verify.LanguageSolidity, "0.8.30+commit.73712a01",
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.GenerationID != generation ||
+		entry.Platform != verify.CompilerPlatformEmscriptenWASM32 ||
+		entry.ArtifactSHA256 != compilerDigest {
+		t.Fatalf("architecture-neutral catalog entry = %#v", entry)
+	}
+}
+
+func TestVerifierV2ConcurrentAPIConsumersLeaseJobOnce(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, created, err := repository.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobSolidityStandardJSON, Language: verify.LanguageSolidity,
+		CompilerVersion: "0.8.30+commit.73712a01",
+		StandardJSON:    json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		StandardJSONVariants: []json.RawMessage{
+			json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		},
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit concurrent claim job: created=%t error=%v", created, err)
+	}
+	type claimResult struct {
+		lease verify.VerificationLease
+		found bool
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan claimResult, 2)
+	var group sync.WaitGroup
+	for _, worker := range []string{"api-a", "api-b"} {
+		group.Add(1)
+		go func(worker string) {
+			defer group.Done()
+			<-start
+			lease, found, claimErr := repository.ClaimRunnable(ctx, worker, time.Minute, true)
+			results <- claimResult{lease: lease, found: found, err: claimErr}
+		}(worker)
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	var claims int
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("concurrent claim error: %v", result.err)
+		}
+		if result.found {
+			claims++
+			if result.lease.Job.ID != job.ID {
+				t.Fatalf("claimed unexpected job %s", result.lease.Job.ID)
+			}
+		}
+	}
+	if claims != 1 {
+		t.Fatalf("concurrent API claims = %d, want 1", claims)
+	}
+}
+
+func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
+	db := newIsolatedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	applyMigrationsThrough(t, ctx, db, "0030_deferred_compiler_provenance")
+	solidityGeneration, solidityCompiler, solidityRunner := insertLegacyCompilerCatalog(
+		t, ctx, db, verify.LanguageSolidity, "0.8.30+commit.73712a01",
+	)
+	vyperGeneration, vyperCompiler, vyperRunner := insertLegacyCompilerCatalog(
+		t, ctx, db, verify.Language("vyper"), "0.4.0",
+	)
+	blockHash := bytes.Repeat([]byte{0x51}, 32)
+	solidityAddress, solidityCodeHash := bytes.Repeat([]byte{0x11}, 20), bytes.Repeat([]byte{0x41}, 32)
+	vyperAddress, vyperCodeHash := bytes.Repeat([]byte{0x22}, 20), bytes.Repeat([]byte{0x42}, 32)
+	proxyAddress, proxyCodeHash := bytes.Repeat([]byte{0x33}, 20), bytes.Repeat([]byte{0x43}, 32)
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx, `INSERT INTO chains (chain_id) VALUES (1)`); err != nil {
+		t.Fatalf("insert migration chain fixture: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO blocks (
+			chain_id, number, hash, parent_hash, timestamp, raw
+		) VALUES (1, 0, $1, $2, 0, '{}'::jsonb)`,
+		blockHash, bytes.Repeat([]byte{0}, 32),
+	); err != nil {
+		t.Fatalf("insert migration block fixture: %v", err)
+	}
+	const solidityJobID = "00000000-0000-4000-8000-000000003101"
+	const vyperJobID = "00000000-0000-4000-8000-000000003102"
+	insertLegacyAddressPublication(
+		t, ctx, tx, solidityJobID, verify.LanguageSolidity,
+		"0.8.30+commit.73712a01", solidityGeneration, solidityCompiler,
+		solidityRunner, solidityAddress, solidityCodeHash, blockHash,
+	)
+	insertLegacyAddressPublication(
+		t, ctx, tx, vyperJobID, verify.Language("vyper"), "0.4.0",
+		vyperGeneration, vyperCompiler, vyperRunner,
+		vyperAddress, vyperCodeHash, blockHash,
+	)
+	const queuedJobID = "00000000-0000-4000-8000-000000003104"
+	const runningJobID = "00000000-0000-4000-8000-000000003105"
+	for _, fixture := range []struct {
+		id     string
+		status string
+	}{
+		{id: queuedJobID, status: "queued"},
+		{id: runningJobID, status: "running"},
+	} {
+		requestDigest := sha256.Sum256([]byte("migration-active:" + fixture.id))
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO verification_jobs (
+				id, kind, language, catalog_language, compiler_version,
+				compiler_platform, catalog_generation_id, compiler_digest,
+				runner_digest, request, request_payload, request_digest,
+				requires_hard_isolation, status, leased_by, lease_token,
+				lease_expires_at, attempt_count
+			) VALUES (
+				$1::uuid, 'solidity_standard_json', 'solidity', 'solidity',
+				'0.8.30+commit.73712a01', 'linux-amd64', $2, $3, $4,
+				'{}'::jsonb, convert_to('{}', 'UTF8'), $5, TRUE, $6,
+				CASE WHEN $6 = 'running' THEN 'legacy-worker' END,
+				CASE WHEN $6 = 'running' THEN 'legacy-lease' END,
+				CASE WHEN $6 = 'running' THEN clock_timestamp() + interval '1 hour' END,
+				CASE WHEN $6 = 'running' THEN 1 ELSE 0 END
+			)`,
+			fixture.id, solidityGeneration, solidityCompiler[:], solidityRunner[:],
+			requestDigest[:], fixture.status,
+		); err != nil {
+			t.Fatalf("insert active legacy job %s: %v", fixture.status, err)
+		}
+	}
+	const proxyJobID = "00000000-0000-4000-8000-000000003103"
+	proxyRequest := map[string]any{
+		"kind": "proxy",
+		"target": map[string]any{
+			"Address":     "0x" + hex.EncodeToString(proxyAddress),
+			"CodeHash":    "0x" + hex.EncodeToString(proxyCodeHash),
+			"AtBlockHash": "0x" + hex.EncodeToString(blockHash),
+		},
+		"proxy_target": map[string]any{
+			"kind":                     "eip1967",
+			"implementation_address":   "0x" + hex.EncodeToString(vyperAddress),
+			"implementation_code_hash": "0x" + hex.EncodeToString(vyperCodeHash),
+		},
+	}
+	proxyPayload, err := json.Marshal(proxyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyRequestDigest := sha256.Sum256([]byte("migration-vyper-proxy"))
+	proxyOutcome, err := json.Marshal(map[string]any{
+		"kind":                     "proxy_verification_success",
+		"proxy_address":            "0x" + hex.EncodeToString(proxyAddress),
+		"proxy_code_hash":          "0x" + hex.EncodeToString(proxyCodeHash),
+		"observation_block_hash":   "0x" + hex.EncodeToString(blockHash),
+		"proxy_kind":               "eip1967",
+		"implementation_address":   "0x" + hex.EncodeToString(vyperAddress),
+		"implementation_code_hash": "0x" + hex.EncodeToString(vyperCodeHash),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO proxy_observations (
+			chain_id, proxy_address, block_number, block_hash, proxy_code_hash,
+			proxy_kind, implementation_address, implementation_code_hash,
+			confidence, canonical
+		) VALUES (1, $1, 0, $2, $3, 'eip1967', $4, $5, 'verified', TRUE)`,
+		proxyAddress, blockHash, proxyCodeHash, vyperAddress, vyperCodeHash,
+	); err != nil {
+		t.Fatalf("insert Vyper-dependent proxy observation: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verification_jobs (
+			id, kind, chain_id, address, code_hash, block_hash, request,
+			request_payload, request_digest, status, attempt_count,
+			outcome_kind, outcome
+		) VALUES (
+			$1::uuid, 'proxy', 1, $2, $3, $4, $5::jsonb, $6, $7,
+			'succeeded', 1, 'proxy_verification_success', $8::jsonb
+		)`,
+		proxyJobID, proxyAddress, proxyCodeHash, blockHash,
+		string(proxyPayload), proxyPayload, proxyRequestDigest[:], string(proxyOutcome),
+	); err != nil {
+		t.Fatalf("insert Vyper-dependent proxy job: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verification_results (
+			job_id, request_digest, outcome_kind, outcome
+		) VALUES ($1::uuid, $2, 'proxy_verification_success', $3::jsonb)`,
+		proxyJobID, proxyRequestDigest[:], string(proxyOutcome),
+	); err != nil {
+		t.Fatalf("insert Vyper-dependent proxy result: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verified_proxy_contracts (
+			chain_id, proxy_address, proxy_code_hash, observation_block_number,
+			observation_block_hash, proxy_kind, implementation_address,
+			implementation_code_hash, verification_job_id, request_digest
+		) VALUES (1, $1, $2, 0, $3, 'eip1967', $4, $5, $6::uuid, $7)`,
+		proxyAddress, proxyCodeHash, blockHash, vyperAddress, vyperCodeHash,
+		proxyJobID, proxyRequestDigest[:],
+	); err != nil {
+		t.Fatalf("insert Vyper-dependent proxy publication: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit pre-0031 fixtures: %v", err)
+	}
+
 	if err := store.RunMigrations(ctx, db); err != nil {
-		t.Fatalf("reapply destructive verifier-v2 migration: %v", err)
+		t.Fatalf("apply solc-js executor migration: %v", err)
 	}
-	for _, table := range []string{"verification_jobs", "verification_results", "verified_contracts"} {
-		assertRowCount(t, ctx, db, `SELECT count(*) FROM `+table, 0)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_jobs
+		WHERE id = $1::uuid AND status = 'succeeded'
+		  AND compiler_platform = 'linux-amd64'
+		  AND executor_kind = 'legacy_runner'
+		  AND execution_policy = 'legacy_hard_isolation'
+		  AND executor_digest = $2`, 1, solidityJobID, solidityRunner[:])
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts
+		WHERE verification_job_id = $1::uuid AND language = 'solidity'`,
+		1, solidityJobID,
+	)
+	for _, jobID := range []string{vyperJobID, proxyJobID} {
+		assertRowCount(t, ctx, db, `
+			SELECT count(*) FROM verification_jobs WHERE id = $1::uuid`, 0, jobID)
 	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts WHERE language = 'vyper'`, 0)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_proxy_contracts`, 0)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM compiler_catalog_generations WHERE language = 'vyper'`, 0)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_jobs
+		WHERE id IN ($1::uuid, $2::uuid)
+		  AND status = 'failed' AND error_code = 'executor_migrated'
+		  AND leased_by IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL
+		  AND executor_kind = 'legacy_runner'
+		  AND execution_policy = 'legacy_hard_isolation'
+		  AND executor_digest = $3`, 2, queuedJobID, runningJobID, solidityRunner[:])
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM information_schema.columns
 		WHERE table_schema = current_schema()
 		  AND table_name = 'verification_jobs'
-		  AND column_name IN ('kind', 'catalog_generation_id', 'request_digest', 'outcome_kind')`, 4)
-	assertRowCount(t, ctx, db, `
-		SELECT count(*) FROM information_schema.tables
-		WHERE table_schema = current_schema()
-		  AND table_name IN (
-			'compiler_catalog_generations',
-			'compiler_catalog_entries',
-			'compiler_catalog_heads'
-		  )`, 3)
+		  AND column_name IN ('runner_digest', 'requires_hard_isolation')`, 0)
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO compiler_catalog_generations (
+			language, source_url, catalog_digest, entry_count
+		) VALUES ('vyper', 'https://compiler.example/vyper/list.json',
+			decode(repeat('91', 32), 'hex'), 1)`); err == nil {
+		t.Fatal("post-migration Vyper catalog write was accepted")
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO verification_jobs (
+			id, kind, language, catalog_language, compiler_version,
+			request, request_payload, request_digest
+		) VALUES (
+			'00000000-0000-4000-8000-000000003106',
+			'vyper_standard_json', 'vyper', 'vyper', '0.4.0',
+			'{}'::jsonb, convert_to('{}', 'UTF8'),
+			decode(repeat('92', 32), 'hex')
+		)`); err == nil {
+		t.Fatal("post-migration Vyper job write was accepted")
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE verified_contracts SET language = 'vyper'
+		WHERE verification_job_id = $1::uuid`, solidityJobID); err == nil {
+		t.Fatal("post-migration Vyper publication write was accepted")
+	}
+	if _, err := db.ExecContext(ctx, `
+		DELETE FROM verification_results WHERE job_id = $1::uuid`,
+		solidityJobID,
+	); err == nil {
+		t.Fatal("migration did not restore result immutability")
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO verification_jobs (
+			id, kind, language, catalog_language, compiler_version,
+			compiler_platform, catalog_generation_id, compiler_digest,
+			executor_kind, execution_policy, executor_digest,
+			request, request_payload, request_digest
+		) VALUES (
+			'00000000-0000-4000-8000-000000003107',
+			'solidity_standard_json', 'solidity', 'solidity',
+			'0.8.30+commit.73712a01', 'linux-amd64', $1, $2,
+			'legacy_runner', 'legacy_hard_isolation', $3,
+			'{}'::jsonb, convert_to('{}', 'UTF8'),
+			decode(repeat('93', 32), 'hex')
+		)`, solidityGeneration, solidityCompiler[:], solidityRunner[:]); err == nil {
+		t.Fatal("new pre-bound legacy executor job was accepted")
+	}
+
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, created, err := repository.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobSolidityStandardJSON, Language: verify.LanguageSolidity,
+		CompilerVersion: "0.8.30+commit.73712a01",
+		StandardJSON:    json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		StandardJSONVariants: []json.RawMessage{
+			json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		},
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit post-migration job: created=%t error=%v", created, err)
+	}
+	lease, found, err := repository.Claim(ctx, "solcjs-migration-worker", time.Minute)
+	if err != nil || !found || lease.Job.ID != job.ID {
+		t.Fatalf("claim post-migration job: found=%t lease=%+v error=%v", found, lease, err)
+	}
+	provenance := solcJSProvenance(generation, compilerDigest, executorDigest)
+	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
+		t.Fatalf("bind post-migration executor: %v", err)
+	}
+	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
+		t.Fatalf("retry same executor digest: %v", err)
+	}
+	conflicting := provenance
+	conflicting.ExecutorDigest = sha256.Sum256([]byte("different-executor"))
+	if err := repository.BindCompiler(ctx, lease, conflicting); !errors.Is(
+		err, verify.ErrCompilerProvenanceConflict,
+	) {
+		t.Fatalf("conflicting executor retry error = %v", err)
+	}
+}
+
+func applyMigrationsThrough(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	lastVersion string,
+) {
+	t.Helper()
+	migrations, err := store.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	found := false
+	for _, migration := range migrations {
+		if migration.Version > lastVersion {
+			break
+		}
+		if _, err := tx.ExecContext(ctx, migration.SQL); err != nil {
+			t.Fatalf("apply migration %s: %v", migration.Version, err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO etherview_schema_migrations (version, checksum)
+			VALUES ($1, $2)`, migration.Version, migration.Checksum,
+		); err != nil {
+			t.Fatalf("record migration %s: %v", migration.Version, err)
+		}
+		found = migration.Version == lastVersion
+	}
+	if !found {
+		t.Fatalf("migration %s not found", lastVersion)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit migrations through %s: %v", lastVersion, err)
+	}
+}
+
+func insertLegacyCompilerCatalog(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	language verify.Language,
+	version string,
+) (int64, [sha256.Size]byte, [sha256.Size]byte) {
+	t.Helper()
+	catalogDigest := sha256.Sum256([]byte("legacy-catalog:" + string(language)))
+	compilerDigest := sha256.Sum256([]byte("legacy-compiler:" + string(language)))
+	runnerDigest := sha256.Sum256([]byte("legacy-runner:" + string(language)))
+	var generation int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO compiler_catalog_generations (
+			language, source_url, catalog_digest, entry_count
+		) VALUES ($1, $2, $3, 1) RETURNING id`,
+		language, "https://compiler.example/"+string(language)+"/list.json",
+		catalogDigest[:],
+	).Scan(&generation); err != nil {
+		t.Fatalf("insert legacy %s generation: %v", language, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO compiler_catalog_entries (
+			generation_id, language, version, platform, artifact_url,
+			artifact_sha256, max_bytes
+		) VALUES ($1, $2, $3, 'linux-amd64', $4, $5, 209715200)`,
+		generation, language, version,
+		"https://compiler.example/"+string(language)+"/compiler",
+		compilerDigest[:],
+	); err != nil {
+		t.Fatalf("insert legacy %s catalog entry: %v", language, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO compiler_catalog_heads (language, generation_id)
+		VALUES ($1, $2)`,
+		language, generation,
+	); err != nil {
+		t.Fatalf("activate legacy %s catalog: %v", language, err)
+	}
+	return generation, compilerDigest, runnerDigest
+}
+
+func insertLegacyAddressPublication(
+	t *testing.T,
+	ctx context.Context,
+	tx *sql.Tx,
+	jobID string,
+	language verify.Language,
+	version string,
+	generation int64,
+	compilerDigest [sha256.Size]byte,
+	runnerDigest [sha256.Size]byte,
+	address []byte,
+	codeHash []byte,
+	blockHash []byte,
+) {
+	t.Helper()
+	requestDigest := sha256.Sum256([]byte("legacy-publication:" + jobID))
+	outcome := `{"kind":"verification_success","runtime_match":{"match_type":"full"}}`
+	fileName := "Contract.sol"
+	if language == verify.Language("vyper") {
+		fileName = "Contract.vy"
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verification_jobs (
+			id, kind, language, catalog_language, compiler_version,
+			compiler_platform, catalog_generation_id, compiler_digest,
+			runner_digest, chain_id, address, code_hash, block_hash,
+			request, request_payload, request_digest, requires_hard_isolation,
+			status, attempt_count, outcome_kind, outcome
+		) VALUES (
+			$1::uuid, 'address', $2, $2, $3, 'linux-amd64', $4, $5, $6,
+			1, $7, $8, $9, '{}'::jsonb, convert_to('{}', 'UTF8'), $10,
+			TRUE, 'succeeded', 1, 'verification_success', $11::jsonb
+		)`,
+		jobID, language, version, generation, compilerDigest[:], runnerDigest[:],
+		address, codeHash, blockHash, requestDigest[:], outcome,
+	); err != nil {
+		t.Fatalf("insert legacy %s job: %v", language, err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verification_results (
+			job_id, request_digest, outcome_kind, outcome, file_name,
+			contract_name, language, compiler_version, match_type, abi,
+			sources, settings, compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts, libraries, is_blueprint
+		) VALUES (
+			$1::uuid, $2, 'verification_success', $3::jsonb, $4,
+			'Contract', $5, $6, 'full', '[]'::jsonb, '{}'::jsonb,
+			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+			'{}'::jsonb, FALSE
+		)`,
+		jobID, requestDigest[:], outcome, fileName, language, version,
+	); err != nil {
+		t.Fatalf("insert legacy %s result: %v", language, err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verified_contracts (
+			chain_id, address, code_hash, valid_from_block,
+			verification_job_id, request_digest, file_name, contract_name,
+			language, compiler_version, match_type, abi, sources, settings,
+			compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts, libraries, is_blueprint
+		) VALUES (
+			1, $1, $2, 0, $3::uuid, $4, $5, 'Contract', $6, $7,
+			'full', '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
+		)`,
+		address, codeHash, jobID, requestDigest[:], fileName, language, version,
+	); err != nil {
+		t.Fatalf("insert legacy %s publication: %v", language, err)
+	}
 }
 
 func insertVerifierV2Compiler(
@@ -247,7 +797,7 @@ func insertVerifierV2Compiler(
 	t.Helper()
 	catalogDigest := sha256.Sum256([]byte("verifier-v2-integration-catalog"))
 	compilerDigest := sha256.Sum256([]byte("verifier-v2-integration-compiler"))
-	runnerDigest := sha256.Sum256([]byte("verifier-v2-integration-runner"))
+	executorDigest := sha256.Sum256([]byte("verifier-v2-integration-solcjs-executor"))
 	var generation int64
 	if err := db.QueryRowContext(ctx, `
 		INSERT INTO compiler_catalog_generations (
@@ -259,19 +809,19 @@ func insertVerifierV2Compiler(
 	execFixture(t, ctx, db, `
 		INSERT INTO compiler_catalog_entries (
 			generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes
-		) VALUES ($1, 'solidity', '0.8.30+commit.73712a01', 'linux-amd64',
-			'https://compiler.example/solc', $2, 209715200)`,
+		) VALUES ($1, 'solidity', '0.8.30+commit.73712a01', 'emscripten-wasm32',
+			'https://compiler.example/soljson.js', $2, 209715200)`,
 		generation, compilerDigest[:],
 	)
 	execFixture(t, ctx, db, `
 		INSERT INTO compiler_catalog_heads (language, generation_id)
-		VALUES ('solidity', $1)`, generation)
-	return generation, compilerDigest, runnerDigest
+		VALUES ('solidity', $1)
+		ON CONFLICT (language) DO UPDATE
+		SET generation_id = EXCLUDED.generation_id, updated_at = now()`, generation)
+	return generation, compilerDigest, executorDigest
 }
 
 func verifierV2AddressSubmission(
-	generation int64,
-	compilerDigest, runnerDigest [sha256.Size]byte,
 	address, codeHash, blockHash, runtime []byte,
 ) verify.SubmissionV2 {
 	standardJSON := json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`)
@@ -289,10 +839,24 @@ func verifierV2AddressSubmission(
 			AtBlockHash:     "0x" + hex.EncodeToString(blockHash),
 			RuntimeBytecode: "0x" + hex.EncodeToString(runtime),
 		},
-		CatalogGenerationID: generation,
-		CompilerPlatform:    verify.CompilerPlatformLinuxAMD64,
-		CompilerDigest:      hex.EncodeToString(compilerDigest[:]),
-		RunnerDigest:        hex.EncodeToString(runnerDigest[:]),
+	}
+}
+
+func solcJSProvenance(
+	generation int64,
+	compilerDigest [sha256.Size]byte,
+	executorDigest [sha256.Size]byte,
+) verify.CompilerProvenance {
+	return verify.CompilerProvenance{
+		Kind:              verify.CompilerSolcJS,
+		Digest:            compilerDigest,
+		ExecutorDigest:    executorDigest,
+		ExecutorKind:      verify.SolcJSExecutorKind,
+		ExecutionPolicy:   verify.TrustedSubprocessPolicy,
+		CatalogGeneration: generation,
+		Platform:          verify.CompilerPlatformEmscriptenWASM32,
+		ArtifactURL:       "https://compiler.example/soljson.js",
+		ArtifactMaxBytes:  209715200,
 	}
 }
 
