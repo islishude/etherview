@@ -90,9 +90,9 @@ type CompilerCache struct {
 	Root                       string
 	Artifacts                  map[Language]map[string]CompilerArtifact
 	Timeout                    time.Duration
+	UnsafeAllowPrivateNetworks bool
 	unsafeHTTPClient           *http.Client
 	unsafeAllowHTTP            bool
-	unsafeAllowPrivateNetworks bool
 	resolver                   outboundResolver
 	mu                         sync.Mutex
 	locks                      map[string]*sync.Mutex
@@ -148,7 +148,7 @@ func (c *CompilerCache) ensureArtifact(
 	if validCompilerCacheFile(path, digest, maximum) {
 		return path, nil
 	}
-	client := restrictedOutboundClient(c.unsafeHTTPClient, c.Timeout, c.resolver, c.unsafeAllowPrivateNetworks)
+	client := restrictedOutboundClient(c.unsafeHTTPClient, c.Timeout, c.resolver, c.UnsafeAllowPrivateNetworks)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return "", errors.New("create compiler artifact request")

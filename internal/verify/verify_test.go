@@ -68,7 +68,7 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	cache := CompilerCache{
 		Root:                       t.TempDir(),
 		unsafeAllowHTTP:            true,
-		unsafeAllowPrivateNetworks: true,
+		UnsafeAllowPrivateNetworks: true,
 		Artifacts:                  map[Language]map[string]CompilerArtifact{LanguageSolidity: {"1.2.3": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}}},
 	}
 	path, err := cache.Ensure(context.Background(), LanguageSolidity, "1.2.3")

@@ -11,6 +11,7 @@ import {
 } from "@/api/auth";
 import { usePublicConfig } from "@/api/hooks";
 import { formatTimestamp, shorten } from "@/components/format";
+import { SIWELoginControl } from "@/components/SIWELoginControl";
 import {
   authErrorTranslationKey,
   useAuth,
@@ -163,20 +164,7 @@ export function AccountPage() {
                 <h2 id="sign-in-title">{t("auth.signIn.title")}</h2>
                 <p>{t("auth.signIn.description")}</p>
               </div>
-              <button
-                className="button primary"
-                disabled={
-                  auth.pending ||
-                  !wallet.active ||
-                  !walletOnChain
-                }
-                onClick={() => void auth.login()}
-                type="button"
-              >
-                {auth.pending
-                  ? t("auth.signIn.pending")
-                  : t("auth.signIn.action")}
-              </button>
+              <SIWELoginControl />
             </section>
           )}
 

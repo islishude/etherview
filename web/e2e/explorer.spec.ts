@@ -837,18 +837,6 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     page.getByText("Not logged in", { exact: true }).last(),
   ).toBeVisible();
 
-  await activateInView(page.locator(".wallet-summary"));
-  await activateInView(
-    page.getByRole("button", { name: /SIWE E2E Wallet/ }),
-  );
-  await expect(
-    page.getByText("Wallet connected", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Not logged in", { exact: true }).last(),
-  ).toBeVisible();
-  await page.locator(".wallet-summary").press("Enter");
-
   await activateInView(page.locator(".auth-action-panel button"));
   await expect(
     page.locator(".identity-card").getByText("User authenticated", {
@@ -859,6 +847,15 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     () =>
       (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
   );
+  expect(walletRequests.map(({ method }) => method)).toEqual([
+    "eth_requestAccounts",
+    "eth_chainId",
+    "eth_chainId",
+    "eth_accounts",
+    "personal_sign",
+    "eth_chainId",
+    "eth_accounts",
+  ]);
   expect(
     walletRequests.filter(({ method }) => method === "personal_sign"),
   ).toEqual([

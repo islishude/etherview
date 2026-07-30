@@ -455,7 +455,8 @@ const resources = {
           correctChain: "Connected to configured chain {{chain}}.",
           wrongChain:
             "Switch to configured chain {{expected}} before signing in (currently {{actual}}).",
-          connectHint: "Use the wallet menu in the header to choose an injected wallet.",
+          connectHint:
+            "Sign in below to choose and authorize an injected wallet, or connect one from the header.",
         },
         sessionState: {
           title: "Etherview user session",
@@ -470,11 +471,12 @@ const resources = {
         },
         signIn: {
           eyebrow: "SIWE authentication",
-          title: "Sign in with the connected wallet",
+          title: "Sign in with Ethereum",
           description:
-            "Etherview requests one bounded personal_sign signature for the exact server-authored message. No transaction or general signing capability is exposed.",
+            "Choose and authorize an injected wallet, then sign the exact server-authored message. No transaction or general signing capability is exposed.",
           pending: "Waiting for wallet…",
           action: "Sign in with Ethereum",
+          chooseWallet: "Choose a wallet to sign in",
         },
         profile: {
           title: "Profile",
@@ -1340,7 +1342,8 @@ const resources = {
           correctChain: "已连接到配置链 {{chain}}。",
           wrongChain:
             "登录前请切换到配置链 {{expected}}（当前为 {{actual}}）。",
-          connectHint: "请使用页头的钱包菜单选择注入式钱包。",
+          connectHint:
+            "可在下方登录时选择并授权注入式钱包，也可从页头先行连接。",
         },
         sessionState: {
           title: "Etherview 用户会话",
@@ -1354,11 +1357,12 @@ const resources = {
         },
         signIn: {
           eyebrow: "SIWE 认证",
-          title: "使用已连接的钱包登录",
+          title: "使用以太坊登录",
           description:
-            "Etherview 仅为服务端生成的精确消息请求一次受限 personal_sign 签名，不开放交易或通用签名能力。",
+            "选择并授权注入式钱包后，签署服务端生成的精确消息；不开放交易或通用签名能力。",
           pending: "等待钱包确认…",
           action: "使用以太坊登录",
+          chooseWallet: "选择用于登录的钱包",
         },
         profile: {
           title: "个人资料",

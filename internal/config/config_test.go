@@ -176,6 +176,33 @@ func TestWalletAddChainEnvironment(t *testing.T) {
 	}
 }
 
+func TestVerificationUnsafePrivateDownloadEnvironment(t *testing.T) {
+	cfg := Default()
+	if cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
+		t.Fatal("unsafe private verification downloads must be disabled by default")
+	}
+	values := map[string]string{
+		"ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": "true",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
+		t.Fatal("unsafe private verification download environment was not applied")
+	}
+
+	values["ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS"] = "sometimes"
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}, nil); err == nil {
+		t.Fatal("invalid unsafe private verification download boolean passed")
+	}
+}
+
 func TestLoadEnvironmentAndSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretPath := filepath.Join(dir, "database-url")

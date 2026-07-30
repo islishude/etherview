@@ -18,6 +18,7 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 			Catalog: catalog,
 			Cache: &verify.CompilerCache{
 				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
+				UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
 			},
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 			MaxOutputBytes: cfg.Verification.MaxOutputBytes,
@@ -27,6 +28,7 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 			Catalog: catalog,
 			Cache: &verify.CompilerCache{
 				Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
+				UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
 			},
 			Runtime: cfg.Verification.ContainerRuntime, RunnerImage: cfg.Verification.RunnerImage,
 			Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,

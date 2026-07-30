@@ -57,6 +57,26 @@ describe("authentication pages", () => {
     expect(screen.queryByText("User session", { exact: true })).not.toBeInTheDocument();
   });
 
+  it("keeps direct sign-in disabled when no injected wallet is discovered", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/v1/config") return configResponse(true);
+      if (String(input) === "/api/v1/auth/session") {
+        return envelope({ authenticated: false });
+      }
+      return notFound();
+    }));
+
+    renderRoute("/account");
+    await screen.findByRole("heading", { name: "Wallet connection" });
+
+    await waitFor(() => expect(accountPageSignInButton()).toBeDisabled());
+    expect(
+      screen.getByText(
+        "Install or unlock a browser wallet, then refresh discovery.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("separates wallet connection from a restored user session and saves a bounded profile", async () => {
     const fake = fakeProvider();
     registerProvider(fake.provider);
@@ -83,7 +103,8 @@ describe("authentication pages", () => {
 
     renderRoute("/account");
     const user = userEvent.setup();
-    await connectTestWallet(user);
+    await screen.findByRole("heading", { name: "Wallet connection" });
+    await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
 
     expect(
@@ -168,9 +189,8 @@ describe("authentication pages", () => {
 
     renderRoute("/account");
     const user = userEvent.setup();
-    await connectTestWallet(user);
-    expect(await screen.findByText("Wallet connected", { exact: true })).toBeVisible();
-
+    await screen.findByRole("heading", { name: "Wallet connection" });
+    await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
     expect(
       await screen.findAllByText("User authenticated", { exact: true }),
@@ -201,6 +221,58 @@ describe("authentication pages", () => {
       JSON.stringify({ challenge_id: challengeID, signature }),
     );
     expect(String(verifyRequest?.url)).not.toContain(signature);
+  });
+
+  it("chooses among multiple wallets inline and connects only the selected provider", async () => {
+    const alpha = fakeProvider();
+    const beta = fakeProvider();
+    registerProvider(alpha.provider, {
+      uuid: "00000000-0000-4000-8000-000000000011",
+      name: "Alpha Wallet",
+      rdns: "org.etherview.alpha",
+    });
+    registerProvider(beta.provider, {
+      uuid: "00000000-0000-4000-8000-000000000012",
+      name: "Beta Wallet",
+      rdns: "org.etherview.beta",
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      switch (String(input)) {
+        case "/api/v1/config":
+          return configResponse(true);
+        case "/api/v1/auth/session":
+          return envelope({ authenticated: false });
+        case "/api/v1/auth/challenge":
+          return envelope(authSIWEChallenge());
+        case "/api/v1/auth/verify":
+          return envelope(authSession(userRecord()));
+        default:
+          return notFound();
+      }
+    }));
+
+    renderRoute("/account");
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "Wallet connection" });
+    await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
+    await user.click(accountPageSignInButton());
+
+    const chooser = screen.getByRole("group", {
+      name: "Choose a wallet to sign in",
+    });
+    await user.click(
+      within(chooser).getByRole("button", { name: /Beta Wallet/u }),
+    );
+
+    expect(
+      await screen.findAllByText("User authenticated", { exact: true }),
+    ).toHaveLength(2);
+    expect(
+      alpha.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"),
+    ).toBe(false);
+    expect(
+      beta.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"),
+    ).toBe(true);
   });
 
   it("provides accessible admin mutation, revocation, and opaque pagination controls", async () => {
@@ -255,7 +327,6 @@ describe("authentication pages", () => {
 
     renderRoute("/admin/users");
     const user = userEvent.setup();
-    await connectTestWallet(user);
     await signInFromWalletMenu(user);
 
     expect(
@@ -340,20 +411,6 @@ function renderRoute(path: string) {
   );
 }
 
-async function connectTestWallet(user: ReturnType<typeof userEvent.setup>) {
-  const summary = await screen.findByText("Connect wallet", {
-    selector: "summary",
-  });
-  await user.click(summary);
-  await user.click(await screen.findByRole("button", { name: /Test Wallet/ }));
-  await waitFor(() => {
-    expect(document.querySelector(".wallet-summary")).toHaveTextContent(
-      "0x1111…1111",
-    );
-  });
-  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
-}
-
 function accountPageSignInButton() {
   const panel = document.querySelector<HTMLElement>(".auth-action-panel");
   expect(panel).not.toBeNull();
@@ -365,14 +422,16 @@ function accountPageSignInButton() {
 async function signInFromWalletMenu(
   user: ReturnType<typeof userEvent.setup>,
 ) {
-  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
+  await user.click(
+    await screen.findByText("Connect wallet", { selector: "summary" }),
+  );
   const section = document.querySelector<HTMLElement>(".wallet-auth-section");
   expect(section).not.toBeNull();
-  await user.click(
-    within(section as HTMLElement).getByRole("button", {
-      name: "Sign in with Ethereum",
-    }),
-  );
+  const signIn = within(section as HTMLElement).getByRole("button", {
+    name: "Sign in with Ethereum",
+  });
+  await waitFor(() => expect(signIn).toBeEnabled());
+  await user.click(signIn);
 }
 
 function configResponse(enabled: boolean) {
@@ -474,13 +533,20 @@ function storageValues(): string[] {
   return values;
 }
 
-function registerProvider(provider: EIP1193Provider) {
+function registerProvider(
+  provider: EIP1193Provider,
+  info: Partial<{
+    uuid: string;
+    name: string;
+    rdns: string;
+  }> = {},
+) {
   const detail = {
     info: {
-      uuid: "00000000-0000-4000-8000-000000000001",
-      name: "Test Wallet",
+      uuid: info.uuid ?? "00000000-0000-4000-8000-000000000001",
+      name: info.name ?? "Test Wallet",
       icon: "data:image/png;base64,",
-      rdns: "org.etherview.test",
+      rdns: info.rdns ?? "org.etherview.test",
     },
     provider,
   };

@@ -28,6 +28,7 @@ quota policy.
 | P65-T04 | done | P65-T02 | `etherview admin user` role, status, and session-revocation operations | CLI and PostgreSQL integration tests |
 | P65-T05 | done | P65-T03 | Bounded wallet signing, `AuthProvider`, account page, admin users, and bilingual UX | Vitest, boundary, a11y, and browser tests |
 | P65-T06 | done | P65-T03, P65-T04, P65-T05 | Config, Secret/Helm/Compose, operations docs, E2E, and security closure | race, E2E, security, Helm, and role-parity gates |
+| P65-T07 | done | P65-T05 | Direct SIWE login with inline injected-wallet selection and no separate preconnection step | Vitest, boundary, a11y, and embedded browser tests |
 
 ## Acceptance
 
@@ -43,6 +44,8 @@ quota policy.
       mutations retain stable timestamps and typed errors.
 - [x] The SPA distinguishes wallet connection from authentication and requires
       reauthentication after a wallet identity or configured-chain change.
+- [x] SIWE can authorize a sole discovered wallet directly or select among
+      multiple wallets inline without requiring a separate connection action.
 - [x] Existing API-key, rate-limit, verification, compatibility, and wallet
       contract-call behavior remains compatible.
 - [x] `serve --roles=all` and the split API role use the same implementation and
@@ -167,3 +170,17 @@ not promote those release gates.
   redacted failure, and minimal-role Secret-loading regressions pass under
   normal and race execution. PostgreSQL race coverage proves cleanup leaves a
   second chain's challenge and session untouched.
+- P65-T07 implementation: the account page and wallet menu share one direct
+  SIWE control. A sole discovered provider is authorized immediately; multiple
+  providers are selected inline. The wallet boundary returns only a frozen
+  public identity snapshot, fences SIWE against that exact provider, account,
+  chain, and revision, and never exposes the raw provider. `AuthProvider`
+  permits only the login-owned disconnected-to-connected transition, rejects a
+  wrong chain before challenge creation, and preserves existing post-connect
+  identity invalidation and stale-Cookie cleanup.
+- P65-T07 verification: `npm --prefix web run lint`,
+  `npm --prefix web test` (20 files and 155 tests),
+  `npm --prefix web run build`, `make test`, and `make generate-check` pass.
+  The embedded Chromium suite passes 9/9 with the SIWE scenario starting from
+  a disconnected wallet and asserting the complete connect, chain/account
+  preflight, exact `personal_sign`, and completion-fence sequence.

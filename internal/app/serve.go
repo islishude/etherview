@@ -260,6 +260,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			},
 			AllowedOrigins: cfg.Verification.AllowedDownloadOrigins,
 			Timeout:        cfg.Verification.Timeout, Freshness: cfg.Verification.CatalogMaxStaleness,
+			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
 		})
 		if err != nil {
 			return err

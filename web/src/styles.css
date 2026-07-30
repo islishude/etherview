@@ -1715,6 +1715,18 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.siwe-login-control {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.siwe-wallet-picker {
+  max-height: min(18rem, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .wallet-network-section,
 .wallet-auth-section {
   display: grid;
@@ -1928,6 +1940,11 @@ tbody tr:hover {
 
 .auth-action-panel .button {
   flex: 0 0 auto;
+}
+
+.auth-action-panel .siwe-login-control {
+  flex: 0 1 22rem;
+  width: min(100%, 22rem);
 }
 
 .account-layout {
@@ -3390,6 +3407,10 @@ tbody tr:hover {
   }
 
   .auth-action-panel .button {
+    width: 100%;
+  }
+
+  .auth-action-panel .siwe-login-control {
     width: 100%;
   }
 

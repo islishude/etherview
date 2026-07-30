@@ -205,21 +205,22 @@ type SecurityConfig struct {
 // artifacts are reserved for explicitly private deployments and must use an
 // HTTPS URL plus a SHA-256 allowlist entry.
 type VerificationConfig struct {
-	MaxInputBytes          int                                    `yaml:"max_input_bytes"`
-	MaxOutputBytes         int                                    `yaml:"max_output_bytes"`
-	Timeout                time.Duration                          `yaml:"timeout"`
-	CacheDirectory         string                                 `yaml:"cache_directory"`
-	ContainerRuntime       string                                 `yaml:"container_runtime"`
-	ContainerMemory        string                                 `yaml:"container_memory"`
-	ContainerCPUs          string                                 `yaml:"container_cpus"`
-	ContainerPIDs          int                                    `yaml:"container_pids"`
-	CatalogURLs            map[string]string                      `yaml:"catalog_urls"`
-	AllowedDownloadOrigins []string                               `yaml:"allowed_download_origins"`
-	CatalogRefreshInterval time.Duration                          `yaml:"catalog_refresh_interval"`
-	CatalogMaxStaleness    time.Duration                          `yaml:"catalog_max_staleness"`
-	RunnerImage            string                                 `yaml:"runner_image"`
-	Artifacts              map[string]map[string]CompilerArtifact `yaml:"artifacts"`
-	Images                 map[string]map[string]string           `yaml:"images"`
+	MaxInputBytes                      int                                    `yaml:"max_input_bytes"`
+	MaxOutputBytes                     int                                    `yaml:"max_output_bytes"`
+	Timeout                            time.Duration                          `yaml:"timeout"`
+	CacheDirectory                     string                                 `yaml:"cache_directory"`
+	ContainerRuntime                   string                                 `yaml:"container_runtime"`
+	ContainerMemory                    string                                 `yaml:"container_memory"`
+	ContainerCPUs                      string                                 `yaml:"container_cpus"`
+	ContainerPIDs                      int                                    `yaml:"container_pids"`
+	CatalogURLs                        map[string]string                      `yaml:"catalog_urls"`
+	AllowedDownloadOrigins             []string                               `yaml:"allowed_download_origins"`
+	UnsafeAllowPrivateDownloadNetworks bool                                   `yaml:"unsafe_allow_private_download_networks"`
+	CatalogRefreshInterval             time.Duration                          `yaml:"catalog_refresh_interval"`
+	CatalogMaxStaleness                time.Duration                          `yaml:"catalog_max_staleness"`
+	RunnerImage                        string                                 `yaml:"runner_image"`
+	Artifacts                          map[string]map[string]CompilerArtifact `yaml:"artifacts"`
+	Images                             map[string]map[string]string           `yaml:"images"`
 }
 
 type CompilerArtifact struct {
@@ -1791,8 +1792,9 @@ func applyEnvironmentForRoles(
 		"FEATURE_USER_AUTH":        &cfg.Features.UserAuth,
 		"FEATURE_X402_BILLING":     &cfg.Features.X402Billing,
 		"PUBLIC_VERIFICATION":      &cfg.Security.PublicVerification,
-		"S3_PATH_STYLE":            &cfg.Adapters.S3PathStyle,
-		"OTLP_TRACE_INSECURE":      &cfg.Observability.OTLPTraceInsecure,
+		"VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": &cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
+		"S3_PATH_STYLE":       &cfg.Adapters.S3PathStyle,
+		"OTLP_TRACE_INSECURE": &cfg.Observability.OTLPTraceInsecure,
 	} {
 		if err := setBool(lookup, name, target); err != nil {
 			return err

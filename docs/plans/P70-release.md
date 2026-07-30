@@ -38,7 +38,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
-| P70-T15 | blocked | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
+| P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with a digest-pinned isolated compiler runtime | Compose render, compiler preflight, image-boundary, and Preview runtime tests |
 | P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
@@ -185,13 +185,14 @@ monitoring. Running the exact 500 RPS/30-minute target there and preserving the
 load report, resource peaks, monitoring data, and tuning guide clears the
 blocker.
 
-P70-T15 is blocked on Preview runtime evidence in an environment whose resolver
-returns the real public catalog, artifact, and metadata gateway addresses
-instead of intercepted `198.18.0.0/15` benchmark addresses, while retaining
-the fail-closed public-network policy. A fresh Preview start must keep all
-seven roles ready and demonstrate catalog publication, one real Solidity and
-one real Vyper compilation through the exact isolated runner, and one bounded
-public NFT metadata fetch before this item can become `done`.
+P70-T15 is in progress with an explicit Preview-only verification-download
+exception for local transparent-proxy fake IPs. The exception must remain
+disabled by default, apply only to the Preview `verify` role, and leave API,
+metadata, production Compose, and the shared public-network policy unchanged.
+A fresh Preview start must keep all seven roles ready and demonstrate catalog
+publication, one real Solidity and one real Vyper compilation through the
+exact isolated runner, and one bounded public NFT metadata fetch before this
+item can become `done`.
 
 P70-T20 is complete, including the aligned `https://localhost:8080` browser,
 session-origin, and wallet explorer metadata contract. P70-T06 remains `todo`
@@ -275,6 +276,18 @@ all complete; the v1 release cannot close before those gates.
   tests, vet/lint, Compose rendering, production image-boundary checks, and
   whitespace validation pass, but no real catalog, Solidity/Vyper compile, or
   metadata fetch is claimed.
+- P70-T15 Preview fake-IP repair: only the Preview `verify` role sets the
+  explicit `ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS`
+  escape hatch. It is disabled by default and absent from API, metadata, all
+  other Preview roles, base Compose, and Helm. Focused config, verification,
+  and application tests plus `make lint`, `make compose-check`, `make
+  plan-check`, and `git diff --check` pass. `make recreate-preview` rebuilt the
+  exact runner and all application roles while preserving PostgreSQL and Reth;
+  the complete topology passed the 15-second restart-stability check, verify
+  remained running with restart count zero, and PostgreSQL published Solidity
+  generation 1 with 94 entries and Vyper generation 2 with 52 entries. This
+  removes the catalog restart blocker; real compiler execution and bounded NFT
+  metadata evidence remain before closure.
 - P70 final common gates: `make check`, `make docker-image-check`,
   `make plan-check`, and `git diff --check` pass. The aggregate check covers
   ordinary and race Go suites, all 149 frontend tests, generation drift,

@@ -88,8 +88,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   pass their targeted runtime, integration, race, Helm, and short-load
   evidence. P60 completion does not promote P70's security, conformance,
   long-soak, artifact, or release gates.
-- P65 is complete: writer-authoritative SIWE challenges, Cookie/Origin/CSRF
-  sessions, user/operator administration, bounded wallet signing, embedded
+- P65 is complete: a SIWE action can now select and authorize an injected
+  wallet without a separate connection step while retaining
+  writer-authoritative SIWE challenges, Cookie/Origin/CSRF sessions,
+  user/operator administration, bounded wallet signing, embedded
   account/admin UX, role-scoped deployment Secrets, and operational/security
   closure pass unit, race, PostgreSQL, browser, Helm/Compose, image, license,
   and security evidence.
@@ -114,8 +116,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   completes optional process-native TLS on API listeners, a Preview-local
   mkcert workflow, role-scoped Helm certificate delivery, and production
   runtime validation. P70-T04 still requires the named reference capacity
-  environment, and P70-T15 still requires public catalog and compiler runtime
-  evidence in a DNS-compatible Preview environment. P66 live-payment evidence
+  environment, and P70-T15 has restored Preview catalog publication through
+  its explicitly unsafe local fake-IP exception but still requires real
+  Solidity/Vyper execution and NFT metadata evidence. P66 live-payment evidence
   still gates conformance, security, release CI, documentation, and artifact
   work.
 

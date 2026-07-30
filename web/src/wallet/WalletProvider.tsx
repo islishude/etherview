@@ -55,7 +55,7 @@ interface WalletOption {
   rdns: string;
 }
 
-interface ActiveWallet {
+export interface ActiveWallet {
   uuid: string;
   name: string;
   account: Address;
@@ -70,15 +70,19 @@ interface WalletContextValue {
   addingChain: boolean;
   error?: WalletBoundaryErrorCode;
   discover: () => void;
-  connect: (uuid: string) => Promise<void>;
+  connect: (uuid: string) => Promise<ActiveWallet>;
   addChain: (uuid: string) => Promise<void>;
   disconnect: () => void;
+  isActiveWallet: (expected: ActiveWallet) => boolean;
   readContract: (call: ContractCall, expectedChainID: string | undefined) => Promise<Hex>;
   sendTransaction: (
     transaction: ContractTransaction,
     expectedChainID: string | undefined,
   ) => Promise<Hex>;
-  signSIWEChallenge: (challenge: AuthChallenge) => Promise<Hex>;
+  signSIWEChallenge: (
+    challenge: AuthChallenge,
+    expected: ActiveWallet,
+  ) => Promise<Hex>;
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -106,6 +110,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       : undefined;
     activeRef.current = committed;
     setInternalActive(committed);
+    return committed;
   }, []);
 
   const failActiveSession = useCallback(
@@ -258,8 +263,17 @@ export function WalletProvider({ children }: PropsWithChildren) {
         if (!accounts || accounts.length === 0 || !chainID) {
           throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
         }
-        if (connectionAttemptRef.current !== attempt) return;
-        commitActive({ detail, account: accounts[0]!, chainID, revision: 0 });
+        if (connectionAttemptRef.current !== attempt) {
+          throw new WalletBoundaryError("SESSION_CHANGED");
+        }
+        const connected = commitActive({
+          detail,
+          account: accounts[0]!,
+          chainID,
+          revision: 0,
+        });
+        if (!connected) throw new WalletBoundaryError("SESSION_CHANGED");
+        return publicActiveWallet(connected);
       } catch (cause) {
         const boundaryError = toWalletBoundaryError(cause);
         if (connectionAttemptRef.current === attempt) {
@@ -273,6 +287,11 @@ export function WalletProvider({ children }: PropsWithChildren) {
     },
     [commitActive, providersByID],
   );
+
+  const isActiveWallet = useCallback((expected: ActiveWallet) => {
+    const current = activeRef.current;
+    return current !== undefined && walletIdentityMatches(current, expected);
+  }, []);
 
   const addChain = useCallback(
     async (uuid: string) => {
@@ -429,8 +448,9 @@ export function WalletProvider({ children }: PropsWithChildren) {
   );
 
   const signSIWEChallenge = useCallback(
-    async (challenge: AuthChallenge) => {
+    async (challenge: AuthChallenge, expected: ActiveWallet) => {
       const wallet = await requireProvider(configuredChainID);
+      assertExpectedWalletIdentity(wallet, expected);
       const encodedMessage = encodeCanonicalSIWEChallenge(
         challenge,
         wallet.account,
@@ -445,6 +465,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       assertCompletedWalletOperation(activeRef.current, wallet);
       const completed = await requireProvider(configuredChainID);
       assertCompletedWalletOperation(completed, wallet);
+      assertExpectedWalletIdentity(completed, expected);
       if (!isWalletSignature(result)) {
         throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
       }
@@ -470,15 +491,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
             left.rdns.localeCompare(right.rdns) ||
             left.uuid.localeCompare(right.uuid),
         ),
-      active: internalActive
-        ? {
-            uuid: internalActive.detail.info.uuid,
-            name: internalActive.detail.info.name,
-            account: internalActive.account,
-            chainID: internalActive.chainID,
-            revision: internalActive.revision,
-          }
-        : undefined,
+      active: internalActive ? publicActiveWallet(internalActive) : undefined,
       connecting,
       addingChain,
       error,
@@ -486,6 +499,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       connect,
       addChain,
       disconnect,
+      isActiveWallet,
       readContract,
       sendTransaction,
       signSIWEChallenge,
@@ -499,6 +513,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       discover,
       error,
       internalActive,
+      isActiveWallet,
       providersByID,
       readContract,
       sendTransaction,
@@ -575,6 +590,38 @@ function assertCompletedWalletOperation(
   requested: InternalActiveWallet,
 ): void {
   if (current !== requested) {
+    throw new WalletBoundaryError("SESSION_CHANGED");
+  }
+}
+
+function publicActiveWallet(wallet: InternalActiveWallet): ActiveWallet {
+  return Object.freeze({
+    uuid: wallet.detail.info.uuid,
+    name: wallet.detail.info.name,
+    account: wallet.account,
+    chainID: wallet.chainID,
+    revision: wallet.revision,
+  });
+}
+
+function walletIdentityMatches(
+  current: InternalActiveWallet,
+  expected: ActiveWallet,
+): boolean {
+  return (
+    current.detail.info.uuid === expected.uuid &&
+    current.detail.info.name === expected.name &&
+    current.account === expected.account &&
+    current.chainID === expected.chainID &&
+    current.revision === expected.revision
+  );
+}
+
+function assertExpectedWalletIdentity(
+  current: InternalActiveWallet,
+  expected: ActiveWallet,
+): void {
+  if (!walletIdentityMatches(current, expected)) {
     throw new WalletBoundaryError("SESSION_CHANGED");
   }
 }

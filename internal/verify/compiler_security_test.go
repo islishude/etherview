@@ -45,7 +45,7 @@ func TestCompilerDownloadRejectsRedirectsAndPrivateDNS(t *testing.T) {
 	cache := CompilerCache{
 		Root:                       t.TempDir(),
 		unsafeAllowHTTP:            true,
-		unsafeAllowPrivateNetworks: true,
+		UnsafeAllowPrivateNetworks: true,
 		Artifacts: map[Language]map[string]CompilerArtifact{
 			LanguageSolidity: {"1.2.3": {URL: redirect.URL, SHA256: hex.EncodeToString(digest[:])}},
 		},
@@ -59,7 +59,7 @@ func TestCompilerDownloadRejectsRedirectsAndPrivateDNS(t *testing.T) {
 
 	cache.Root = t.TempDir()
 	cache.unsafeAllowHTTP = false
-	cache.unsafeAllowPrivateNetworks = false
+	cache.UnsafeAllowPrivateNetworks = false
 	cache.resolver = fixedOutboundResolver{addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}}
 	cache.Artifacts[LanguageSolidity]["1.2.3"] = CompilerArtifact{
 		URL: "https://compiler.example/artifact", SHA256: hex.EncodeToString(digest[:]),
@@ -97,7 +97,7 @@ func TestCompilerCacheBoundsDeclaredAndStreamingArtifacts(t *testing.T) {
 			cache := CompilerCache{
 				Root:                       t.TempDir(),
 				unsafeAllowHTTP:            true,
-				unsafeAllowPrivateNetworks: true,
+				UnsafeAllowPrivateNetworks: true,
 				Artifacts: map[Language]map[string]CompilerArtifact{
 					LanguageSolidity: {"1": {
 						URL: server.URL, SHA256: hex.EncodeToString(digest[:]), MaxBytes: int64(len(payload) - 1),
@@ -166,7 +166,7 @@ func TestCompilerCacheRejectsUnsafeRootAndReplacesUnsafeEntry(t *testing.T) {
 			t.Fatal(err)
 		}
 		cache := CompilerCache{
-			Root: root, unsafeAllowHTTP: true, unsafeAllowPrivateNetworks: true,
+			Root: root, unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
 			Artifacts: map[Language]map[string]CompilerArtifact{
 				LanguageSolidity: {"1": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}},
 			},
@@ -201,7 +201,7 @@ func TestCompilerCacheRejectsUnsafeRootAndReplacesUnsafeEntry(t *testing.T) {
 			t.Fatal(err)
 		}
 		cache := CompilerCache{
-			Root: root, unsafeAllowHTTP: true, unsafeAllowPrivateNetworks: true,
+			Root: root, unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
 			Artifacts: map[Language]map[string]CompilerArtifact{
 				LanguageSolidity: {"1": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}},
 			},
@@ -228,7 +228,7 @@ func TestCompilerCacheSerializesConcurrentInstall(t *testing.T) {
 	}))
 	defer server.Close()
 	cache := CompilerCache{
-		Root: t.TempDir(), unsafeAllowHTTP: true, unsafeAllowPrivateNetworks: true,
+		Root: t.TempDir(), unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
 		Artifacts: map[Language]map[string]CompilerArtifact{
 			LanguageSolidity: {"1.2.3": {URL: server.URL, SHA256: hex.EncodeToString(digest[:])}},
 		},

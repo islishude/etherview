@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
       chainID: "1",
       revision: 1,
     },
+    connect: vi.fn(),
+    isActiveWallet: vi.fn(),
     signSIWEChallenge: vi.fn(),
   },
 }));
@@ -65,6 +67,15 @@ describe("AuthProvider", () => {
     mocks.publicConfig.data.features.user_auth = true;
     mocks.publicConfig.isPending = false;
     mocks.wallet.active = initialWallet();
+    mocks.wallet.connect.mockImplementation(async () => {
+      const connected = initialWallet();
+      mocks.wallet.active = connected;
+      return connected;
+    });
+    mocks.wallet.isActiveWallet.mockImplementation(
+      (expected: ReturnType<typeof initialWallet>) =>
+        sameWallet(mocks.wallet.active, expected),
+    );
     mocks.wallet.signSIWEChallenge.mockResolvedValue(signature);
     mocks.getAuthSession.mockResolvedValue({ authenticated: false });
     mocks.logoutAuthSession.mockResolvedValue(undefined);
@@ -103,7 +114,10 @@ describe("AuthProvider", () => {
     expect(mocks.createAuthChallenge).toHaveBeenCalledWith(
       mocks.wallet.active.account,
     );
-    expect(mocks.wallet.signSIWEChallenge).toHaveBeenCalledWith(challenge);
+    expect(mocks.wallet.signSIWEChallenge).toHaveBeenCalledWith(
+      challenge,
+      initialWallet(),
+    );
     expect(mocks.verifyAuthChallenge).toHaveBeenCalledWith(challengeID, signature);
     expect(mocks.createAuthChallenge.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.wallet.signSIWEChallenge.mock.invocationCallOrder[0]!,
@@ -150,6 +164,76 @@ describe("AuthProvider", () => {
     );
     expect(mocks.wallet.signSIWEChallenge).not.toHaveBeenCalled();
     expect(mocks.verifyAuthChallenge).not.toHaveBeenCalled();
+  });
+
+  it("connects a selected wallet before creating and signing a challenge", async () => {
+    const challenge = authChallenge();
+    mocks.wallet.active = undefined as never;
+    mocks.createAuthChallenge.mockResolvedValue(challenge);
+    mocks.verifyAuthChallenge.mockResolvedValue(authenticatedSession());
+
+    renderAuth();
+    await screen.findByTestId("auth-state");
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: "Log in with selected wallet" }),
+    );
+
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent(
+      "authenticated",
+    );
+    expect(mocks.wallet.connect).toHaveBeenCalledWith(initialWallet().uuid);
+    expect(mocks.wallet.connect.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createAuthChallenge.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.createAuthChallenge).toHaveBeenCalledWith(
+      initialWallet().account,
+    );
+  });
+
+  it("does not create a challenge when the selected wallet is on another chain", async () => {
+    mocks.wallet.active = undefined as never;
+    mocks.wallet.connect.mockImplementation(async () => {
+      const connected = { ...initialWallet(), chainID: "2" };
+      mocks.wallet.active = connected;
+      return connected;
+    });
+
+    renderAuth();
+    await screen.findByTestId("auth-state");
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: "Log in with selected wallet" }),
+    );
+
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
+      "CHAIN_MISMATCH",
+    );
+    expect(mocks.createAuthChallenge).not.toHaveBeenCalled();
+    expect(mocks.wallet.signSIWEChallenge).not.toHaveBeenCalled();
+  });
+
+  it("reports a rejected connection and permits a clean retry", async () => {
+    mocks.wallet.active = undefined as never;
+    mocks.wallet.connect.mockRejectedValueOnce(
+      new WalletBoundaryError("USER_REJECTED"),
+    );
+
+    renderAuth();
+    await screen.findByTestId("auth-state");
+    const selectedLogin = screen.getByRole("button", {
+      name: "Log in with selected wallet",
+    });
+    await userEvent.setup().click(selectedLogin);
+    expect(await screen.findByTestId("auth-error")).toHaveTextContent(
+      "USER_REJECTED",
+    );
+    expect(mocks.createAuthChallenge).not.toHaveBeenCalled();
+
+    mocks.createAuthChallenge.mockResolvedValue(authChallenge());
+    mocks.verifyAuthChallenge.mockResolvedValue(authenticatedSession());
+    await userEvent.setup().click(selectedLogin);
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent(
+      "authenticated",
+    );
   });
 
   it.each([
@@ -354,6 +438,12 @@ function AuthHarness() {
       <button type="button" onClick={() => void auth.login()}>
         Log in
       </button>
+      <button
+        type="button"
+        onClick={() => void auth.login(initialWallet().uuid)}
+      >
+        Log in with selected wallet
+      </button>
       <button type="button" onClick={() => void auth.refresh()}>
         Refresh
       </button>
@@ -390,6 +480,18 @@ function initialWallet() {
     chainID: "1",
     revision: 1,
   };
+}
+
+function sameWallet(
+  current: ReturnType<typeof initialWallet>,
+  expected: ReturnType<typeof initialWallet>,
+) {
+  return (
+    current.uuid === expected.uuid &&
+    current.account === expected.account &&
+    current.chainID === expected.chainID &&
+    current.revision === expected.revision
+  );
 }
 
 function authChallenge(): AuthChallenge {

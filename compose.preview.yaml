@@ -251,6 +251,9 @@ services:
       ETHERVIEW_ROLES: verify
       DOCKER_HOST: tcp://compiler-runtime:2375
       ETHERVIEW_VERIFICATION_RUNNER_IMAGE: ${ETHERVIEW_PREVIEW_COMPILER_RUNNER_IMAGE:-etherview-compiler-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+      # Local transparent proxies may resolve public compiler hosts into their
+      # fake-IP range. This Preview-only exception must never enter production.
+      ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       PATH: /runtime-client:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro

@@ -52,9 +52,9 @@ type CompilerCatalogOptions struct {
 	MaxEntries                 int
 	MaxArtifactBytes           int64
 	Freshness                  time.Duration
+	UnsafeAllowPrivateNetworks bool
 	unsafeHTTPClient           *http.Client
 	unsafeAllowHTTP            bool
-	unsafeAllowPrivateNetworks bool
 	resolver                   outboundResolver
 }
 
@@ -249,7 +249,7 @@ func (catalog *CompilerCatalog) fetch(ctx context.Context, source string) ([]byt
 		catalog.options.unsafeHTTPClient,
 		catalog.options.Timeout,
 		catalog.options.resolver,
-		catalog.options.unsafeAllowPrivateNetworks,
+		catalog.options.UnsafeAllowPrivateNetworks,
 	)
 	response, err := client.Do(request)
 	if err != nil {

@@ -162,6 +162,12 @@ the same public-IP validation. Transparent or fake-IP DNS that maps those
 public hosts into the RFC 2544 benchmarking range `198.18.0.0/15` is rejected
 fail closed. Use a policy-approved environment and resolver; do not weaken
 `PublicIP`, hardcode resolver bypasses, or pin mutable DNS snapshots.
+The checked-in Preview Compose file is the sole exception: its `verify` role
+sets `ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true` so a
+local transparent proxy's fake IPs can reach the fixed compiler download
+origins. This disables the compiler downloader's private-network rejection for
+that role only. It is unsafe for production, does not apply to NFT metadata,
+and must not be copied into the base Compose or Helm deployment.
 
 `make recreate-preview` rebuilds the application and runner images, reloads the
 exact runner digest, and replaces the seven application containers while

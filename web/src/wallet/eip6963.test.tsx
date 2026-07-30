@@ -218,6 +218,26 @@ describe("EIP-6963 wallet boundary", () => {
     expect(collision.request).not.toHaveBeenCalled();
   });
 
+  it("returns only the bounded connected-wallet identity snapshot", async () => {
+    const fake = createFakeProvider();
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+
+    await userEvent.setup().click(
+      await screen.findByRole("button", { name: "Test Wallet" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      JSON.stringify({
+        uuid: "00000000-0000-4000-8000-000000000001",
+        name: "Test Wallet",
+        account: accountA,
+        chainID: "1",
+        revision: 1,
+      }),
+    );
+  });
+
   it("bounds discovery to the first 32 valid providers", async () => {
     renderWallet();
     act(() => {
@@ -307,6 +327,14 @@ describe("EIP-6963 wallet boundary", () => {
 
     await user.click(screen.getByRole("button", { name: "Sign oversized" }));
     expect(await screen.findByTestId("operation-error")).toHaveTextContent("INVALID_REQUEST");
+    expect(
+      fake.request.mock.calls.filter(([request]) => request.method === "personal_sign"),
+    ).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Sign with stale identity" }));
+    expect(await screen.findByTestId("operation-error")).toHaveTextContent(
+      "SESSION_CHANGED",
+    );
     expect(
       fake.request.mock.calls.filter(([request]) => request.method === "personal_sign"),
     ).toHaveLength(1);
@@ -764,11 +792,13 @@ function WalletHarness() {
             type="button"
             onClick={() => {
               setOperationError(undefined);
-              void wallet.connect(provider.uuid).catch((cause: unknown) => {
-                setOperationError(
-                  cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
-                );
-              });
+              void wallet.connect(provider.uuid)
+                .then((connected) => setResult(JSON.stringify(connected)))
+                .catch((cause: unknown) => {
+                  setOperationError(
+                    cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+                  );
+                });
             }}
           >
             {provider.name}
@@ -834,7 +864,7 @@ function WalletHarness() {
         onClick={() => {
           setOperationError(undefined);
           void wallet
-            .signSIWEChallenge(walletSIWEChallenge())
+            .signSIWEChallenge(walletSIWEChallenge(), wallet.active!)
             .then(setResult)
             .catch((cause: unknown) => {
               setOperationError(
@@ -856,6 +886,7 @@ function WalletHarness() {
                 ...challenge,
                 message: "x".repeat(MAX_SIGN_MESSAGE_BYTES + 1),
               },
+              wallet.active!,
             )
             .then(setResult)
             .catch((cause: unknown) => {
@@ -867,8 +898,29 @@ function WalletHarness() {
       >
         Sign oversized
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          setOperationError(undefined);
+          const active = wallet.active;
+          if (!active) return;
+          void wallet
+            .signSIWEChallenge(walletSIWEChallenge(), {
+              ...active,
+              revision: active.revision + 1,
+            })
+            .then(setResult)
+            .catch((cause: unknown) => {
+              setOperationError(
+                cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+              );
+            });
+        }}
+      >
+        Sign with stale identity
+      </button>
       {operationError && <span data-testid="operation-error">{operationError}</span>}
-      {result && <output>{result}</output>}
+      {result && <output role="status">{result}</output>}
     </div>
   );
 }

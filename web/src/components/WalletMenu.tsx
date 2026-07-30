@@ -10,6 +10,7 @@ import { shorten } from "./format";
 import { walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 import { AddNetworkControl } from "./AddNetworkControl";
+import { SIWELoginControl } from "./SIWELoginControl";
 
 export function WalletMenu() {
   const { t } = useTranslation();
@@ -171,16 +172,7 @@ export function WalletMenu() {
               ) : (
                 <>
                   <p className="quiet">{t("auth.menu.walletIsNotLogin")}</p>
-                  <button
-                    className="button primary full"
-                    disabled={auth.pending || !wallet.active}
-                    onClick={() => void auth.login()}
-                    type="button"
-                  >
-                    {auth.pending
-                      ? t("auth.signIn.pending")
-                      : t("auth.signIn.action")}
-                  </button>
+                  <SIWELoginControl full />
                   <Link
                     className="button secondary inline-button full"
                     to="/account"

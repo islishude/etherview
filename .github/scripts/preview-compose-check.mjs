@@ -159,6 +159,13 @@ for (const role of roles) {
   }
   const hasDaemon = Object.hasOwn(service.environment ?? {}, "DOCKER_HOST");
   if (hasDaemon !== (role === "verify")) fail(`container runtime has the wrong role scope on ${role}`);
+  const hasUnsafePrivateDownloads = Object.hasOwn(
+    service.environment ?? {},
+    "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS",
+  );
+  if (hasUnsafePrivateDownloads !== (role === "verify")) {
+    fail(`unsafe private verification downloads have the wrong role scope on ${role}`);
+  }
   if (networkNames(service).includes(compilerNetwork) !== (role === "verify")) {
     fail(`compiler network has the wrong role scope on ${role}`);
   }
@@ -184,6 +191,9 @@ if (verify.environment?.DOCKER_HOST !== "tcp://compiler-runtime:2375") {
 }
 if (verify.environment?.ETHERVIEW_VERIFICATION_RUNNER_IMAGE !== expectedRunner) {
   fail("verify did not receive the exact runner reference");
+}
+if (verify.environment?.ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS !== "true") {
+  fail("verify must explicitly enable its Preview-only fake-IP download exception");
 }
 if (!verify.environment?.PATH?.split(":").includes("/runtime-client")) {
   fail("verify PATH does not contain the isolated runtime client");

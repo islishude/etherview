@@ -60,7 +60,7 @@ describe("AddNetworkControl", () => {
 
   it("adds through the sole discovered provider without connecting an account", async () => {
     const addChain = vi.fn(async (_uuid: string) => {});
-    const connect = vi.fn(async (_uuid: string) => {});
+    const connect = vi.fn(async (_uuid: string) => activeWallet());
     vi.mocked(useWallet).mockReturnValue(walletState({
       addChain,
       connect,
@@ -193,15 +193,26 @@ function walletState(overrides: Partial<WalletState> = {}): WalletState {
     active: undefined,
     addChain: vi.fn(async (_uuid: string) => {}),
     addingChain: false,
-    connect: vi.fn(async (_uuid: string) => {}),
+    connect: vi.fn(async (_uuid: string) => activeWallet()),
     connecting: false,
     discover: vi.fn(),
     disconnect: vi.fn(),
     error: undefined,
+    isActiveWallet: vi.fn(() => false),
     providers: [],
     readContract: vi.fn(async () => "0x" as const),
     sendTransaction: vi.fn(async () => "0x" as const),
     signSIWEChallenge: vi.fn(async () => "0x" as const),
     ...overrides,
+  };
+}
+
+function activeWallet() {
+  return {
+    uuid: providerA.uuid,
+    name: providerA.name,
+    account: "0x1111111111111111111111111111111111111111" as const,
+    chainID: "1",
+    revision: 1,
   };
 }
