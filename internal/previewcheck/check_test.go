@@ -133,7 +133,7 @@ func TestCheckRejectsFailedCompilerPreflightImmediately(t *testing.T) {
 	executor := &fakeExecutor{snapshots: [][]container{containers}}
 	err := Check(context.Background(), Options{
 		RunnerImage:     runner,
-		ConfigURL:       "https://localhost:8080/api/v1/config",
+		ConfigURL:       "https://etherview.localhost:8080/api/v1/config",
 		Timeout:         time.Second,
 		PollInterval:    time.Millisecond,
 		StabilityWindow: time.Millisecond,

@@ -168,7 +168,7 @@ func newRuntime(options Options) (*runtime, error) {
 	}
 	options.RunnerImage = strings.TrimSpace(options.RunnerImage)
 	if strings.TrimSpace(options.ConfigURL) == "" {
-		options.ConfigURL = "https://localhost:8080/api/v1/config"
+		options.ConfigURL = "https://etherview.localhost:8080/api/v1/config"
 	}
 	if options.Timeout == 0 {
 		options.Timeout = DefaultTimeout

@@ -77,12 +77,13 @@ object storage accelerators are not part of this deployment.
 make preview-cert
 make start-preview
 curl --cacert .local/preview-tls/rootCA.pem \
-  -fsS https://localhost:8080/api/v1/config
+  -fsS https://etherview.localhost:8080/api/v1/config
 ```
 
 `make preview-cert` is an explicit, one-time local trust operation: it requires
 mkcert, installs mkcert's local CA, and generates an ignored certificate pair
-under `.local/preview-tls/` for `localhost`, `127.0.0.1`, and `::1`. It also
+under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
+`127.0.0.1`, and `::1`. It also
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
 `make start-preview` and `make recreate-preview` only check that those three
@@ -90,7 +91,7 @@ public/certificate assets exist; they never modify the host trust store.
 Preview mounts only the certificate pair read-only into the API role. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is
-`https://localhost:8080`; health and metrics on the operations listener remain
+`https://etherview.localhost:8080`; health and metrics on the operations listener remain
 plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
 the checked-in command path also works for curl builds that do not consult it.
 The add-network control advertises the local Reth endpoint as

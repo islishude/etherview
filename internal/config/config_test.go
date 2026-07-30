@@ -144,7 +144,7 @@ func TestPreviewPublicOriginMatchesBrowserAndWalletMetadata(t *testing.T) {
 	if err := yaml.Unmarshal(data, &preview); err != nil {
 		t.Fatal(err)
 	}
-	const browserOrigin = "https://localhost:8080"
+	const browserOrigin = "https://etherview.localhost:8080"
 	if preview.Server.PublicURL != browserOrigin {
 		t.Fatalf("Preview public URL = %q, want documented browser origin %q", preview.Server.PublicURL, browserOrigin)
 	}

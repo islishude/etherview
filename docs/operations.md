@@ -45,11 +45,12 @@ make start-preview
 ```
 
 The explicit certificate target runs `mkcert -install` and generates an
-ignored pair for `localhost`, `127.0.0.1`, and `::1`. Preview mounts that pair
-read-only only into the API service. Its public listener is
-`https://localhost:8080`, while `http://localhost:9090` remains the plain HTTP
-operations listener. The start and recreate targets only preflight the files;
-they do not modify the host trust store.
+ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
+Preview mounts that pair read-only only into the API service. Its public
+listener is `https://etherview.localhost:8080`, while
+`http://localhost:9090` remains the plain HTTP operations listener. The start
+and recreate targets only preflight the files; they do not modify the host
+trust store.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the

@@ -49,6 +49,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T23 | in_progress | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
 | P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
 | P70-T25 | done | P50-T13 | Center the full-width account action in the wallet menu | focused frontend regression and lint |
+| P70-T26 | done | P70-T20 | Align the branded Preview browser origin with SIWE, wallet metadata, TLS checks, and operator documentation | focused config/origin tests, Compose rendering, and live Preview challenge |
 
 ## Acceptance
 
@@ -195,13 +196,23 @@ publication, one real Solidity and one real Vyper compilation through the
 exact isolated runner, and one bounded public NFT metadata fetch before this
 item can become `done`.
 
-P70-T20 is complete, including the aligned `https://localhost:8080` browser,
-session-origin, and wallet explorer metadata contract. P70-T06 remains `todo`
-and dependency-gated until P70-T01 through P70-T05, P70-T08, and P70-T09 are
-all complete; the v1 release cannot close before those gates.
+P70-T20 is complete for process-native TLS. P70-T26 now aligns the branded
+Preview browser, session-origin, wallet explorer metadata, and readiness-check contract.
+P70-T06 remains `todo` and dependency-gated until P70-T01 through P70-T05,
+P70-T08, and P70-T09 are all complete; the v1 release cannot close before
+those gates.
 
 ## Evidence
 
+- P70-T26: Preview now uses `https://etherview.localhost:8080` consistently
+  for its browser entry point, exact SIWE origin, wallet explorer metadata,
+  readiness checker, and maintained operator documentation. The existing
+  mkcert target already covers that hostname. Focused config and Preview-check
+  tests, Compose rendering, `make check`, and `make recreate-preview` pass.
+  The rebuilt seven-role Preview remained stable, a real browser loaded the
+  branded origin, and a branded-origin challenge returned HTTP 201 while the
+  superseded localhost origin returned HTTP 403 without an extra database
+  write. The synthetic challenge was removed after verification.
 - P70-T25: the wallet menu's account link now retains its requested full width
   after the shared inline-link rule and centers its label, covering both
   authenticated and anonymous menu states without changing ordinary

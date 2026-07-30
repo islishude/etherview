@@ -55,7 +55,7 @@ make start-preview
 `preview-cert` explicitly installs mkcert's local CA and writes the ignored
 localhost certificate pair plus a public CA copy used by Preview readiness
 checks. Open
-<https://localhost:8080> after startup; the operations listener remains
+<https://etherview.localhost:8080> after startup; the operations listener remains
 available over HTTP on <http://localhost:9090>.
 Preview builds a digest-pinned generic runner and loads it into an isolated
 local compiler daemon without mounting the host container socket. That daemon
