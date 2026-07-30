@@ -57,6 +57,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T27 | done | P20-T03, P30-T11, P40-T06, P60-T03, P70-T21 | Durable proxy-verification compatibility plus real Hardhat 3 production-path E2E | handler, PostgreSQL, migration, monolith/split Compose, and real compiler gates |
 | P70-T28 | superseded | P30-T14, P60 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
 | P70-T29 | in_progress | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
+| P70-T30 | in_progress | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
 
 ## Acceptance
 
@@ -147,6 +148,10 @@ and user/operator evidence sufficient for a production public release.
       constrains executor provenance, and rejects later Vyper writes; public
       OpenAPI, generated clients, UI, and compatibility submission expose only
       Solidity/Yul.
+- [ ] P70-T30: the dependency-locked Hardhat client compiles with its
+      architecture-neutral local solc-js package without downloading a
+      compiler list or binary at runtime, and retained failure diagnostics are
+      readable by the CI artifact uploader.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -227,6 +232,9 @@ P70-T29 remains in progress only until the final revision's native
 `ubuntu-24.04` AMD64 and `ubuntu-24.04-arm` CI matrix jobs pass. The workflow
 builds each host-native image without a platform override; local emulation or a
 fixed cross-platform build is not substitute evidence.
+P70-T30 remains in progress until those native jobs also confirm the
+networkless Hardhat fixture preflight and successful upload of any retained
+failure diagnostics. Local gates do not replace that uploader evidence.
 
 P70-T20 is complete for process-native TLS. P70-T26 now aligns the branded
 Preview browser, session-origin, wallet explorer metadata, and readiness-check contract.
@@ -236,6 +244,25 @@ those gates.
 
 ## Evidence
 
+- P70-T30 diagnosis and implementation: CI run `30563592389` failed both
+  host-native Hardhat jobs in the production E2E step and then failed to zip
+  their diagnostics. At the same revision, a clean local client image
+  reproduced `HHE905` while Hardhat tried to download its compiler list.
+  The dependency-locked client now resolves its existing `solc@0.8.30`
+  soljson path explicitly, and `make test-hardhat3-offline-compile` proves the
+  production profile compiles inside that image with `--network none` before
+  either topology starts. The root-owned deployment and fixed Yul fixture
+  files contain no credential and are created mode `0644`; the production E2E
+  asserts that retained container-written inputs are world-readable before
+  using them, and a host-user ZIP creation plus archive integrity check passes
+  over the retained bundle. `make test-hardhat3-provider-compat`, the
+  build-tagged runtime compile check, `make plan-check`, `git diff --check`,
+  and `make check` pass.
+  A retained local production run crossed the repaired Hardhat compile and
+  deployment boundary and confirmed both files as `0644`, then timed out with
+  the Yul job queued because this host's Docker DNS could not establish TLS to
+  the official catalog endpoint. It did not reach distributed mode and is not
+  recorded as full runtime or native-CI evidence.
 - P70-T29 implementation and local ARM64 evidence: ADR-0031 replaces the
   runner with an API-owned trusted solc-js subprocess and migration 0031
   replaces runner provenance with immutable executor kind, policy, and digest.

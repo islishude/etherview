@@ -202,6 +202,7 @@ func runHardhat3Mode(
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertCIArtifactReadable(t, deploymentFile)
 	if err := json.Unmarshal(contents, &deployment); err != nil {
 		t.Fatalf("decode Hardhat deployment: %v", err)
 	}
@@ -303,6 +304,7 @@ func submitAndWaitHardhatYul(
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertCIArtifactReadable(t, filepath.Join(h.artifacts, "yul-submission.json"))
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
@@ -354,6 +356,17 @@ func submitAndWaitHardhatYul(
 			  AND outcome_kind = 'verification_success'`, accepted.Data.ID).Scan(&resultCount)
 		return resultCount == 1, fmt.Sprintf("status=%s results=%d", status, resultCount), err
 	})
+}
+
+func assertCIArtifactReadable(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o004 == 0 {
+		t.Fatalf("retained CI artifact %s mode = %04o, want world-readable", path, info.Mode().Perm())
+	}
 }
 
 func runHardhatCommand(

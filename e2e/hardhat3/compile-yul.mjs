@@ -72,5 +72,7 @@ writeFileSync(
     },
     contract_name_hint: "Counter.yul:Counter",
   })}\n`,
-  { encoding: "utf8", mode: 0o600 },
+  // This contains only the fixed public fixture and is retained for CI
+  // diagnostics. The container runs as root, so the host uploader needs read.
+  { encoding: "utf8", mode: 0o644 },
 );

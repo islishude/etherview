@@ -57,6 +57,12 @@ until the Makefile target exists.
   failure. The E2E-only API environment permits Docker fake-IP download
   networks while retaining the exact HTTPS origin, TLS, size, and SHA-256
   checks; the base deployment never receives that escape hatch.
+- `make test-hardhat3-offline-compile`: run the dependency-locked Hardhat
+  client image with no network and compile its production fixture through the
+  image's exact `solc@0.8.30` solc-js path. The production verification E2E
+  runs this preflight automatically. Product verification still downloads and
+  checksum-validates the official catalog artifact through the application;
+  only the independent client's fixture compilation is offline.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture dependency audits, secret scan, and security-focused tests. All

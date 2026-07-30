@@ -1,9 +1,13 @@
 import hardhatVerify from "@nomicfoundation/hardhat-verify";
 import { configVariable, defineConfig } from "hardhat/config";
+import { fileURLToPath } from "node:url";
 
 const rpcURL = process.env.ETHERVIEW_HARDHAT3_RPC_URL ?? "http://127.0.0.1:8545";
 const explorerURL = process.env.ETHERVIEW_HARDHAT3_EXPLORER_URL ?? "http://127.0.0.1:8080";
 const apiURL = process.env.ETHERVIEW_HARDHAT3_API_URL ?? `${explorerURL}/v2/api`;
+const solcPath = fileURLToPath(
+  new URL("./node_modules/solc/soljson.js", import.meta.url),
+);
 const chainID = Number(process.env.ETHERVIEW_HARDHAT3_CHAIN_ID ?? "1");
 if (!Number.isSafeInteger(chainID) || chainID <= 0) {
   throw new Error("ETHERVIEW_HARDHAT3_CHAIN_ID must be a positive safe integer");
@@ -21,6 +25,7 @@ export default defineConfig({
     profiles: {
       default: {
         version: "0.8.30",
+        path: solcPath,
         settings: {
           evmVersion: "shanghai",
           optimizer: { enabled: false, runs: 200 },
@@ -28,6 +33,7 @@ export default defineConfig({
       },
       production: {
         version: "0.8.30",
+        path: solcPath,
         settings: {
           evmVersion: "shanghai",
           optimizer: { enabled: false, runs: 200 },

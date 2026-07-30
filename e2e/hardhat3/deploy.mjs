@@ -73,5 +73,7 @@ const proxy = await deploy(accounts[0], proxyArtifact.bytecode, proxyArguments);
 await writeFile(
   outputFile,
   `${JSON.stringify({ implementation, implementationV2, proxy, proxyArguments })}\n`,
-  { mode: 0o600 },
+  // This contains only public chain facts and is retained for CI diagnostics.
+  // The container runs as root, so the host artifact uploader needs world-read.
+  { mode: 0o644 },
 );

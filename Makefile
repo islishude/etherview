@@ -56,7 +56,7 @@ PREVIEW_CONFIG_URL ?= https://etherview.localhost:8080/api/v1/config
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
-	test-hardhat3-e2e-prebuilt hardhat3-client-image-build \
+	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
 	test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check \
 	start-preview stop-preview recreate-preview
@@ -118,7 +118,15 @@ hardhat3-client-image-build:
 test-hardhat3-e2e: docker-build hardhat3-client-image-build
 	@$(MAKE) --no-print-directory test-hardhat3-e2e-prebuilt
 
-test-hardhat3-e2e-prebuilt:
+test-hardhat3-offline-compile:
+	@$(DOCKER) image inspect "$(HARDHAT3_IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-hardhat3-offline-compile: Hardhat client $(HARDHAT3_IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@$(DOCKER) run --rm --network none "$(HARDHAT3_IMAGE)" \
+		npx hardhat --build-profile production compile
+
+test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
 		echo "test-hardhat3-e2e-prebuilt: image $(IMAGE) is not loaded"; \
 		exit 1; \
