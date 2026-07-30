@@ -1826,6 +1826,11 @@ tbody tr:hover {
   text-decoration: none;
 }
 
+.inline-button.full {
+  width: 100%;
+  justify-content: center;
+}
+
 .contract-workbench .panel-heading {
   margin: -0.35rem 0 1rem;
 }

@@ -48,6 +48,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
 | P70-T23 | in_progress | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
 | P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
+| P70-T25 | done | P50-T13 | Center the full-width account action in the wallet menu | focused frontend regression and lint |
 
 ## Acceptance
 
@@ -201,6 +202,15 @@ all complete; the v1 release cannot close before those gates.
 
 ## Evidence
 
+- P70-T25: the wallet menu's account link now retains its requested full width
+  after the shared inline-link rule and centers its label, covering both
+  authenticated and anonymous menu states without changing ordinary
+  content-width inline links. A focused stylesheet regression passes 1 test;
+  the complete frontend suite passes 21 files and 156 tests.
+  `npm --prefix web run lint`, `npm --prefix web run build`,
+  `make generate-check`, and
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` pass,
+  with all 9 embedded-distribution browser flows green.
 - P70-T24 implementation and evidence: runtime Compose projects and host Docker
   helpers now capture successful command output silently, record the active
   mode and phase, and write `failure-summary.txt`, `compose-ps.txt`, and the
