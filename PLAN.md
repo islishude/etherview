@@ -114,12 +114,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   production-schema, and monolith/six-role runtime E2E targets. P70-T20
   completes optional process-native TLS on API listeners, a Preview-local
   mkcert workflow, role-scoped Helm certificate delivery, and production
-  runtime validation. P70-T04 still requires the named reference capacity
-  environment. P70-T29 has replaced the superseded remote runner with the
-  host-native API-owned Node/solc-js executor and removed the obsolete language
-  surface. Its ARM64 Preview, production-image, migration, runtime, and real
-  Hardhat monolith/split evidence passes; native AMD64 and ARM64 CI results for
-  the final revision remain outstanding, so the item stays `in_progress`.
+  runtime validation; P70-T23's native-Linux runtime rerun now closes the TLS
+  fixture permission boundary. P70-T04 still requires the named reference
+  capacity environment. P70-T29 has replaced the superseded remote runner with
+  the host-native API-owned Node/solc-js executor and removed the obsolete
+  language surface. Its ARM64 Preview, production-image, migration, runtime,
+  real Hardhat monolith/split, and final native AMD64/ARM64 CI evidence passes.
+  P70-T30 makes the independent Hardhat fixture compile networklessly and keeps
+  its retained container-written diagnostics readable by the CI host.
   P70-T27's complete real Hardhat proxy gate now passes in both topologies.
   P66 live-payment evidence still gates conformance, security, release CI,
   documentation, and artifact work.

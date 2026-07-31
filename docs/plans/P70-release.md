@@ -50,14 +50,14 @@ and user/operator evidence sufficient for a production public release.
 | P70-T20 | done | P60 | Optional native TLS for API listeners with Preview-local Compose and Helm certificate delivery | config, HTTPS service, Preview Compose, Helm, security, and common gates |
 | P70-T21 | done | P30-T11, P40-T06 | Hardhat 3 Etherscan-provider source-verification submission and GET status-polling compatibility | handler goldens, pinned Hardhat 3 provider test, security, documentation, and common gates |
 | P70-T22 | done | P70-T16, P70-T19 | Clock-stable historical analytics rollup integration regression | targeted managed PostgreSQL regression and governance gates |
-| P70-T23 | in_progress | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
+| P70-T23 | done | P70-T20 | Keep the production-container TLS runtime fixture readable by the fixed non-root UID on native Linux hosts | focused file-mode regression and production Compose runtime E2E |
 | P70-T24 | done | P70-T19 | Replace noisy distributed runtime output with phase-bound failure summaries and retained CI diagnostics | focused orchestration regressions and production Compose runtime E2E |
 | P70-T25 | done | P50-T13 | Center the full-width account action in the wallet menu | focused frontend regression and lint |
 | P70-T26 | done | P70-T20 | Align the branded Preview browser origin with SIWE, wallet metadata, TLS checks, and operator documentation | focused config/origin tests, Compose rendering, and live Preview challenge |
 | P70-T27 | done | P20-T03, P30-T11, P40-T06, P60-T03, P70-T21 | Durable proxy-verification compatibility plus real Hardhat 3 production-path E2E | handler, PostgreSQL, migration, monolith/split Compose, and real compiler gates |
 | P70-T28 | superseded | P30-T14, P60 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
-| P70-T29 | in_progress | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
-| P70-T30 | in_progress | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
+| P70-T29 | done | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
+| P70-T30 | done | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
 
 ## Acceptance
 
@@ -122,7 +122,7 @@ and user/operator evidence sufficient for a production public release.
       from PostgreSQL scheduling time, so a hard-coded date cannot make newly
       dirtied hours appear deferred while newest-first and reorg assertions
       retain deterministic historical buckets.
-- [ ] P70-T23: the ephemeral TLS fixture remains private on the host while its
+- [x] P70-T23: the ephemeral TLS fixture remains private on the host while its
       two read-only bind-mounted files are readable by the production image's
       fixed non-root UID on native Linux Compose hosts.
 - [x] P70-T24: successful runtime E2E output contains only bounded phase
@@ -148,7 +148,7 @@ and user/operator evidence sufficient for a production public release.
       constrains executor provenance, and rejects later Vyper writes; public
       OpenAPI, generated clients, UI, and compatibility submission expose only
       Solidity/Yul.
-- [ ] P70-T30: the dependency-locked Hardhat client compiles with its
+- [x] P70-T30: the dependency-locked Hardhat client compiles with its
       architecture-neutral local solc-js package without downloading a
       compiler list or binary at runtime, and retained failure diagnostics are
       readable by the CI artifact uploader.
@@ -228,13 +228,15 @@ through the public HTTPS compatibility endpoint.
 P70-T27 is complete: the real Hardhat CLI proxy workflow, including Solidity,
 Yul, upgrade invalidation, and rebinding, passes in both monolith and
 six-application-role split topologies. P70-T28 is superseded by P70-T29.
-P70-T29 remains in progress only until the final revision's native
-`ubuntu-24.04` AMD64 and `ubuntu-24.04-arm` CI matrix jobs pass. The workflow
-builds each host-native image without a platform override; local emulation or a
-fixed cross-platform build is not substitute evidence.
-P70-T30 remains in progress until those native jobs also confirm the
-networkless Hardhat fixture preflight and successful upload of any retained
-failure diagnostics. Local gates do not replace that uploader evidence.
+P70-T29 and P70-T30 are complete. Final revision
+`79b91b6cbca8caadba760d2e6f5b170268c56875` passed the native
+`ubuntu-24.04` AMD64 and `ubuntu-24.04-arm` Hardhat matrix, including the
+networkless fixture compiler preflight, host-native image boundary, provider
+regression, real compiler verification, proxy upgrade/rebinding, and
+monolith/split parity. Both successful jobs skipped the failure-only artifact
+upload step by design; the production E2E exercised the retained-file
+readability assertions, while the focused mode regression and host-user ZIP
+integrity check cover packaging without inventing a failed-run upload.
 
 P70-T20 is complete for process-native TLS. P70-T26 now aligns the branded
 Preview browser, session-origin, wallet explorer metadata, and readiness-check contract.
@@ -263,6 +265,18 @@ those gates.
   the Yul job queued because this host's Docker DNS could not establish TLS to
   the official catalog endpoint. It did not reach distributed mode and is not
   recorded as full runtime or native-CI evidence.
+- P70-T29/P70-T30 native CI closure: final revision
+  `79b91b6cbca8caadba760d2e6f5b170268c56875` passed
+  [CI run 30591097826](https://github.com/islishude/etherview/actions/runs/30591097826).
+  The host-native
+  [ARM64 job 91033393455](https://github.com/islishude/etherview/actions/runs/30591097826/job/91033393455)
+  and
+  [AMD64 job 91033393476](https://github.com/islishude/etherview/actions/runs/30591097826/job/91033393476)
+  each passed image builds, the native image boundary, provider compatibility,
+  the networkless Hardhat fixture preflight, and the complete production
+  Hardhat/proxy E2E. The failure-only diagnostic upload step was skipped on
+  both green jobs. This supplies the final multi-architecture evidence and
+  marks P70-T29 and P70-T30 `done`.
 - P70-T29 implementation and local ARM64 evidence: ADR-0031 replaces the
   runner with an API-owned trusted solc-js subprocess and migration 0031
   replaces runner provenance with immutable executor kind, policy, and digest.
@@ -292,8 +306,7 @@ those gates.
   client images and passed monolith in 112.85 seconds and distributed in
   119.54 seconds, including one Yul compile, three Solidity address
   verifications, proxy upgrade invalidation/rebinding, and topology parity.
-  Native AMD64 and ARM64 CI evidence for this final revision remains pending,
-  so P70-T29 stays `in_progress`.
+  The later native AMD64 and ARM64 closure evidence above completes P70-T29.
 - P70-T27 closure evidence: the same current-source Hardhat run exercised the
   official compiler catalog, durable proxy GUID/status API, incorrect expected
   implementation rejection without a job, two immutable proxy publications,
@@ -415,8 +428,15 @@ those gates.
   read-only only into the API service. The focused file-mode regression,
   `make test-runtime-e2e` (monolith and all seven split roles, including
   process-native HTTPS), `make plan-check`, and `git diff --check` pass. The
-  exact native-Linux GitHub Actions rerun remains required before P70-T23 is
-  marked `done`.
+  exact native-Linux GitHub Actions rerun remained required at that point.
+- P70-T23 native-Linux closure: final revision
+  `79b91b6cbca8caadba760d2e6f5b170268c56875` passed the
+  [Container, Compose, and Helm job 91033393464](https://github.com/islishude/etherview/actions/runs/30591097826/job/91033393464)
+  on `ubuntu-24.04`. Its production-image schema lifecycle and complete
+  monolith/split runtime topology gate, including process-native HTTPS under
+  the fixed UID/GID 65532, passed. The failure-only runtime diagnostic upload
+  was skipped because the runtime gate succeeded. This supplies the required
+  native-Linux evidence and marks P70-T23 `done`.
 - P70-T04 harness correction: `make test-soak` now fixes the release target at
   500 RPS for 30 minutes with a five-second request timeout, p95 below 500 ms,
   error rate below 0.1%, lag no greater than two, and at least 99% successful
