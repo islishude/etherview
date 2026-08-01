@@ -8,6 +8,9 @@ updates:
       time: "02:00"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+    groups:
+      opentelemetry:
+        patterns: ["go.opentelemetry.io/*"]
 
   - package-ecosystem: npm
     directory: /web
