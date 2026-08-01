@@ -259,8 +259,7 @@ func (r *runtime) waitReady(ctx context.Context) (snapshot, error) {
 		if err == nil {
 			return current, nil
 		}
-		var pending *pendingError
-		if !errors.As(err, &pending) {
+		if _, ok := errors.AsType[*pendingError](err); !ok {
 			return snapshot{}, err
 		}
 		lastPending = err
