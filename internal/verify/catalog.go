@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -113,9 +114,7 @@ func newCompilerCatalogParser(options CompilerCatalogOptions) (*CompilerCatalog,
 		return nil, errors.New("compiler catalog platform must be emscripten-wasm32")
 	}
 	sources := make(map[Language]string, len(options.Sources))
-	for language, source := range options.Sources {
-		sources[language] = source
-	}
+	maps.Copy(sources, options.Sources)
 	options.Sources = sources
 	origins := make(map[string]struct{}, len(options.AllowedOrigins))
 	for _, raw := range options.AllowedOrigins {

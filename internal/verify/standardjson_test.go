@@ -3,6 +3,7 @@ package verify
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -116,10 +117,5 @@ func TestPrepareStandardJSONBoundsWholeNormalizedInput(t *testing.T) {
 }
 
 func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }

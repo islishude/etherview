@@ -105,22 +105,25 @@ func TestParseDocumentAuthenticatesAccountsAndStorage(t *testing.T) {
 }
 
 func TestParseDocumentAuthenticatesAmsterdamGenesisHeader(t *testing.T) {
-	document := strings.Replace(
-		genesisFixture,
-		`"londonBlock":0}`,
-		`"londonBlock":0,"shanghaiTime":0,"cancunTime":0,"pragueTime":0,"amsterdamTime":0,`+
-			`"blobSchedule":{`+
-			`"cancun":{"target":3,"max":6,"baseFeeUpdateFraction":3338477},`+
-			`"prague":{"target":6,"max":9,"baseFeeUpdateFraction":5007716},`+
-			`"amsterdam":{"target":6,"max":9,"baseFeeUpdateFraction":5007716}}}`,
-		1,
-	)
-	document = strings.Replace(document, `"alloc":{`, `"slotNumber":7,"alloc":{`, 1)
+	document := `{
+  "config":{"chainId":777,"homesteadBlock":0,"eip150Block":0,"eip155Block":0,"eip158Block":0,"byzantiumBlock":0,"constantinopleBlock":0,"petersburgBlock":0,"istanbulBlock":0,"berlinBlock":0,"londonBlock":0,"shanghaiTime":0,"cancunTime":0,"pragueTime":0,"amsterdamTime":0,"blobSchedule":{"cancun":{"target":3,"max":6,"baseFeeUpdateFraction":3338477},"prague":{"target":6,"max":9,"baseFeeUpdateFraction":5007716},"amsterdam":{"target":6,"max":9,"baseFeeUpdateFraction":5007716}}},
+  "nonce":"0x0",
+  "timestamp":"0x0",
+  "extraData":"0x",
+  "gasLimit":"0x1c9c380",
+  "difficulty":"0x1",
+  "mixHash":"0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase":"0x0000000000000000000000000000000000000000",
+  "slotNumber":7,"alloc":{
+    "1000000000000000000000000000000000000001":{"balance":"0x2a"},
+    "2000000000000000000000000000000000000002":{"balance":"1000000000000000000","nonce":"0x3","code":"0x6001600055","storage":{"0x00":"0x07","0x02":"0x09"}}
+  }
+}`
 	_, block, err := parseDocument([]byte(document), 777)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := block.Hash().Hex(), "0x9dc01b4e711aba36c6fdfdc248a5f6c3ad36ab401f420888a1676b522e38a4bf"; got != want {
+	if got, want := block.Hash().Hex(), "0x06605f26223eccad00fdc765bad60cf03842307d81bb0d13f3870e81ebc27194"; got != want {
 		t.Fatalf("Amsterdam block hash = %s, want %s", got, want)
 	}
 }

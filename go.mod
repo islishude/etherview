@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/ethereum/go-ethereum v1.17.2
+	github.com/ethereum/go-ethereum v1.17.5
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/google/uuid v1.6.0
 	github.com/holiman/uint256 v1.3.2
@@ -45,10 +45,11 @@ require (
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/dot v1.6.2 // indirect
-	github.com/ethereum/c-kzg-4844/v2 v2.1.6 // indirect
+	github.com/ethereum/c-kzg-4844/v2 v2.1.8 // indirect
 	github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
+	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/getkin/kin-openapi v0.142.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -57,7 +58,7 @@ require (
 	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
-	github.com/golang/snappy v1.0.0 // indirect
+	github.com/golang/snappy v1.0.1-0.20260716114414-9ae09f520e93 // indirect
 	github.com/google/cel-go v0.28.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
