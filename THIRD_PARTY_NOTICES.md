@@ -8,7 +8,6 @@ license.
 ## go-ethereum library
 
 - Module: `github.com/ethereum/go-ethereum`
-- Reviewed version: `v1.17.2`
 - Copyright: The go-ethereum Authors
 - License for library code outside `cmd/`: GNU Lesser General Public License,
   version 3 or later
@@ -19,9 +18,11 @@ GPL-licensed `github.com/ethereum/go-ethereum/cmd` tree. The production image
 includes the upstream `COPYING.LESSER` as
 `/licenses/go-ethereum-LGPL-3.0-or-later.txt`.
 
-The automated license gate pins the reviewed version, verifies the upstream
-license materials and a representative library source header by SHA-256, and
-rejects any `cmd/` dependency before applying a narrow scanner exception.
+The dependency lock selects the included version. The automated license gate
+binds scanner attribution to that resolved version, verifies the exact upstream
+license materials, README license section, and representative library source
+header by SHA-256, and rejects any `cmd/` dependency before applying a narrow
+scanner exception.
 
 The imported dependency graph also contains four directories with their own
 permissive license attribution:
