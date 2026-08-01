@@ -259,8 +259,40 @@ describe("AuthProvider", () => {
     },
   );
 
+  it("restores a valid session while disconnected and keeps it for the first matching wallet connection", async () => {
+    mocks.wallet.active = undefined as never;
+    mocks.getAuthSession.mockResolvedValue(authenticatedSession());
+
+    const view = renderAuth();
+
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
+    expect(mocks.logoutAuthSession).not.toHaveBeenCalled();
+
+    mocks.wallet.active = initialWallet();
+    view.rerender(authTree());
+
+    expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+    expect(mocks.logoutAuthSession).not.toHaveBeenCalled();
+  });
+
+  it("revokes a restored session when the first observed wallet does not match", async () => {
+    mocks.wallet.active = undefined as never;
+    mocks.getAuthSession.mockResolvedValue(authenticatedSession());
+
+    const view = renderAuth();
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
+
+    mocks.wallet.active = {
+      ...initialWallet(),
+      account: "0x2222222222222222222222222222222222222222",
+    };
+    view.rerender(authTree());
+
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
+    expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
+  });
+
   it.each([
-    ["disconnected", undefined],
     [
       "different account",
       { account: "0x2222222222222222222222222222222222222222" },
@@ -269,9 +301,7 @@ describe("AuthProvider", () => {
   ])(
     "rejects an initially restored session when the wallet is %s",
     async (_name, update) => {
-      mocks.wallet.active = update
-        ? { ...initialWallet(), ...update }
-        : undefined as never;
+      mocks.wallet.active = { ...initialWallet(), ...update };
       mocks.getAuthSession.mockResolvedValue(authenticatedSession());
 
       renderAuth();

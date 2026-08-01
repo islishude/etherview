@@ -29,6 +29,7 @@ quota policy.
 | P65-T05 | done | P65-T03 | Bounded wallet signing, `AuthProvider`, account page, admin users, and bilingual UX | Vitest, boundary, a11y, and browser tests |
 | P65-T06 | done | P65-T03, P65-T04, P65-T05 | Config, Secret/Helm/Compose, operations docs, E2E, and security closure | race, E2E, security, Helm, and role-parity gates |
 | P65-T07 | done | P65-T05 | Direct SIWE login with inline injected-wallet selection and no separate preconnection step | Vitest, boundary, a11y, and embedded browser tests |
+| P65-T08 | done | P65-T03, P65-T05 | Preserve a valid writer-backed SIWE session across an SPA reload while retaining wallet-identity revocation after an observed connection | Vitest, embedded browser reload regression, and live Preview verification |
 
 ## Acceptance
 
@@ -44,6 +45,9 @@ quota policy.
       mutations retain stable timestamps and typed errors.
 - [x] The SPA distinguishes wallet connection from authentication and requires
       reauthentication after a wallet identity or configured-chain change.
+- [x] A full SPA reload restores a valid Cookie session before wallet
+      reconnection; the first observed wallet must match that user and later
+      wallet-identity changes still revoke the session.
 - [x] SIWE can authorize a sole discovered wallet directly or select among
       multiple wallets inline without requiring a separate connection action.
 - [x] Existing API-key, rate-limit, verification, compatibility, and wallet
@@ -184,3 +188,20 @@ not promote those release gates.
   The embedded Chromium suite passes 9/9 with the SIWE scenario starting from
   a disconnected wallet and asserting the complete connect, chain/account
   preflight, exact `personal_sign`, and completion-fence sequence.
+- P65-T08 implementation: `AuthProvider` no longer interprets the deliberately
+  memory-only wallet's initial disconnected state after a full page load as an
+  observed identity mismatch. A valid writer-backed Cookie session restores
+  independently; the first later wallet connection is retained only for the
+  same account and chain, while mismatches and subsequent provider, account,
+  chain, or revision changes still clear local authority and revoke the server
+  session.
+- P65-T08 verification: the focused AuthProvider suite passes 27/27 and the
+  complete frontend suite passes 21 files and 157 tests. Frontend lint/build,
+  `make generate-check`, `make plan-check`, and the embedded Chromium suite
+  (9/9) pass; its SIWE scenario now covers login, full reload, matching-wallet
+  reconnection, and later account-change revocation. The rebuilt Preview uses
+  one production image across all six application roles with zero restarts,
+  and `make preview-check` passes the complete topology and 15-second stability
+  window. Live Preview recorded `verify` 201 followed by repeated restored
+  `auth/session` 200 requests without `auth/logout`; PostgreSQL retained one
+  active, unrevoked session.

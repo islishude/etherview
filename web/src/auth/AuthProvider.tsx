@@ -122,6 +122,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (generationRef.current !== generation) return;
       if (
         next.authenticated &&
+        activeWalletRef.current !== undefined &&
         !sessionMatchesWallet(next, activeWalletRef.current)
       ) {
         bestEffortLogout(next);
@@ -160,9 +161,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     const attempt = loginAttemptRef.current;
     const currentWallet = activeWalletRef.current;
+    const firstObservedConnection =
+      previous === "disconnected" && currentWallet !== undefined;
     const allowedLoginConnection =
-      previous === "disconnected" &&
-      currentWallet !== undefined &&
+      firstObservedConnection &&
       ((attempt?.phase === "connecting" &&
         currentWallet.uuid === attempt.providerUUID) ||
         (attempt?.phase === "authenticating" &&
@@ -172,6 +174,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       attempt.connectionObserved = true;
       if (attempt.finished) loginAttemptRef.current = undefined;
       return;
+    }
+    if (firstObservedConnection && attempt === undefined) {
+      // WalletProvider intentionally keeps its active provider in memory, so a
+      // full page load starts disconnected even when the HttpOnly session
+      // Cookie is still valid. The first later connection is an observation,
+      // not an identity change: keep an anonymous or matching restored session
+      // and let a mismatching connection fall through to revocation.
+      const current = sessionRef.current;
+      if (!current.authenticated || sessionMatchesWallet(current, currentWallet)) {
+        return;
+      }
     }
 
     generationRef.current += 1;

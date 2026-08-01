@@ -93,7 +93,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   user/operator administration, bounded wallet signing, embedded
   account/admin UX, role-scoped deployment Secrets, and operational/security
   closure pass unit, race, PostgreSQL, browser, Helm/Compose, image, license,
-  and security evidence.
+  and security evidence. A valid Cookie session also survives an SPA reload
+  before any wallet is reconnected; the first observed wallet must match it,
+  and later wallet-identity changes still revoke it.
 - P66 is blocked: the additive ledger, reviewed v2 exact-EVM adapter,
   replay-fenced capture and settlement middleware, free and administrative
   APIs, operator reconciliation, optional payer attribution, and embedded

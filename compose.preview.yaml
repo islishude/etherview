@@ -37,6 +37,13 @@ x-etherview-service: &etherview-service
     - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
     - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
 
+x-etherview-healthcheck: &etherview-healthcheck
+  test: ["CMD", "/etherview", "healthcheck"]
+  interval: 5s
+  timeout: 3s
+  retries: 34
+  start_period: 10s
+
 x-etherview-runtime-depends-on: &etherview-runtime-depends-on
   postgres:
     condition: service_healthy
@@ -113,6 +120,7 @@ services:
       - /tmp:size=64m,mode=1777
       - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
@@ -125,6 +133,7 @@ services:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: sync
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
   enrich:
@@ -134,6 +143,7 @@ services:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: enrich
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
   trace:
@@ -143,6 +153,7 @@ services:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: trace
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
   metadata:
@@ -153,6 +164,7 @@ services:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: metadata
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
   maintenance:
@@ -163,6 +175,7 @@ services:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: maintenance
     depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
 volumes:

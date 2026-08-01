@@ -15,6 +15,7 @@ import (
 
 const usage = `Usage:
   etherview serve [--config path] [--roles all|api,sync,...] [--log-level level] [--log-format json|text]
+  etherview healthcheck [--url http://127.0.0.1:9090/health/ready] [--timeout duration]
   etherview doctor [--config path] [--log-level level] [--log-format json|text]
   etherview migrate <up|status> [--config path] [--log-level level] [--log-format json|text]
   etherview repair [--config path] [--log-level level] [--log-format json|text] [arguments]
@@ -62,7 +63,8 @@ func (p Program) Run(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
-	if p.Backend == nil && args[0] != "version" && args[0] != "help" {
+	if p.Backend == nil && args[0] != "version" && args[0] != "help" &&
+		args[0] != "healthcheck" {
 		_, _ = fmt.Fprintln(stderr, "etherview: runtime backend is not configured")
 		return 1
 	}
@@ -79,6 +81,8 @@ func (p Program) Run(ctx context.Context, args []string) int {
 		}
 		_, _ = fmt.Fprintln(stdout, version)
 		return 0
+	case "healthcheck":
+		err = p.runHealthcheck(ctx, args[1:])
 	case "serve":
 		err = p.runServe(ctx, args[1:])
 	case "doctor":

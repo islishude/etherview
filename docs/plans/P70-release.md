@@ -60,6 +60,8 @@ and user/operator evidence sufficient for a production public release.
 | P70-T30 | done | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
 | P70-T31 | done | P30-T11, P40-T06, P60-T03, P70-T29, P70-T30 | Add an independent Foundry production-path source-verification E2E without replacing the Hardhat 3 proxy gate | offline compiler, strict Etherscan V2, monolith/split provenance parity, and native AMD64/ARM64 CI gates |
 | P70-T32 | done | P70-T29 | Make the trusted solc-js runtime paths explicit and operator-configurable without changing its fixed runtime identity or deployment mount boundary | config, runtime, Compose, Helm, production-image, and real compiler gates |
+| P70-T33 | superseded | P60, P70-T13 | Superseded by P70-T34: remove the auxiliary role-probe image and perform bounded Preview readiness checks through the host Docker CLI and the running API container | historical focused checker regressions and live Preview lifecycle validation |
+| P70-T34 | done | P60-T01, P60-T03, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
 
 ## Acceptance
 
@@ -169,6 +171,17 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T32: custom paths remain manifest-, identity-, and self-test-checked;
       Compose scopes overrides to `all`/`api`, Helm rejects relative paths, and
       neither deployment surface adds an alternate runtime mount.
+- [x] P70-T33 (superseded by P70-T34): the historical intermediate checker
+      removed the helper image and auxiliary container but still executed a
+      readiness probe through the running API container.
+- [x] P70-T34: every long-lived monolith or split application container uses
+      exact `CMD /etherview healthcheck`; the bounded command accepts only a
+      numeric loopback HTTP `/health/ready` URL, loads no configuration or
+      Secrets, and needs no shell, Node process, `curl`, or Docker socket.
+- [x] P70-T34: Compose `--wait --wait-timeout 180` is the sole Preview health
+      owner. No post-wait checker command or package remains; Compose render,
+      production-image, and application-native healthcheck regressions cover
+      the static and live deployment boundaries without a second verdict.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -272,6 +285,44 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T34 implementation and live Preview evidence: the single binary now
+  exposes a backend-independent `etherview healthcheck` command whose default
+  two-second request targets only
+  `http://127.0.0.1:9090/health/ready`, rejects redirects and remote, DNS,
+  credential-bearing, malformed, or unbounded inputs, and reports success only
+  for HTTP 200. Base monolith/distributed Compose and Preview attach exact
+  `CMD /etherview healthcheck` definitions to every long-lived application
+  role; migration remains a one-shot without a healthcheck. Render assertions
+  fix the command, three-second Docker timeout, five-second interval, 34
+  retries, and ten-second start period. The obsolete `cmd/previewcheck`,
+  `internal/previewcheck`, Make target, and post-Compose invocations are
+  removed; no second readiness polling, stability window, cross-container
+  probe, or deployment verdict remains. Focused ordinary and race suites pass
+  for `internal/cli` and `cmd/etherview`; `go test ./... -count=1`, `make lint`,
+  `make compose-check`, `make generate-check`, and `make docker-image-check`
+  pass. A live `make recreate-preview` rebuilt ARM64 image
+  `sha256:1a032da57b35d9661e24071aa5fa3a84fac15a0658a829d9799eba0db683157d`;
+  Compose itself waited until all six application roles were healthy, each
+  inspected health command was exact with zero failing streak. A final rebuild
+  after removing the checker returns directly from Compose's successful wait.
+  This marks P70-T34 `done`; P70 remains blocked only by its existing unrelated
+  release gates.
+
+- P70-T33 implementation and live Preview evidence: `previewcheck` now asks the
+  host Docker CLI to `exec` a fixed readiness program through the bundled Node
+  runtime in the existing API container. The program uses Node's permission
+  model, runs as UID/GID 65532, allows only network access, bounds each of the
+  six role requests to two seconds, and remains enclosed by the checker's
+  20-second context. Focused ordinary and race tests pass for
+  `internal/previewcheck` and `cmd/previewcheck`, including an exact command
+  assertion and a regression that rejects any auxiliary `docker run`. `make
+  lint`, `make plan-check`, and `git diff --check` pass. Against the rebuilt
+  Preview deployment, `make preview-check` passed the complete topology and
+  stable restart-count window in 16.353 seconds without a helper image,
+  container, socket mount, or Docker-in-Docker daemon. P70-T34 supersedes this
+  intermediate implementation with Compose-owned health waiting and retains
+  this entry only as historical evidence.
 
 - P70-T32 implementation and local ARM64 evidence: `VerificationConfig` owns
   the three trusted runtime paths and `verificationCompiler` passes them

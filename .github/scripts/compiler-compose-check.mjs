@@ -70,6 +70,7 @@ if (expectRuntimePathOverride) {
 for (const name of applicationServices) {
   const service = config.services[name];
   assert.ok(service, `missing application service ${name}`);
+  assertApplicationHealthcheck(service, name);
   const cacheTargets = tmpfsTargets(service).filter(
     (target) => target === cachePath,
   );
@@ -109,6 +110,22 @@ function tmpfsTargets(service) {
     }
     return entry?.target;
   });
+}
+
+function assertApplicationHealthcheck(service, name) {
+  assert.deepEqual(
+    service.healthcheck?.test,
+    ["CMD", "/etherview", "healthcheck"],
+    `${name} application-native healthcheck`,
+  );
+  assert.equal(service.healthcheck.timeout, "3s", `${name} health timeout`);
+  assert.equal(service.healthcheck.interval, "5s", `${name} health interval`);
+  assert.equal(service.healthcheck.retries, 34, `${name} health retries`);
+  assert.equal(
+    service.healthcheck.start_period,
+    "10s",
+    `${name} health start period`,
+  );
 }
 
 function assertNoPlatform(value, path) {

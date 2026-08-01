@@ -898,6 +898,42 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   ).toBe(true);
   await expect(page.locator("body")).not.toContainText(authCSRFToken);
 
+  expect(
+    authRequests.filter(
+      ({ method, pathname }) =>
+        method === "POST" && pathname === "/api/v1/auth/logout",
+    ),
+  ).toHaveLength(0);
+  await page.reload();
+  await expect(
+    page.locator(".identity-card").getByText("User authenticated", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Wallet disconnected", { exact: true }),
+  ).toBeVisible();
+  expect(
+    authRequests.filter(
+      ({ method, pathname }) =>
+        method === "POST" && pathname === "/api/v1/auth/logout",
+    ),
+  ).toHaveLength(0);
+
+  await activateInView(page.locator(".wallet-summary"));
+  await activateInView(
+    page.getByRole("button", { name: /SIWE E2E Wallet/ }),
+  );
+  await expect(
+    page.getByText("Wallet connected", { exact: true }),
+  ).toBeVisible();
+  expect(
+    authRequests.filter(
+      ({ method, pathname }) =>
+        method === "POST" && pathname === "/api/v1/auth/logout",
+    ),
+  ).toHaveLength(0);
+
   const personalHistory = page.locator(".billing-history-section");
   await expect(
     personalHistory.getByRole("heading", { name: "Payment history" }),

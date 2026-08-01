@@ -81,6 +81,13 @@ x-app: &app
     migration:
       condition: service_completed_successfully
 
+x-app-healthcheck: &app-healthcheck
+  test: ["CMD", "/etherview", "healthcheck"]
+  interval: 5s
+  timeout: 3s
+  retries: 34
+  start_period: 10s
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -113,6 +120,7 @@ services:
     environment:
       <<: *api-environment
       ETHERVIEW_ROLES: all
+    healthcheck: *app-healthcheck
     profiles: ["monolith"]
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -127,6 +135,7 @@ services:
     environment:
       <<: *api-environment
       ETHERVIEW_ROLES: api
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -141,6 +150,7 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: sync
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
 
   enrich:
@@ -149,6 +159,7 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: enrich
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
 
   trace:
@@ -157,6 +168,7 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: trace
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
 
   metadata:
@@ -166,6 +178,7 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: metadata
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
 
   maintenance:
@@ -175,6 +188,7 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: maintenance
+    healthcheck: *app-healthcheck
     profiles: ["distributed"]
 
   nats:

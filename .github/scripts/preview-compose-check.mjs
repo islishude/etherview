@@ -41,6 +41,7 @@ for (const role of roles) {
     `${role} sync progress override`,
   );
   assert.ok(service.command.includes(`--roles=${role}`), `${role} command`);
+  assertApplicationHealthcheck(service, role);
   for (const dependency of ["postgres", "migration", "reth"]) {
     assert.ok(service.depends_on?.[dependency], `${role} dependency ${dependency}`);
   }
@@ -131,6 +132,22 @@ function requireService(name) {
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>
     typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target
+  );
+}
+
+function assertApplicationHealthcheck(service, name) {
+  assert.deepEqual(
+    service.healthcheck?.test,
+    ["CMD", "/etherview", "healthcheck"],
+    `${name} application-native healthcheck`,
+  );
+  assert.equal(service.healthcheck.timeout, "3s", `${name} health timeout`);
+  assert.equal(service.healthcheck.interval, "5s", `${name} health interval`);
+  assert.equal(service.healthcheck.retries, 34, `${name} health retries`);
+  assert.equal(
+    service.healthcheck.start_period,
+    "10s",
+    `${name} health start period`,
   );
 }
 

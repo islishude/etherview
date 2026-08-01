@@ -135,13 +135,16 @@ orphan containers from this Compose project and clears only obsolete local
 runner-reference files; it does not delete unrelated images. No Docker daemon,
 socket, CLI, nested container runtime, privileged service, standalone compiler
 container, or CPU-platform selection participates in compiler execution.
-After Compose starts, the bounded Go-owned check probes all six application
-roles, verifies that each container image matches the Docker host architecture,
-checks the bundled Node runtime, verifies the public HTTPS feature contract
-with the copied CA, and requires stable container identities and restart
-counts. A restarting process therefore makes
-`make start-preview` or `make recreate-preview` fail even when Compose's own
-`--wait` returns success.
+Every long-lived application container has a Docker healthcheck that runs
+`/etherview healthcheck` against its own loopback operational readiness
+endpoint. The command loads no configuration or Secrets and needs no shell,
+Node process, `curl`, helper image, auxiliary container, or Docker socket.
+Compose's existing `--wait --wait-timeout 180` invocation is the sole health
+wait for `make start-preview` and `make recreate-preview`.
+There is no second Preview polling or checker command. Compose render
+regressions fix the healthcheck definition and role topology, while production
+image checks retain the non-root, native-architecture, and compiler-runtime
+boundaries.
 
 NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
 Override it without editing the checked-in configuration:

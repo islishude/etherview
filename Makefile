@@ -43,7 +43,6 @@ PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
-PREVIEW_CONFIG_URL ?= https://etherview.localhost:8080/api/v1/config
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check start-preview recreate-preview
@@ -60,7 +59,7 @@ PREVIEW_CONFIG_URL ?= https://etherview.localhost:8080/api/v1/config
 	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
 	test-schema-e2e test-soak test-x402-testnet \
-	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check \
+	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
 	start-preview stop-preview recreate-preview
 
 go-build: web-build
@@ -422,18 +421,9 @@ preview-cert-check:
 		exit 1; \
 	}
 
-preview-check: preview-cert-check
-	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" $(GO) run ./cmd/previewcheck \
-		-root=. \
-		-project=etherview-preview \
-		-docker="$(DOCKER)" \
-		-config-url="$(PREVIEW_CONFIG_URL)" \
-		-ca-file="$(PREVIEW_TLS_CA)"
-
 start-preview: preview-cert-check docker-build
 	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
-	@$(MAKE) --no-print-directory preview-check
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
@@ -443,4 +433,3 @@ recreate-preview: preview-cert-check docker-build
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
-	@$(MAKE) --no-print-directory preview-check
