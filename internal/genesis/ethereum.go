@@ -53,9 +53,6 @@ func parseDocument(document []byte, expectedChainID uint64) (*core.Genesis, *typ
 	if err := spec.Config.CheckConfigForkOrder(); err != nil {
 		return nil, nil, errors.New("genesis document fork order is invalid")
 	}
-	if spec.Config.IsVerkleGenesis() {
-		return nil, nil, errors.New("genesis Verkle allocation is unsupported")
-	}
 	if spec.Number != 0 || spec.ParentHash != (common.Hash{}) {
 		return nil, nil, errors.New("genesis document must describe block zero with a zero parent")
 	}
