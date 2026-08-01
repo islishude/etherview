@@ -61,6 +61,15 @@ func TestValidateSolcJSRuntimeManifestRejectsTampering(t *testing.T) {
 		}
 	})
 
+	t.Run("configured Node path mismatch", func(t *testing.T) {
+		nodePath, wrapperPath, manifestPath := writeTestSolcJSRuntime(t)
+		if _, _, err := validateSolcJSRuntimeManifest(
+			nodePath+"-other", wrapperPath, manifestPath,
+		); err == nil || !strings.Contains(err.Error(), "Node path is inconsistent") {
+			t.Fatalf("unexpected configured Node path result: %v", err)
+		}
+	})
+
 	t.Run("noncanonical manifest", func(t *testing.T) {
 		nodePath, wrapperPath, manifestPath := writeTestSolcJSRuntime(t)
 		raw, err := os.ReadFile(manifestPath)
@@ -81,6 +90,38 @@ func TestValidateSolcJSRuntimeManifestRejectsTampering(t *testing.T) {
 			nodePath, wrapperPath, manifestPath,
 		); err == nil || !strings.Contains(err.Error(), "not canonical") {
 			t.Fatalf("unexpected canonicalization result: %v", err)
+		}
+	})
+}
+
+func TestSolcJSCompilerRequiresExplicitRelocatableRuntimePaths(t *testing.T) {
+	t.Run("missing paths", func(t *testing.T) {
+		compiler := &SolcJSCompiler{
+			Catalog: &CompilerCatalog{},
+			Cache:   &CompilerCache{Root: t.TempDir()},
+		}
+		if err := compiler.ValidateRuntime(context.Background()); err == nil ||
+			!strings.Contains(err.Error(), "runtime paths must be absolute and clean") {
+			t.Fatalf("unexpected missing runtime path result: %v", err)
+		}
+	})
+
+	t.Run("relocated runtime", func(t *testing.T) {
+		nodePath, wrapperPath, manifestPath := writeTestSolcJSRuntime(t)
+		compiler := &SolcJSCompiler{
+			Catalog:        &CompilerCatalog{},
+			Cache:          &CompilerCache{Root: t.TempDir()},
+			NodePath:       nodePath,
+			WrapperPath:    wrapperPath,
+			ManifestPath:   manifestPath,
+			Timeout:        time.Second,
+			MaxOutputBytes: 1 << 20,
+		}
+		if err := compiler.ValidateRuntime(context.Background()); err != nil {
+			t.Fatalf("validate relocated solc-js runtime: %v", err)
+		}
+		if !compiler.Ready() {
+			t.Fatal("relocated solc-js runtime was not marked ready")
 		}
 	})
 }
@@ -277,7 +318,7 @@ func writeTestSolcJSRuntime(t *testing.T) (string, string, string) {
 	lockPath := filepath.Join(runtimeRoot, "package-lock.json")
 	emptyPath := filepath.Join(runtimeRoot, "empty-runtime-file")
 	for path, contents := range map[string]string{
-		nodePath:    "#!/bin/sh\nexit 0\n",
+		nodePath:    "#!/bin/sh\nprintf '%s' '" + solcJSSelfTestOutput + "'\n",
 		wrapperPath: "export {};\n",
 		packagePath: `{"dependencies":{"solc":"0.8.36"}}`,
 		lockPath:    `{"lockfileVersion":3}`,

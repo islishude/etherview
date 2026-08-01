@@ -9,6 +9,14 @@ const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"];
 const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const runtimePathEnvironment = {
+  ETHERVIEW_VERIFICATION_NODE_PATH: "/custom/bin/node",
+  ETHERVIEW_VERIFICATION_WRAPPER_PATH: "/custom/runtime/compile.mjs",
+  ETHERVIEW_VERIFICATION_MANIFEST_PATH:
+    "/custom/runtime/runtime-manifest.json",
+};
+const expectRuntimePathOverride =
+  process.env.ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE === "true";
 const removedEnvironment = [
   "ETHERVIEW_COMPILER_SANDBOX",
   "ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
@@ -64,6 +72,13 @@ for (const role of roles) {
     role === "api" ? "true" : undefined,
     `${role} Preview fake-IP download exception scope`,
   );
+  for (const [key, expected] of Object.entries(runtimePathEnvironment)) {
+    assert.equal(
+      service.environment?.[key],
+      role === "api" && expectRuntimePathOverride ? expected : undefined,
+      `${role} ${key} scope`,
+    );
+  }
 }
 
 const api = requireService("api");

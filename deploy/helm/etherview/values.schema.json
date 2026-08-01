@@ -523,6 +523,30 @@
             }
           }
         },
+        "verification": {
+          "type": "object",
+          "required": ["node_path", "wrapper_path", "manifest_path"],
+          "properties": {
+            "node_path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 4096,
+              "pattern": "^/"
+            },
+            "wrapper_path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 4096,
+              "pattern": "^/"
+            },
+            "manifest_path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 4096,
+              "pattern": "^/"
+            }
+          }
+        },
         "user_auth": {
           "type": "object",
           "additionalProperties": false,

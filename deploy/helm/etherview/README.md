@@ -235,6 +235,14 @@ part of the production image for its native architecture. There is no runner
 Deployment, Service, image value, runtime class, native compiler fallback, or
 CPU-platform setting.
 
+`config.verification.node_path`, `wrapper_path`, and `manifest_path` default to
+that bundled runtime and may select alternate absolute paths supplied by a
+trusted custom image. The chart deliberately provides no external compiler
+runtime volume. All three paths must describe one read-only manifest-covered
+runtime with the fixed Node/wrapper identity, every `all` or `api` replica must
+use the same manifest digest, and executor-bound jobs must be drained before a
+path change and replica restart.
+
 A dedicated policy selects only `all` or `api` and permits DNS plus TCP/443 for
 approved compiler catalogs and artifacts. Other worker roles receive neither
 the cache nor this egress. Catalog outages do not withdraw API readiness:

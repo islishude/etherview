@@ -59,6 +59,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T29 | done | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
 | P70-T30 | done | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
 | P70-T31 | done | P30-T11, P40-T06, P60-T03, P70-T29, P70-T30 | Add an independent Foundry production-path source-verification E2E without replacing the Hardhat 3 proxy gate | offline compiler, strict Etherscan V2, monolith/split provenance parity, and native AMD64/ARM64 CI gates |
+| P70-T32 | done | P70-T29 | Make the trusted solc-js runtime paths explicit and operator-configurable without changing its fixed runtime identity or deployment mount boundary | config, runtime, Compose, Helm, production-image, and real compiler gates |
 
 ## Acceptance
 
@@ -162,6 +163,12 @@ and user/operator evidence sufficient for a production public release.
       success, exact constructor and immutable metadata, official compiler and
       executor provenance, and no duplicate job on repeated Forge verification;
       native AMD64 and ARM64 CI both pass before this item becomes `done`.
+- [x] P70-T32: file and environment configuration explicitly supplies absolute
+      clean Node, wrapper, and manifest paths to the API-owned compiler while
+      omitted legacy configuration preserves the bundled production defaults.
+- [x] P70-T32: custom paths remain manifest-, identity-, and self-test-checked;
+      Compose scopes overrides to `all`/`api`, Helm rejects relative paths, and
+      neither deployment surface adds an alternate runtime mount.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -265,6 +272,23 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T32 implementation and local ARM64 evidence: `VerificationConfig` owns
+  the three trusted runtime paths and `verificationCompiler` passes them
+  explicitly, so the verify layer no longer silently selects production file
+  locations. Focused ordinary and race tests pass for config precedence,
+  absolute-clean validation, complete application wiring, relocated runtime
+  validation, mismatch, tamper, and readiness behavior. `make compose-check`,
+  `make helm-check`, `make plan-check`, and `git diff --check` pass. `make
+  docker-build docker-image-check` rebuilt the production image and passed as
+  UID/GID 65532 on ARM64 with Node 26.5.0 and the hardened manifest-covered
+  root filesystem. The complete `make check` passes using writable `/tmp`
+  Go/lint caches on the restricted host. `make test-hardhat3-e2e` rebuilt both
+  images and passed the real compiler/proxy workflow in monolith in 104.49
+  seconds and distributed in 101.93 seconds (206.93 seconds total), including
+  Solidity/Yul verification, upgrade invalidation, and rebinding. This marks
+  P70-T32 `done`; P70 remains blocked only by its existing unrelated release
+  gates.
 
 - P70-T31 implementation, local, and CI evidence: the Foundry v1.7.1 client
   base is fixed to multi-architecture manifest digest

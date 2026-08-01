@@ -39,6 +39,13 @@ the platform coupling this decision removes.
   checksum-verified soljson file, confirms its normalized long version, accepts
   one Standard JSON document on stdin, supplies no import callback, and writes
   only compiler JSON to stdout.
+- The Node executable, wrapper, and runtime-manifest paths default to their
+  production-image locations but are explicit non-secret operator
+  configuration. Overrides must be absolute clean paths that identify one
+  coherent read-only runtime and pass the same manifest identity, complete-tree
+  checksum, and wrapper self-test. This supports host deployments and custom
+  images; the standard Compose and Helm surfaces do not mount an alternate
+  runtime or weaken the bundled runtime identity.
 - Every compile input runs in a new Node process. The parent supplies an empty
   secret-free environment, private temporary directory, absolute runtime and
   artifact paths, a 384 MiB V8 heap, Node's permission model, bounded
@@ -73,7 +80,9 @@ the platform coupling this decision removes.
   for its current target architecture while assembling an image, but Compose,
   Preview, Helm, CI service definitions, and operator configuration never pin
   one CPU platform. Replicas within one deployment are assumed homogeneous
-  while executor-bound jobs are drained during upgrades.
+  while executor-bound jobs are drained during upgrades. A runtime-path change
+  follows the same rule: drain bound jobs, deploy one manifest digest to every
+  API-capable replica, and restart those replicas before admitting new work.
 
 This decision supersedes ADR-0029 and ADR-0030. It supersedes ADR-0024 only
 where that decision requires Vyper, native executable platform selection,
@@ -89,3 +98,6 @@ and solc-js wrapper, and API replicas require bounded HTTPS egress plus a
 disposable compiler cache. The trusted-subprocess model is intentionally
 narrower than a malicious-code sandbox; expanding compiler sources beyond the
 authenticated official solc-js catalog requires a new security decision.
+An operator that selects alternate runtime paths is responsible for placing
+that complete runtime in the host or custom image; path configuration alone
+does not supply files, volumes, or a new trust boundary.

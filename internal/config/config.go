@@ -32,6 +32,10 @@ const (
 	maximumRuntimeWorkerCount         = 64
 	maximumRuntimeBackfillWorkers     = 64
 	maximumRuntimeBackfillBatchBlocks = 256
+
+	defaultVerificationNodePath     = "/usr/local/bin/node"
+	defaultVerificationWrapperPath  = "/opt/etherview/compiler/compile.mjs"
+	defaultVerificationManifestPath = "/opt/etherview/compiler/runtime-manifest.json"
 )
 
 // Config is the complete runtime configuration. A deployment serves exactly
@@ -200,6 +204,9 @@ type VerificationConfig struct {
 	WorkerCount            int               `yaml:"worker_count"`
 	Timeout                time.Duration     `yaml:"timeout"`
 	CacheDirectory         string            `yaml:"cache_directory"`
+	NodePath               string            `yaml:"node_path"`
+	WrapperPath            string            `yaml:"wrapper_path"`
+	ManifestPath           string            `yaml:"manifest_path"`
 	CatalogURLs            map[string]string `yaml:"catalog_urls"`
 	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
 	CatalogRefreshInterval time.Duration     `yaml:"catalog_refresh_interval"`
@@ -372,6 +379,9 @@ func Default() Config {
 			WorkerCount:    1,
 			Timeout:        2 * time.Minute,
 			CacheDirectory: "/var/lib/etherview/compilers/cache",
+			NodePath:       defaultVerificationNodePath,
+			WrapperPath:    defaultVerificationWrapperPath,
+			ManifestPath:   defaultVerificationManifestPath,
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
 			},
@@ -875,6 +885,27 @@ func (c Config) ValidateForRoles(roles []string) error {
 		} else if !filepath.IsAbs(c.Verification.CacheDirectory) ||
 			filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
 			errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
+		}
+		for _, runtimePath := range []struct {
+			name  string
+			value string
+		}{
+			{name: "node_path", value: c.Verification.NodePath},
+			{name: "wrapper_path", value: c.Verification.WrapperPath},
+			{name: "manifest_path", value: c.Verification.ManifestPath},
+		} {
+			if strings.TrimSpace(runtimePath.value) == "" {
+				errs = append(errs, fmt.Errorf(
+					"verification.%s is required by the api verification worker",
+					runtimePath.name,
+				))
+			} else if !filepath.IsAbs(runtimePath.value) ||
+				filepath.Clean(runtimePath.value) != runtimePath.value {
+				errs = append(errs, fmt.Errorf(
+					"verification.%s must be an absolute clean path",
+					runtimePath.name,
+				))
+			}
 		}
 	}
 	if c.Verification.UnsafeAllowPrivateDownloadNetworks && !needsVerificationWorker {
@@ -1456,6 +1487,9 @@ func applyEnvironmentForRoles(
 		}
 	}
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
+	setString(lookup, "VERIFICATION_NODE_PATH", &cfg.Verification.NodePath)
+	setString(lookup, "VERIFICATION_WRAPPER_PATH", &cfg.Verification.WrapperPath)
+	setString(lookup, "VERIFICATION_MANIFEST_PATH", &cfg.Verification.ManifestPath)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value

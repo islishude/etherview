@@ -50,6 +50,87 @@ func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
 	}
 }
 
+func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	if cfg.Verification.NodePath != defaultVerificationNodePath ||
+		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
+		cfg.Verification.ManifestPath != defaultVerificationManifestPath {
+		t.Fatalf("unexpected default verification runtime paths: %#v", cfg.Verification)
+	}
+
+	decoder := yaml.NewDecoder(strings.NewReader("verification:\n  timeout: 3m\n"))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Verification.NodePath != defaultVerificationNodePath ||
+		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
+		cfg.Verification.ManifestPath != defaultVerificationManifestPath {
+		t.Fatalf("legacy YAML cleared verification runtime defaults: %#v", cfg.Verification)
+	}
+
+	overrides := map[string]string{
+		"ETHERVIEW_VERIFICATION_NODE_PATH":     "/custom/bin/node",
+		"ETHERVIEW_VERIFICATION_WRAPPER_PATH":  "/custom/runtime/compile.mjs",
+		"ETHERVIEW_VERIFICATION_MANIFEST_PATH": "/custom/runtime/runtime-manifest.json",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := overrides[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Verification.NodePath != overrides["ETHERVIEW_VERIFICATION_NODE_PATH"] ||
+		cfg.Verification.WrapperPath != overrides["ETHERVIEW_VERIFICATION_WRAPPER_PATH"] ||
+		cfg.Verification.ManifestPath != overrides["ETHERVIEW_VERIFICATION_MANIFEST_PATH"] {
+		t.Fatalf("verification runtime environment override was not applied: %#v", cfg.Verification)
+	}
+}
+
+func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		configure func(*VerificationConfig)
+		field     string
+	}{
+		{
+			name: "empty node",
+			configure: func(verification *VerificationConfig) {
+				verification.NodePath = ""
+			},
+			field: "verification.node_path",
+		},
+		{
+			name: "relative wrapper",
+			configure: func(verification *VerificationConfig) {
+				verification.WrapperPath = "runtime/compile.mjs"
+			},
+			field: "verification.wrapper_path",
+		},
+		{
+			name: "unclean manifest",
+			configure: func(verification *VerificationConfig) {
+				verification.ManifestPath = "/opt/etherview/compiler/../runtime-manifest.json"
+			},
+			field: "verification.manifest_path",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Database.URL = "postgres://localhost/etherview"
+			cfg.Features.Verification = true
+			cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
+			test.configure(&cfg.Verification)
+			if err := cfg.ValidateForRoles([]string{"api"}); err == nil ||
+				!strings.Contains(err.Error(), test.field) {
+				t.Fatalf("unexpected runtime path validation error: %v", err)
+			}
+		})
+	}
+}
+
 func TestWalletAddChainConfiguration(t *testing.T) {
 	t.Parallel()
 	cfg := Default()

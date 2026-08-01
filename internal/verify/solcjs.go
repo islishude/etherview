@@ -18,10 +18,6 @@ import (
 )
 
 const (
-	DefaultSolcJSNodePath     = "/usr/local/bin/node"
-	DefaultSolcJSWrapperPath  = "/opt/etherview/compiler/compile.mjs"
-	DefaultSolcJSManifestPath = "/opt/etherview/compiler/runtime-manifest.json"
-
 	SolcJSExecutorKind      = "node_solcjs_v1"
 	TrustedSubprocessPolicy = "trusted_subprocess"
 
@@ -70,19 +66,7 @@ type SolcJSCompiler struct {
 }
 
 func (compiler *SolcJSCompiler) paths() (string, string, string) {
-	nodePath := compiler.NodePath
-	if nodePath == "" {
-		nodePath = DefaultSolcJSNodePath
-	}
-	wrapperPath := compiler.WrapperPath
-	if wrapperPath == "" {
-		wrapperPath = DefaultSolcJSWrapperPath
-	}
-	manifestPath := compiler.ManifestPath
-	if manifestPath == "" {
-		manifestPath = DefaultSolcJSManifestPath
-	}
-	return nodePath, wrapperPath, manifestPath
+	return compiler.NodePath, compiler.WrapperPath, compiler.ManifestPath
 }
 
 func (compiler *SolcJSCompiler) ValidateRuntime(ctx context.Context) error {

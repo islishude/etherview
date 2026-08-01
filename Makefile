@@ -309,12 +309,26 @@ compose-check:
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
-	@DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/compiler-compose-check.mjs
-	@DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
-		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/compiler-compose-check.mjs
+	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
+		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
+		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=monolith \
+		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
+		$(NODE) .github/scripts/compiler-compose-check.mjs
+	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
+		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
+		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=distributed \
+		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
+		$(NODE) .github/scripts/compiler-compose-check.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
+		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
+		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
+		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/preview-compose-check.mjs
 	@ETHERVIEW_METADATA_IPFS_GATEWAY=https://gateway.example.com \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \

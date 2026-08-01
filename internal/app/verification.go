@@ -16,7 +16,10 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 		return nil, errors.New("verification compiler catalog is unavailable")
 	}
 	return &verify.SolcJSCompiler{
-		Catalog: catalog,
+		Catalog:      catalog,
+		NodePath:     cfg.Verification.NodePath,
+		WrapperPath:  cfg.Verification.WrapperPath,
+		ManifestPath: cfg.Verification.ManifestPath,
 		Cache: &verify.CompilerCache{
 			Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
 			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,

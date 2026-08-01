@@ -53,6 +53,10 @@ x-api-environment: &api-environment
   ETHERVIEW_X402_FINGERPRINT_PEPPER:
   ETHERVIEW_X402_FACILITATOR_HEADERS:
   ETHERVIEW_VERIFICATION_WORKER_COUNT:
+  # Trusted runtime path overrides are scoped to the compiler-owning process.
+  ETHERVIEW_VERIFICATION_NODE_PATH:
+  ETHERVIEW_VERIFICATION_WRAPPER_PATH:
+  ETHERVIEW_VERIFICATION_MANIFEST_PATH:
 
 x-app: &app
   image: ${ETHERVIEW_IMAGE:-etherview:local}

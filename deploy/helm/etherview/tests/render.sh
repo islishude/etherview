@@ -206,6 +206,7 @@ tls_test="$temporary_dir/tls-test.yaml"
   --set-string genesisState.fetchTimeout=5m >"$temporary_dir/genesis-timeout-maximum.yaml"
 verifier_monolith="$temporary_dir/verifier-monolith.yaml"
 verifier_distributed="$temporary_dir/verifier-distributed.yaml"
+verifier_custom_runtime="$temporary_dir/verifier-custom-runtime.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set config.features.verification=true \
   --set config.security.public_verification=true \
@@ -215,6 +216,11 @@ verifier_distributed="$temporary_dir/verifier-distributed.yaml"
   --set config.features.verification=true \
   --set config.security.public_verification=true \
   --set networkPolicy.allowExternalHTTPS=false >"$verifier_distributed"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set-string config.verification.node_path=/custom/bin/node \
+  --set-string config.verification.wrapper_path=/custom/runtime/compile.mjs \
+  --set-string config.verification.manifest_path=/custom/runtime/runtime-manifest.json \
+  --show-only templates/configmap.yaml >"$verifier_custom_runtime"
 
 assert_kind_count "$monolith" Deployment 1
 assert_kind_count "$monolith" HorizontalPodAutoscaler 0
@@ -325,8 +331,16 @@ for role in sync enrich trace metadata maintenance; do
 done
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "app.kubernetes.io/component: api" 1
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "port: 443" 1
+assert_contains "$verifier_monolith" "node_path: /usr/local/bin/node"
+assert_contains "$verifier_monolith" "wrapper_path: /opt/etherview/compiler/compile.mjs"
+assert_contains "$verifier_monolith" "manifest_path: /opt/etherview/compiler/runtime-manifest.json"
+assert_contains "$verifier_custom_runtime" "node_path: /custom/bin/node"
+assert_contains "$verifier_custom_runtime" "wrapper_path: /custom/runtime/compile.mjs"
+assert_contains "$verifier_custom_runtime" "manifest_path: /custom/runtime/runtime-manifest.json"
 assert_not_contains "$verifier_monolith" "platform:"
 assert_not_contains "$verifier_distributed" "platform:"
+expect_render_failure verification-relative-node-path \
+  --set-string config.verification.node_path=custom/bin/node
 expect_render_failure public-verification-without-feature \
   --set config.security.public_verification=true \
   --set networkPolicy.allowExternalHTTPS=false

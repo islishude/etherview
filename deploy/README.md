@@ -116,6 +116,19 @@ Node's permission model is defense in depth, not a JavaScript security
 boundary. Every bound job records the exact catalog generation, artifact
 format, compiler SHA-256, and runtime executor digest.
 
+The trusted runtime locations are explicit under `verification.node_path`,
+`verification.wrapper_path`, and `verification.manifest_path`, with matching
+`ETHERVIEW_VERIFICATION_NODE_PATH`,
+`ETHERVIEW_VERIFICATION_WRAPPER_PATH`, and
+`ETHERVIEW_VERIFICATION_MANIFEST_PATH` overrides. Defaults point at the
+runtime bundled in the production image. Alternate absolute clean paths must
+identify one coherent read-only tree whose manifest covers the configured Node
+binary and wrapper and whose fixed identity and self-test still pass. Standard
+Compose and Helm deployments do not add a runtime volume; use a trusted host
+installation or custom image when relocating these files. Keep every
+API-capable replica on the same runtime manifest digest, and drain bound
+verification jobs before changing paths and restarting those replicas.
+
 `make start-preview` builds the production application image for the current
 Docker host architecture and then starts Compose with `--no-build`. It removes
 orphan containers from this Compose project and clears only obsolete local

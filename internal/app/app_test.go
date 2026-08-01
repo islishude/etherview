@@ -446,6 +446,47 @@ func TestPublicVerificationServiceHonorsSecuritySwitch(t *testing.T) {
 	}
 }
 
+func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Verification.NodePath = "/custom/bin/node"
+	cfg.Verification.WrapperPath = "/custom/runtime/compile.mjs"
+	cfg.Verification.ManifestPath = "/custom/runtime/runtime-manifest.json"
+	cfg.Verification.CacheDirectory = "/custom/cache"
+	cfg.Verification.Timeout = 17 * time.Second
+	cfg.Verification.MaxInputBytes = 1234
+	cfg.Verification.MaxOutputBytes = 5678
+	cfg.Verification.UnsafeAllowPrivateDownloadNetworks = true
+
+	compiler, err := verificationCompiler(cfg, &verify.CompilerCatalog{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	solcJS, ok := compiler.(*verify.SolcJSCompiler)
+	if !ok {
+		t.Fatalf("verification compiler type = %T", compiler)
+	}
+	if solcJS.NodePath != cfg.Verification.NodePath ||
+		solcJS.WrapperPath != cfg.Verification.WrapperPath ||
+		solcJS.ManifestPath != cfg.Verification.ManifestPath ||
+		solcJS.Timeout != cfg.Verification.Timeout ||
+		solcJS.MaxInputBytes != cfg.Verification.MaxInputBytes ||
+		solcJS.MaxOutputBytes != cfg.Verification.MaxOutputBytes {
+		t.Fatalf("verification compiler configuration = %#v", solcJS)
+	}
+	if solcJS.Cache == nil ||
+		solcJS.Cache.Root != cfg.Verification.CacheDirectory ||
+		solcJS.Cache.Timeout != cfg.Verification.Timeout ||
+		solcJS.Cache.UnsafeAllowPrivateNetworks != cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
+		t.Fatalf("verification compiler cache configuration = %#v", solcJS.Cache)
+	}
+
+	if _, err := verificationCompiler(cfg, nil); err == nil ||
+		!strings.Contains(err.Error(), "catalog is unavailable") {
+		t.Fatalf("nil verification catalog error = %v", err)
+	}
+}
+
 type appVerificationTargetResolver struct{}
 
 func (appVerificationTargetResolver) ResolveVerificationTarget(
