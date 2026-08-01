@@ -8,9 +8,6 @@ updates:
       time: "02:00"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
-    groups:
-      go-dependencies:
-        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /web
