@@ -35,6 +35,7 @@ GENERATED_PATHS := \
 
 IMAGE ?= etherview:local
 HARDHAT3_IMAGE ?= etherview-hardhat3:local
+FOUNDRY_IMAGE ?= etherview-foundry:local
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
 PREVIEW_RUNTIME_SERVICES := migration $(PREVIEW_APP_SERVICES)
@@ -57,6 +58,7 @@ PREVIEW_CONFIG_URL ?= https://etherview.localhost:8080/api/v1/config
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
 	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
+	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
 	test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check preview-check \
 	start-preview stop-preview recreate-preview
@@ -139,6 +141,36 @@ test-hardhat3-e2e-prebuilt: test-hardhat3-offline-compile
 		ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(GO) test -count=1 -v -tags='runtimee2e hardhat3e2e' \
 		-run '^TestHardhat3ProductionE2E$$' ./e2e/runtime
+
+foundry-client-image-build:
+	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "foundry-client-image-build: docker is required"; exit 1; }
+	DOCKER="$(DOCKER)" $(BUILDX) build --load \
+		--tag "$(FOUNDRY_IMAGE)" e2e/foundry
+
+test-foundry-e2e: docker-build foundry-client-image-build
+	@$(MAKE) --no-print-directory test-foundry-e2e-prebuilt
+
+test-foundry-offline-compile:
+	@$(DOCKER) image inspect "$(FOUNDRY_IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-foundry-offline-compile: Foundry client $(FOUNDRY_IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@$(DOCKER) run --rm --network none "$(FOUNDRY_IMAGE)" \
+		forge build --offline --force --silent
+
+test-foundry-e2e-prebuilt: test-foundry-offline-compile
+	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-foundry-e2e-prebuilt: image $(IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@$(DOCKER) image inspect "$(FOUNDRY_IMAGE)" >/dev/null 2>&1 || { \
+		echo "test-foundry-e2e-prebuilt: Foundry client $(FOUNDRY_IMAGE) is not loaded"; \
+		exit 1; \
+	}
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
+		ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+		$(GO) test -count=1 -v -tags='runtimee2e foundrye2e' \
+		-run '^TestFoundryProductionVerificationE2E$$' ./e2e/runtime
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -305,6 +337,18 @@ compose-check:
 		-f e2e/hardhat3/compose.yaml --profile distributed --profile hardhat-client config --format json | \
 		ETHERVIEW_HARDHAT3_TOPOLOGY=distributed ETHERVIEW_HARDHAT3_IMAGE="$(HARDHAT3_IMAGE)" \
 		$(NODE) .github/scripts/hardhat3-compose-check.mjs
+	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+	ETHERVIEW_FOUNDRY_API_SERVICE=etherview \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/foundry/compose.yaml --profile monolith --profile foundry-client config --format json | \
+		ETHERVIEW_FOUNDRY_TOPOLOGY=monolith ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+		$(NODE) .github/scripts/foundry-compose-check.mjs
+	ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+	ETHERVIEW_FOUNDRY_API_SERVICE=api \
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml -f e2e/runtime/compose.yaml \
+		-f e2e/foundry/compose.yaml --profile distributed --profile foundry-client config --format json | \
+		ETHERVIEW_FOUNDRY_TOPOLOGY=distributed ETHERVIEW_FOUNDRY_IMAGE="$(FOUNDRY_IMAGE)" \
+		$(NODE) .github/scripts/foundry-compose-check.mjs
 	@unset ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS ETHERVIEW_LOG_LEVEL ETHERVIEW_LOG_FORMAT ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL; \
 		DOCKER="$(DOCKER)" $(COMPOSE) --env-file /dev/null --profile monolith config --format json | \
 		$(NODE) -e 'const env = JSON.parse(require("fs").readFileSync(0, "utf8")).services.etherview.environment; for (const key of ["ETHERVIEW_DATABASE_READ_MAX_CONNECTIONS", "ETHERVIEW_DATABASE_READ_MIN_CONNECTIONS", "ETHERVIEW_LOG_LEVEL", "ETHERVIEW_LOG_FORMAT", "ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL"]) { if (env[key] !== null) throw new Error(key + " must remain unset when no Compose override is supplied"); }'

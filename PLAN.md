@@ -123,6 +123,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P70-T30 makes the independent Hardhat fixture compile networklessly and keeps
   its retained container-written diagnostics readable by the CI host.
   P70-T27's complete real Hardhat proxy gate now passes in both topologies.
+  P70-T31 adds an independent Foundry source-verification production gate with
+  a manifest-digest-pinned client, offline Solidity 0.8.30 preflight, strict
+  `/v2/api?chainid=1` submission, duplicate-job prevention, and normalized
+  monolith/split provenance parity. It remains `in_progress` until its native
+  AMD64 and ARM64 CI matrix has actually passed.
   P66 live-payment evidence still gates conformance, security, release CI,
   documentation, and artifact work.
 

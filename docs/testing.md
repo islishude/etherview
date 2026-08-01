@@ -63,6 +63,37 @@ until the Makefile target exists.
   runs this preflight automatically. Product verification still downloads and
   checksum-validates the official catalog artifact through the application;
   only the independent client's fixture compilation is offline.
+- `make test-foundry-offline-compile`: run the manifest-digest-pinned Foundry
+  v1.7.1 client image with no network and force a Solidity 0.8.30 rebuild. The
+  image build already compiles once online and once offline, while this target
+  independently proves the loaded client contains the complete compiler cache.
+- `make test-foundry-e2e`: rebuild the host-native production application and
+  independent Foundry client images, run the offline compiler preflight, and
+  exercise source verification against fresh Anvil/PostgreSQL datasets in the
+  monolith and complete six-application-role layouts. These are two separate,
+  mutually exclusive Compose-profile runs, not two API services in one run:
+  `monolith` starts `etherview` with `roles=all`, while `distributed` starts
+  `api` plus the split worker services. The Foundry Compose override therefore
+  names both base services so Compose can merge the same verification settings
+  into the service selected by the active profile; the client URL selects
+  `etherview:8080` for monolith and `api:8080` for distributed. Collapsing the
+  two service entries would either drop one production topology or stop the
+  test from matching the production service graph. Forge deploys a contract
+  with a constructor and immutable fields, checks the initial unverified ABI,
+  submits Standard JSON through the exact `/v2/api?chainid=1` custom-verifier
+  URL, watches status by POST, and confirms the public source and ABI. A second
+  Forge invocation must short-circuit as already verified without creating a
+  job. Normalized snapshots require one successful job, result, and
+  publication; exact constructor arguments and immutable references; the
+  official Solidity 0.8.30 compiler URL and SHA-256; and
+  `emscripten-wasm32`, `node_solcjs_v1`, `trusted_subprocess`, and executor
+  digest parity. `VERIFIER_API_KEY` is the client's only secret and is passed
+  by environment name, never a command argument, URL, Compose value, mount, or
+  artifact. The Go harness redacts configured secrets from command and failure
+  diagnostics. CI uses `make test-foundry-e2e-prebuilt` after loading both
+  images on native AMD64 and ARM64, stays quiet on success, and uploads failed
+  `etherview-foundry-e2e-*` bundles for seven days. The existing Hardhat 3
+  source/proxy/upgrade gate remains independent and unchanged.
 - `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture dependency audits, secret scan, and security-focused tests. All
