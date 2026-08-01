@@ -25,6 +25,8 @@ and API contracts, and a deterministic embedded-SPA build.
 | P00-T05 | done | P00-T01 | React/Vite shell and deterministic `go:embed` asset serving | frontend build and deep-link test |
 | P00-T06 | done | P00-T01 | Plan validator with CI enforcement | positive and negative plan-check fixtures |
 | P00-T07 | done | P00-T02 | Enforce minimum Go, Node, and npm versions while accepting compatible newer stable releases | minimum/newer/older/malformed shell regressions |
+| P00-T08 | done | P00-T02 | Repository-owned golangci-lint v2 policy for Go source and tests | configuration validation and `make lint-go` |
+| P00-T09 | done | P00-T08 | Tagged Go lint coverage and unparam cleanup across production, integration, and E2E code | `make lint-go` and tagged compile/test regressions |
 
 ## Acceptance
 
@@ -70,7 +72,17 @@ None.
   leading-zero, missing, and command-failure cases. Bash 3.2 syntax and an
   independent read-only review found no remaining issue; `make plan-check`
   passes with 8 plans, 53 work items, and 51 checked local links.
-- P00-T01/P00-T02/P00-T03/P00-T04/P00-T05/P00-T06/P00-T07 commit/PR: none
+- P00-T08: `.golangci.yml` validates as a v2 configuration and makes the
+  repository policy explicit: standard linters plus `modernize`, Go test
+  analysis, read-only module resolution, strict generated-file exclusions,
+  `gofmt`, and uncapped issue reporting. `make lint-go` reports zero issues,
+  `go test ./... -count=1` passes, and `git diff --check` is clean.
+- P00-T09: tagged integration, Hardhat, Foundry, and runtime E2E source now
+  participates in the same `standard`/`modernize`/`unparam` policy. All 42
+  initial `unparam` findings were removed by narrowing production and test
+  helper interfaces without suppressions. `make lint-go` reports zero issues,
+  the combined tagged no-run compile and `go test ./... -count=1` pass.
+- P00-T01/P00-T02/P00-T03/P00-T04/P00-T05/P00-T06/P00-T07/P00-T08/P00-T09 commit/PR: none
   created because this task did not authorize a commit or pull request;
   evidence is bound to the current working tree.
 - Container evidence: `make docker-check`, `make compose-check`, and

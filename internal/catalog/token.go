@@ -156,11 +156,11 @@ func (catalog *Postgres) scanTokenContract(row rowScanner) (TokenContract, error
 		return TokenContract{}, err
 	}
 	contract.Address = checksummed
-	contract.CodeHash, err = lowerHex(codeHash, 32)
+	contract.CodeHash, err = lowerHex(codeHash)
 	if err != nil {
 		return TokenContract{}, err
 	}
-	contract.ObservedBlockHash, err = lowerHex(blockHash, 32)
+	contract.ObservedBlockHash, err = lowerHex(blockHash)
 	if err != nil {
 		return TokenContract{}, err
 	}
@@ -317,10 +317,10 @@ func scanTokenEvent(row rowScanner) (TokenEvent, error) {
 		return TokenEvent{}, ErrCorruptData
 	}
 	var err error
-	if event.BlockHash, err = lowerHex(blockHash, 32); err != nil {
+	if event.BlockHash, err = lowerHex(blockHash); err != nil {
 		return TokenEvent{}, err
 	}
-	if event.TransactionHash, err = lowerHex(txHash, 32); err != nil {
+	if event.TransactionHash, err = lowerHex(txHash); err != nil {
 		return TokenEvent{}, err
 	}
 	if event.TokenAddress, err = checksumAddressBytes(tokenAddress); err != nil {

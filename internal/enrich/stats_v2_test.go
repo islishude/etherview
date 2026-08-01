@@ -20,7 +20,7 @@ func TestStatsV2AllowsExactNonZeroConfiguredStartWithoutParent(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-start", 7, 100, nil, nil)
 	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, "7", nil, nil, false, nil, func(query string, arguments []driver.NamedValue) {
+	backend := statsBackend(t, raw, nil, nil, false, nil, func(query string, arguments []driver.NamedValue) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
 			statsArguments = append([]driver.NamedValue(nil), arguments...)
 		}
@@ -44,7 +44,7 @@ func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-start-parent", 7, 100, nil, nil)
 	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, "7", "6", "99", true, nil, func(query string, arguments []driver.NamedValue) {
+	backend := statsBackend(t, raw, "6", "99", true, nil, func(query string, arguments []driver.NamedValue) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
 			statsArguments = append([]driver.NamedValue(nil), arguments...)
 		}
@@ -65,7 +65,7 @@ func TestStatsV2ConfiguredStartIgnoresRetainedCanonicalParent(t *testing.T) {
 func TestStatsV2RejectsMissingCanonicalParentAboveConfiguredStart(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-gap", 8, 101, nil, nil)
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", nil, nil, false, nil, nil)))
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, nil, nil, false, nil, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestStatsV2RejectsReceiptBlobGasMissingFromHeader(t *testing.T) {
 	t.Parallel()
 	job, raw := statsTestJobAndRaw(t, "stats-blob", 8, 101, nil, nil)
 	receipt := statsTestReceipt(t, job, 0x20000, 3)
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestStatsV2RejectsIncompleteBlobHeaderFields(t *testing.T) {
 	blobGasUsed := uint64(0x20000)
 	job, raw := statsTestJobAndRaw(t, "stats-blob-header", 8, 101, &blobGasUsed, nil)
 	receipt := statsTestReceipt(t, job, blobGasUsed, 3)
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestStatsV2RejectsNonPositiveReceiptBlobFacts(t *testing.T) {
 	blobGasUsed, excessBlobGas := uint64(0), uint64(1)
 	job, raw := statsTestJobAndRaw(t, "stats-blob-zero", 8, 101, &blobGasUsed, &excessBlobGas)
 	receipt := statsTestReceipt(t, job, 0, 3)
-	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)))
+	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(t, statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestStatsV3DerivesAuthenticatedExecutionFeePriorityFailureAndCreation(t *te
 		receipts[index] = bundle.RawReceipts[index]
 	}
 	var statsArguments []driver.NamedValue
-	backend := statsBackend(t, raw, "7", "7", "100", true, receipts, func(query string, arguments []driver.NamedValue) {
+	backend := statsBackend(t, raw, "7", "100", true, receipts, func(query string, arguments []driver.NamedValue) {
 		if strings.Contains(query, "INSERT INTO block_statistics") {
 			statsArguments = append([]driver.NamedValue(nil), arguments...)
 		}
@@ -187,7 +187,7 @@ func TestStatsV3RejectsIncompleteReceiptSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Override the source count while returning no authenticated receipt rows.
-	backend := statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil)
+	backend := statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil)
 	backend.query = func(query string, arguments []driver.NamedValue) (driver.Rows, error) {
 		if strings.Contains(query, "GROUP BY block.raw") {
 			return &fakeSQLRows{
@@ -233,7 +233,7 @@ func TestStatsV3RejectsExecutionFeeAboveUint256(t *testing.T) {
 	}
 	processor, err := NewPostgresStatsProcessor(openFakeSQLDB(
 		t,
-		statsBackend(t, raw, "7", "7", "100", true, [][]byte{receipt}, nil),
+		statsBackend(t, raw, "7", "100", true, [][]byte{receipt}, nil),
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -316,7 +316,6 @@ func statsTestReceipt(t *testing.T, job Job, blobGasUsed, blobGasPrice uint64) [
 func statsBackend(
 	t *testing.T,
 	raw []byte,
-	configuredStart string,
 	parentNumber any,
 	parentTimestamp any,
 	canonicalParent bool,
@@ -332,7 +331,7 @@ func statsBackend(
 			case strings.Contains(query, "GROUP BY block.raw"):
 				return &fakeSQLRows{
 					columns: []string{"raw", "count", "configured_start", "parent_number", "parent_timestamp", "canonical_parent"},
-					values:  [][]driver.Value{{raw, int64(len(receipts)), configuredStart, parentNumber, parentTimestamp, canonicalParent}},
+					values:  [][]driver.Value{{raw, int64(len(receipts)), "7", parentNumber, parentTimestamp, canonicalParent}},
 				}, nil
 			case strings.Contains(query, "FROM receipts AS receipt"):
 				values := make([][]driver.Value, len(receipts))

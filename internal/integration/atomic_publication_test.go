@@ -120,7 +120,7 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lockConnection.Close()
+	defer lockConnection.Close() //nolint:errcheck
 	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, outputBarrier); err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 	if err != nil || result.State != enrich.ResultComplete {
 		t.Fatalf("replacement publication result=%+v err=%v", result, err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 1, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 1)
 }
 
 func TestPendingReplayDiscardsOwnedWriterAndInvalidatesPublishedView(t *testing.T) {
@@ -235,7 +235,7 @@ func TestPendingReplayDiscardsOwnedWriterAndInvalidatesPublishedView(t *testing.
 	if _, err := processor.ProcessLease(ctx, second, queue); err != nil {
 		t.Fatal(err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 
 	thirdRequest, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
 		Stage: enrich.StatsStage, ChainID: "1", BlockHash: word, BlockNumber: reference.Number,
@@ -338,7 +338,7 @@ func TestOlderGenerationAndDirectFixtureCannotOverwritePublishedGeneration(t *te
 	if _, err := processor.ProcessLease(ctx, second, queue); err != nil {
 		t.Fatal(err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 
 	if _, err := processor.ProcessLease(ctx, first, queue); !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("generation-one republish error=%v, want ErrLeaseLost", err)
@@ -346,7 +346,7 @@ func TestOlderGenerationAndDirectFixtureCannotOverwritePublishedGeneration(t *te
 	if _, err := processor.Process(ctx, first.Job); !errors.Is(err, enrich.ErrAtomicPublicationRequired) {
 		t.Fatalf("direct fixture overwrite error=%v, want ErrAtomicPublicationRequired", err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
 		WHERE durable_job_id = $1 AND job_generation = 2`, 1, enqueued.Job.ID)
@@ -451,7 +451,7 @@ func TestPublicationMigrationAndViewRequireExactDurableTerminalIdentity(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.ExecContext(ctx, `SELECT set_config('etherview.enrichment_publication_protocol', '2', true)`); err != nil {
 		t.Fatal(err)
 	}
@@ -550,9 +550,10 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 			leasedGeneration = int64(1)
 		}
 		var result any
-		if status == "succeeded" {
+		switch status {
+		case "succeeded":
 			result = `{"state":"complete"}`
-		} else if status == "failed" {
+		case "failed":
 			result = `{"state":"failed","error":"legacy failure"}`
 		}
 		if err := db.QueryRowContext(ctx, `
@@ -652,7 +653,6 @@ func TestOlderExhaustionCannotOverwriteNewerOrForeignPublicationMarker(t *testin
 		{name: "newer generation", generation: 2},
 		{name: "foreign job", foreign: true, generation: 1},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			db := newMigratedPostgres(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -808,7 +808,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lockConnection.Close()
+	defer lockConnection.Close() //nolint:errcheck
 	if _, err := lockConnection.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
@@ -858,7 +858,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 8; attempt++ {
+	for range 8 {
 		result, err := dispatcher.DispatchOne(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -884,7 +884,7 @@ func TestStaleCanonicalPublicationRemainsInvisibleAcrossSameHashReattach(t *test
 	if _, err := processor.ProcessLease(ctx, second, queue); err != nil {
 		t.Fatal(err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 }
 
 func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *testing.T) {
@@ -918,7 +918,7 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	if _, err := processor.ProcessLease(ctx, lease, queue); err != nil {
 		t.Fatal(err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 1, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 1)
 
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{original}, []chainbundle.Bundle{replacement}, "detach completed publication")
 	// Model the orphan notification having drained before the later reattach.
@@ -934,7 +934,7 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 8; attempt++ {
+	for range 8 {
 		result, err := dispatcher.DispatchOne(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -960,7 +960,7 @@ func TestCompletedPublicationRemainsInvisibleUntilSameHashReattachReplay(t *test
 	if _, err := processor.ProcessLease(ctx, second, queue); err != nil {
 		t.Fatal(err)
 	}
-	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2, enrich.ResultComplete)
+	assertPublishedGeneration(t, ctx, db, enqueued.Job.ID, 2)
 }
 
 func newEmptyProxyProcessor(t *testing.T, db *sql.DB, blockHash string) *enrich.PostgresProxyProcessor {
@@ -985,29 +985,6 @@ func configureAtomicStatsStart(t *testing.T, ctx context.Context, db *sql.DB) {
 		INSERT INTO core_index_configuration (chain_id, configured_start)
 		VALUES (1, 0)
 		ON CONFLICT (chain_id) DO UPDATE SET configured_start = EXCLUDED.configured_start`)
-}
-
-func waitForDurableLeaseOwner(t *testing.T, ctx context.Context, db *sql.DB, jobID, worker string) {
-	t.Helper()
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		var status string
-		var owner sql.NullString
-		if err := db.QueryRowContext(ctx, `
-			SELECT status, leased_by FROM durable_jobs WHERE id = $1`, jobID,
-		).Scan(&status, &owner); err != nil {
-			t.Fatal(err)
-		}
-		if status == "leased" && owner.Valid && owner.String == worker {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("wait for durable lease owner %q: %v", worker, ctx.Err())
-		case <-ticker.C:
-		}
-	}
 }
 
 func waitForAdvisoryWaiter(t *testing.T, ctx context.Context, db *sql.DB, key int64) {
@@ -1088,7 +1065,6 @@ func assertPublishedGeneration(
 	db *sql.DB,
 	jobID string,
 	generation int64,
-	state enrich.ResultState,
 ) {
 	t.Helper()
 	assertRowCount(t, ctx, db, `
@@ -1103,7 +1079,7 @@ func assertPublishedGeneration(
 		 AND publication.state = result.state
 		WHERE result.durable_job_id = $1
 		  AND result.job_generation = $2
-		  AND result.state = $3`, 1, jobID, generation, state)
+		  AND result.state = $3`, 1, jobID, generation, enrich.ResultComplete)
 }
 
 func assertPublishedTerminalNoJournal(

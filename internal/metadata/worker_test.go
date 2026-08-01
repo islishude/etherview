@@ -73,7 +73,7 @@ func (observer *recordingFetchObserver) RecordMetadataFetch(result string) {
 }
 
 func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
-	repository := readyFakeRepository(t, 1, 3)
+	repository := readyFakeRepository(t, 1)
 	observer := &recordingFetchObserver{}
 	worker, err := NewWorker(repository, fetcherFunc(func(_ context.Context, rawURL string, _ Kind) (Result, error) {
 		return Result{URL: rawURL, ContentType: "application/json", Body: []byte(`{"name":"NFT"}`)}, nil
@@ -94,7 +94,7 @@ func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
 
 func TestWorkerPersistsAvailableDocument(t *testing.T) {
 	t.Parallel()
-	repository := readyFakeRepository(t, 1, 3)
+	repository := readyFakeRepository(t, 1)
 	document := []byte(`{"name":"NFT","attributes":[]}`)
 	worker := newTestWorker(t, repository, fetcherFunc(func(_ context.Context, rawURL string, kind Kind) (Result, error) {
 		if rawURL != repository.lease.Request.SourceURI || kind != KindJSON {
@@ -132,7 +132,7 @@ func TestWorkerClassifiesTerminalFetchFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			repository := readyFakeRepository(t, 1, 3)
+			repository := readyFakeRepository(t, 1)
 			worker := newTestWorker(t, repository, fetcherFunc(func(context.Context, string, Kind) (Result, error) {
 				return Result{}, &FetchError{Kind: test.kind, Err: errors.New("secret URL must not be persisted")}
 			}))
@@ -157,7 +157,7 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	fetcher := fetcherFunc(func(context.Context, string, Kind) (Result, error) {
 		return Result{}, &FetchError{Kind: FailureTemporary, Err: errors.New("temporary")}
 	})
-	retryRepository := readyFakeRepository(t, 2, 3)
+	retryRepository := readyFakeRepository(t, 2)
 	worker := newTestWorker(t, retryRepository, fetcher)
 	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
 		t.Fatalf("processed=%t err=%v", processed, err)
@@ -169,7 +169,7 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 		t.Fatalf("retryable attempt was terminal: %+v", retryRepository.finished)
 	}
 
-	exhaustedRepository := readyFakeRepository(t, 3, 3)
+	exhaustedRepository := readyFakeRepository(t, 3)
 	worker = newTestWorker(t, exhaustedRepository, fetcher)
 	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
 		t.Fatalf("processed=%t err=%v", processed, err)
@@ -195,7 +195,7 @@ func TestWorkerSkipsFetchForSupersededOrOrphanSource(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			repository := readyFakeRepository(t, 1, 3)
+			repository := readyFakeRepository(t, 1)
 			repository.current = test.current
 			fetches := 0
 			worker := newTestWorker(t, repository, fetcherFunc(func(context.Context, string, Kind) (Result, error) {
@@ -214,7 +214,7 @@ func TestWorkerSkipsFetchForSupersededOrOrphanSource(t *testing.T) {
 
 func TestWorkerRejectsNonObjectDocument(t *testing.T) {
 	t.Parallel()
-	repository := readyFakeRepository(t, 1, 3)
+	repository := readyFakeRepository(t, 1)
 	worker := newTestWorker(t, repository, fetcherFunc(func(_ context.Context, rawURL string, _ Kind) (Result, error) {
 		return Result{URL: rawURL, ContentType: "application/json", Body: []byte(`[]`)}, nil
 	}))
@@ -226,12 +226,12 @@ func TestWorkerRejectsNonObjectDocument(t *testing.T) {
 	}
 }
 
-func readyFakeRepository(t *testing.T, attempt, maximum uint32) *fakeRepository {
+func readyFakeRepository(t *testing.T, attempt uint32) *fakeRepository {
 	t.Helper()
 	return &fakeRepository{
 		lease: Lease{
 			JobID: 7, Token: "lease-token", Request: validNFTRequest(t),
-			Attempt: attempt, MaxAttempts: maximum,
+			Attempt: attempt, MaxAttempts: 3,
 		},
 		found: true, current: Current{Resource: true, Canonical: true},
 	}

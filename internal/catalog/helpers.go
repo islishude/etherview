@@ -108,8 +108,8 @@ func decodeFixedHex(value string, size int) ([]byte, error) {
 	return decoded, nil
 }
 
-func lowerHex(value []byte, size int) (string, error) {
-	if len(value) != size {
+func lowerHex(value []byte) (string, error) {
+	if len(value) != common.HashLength {
 		return "", ErrCorruptData
 	}
 	return "0x" + hex.EncodeToString(value), nil

@@ -71,11 +71,7 @@ func (r *Reader) NativeBalances(ctx context.Context, addresses []string) ([]stri
 	}
 	balances := make([]string, len(results))
 	for index, result := range results {
-		value, err := decimal(result)
-		if err != nil {
-			return nil, CapabilityError{Code: "malformed_response"}
-		}
-		balances[index] = value
+		balances[index] = decimal(result)
 	}
 	return balances, nil
 }

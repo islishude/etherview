@@ -426,7 +426,7 @@ func scalarMetric(t *testing.T, metrics, name string) float64 {
 
 func scalarMetricValue(metrics, name string) float64 {
 	prefix := name + " "
-	for _, line := range strings.Split(metrics, "\n") {
+	for line := range strings.SplitSeq(metrics, "\n") {
 		if !strings.HasPrefix(line, prefix) {
 			continue
 		}

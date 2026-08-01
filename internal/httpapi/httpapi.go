@@ -78,7 +78,10 @@ var (
 	capabilityIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
 )
 
-const maximumOpaqueCursorLength = 1024
+const (
+	maximumOpaqueCursorLength = 1024
+	maximumPageSize           = 100
+)
 
 type StatusSnapshot struct {
 	LatestBlock         uint64
@@ -802,7 +805,7 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) blocks(w http.ResponseWriter, r *http.Request) {
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return
 	}
@@ -844,7 +847,7 @@ func (h *Handler) genesisAccounts(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return
 	}
@@ -880,7 +883,7 @@ func (h *Handler) transaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) transactions(w http.ResponseWriter, r *http.Request) {
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return
 	}
@@ -902,7 +905,7 @@ func (h *Handler) transactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) pendingTransactions(w http.ResponseWriter, r *http.Request) {
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return
 	}
@@ -1122,7 +1125,7 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_query", "q must contain 1 to 256 bytes", nil)
 		return
 	}
-	limit, ok := parseLimit(w, r, 20, 100)
+	limit, ok := parseLimit(w, r, 20)
 	if !ok {
 		return
 	}
@@ -2154,7 +2157,7 @@ func (h *Handler) catalogPageMeta(r *http.Request, next string, snapshot catalog
 }
 
 func parseCatalogPage(w http.ResponseWriter, r *http.Request) (int, string, bool) {
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return 0, "", false
 	}
@@ -2485,14 +2488,14 @@ func randomRequestID() string {
 	return hex.EncodeToString(value[:])
 }
 
-func parseLimit(w http.ResponseWriter, r *http.Request, defaultValue, maxValue int) (int, bool) {
+func parseLimit(w http.ResponseWriter, r *http.Request, defaultValue int) (int, bool) {
 	raw := r.URL.Query().Get("limit")
 	if raw == "" {
 		return defaultValue, true
 	}
 	value, err := strconv.Atoi(raw)
-	if err != nil || value < 1 || value > maxValue {
-		writeError(w, r, http.StatusBadRequest, "invalid_limit", fmt.Sprintf("limit must be between 1 and %d", maxValue), nil)
+	if err != nil || value < 1 || value > maximumPageSize {
+		writeError(w, r, http.StatusBadRequest, "invalid_limit", fmt.Sprintf("limit must be between 1 and %d", maximumPageSize), nil)
 		return 0, false
 	}
 	return value, true

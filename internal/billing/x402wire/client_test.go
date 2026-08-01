@@ -51,10 +51,10 @@ func testPaymentAndRequirement(t *testing.T) (Payment, Requirement) {
 	return decodeTestPayment(t, codec, testSDKPayment(requirement)), requirement
 }
 
-func writeJSON(t *testing.T, writer http.ResponseWriter, status int, value any) {
+func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(status)
+	writer.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
 		t.Errorf("encode response: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestClientInteroperatesWithFacilitatorV2Wire(t *testing.T) {
 			if request.Method != http.MethodGet {
 				t.Errorf("supported method = %s", request.Method)
 			}
-			writeJSON(t, writer, http.StatusOK, x402.SupportedResponse{
+			writeJSON(t, writer, x402.SupportedResponse{
 				Kinds: []x402.SupportedKind{
 					{X402Version: 2, Scheme: "exact", Network: "eip155:84532"},
 					{X402Version: 2, Scheme: "exact", Network: "solana:devnet"},
@@ -127,14 +127,14 @@ func TestClientInteroperatesWithFacilitatorV2Wire(t *testing.T) {
 
 			if request.URL.Path == "/verify" {
 				verifyCalls.Add(1)
-				writeJSON(t, writer, http.StatusOK, x402.VerifyResponse{
+				writeJSON(t, writer, x402.VerifyResponse{
 					IsValid: true,
 					Payer:   testPayer,
 				})
 				return
 			}
 			settleCalls.Add(1)
-			writeJSON(t, writer, http.StatusOK, x402.SettleResponse{
+			writeJSON(t, writer, x402.SettleResponse{
 				Success:     true,
 				Payer:       testPayer,
 				Transaction: testTxHash,
@@ -512,7 +512,7 @@ func TestClientIgnoresEnvironmentProxy(t *testing.T) {
 	t.Setenv("no_proxy", "")
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writeJSON(t, writer, http.StatusOK, x402.SupportedResponse{
+		writeJSON(t, writer, x402.SupportedResponse{
 			Kinds: []x402.SupportedKind{
 				{X402Version: 2, Scheme: "exact", Network: "eip155:1"},
 			},
@@ -542,7 +542,7 @@ func TestClientRejectsRedirectWithoutFollowingIt(t *testing.T) {
 			http.Redirect(writer, request, "/target", http.StatusTemporaryRedirect)
 		case "/target":
 			targetCalls.Add(1)
-			writeJSON(t, writer, http.StatusOK, x402.SettleResponse{
+			writeJSON(t, writer, x402.SettleResponse{
 				Success:     true,
 				Payer:       testPayer,
 				Transaction: testTxHash,
@@ -701,7 +701,7 @@ func TestClientSupportedRequiresAnExactEVMKind(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewTLSServer(http.HandlerFunc(
 		func(writer http.ResponseWriter, _ *http.Request) {
-			writeJSON(t, writer, http.StatusOK, x402.SupportedResponse{
+			writeJSON(t, writer, x402.SupportedResponse{
 				Kinds: []x402.SupportedKind{
 					{X402Version: 2, Scheme: "exact", Network: "solana:devnet"},
 				},
@@ -873,7 +873,7 @@ func TestClientVerificationFailureClassification(t *testing.T) {
 func TestClientTreatsTLSFailureAsUnavailable(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writeJSON(t, writer, http.StatusOK, x402.SupportedResponse{})
+		writeJSON(t, writer, x402.SupportedResponse{})
 	}))
 	defer server.Close()
 	client, err := NewClient(ClientOptions{

@@ -94,7 +94,10 @@ until the Makefile target exists.
   images on native AMD64 and ARM64, stays quiet on success, and uploads failed
   `etherview-foundry-e2e-*` bundles for seven days. The existing Hardhat 3
   source/proxy/upgrade gate remains independent and unchanged.
-- `make lint`: Go formatting/vet, `golangci-lint`, and TypeScript type checking.
+- `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
+  (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
+  integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
+  checking.
 - `make security-check`: `govulncheck`, API-generator, frontend, and Hardhat 3
   fixture dependency audits, secret scan, and security-focused tests. All
   three npm dependency trees must report zero high-severity vulnerabilities;

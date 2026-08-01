@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -572,9 +573,7 @@ func (h *harness) validateProcessNativeTLS(ctx context.Context) {
 	)
 	project.Profiles = append([]string(nil), h.project.Profiles...)
 	project.Env = make(map[string]string, len(h.project.Env))
-	for key, value := range h.project.Env {
-		project.Env[key] = value
-	}
+	maps.Copy(project.Env, h.project.Env)
 	if _, err := project.Run(ctx, "up", "-d", "--no-deps", "--force-recreate", h.apiService); err != nil {
 		h.t.Fatal(err)
 	}

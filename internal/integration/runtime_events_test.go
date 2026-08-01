@@ -89,7 +89,7 @@ func TestBoundedRuntimeReplayAndIndependentAPIReplicaRelays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for number := uint64(0); number < 6; number++ {
+	for number := range uint64(6) {
 		if _, err := firstStore.RecordStatus(ctx, events.SyncStatus{
 			Latest: number, Indexed: number, HighestCovered: number,
 			LatestKnown: true, IndexedKnown: true, HighestCoveredKnown: true,

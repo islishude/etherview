@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net"
 	"net/url"
 	"os"
 	"testing"
@@ -106,19 +105,6 @@ func TestReadDatabaseStartupValidation(t *testing.T) {
 	if err := checkReadDatabaseSchema(context.Background(), incompatibleReader); !errors.Is(err, store.ErrSchemaIncompatible) {
 		t.Fatalf("incompatible reader schema error=%v, want ErrSchemaIncompatible", err)
 	}
-}
-
-func unusedListenAddress(t *testing.T) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return address
 }
 
 func assertDatabaseSessionSetting(t *testing.T, database *sql.DB, name, want string) {

@@ -467,7 +467,7 @@ func readGenesisIntegrationSnapshot(
 	if err != nil {
 		t.Fatalf("read Genesis accounts: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var account genesisAccountSnapshot
 		if err := rows.Scan(
@@ -493,7 +493,7 @@ func readGenesisIntegrationSnapshot(
 	if err != nil {
 		t.Fatalf("read Genesis code observations: %v", err)
 	}
-	defer codeRows.Close()
+	defer codeRows.Close() //nolint:errcheck
 	for codeRows.Next() {
 		var code genesisCodeSnapshot
 		if err := codeRows.Scan(&code.Address, &code.CodeHash, &code.Code); err != nil {

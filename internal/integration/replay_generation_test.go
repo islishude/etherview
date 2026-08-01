@@ -211,7 +211,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 	})
 
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{original}, "reattach exact old hash")
-	for attempts := 0; attempts < 6; attempts++ {
+	for range 6 {
 		dispatched, err := dispatcher.DispatchOne(ctx)
 		if err != nil || dispatched.State != enrich.OutboxPublished {
 			t.Fatalf("publish reattached canonical generation: result=%+v err=%v", dispatched, err)
@@ -262,7 +262,7 @@ func TestCanonicalSameHashReattachReplaysTerminalStaleGeneration(t *testing.T) {
 
 	// The older orphan wake is now stale because this exact hash reattached. It
 	// must be publishable rather than retrying forever against canonical journals.
-	for attempts := 0; attempts < 8; attempts++ {
+	for range 8 {
 		result, err := dispatcher.DispatchOne(ctx)
 		if err != nil {
 			t.Fatalf("drain reattach outbox: %v", err)

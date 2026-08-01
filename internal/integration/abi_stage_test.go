@@ -54,7 +54,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	insertABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
 
 	job := abiIntegrationJob(t, reference)
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		result, err := processor.Process(ctx, job)
 		if err != nil {
 			t.Fatalf("process ABI stage attempt %d: %v", attempt+1, err)
@@ -373,7 +373,7 @@ func assertABIDecodingSources(t *testing.T, ctx context.Context, db *sql.DB, blo
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	got := make(map[string]string)
 	for rows.Next() {
 		var kind, index, source, confidence, status string
@@ -433,7 +433,7 @@ func abiAddressWord(t *testing.T, address common.Address) []byte {
 
 func abiUintWord(value uint64) []byte {
 	result := make([]byte, 32)
-	for index := 0; index < 8; index++ {
+	for index := range 8 {
 		result[31-index] = byte(value)
 		value >>= 8
 	}

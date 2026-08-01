@@ -518,22 +518,22 @@ func chartPoint(value string) map[string]any {
 }
 
 func canonicalBlockOne() map[string]any {
-	return block("1", testHash, parentHash, true, "finalized", 1)
+	return block("1", testHash, parentHash, true, "finalized")
 }
 
 func canonicalBlockTwo() map[string]any {
-	return block("2", secondHash, testHash, true, "safe", 1)
+	return block("2", secondHash, testHash, true, "safe")
 }
 
 func orphanBlock() map[string]any {
-	return block("1", orphanHash, parentHash, false, "orphan", 1)
+	return block("1", orphanHash, parentHash, false, "orphan")
 }
 
-func block(number, hash, parent string, canonical bool, finality string, transactionCount int) map[string]any {
+func block(number, hash, parent string, canonical bool, finality string) map[string]any {
 	return map[string]any{
 		"hash": hash, "number": number, "parent_hash": parent,
 		"timestamp": "2026-01-01T00:00:00Z", "miner": testAddress,
-		"transaction_count": transactionCount, "gas_used": "21000", "gas_limit": "30000000",
+		"transaction_count": 1, "gas_used": "21000", "gas_limit": "30000000",
 		"base_fee_per_gas": "1000000000", "canonical": canonical,
 		"finality": finality, "completeness": completeness(),
 	}
@@ -677,7 +677,7 @@ func (stream *homeTestStream) updateLocked() homeTestUpdate {
 				"lag": "0", "completeness": completeness(),
 			},
 			"blocks": []any{
-				block(number, hash, parent, true, "latest", 1),
+				block(number, hash, parent, true, "latest"),
 			},
 			"transactions": []any{
 				transaction(transactionID, hash, number, "latest"),

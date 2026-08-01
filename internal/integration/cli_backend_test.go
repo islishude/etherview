@@ -81,7 +81,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query repair audit records: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	wantRepairs := [][]string{
 		{"repair", "core", "10", "20", "restore canonical gap", "queued"},
 		{"reindex", "token", "10", "20", "rebuild token state", "queued"},
@@ -379,7 +379,6 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	transactionHash := testHash(80_100)
 	original := testBundle(0, blockHash, parentHash, transactionHash, "repair-original")
 	blockHash = original.Block.Hash()
-	transactionHash = original.Block.Transactions()[0].Hash()
 	commitCanonical(t, ctx, repository, original)
 	canonicalBefore, found, err := repository.CanonicalBlock(ctx, "1", 0)
 	if err != nil || !found {
@@ -465,7 +464,7 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query terminal maintenance audit: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for _, wantOperation := range []string{"repair", "reindex"} {
 		if !rows.Next() {
 			t.Fatalf("terminal %s audit row is missing", wantOperation)

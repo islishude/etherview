@@ -392,7 +392,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 		if err := replaceCoverageRangesTx(ctx, tx, chainID, nextRanges); err != nil {
 			return err
 		}
-		coverage, exists, err := queryCoverageTx(ctx, tx, chainID, false)
+		coverage, exists, err := queryCoverageTx(ctx, tx, chainID)
 		if err != nil {
 			return err
 		}

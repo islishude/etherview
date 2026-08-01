@@ -26,7 +26,6 @@ const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4
 
 func TestDerivedJournalTracksSingleAndMultiBlockReorgs(t *testing.T) {
 	for _, depth := range []int{1, 2} {
-		depth := depth
 		t.Run(fmt.Sprintf("depth_%d", depth), func(t *testing.T) {
 			db := newMigratedPostgres(t)
 			repository, err := store.NewPostgresRepository(db)
@@ -134,7 +133,6 @@ func TestStaleDerivedJobsPersistOnlyNonCanonicalJournals(t *testing.T) {
 
 func TestDerivedJournalFailureRollsBackEveryProductionStage(t *testing.T) {
 	for _, stage := range []enrich.StageID{enrich.TokenStage, enrich.StatsStage, enrich.TraceStage} {
-		stage := stage
 		t.Run(stage.String(), func(t *testing.T) {
 			db := newMigratedPostgres(t)
 			repository, err := store.NewPostgresRepository(db)
@@ -452,7 +450,7 @@ func assertDerivedBlockState(t *testing.T, ctx context.Context, db *sql.DB, bloc
 	if err != nil {
 		t.Fatalf("query derived journals: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	seen := make(map[string]bool)
 	for rows.Next() {
 		var stage, sequence string

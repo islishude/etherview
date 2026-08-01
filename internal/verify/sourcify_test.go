@@ -47,7 +47,7 @@ func TestSourcifyRejectsRedirectsAndPrivateResolution(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		targetHits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(sourcifyContractFixture(address, "0x6001", "0x6001"))
+		_, _ = w.Write(sourcifyContractFixture(address))
 	}))
 	defer target.Close()
 	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -129,36 +129,36 @@ func TestSourcifyClassifiesRemoteFailuresWithoutDetails(t *testing.T) {
 func TestSourcifyRejectsInvalidAndOversizedResponses(t *testing.T) {
 	address := "0x" + strings.Repeat("11", 20)
 	invalidVersion := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"compilerVersion":"0.8.30"`, `"compilerVersion":"latest"`, 1,
 	))
 	invalidCompiler := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"compiler":"solc"`, `"compiler":"vyper"`, 1,
 	))
 	missingRequiredMatch := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"runtimeMatch":"exact_match",`, "", 1,
 	))
 	nullRuntimeObject := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"runtimeBytecode":{"onchainBytecode":"0x6001"}`, `"runtimeBytecode":null`, 1,
 	))
 	nullRuntimeMember := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"runtimeBytecode":{"onchainBytecode":"0x6001"}`, `"runtimeBytecode":{"onchainBytecode":null}`, 1,
 	))
 	nullCompilationObject := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"0.8.30","fullyQualifiedName":"A.sol:A"}`,
 		`"compilation":null`, 1,
 	))
 	nullCompilationMember := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"language":"Solidity"`, `"language":null`, 1,
 	))
 	duplicateIdentity := []byte(strings.Replace(
-		string(sourcifyContractFixture(address, "0x6001", "0x6001")),
+		string(sourcifyContractFixture(address)),
 		`"chainId":"1"`, `"chainId":"1","chainId":"1"`, 1,
 	))
 	for _, test := range []struct {
@@ -167,10 +167,10 @@ func TestSourcifyRejectsInvalidAndOversizedResponses(t *testing.T) {
 		body        []byte
 		maximum     int64
 	}{
-		{name: "wrong content type", contentType: "text/html", body: sourcifyContractFixture(address, "0x6001", "0x6001")},
+		{name: "wrong content type", contentType: "text/html", body: sourcifyContractFixture(address)},
 		{name: "malformed JSON", contentType: "application/json", body: []byte(`{"match":`)},
 		{name: "duplicate identity", contentType: "application/json", body: duplicateIdentity},
-		{name: "mismatched identity", contentType: "application/json", body: sourcifyContractFixture("0x"+strings.Repeat("22", 20), "0x6001", "0x6001")},
+		{name: "mismatched identity", contentType: "application/json", body: sourcifyContractFixture("0x" + strings.Repeat("22", 20))},
 		{name: "mutable compiler version", contentType: "application/json", body: invalidVersion},
 		{name: "language compiler mismatch", contentType: "application/json", body: invalidCompiler},
 		{name: "missing required nullable match", contentType: "application/json", body: missingRequiredMatch},
@@ -178,7 +178,7 @@ func TestSourcifyRejectsInvalidAndOversizedResponses(t *testing.T) {
 		{name: "null runtime member", contentType: "application/json", body: nullRuntimeMember},
 		{name: "null compilation object", contentType: "application/json", body: nullCompilationObject},
 		{name: "null compilation member", contentType: "application/json", body: nullCompilationMember},
-		{name: "oversized", contentType: "application/json", body: sourcifyContractFixture(address, "0x6001", "0x6001"), maximum: 64},
+		{name: "oversized", contentType: "application/json", body: sourcifyContractFixture(address), maximum: 64},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -240,7 +240,7 @@ func TestSourcifyImportBindsExactLocalTarget(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(sourcifyContractFixture(address, "0x6001", "0x6001"))
+		_, _ = w.Write(sourcifyContractFixture(address))
 	}))
 	defer server.Close()
 	client, err := newSourcifyClient(
@@ -592,12 +592,12 @@ func TestValidateSourcifyV2RequestRejectsAmbiguousMetadata(t *testing.T) {
 	}
 }
 
-func sourcifyContractFixture(address, creationBytecode, runtimeBytecode string) []byte {
+func sourcifyContractFixture(address string) []byte {
 	return []byte(`{
 		"match":"exact_match","creationMatch":"exact_match","runtimeMatch":"exact_match",
 		"chainId":"1","address":"` + address + `",
-		"creationBytecode":{"onchainBytecode":"` + creationBytecode + `"},
-		"runtimeBytecode":{"onchainBytecode":"` + runtimeBytecode + `"},
+		"creationBytecode":{"onchainBytecode":"0x6001"},
+		"runtimeBytecode":{"onchainBytecode":"0x6001"},
 		"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"0.8.30","fullyQualifiedName":"A.sol:A"},
 		"stdJsonInput":{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}},
 		"stdJsonOutput":{"contracts":{}},"sources":{},"abi":[],"metadata":{}

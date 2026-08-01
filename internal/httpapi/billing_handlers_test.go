@@ -204,7 +204,7 @@ func TestCurrentUserBillingHistoryAuthenticatesAndBindsCursor(t *testing.T) {
 	)
 
 	recorder := serveBillingGET(
-		handler, "/api/v1/billing/payments?limit=1", true,
+		handler, "/api/v1/billing/payments?limit=1",
 	)
 	if recorder.Code != http.StatusOK || reader.userCalls != 1 ||
 		reader.userID != testUserID || reader.limit != 2 {
@@ -239,7 +239,6 @@ func TestCurrentUserBillingHistoryAuthenticatesAndBindsCursor(t *testing.T) {
 		handler,
 		"/api/v1/billing/payments?limit=1&cursor="+
 			url.QueryEscape(*page.Meta.NextCursor),
-		true,
 	)
 	if recorder.Code != http.StatusOK || reader.after == nil ||
 		reader.after.ID != first.ID ||
@@ -258,7 +257,6 @@ func TestCurrentUserBillingHistoryAuthenticatesAndBindsCursor(t *testing.T) {
 		handler,
 		"/api/v1/billing/payments?limit=1&cursor="+
 			url.QueryEscape(*page.Meta.NextCursor),
-		true,
 	)
 	assertAuthError(t, recorder, http.StatusBadRequest, "invalid_cursor")
 	if reader.userCalls != calls {
@@ -292,7 +290,7 @@ func TestCurrentUserBillingHistoryRejectsReaderAttributionDrift(t *testing.T) {
 				t, userauth.RoleUser, reader,
 			)
 			recorder := serveBillingGET(
-				handler, "/api/v1/billing/payments", true,
+				handler, "/api/v1/billing/payments",
 			)
 			assertAuthError(
 				t, recorder, http.StatusServiceUnavailable,
@@ -338,7 +336,7 @@ func TestAdminBillingRoutesRequireAdministratorCookie(t *testing.T) {
 		"/api/v1/admin/billing/payments",
 		"/api/v1/admin/billing/summary",
 	} {
-		recorder := serveBillingGET(handler, path, true)
+		recorder := serveBillingGET(handler, path)
 		assertAuthError(t, recorder, http.StatusForbidden, "admin_required")
 	}
 	if reader.adminCalls != 0 || reader.summaryCalls != 0 {
@@ -357,7 +355,7 @@ func TestAdminBillingHistoryIncludesAccountlessPayments(t *testing.T) {
 		t, userauth.RoleAdmin, reader,
 	)
 	recorder := serveBillingGET(
-		handler, "/api/v1/admin/billing/payments", true,
+		handler, "/api/v1/admin/billing/payments",
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -389,7 +387,7 @@ func TestAdminBillingFiltersAndCursorAreStrictlyBound(t *testing.T) {
 		"from_time": {from}, "to_time": {to}, "limit": {"1"},
 	}
 	recorder := serveBillingGET(
-		handler, "/api/v1/admin/billing/payments?"+query.Encode(), true,
+		handler, "/api/v1/admin/billing/payments?"+query.Encode(),
 	)
 	if recorder.Code != http.StatusOK || reader.adminCalls != 1 ||
 		reader.limit != 2 || reader.filter.State == nil ||
@@ -418,7 +416,7 @@ func TestAdminBillingFiltersAndCursorAreStrictlyBound(t *testing.T) {
 	reader.adminPayments = nil
 	query.Set("cursor", *page.Meta.NextCursor)
 	recorder = serveBillingGET(
-		handler, "/api/v1/admin/billing/payments?"+query.Encode(), true,
+		handler, "/api/v1/admin/billing/payments?"+query.Encode(),
 	)
 	if recorder.Code != http.StatusOK || reader.after == nil ||
 		reader.after.ID != first.ID {
@@ -431,7 +429,7 @@ func TestAdminBillingFiltersAndCursorAreStrictlyBound(t *testing.T) {
 	calls := reader.adminCalls
 	query.Set("state", "failed")
 	recorder = serveBillingGET(
-		handler, "/api/v1/admin/billing/payments?"+query.Encode(), true,
+		handler, "/api/v1/admin/billing/payments?"+query.Encode(),
 	)
 	assertAuthError(t, recorder, http.StatusBadRequest, "invalid_cursor")
 	if reader.adminCalls != calls {
@@ -455,7 +453,7 @@ func TestBillingQueriesRejectUnknownRepeatedAndMalformedValues(t *testing.T) {
 		"/api/v1/admin/billing/payments?from_time=2026-07-26T12%3A00%3A00Z&to_time=2026-07-25T12%3A00%3A00Z",
 		"/api/v1/admin/billing/summary?cursor=unexpected",
 	} {
-		recorder := serveBillingGET(handler, path, true)
+		recorder := serveBillingGET(handler, path)
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf(
 				"path=%s status=%d body=%s",
@@ -490,7 +488,7 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 	handler, _ := enabledBillingHistoryHandler(t, userauth.RoleAdmin, reader)
 
 	recorder := serveBillingGET(
-		handler, "/api/v1/admin/billing/summary", true,
+		handler, "/api/v1/admin/billing/summary",
 	)
 	if recorder.Code != http.StatusOK || reader.summaryCalls != 1 ||
 		reader.filter.FromTime == nil || reader.filter.ToTime == nil ||
@@ -515,7 +513,7 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 
 	reader.summaryRows = nil
 	recorder = serveBillingGET(
-		handler, "/api/v1/admin/billing/summary", true,
+		handler, "/api/v1/admin/billing/summary",
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("empty summary status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -542,7 +540,7 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 		},
 	}
 	recorder = serveBillingGET(
-		handler, "/api/v1/admin/billing/summary", true,
+		handler, "/api/v1/admin/billing/summary",
 	)
 	assertAuthError(t, recorder, http.StatusServiceUnavailable, "billing_unavailable")
 
@@ -552,7 +550,7 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 		PaymentCount: "01", AmountAtomic: "1",
 	}}
 	recorder = serveBillingGET(
-		handler, "/api/v1/admin/billing/summary", true,
+		handler, "/api/v1/admin/billing/summary",
 	)
 	assertAuthError(t, recorder, http.StatusServiceUnavailable, "billing_unavailable")
 
@@ -567,7 +565,6 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 		handler,
 		"/api/v1/admin/billing/summary?from_time="+
 			url.QueryEscape(exactFrom)+"&to_time="+url.QueryEscape(to),
-		true,
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("exact 31-day status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -579,7 +576,6 @@ func TestAdminBillingSummaryUsesBoundedDefaultsAndBigIntegerTotals(t *testing.T)
 		handler,
 		"/api/v1/admin/billing/summary?from_time="+
 			url.QueryEscape(tooOld)+"&to_time="+url.QueryEscape(to),
-		true,
 	)
 	assertAuthError(t, recorder, http.StatusBadRequest, "invalid_billing_query")
 	if reader.summaryCalls != calls {
@@ -594,7 +590,7 @@ func TestBillingReaderFailuresUseStableRedactedUnavailableError(t *testing.T) {
 	)}
 	handler, _ := enabledBillingHistoryHandler(t, userauth.RoleUser, reader)
 	recorder := serveBillingGET(
-		handler, "/api/v1/billing/payments", true,
+		handler, "/api/v1/billing/payments",
 	)
 	assertAuthError(t, recorder, http.StatusServiceUnavailable, "billing_unavailable")
 	if strings.Contains(recorder.Body.String(), "secret") ||
@@ -636,14 +632,12 @@ func enabledBillingHistoryHandler(
 	return handler, authenticator
 }
 
-func serveBillingGET(handler http.Handler, target string, cookie bool) *httptest.ResponseRecorder {
+func serveBillingGET(handler http.Handler, target string) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, target, nil)
-	if cookie {
-		request.AddCookie(&http.Cookie{
-			Name: userauth.SessionCookieName, Value: "session-token",
-		})
-	}
+	request.AddCookie(&http.Cookie{
+		Name: userauth.SessionCookieName, Value: "session-token",
+	})
 	handler.ServeHTTP(recorder, request)
 	return recorder
 }

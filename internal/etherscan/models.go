@@ -147,8 +147,3 @@ type tokenInfo struct {
 	TokenType       string `json:"tokenType"`
 	TotalSupply     string `json:"totalSupply,omitempty"`
 }
-
-type tokenHolder struct {
-	Address  string `json:"TokenHolderAddress"`
-	Quantity string `json:"TokenHolderQuantity"`
-}

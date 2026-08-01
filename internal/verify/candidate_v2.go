@@ -110,11 +110,11 @@ func ExtractCandidatesV2(
 	}
 	candidates := make([]CandidateArtifact, 0, len(originalNames))
 	for _, name := range originalNames {
-		first, firstEmpty, err := parseCandidateContract(original[name], language, version)
+		first, firstEmpty, err := parseCandidateContract(original[name], language)
 		if err != nil {
 			return nil, err
 		}
-		second, secondEmpty, err := parseCandidateContract(modified[name], language, version)
+		second, secondEmpty, err := parseCandidateContract(modified[name], language)
 		if err != nil {
 			return nil, err
 		}
@@ -190,7 +190,6 @@ func compilerContractDocuments(output json.RawMessage) (map[string]json.RawMessa
 func parseCandidateContract(
 	raw json.RawMessage,
 	language Language,
-	version string,
 ) (CandidateArtifact, bool, error) {
 	contract, err := decodeRawJSONObject(raw)
 	if err != nil {

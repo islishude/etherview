@@ -188,10 +188,10 @@ func (catalog *Postgres) scanAddressInternalTransaction(row rowScanner) (Address
 		return AddressInternalTransaction{}, ErrCorruptData
 	}
 	item.BlockTimestamp = time.Unix(int64(seconds), 0).UTC()
-	if item.BlockHash, err = lowerHex(blockHash, 32); err != nil {
+	if item.BlockHash, err = lowerHex(blockHash); err != nil {
 		return AddressInternalTransaction{}, err
 	}
-	if item.TransactionHash, err = lowerHex(txHash, 32); err != nil {
+	if item.TransactionHash, err = lowerHex(txHash); err != nil {
 		return AddressInternalTransaction{}, err
 	}
 	item.Path, err = parseTracePath(path)
@@ -398,10 +398,10 @@ func (catalog *Postgres) scanAddressTokenTransfer(row rowScanner) (AddressTokenT
 		return AddressTokenTransfer{}, ErrCorruptData
 	}
 	item.BlockTimestamp = time.Unix(int64(seconds), 0).UTC()
-	if item.BlockHash, err = lowerHex(blockHash, 32); err != nil {
+	if item.BlockHash, err = lowerHex(blockHash); err != nil {
 		return AddressTokenTransfer{}, err
 	}
-	if item.TransactionHash, err = lowerHex(txHash, 32); err != nil {
+	if item.TransactionHash, err = lowerHex(txHash); err != nil {
 		return AddressTokenTransfer{}, err
 	}
 	if item.TokenAddress, err = checksumAddressBytes(token); err != nil {

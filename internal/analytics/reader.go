@@ -103,10 +103,7 @@ func (reader *Reader) Detail(ctx context.Context, request DetailRequest) (Series
 	if err != nil {
 		return Series{}, err
 	}
-	points, err := aggregateHours(hours, request.Metric, interval, request.Now)
-	if err != nil {
-		return Series{}, err
-	}
+	points := aggregateHours(hours, request.Metric, interval, request.Now)
 	if len(points) > maxPoints {
 		return Series{}, ErrCorruptData
 	}
@@ -198,16 +195,13 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 	}
 	currentFrom, previousFrom := now.Add(-24*time.Hour), now.Add(-48*time.Hour)
 	for _, metric := range metricOrder {
-		previewPoints, aggregateErr := aggregateHours(hours, metric, IntervalDay, now)
-		if aggregateErr != nil {
-			return Overview{}, aggregateErr
-		}
+		previewPoints := aggregateHours(hours, metric, IntervalDay, now)
 		previewPoints = latestPoints(previewPoints, 7)
 		current := aggregateWindow(hours, metric, currentFrom, now)
 		previous := aggregateWindow(hours, metric, previousFrom, currentFrom)
 		var change *string
 		if current != nil && previous != nil {
-			change = percentChange(*current, *previous, 6)
+			change = percentChange(*current, *previous)
 		}
 		overview.Metrics = append(overview.Metrics, Preview{
 			Metric: metric, CurrentValue: current, PreviousValue: previous,
@@ -320,7 +314,7 @@ func (aggregate *accumulator) value(metric Metric) *string {
 	case MetricFailedTransactions:
 		return new(aggregate.failed.String())
 	case MetricAverageTPS:
-		return fixedRatio(aggregate.tx, aggregate.intervals, 18)
+		return fixedRatio(aggregate.tx, aggregate.intervals)
 	case MetricERC20Transfers:
 		return new(aggregate.erc20.String())
 	case MetricNFTTransfers:
@@ -330,17 +324,17 @@ func (aggregate *accumulator) value(metric Metric) *string {
 	case MetricBlocks:
 		return new(strconv.FormatInt(aggregate.count, 10))
 	case MetricAverageBlockTime:
-		return fixedRatio(aggregate.intervals, big.NewInt(aggregate.intervalSamples), 18)
+		return fixedRatio(aggregate.intervals, big.NewInt(aggregate.intervalSamples))
 	case MetricGasUsed:
 		return new(aggregate.gasUsed.String())
 	case MetricGasUtilization:
-		return fixedRatio(new(big.Int).Mul(aggregate.gasUsed, big.NewInt(100)), aggregate.gasLimit, 18)
+		return fixedRatio(new(big.Int).Mul(aggregate.gasUsed, big.NewInt(100)), aggregate.gasLimit)
 	case MetricAverageBaseFee:
-		return fixedRatio(aggregate.baseFees, big.NewInt(aggregate.baseSamples), 18)
+		return fixedRatio(aggregate.baseFees, big.NewInt(aggregate.baseSamples))
 	case MetricExecutionFees:
 		return new(aggregate.execution.String())
 	case MetricAverageTransactionFee:
-		return fixedRatio(aggregate.execution, aggregate.tx, 18)
+		return fixedRatio(aggregate.execution, aggregate.tx)
 	case MetricPriorityFees:
 		return new(aggregate.priority.String())
 	case MetricBurnedFees:
@@ -348,7 +342,7 @@ func (aggregate *accumulator) value(metric Metric) *string {
 	case MetricBlobGasUsed:
 		return new(aggregate.blobGas.String())
 	case MetricAverageBlobBaseFee:
-		return fixedRatio(aggregate.blobBase, big.NewInt(aggregate.blobSamples), 18)
+		return fixedRatio(aggregate.blobBase, big.NewInt(aggregate.blobSamples))
 	case MetricBlobBurnedFees:
 		return new(aggregate.blobBurned.String())
 	default:
@@ -356,7 +350,7 @@ func (aggregate *accumulator) value(metric Metric) *string {
 	}
 }
 
-func aggregateHours(hours []hourRow, metric Metric, interval Interval, now time.Time) ([]Point, error) {
+func aggregateHours(hours []hourRow, metric Metric, interval Interval, now time.Time) []Point {
 	type grouped struct {
 		start time.Time
 		value *accumulator
@@ -381,7 +375,7 @@ func aggregateHours(hours []hourRow, metric Metric, interval Interval, now time.
 			Partial: now.Before(end), FromBlock: group.value.from, ToBlock: group.value.to,
 		})
 	}
-	return points, nil
+	return points
 }
 
 func aggregateWindow(hours []hourRow, metric Metric, from, to time.Time) *string {

@@ -187,16 +187,13 @@ func TestReaderRejectsStateObservedAcrossCanonicalChange(t *testing.T) {
 
 func TestClassifyDelegatedEOA(t *testing.T) {
 	t.Parallel()
-	typeValue, hash, err := classifyCode(hexutil.MustDecode("0xef01000000000000000000000000000000000000000000"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	typeValue, hash := classifyCode(hexutil.MustDecode("0xef01000000000000000000000000000000000000000000"))
 	if typeValue != gen.AddressSummaryTypeDelegatedEoa || hash == nil {
 		t.Fatalf("type=%q hash=%v", typeValue, hash)
 	}
-	typeValue, hash, err = classifyCode(hexutil.Bytes{})
-	if err != nil || typeValue != gen.AddressSummaryTypeEoa || hash != nil {
-		t.Fatalf("empty code type=%q hash=%v err=%v", typeValue, hash, err)
+	typeValue, hash = classifyCode(hexutil.Bytes{})
+	if typeValue != gen.AddressSummaryTypeEoa || hash != nil {
+		t.Fatalf("empty code type=%q hash=%v", typeValue, hash)
 	}
 }
 

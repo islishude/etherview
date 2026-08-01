@@ -403,18 +403,18 @@ func (b *PostgresBackend) tokenBalance(ctx context.Context, values url.Values) (
 	return balance, nil
 }
 
-func (b *PostgresBackend) tokenHolders(_ context.Context, values url.Values) ([]tokenHolder, error) {
+func (b *PostgresBackend) tokenHolders(values url.Values) error {
 	_, _, err := parseAddressParameter(values.Get("contractaddress"), "contractaddress")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := parsePagination(values); err != nil {
-		return nil, err
+		return err
 	}
 	// Enumerating all current ERC-20 holders cannot be proven from JSON-RPC.
 	// The event ledger is intentionally not exposed as current state unless a
 	// future reconciliation persists a fixed-canonical-block holder set.
-	return nil, ErrStateUnavailable
+	return ErrStateUnavailable
 }
 
 const tokenTransfersSQL = `

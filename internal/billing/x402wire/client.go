@@ -525,7 +525,7 @@ func parseSettleResponse(
 		return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 	}
 	payer, payerOK := canonicalAddress(wire.Payer)
-	transaction, transactionOK := canonicalFixedHex(*wire.Transaction, 32)
+	transaction, transactionOK := canonicalFixedHex(*wire.Transaction)
 	network, networkOK := canonicalEVMNetwork(*wire.Network)
 	if !payerOK || payer != expectedPayer || !transactionOK ||
 		!networkOK || network != requirement.Network {

@@ -1,0 +1,31 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  relative-path-mode: gomod
+  tests: true
+  build-tags:
+    - integration
+    - hardhat3verify
+    - runtimee2e
+    - foundrye2e
+    - hardhat3e2e
+
+linters:
+  default: standard
+  enable:
+    - modernize
+    - unparam
+  exclusions:
+    generated: strict
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: strict
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

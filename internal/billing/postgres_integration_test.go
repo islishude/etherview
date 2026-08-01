@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"math/big"
 	"os"
 	"strings"
@@ -36,14 +37,12 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	errorsByReserve := make(chan error, 8)
 	var attempts sync.WaitGroup
 	for range 8 {
-		attempts.Add(1)
-		go func() {
-			defer attempts.Done()
+		attempts.Go(func() {
 			<-start
 			reservation, reserveErr := ledger.Reserve(context.Background(), input)
 			results <- reservation
 			errorsByReserve <- reserveErr
-		}()
+		})
 	}
 	close(start)
 	attempts.Wait()
@@ -90,16 +89,14 @@ func TestPostgresBillingReplayFenceAndUnknownReconciliation(t *testing.T) {
 	handlerResults := make(chan error, 2)
 	start = make(chan struct{})
 	for range 2 {
-		attempts.Add(1)
-		go func() {
-			defer attempts.Done()
+		attempts.Go(func() {
 			<-start
 			_, startErr := ledger.StartHandler(
 				context.Background(), paymentID, owned.Owner,
 				verifiedAt.Add(time.Second),
 			)
 			handlerResults <- startErr
-		}()
+		})
 	}
 	close(start)
 	attempts.Wait()
@@ -866,9 +863,7 @@ func newBillingPostgres(t *testing.T) *sql.DB {
 
 func cloneBillingRuntimeParams(source map[string]string) map[string]string {
 	cloned := make(map[string]string, len(source)+2)
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 

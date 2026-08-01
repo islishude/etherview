@@ -65,7 +65,7 @@ func TestDecodeBlockRejectsUnknownTransactionTypeAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rawBlock := mutateBlockTransaction(t, bundle.RawBlock, 0, func(fields map[string]json.RawMessage) {
+	rawBlock := mutateBlockTransaction(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
 		fields["type"] = json.RawMessage(`"0x7f"`)
 	})
 	decoded, err := chainbundle.DecodeBlock(rawBlock, nil)
@@ -148,7 +148,6 @@ func TestDecodeBlockRejectsUintOverflowsWithoutPanicking(t *testing.T) {
 			rawBlock := mutateBlockTransaction(
 				t,
 				bundle.RawBlock,
-				0,
 				func(fields map[string]json.RawMessage) {
 					fields[test.field] = mustJSON(t, overflow)
 				},
@@ -169,7 +168,6 @@ func TestDecodeBlockRejectsUintOverflowsWithoutPanicking(t *testing.T) {
 		rawBlock := mutateBlockTransaction(
 			t,
 			bundle.RawBlock,
-			0,
 			func(fields map[string]json.RawMessage) {
 				fields["authorizationList"] = mustJSON(t, []map[string]any{{
 					"chainId": overflow,
@@ -196,7 +194,6 @@ func TestDecodeBlockRejectsUintOverflowsWithoutPanicking(t *testing.T) {
 		rawBlock := mutateBlockTransaction(
 			t,
 			bundle.RawBlock,
-			0,
 			func(fields map[string]json.RawMessage) {
 				fields["authorizationList"] = mustJSON(t, []map[string]any{{
 					"chainId": "0x1",
@@ -238,7 +235,7 @@ func TestDecodeBlockRejectsMissingAndNonCanonicalInclusion(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			rawBlock := mutateBlockTransaction(t, bundle.RawBlock, 0, test.mutate)
+			rawBlock := mutateBlockTransaction(t, bundle.RawBlock, test.mutate)
 			if decoded, err := chainbundle.DecodeBlock(rawBlock, nil); err == nil || decoded.Block != nil {
 				t.Fatalf("DecodeBlock() = %#v, %v", decoded, err)
 			}
@@ -268,7 +265,7 @@ func TestDecodeBlockRejectsMissingRequiredWireFields(t *testing.T) {
 	}
 	t.Run("transaction to", func(t *testing.T) {
 		t.Parallel()
-		rawBlock := mutateBlockTransaction(t, bundle.RawBlock, 0, func(fields map[string]json.RawMessage) {
+		rawBlock := mutateBlockTransaction(t, bundle.RawBlock, func(fields map[string]json.RawMessage) {
 			delete(fields, "to")
 		})
 		if decoded, err := chainbundle.DecodeBlock(rawBlock, nil); err == nil || decoded.Block != nil {
@@ -1000,7 +997,6 @@ func TestValidateParentRejectsUint64Wraparound(t *testing.T) {
 func mutateBlockTransaction(
 	t *testing.T,
 	raw json.RawMessage,
-	index int,
 	mutate func(map[string]json.RawMessage),
 ) json.RawMessage {
 	t.Helper()
@@ -1009,7 +1005,7 @@ func mutateBlockTransaction(
 		if err := json.Unmarshal(fields["transactions"], &transactions); err != nil {
 			t.Fatal(err)
 		}
-		transactions[index] = mutateObject(t, transactions[index], mutate)
+		transactions[0] = mutateObject(t, transactions[0], mutate)
 		fields["transactions"] = mustJSON(t, transactions)
 	})
 }

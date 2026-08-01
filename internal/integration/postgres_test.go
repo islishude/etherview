@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"strings"
@@ -178,12 +179,10 @@ func TestConcurrentRoleStartupBindsOneChainIdentityWithoutRetry(t *testing.T) {
 	errorsByRole := make(chan error, 12)
 	var roles sync.WaitGroup
 	for range 12 {
-		roles.Add(1)
-		go func() {
-			defer roles.Done()
+		roles.Go(func() {
 			<-start
 			errorsByRole <- store.BindChainIdentity(ctx, db, "1", genesis)
-		}()
+		})
 	}
 	close(start)
 	roles.Wait()
@@ -234,12 +233,10 @@ func TestConcurrentSyncStartupConfiguresOneCoreCoverageBoundary(t *testing.T) {
 	errorsByReplica := make(chan error, 12)
 	var replicas sync.WaitGroup
 	for range 12 {
-		replicas.Add(1)
-		go func() {
-			defer replicas.Done()
+		replicas.Go(func() {
 			<-start
 			errorsByReplica <- repository.ConfigureIndex(ctx, "1", 0)
-		}()
+		})
 	}
 	close(start)
 	replicas.Wait()
@@ -272,7 +269,7 @@ func migrationLedger(t *testing.T, ctx context.Context, db *sql.DB) map[string]l
 	if err != nil {
 		t.Fatalf("query migration ledger: %v", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	entries := make(map[string]ledgerEntry)
 	for rows.Next() {
@@ -374,9 +371,7 @@ func integrationSchemaName(t *testing.T) string {
 
 func cloneRuntimeParams(source map[string]string) map[string]string {
 	cloned := make(map[string]string, len(source)+2)
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 
@@ -427,7 +422,7 @@ func testBundle(number uint64, blockSeed, parentHash, transactionSeed common.Has
 		Transactions: []integrationTransactionOptions{{
 			Type: types.DynamicFeeTxType,
 			Data: append(
-				append([]byte(fmt.Sprintf("%s:%d:", variant, number)), transactionSeed.Bytes()...),
+				append(fmt.Appendf(nil, "%s:%d:", variant, number), transactionSeed.Bytes()...),
 				blockSeed.Bytes()...,
 			),
 			Logs: []*types.Log{{

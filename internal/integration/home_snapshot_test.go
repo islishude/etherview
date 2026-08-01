@@ -35,7 +35,7 @@ func TestHomeSnapshotIsWriterAuthoritativeBoundedAndReorgConsistent(t *testing.T
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	for number := uint64(0); number < 8; number++ {
+	for number := range uint64(8) {
 		bundle := testBundle(
 			number,
 			testHash(20_000+number),

@@ -126,7 +126,8 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 			return fmt.Errorf("%w: height %d is already canonical with another hash", ErrConflict, reference.Number)
 		}
 		chain.blocks[memoryHashKey(reference.Hash)] = copy
-		return setMemoryCheckpoint(chain, checkpoint)
+		setMemoryCheckpoint(chain, checkpoint)
+		return nil
 	}
 	if tip, exists, err := memoryTip(chain); err != nil {
 		return err
@@ -137,7 +138,8 @@ func (r *MemoryRepository) CommitCanonical(_ context.Context, chainID string, bu
 	}
 	chain.blocks[memoryHashKey(reference.Hash)] = copy
 	chain.canonical[reference.Number] = reference.Hash
-	return setMemoryCheckpoint(chain, checkpoint)
+	setMemoryCheckpoint(chain, checkpoint)
+	return nil
 }
 
 func (r *MemoryRepository) RefreshCanonical(
@@ -283,7 +285,8 @@ func (r *MemoryRepository) ApplyReorg(_ context.Context, chainID string, reorg R
 		delete(chain.checkpoints, CoreCheckpoint)
 		return nil
 	}
-	return setMemoryCheckpoint(chain, checkpoint)
+	setMemoryCheckpoint(chain, checkpoint)
+	return nil
 }
 
 func (r *MemoryRepository) Checkpoint(_ context.Context, chainID, stage string) (Checkpoint, bool, error) {
@@ -490,12 +493,11 @@ func checkMemoryCheckpoint(chain *memoryChain, checkpoint Checkpoint, allowRegre
 	return nil
 }
 
-func setMemoryCheckpoint(chain *memoryChain, checkpoint Checkpoint) error {
+func setMemoryCheckpoint(chain *memoryChain, checkpoint Checkpoint) {
 	if checkpoint.UpdatedAt.IsZero() {
 		checkpoint.UpdatedAt = time.Now().UTC()
 	}
 	chain.checkpoints[checkpoint.Stage] = checkpoint
-	return nil
 }
 
 func markMemoryJournals(chain *memoryChain, hash common.Hash, canonical bool) {

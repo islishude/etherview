@@ -622,11 +622,7 @@ func fixedAddress(value []byte) (string, error) {
 	if len(value) != common.AddressLength {
 		return "", fmt.Errorf("%w: pending address has %d bytes", ErrCorruptData, len(value))
 	}
-	checksummed, err := checksumAddress(common.BytesToAddress(value))
-	if err != nil {
-		return "", fmt.Errorf("%w: pending address is invalid", ErrCorruptData)
-	}
-	return checksummed, nil
+	return checksumAddress(common.BytesToAddress(value)), nil
 }
 
 func nullableString(value *string) any {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"maps"
 	"math/big"
 	"net/url"
 	"os"
@@ -524,8 +525,6 @@ func cloneX402TestnetRuntimeParams(
 	source map[string]string,
 ) map[string]string {
 	cloned := make(map[string]string, len(source)+2)
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }

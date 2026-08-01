@@ -87,7 +87,7 @@ func TestExecutePaymentUsesOfficialSDKForOneBoundedPayment(t *testing.T) {
 	defer server.Close()
 
 	target := server.URL + "/api/v1/blocks?limit=1"
-	requirement = httpTestRequirement(t, target, "")
+	requirement = httpTestRequirement(t, target)
 	challengeHeader = httpTestChallengeHeader(t, codec, requirement)
 	options := httpTestOptions(
 		t,
@@ -131,7 +131,6 @@ func TestSettlementCallDataBindingPinsOfficialVRSVector(t *testing.T) {
 	requirement := httpTestRequirement(
 		t,
 		"https://paid.example/api/v1/blocks?limit=1",
-		"",
 	)
 	resource := requirement.Resource()
 	for _, test := range []struct {
@@ -231,7 +230,7 @@ func TestExecutePaymentRejectsChallengeTOCTOUDriftBeforeSigning(t *testing.T) {
 	firstHeader = httpTestChallengeHeader(
 		t,
 		codec,
-		httpTestRequirement(t, target, ""),
+		httpTestRequirement(t, target),
 	)
 	firstJSON, err := base64.StdEncoding.Strict().DecodeString(firstHeader)
 	if err != nil {
@@ -327,7 +326,7 @@ func TestExecutePaymentRejectsInvalidPaymentRequiredEnvelopeBeforeSigning(
 			challenge = httpTestChallengeHeader(
 				t,
 				codec,
-				httpTestRequirement(t, target, ""),
+				httpTestRequirement(t, target),
 			)
 			_, err := ExecutePayment(
 				context.Background(),
@@ -614,7 +613,7 @@ func TestExecutePaymentTreatsSignedResponseFailuresAsUnknown(t *testing.T) {
 			challenge = httpTestChallengeHeader(
 				t,
 				codec,
-				httpTestRequirement(t, target, ""),
+				httpTestRequirement(t, target),
 			)
 			options := httpTestOptions(
 				t,
@@ -650,7 +649,7 @@ func TestExecutePaymentDoesNotRetryUnknownSignedTransportFailure(t *testing.T) {
 	codec := httpTestCodec(t)
 	privateKey, payer := httpTestSigner(t, 5)
 	target := "https://paid.example/api/v1/blocks?limit=1"
-	requirement := httpTestRequirement(t, target, "")
+	requirement := httpTestRequirement(t, target)
 	challenge := httpTestChallengeHeader(t, codec, requirement)
 	var requests atomic.Int32
 	var signed atomic.Int32
@@ -697,7 +696,7 @@ func TestPaymentGuardBlocksSecondAuthorizationBeforeNetwork(t *testing.T) {
 	codec := httpTestCodec(t)
 	privateKey, payer := httpTestSigner(t, 6)
 	target := "https://paid.example/api/v1/blocks?limit=1"
-	requirement := httpTestRequirement(t, target, "")
+	requirement := httpTestRequirement(t, target)
 	paymentHeader := httpTestSignedHeader(t, privateKey, requirement)
 	var networkRequests atomic.Int32
 	base := httpTestRoundTripFunc(func(
@@ -748,7 +747,7 @@ func TestPaymentGuardMakesOfficialCorrectiveRetryUnknownWithoutSendingIt(t *test
 	codec := httpTestCodec(t)
 	privateKey, payer := httpTestSigner(t, 9)
 	target := "https://paid.example/api/v1/blocks?limit=1"
-	requirement := httpTestRequirement(t, target, "")
+	requirement := httpTestRequirement(t, target)
 	challenge := httpTestChallengeHeader(t, codec, requirement)
 	var networkRequests atomic.Int32
 	var signedNetworkRequests atomic.Int32
@@ -878,7 +877,6 @@ func TestPaymentClientRejectsRedirectCookieCredentialAndProxyUse(t *testing.T) {
 	requirement := httpTestRequirement(
 		t,
 		"https://paid.example/api/v1/blocks?limit=1",
-		"",
 	)
 	for _, headerName := range []string{"Cookie", "X-API-Key"} {
 		t.Run(headerName, func(t *testing.T) {
@@ -929,7 +927,7 @@ func TestPaymentClientRejectsRedirectCookieCredentialAndProxyUse(t *testing.T) {
 	challenge = httpTestChallengeHeader(
 		t,
 		codec,
-		httpTestRequirement(t, cookieTarget, ""),
+		httpTestRequirement(t, cookieTarget),
 	)
 	cookieOptions := httpTestOptions(
 		t,
@@ -1075,7 +1073,7 @@ func TestExecutePaymentRecoversPanicsWithoutLeakingOrRetrying(t *testing.T) {
 	}
 
 	codec := httpTestCodec(t)
-	requirement := httpTestRequirement(t, target, "")
+	requirement := httpTestRequirement(t, target)
 	challenge := httpTestChallengeHeader(t, codec, requirement)
 	var requests atomic.Int32
 	var signed atomic.Int32
@@ -1168,7 +1166,6 @@ func httpTestSigner(t *testing.T, value byte) ([]byte, string) {
 func httpTestRequirement(
 	t *testing.T,
 	target string,
-	description string,
 ) x402wire.Requirement {
 	t.Helper()
 	requirement, err := x402wire.NewRequirement(x402wire.RequirementOptions{
@@ -1181,7 +1178,7 @@ func httpTestRequirement(
 		AssetEIP712Version: "2",
 		Resource: x402.ResourceInfo{
 			URL:         target,
-			Description: description,
+			Description: "",
 			MimeType:    "application/json",
 			ServiceName: "Etherview",
 		},

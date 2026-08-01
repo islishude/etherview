@@ -91,7 +91,6 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 			twoTx:       true, assertEmpty: true,
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			db := newMigratedPostgres(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)

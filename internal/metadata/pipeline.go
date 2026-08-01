@@ -22,6 +22,7 @@ const (
 	NFTStageVersion       = uint32(1)
 	DefaultMaxAttempts    = uint32(5)
 	MaximumMaxAttempts    = uint32(100)
+	maximumDecimalDigits  = 78
 	MaxDocumentBytes      = int64(2 << 20)
 	MaxSourceURIBytes     = 4096
 	MaxStoredErrorBytes   = 1024
@@ -58,10 +59,10 @@ type NFTRequest struct {
 }
 
 func (request NFTRequest) Validate() error {
-	if err := validateDecimal(request.ChainID, 78, "chain ID"); err != nil {
+	if err := validateDecimal(request.ChainID, "chain ID"); err != nil {
 		return err
 	}
-	if err := validateDecimal(request.TokenID, 78, "token ID"); err != nil {
+	if err := validateDecimal(request.TokenID, "token ID"); err != nil {
 		return err
 	}
 	tokenID, _ := new(big.Int).SetString(request.TokenID, 10)
@@ -196,9 +197,9 @@ func validateErrorCode(code string) error {
 	return nil
 }
 
-func validateDecimal(value string, digits int, name string) error {
-	if value == "" || len(value) > digits {
-		return fmt.Errorf("metadata %s must be a canonical non-negative decimal with at most %d digits", name, digits)
+func validateDecimal(value, name string) error {
+	if value == "" || len(value) > maximumDecimalDigits {
+		return fmt.Errorf("metadata %s must be a canonical non-negative decimal with at most %d digits", name, maximumDecimalDigits)
 	}
 	integer, ok := new(big.Int).SetString(value, 10)
 	if !ok || integer.Sign() < 0 || integer.String() != value {

@@ -3,6 +3,7 @@ package ethrpc
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -38,14 +39,14 @@ func TestParseDataHashAndAddressReturnGethTypes(t *testing.T) {
 	if data.String() != "0xabcd" {
 		t.Fatalf("data = %s", data.String())
 	}
-	hash, err := ParseHash("0x" + repeat("00", common.HashLength))
+	hash, err := ParseHash("0x" + strings.Repeat("00", common.HashLength))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if hash != (common.Hash{}) {
 		t.Fatalf("hash = %s", hash)
 	}
-	address, err := ParseAddress("0x" + repeat("00", common.AddressLength))
+	address, err := ParseAddress("0x" + strings.Repeat("00", common.AddressLength))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +58,4 @@ func TestParseDataHashAndAddressReturnGethTypes(t *testing.T) {
 			t.Errorf("ParseData(%q) error = %v", input, err)
 		}
 	}
-}
-
-func repeat(value string, count int) string {
-	result := ""
-	for range count {
-		result += value
-	}
-	return result
 }

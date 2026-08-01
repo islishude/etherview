@@ -149,7 +149,7 @@ func (b *PostgresBackend) Execute(ctx context.Context, request Request) (any, er
 	case "token.tokeninfo":
 		return b.tokenInformation(ctx, request.Values)
 	case "token.tokenholderlist":
-		return b.tokenHolders(ctx, request.Values)
+		return nil, b.tokenHolders(request.Values)
 	default:
 		return nil, invalidParameter("unsupported module/action %q/%q", request.Module, request.Action)
 	}

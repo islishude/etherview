@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -60,9 +61,7 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 	}, 2)
 	var attempts sync.WaitGroup
 	for range 2 {
-		attempts.Add(1)
-		go func() {
-			defer attempts.Done()
+		attempts.Go(func() {
 			<-start
 			login, verifyErr := service.VerifyChallenge(
 				context.Background(), challenge.ID, signature,
@@ -71,7 +70,7 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 				login LoginResult
 				err   error
 			}{login: login, err: verifyErr}
-		}()
+		})
 	}
 	close(start)
 	attempts.Wait()
@@ -386,9 +385,7 @@ func newUserAuthPostgres(t *testing.T) *sql.DB {
 
 func cloneUserAuthRuntimeParams(source map[string]string) map[string]string {
 	cloned := make(map[string]string, len(source)+2)
-	for key, value := range source {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, source)
 	return cloned
 }
 

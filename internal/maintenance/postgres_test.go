@@ -40,7 +40,7 @@ func TestPostgresClaimGuardCompleteIsLeaseOwnedAndIdempotent(t *testing.T) {
 			columns: maintenanceColumns(2), rows: [][]driver.Value{{"running", "50"}},
 		},
 		sqlStep{kind: "exec", contains: "SET status = 'done'", affected: 1},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 
 	repository := mustPostgresRepository(t, db)
@@ -79,7 +79,7 @@ func TestPostgresClaimRejectsFinalizedRangeAndRecordsFailure(t *testing.T) {
 				return nil
 			},
 		},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 	repository := mustPostgresRepository(t, db)
 	lease, found, err := repository.Claim(context.Background(), "worker")
@@ -98,7 +98,7 @@ func TestPostgresClaimSkipsOwnedRunningRequestAndCanRecoverReleasedOne(t *testin
 		advisoryStep(7, false),
 		advisoryStep(8, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
-		unlockStep(8, true),
+		unlockStep(8),
 	)
 	repository := mustPostgresRepository(t, db)
 	lease, found, err := repository.Claim(context.Background(), "worker")
@@ -134,7 +134,7 @@ func TestPostgresClaimKeysetDoesNotStarveBeyondOwnedBatch(t *testing.T) {
 		},
 		advisoryStep(65, true),
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
-		unlockStep(65, true),
+		unlockStep(65),
 	)
 	db := maintenanceDatabase(t, steps...)
 	repository := mustPostgresRepository(t, db)
@@ -163,7 +163,7 @@ func TestPostgresGuardCatchesFinalityAdvanceBeforeExecution(t *testing.T) {
 				return nil
 			},
 		},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 	repository := mustPostgresRepository(t, db)
 	lease, found, err := repository.Claim(context.Background(), "worker")
@@ -188,7 +188,7 @@ func TestPostgresExplicitFinalityOverrideStillVerifiesRunningLease(t *testing.T)
 		sqlStep{kind: "exec", contains: "SET status = 'running'", affected: 1},
 		sqlStep{kind: "query", contains: "WHERE request.id = $1", columns: maintenanceColumns(2), rows: [][]driver.Value{{"running", "150"}}},
 		sqlStep{kind: "exec", contains: "SET status = 'done'", affected: 1},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 	repository := mustPostgresRepository(t, db)
 	lease, found, err := repository.Claim(context.Background(), "worker")
@@ -220,7 +220,7 @@ func TestPostgresFailureIsBoundedValidUTF8AndIdempotent(t *testing.T) {
 				return nil
 			},
 		},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 	repository := mustPostgresRepository(t, db)
 	lease, found, err := repository.Claim(context.Background(), "worker")
@@ -255,7 +255,7 @@ func TestPostgresInvalidPersistedRequestIsFailedNotDispatched(t *testing.T) {
 				return nil
 			},
 		},
-		unlockStep(7, true),
+		unlockStep(7),
 	)
 	repository := mustPostgresRepository(t, db)
 	_, found, err := repository.Claim(context.Background(), "worker")
@@ -289,9 +289,9 @@ func advisoryStep(id int64, acquired bool) sqlStep {
 	}
 }
 
-func unlockStep(id int64, unlocked bool) sqlStep {
+func unlockStep(id int64) sqlStep {
 	return sqlStep{
-		kind: "query", contains: "pg_advisory_unlock", columns: maintenanceColumns(1), rows: [][]driver.Value{{unlocked}},
+		kind: "query", contains: "pg_advisory_unlock", columns: maintenanceColumns(1), rows: [][]driver.Value{{true}},
 		check: func(arguments []driver.NamedValue) error {
 			want := id | int64(math.MinInt64)
 			if len(arguments) != 1 || arguments[0].Value != want {

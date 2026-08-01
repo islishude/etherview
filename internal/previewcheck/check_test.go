@@ -74,8 +74,8 @@ func (e *fakeExecutor) Run(_ context.Context, command testcompose.Command) ([]by
 }
 
 func TestCheckAcceptsCompleteStableNativePreview(t *testing.T) {
-	server := featureServer(t, true, true)
-	executor := &fakeExecutor{snapshots: [][]container{healthyContainers(0)}}
+	server := featureServer(t, true)
+	executor := &fakeExecutor{snapshots: [][]container{healthyContainers()}}
 	err := Check(context.Background(), Options{
 		Root:            "/repo",
 		ProjectName:     "preview",
@@ -123,9 +123,9 @@ func TestCheckAcceptsCompleteStableNativePreview(t *testing.T) {
 }
 
 func TestCheckRejectsNonNativeApplicationImage(t *testing.T) {
-	server := featureServer(t, true, true)
+	server := featureServer(t, true)
 	executor := &fakeExecutor{
-		snapshots:         [][]container{healthyContainers(0)},
+		snapshots:         [][]container{healthyContainers()},
 		hostArchitecture:  "aarch64",
 		imageArchitecture: "amd64",
 	}
@@ -143,7 +143,7 @@ func TestCheckRejectsNonNativeApplicationImage(t *testing.T) {
 }
 
 func TestCheckRejectsOrphanService(t *testing.T) {
-	containers := healthyContainers(0)
+	containers := healthyContainers()
 	containers = append(containers, container{
 		ID: "orphan-id", ImageID: "sha256:orphan", Service: "compiler-runner",
 		Status: "running", Running: true,
@@ -162,7 +162,7 @@ func TestCheckRejectsOrphanService(t *testing.T) {
 }
 
 func TestCheckRejectsFailedMigrationImmediately(t *testing.T) {
-	containers := healthyContainers(0)
+	containers := healthyContainers()
 	for index := range containers {
 		if containers[index].Service == "migration" {
 			containers[index].ExitCode = 17
@@ -182,7 +182,7 @@ func TestCheckRejectsFailedMigrationImmediately(t *testing.T) {
 }
 
 func TestCheckRejectsCompilerCacheLeak(t *testing.T) {
-	containers := healthyContainers(0)
+	containers := healthyContainers()
 	for index := range containers {
 		if containers[index].Service == "sync" {
 			containers[index].Tmpfs = map[string]string{
@@ -204,7 +204,7 @@ func TestCheckRejectsCompilerCacheLeak(t *testing.T) {
 }
 
 func TestCheckRejectsRemovedCompilerEnvironment(t *testing.T) {
-	containers := healthyContainers(0)
+	containers := healthyContainers()
 	for index := range containers {
 		if containers[index].Service == "api" {
 			containers[index].Environment = append(
@@ -227,9 +227,9 @@ func TestCheckRejectsRemovedCompilerEnvironment(t *testing.T) {
 }
 
 func TestCheckRejectsRestartCountChangeDuringStability(t *testing.T) {
-	server := featureServer(t, true, true)
-	before := healthyContainers(0)
-	after := healthyContainers(0)
+	server := featureServer(t, true)
+	before := healthyContainers()
+	after := healthyContainers()
 	for index := range after {
 		if after[index].Service == "api" {
 			after[index].RestartCount = 1
@@ -250,8 +250,8 @@ func TestCheckRejectsRestartCountChangeDuringStability(t *testing.T) {
 }
 
 func TestCheckRejectsDisabledPublicFeatures(t *testing.T) {
-	server := featureServer(t, true, false)
-	executor := &fakeExecutor{snapshots: [][]container{healthyContainers(0)}}
+	server := featureServer(t, false)
+	executor := &fakeExecutor{snapshots: [][]container{healthyContainers()}}
 	err := Check(context.Background(), Options{
 		ConfigURL:       server.URL + "/api/v1/config",
 		Timeout:         250 * time.Millisecond,
@@ -266,9 +266,9 @@ func TestCheckRejectsDisabledPublicFeatures(t *testing.T) {
 }
 
 func TestCheckRetriesRoleReadinessBeforeBaseline(t *testing.T) {
-	server := featureServer(t, true, true)
+	server := featureServer(t, true)
 	executor := &fakeExecutor{
-		snapshots:    [][]container{healthyContainers(0)},
+		snapshots:    [][]container{healthyContainers()},
 		probeFailsAt: 1,
 	}
 	err := Check(context.Background(), Options{
@@ -288,9 +288,9 @@ func TestCheckRetriesRoleReadinessBeforeBaseline(t *testing.T) {
 }
 
 func TestCheckRejectsRoleReadinessLossDuringStability(t *testing.T) {
-	server := featureServer(t, true, true)
+	server := featureServer(t, true)
 	executor := &fakeExecutor{
-		snapshots:    [][]container{healthyContainers(0)},
+		snapshots:    [][]container{healthyContainers()},
 		probeFailsAt: 2,
 	}
 	err := Check(context.Background(), Options{
@@ -316,7 +316,7 @@ func TestNormalizeArchitecture(t *testing.T) {
 	}
 }
 
-func featureServer(t *testing.T, verification, nftMetadata bool) *httptest.Server {
+func featureServer(t *testing.T, nftMetadata bool) *httptest.Server {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/config" {
@@ -327,7 +327,7 @@ func featureServer(t *testing.T, verification, nftMetadata bool) *httptest.Serve
 		_ = json.NewEncoder(response).Encode(map[string]any{
 			"data": map[string]any{
 				"features": map[string]bool{
-					"verification": verification,
+					"verification": true,
 					"nft_metadata": nftMetadata,
 				},
 			},
@@ -337,7 +337,7 @@ func featureServer(t *testing.T, verification, nftMetadata bool) *httptest.Serve
 	return server
 }
 
-func healthyContainers(restartCount int) []container {
+func healthyContainers() []container {
 	values := make([]container, 0, len(runningServices)+len(oneShotServices))
 	applicationServices := map[string]struct{}{
 		"api": {}, "sync": {}, "enrich": {}, "trace": {}, "metadata": {}, "maintenance": {},
@@ -370,7 +370,7 @@ func healthyContainers(restartCount int) []container {
 			Status:       "running",
 			Running:      true,
 			Health:       health,
-			RestartCount: restartCount,
+			RestartCount: 0,
 			Networks: map[string]json.RawMessage{
 				"preview_default": json.RawMessage(`{}`),
 			},
@@ -385,7 +385,7 @@ func healthyContainers(restartCount int) []container {
 			Service:      service,
 			Status:       "exited",
 			ExitCode:     0,
-			RestartCount: restartCount,
+			RestartCount: 0,
 		})
 	}
 	return values

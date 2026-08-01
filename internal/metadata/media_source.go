@@ -49,7 +49,7 @@ func NewPostgresImageSource(db *sql.DB, chainID string) (*PostgresImageSource, e
 	if db == nil {
 		return nil, errors.New("NFT media source requires a database")
 	}
-	if err := validateDecimal(chainID, 78, "media source chain ID"); err != nil {
+	if err := validateDecimal(chainID, "media source chain ID"); err != nil {
 		return nil, err
 	}
 	return &PostgresImageSource{db: db, chainID: chainID}, nil
@@ -60,7 +60,7 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address c
 		return NFTImageSelection{}, errors.New("select NFT media using nil PostgreSQL source")
 	}
 	addressBytes := address.Bytes()
-	if err := validateDecimal(tokenID, 78, "media token ID"); err != nil {
+	if err := validateDecimal(tokenID, "media token ID"); err != nil {
 		return NFTImageSelection{}, err
 	}
 	parsedTokenID, _ := new(big.Int).SetString(tokenID, 10)
@@ -134,7 +134,7 @@ func (source *PostgresImageSource) NFTImageCurrent(
 		return false, errors.New("validate NFT media using nil PostgreSQL source")
 	}
 	addressBytes := address.Bytes()
-	if err := validateDecimal(tokenID, 78, "media token ID"); err != nil {
+	if err := validateDecimal(tokenID, "media token ID"); err != nil {
 		return false, err
 	}
 	if strings.TrimSpace(selection.URI) == "" || len(selection.URI) > MaxSourceURIBytes {

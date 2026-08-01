@@ -166,22 +166,13 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during state query", httpapi.ErrNotReady)
 	}
 	r.Pool.ReportSuccess(endpoint.Name)
-	balanceDecimal, err := decimal(balance)
-	if err != nil {
-		return gen.AddressSummary{}, CapabilityError{Code: "malformed_response"}
-	}
-	nonceDecimal, err := decimal(nonce)
-	if err != nil {
-		return gen.AddressSummary{}, CapabilityError{Code: "malformed_response"}
-	}
+	balanceDecimal := decimal(balance)
+	nonceDecimal := decimal(nonce)
 	checksummed, err := query.ChecksumAddress(address.Hex())
 	if err != nil {
 		return gen.AddressSummary{}, err
 	}
-	accountType, codeHash, err := classifyCode(code)
-	if err != nil {
-		return gen.AddressSummary{}, err
-	}
+	accountType, codeHash := classifyCode(code)
 	completeness := r.Completeness
 	completeness.Core = gen.StageStateComplete
 	completeness.State = gen.StageStateComplete
@@ -219,21 +210,21 @@ func stateUnavailable(error) error {
 	return CapabilityError{Code: "rpc_failure"}
 }
 
-func classifyCode(code hexutil.Bytes) (gen.AddressSummaryType, *string, error) {
+func classifyCode(code hexutil.Bytes) (gen.AddressSummaryType, *string) {
 	bytes := []byte(code)
 	if len(bytes) == 0 {
-		return gen.AddressSummaryTypeEoa, nil, nil
+		return gen.AddressSummaryTypeEoa, nil
 	}
 	typeValue := gen.AddressSummaryTypeContract
 	if len(bytes) == 23 && bytes[0] == 0xef && bytes[1] == 0x01 && bytes[2] == 0x00 {
 		typeValue = gen.AddressSummaryTypeDelegatedEoa
 	}
 	hash := crypto.Keccak256Hash(bytes).Hex()
-	return typeValue, &hash, nil
+	return typeValue, &hash
 }
 
-func decimal(value hexutil.Big) (string, error) {
-	return value.ToInt().String(), nil
+func decimal(value hexutil.Big) string {
+	return value.ToInt().String()
 }
 
 func bytesHash(value []byte) (common.Hash, error) {

@@ -314,14 +314,8 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 	if !state.Valid() {
 		return gen.BillingPayment{}, errors.New("billing payment state is invalid")
 	}
-	asset, err := billingAddressModel(payment.Asset)
-	if err != nil {
-		return gen.BillingPayment{}, err
-	}
-	recipient, err := billingAddressModel(payment.Recipient)
-	if err != nil {
-		return gen.BillingPayment{}, err
-	}
+	asset := billingAddressModel(payment.Asset)
+	recipient := billingAddressModel(payment.Recipient)
 	model := gen.BillingPayment{
 		Id: identifier, Operation: payment.Operation, State: state,
 		Network: payment.Network, Asset: asset,
@@ -329,10 +323,7 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 		CreatedAt: payment.CreatedAt.UTC(), UpdatedAt: payment.UpdatedAt.UTC(),
 	}
 	if payment.Payer != nil {
-		payer, payerErr := billingAddressModel(*payment.Payer)
-		if payerErr != nil {
-			return gen.BillingPayment{}, payerErr
-		}
+		payer := billingAddressModel(*payment.Payer)
 		model.Payer = &payer
 	}
 	if payment.UserID != nil {
@@ -379,10 +370,7 @@ func billingSummaryRowModel(
 		return gen.BillingSummaryRow{}, nil, nil,
 			errors.New("billing summary identity is invalid")
 	}
-	asset, err := billingAddressModel(row.Asset)
-	if err != nil {
-		return gen.BillingSummaryRow{}, nil, nil, err
-	}
+	asset := billingAddressModel(row.Asset)
 	count, countOK := parseBillingAggregate(row.PaymentCount)
 	amount, amountOK := parseBillingAggregate(row.AmountAtomic)
 	if !countOK || count.Sign() <= 0 || !amountOK || amount.Sign() <= 0 {
@@ -622,8 +610,8 @@ func (h *Handler) handleBillingFailure(
 	)
 }
 
-func billingAddressModel(value common.Address) (gen.Address, error) {
-	return gen.Address(value.Hex()), nil
+func billingAddressModel(value common.Address) gen.Address {
+	return gen.Address(value.Hex())
 }
 
 func parseBillingAddress(value string) (common.Address, bool) {

@@ -73,7 +73,7 @@ func (r Request) Validate(maxInputBytes int) error {
 	if maxInputBytes <= 0 {
 		maxInputBytes = 5 << 20
 	}
-	if _, _, err := validateStandardJSON(
+	if _, err := validateStandardJSON(
 		r.StandardJSON,
 		r.Language,
 		r.CompilerVersion,

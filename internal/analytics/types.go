@@ -153,11 +153,11 @@ type PendingError struct {
 func (err PendingError) Error() string { return ErrPending.Error() }
 func (err PendingError) Unwrap() error { return ErrPending }
 
-func fixedRatio(numerator, denominator *big.Int, scale int) *string {
+func fixedRatio(numerator, denominator *big.Int) *string {
 	if numerator == nil || denominator == nil || denominator.Sign() <= 0 {
 		return nil
 	}
-	value := new(big.Rat).SetFrac(numerator, denominator).FloatString(scale)
+	value := new(big.Rat).SetFrac(numerator, denominator).FloatString(18)
 	value = strings.TrimRight(strings.TrimRight(value, "0"), ".")
 	if value == "" {
 		value = "0"
@@ -165,7 +165,7 @@ func fixedRatio(numerator, denominator *big.Int, scale int) *string {
 	return &value
 }
 
-func percentChange(current, previous string, scale int) *string {
+func percentChange(current, previous string) *string {
 	currentValue, currentOK := new(big.Rat).SetString(current)
 	previousValue, previousOK := new(big.Rat).SetString(previous)
 	if !currentOK || !previousOK || previousValue.Sign() == 0 {
@@ -174,13 +174,10 @@ func percentChange(current, previous string, scale int) *string {
 	change := new(big.Rat).Sub(currentValue, previousValue)
 	change.Mul(change, big.NewRat(100, 1))
 	change.Quo(change, previousValue)
-	value := ratString(change)
-	if scale >= 0 {
-		value = change.FloatString(scale)
-		value = strings.TrimRight(strings.TrimRight(value, "0"), ".")
-		if value == "" || value == "-0" {
-			value = "0"
-		}
+	value := change.FloatString(6)
+	value = strings.TrimRight(strings.TrimRight(value, "0"), ".")
+	if value == "" || value == "-0" {
+		value = "0"
 	}
 	return &value
 }

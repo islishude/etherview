@@ -55,7 +55,7 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 	if err := replaceCoverageRangesTx(ctx, tx, chainID, ranges); err != nil {
 		return err
 	}
-	coverage, _, err := queryCoverageTx(ctx, tx, chainID, false)
+	coverage, _, err := queryCoverageTx(ctx, tx, chainID)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (r *PostgresRepository) Coverage(ctx context.Context, chainID string) (Core
 		return CoreCoverage{}, false, fmt.Errorf("begin coverage read: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	coverage, exists, err := queryCoverageTx(ctx, tx, chainID, false)
+	coverage, exists, err := queryCoverageTx(ctx, tx, chainID)
 	if err != nil {
 		return CoreCoverage{}, false, err
 	}
@@ -191,7 +191,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if err := replaceCoverageRangesTx(ctx, tx, chainID, nextRanges); err != nil {
 		return CoreCoverage{}, err
 	}
-	coverage, exists, err := queryCoverageTx(ctx, tx, chainID, false)
+	coverage, exists, err := queryCoverageTx(ctx, tx, chainID)
 	if err != nil {
 		return CoreCoverage{}, err
 	}
@@ -366,7 +366,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err := replaceCoverageRangesTx(ctx, tx, chainID, nextRanges); err != nil {
 		return CoreCoverage{}, err
 	}
-	coverage, exists, err := queryCoverageTx(ctx, tx, chainID, false)
+	coverage, exists, err := queryCoverageTx(ctx, tx, chainID)
 	if err != nil {
 		return CoreCoverage{}, err
 	}
@@ -676,9 +676,8 @@ func queryCoverageTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	chainID string,
-	forUpdate bool,
 ) (CoreCoverage, bool, error) {
-	configuredStart, exists, err := queryConfiguredStartTx(ctx, tx, chainID, forUpdate)
+	configuredStart, exists, err := queryConfiguredStartTx(ctx, tx, chainID, false)
 	if err != nil || !exists {
 		return CoreCoverage{}, exists, err
 	}

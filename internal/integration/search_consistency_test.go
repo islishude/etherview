@@ -88,7 +88,7 @@ func TestDottedSearchRequiresFreshNameButCursorFreezesSuccessfulGate(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index := uint64(0); index < 2; index++ {
+	for index := range uint64(2) {
 		execFixture(t, ctx, db, `INSERT INTO operator_labels
 			(chain_id, object_kind, object_key, label)
 			VALUES (1, 'address', $1, 'fresh.eth')`, testAddress(9_510+index).String())
@@ -183,7 +183,7 @@ func TestNameSuccessSerializesWithCanonicalDetach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer detach.Rollback()
+	defer detach.Rollback() //nolint:errcheck
 	if _, err := detach.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestCanonicalDetachWaitsForNameSuccessAndThenOrphansIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pauseConnection.Close()
+	defer pauseConnection.Close() //nolint:errcheck
 	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_lock(20, $1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestSparseCanonicalReplacementWaitsForNameSuccessAndThenOrphansIt(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pauseConnection.Close()
+	defer pauseConnection.Close() //nolint:errcheck
 	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_lock(21, $1)`, advisoryKey); err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +605,7 @@ func TestPostgresCatalogMaintenanceUsesTryLockAndBoundedAdapterBatch(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lock.Rollback()
+	defer lock.Rollback() //nolint:errcheck
 	if _, err := lock.ExecContext(ctx, `SELECT pg_advisory_xact_lock(
 		hashtext('etherview:search-catalog-maintenance'), hashtext('1'))`); err != nil {
 		t.Fatal(err)
@@ -731,12 +731,9 @@ func resolveConcurrently(
 	results := make([]concurrentResolveResult, len(services))
 	var group sync.WaitGroup
 	for index, service := range services {
-		index, service := index, service
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			results[index].address, results[index].err = service.Resolve(ctx, name)
-		}()
+		})
 	}
 	group.Wait()
 	return results

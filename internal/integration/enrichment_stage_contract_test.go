@@ -156,7 +156,6 @@ func TestEnrichmentTerminalOutcomesAndExhaustionAreDurable(t *testing.T) {
 			wantState: enrich.ResultFailed, wantError: "fixture invalid input",
 		},
 	} {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
 				Stage: test.stage, ChainID: "1", BlockHash: blockHash, BlockNumber: reference.Number,

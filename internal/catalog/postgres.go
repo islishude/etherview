@@ -117,7 +117,7 @@ func readCanonicalSnapshot(ctx context.Context, tx *sql.Tx, chainID string) (Sna
 	if !canonicalUint256(number) {
 		return Snapshot{}, fmt.Errorf("%w: invalid canonical snapshot height", ErrCorruptData)
 	}
-	encodedHash, err := lowerHex(hash, 32)
+	encodedHash, err := lowerHex(hash)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("%w: invalid canonical snapshot hash", ErrCorruptData)
 	}

@@ -42,8 +42,8 @@ func (budget *abiDecodeBudget) addNodes(count int) error {
 	return budget.add(&budget.nodes, count, budget.limits.MaxDecodeNodes, "nodes")
 }
 
-func (budget *abiDecodeBudget) addWork(count int) error {
-	return budget.add(&budget.work, count, budget.limits.MaxDecodeWork, "work")
+func (budget *abiDecodeBudget) addWork() error {
+	return budget.add(&budget.work, 1, budget.limits.MaxDecodeWork, "work")
 }
 
 func (budget *abiDecodeBudget) addBytes(count int) error {
@@ -65,13 +65,13 @@ func (decoder *abiDecoder) decodeTuple(types []*abiType, base int, depth int) ([
 	if len(types) > decoder.limits.MaxArguments {
 		return nil, errors.New("ABI tuple contains too many values")
 	}
-	if err := decoder.budget.addWork(1); err != nil {
+	if err := decoder.budget.addWork(); err != nil {
 		return nil, err
 	}
 	values := make([]any, len(types))
 	cursor := base
 	for index, valueType := range types {
-		if err := decoder.budget.addWork(1); err != nil {
+		if err := decoder.budget.addWork(); err != nil {
 			return nil, err
 		}
 		if valueType.dynamic() {
@@ -125,7 +125,7 @@ func (decoder *abiDecoder) decodeStatic(valueType *abiType, position, depth int)
 	if err := decoder.budget.addNodes(1); err != nil {
 		return nil, err
 	}
-	if err := decoder.budget.addWork(1); err != nil {
+	if err := decoder.budget.addWork(); err != nil {
 		return nil, err
 	}
 	switch valueType.kind {
@@ -218,7 +218,7 @@ func (decoder *abiDecoder) decodeDynamic(valueType *abiType, position, depth int
 	if err := decoder.budget.addNodes(1); err != nil {
 		return nil, err
 	}
-	if err := decoder.budget.addWork(1); err != nil {
+	if err := decoder.budget.addWork(); err != nil {
 		return nil, err
 	}
 	switch valueType.kind {
@@ -294,13 +294,13 @@ func (decoder *abiDecoder) decodeArray(element *abiType, count, base, depth int)
 	if count < 0 || count > decoder.limits.MaxArrayElements {
 		return nil, errors.New("ABI array exceeds element limit")
 	}
-	if err := decoder.budget.addWork(1); err != nil {
+	if err := decoder.budget.addWork(); err != nil {
 		return nil, err
 	}
 	values := make([]any, count)
 	cursor := base
 	for index := range values {
-		if err := decoder.budget.addWork(1); err != nil {
+		if err := decoder.budget.addWork(); err != nil {
 			return nil, err
 		}
 		var err error
@@ -345,7 +345,7 @@ func (decoder *abiDecoder) decodeArray(element *abiType, count, base, depth int)
 
 func (decoder *abiDecoder) word(position int) (common.Hash, error) {
 	var word common.Hash
-	if err := decoder.budget.addWork(1); err != nil {
+	if err := decoder.budget.addWork(); err != nil {
 		return word, err
 	}
 	if err := decoder.budget.addBytes(32); err != nil {

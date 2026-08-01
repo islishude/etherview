@@ -101,7 +101,7 @@ func PrepareVerifierStandardJSON(
 			return nil, errors.New("standard JSON settings must be an object")
 		}
 	}
-	if err := validateCallerOutputSelection(settings, language); err != nil {
+	if err := validateCallerOutputSelection(settings); err != nil {
 		return nil, err
 	}
 	switch language {
@@ -134,7 +134,7 @@ func PrepareVerifierStandardJSON(
 	return prepared, nil
 }
 
-func validateCallerOutputSelection(settings map[string]any, language Language) error {
+func validateCallerOutputSelection(settings map[string]any) error {
 	raw, exists := settings["outputSelection"]
 	if !exists {
 		return nil

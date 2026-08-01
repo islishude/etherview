@@ -255,16 +255,10 @@ func pendingTransaction(raw json.RawMessage, chainID uint64, endpoint string, fi
 	if err != nil || sender != *projection.From {
 		return Transaction{}, errors.New("transaction sender is invalid")
 	}
-	from, err := checksumAddress(sender)
-	if err != nil {
-		return Transaction{}, errors.New("transaction sender is invalid")
-	}
+	from := checksumAddress(sender)
 	var to *string
 	if wire.To() != nil {
-		value, err := checksumAddress(*wire.To())
-		if err != nil {
-			return Transaction{}, errors.New("transaction recipient is invalid")
-		}
+		value := checksumAddress(*wire.To())
 		to = &value
 	}
 	if projection.ChainID != nil {
@@ -289,10 +283,7 @@ func pendingTransaction(raw json.RawMessage, chainID uint64, endpoint string, fi
 	if err != nil {
 		return Transaction{}, fmt.Errorf("max priority fee per gas: %w", err)
 	}
-	txType, err := optionalUint64Quantity(projection.Type)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("type: %w", err)
-	}
+	txType := optionalUint64Quantity(projection.Type)
 	return Transaction{
 		Hash: strings.ToLower(wire.Hash().Hex()), From: from, To: to,
 		Nonce: strconv.FormatUint(wire.Nonce(), 10), Value: value, Gas: strconv.FormatUint(wire.Gas(), 10), GasPrice: gasPrice,
@@ -320,12 +311,12 @@ func optionalDecimalQuantity(quantity *hexutil.Big) (*string, error) {
 	return &value, nil
 }
 
-func optionalUint64Quantity(quantity *hexutil.Uint64) (*string, error) {
+func optionalUint64Quantity(quantity *hexutil.Uint64) *string {
 	if quantity == nil {
-		return nil, nil
+		return nil
 	}
 	value := strconv.FormatUint(uint64(*quantity), 10)
-	return &value, nil
+	return &value
 }
 
 func canonicalDecimal(value string) bool {

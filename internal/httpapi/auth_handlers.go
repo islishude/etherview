@@ -275,7 +275,7 @@ func (h *Handler) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdminSession(w, r); !ok {
 		return
 	}
-	limit, ok := parseLimit(w, r, 25, 100)
+	limit, ok := parseLimit(w, r, 25)
 	if !ok {
 		return
 	}

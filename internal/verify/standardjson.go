@@ -41,7 +41,7 @@ func PrepareStandardJSON(
 	contractIdentifier string,
 	maxInputBytes int,
 ) (json.RawMessage, error) {
-	document, _, err := validateStandardJSON(
+	document, err := validateStandardJSON(
 		input, language, "", contractIdentifier, maxInputBytes,
 	)
 	if err != nil {
@@ -66,15 +66,15 @@ func validateStandardJSON(
 	_ string,
 	contractIdentifier string,
 	maxInputBytes int,
-) (map[string]any, map[string]any, error) {
+) (map[string]any, error) {
 	if language != LanguageSolidity {
-		return nil, nil, errors.New("language must be solidity")
+		return nil, errors.New("language must be solidity")
 	}
 	if maxInputBytes <= 0 {
 		maxInputBytes = defaultStandardJSONBytes
 	}
 	if len(input) == 0 || len(input) > maxInputBytes || !jsonObject(input) {
-		return nil, nil, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"standard JSON must be an object of at most %d bytes",
 			maxInputBytes,
 		)
@@ -82,47 +82,47 @@ func validateStandardJSON(
 	document, err := decodeStandardJSONObject(input)
 	if err != nil {
 		if errors.Is(err, errJSONDuplicateKey) {
-			return nil, nil, errors.New("standard JSON contains a duplicate object key")
+			return nil, errors.New("standard JSON contains a duplicate object key")
 		}
-		return nil, nil, errors.New("standard JSON must be one object")
+		return nil, errors.New("standard JSON must be one object")
 	}
 	if actual, ok := document["language"].(string); !ok || actual != "Solidity" {
-		return nil, nil, errors.New("standard JSON language must be Solidity")
+		return nil, errors.New("standard JSON language must be Solidity")
 	}
 	if err := validateStandardJSONTopLevel(document, language); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	targetSource, targetName, err := parseStandardJSONContractIdentifier(
 		contractIdentifier, language,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	sources, ok := document["sources"].(map[string]any)
 	if !ok || len(sources) == 0 || len(sources) > maxStandardJSONSources {
-		return nil, nil, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"standard JSON sources must be a non-empty object with at most %d entries",
 			maxStandardJSONSources,
 		)
 	}
 	for sourceName, sourceValue := range sources {
 		if !validStandardJSONSourceName(sourceName) {
-			return nil, nil, errors.New("standard JSON source name is invalid")
+			return nil, errors.New("standard JSON source name is invalid")
 		}
 		source, ok := sourceValue.(map[string]any)
 		if !ok || len(source) > 2 {
-			return nil, nil, errors.New("standard JSON sources must be objects")
+			return nil, errors.New("standard JSON sources must be objects")
 		}
 		content, hasContent := source["content"]
 		_, hasURLs := source["urls"]
 		if _, ok := content.(string); !hasContent || !ok || hasURLs {
-			return nil, nil, errors.New(
+			return nil, errors.New(
 				"every standard JSON source must contain inline content and no URLs",
 			)
 		}
 		for key := range source {
 			if key != "content" && key != "keccak256" {
-				return nil, nil, errors.New(
+				return nil, errors.New(
 					"standard JSON source contains an unsupported field",
 				)
 			}
@@ -130,12 +130,12 @@ func validateStandardJSON(
 		if checksum, exists := source["keccak256"]; exists {
 			value, ok := checksum.(string)
 			if !ok || !fixedHex(value, 32) {
-				return nil, nil, errors.New("standard JSON source checksum is invalid")
+				return nil, errors.New("standard JSON source checksum is invalid")
 			}
 		}
 	}
 	if _, ok := sources[targetSource]; !ok {
-		return nil, nil, errors.New(
+		return nil, errors.New(
 			"contract identifier source is not present in standard JSON",
 		)
 	}
@@ -144,27 +144,27 @@ func validateStandardJSON(
 		var valid bool
 		settings, valid = rawSettings.(map[string]any)
 		if !valid {
-			return nil, nil, errors.New("standard JSON settings must be an object")
+			return nil, errors.New("standard JSON settings must be an object")
 		}
 	}
 	if rawMetadata, exists := settings["metadata"]; exists {
 		metadata, ok := rawMetadata.(map[string]any)
 		if !ok {
-			return nil, nil, errors.New("solidity metadata setting must be an object")
+			return nil, errors.New("solidity metadata setting must be an object")
 		}
 		if rawAppendCBOR, exists := metadata["appendCBOR"]; exists {
 			if _, ok := rawAppendCBOR.(bool); !ok {
-				return nil, nil, errors.New(
+				return nil, errors.New(
 					"solidity metadata appendCBOR setting must be boolean",
 				)
 			}
 		}
 	}
 	if err := mergeSolidityOutputSelection(settings, targetSource, targetName); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	document["settings"] = settings
-	return document, settings, nil
+	return document, nil
 }
 
 func validateStandardJSONTopLevel(document map[string]any, language Language) error {

@@ -173,7 +173,7 @@ func (catalog *Postgres) TransactionStateChanges(
 				return TransactionStateChangePage{}, ErrCorruptData
 			}
 			if change.Kind == "storage" {
-				key, keyErr := lowerHex(storageKey, 32)
+				key, keyErr := lowerHex(storageKey)
 				if keyErr != nil {
 					return TransactionStateChangePage{}, ErrCorruptData
 				}
@@ -247,7 +247,7 @@ func (catalog *Postgres) beginTransactionResource(
 		tx.Rollback() //nolint:errcheck
 		return nil, transactionResourceResolution{}, fmt.Errorf("resolve transaction resource identity: %w", err)
 	}
-	blockHashText, err := lowerHex(blockHash, 32)
+	blockHashText, err := lowerHex(blockHash)
 	if err != nil || !canonicalUint256(blockNumber) || resolution.txIndex < 0 {
 		tx.Rollback() //nolint:errcheck
 		return nil, transactionResourceResolution{}, ErrCorruptData

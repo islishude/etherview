@@ -52,7 +52,7 @@ func (r *PostgresReader) GenesisAccounts(
 		if !imported.Canonical || len(imported.BlockHash) != 32 || len(imported.StateRoot) != 32 {
 			return errGenesisImportNotCanonical
 		}
-		_, after, err := decodeGenesisCursor(encodedCursor, r.chainID, imported.BlockHash)
+		after, err := decodeGenesisCursor(encodedCursor, r.chainID, imported.BlockHash)
 		if err != nil {
 			return err
 		}
@@ -118,26 +118,26 @@ func decodeGenesisCursor(
 	encoded string,
 	chainID string,
 	blockHash []byte,
-) (genesisCursor, []byte, error) {
+) ([]byte, error) {
 	if encoded == "" {
-		return genesisCursor{}, []byte{}, nil
+		return []byte{}, nil
 	}
 	var cursor genesisCursor
 	if err := httpapi.DecodeCursor(encoded, &cursor); err != nil {
-		return genesisCursor{}, nil, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
 	expectedHash := "0x" + hex.EncodeToString(blockHash)
 	if cursor.ChainID != chainID || cursor.BlockHash != expectedHash {
-		return genesisCursor{}, nil, ErrInvalidCursor
+		return nil, ErrInvalidCursor
 	}
 	if len(cursor.After) != 42 || !strings.HasPrefix(cursor.After, "0x") {
-		return genesisCursor{}, nil, ErrInvalidCursor
+		return nil, ErrInvalidCursor
 	}
 	after, err := hex.DecodeString(cursor.After[2:])
 	if err != nil || len(after) != 20 {
-		return genesisCursor{}, nil, ErrInvalidCursor
+		return nil, ErrInvalidCursor
 	}
-	return cursor, after, nil
+	return after, nil
 }
 
 func genesisAccountModel(row dbgen.ListGenesisAccountsRow) (gen.GenesisAccount, error) {

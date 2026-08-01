@@ -289,7 +289,7 @@ func (resolver *fakePayerResolver) UserIDForPayer(
 	return resolver.id, resolver.found, resolver.err
 }
 
-func testBillingConfig(operation, access, amount string) config.Config {
+func testBillingConfig(operation, amount string) config.Config {
 	cfg := config.Default()
 	cfg.Features.X402Billing = true
 	cfg.Server.PublicURL = "http://localhost:8080"
@@ -301,7 +301,7 @@ func testBillingConfig(operation, access, amount string) config.Config {
 	cfg.Billing.AssetEIP712Version = "2"
 	cfg.Billing.FingerprintPepper = strings.Repeat("f", 32)
 	cfg.Billing.Routes = map[string]config.BillingRouteConfig{
-		operation: {Access: access, AmountAtomic: amount},
+		operation: {Access: "x402", AmountAtomic: amount},
 	}
 	return cfg
 }
@@ -394,7 +394,7 @@ func requestPaymentHeader(
 
 func TestHTTPDispatcherPolicyAndMissingPayment(t *testing.T) {
 	t.Parallel()
-	cfg := testBillingConfig("listBlocks", "x402", "1000")
+	cfg := testBillingConfig("listBlocks", "1000")
 	ledger := &memoryPaymentLedger{}
 	facilitator := &fakePaymentFacilitator{}
 	dispatcher := newTestDispatcher(t, cfg, ledger, facilitator, nil)
@@ -466,7 +466,7 @@ func TestHTTPDispatcherRejectsInvalidHeadersBeforeReservation(t *testing.T) {
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			ledger := &memoryPaymentLedger{}
 			facilitator := &fakePaymentFacilitator{}
 			dispatcher := newTestDispatcher(t, cfg, ledger, facilitator, nil)
@@ -500,7 +500,7 @@ func TestHTTPDispatcherRejectsInvalidHeadersBeforeReservation(t *testing.T) {
 
 func TestHTTPDispatcherSettlesBeforeReleasingBoundedResponse(t *testing.T) {
 	t.Parallel()
-	cfg := testBillingConfig("listBlocks", "x402", "1000")
+	cfg := testBillingConfig("listBlocks", "1000")
 	ledger := &memoryPaymentLedger{}
 	facilitator := &fakePaymentFacilitator{}
 	resolver := &fakePayerResolver{
@@ -584,7 +584,7 @@ func TestHTTPDispatcherPayerAssociationIsOptional(t *testing.T) {
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			ledger := &memoryPaymentLedger{}
 			facilitator := &fakePaymentFacilitator{}
 			var resolver PayerUserResolver
@@ -669,7 +669,7 @@ func TestHTTPDispatcherPreHandlerLedgerFailuresFailClosed(t *testing.T) {
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			ledger := &memoryPaymentLedger{}
 			resolver := test.configure(ledger)
 			facilitator := &fakePaymentFacilitator{}
@@ -758,7 +758,7 @@ func TestHTTPDispatcherFenceAndFailureCommitErrorsFailClosed(t *testing.T) {
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			ledger := &memoryPaymentLedger{}
 			test.configure(ledger)
 			facilitator := &fakePaymentFacilitator{}
@@ -851,7 +851,7 @@ func TestHTTPDispatcherHandlerFailuresNeverSettle(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			cfg.Billing.MaxBufferedResponseBytes = 64
 			cfg.Billing.MaxCapturedHeaderBytes = 64
 			ledger := &memoryPaymentLedger{}
@@ -930,7 +930,7 @@ func TestHTTPDispatcherVerificationAndSettlementFailuresAreFailClosed(t *testing
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			ledger := &memoryPaymentLedger{settledErr: test.settledErr}
 			facilitator := &fakePaymentFacilitator{
 				verifyErr: test.verifyErr, settleErr: test.settleErr,
@@ -982,7 +982,7 @@ func TestHTTPDispatcherSettlingDuplicateNeverRunsWork(t *testing.T) {
 			}
 			ledger := &memoryPaymentLedger{duplicatePayment: &duplicate}
 			facilitator := &fakePaymentFacilitator{}
-			cfg := testBillingConfig("listBlocks", "x402", "1000")
+			cfg := testBillingConfig("listBlocks", "1000")
 			dispatcher := newTestDispatcher(t, cfg, ledger, facilitator, nil)
 			spec, _ := apiops.Lookup("listBlocks")
 			header := requestPaymentHeader(t, dispatcher, spec, "/api/v1/blocks", "08")
@@ -1006,7 +1006,7 @@ func TestHTTPDispatcherSettlingDuplicateNeverRunsWork(t *testing.T) {
 
 func TestHTTPDispatcherCancellationPersistsFailureWithoutSettlement(t *testing.T) {
 	t.Parallel()
-	cfg := testBillingConfig("listBlocks", "x402", "1000")
+	cfg := testBillingConfig("listBlocks", "1000")
 	ledger := &memoryPaymentLedger{}
 	facilitator := &fakePaymentFacilitator{}
 	dispatcher := newTestDispatcher(t, cfg, ledger, facilitator, nil)
@@ -1036,7 +1036,7 @@ func TestHTTPDispatcherCancellationPersistsFailureWithoutSettlement(t *testing.T
 
 func TestHTTPDispatcherDoesNotResolveUserBeforeVerifiedPayer(t *testing.T) {
 	t.Parallel()
-	cfg := testBillingConfig("listBlocks", "x402", "1000")
+	cfg := testBillingConfig("listBlocks", "1000")
 	ledger := &memoryPaymentLedger{}
 	resolver := &fakePayerResolver{
 		id: "00000000-0000-4000-8000-000000000099", found: true,
@@ -1086,7 +1086,7 @@ func TestHTTPDispatcherOneAuthorizationOwnsOnlyOneOuterBinding(t *testing.T) {
 	}
 	for testIndex, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig(test.operations[0], "x402", "1000")
+			cfg := testBillingConfig(test.operations[0], "1000")
 			cfg.Billing.Routes[test.operations[1]] = config.BillingRouteConfig{
 				Access: "x402", AmountAtomic: "1000",
 			}

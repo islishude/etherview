@@ -154,7 +154,7 @@ func TestRemoteSourceFetchAcceptsAllowlistedJSONMediaTypes(t *testing.T) {
 	for _, mediaType := range mediaTypes {
 		t.Run(mediaType, func(t *testing.T) {
 			t.Parallel()
-			source, server, _ := newRemoteSourceTestServer(t, "", func(
+			source, server := newRemoteSourceTestServer(t, "", func(
 				writer http.ResponseWriter,
 				request *http.Request,
 			) {
@@ -207,7 +207,7 @@ func TestRemoteSourceFetchValidatesChecksum(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			source, server, _ := newRemoteSourceTestServer(t, test.checksum, func(
+			source, server := newRemoteSourceTestServer(t, test.checksum, func(
 				writer http.ResponseWriter,
 				_ *http.Request,
 			) {
@@ -232,7 +232,7 @@ func TestRemoteSourceFetchValidatesChecksum(t *testing.T) {
 
 func TestRemoteSourceFetchValidatesChecksumBeforeJSON(t *testing.T) {
 	t.Parallel()
-	source, server, _ := newRemoteSourceTestServer(
+	source, server := newRemoteSourceTestServer(
 		t,
 		strings.Repeat("1", sha256.Size*2),
 		func(writer http.ResponseWriter, _ *http.Request) {
@@ -253,7 +253,7 @@ func TestRemoteSourceFetchValidatesChecksumBeforeJSON(t *testing.T) {
 func TestRemoteSourceFetchRejectsRedirectWithoutFollowing(t *testing.T) {
 	t.Parallel()
 	var redirected atomic.Int32
-	source, server, _ := newRemoteSourceTestServer(t, "", func(
+	source, server := newRemoteSourceTestServer(t, "", func(
 		writer http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -290,7 +290,7 @@ func TestRemoteSourceFetchIgnoresEnvironmentProxy(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", proxy.URL)
 	t.Setenv("https_proxy", proxy.URL)
 
-	source, server, _ := newRemoteSourceTestServer(t, "", func(
+	source, server := newRemoteSourceTestServer(t, "", func(
 		writer http.ResponseWriter,
 		_ *http.Request,
 	) {
@@ -378,7 +378,7 @@ func TestRemoteSourceFetchClassifiesHTTPStatus(t *testing.T) {
 	for _, test := range tests {
 		t.Run(http.StatusText(test.status), func(t *testing.T) {
 			t.Parallel()
-			source, server, _ := newRemoteSourceTestServer(t, "", func(
+			source, server := newRemoteSourceTestServer(t, "", func(
 				writer http.ResponseWriter,
 				_ *http.Request,
 			) {
@@ -438,7 +438,7 @@ func TestRemoteSourceFetchRejectsHostileContent(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			source, server, _ := newRemoteSourceTestServer(t, "", func(
+			source, server := newRemoteSourceTestServer(t, "", func(
 				writer http.ResponseWriter,
 				_ *http.Request,
 			) {
@@ -506,7 +506,7 @@ func TestRemoteSourceFetchEnforcesDeclaredAndStreamingLimits(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			source, server, _ := newRemoteSourceTestServer(t, "", test.handler)
+			source, server := newRemoteSourceTestServer(t, "", test.handler)
 			defer server.Close()
 			source.maximumBytes = test.maximum
 			_, err := source.fetch(t.Context())
@@ -521,7 +521,7 @@ func TestRemoteSourceFetchEnforcesDeclaredAndStreamingLimits(t *testing.T) {
 
 func TestRemoteSourceFetchTimeoutIsUnavailable(t *testing.T) {
 	t.Parallel()
-	source, server, _ := newRemoteSourceTestServer(t, "", func(
+	source, server := newRemoteSourceTestServer(t, "", func(
 		writer http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -547,7 +547,7 @@ func newRemoteSourceTestServer(
 	t *testing.T,
 	expectedSHA256 string,
 	handler http.HandlerFunc,
-) (*remoteSource, *httptest.Server, *atomic.Int32) {
+) (*remoteSource, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewTLSServer(handler)
 	roots := x509.NewCertPool()
@@ -555,7 +555,6 @@ func newRemoteSourceTestServer(
 	resolver := &remoteStubResolver{addresses: []net.IPAddr{{
 		IP: net.ParseIP("93.184.216.34"),
 	}}}
-	var dialCalls atomic.Int32
 	dialer := &net.Dialer{Timeout: time.Second}
 	source, err := newRemoteSourceWithOptions(
 		"https://example.com/genesis.json",
@@ -568,7 +567,6 @@ func newRemoteSourceTestServer(
 				network string,
 				address string,
 			) (net.Conn, error) {
-				dialCalls.Add(1)
 				if address != "93.184.216.34:443" {
 					return nil, fmt.Errorf("unexpected direct dial target %q", address)
 				}
@@ -584,7 +582,7 @@ func newRemoteSourceTestServer(
 		server.Close()
 		t.Fatal(err)
 	}
-	return source, server, &dialCalls
+	return source, server
 }
 
 func assertRemoteFailure(

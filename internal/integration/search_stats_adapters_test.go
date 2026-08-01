@@ -328,7 +328,7 @@ func TestPostgresAdaptersPersistFreshSuccessAndStableFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		price, err := priceService.NativePrice(ctx)
 		if err != nil || price.USD != "3500.25" {
 			t.Fatalf("price=%+v error=%v", price, err)
@@ -347,7 +347,7 @@ func TestPostgresAdaptersPersistFreshSuccessAndStableFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		_, err := nameService.Resolve(ctx, "missing.eth")
 		if !errors.Is(err, adapters.ErrUnavailable) || strings.Contains(err.Error(), secret) {
 			t.Fatalf("name error=%q", err)

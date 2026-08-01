@@ -14,11 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func outboxRow(id int64, topic string, hash common.Hash, block uint64, attempts int64) driver.Rows {
+func outboxRow(id int64, topic string, hash common.Hash, block uint64) driver.Rows {
 	payload, _ := json.Marshal(coreOutboxPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
 		columns: []string{"id", "chain_id", "topic", "message_key", "payload", "attempts", "generation"},
-		values:  [][]driver.Value{{id, "1", topic, hash.String(), payload, attempts, int64(1)}},
+		values:  [][]driver.Value{{id, "1", topic, hash.String(), payload, int64(0), int64(1)}},
 	}
 }
 
@@ -69,7 +69,7 @@ func TestOutboxPostgresQueueEnqueuesAndPublishesInOneTransaction(t *testing.T) {
 				if !strings.Contains(query, "FOR UPDATE SKIP LOCKED") {
 					t.Errorf("outbox claim lacks SKIP LOCKED:\n%s", query)
 				}
-				return outboxRow(5, CoreBlockCanonical, hash, 101, 0), nil
+				return outboxRow(5, CoreBlockCanonical, hash, 101), nil
 			case strings.Contains(query, "FROM canonical_blocks"):
 				return boolRows(true), nil
 			case strings.Contains(query, "FROM durable_jobs") && !strings.Contains(query, "INSERT INTO"):
@@ -131,7 +131,7 @@ func TestOutboxPartialFailureRetriesAndRecoversIdempotently(t *testing.T) {
 		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 			switch {
 			case strings.Contains(query, "FROM transactional_outbox"):
-				return outboxRow(8, CoreBlockCanonical, hash, 202, 0), nil
+				return outboxRow(8, CoreBlockCanonical, hash, 202), nil
 			case strings.Contains(query, "FROM canonical_blocks"):
 				return boolRows(true), nil
 			default:
@@ -215,7 +215,7 @@ func TestOutboxOrphanRequiresNonCanonicalJournalsAndAuditsNoReplay(t *testing.T)
 				query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 					switch {
 					case strings.Contains(query, "FROM transactional_outbox"):
-						return outboxRow(11, CoreBlockOrphaned, hash, 303, 0), nil
+						return outboxRow(11, CoreBlockOrphaned, hash, 303), nil
 					case strings.Contains(query, "FROM canonical_blocks"):
 						return boolRows(false), nil
 					case strings.Contains(query, "FROM block_journals"):
@@ -268,7 +268,7 @@ func TestOutboxSkipsAnOrphanGenerationAfterSameHashReattaches(t *testing.T) {
 		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
 			switch {
 			case strings.Contains(query, "FROM transactional_outbox"):
-				return outboxRow(12, CoreBlockOrphaned, hash, 304, 0), nil
+				return outboxRow(12, CoreBlockOrphaned, hash, 304), nil
 			case strings.Contains(query, "FROM canonical_blocks"):
 				return boolRows(true), nil
 			default:
@@ -310,7 +310,7 @@ func TestOutboxConcurrentDispatchUsesDistinctSkipLockedClaims(t *testing.T) {
 				claimUsesSkipLocked = claimUsesSkipLocked && strings.Contains(query, "FOR UPDATE SKIP LOCKED")
 				id := next
 				next++
-				return outboxRow(int64(id), CoreBlockCanonical, uintWord(uint64(id)), uint64(id), 0), nil
+				return outboxRow(int64(id), CoreBlockCanonical, uintWord(uint64(id)), uint64(id)), nil
 			}
 			if strings.Contains(query, "FROM canonical_blocks") {
 				return boolRows(true), nil

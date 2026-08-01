@@ -84,7 +84,7 @@ func TestHTTPDispatcherObservesOneClosedTerminalOutcome(t *testing.T) {
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := testBillingConfig("listBlocks", "x402", "1")
+			cfg := testBillingConfig("listBlocks", "1")
 			ledger := &memoryPaymentLedger{}
 			facilitator := &fakePaymentFacilitator{}
 			dispatcher := newTestDispatcher(
@@ -130,7 +130,7 @@ func TestHTTPDispatcherObservesOneClosedTerminalOutcome(t *testing.T) {
 }
 
 func TestHTTPDispatcherObservesPaymentRequirement(t *testing.T) {
-	cfg := testBillingConfig("listBlocks", "x402", "1")
+	cfg := testBillingConfig("listBlocks", "1")
 	dispatcher := newTestDispatcher(
 		t,
 		cfg,

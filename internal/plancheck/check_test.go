@@ -29,7 +29,7 @@ func TestCheckValidFixture(t *testing.T) {
 func TestCheckCompletedPlanFixture(t *testing.T) {
 	t.Parallel()
 
-	root := copyFixture(t, "valid")
+	root := copyFixture(t)
 	replaceInFile(t, filepath.Join(root, "PLAN.md"),
 		"| P00 | [Foundation](docs/plans/P00-foundation.md) | in_progress |",
 		"| P00 | [Foundation](docs/plans/P00-foundation.md) | done |",
@@ -50,7 +50,7 @@ func TestCheckCompletedPlanFixture(t *testing.T) {
 func TestCheckAcceptsSupersededWorkItemAsSatisfiedDependency(t *testing.T) {
 	t.Parallel()
 
-	root := copyFixture(t, "valid")
+	root := copyFixture(t)
 	planPath := filepath.Join(root, "docs", "plans", "P00-foundation.md")
 	replaceInFile(t, planPath, "| P00-T01 | in_progress |", "| P00-T01 | superseded |")
 	replaceInFile(t, planPath, "| P00-T02 | todo |", "| P00-T02 | in_progress |")
@@ -89,7 +89,7 @@ func TestCheckInvalidFixture(t *testing.T) {
 func TestCheckRejectsIncompleteAndCyclicDependencies(t *testing.T) {
 	t.Parallel()
 
-	root := copyFixture(t, "valid")
+	root := copyFixture(t)
 	planPath := filepath.Join(root, "docs", "plans", "P00-foundation.md")
 	replaceInFile(t, planPath,
 		"| P00-T01 | in_progress | — |",
@@ -111,7 +111,7 @@ func TestCheckRejectsIncompleteAndCyclicDependencies(t *testing.T) {
 func TestCheckRejectsEscapingLink(t *testing.T) {
 	t.Parallel()
 
-	root := copyFixture(t, "valid")
+	root := copyFixture(t)
 	planPath := filepath.Join(root, "docs", "plans", "P00-foundation.md")
 	replaceInFile(t, planPath,
 		"[Architecture](../architecture/overview.md)",
@@ -133,11 +133,11 @@ func TestDiagnosticString(t *testing.T) {
 	}
 }
 
-func copyFixture(t *testing.T, name string) string {
+func copyFixture(t *testing.T) string {
 	t.Helper()
 
 	destination := t.TempDir()
-	source := os.DirFS(filepath.Join("testdata", name))
+	source := os.DirFS(filepath.Join("testdata", "valid"))
 	if err := fs.WalkDir(source, ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr

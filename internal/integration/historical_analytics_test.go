@@ -6,7 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"math/big"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -183,7 +183,7 @@ func TestHistoricalAnalyticsTenYearHourlyRollupQueryStaysBounded(t *testing.T) {
 			t.Fatalf("ten-year series interval=%s points=%d", series.Interval, len(series.Points))
 		}
 	}
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	slices.Sort(durations)
 	p95 := durations[len(durations)-1]
 	t.Logf("ten-year hourly rollup query p95=%s samples=%v", p95, durations)
 	if p95 >= 500*time.Millisecond {

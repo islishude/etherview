@@ -91,7 +91,7 @@ func requireStageRange(ctx context.Context, tx *sql.Tx, chainID, fromBlock, toBl
 	if len(blockHash) == 0 {
 		return StageUnavailableError{Stage: StageCore, State: StageMissing, BlockNumber: blockNumber}
 	}
-	encodedHash, err := lowerHex(blockHash, 32)
+	encodedHash, err := lowerHex(blockHash)
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func scanBlockStat(row rowScanner) (BlockStat, error) {
 		return BlockStat{}, ErrCorruptData
 	}
 	var err error
-	stat.BlockHash, err = lowerHex(blockHash, 32)
+	stat.BlockHash, err = lowerHex(blockHash)
 	if err != nil {
 		return BlockStat{}, err
 	}
@@ -347,7 +347,7 @@ func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, c
 	if !canonicalUint256(blockNumber) || !canonicalInt64(transactionIndex) {
 		return traceIdentity{}, nil, ErrCorruptData
 	}
-	encodedBlockHash, err := lowerHex(blockHash, 32)
+	encodedBlockHash, err := lowerHex(blockHash)
 	if err != nil {
 		return traceIdentity{}, nil, err
 	}

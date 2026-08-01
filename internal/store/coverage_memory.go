@@ -51,7 +51,7 @@ func (r *MemoryRepository) ConfigureIndex(_ context.Context, chainID string, con
 			chain.coverage = nil
 			return err
 		}
-		_ = setMemoryCheckpoint(chain, checkpoint)
+		setMemoryCheckpoint(chain, checkpoint)
 	} else {
 		delete(chain.checkpoints, CoreCheckpoint)
 	}
@@ -151,7 +151,7 @@ func (r *MemoryRepository) CommitCanonicalSegment(
 	}
 	chain.blocks, chain.canonical, chain.coverage = nextBlocks, nextCanonical, nextRanges
 	if checkpoint != nil {
-		_ = setMemoryCheckpoint(chain, *checkpoint)
+		setMemoryCheckpoint(chain, *checkpoint)
 	}
 	return cloneCoverage(coverage), nil
 }
@@ -261,7 +261,7 @@ func (r *MemoryRepository) ReplaceHighestCanonicalSegment(
 		markMemoryJournals(chain, reference.Hash, true)
 	}
 	if checkpoint != nil {
-		_ = setMemoryCheckpoint(chain, *checkpoint)
+		setMemoryCheckpoint(chain, *checkpoint)
 	}
 	return cloneCoverage(coverage), nil
 }

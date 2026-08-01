@@ -12,7 +12,7 @@ import (
 func TestGenesisCursorBindsChainBlockAndAddress(t *testing.T) {
 	t.Parallel()
 	blockHash := bytes.Repeat([]byte{0x11}, 32)
-	if _, after, err := decodeGenesisCursor("", "777", blockHash); err != nil || after == nil || len(after) != 0 {
+	if after, err := decodeGenesisCursor("", "777", blockHash); err != nil || after == nil || len(after) != 0 {
 		t.Fatalf("empty cursor after=%v err=%v", after, err)
 	}
 	cursor, err := httpapi.EncodeCursor(genesisCursor{
@@ -23,18 +23,18 @@ func TestGenesisCursorBindsChainBlockAndAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, after, err := decodeGenesisCursor(cursor, "777", blockHash)
+	after, err := decodeGenesisCursor(cursor, "777", blockHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := len(after); got != 20 || after[0] != 0x20 || after[19] != 0x02 {
 		t.Fatalf("decoded address = %x", after)
 	}
-	if _, _, err := decodeGenesisCursor(cursor, "778", blockHash); !errors.Is(err, ErrInvalidCursor) {
+	if _, err := decodeGenesisCursor(cursor, "778", blockHash); !errors.Is(err, ErrInvalidCursor) {
 		t.Fatalf("wrong-chain cursor error = %v", err)
 	}
 	blockHash[0] = 0x22
-	if _, _, err := decodeGenesisCursor(cursor, "777", blockHash); !errors.Is(err, ErrInvalidCursor) {
+	if _, err := decodeGenesisCursor(cursor, "777", blockHash); !errors.Is(err, ErrInvalidCursor) {
 		t.Fatalf("wrong-block cursor error = %v", err)
 	}
 }

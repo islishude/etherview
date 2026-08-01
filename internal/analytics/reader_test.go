@@ -14,10 +14,7 @@ func TestAggregateHoursUsesExactFixedPointSemanticsAndOmitsEmptyBuckets(t *testi
 	}
 	hours[0].GasUsed, hours[0].GasLimit = big.NewInt(1), big.NewInt(3)
 	hours[1].GasUsed, hours[1].GasLimit = big.NewInt(2), big.NewInt(3)
-	points, err := aggregateHours(hours, MetricGasUtilization, IntervalHour, start.Add(3*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	points := aggregateHours(hours, MetricGasUtilization, IntervalHour, start.Add(3*time.Hour))
 	if len(points) != 2 {
 		t.Fatalf("points=%+v, want two source buckets and no fabricated gap", points)
 	}
@@ -33,10 +30,7 @@ func TestAggregateHoursUsesMondayUTCWeeksAndDerivedAverages(t *testing.T) {
 		testHour(sunday, "99", "99", 2, 10, 1),
 		testHour(monday, "100", "100", 2, 20, 1),
 	}
-	points, err := aggregateHours(hours, MetricAverageTransactionFee, IntervalWeek, monday.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	points := aggregateHours(hours, MetricAverageTransactionFee, IntervalWeek, monday.Add(time.Hour))
 	if len(points) != 2 {
 		t.Fatalf("weekly points=%+v", points)
 	}
@@ -78,13 +72,13 @@ func TestSummaryPreservesHugeExactValues(t *testing.T) {
 
 func TestPercentChangePreservesFractionalAndSignedValues(t *testing.T) {
 	t.Parallel()
-	if change := percentChange("0.125", "0.1", 6); change == nil || *change != "25" {
+	if change := percentChange("0.125", "0.1"); change == nil || *change != "25" {
 		t.Fatalf("fractional increase=%v", change)
 	}
-	if change := percentChange("1", "3", 6); change == nil || *change != "-66.666667" {
+	if change := percentChange("1", "3"); change == nil || *change != "-66.666667" {
 		t.Fatalf("signed decrease=%v", change)
 	}
-	if change := percentChange("1", "0", 6); change != nil {
+	if change := percentChange("1", "0"); change != nil {
 		t.Fatalf("zero previous window change=%v", change)
 	}
 }
@@ -96,10 +90,7 @@ func TestOverviewPreviewKeepsOnlySevenLatestCalendarBuckets(t *testing.T) {
 	for day := range 8 {
 		hours = append(hours, testHour(start.AddDate(0, 0, day), "0", "0", 1, 1, 0))
 	}
-	points, err := aggregateHours(hours, MetricTransactions, IntervalDay, start.AddDate(0, 0, 8))
-	if err != nil {
-		t.Fatal(err)
-	}
+	points := aggregateHours(hours, MetricTransactions, IntervalDay, start.AddDate(0, 0, 8))
 	if len(points) != 8 {
 		t.Fatalf("fixture points=%d", len(points))
 	}

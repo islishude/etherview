@@ -155,7 +155,7 @@ func normalizeAuthorization(payload exactPayloadWire) (Authorization, error) {
 	if beforeInt.Cmp(afterInt) <= 0 {
 		return Authorization{}, boundaryError(PhaseHeader, FailureInvalid, CodeHeaderMalformed)
 	}
-	nonce, ok := canonicalFixedHex(payload.Authorization.Nonce, 32)
+	nonce, ok := canonicalFixedHex(payload.Authorization.Nonce)
 	if !ok {
 		return Authorization{}, boundaryError(PhaseHeader, FailureInvalid, CodeHeaderMalformed)
 	}
@@ -236,8 +236,8 @@ func canonicalAddress(value string) (string, bool) {
 	return strings.ToLower(value), true
 }
 
-func canonicalFixedHex(value string, bytes int) (string, bool) {
-	if len(value) != 2+bytes*2 || !strings.HasPrefix(value, "0x") {
+func canonicalFixedHex(value string) (string, bool) {
+	if len(value) != 2+32*2 || !strings.HasPrefix(value, "0x") {
 		return "", false
 	}
 	if _, err := hex.DecodeString(value[2:]); err != nil {

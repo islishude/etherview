@@ -33,7 +33,7 @@ func NewPostgresRepository(db *sql.DB, chainID string) (*PostgresRepository, err
 	if db == nil {
 		return nil, errors.New("metadata repository requires a database")
 	}
-	if err := validateDecimal(chainID, 78, "repository chain ID"); err != nil {
+	if err := validateDecimal(chainID, "repository chain ID"); err != nil {
 		return nil, err
 	}
 	return &PostgresRepository{db: db, chainID: chainID, random: rand.Reader}, nil

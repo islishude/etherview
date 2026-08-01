@@ -206,10 +206,10 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 			contains: "event.canonical = TRUE AND (event.from_address = $2 OR event.to_address = $2) AND event.standard = $3",
 			columns:  fakeColumns(19),
 			rows: [][]driver.Value{{
-				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(7, testRecipient), testAddressBytes(testContract),
+				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 				"erc20", "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), nil, maximum,
-				testTransactionJSON(10, 3, 7, 1, testRecipient), testReceiptJSON(10, 3, 7, 1, "0x1", ""),
-				testBlockJSON(10, 3, 2, 100, testSender), int64(1), "Example", "TOK", int64(18),
+				testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
+				testBlockJSON(10, 2), int64(1), "Example", "TOK", int64(18),
 			}},
 			check: func(arguments []driver.NamedValue) error {
 				if len(arguments) != 8 || arguments[0].Value != "1" ||
@@ -274,10 +274,10 @@ func TestNFTTransferActionsKeepStandardSpecificQuantities(t *testing.T) {
 				sqlExpectation{
 					contains: "event.standard = $3", columns: fakeColumns(19),
 					rows: [][]driver.Value{{
-						"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(7, testRecipient), testAddressBytes(testContract),
+						"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
 						test.standard, "transfer", testAddressBytes(testSender), testAddressBytes(testRecipient), test.tokenID, test.amount,
-						testTransactionJSON(10, 3, 7, 1, testRecipient), testReceiptJSON(10, 3, 7, 1, "0x1", ""),
-						testBlockJSON(10, 3, 2, 100, testSender), int64(1), "Collectible", "NFT", nil,
+						testTransactionJSON(7, testRecipient), testReceiptJSON("0x1", ""),
+						testBlockJSON(10, 2), int64(1), "Collectible", "NFT", nil,
 					}},
 				},
 			)

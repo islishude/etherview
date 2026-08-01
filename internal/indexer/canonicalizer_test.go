@@ -21,7 +21,7 @@ func TestCanonicalizerInitializesAndExtendsAcrossHeadGap(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	chain := indexerTestChain(t, 4, 1)
+	chain := indexerTestChain(t, 4)
 	genesis, blockOne, blockTwo, blockThree :=
 		chain[0], chain[1], chain[2], chain[3]
 	blockThreeRef := mustIndexerTestRef(t, blockThree)
@@ -53,7 +53,7 @@ func TestCanonicalizerReorgRetainsOldBranch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	oldChain := indexerTestChain(t, 4, 1)
+	oldChain := indexerTestChain(t, 4)
 	canonicalizer := testCanonicalizer(repository, nil)
 	for _, bundle := range oldChain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
@@ -91,7 +91,7 @@ func TestCanonicalizerStopsReorgAcrossFinalized(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
-	chain := indexerTestChain(t, 4, 1)
+	chain := indexerTestChain(t, 4)
 	canonicalizer := testCanonicalizer(repository, nil)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
@@ -152,7 +152,7 @@ func TestCanonicalizerEnforcesReorgDepth(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
 	canonicalizer.MaxReorgDepth = 1
-	chain := indexerTestChain(t, 3, 1)
+	chain := indexerTestChain(t, 3)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -180,7 +180,7 @@ func TestCanonicalizerRejectsStaleAlternateHead(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 3, 1)
+	chain := indexerTestChain(t, 3)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -204,7 +204,7 @@ func TestCanonicalizerAllowsAuthoritativeHeadToMoveBackward(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 3, 1)
+	chain := indexerTestChain(t, 3)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -229,7 +229,7 @@ func TestCanonicalizerRepairsKnownSparseHeadAcrossShallowLowerFork(t *testing.T)
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	oldChain := indexerTestChain(t, 101, 1)
+	oldChain := indexerTestChain(t, 101)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", oldChain); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestCanonicalizerSparseHeadRollbackDropsIslandWithoutAdvancingCheckpoint(t 
 	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
 		t.Fatal(err)
 	}
-	chain := indexerTestChain(t, 101, 1)
+	chain := indexerTestChain(t, 101)
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", chain); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestCanonicalizerAlreadyKnownHistoricalBlockIsNoop(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 2, 1)
+	chain := indexerTestChain(t, 2)
 	genesis, blockOne := chain[0], chain[1]
 	for _, bundle := range []chainbundle.Bundle{genesis, blockOne} {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
@@ -391,7 +391,7 @@ func TestCanonicalizerRefreshRewritesKnownFactsWithoutMovingCanonicalState(t *te
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 3, 1)
+	chain := indexerTestChain(t, 3)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -438,7 +438,7 @@ func TestCanonicalizerRefreshOverrideCannotBypassReorgBoundary(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 3, 1)
+	chain := indexerTestChain(t, 3)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -478,7 +478,7 @@ func TestCanonicalizerRefreshCannotExtendCanonicalChain(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 2, 1)
+	chain := indexerTestChain(t, 2)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -511,7 +511,7 @@ func TestCanonicalizerRefreshCannotReplaceCanonicalIdentityAtTip(t *testing.T) {
 	ctx := context.Background()
 	repository := store.NewMemoryRepository()
 	canonicalizer := testCanonicalizer(repository, nil)
-	chain := indexerTestChain(t, 2, 1)
+	chain := indexerTestChain(t, 2)
 	for _, bundle := range chain {
 		if _, err := canonicalizer.Apply(ctx, bundle); err != nil {
 			t.Fatal(err)
@@ -671,7 +671,6 @@ func indexerTestBundle(
 func indexerTestChain(
 	t *testing.T,
 	length int,
-	firstExtraData byte,
 ) []chainbundle.Bundle {
 	t.Helper()
 	chain := make([]chainbundle.Bundle, length)
@@ -680,7 +679,7 @@ func indexerTestChain(
 		chain[index] = indexerTestBundle(
 			uint64(index),
 			parent,
-			firstExtraData+byte(index),
+			1+byte(index),
 		)
 		parent = mustIndexerTestRef(t, chain[index]).Hash
 	}

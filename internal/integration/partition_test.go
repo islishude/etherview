@@ -60,12 +60,12 @@ func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {
 
 	for parent, child := range partitionTableNames {
 		assertAttachedPartition(t, ctx, db, parent, child, testPartitionLower, testPartitionUpper)
-		assertPartitionRangeCount(t, ctx, db, parent+"_default", testPartitionLower, testPartitionUpper, 0)
+		assertPartitionRangeCount(t, ctx, db, parent+"_default", 0)
 	}
 	for _, table := range []string{
 		"transaction_inclusions", "receipts", "logs", "withdrawals",
 	} {
-		assertPartitionRangeCount(t, ctx, db, partitionTableNames[table], testPartitionLower, testPartitionUpper, 1)
+		assertPartitionRangeCount(t, ctx, db, partitionTableNames[table], 1)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestPostgresPartitionLifecycleEvacuatesDefaultRowsAtomically(t *testing.T) 
 	insertDefaultPartitionFixtures(t, ctx, db, testPartitionLower)
 
 	for parent := range partitionTableNames {
-		assertPartitionRangeCount(t, ctx, db, parent+"_default", testPartitionLower, testPartitionUpper, 1)
+		assertPartitionRangeCount(t, ctx, db, parent+"_default", 1)
 	}
 	repository, err := store.NewPostgresRepository(db)
 	if err != nil {
@@ -127,9 +127,9 @@ func TestPostgresPartitionLifecycleEvacuatesDefaultRowsAtomically(t *testing.T) 
 
 	for parent, child := range partitionTableNames {
 		assertAttachedPartition(t, ctx, db, parent, child, testPartitionLower, testPartitionUpper)
-		assertPartitionRangeCount(t, ctx, db, parent+"_default", testPartitionLower, testPartitionUpper, 0)
-		assertPartitionRangeCount(t, ctx, db, child, testPartitionLower, testPartitionUpper, 1)
-		assertPartitionRangeCount(t, ctx, db, parent, testPartitionLower, testPartitionUpper, 1)
+		assertPartitionRangeCount(t, ctx, db, parent+"_default", 0)
+		assertPartitionRangeCount(t, ctx, db, child, 1)
+		assertPartitionRangeCount(t, ctx, db, parent, 1)
 	}
 }
 
@@ -158,10 +158,10 @@ func TestPostgresPartitionLifecycleReportsRecoverablePartialState(t *testing.T) 
 		t.Fatalf("partition recovery coordinates = %+v", recovery)
 	}
 	assertPartitionRangeCount(
-		t, ctx, db, "transaction_inclusions_default", testPartitionLower, testPartitionUpper, 1,
+		t, ctx, db, "transaction_inclusions_default", 1,
 	)
 	assertPartitionRangeCount(
-		t, ctx, db, partialReceiptPartition, testPartitionLower, testPartitionUpper, 1,
+		t, ctx, db, partialReceiptPartition, 1,
 	)
 }
 
@@ -274,7 +274,6 @@ func assertPartitionRangeCount(
 	ctx context.Context,
 	db queryRowContext,
 	table string,
-	lower, upper uint64,
 	want int,
 ) {
 	t.Helper()
@@ -283,7 +282,7 @@ func assertPartitionRangeCount(
 		quoteIdentifier(table),
 	)
 	var got int
-	if err := db.QueryRowContext(ctx, query, fmt.Sprint(lower), fmt.Sprint(upper)).Scan(&got); err != nil {
+	if err := db.QueryRowContext(ctx, query, fmt.Sprint(testPartitionLower), fmt.Sprint(testPartitionUpper)).Scan(&got); err != nil {
 		t.Fatalf("count partition range in %s: %v", table, err)
 	}
 	if got != want {

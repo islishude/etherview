@@ -253,7 +253,7 @@ func (c *Codec) DecodePaymentResponse(header http.Header) (x402.SettleResponse, 
 			CodeFacilitatorResponseInvalid,
 		)
 	}
-	transaction, ok := canonicalFixedHex(*wire.Transaction, 32)
+	transaction, ok := canonicalFixedHex(*wire.Transaction)
 	if !ok {
 		return x402.SettleResponse{}, boundaryError(
 			PhaseSettle,
@@ -323,7 +323,7 @@ func (c *Codec) EncodePaymentResponse(response x402.SettleResponse) (string, err
 	if !ok {
 		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
 	}
-	transaction, ok := canonicalFixedHex(response.Transaction, 32)
+	transaction, ok := canonicalFixedHex(response.Transaction)
 	if !ok {
 		return "", boundaryError(PhaseSettle, FailureInvalid, CodeFacilitatorResponseInvalid)
 	}

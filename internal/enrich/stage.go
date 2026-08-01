@@ -83,13 +83,13 @@ func (job Job) IdempotencyKey() (string, error) {
 	if err := job.Validate(); err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256([]byte(fmt.Sprintf(
+	digest := sha256.Sum256(fmt.Appendf(nil,
 		"%s\x00%d\x00%s\x00%s",
 		job.Stage.Name,
 		job.Stage.Version,
 		job.ChainID,
 		job.BlockHash.String(),
-	)))
+	))
 	return hex.EncodeToString(digest[:]), nil
 }
 
