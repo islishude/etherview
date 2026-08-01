@@ -378,8 +378,8 @@ github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 h1:OvLBa8S
 github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52/go.mod h1:jMeV4Vpbi8osrE/pKUxRZkVaA0EX7NZN0A9/oRzgpgY=
 github.com/wlynxg/anet v0.0.5 h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=
 github.com/wlynxg/anet v0.0.5/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
-github.com/x402-foundation/x402/go/v2 v2.19.0 h1:vyU9cKFfqw8oI6To66r+UH67vFwWpoMDRX9zGM8bCJI=
-github.com/x402-foundation/x402/go/v2 v2.19.0/go.mod h1:OAsOuB+FYhCoKzijOGZ+PcJk9g4RBfCJvpABGxi+NcE=
+github.com/x402-foundation/x402/go/v2 v2.20.0 h1:rYDUp3Ain++SIksiZ9OjKMlChTI6tqY6rvIAKky8jes=
+github.com/x402-foundation/x402/go/v2 v2.20.0/go.mod h1:KJZBIAosfnCzZGISFJVxTXKS5N2osJgDppD3Zmsnc4A=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f h1:J9EGpcZtP0E/raorCMxlFGSTBrsSlaDGf3jU/qvAE2c=
