@@ -5,6 +5,14 @@ belong in `PLAN.md` and `docs/plans/`; design detail belongs in
 `docs/architecture/` and accepted ADRs. Accepted ADRs remain mandatory even
 when their detailed invariants are not repeated here.
 
+## Coding Rule
+
+- Do not preserve backward compatibility.
+- Choose the simplest implementation that fully meets the current requirements.
+- Prefer established, well-maintained libraries over custom implementations.
+- Make architectural decisions for the long term.
+  Do not accept a stopgap that only works for now and is meant to be replaced later.
+
 ## Workflow
 
 1. Read `PLAN.md`, the relevant child plan, and its linked ADRs and testing
