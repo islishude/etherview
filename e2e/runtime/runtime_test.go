@@ -121,6 +121,7 @@ type harness struct {
 	fixture       fixture
 	baseTimestamp uint64
 	rpcProxy      *receiptProxy
+	secrets       []string
 }
 
 func TestProductionComposeRuntimeE2E(t *testing.T) {
@@ -227,19 +228,22 @@ func TestCaptureRuntimeDiagnostics(t *testing.T) {
 			project.Compose = "compose"
 			project.Executor = diagnosticExecutor{
 				psOutput:  []byte("NAME STATUS\napi restarting\n"),
-				logOutput: []byte("api | partial service log\n"),
+				logOutput: []byte("api | partial service log diagnostic-secret\n"),
 				logErr:    test.logErr,
 			}
 			h := &harness{
 				t: t, mode: "distributed", phase: "process-native TLS",
-				project: project, artifacts: artifacts,
+				project: project, artifacts: artifacts, secrets: []string{"diagnostic-secret"},
 			}
 
 			if got := h.captureDiagnostics(t.Context(), true); got != "NAME STATUS\napi restarting" {
 				t.Fatalf("terminal Compose state = %q", got)
 			}
 			assertArtifactContents(t, artifacts, "compose-ps.txt", "api restarting")
-			assertArtifactContents(t, artifacts, "compose.log", "partial service log")
+			logs := assertArtifactContents(t, artifacts, "compose.log", "partial service log [REDACTED]")
+			if strings.Contains(logs, "diagnostic-secret") {
+				t.Fatalf("Compose diagnostics retained a configured secret: %q", logs)
+			}
 			summary := assertArtifactContents(
 				t,
 				artifacts,
@@ -1204,9 +1208,19 @@ func (h *harness) writeJSONArtifact(name string, value any) {
 }
 
 func (h *harness) writeArtifact(name string, contents []byte) {
-	if err := os.WriteFile(filepath.Join(h.artifacts, name), contents, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.artifacts, name), h.redact(contents), 0o600); err != nil {
 		h.t.Errorf("write artifact %s: %v", name, err)
 	}
+}
+
+func (h *harness) redact(contents []byte) []byte {
+	redacted := append([]byte(nil), contents...)
+	for _, secret := range h.secrets {
+		if secret != "" {
+			redacted = bytes.ReplaceAll(redacted, []byte(secret), []byte("[REDACTED]"))
+		}
+	}
+	return redacted
 }
 
 func (h *harness) enterPhase(phase string) {

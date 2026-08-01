@@ -58,6 +58,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T28 | superseded | P30-T14, P60 | Superseded by P70-T29: replace application-controlled Docker compiler isolation with a daemonless remote compiler-runner service | historical protocol, sandbox, Compose, Helm, Preview, and compiler evidence |
 | P70-T29 | done | P30-T14, P60, P70-T28 | Replace the platform-bound compiler-runner and Vyper surface with an API-owned architecture-neutral solc-js executor | ADR, migration, OpenAPI, subprocess, Compose, Helm, Preview, and multi-architecture compiler gates |
 | P70-T30 | done | P60, P70-T27 | Make the release Hardhat fixture independent of runtime compiler downloads and keep retained diagnostics readable by CI artifact upload | offline compiler, artifact-mode, and production Compose E2E regressions |
+| P70-T31 | done | P30-T11, P40-T06, P60-T03, P70-T29, P70-T30 | Add an independent Foundry production-path source-verification E2E without replacing the Hardhat 3 proxy gate | offline compiler, strict Etherscan V2, monolith/split provenance parity, and native AMD64/ARM64 CI gates |
 
 ## Acceptance
 
@@ -152,6 +153,15 @@ and user/operator evidence sufficient for a production public release.
       architecture-neutral local solc-js package without downloading a
       compiler list or binary at runtime, and retained failure diagnostics are
       readable by the CI artifact uploader.
+- [x] P70-T31: a manifest-digest-pinned Foundry 1.7.1 client with Solidity
+      0.8.30 cached proves an offline build, deploys a constructor-and-immutable
+      contract, and verifies its Standard JSON source through the exact
+      `/v2/api?chainid=1` production boundary with the API key only in
+      `VERIFIER_API_KEY`.
+- [x] P70-T31: monolith and complete split topology snapshots prove one durable
+      success, exact constructor and immutable metadata, official compiler and
+      executor provenance, and no duplicate job on repeated Forge verification;
+      native AMD64 and ARM64 CI both pass before this item becomes `done`.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -238,6 +248,16 @@ upload step by design; the production E2E exercised the retained-file
 readability assertions, while the focused mode regression and host-user ZIP
 integrity check cover packaging without inventing a failed-run upload.
 
+P70-T31 is complete. The repository now has a separate Foundry v1.7.1
+source-verification gate; it does not replace or duplicate the Hardhat proxy,
+upgrade, invalidation, and rebinding scenarios. Local host-native execution
+passes the offline Solidity 0.8.30 preflight and both production topologies,
+including strict compatibility requests, one durable publication, immutable
+and constructor metadata, official compiler/executor provenance, repeat-call
+idempotency, and normalized parity. PR #20 CI run `30680388275` passed the
+native AMD64 and ARM64 Foundry jobs on exact implementation head
+`0a1604a16925f2e6812ccca25d2f8bf4c37b1779`, closing the remaining gate.
+
 P70-T20 is complete for process-native TLS. P70-T26 now aligns the branded
 Preview browser, session-origin, wallet explorer metadata, and readiness-check contract.
 P70-T06 remains `todo` and dependency-gated until P70-T01 through P70-T05,
@@ -245,6 +265,33 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T31 implementation, local, and CI evidence: the Foundry v1.7.1 client
+  base is fixed to multi-architecture manifest digest
+  `sha256:8347b728d5d393dac1c018691b36f506d23b9dcd78341d40ea0fcb11c3a19cdd`
+  and exact revision `4072e48705af9d93e3c0f6e29e93b5e9a40caed8`.
+  `make test-foundry-offline-compile` passes with `--network none`,
+  `make compose-check` passes the client secret/mount/platform and role-scope
+  render assertions, and `make test-foundry-e2e` rebuilds both current images
+  before passing monolith in 46.30 seconds and distributed in 44.24 seconds on
+  the local native ARM64 Docker host. Each mode deployed with real `forge create`, observed the
+  initial `getabi` miss, submitted Standard JSON and polled status by POST with
+  real `forge verify-contract --watch`, published one result, and then
+  short-circuited the repeated Forge call without a second job. PostgreSQL and
+  public assertions matched across modes for constructor word `42`, non-empty
+  immutable references, the official Solidity 0.8.30 SHA-256
+  `81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2`,
+  `emscripten-wasm32`, `node_solcjs_v1`, `trusted_subprocess`, and the executor
+  digest. PR #20 CI run `30680388275` used exact implementation head
+  `0a1604a16925f2e6812ccca25d2f8bf4c37b1779`: Foundry production verification
+  E2E passed natively on AMD64 in 6 minutes 4 seconds (job `91316093758`) and
+  ARM64 in 5 minutes 11 seconds (job `91316093760`). The full nine-check PR
+  rollup passed, so P70-T31 is `done` and both acceptance boxes are checked.
+  `make test-hardhat3-provider-compat` and the independent rebuilt
+  `make test-hardhat3-e2e` regression pass, including Solidity/Yul verification,
+  proxy upgrade invalidation, and rebinding in both topologies. The final
+  `make check`, focused runtime diagnostic-redaction test, `make plan-check`,
+  CI YAML parse, and `git diff --check` also pass.
 
 - P70-T30 diagnosis and implementation: CI run `30563592389` failed both
   host-native Hardhat jobs in the production E2E step and then failed to zip

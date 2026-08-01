@@ -207,6 +207,33 @@ without the `etherscan` subtask also invokes Blockscout and Sourcify; that
 multi-provider behavior is outside this compatibility contract. Hardhat 2
 configuration and request behavior are not supported.
 
+### Foundry
+
+Foundry v1.7.1 can use the same strict compatibility boundary through its
+custom Etherscan-compatible verifier. Keep the API key only in the
+`VERIFIER_API_KEY` process environment and include the mandatory deployment
+chain in both the API URL and Forge chain selector:
+
+```sh
+VERIFIER_API_KEY="$ETHERVIEW_API_KEY" forge verify-contract \
+  --verifier custom \
+  --verifier-url 'https://explorer.example.invalid/v2/api?chainid=1' \
+  --chain 1 \
+  --watch \
+  --constructor-args 000000000000000000000000000000000000000000000000000000000000002a \
+  0x1234567890123456789012345678901234567890 \
+  src/Example.sol:Example
+```
+
+Without `--flatten`, Forge checks the existing ABI with `GET`, submits the
+Standard JSON form with `POST`, and polls `checkverifystatus` with `POST` when
+`--watch` is present. The URL query keeps `chainid` on every request; `--chain`
+also selects Forge's chain behavior and does not replace the required API
+parameter. Repeating the command after publication returns Forge's
+already-verified short circuit and does not create another durable job.
+Constructor arguments remain compatibility hints at submission: Etherview
+still derives and persists the exact value from canonical creation input.
+
 ## API-Key and Error Boundary
 
 - `/v2/api` accepts a key through `X-API-Key`, the `apikey` query parameter,
