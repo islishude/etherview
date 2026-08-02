@@ -680,7 +680,6 @@ describe("embedded explorer shell", () => {
   it("renders verified source artifacts as inert preformatted text", async () => {
     const address = `0x${"77".repeat(20)}`;
     const codeHash = `0x${"88".repeat(32)}`;
-    const secret = "ev_live_contract-query";
     const malicious = '<img src=x onerror="window.__etherviewPwned=true">';
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
@@ -699,7 +698,7 @@ describe("embedded explorer shell", () => {
         });
       }
       if (path === `/api/v1/contracts/${address}/verification`) {
-        expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+        expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
             chain_id: "1",
@@ -725,19 +724,27 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
+      if (path === `/api/v1/contracts/${address}/proxy`) {
+        return Response.json({
+          data: {
+            address,
+            status: "not_detected",
+            snapshot: { chain_id: "1", block_number: "12", block_hash: codeHash },
+            evidence: [],
+          },
+          meta,
+        });
+      }
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/contract/${address}?code_hash=${codeHash}`);
-
-    fireEvent.change(await screen.findByLabelText("API key"), { target: { value: secret } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Load verification" }));
+    renderExplorer(`/contract/${address}`);
 
     expect(await screen.findByText("HostileText")).toBeVisible();
     expect(screen.getAllByText(/<img src=x/).length).toBeGreaterThan(0);
     expect(document.querySelector(".artifact-panel img")).toBeNull();
     expect(document.querySelector(".artifact-panel script")).toBeNull();
-    expect(String(fetcher.mock.calls.find(([input]) => String(input).includes("/contracts/"))?.[0])).not.toContain(secret);
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 });
 

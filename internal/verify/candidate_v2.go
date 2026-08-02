@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 	"strings"
 )
 
@@ -108,6 +110,28 @@ func ExtractCandidatesV2(
 	if !equalStrings(originalNames, modifiedNames) {
 		return nil, errors.New("dual compilation changed the candidate set")
 	}
+	originalBases, err := compilerLinearizedBaseContracts(originalOutput)
+	if err != nil {
+		return nil, err
+	}
+	modifiedBases, err := compilerLinearizedBaseContracts(modifiedOutput)
+	if err != nil {
+		return nil, err
+	}
+	if !equalStringSlicesByKey(originalBases, modifiedBases) {
+		return nil, errors.New("dual compilation changed contract inheritance")
+	}
+	originalImmutables, err := compilerImmutableVariables(originalOutput)
+	if err != nil {
+		return nil, err
+	}
+	modifiedImmutables, err := compilerImmutableVariables(modifiedOutput)
+	if err != nil {
+		return nil, err
+	}
+	if !equalStringMapsByKey(originalImmutables, modifiedImmutables) {
+		return nil, errors.New("dual compilation changed immutable declarations")
+	}
 	candidates := make([]CandidateArtifact, 0, len(originalNames))
 	for _, name := range originalNames {
 		first, firstEmpty, err := parseCandidateContract(original[name], language)
@@ -142,9 +166,198 @@ func ExtractCandidatesV2(
 		first.CompilerVersion = normalizeCompilerVersion(version)
 		first.CreationCodeArtifacts = mergeAuxdataArtifact(first.CreationCodeArtifacts, first.creationAuxdata)
 		first.RuntimeCodeArtifacts = mergeAuxdataArtifact(first.RuntimeCodeArtifacts, first.runtimeAuxdata)
+		if bases, exists := originalBases[first.FullyQualifiedName()]; exists {
+			first.CompilationArtifacts = mergeArtifactField(
+				first.CompilationArtifacts, "linearizedBaseContracts", bases,
+			)
+		}
+		if immutables, exists := originalImmutables[first.FullyQualifiedName()]; exists && len(immutables) != 0 {
+			first.CompilationArtifacts = mergeArtifactField(
+				first.CompilationArtifacts, "immutableVariables", immutables,
+			)
+		}
 		candidates = append(candidates, first)
 	}
 	return candidates, nil
+}
+
+type compilerSourceDocument struct {
+	AST struct {
+		Nodes []compilerContractDefinition `json:"nodes"`
+	} `json:"ast"`
+}
+
+type compilerContractDefinition struct {
+	ID                      int64   `json:"id"`
+	NodeType                string  `json:"nodeType"`
+	Name                    string  `json:"name"`
+	LinearizedBaseContracts []int64 `json:"linearizedBaseContracts"`
+	Nodes                   []struct {
+		ID            int64  `json:"id"`
+		NodeType      string `json:"nodeType"`
+		Name          string `json:"name"`
+		StateVariable bool   `json:"stateVariable"`
+		Mutability    string `json:"mutability"`
+	} `json:"nodes"`
+}
+
+func compilerLinearizedBaseContracts(output json.RawMessage) (map[string][]string, error) {
+	document, err := decodeRawJSONObject(output)
+	if err != nil {
+		return nil, errCompilerOutputMalformed
+	}
+	if len(document["sources"]) == 0 {
+		return map[string][]string{}, nil
+	}
+	sources, err := decodeRawJSONObject(document["sources"])
+	if err != nil || len(sources) > maxStandardJSONSources {
+		return nil, errCompilerOutputMalformed
+	}
+	type located struct {
+		file string
+		node compilerContractDefinition
+	}
+	byID := make(map[int64]string)
+	definitions := make([]located, 0)
+	for fileName, raw := range sources {
+		if !validStandardJSONSourceName(fileName) {
+			return nil, errCompilerOutputMalformed
+		}
+		var source compilerSourceDocument
+		if json.Unmarshal(raw, &source) != nil {
+			return nil, errCompilerOutputMalformed
+		}
+		for _, node := range source.AST.Nodes {
+			if node.NodeType != "ContractDefinition" {
+				continue
+			}
+			if node.ID < 0 || !solidityContractNamePattern.MatchString(node.Name) ||
+				len(node.LinearizedBaseContracts) == 0 ||
+				node.LinearizedBaseContracts[0] != node.ID {
+				return nil, errCompilerOutputMalformed
+			}
+			name := fileName + ":" + node.Name
+			if _, exists := byID[node.ID]; exists {
+				return nil, errCompilerOutputMalformed
+			}
+			byID[node.ID] = name
+			definitions = append(definitions, located{file: fileName, node: node})
+			if len(definitions) > maxStandardJSONSelectorEntries {
+				return nil, errCompilerOutputMalformed
+			}
+		}
+	}
+	result := make(map[string][]string, len(definitions))
+	for _, definition := range definitions {
+		bases := make([]string, 0, len(definition.node.LinearizedBaseContracts)-1)
+		for _, id := range definition.node.LinearizedBaseContracts[1:] {
+			name, exists := byID[id]
+			if !exists {
+				return nil, errCompilerOutputMalformed
+			}
+			bases = append(bases, name)
+		}
+		result[definition.file+":"+definition.node.Name] = bases
+	}
+	return result, nil
+}
+
+func equalStringSlicesByKey(left, right map[string][]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, values := range left {
+		other, exists := right[key]
+		if !exists || !equalStrings(values, other) {
+			return false
+		}
+	}
+	return true
+}
+
+func compilerImmutableVariables(output json.RawMessage) (map[string]map[string]string, error) {
+	document, err := decodeRawJSONObject(output)
+	if err != nil {
+		return nil, errCompilerOutputMalformed
+	}
+	if len(document["sources"]) == 0 {
+		return map[string]map[string]string{}, nil
+	}
+	sources, err := decodeRawJSONObject(document["sources"])
+	if err != nil || len(sources) > maxStandardJSONSources {
+		return nil, errCompilerOutputMalformed
+	}
+	type contractInfo struct {
+		name       string
+		linearized []int64
+		variables  map[string]string
+	}
+	contracts := make(map[int64]contractInfo)
+	variableIDs := make(map[int64]struct{})
+	for fileName, raw := range sources {
+		if !validStandardJSONSourceName(fileName) {
+			return nil, errCompilerOutputMalformed
+		}
+		var source compilerSourceDocument
+		if json.Unmarshal(raw, &source) != nil {
+			return nil, errCompilerOutputMalformed
+		}
+		for _, contract := range source.AST.Nodes {
+			if contract.NodeType != "ContractDefinition" {
+				continue
+			}
+			variables := make(map[string]string)
+			for _, node := range contract.Nodes {
+				if node.NodeType != "VariableDeclaration" || !node.StateVariable || node.Mutability != "immutable" {
+					continue
+				}
+				if node.ID < 0 || node.Name == "" || len(node.Name) > 256 {
+					return nil, errCompilerOutputMalformed
+				}
+				if _, duplicate := variableIDs[node.ID]; duplicate {
+					return nil, errCompilerOutputMalformed
+				}
+				variableIDs[node.ID] = struct{}{}
+				variables[strconv.FormatInt(node.ID, 10)] = fileName + ":" + contract.Name + ":" + node.Name
+			}
+			contracts[contract.ID] = contractInfo{
+				name:       fileName + ":" + contract.Name,
+				linearized: append([]int64(nil), contract.LinearizedBaseContracts...),
+				variables:  variables,
+			}
+		}
+	}
+	result := make(map[string]map[string]string, len(contracts))
+	for _, contract := range contracts {
+		variables := make(map[string]string)
+		for _, baseID := range contract.linearized {
+			base, exists := contracts[baseID]
+			if !exists {
+				return nil, errCompilerOutputMalformed
+			}
+			maps.Copy(variables, base.variables)
+		}
+		result[contract.name] = variables
+	}
+	return result, nil
+}
+
+func equalStringMapsByKey(left, right map[string]map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, values := range left {
+		other, exists := right[key]
+		if !exists || len(values) != len(other) {
+			return false
+		}
+		for id, name := range values {
+			if other[id] != name {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func compilerContractDocuments(output json.RawMessage) (map[string]json.RawMessage, error) {
@@ -426,6 +639,23 @@ func mergeAuxdataArtifact(raw json.RawMessage, auxdata map[string]AuxdataValue) 
 	encoded, _ := json.Marshal(auxdata)
 	object["cborAuxdata"] = encoded
 	result, _ := json.Marshal(object)
+	return result
+}
+
+func mergeArtifactField(raw json.RawMessage, name string, value any) json.RawMessage {
+	var object map[string]json.RawMessage
+	if name == "" || decodeStrictJSON(raw, &object) != nil {
+		return raw
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return raw
+	}
+	object[name] = encoded
+	result, err := json.Marshal(object)
+	if err != nil {
+		return raw
+	}
 	return result
 }
 

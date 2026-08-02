@@ -6,15 +6,19 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -44,22 +48,40 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	block := abiFixtureBundle(t, direct, proxy, recipient, caller)
 	commitCanonical(t, ctx, repository, block)
 	reference := mustBlockRef(t, block)
-	directCode, proxyCode, implementationCode := testHash(72_000), testHash(72_001), testHash(72_002)
+	proxyRuntime, implementationRuntime := []byte{0x60, 0x00}, []byte{0x60, 0x01}
+	directCode := testHash(72_000)
+	proxyCode := crypto.Keccak256Hash(proxyRuntime)
+	implementationCode := crypto.Keccak256Hash(implementationRuntime)
 	insertABICodeObservation(t, ctx, db, reference, direct, directCode)
 	insertABICodeObservation(t, ctx, db, reference, proxy, proxyCode)
 	insertABIVerifiedContract(t, ctx, db, direct, directCode)
 	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	insertABISignatureCandidates(t, ctx, db)
-	insertABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
+	publishABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
 
 	job := abiIntegrationJob(t, reference)
+	result, err := processor.Process(ctx, job)
+	if err != nil {
+		t.Fatalf("process ABI stage before proxy publication: %v", err)
+	}
+	if result.State != enrich.ResultComplete || result.Details["bindings"] != "3" {
+		t.Fatalf("ABI stage accepted unpublished proxy evidence: %+v", result)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1
+		  AND address = $2 AND source = 'proxy_implementation'`,
+		0, mustBytes(t, reference.Hash), mustBytes(t, proxy))
+	publishABIGenericProxy(
+		t, ctx, db, reference, proxy, proxyRuntime, implementation, implementationRuntime,
+	)
 	for attempt := range 2 {
 		result, err := processor.Process(ctx, job)
 		if err != nil {
 			t.Fatalf("process ABI stage attempt %d: %v", attempt+1, err)
 		}
-		if result.State != enrich.ResultComplete || result.Details["decoded"] != "5" || result.Details["bindings"] != "4" {
+		if result.State != enrich.ResultComplete || result.Details["decoded"] != "6" || result.Details["bindings"] != "4" {
 			t.Fatalf("ABI stage attempt %d result=%+v", attempt+1, result)
 		}
 	}
@@ -71,6 +93,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	assertABIDecodingSources(t, ctx, db, reference, map[string]string{
 		"transaction_calldata:": "verified:verified",
 		"log:0":                 "proxy_implementation:high",
+		"trace_calldata:":       "verified:verified",
 		"trace_calldata:0":      "proxy_implementation:high",
 		"trace_revert:0":        "proxy_implementation:high",
 		"trace_revert:1":        "builtin:high",
@@ -85,7 +108,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@1' AND canonical`, 1, mustBytes(t, reference.Hash))
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@2' AND canonical`, 1, mustBytes(t, reference.Hash))
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
 
@@ -105,7 +128,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		)
 		assertRowCount(t, ctx, db,
 			fmt.Sprintf(`SELECT count(*) FROM %s WHERE chain_id = 1 AND block_hash = $1 AND NOT canonical`, table),
-			map[string]int{"contract_abis": 4, "abi_decodings": 5}[table], mustBytes(t, reference.Hash),
+			map[string]int{"contract_abis": 4, "abi_decodings": 6}[table], mustBytes(t, reference.Hash),
 		)
 	}
 }
@@ -123,24 +146,30 @@ func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 
-	block99 := testBundle(99, testHash(90_099), testHash(0), testHash(91_099), "abi-height-99")
-	commitCanonical(t, ctx, repository, block99)
 	direct, proxy := testAddress(920), testAddress(921)
 	recipient, caller := testAddress(922), testAddress(923)
+	block99 := abiFixtureBundleAt(
+		t, 99, testHash(0), direct, proxy, recipient, caller, "abi-height-99",
+	)
+	commitCanonical(t, ctx, repository, block99)
 	block100 := abiFixtureBundleAt(t, 100, block99.Block.Hash(), direct, proxy, recipient, caller, "abi-height-100")
 	commitCanonical(t, ctx, repository, block100)
 	ref99, ref100 := mustBlockRef(t, block99), mustBlockRef(t, block100)
 
 	oldDirectCode, currentDirectCode := testHash(92_099), testHash(92_100)
-	proxyCode := testHash(92_200)
+	proxyRuntime := []byte{0x60, 0x20}
+	proxyCode := crypto.Keccak256Hash(proxyRuntime)
 	oldImplementation, currentImplementation := testAddress(924), testAddress(925)
-	oldImplementationCode, currentImplementationCode := testHash(92_299), testHash(92_300)
+	oldImplementationRuntime, currentImplementationRuntime := []byte{0x60, 0x21}, []byte{0x60, 0x22}
+	currentImplementationCode := crypto.Keccak256Hash(currentImplementationRuntime)
 	insertABICodeObservation(t, ctx, db, ref99, direct, oldDirectCode)
 	insertABICodeObservation(t, ctx, db, ref100, direct, currentDirectCode)
-	insertABICodeObservation(t, ctx, db, ref99, proxy, proxyCode)
-	insertABICodeObservation(t, ctx, db, ref100, proxy, proxyCode)
-	insertABIProxyObservation(t, ctx, db, ref99, proxy, proxyCode, oldImplementation, oldImplementationCode)
-	insertABIProxyObservation(t, ctx, db, ref100, proxy, proxyCode, currentImplementation, currentImplementationCode)
+	publishABIGenericProxy(
+		t, ctx, db, ref99, proxy, proxyRuntime, oldImplementation, oldImplementationRuntime,
+	)
+	publishABIGenericProxy(
+		t, ctx, db, ref100, proxy, proxyRuntime, currentImplementation, currentImplementationRuntime,
+	)
 	insertABIVerifiedContract(t, ctx, db, direct, currentDirectCode)
 	insertABIVerifiedContract(t, ctx, db, currentImplementation, currentImplementationCode)
 
@@ -162,7 +191,7 @@ func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
 		WHERE chain_id = 1 AND block_hash = $1 AND address = $2
 		  AND code_hash = $3 AND source = 'proxy_implementation'
 		  AND source_address = $4 AND source_code_hash = $5
-		  AND valid_from_block = 100`,
+		  AND valid_from_block = 100 AND valid_to_block = 100`,
 		1, mustBytes(t, ref100.Hash), mustBytes(t, proxy), mustBytes(t, proxyCode),
 		mustBytes(t, currentImplementation), mustBytes(t, currentImplementationCode))
 	assertRowCount(t, ctx, db, `
@@ -170,6 +199,118 @@ func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
 		WHERE chain_id = 1 AND block_hash = $1
 		  AND (code_hash = $2 OR source_address = $3)`,
 		0, mustBytes(t, ref100.Hash), mustBytes(t, oldDirectCode), mustBytes(t, oldImplementation))
+}
+
+func TestABIStageBeaconUsesLatestCanonicalPublishedSharedImplementation(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(93_000), testHash(0), testHash(93_100), "abi-beacon-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	targetProxy, siblingProxy, beacon := testAddress(930), testAddress(931), testAddress(932)
+	implementationA, implementationB, unpublishedImplementationC := testAddress(933), testAddress(934), testAddress(935)
+	directOne, directTwo, directThree := testAddress(936), testAddress(937), testAddress(938)
+	recipient, caller := testAddress(939), testAddress(940)
+	blockOne := abiFixtureBundleAt(
+		t, 1, genesis.Block.Hash(), directOne, targetProxy, recipient, caller, "abi-beacon-a",
+	)
+	blockTwo := abiFixtureBundleAt(
+		t, 2, blockOne.Block.Hash(), directTwo, siblingProxy, recipient, caller, "abi-beacon-b",
+	)
+	blockThree := abiFixtureBundleAt(
+		t, 3, blockTwo.Block.Hash(), directThree, targetProxy, recipient, caller, "abi-beacon-read",
+	)
+	commitCanonical(t, ctx, repository, blockOne)
+	commitCanonical(t, ctx, repository, blockTwo)
+	commitCanonical(t, ctx, repository, blockThree)
+	refOne, refTwo, refThree := mustBlockRef(t, blockOne), mustBlockRef(t, blockTwo), mustBlockRef(t, blockThree)
+
+	targetRuntime, siblingRuntime := []byte{0x60, 0x31}, []byte{0x60, 0x32}
+	beaconRuntime := []byte{0x60, 0x33}
+	implementationRuntimeA, implementationRuntimeB := []byte{0x60, 0x34}, []byte{0x60, 0x35}
+	unpublishedImplementationRuntimeC := []byte{0x60, 0x36}
+	targetCode := crypto.Keccak256Hash(targetRuntime)
+	siblingCode := crypto.Keccak256Hash(siblingRuntime)
+	beaconCode := crypto.Keccak256Hash(beaconRuntime)
+	implementationCodeA := crypto.Keccak256Hash(implementationRuntimeA)
+	implementationCodeB := crypto.Keccak256Hash(implementationRuntimeB)
+	unpublishedImplementationCodeC := crypto.Keccak256Hash(unpublishedImplementationRuntimeC)
+
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
+	insertAuthenticatedProxyArtifactFixture(
+		t, ctx, db, refOne, generation, compilerDigest, executorDigest,
+		targetProxy, targetCode, targetRuntime, "beacon_proxy", &beacon,
+	)
+	insertAuthenticatedProxyArtifactFixture(
+		t, ctx, db, refTwo, generation, compilerDigest, executorDigest,
+		siblingProxy, siblingCode, siblingRuntime, "beacon_proxy", &beacon,
+	)
+	insertABIVerifiedContract(t, ctx, db, implementationA, implementationCodeA)
+	insertABIVerifiedContract(t, ctx, db, implementationB, implementationCodeB)
+
+	publishABIProxyStage(t, ctx, db, refOne, map[string]proxyContractState{
+		targetProxy.String(): {code: targetRuntime, beacon: &beacon},
+		beacon.String(): {
+			code: beaconRuntime, beaconImplementation: &implementationA,
+		},
+		implementationA.String(): {code: implementationRuntimeA},
+	})
+	publishABIProxyStage(t, ctx, db, refTwo, map[string]proxyContractState{
+		siblingProxy.String(): {code: siblingRuntime, beacon: &beacon},
+		beacon.String(): {
+			code: beaconRuntime, beaconImplementation: &implementationB,
+		},
+		implementationB.String(): {code: implementationRuntimeB},
+	})
+	// A canonical raw observation without its generation publication must not
+	// hide the latest published Beacon implementation (B) or revive A from the
+	// proxy's older artifact resolution.
+	execFixture(t, ctx, db, `
+		INSERT INTO beacon_implementation_observations (
+			chain_id, beacon_address, block_number, block_hash,
+			beacon_code_hash, implementation_address,
+			implementation_code_hash, stage_version, confidence, canonical
+		) VALUES (1, $1, $2::numeric, $3, $4, $5, $6, 2, 'high', TRUE)`,
+		mustBytes(t, beacon), fmt.Sprint(refThree.Number), mustBytes(t, refThree.Hash),
+		mustBytes(t, beaconCode), mustBytes(t, unpublishedImplementationC),
+		mustBytes(t, unpublishedImplementationCodeC))
+
+	result, err := processor.Process(ctx, abiIntegrationJob(t, refThree))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != enrich.ResultComplete || result.Details["bindings"] != "2" || result.Details["decoded"] != "1" {
+		t.Fatalf("ABI Beacon stage result = %+v", result)
+	}
+	assertABIBinding(
+		t, ctx, db, refThree, targetProxy, targetCode,
+		"proxy_implementation", "high", implementationB, implementationCodeB,
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*)
+		FROM proxy_artifact_resolutions
+		WHERE chain_id = 1 AND proxy_address = $1
+		  AND observation_block_hash = $2
+		  AND proxy_pattern = 'beacon'
+		  AND implementation_address = $3`, 1,
+		mustBytes(t, targetProxy), mustBytes(t, refOne.Hash), mustBytes(t, implementationA))
+	assertRowCount(t, ctx, db, `
+		SELECT count(*)
+		FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1
+		  AND address = $2 AND source = 'proxy_implementation'
+		  AND source_address IN ($3, $4)`, 0,
+		mustBytes(t, refThree.Hash), mustBytes(t, targetProxy),
+		mustBytes(t, implementationA), mustBytes(t, unpublishedImplementationC))
 }
 
 func abiFixtureBundle(t *testing.T, direct, proxy, recipient, caller common.Address) chainbundle.Bundle {
@@ -243,12 +384,129 @@ func insertABIProxyObservation(
 	t.Helper()
 	execFixture(t, ctx, db, `
 		INSERT INTO proxy_observations (
-			chain_id, proxy_address, block_number, block_hash, proxy_code_hash,
+			chain_id, proxy_address, block_number, block_hash, stage_version, proxy_code_hash,
 			proxy_kind, implementation_address, implementation_code_hash,
 			confidence, canonical
-		) VALUES (1, $1, $2::numeric, $3, $4, 'eip1967', $5, $6, 'high', TRUE)`,
+		) VALUES (1, $1, $2::numeric, $3, 2, $4, 'eip1967', $5, $6, 'high', TRUE)`,
 		mustBytes(t, proxy), fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, proxyCode),
 		mustBytes(t, implementation), mustBytes(t, implementationCode))
+}
+
+func publishABIGenericProxy(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	proxy common.Address,
+	proxyRuntime []byte,
+	implementation common.Address,
+	implementationRuntime []byte,
+) {
+	t.Helper()
+	publishABIProxyStage(t, ctx, db, block, map[string]proxyContractState{
+		proxy.String(): {
+			code:           common.CopyBytes(proxyRuntime),
+			implementation: &implementation,
+		},
+		implementation.String(): {code: common.CopyBytes(implementationRuntime)},
+	})
+}
+
+func publishABIProxyStage(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	states map[string]proxyContractState,
+) {
+	t.Helper()
+	result, err := db.ExecContext(ctx, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical'
+		  AND message_key = $1`, block.Hash.String())
+	if err != nil {
+		t.Fatalf("publish ABI proxy core outbox: %v", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		t.Fatalf("publish ABI proxy core outbox rows=%d error=%v", affected, err)
+	}
+	var callMu sync.Mutex
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
+		proxyStateEndpoint(
+			t, "abi-proxy", map[string]map[string]proxyContractState{
+				block.Hash.String(): states,
+			}, nil, &callMu, make(map[string][]string),
+		),
+	}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresProxyProcessor(db, pool, enrich.ProxyLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT source_verification_job_id::text
+		FROM proxy_replay_targets
+		WHERE chain_id = 1 AND block_number = $1::numeric AND block_hash = $2
+		ORDER BY source_verification_job_id::text`, block.Number, block.Hash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var enqueued enrich.EnqueueResult
+	for rows.Next() {
+		var sourceJobID string
+		if err := rows.Scan(&sourceJobID); err != nil {
+			_ = rows.Close()
+			t.Fatal(err)
+		}
+		enqueued, err = queue.Enqueue(ctx, enrich.EnqueueRequest{
+			Stage: enrich.ProxyStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+			Replay: enrich.ReplaySource{Kind: "verification-publication", Key: sourceJobID},
+		})
+		if err != nil {
+			_ = rows.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if enqueued.Job.ID == "" {
+		enqueued, err = queue.Enqueue(ctx, enrich.EnqueueRequest{
+			Stage: enrich.ProxyStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-proxy-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
+	assertRowCount(t, ctx, db, `
+		SELECT count(*)
+		FROM published_block_stage_results
+		WHERE durable_job_id = $1 AND stage = 'proxy'
+		  AND stage_version = 2 AND state = 'complete'`, 1, enqueued.Job.ID)
 }
 
 func insertABISignatureCandidates(t *testing.T, ctx context.Context, db *sql.DB) {
@@ -276,7 +534,7 @@ func insertABISignatureCandidates(t *testing.T, ctx context.Context, db *sql.DB)
 	}
 }
 
-func insertABITrace(
+func publishABITrace(
 	t *testing.T,
 	ctx context.Context,
 	db *sql.DB,
@@ -286,34 +544,90 @@ func insertABITrace(
 ) {
 	t.Helper()
 	transaction := bundle.Block.Transactions()[0]
+	if transaction.To() == nil {
+		t.Fatal("ABI trace fixture requires a call transaction")
+	}
+	sender, err := types.Sender(types.LatestSignerForChainID(transaction.ChainId()), transaction)
+	if err != nil {
+		t.Fatalf("recover ABI trace sender: %v", err)
+	}
 	selector := enrich.SignatureSelector("Unauthorized(address)")
 	revert := append(append([]byte(nil), selector[:]...), abiAddressWord(t, caller)...)
-	execFixture(t, ctx, db, `
-		INSERT INTO normalized_traces (
-			chain_id, block_number, block_hash, transaction_hash, transaction_index,
-			trace_path, depth, call_type, from_address, to_address, value, gas,
-			gas_used, input, output, error, reverted, canonical
-		) VALUES (
-			1, $1::numeric, $2, $3, 0, '0', 0, 'call', $4, $5, 0, 100000,
-			50000, $6, $7, 'execution reverted', TRUE, TRUE
-		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash()),
-		mustBytes(t, caller), mustBytes(t, target), abiTransferCalldata(t, recipient, 19), revert)
-
 	builtinSelector := enrich.SignatureSelector("Error(string)")
 	builtin := append([]byte(nil), builtinSelector[:]...)
 	builtin = append(builtin, abiUintWord(32)...)
 	builtin = append(builtin, abiUintWord(4)...)
 	builtin = append(builtin, append([]byte("nope"), make([]byte, 28)...)...)
-	execFixture(t, ctx, db, `
-		INSERT INTO normalized_traces (
-			chain_id, block_number, block_hash, transaction_hash, transaction_index,
-			trace_path, depth, call_type, from_address, to_address, value, gas,
-			gas_used, input, output, error, reverted, canonical
-		) VALUES (
-			1, $1::numeric, $2, $3, 0, '1', 1, 'call', $4, $5, 0, 100000,
-			50000, NULL, $6, 'execution reverted', TRUE, TRUE
-		)`, fmt.Sprint(block.Number), mustBytes(t, block.Hash), mustBytes(t, transaction.Hash()),
-		mustBytes(t, caller), mustBytes(t, target), builtin)
+	raw, err := json.Marshal(map[string]any{
+		"type": "CALL", "from": sender.String(), "to": transaction.To().String(),
+		"value": fmt.Sprintf("0x%x", transaction.Value()), "gas": "0x5208", "gasUsed": "0x5000",
+		"input": fmt.Sprintf("0x%x", transaction.Data()), "output": "0x",
+		"calls": []any{
+			map[string]any{
+				"type": "CALL", "from": transaction.To().String(), "to": target.String(),
+				"value": "0x0", "gas": "0x186a0", "gasUsed": "0xc350",
+				"input":  fmt.Sprintf("0x%x", abiTransferCalldata(t, recipient, 19)),
+				"output": fmt.Sprintf("0x%x", revert), "error": "execution reverted",
+			},
+			map[string]any{
+				"type": "CALL", "from": transaction.To().String(), "to": target.String(),
+				"value": "0x0", "gas": "0x186a0", "gasUsed": "0xc350",
+				"input": "0x", "output": fmt.Sprintf("0x%x", builtin), "error": "execution reverted",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &traceStageService{raw: raw}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "abi-trace", Client: newIntegrationRPCClient(t, "debug", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewTraceRPCProcessor(db, pool, enrich.TraceLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := db.ExecContext(ctx, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical'
+		  AND message_key = $1`, block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		t.Fatalf("publish ABI trace core outbox rows=%d error=%v", affected, err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.TraceStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-trace-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
 }
 
 func abiIntegrationJob(t *testing.T, block store.BlockRef) enrich.Job {
@@ -354,7 +668,12 @@ func assertABIBinding(
 	if err != nil {
 		t.Fatalf("query ABI binding %s/%s: %v", target, source, err)
 	}
-	if gotConfidence != confidence || from != "1" || to != "" || !canonical ||
+	wantFrom, wantTo := "1", ""
+	if source == "proxy_implementation" {
+		wantFrom = fmt.Sprint(block.Number)
+		wantTo = wantFrom
+	}
+	if gotConfidence != confidence || from != wantFrom || to != wantTo || !canonical ||
 		hex.EncodeToString(gotSourceAddress) != hex.EncodeToString(mustBytes(t, sourceAddress)) ||
 		hex.EncodeToString(gotSourceCodeHash) != hex.EncodeToString(mustBytes(t, sourceCodeHash)) ||
 		hex.EncodeToString(gotBlockHash) != hex.EncodeToString(mustBytes(t, block.Hash)) {

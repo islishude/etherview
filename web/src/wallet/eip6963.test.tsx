@@ -17,6 +17,7 @@ import {
   isTransactionHash,
   isUint256Quantity,
   isWalletSignature,
+  MAX_REVERT_DATA_BYTES,
   MAX_SIGN_MESSAGE_BYTES,
   normalizeChainID,
   normalizeProviderChainID,
@@ -118,6 +119,24 @@ describe("EIP-6963 wallet boundary", () => {
     expect(toWalletBoundaryError({ code: 4100 }).code).toBe("NOT_CONNECTED");
     expect(toWalletBoundaryError({ code: 4900 }).code).toBe("PROVIDER_DISCONNECTED");
     expect(toWalletBoundaryError({ code: 4901 }).code).toBe("CHAIN_MISMATCH");
+  });
+
+  it("retains only bounded provider revert data for ABI decoding", () => {
+    const revertData = `0x08c379a0${"00".repeat(32)}` as const;
+    const decoded = toWalletBoundaryError({ code: 3, data: { data: revertData } });
+    expect(decoded.code).toBe("REQUEST_FAILED");
+    expect(decoded.revertData).toBe(revertData);
+
+    const oversized = `0x${"00".repeat(MAX_REVERT_DATA_BYTES + 1)}`;
+    expect(toWalletBoundaryError({ code: 3, data: oversized }).revertData).toBeUndefined();
+
+    const hostile = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(hostile, "data", {
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    expect(toWalletBoundaryError(hostile).revertData).toBeUndefined();
   });
 
   it("builds one bounded EIP-3085 add-chain parameter", () => {
@@ -669,6 +688,27 @@ describe("EIP-6963 wallet boundary", () => {
     expect(document.body).not.toHaveTextContent("secret-bearing provider message");
   });
 
+  it("preserves bounded provider revert data when a dispatched transaction becomes unknown", async () => {
+    const revertData = "0x12345678";
+    const fake = createFakeProvider();
+    registerProvider(providerDetail(fake.provider));
+    renderWallet();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Test Wallet" }));
+    fake.setResponse("eth_sendTransaction", () => Promise.reject({
+      code: 3,
+      data: revertData,
+      message: "secret provider explanation",
+    }));
+    await user.click(screen.getByRole("button", { name: "Write" }));
+
+    const error = await screen.findByTestId("operation-error");
+    expect(error).toHaveTextContent("TRANSACTION_OUTCOME_UNKNOWN");
+    expect(error).toHaveTextContent(revertData);
+    expect(document.body).not.toHaveTextContent("secret provider explanation");
+  });
+
   it("cancels an operation when a chain event races the provider preflight", async () => {
     let resolveChain: ((value: unknown) => void) | undefined;
     const delayedChain = new Promise<unknown>((resolve) => {
@@ -852,7 +892,9 @@ function WalletHarness() {
             .then(setResult)
             .catch((cause: unknown) => {
               setOperationError(
-                cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
+                cause instanceof WalletBoundaryError
+                  ? `${cause.code}${cause.revertData ? `:${cause.revertData}` : ""}`
+                  : "REQUEST_FAILED",
               );
             });
         }}

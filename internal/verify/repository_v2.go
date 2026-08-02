@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 func (repository *PostgresRepository) SubmitV2(
@@ -248,6 +250,50 @@ func (repository *PostgresRepository) CompleteV2(
 	if err != nil {
 		return err
 	}
+	var (
+		publicationBlockNumber uint64
+		publicationAddress     []byte
+		publicationCodeHash    []byte
+		publicationTarget      common.Address
+		authenticatedArtifact  *recognizedProxyArtifact
+	)
+	if job.Kind == JobAddress && outcomeKind == "verification_success" {
+		if resultFields.RuntimeMatch == "" {
+			return errors.New("address verification success lacks a runtime match")
+		}
+		publicationBlockNumber, err = canonicalV2Target(ctx, tx, job.RequestV2.Target)
+		if err != nil {
+			return ErrTargetNotCanonical
+		}
+		publicationAddress, _ = decodeFixedHex(job.RequestV2.Target.Address, 20)
+		publicationCodeHash, _ = decodeFixedHex(job.RequestV2.Target.CodeHash, 32)
+		blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
+		var actualRuntime []byte
+		runtimeErr := tx.QueryRowContext(ctx, `
+			SELECT code
+			FROM contract_code_observations
+			WHERE chain_id = $1::numeric AND address = $2
+			  AND block_number = $3::numeric AND block_hash = $4
+			  AND code_hash = $5 AND canonical = TRUE`,
+			strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
+			strconv.FormatUint(publicationBlockNumber, 10), blockHash, publicationCodeHash,
+		).Scan(&actualRuntime)
+		if runtimeErr != nil && !errors.Is(runtimeErr, sql.ErrNoRows) {
+			return fmt.Errorf("load verified runtime for proxy artifact authentication: %w", runtimeErr)
+		}
+		publicationTarget = common.BytesToAddress(publicationAddress)
+		if runtimeErr == nil {
+			artifact, recognized := recognizeOpenZeppelin561Artifact(
+				outcome, publicationTarget, actualRuntime,
+			)
+			if recognized {
+				if err := validateRecognizedProxyArtifact(artifact); err != nil {
+					return err
+				}
+				authenticatedArtifact = &artifact
+			}
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE verification_jobs
 		SET status = 'succeeded', outcome_kind = $3, outcome = $4::jsonb,
@@ -257,16 +303,20 @@ func (repository *PostgresRepository) CompleteV2(
 	`, job.ID, lease.Token, outcomeKind, string(outcome)); err != nil {
 		return err
 	}
+	artifactKind, artifactVersion, artifactImmutable, artifactManifest :=
+		proxyArtifactAttestationValues(authenticatedArtifact)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO verification_results (
 			job_id, request_digest, outcome_kind, outcome, file_name, contract_name,
 			language, compiler_version, match_type, abi, sources, settings,
 			compilation_artifacts, creation_code_artifacts, runtime_code_artifacts,
-			constructor_arguments, libraries, is_blueprint
+			constructor_arguments, libraries, is_blueprint,
+			proxy_artifact_kind, proxy_standard_version,
+			proxy_runtime_immutable_address, proxy_source_manifest_sha256
 		) VALUES (
 			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb,
 			$11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb,
-			$16, $17::jsonb, $18
+			$16, $17::jsonb, $18, $19, $20, $21, $22
 		)
 	`, job.ID, job.RequestDigest[:], outcomeKind, string(outcome),
 		resultFields.FileName, resultFields.ContractName, resultFields.Language,
@@ -274,19 +324,11 @@ func (repository *PostgresRepository) CompleteV2(
 		resultFields.Sources, resultFields.Settings, resultFields.CompilationArtifacts,
 		resultFields.CreationArtifacts, resultFields.RuntimeArtifacts,
 		resultFields.ConstructorArguments, resultFields.Libraries, resultFields.Blueprint,
+		artifactKind, artifactVersion, artifactImmutable, artifactManifest,
 	); err != nil {
 		return err
 	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
-		if resultFields.RuntimeMatch == "" {
-			return errors.New("address verification success lacks a runtime match")
-		}
-		blockNumber, err := canonicalV2Target(ctx, tx, job.RequestV2.Target)
-		if err != nil {
-			return ErrTargetNotCanonical
-		}
-		address, _ := decodeFixedHex(job.RequestV2.Target.Address, 20)
-		codeHash, _ := decodeFixedHex(job.RequestV2.Target.CodeHash, 32)
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO verified_contracts (
 				chain_id, address, code_hash, valid_from_block, verification_job_id,
@@ -299,8 +341,9 @@ func (repository *PostgresRepository) CompleteV2(
 				$11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb,
 				$17::jsonb, $18, $19::jsonb, $20
 			)
-		`, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), address, codeHash,
-			strconv.FormatUint(blockNumber, 10), job.ID, job.RequestDigest[:],
+		`, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
+			publicationCodeHash, strconv.FormatUint(publicationBlockNumber, 10),
+			job.ID, job.RequestDigest[:],
 			resultFields.FileName, resultFields.ContractName, resultFields.Language,
 			resultFields.CompilerVersion, resultFields.RuntimeMatch, resultFields.ABI,
 			resultFields.Sources, resultFields.Settings, resultFields.CompilationArtifacts,
@@ -309,8 +352,49 @@ func (repository *PostgresRepository) CompleteV2(
 		); err != nil {
 			return err
 		}
+		if authenticatedArtifact != nil {
+			var immutable any
+			if authenticatedArtifact.RuntimeImmutable != nil {
+				immutable = authenticatedArtifact.RuntimeImmutable[:]
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO verified_contract_proxy_artifacts (
+					chain_id, address, code_hash, valid_from_block,
+					verification_job_id, request_digest, artifact_kind,
+					standard_version, runtime_immutable_address,
+					source_manifest_sha256
+				) VALUES (
+					$1::numeric, $2, $3, $4::numeric,
+					$5::uuid, $6, $7, $8, $9, $10
+				)`, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+				publicationAddress, publicationCodeHash,
+				strconv.FormatUint(publicationBlockNumber, 10),
+				job.ID, job.RequestDigest[:], authenticatedArtifact.Kind,
+				authenticatedArtifact.StandardVersion, immutable,
+				authenticatedArtifact.SourceManifestSHA256[:],
+			); err != nil {
+				return fmt.Errorf("publish authenticated OpenZeppelin proxy artifact: %w", err)
+			}
+		}
+		if err := repository.requestVerificationProxyReplayTx(
+			ctx, tx, job, publicationBlockNumber, publicationTarget,
+			authenticatedArtifact,
+		); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
+}
+
+func proxyArtifactAttestationValues(artifact *recognizedProxyArtifact) (any, any, any, any) {
+	if artifact == nil {
+		return nil, nil, nil, nil
+	}
+	var immutable any
+	if artifact.RuntimeImmutable != nil {
+		immutable = artifact.RuntimeImmutable[:]
+	}
+	return artifact.Kind, artifact.StandardVersion, immutable, artifact.SourceManifestSHA256[:]
 }
 
 func (repository *PostgresRepository) Fail(
@@ -447,29 +531,30 @@ func (repository *PostgresRepository) VerifiedContract(
 	var validFrom string
 	var validTo sql.NullString
 	var abi, sources, settings, compilation, creationArtifacts, runtimeArtifacts, libraries []byte
+	var creationMatch, runtimeMatch []byte
 	var constructor []byte
-	err = repository.db.QueryRowContext(ctx, `
-		SELECT chain_id::text, address, code_hash, valid_from_block::text,
-		       valid_to_block::text, file_name, contract_name, language,
-		       compiler_version, match_type, abi, sources, settings,
-		       compilation_artifacts, creation_code_artifacts, runtime_code_artifacts,
-		       constructor_arguments, libraries, is_blueprint, created_at
-		FROM verified_contracts
-		WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
-		  AND valid_to_block IS NULL
-		ORDER BY valid_from_block DESC LIMIT 1
-	`, strconv.FormatUint(chainID, 10), address, codeHash).Scan(
+	err = repository.db.QueryRowContext(ctx, verifiedContractV2SQL,
+		strconv.FormatUint(chainID, 10), address, codeHash).Scan(
 		new(string), &addressBytes, &codeHashBytes, &validFrom, &validTo,
 		&contract.FileName, &contract.ContractName, &contract.Language,
 		&contract.CompilerVersion, &contract.MatchType, &abi, &sources, &settings,
-		&compilation, &creationArtifacts, &runtimeArtifacts, &constructor,
-		&libraries, &contract.IsBlueprint, &contract.CreatedAt,
+		&compilation, &creationArtifacts, &runtimeArtifacts, &creationMatch,
+		&runtimeMatch, &constructor, &libraries, &contract.IsBlueprint,
+		&contract.CreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerifiedContract{}, false, nil
 	}
 	if err != nil {
 		return VerifiedContract{}, false, err
+	}
+	contract.CreationMatch, err = decodeStoredVerificationMatch(creationMatch)
+	if err != nil {
+		return VerifiedContract{}, false, errors.New("stored creation match is invalid")
+	}
+	contract.RuntimeMatch, err = decodeStoredVerificationMatch(runtimeMatch)
+	if err != nil || contract.RuntimeMatch == nil {
+		return VerifiedContract{}, false, errors.New("stored runtime match is invalid")
 	}
 	contract.ChainID = chainID
 	contract.Address = "0x" + hex.EncodeToString(addressBytes)
@@ -497,6 +582,44 @@ func (repository *PostgresRepository) VerifiedContract(
 	}
 	return contract, true, nil
 }
+
+func decodeStoredVerificationMatch(value []byte) (*VerificationMatchDetails, error) {
+	if len(value) == 0 || string(value) == "null" {
+		return nil, nil
+	}
+	var details VerificationMatchDetails
+	if err := json.Unmarshal(value, &details); err != nil ||
+		(details.MatchType != VerificationMatchFull &&
+			details.MatchType != VerificationMatchPartial) {
+		return nil, errors.New("verification match is invalid")
+	}
+	return &details, nil
+}
+
+const verifiedContractV2SQL = `
+		SELECT verified.chain_id::text, verified.address, verified.code_hash,
+		       verified.valid_from_block::text, verified.valid_to_block::text,
+		       verified.file_name, verified.contract_name,
+		       verified.language, verified.compiler_version, verified.match_type,
+		       verified.abi, verified.sources, verified.settings,
+		       verified.compilation_artifacts, verified.creation_code_artifacts,
+		       verified.runtime_code_artifacts,
+		       result.outcome->'creation_match', result.outcome->'runtime_match',
+		       verified.constructor_arguments, verified.libraries,
+		       verified.is_blueprint, verified.created_at
+		FROM verified_contracts AS verified
+		JOIN verification_results AS result
+		  ON result.job_id = verified.verification_job_id
+		 AND result.request_digest = verified.request_digest
+		 AND result.outcome_kind = 'verification_success'
+		WHERE verified.chain_id = $1::numeric
+		  AND verified.address = $2 AND verified.code_hash = $3
+		  AND verified.valid_to_block IS NULL
+		ORDER BY (verified.match_type = 'full') DESC,
+		         verified.valid_from_block DESC,
+		         verified.request_digest ASC,
+		         verified.verification_job_id ASC
+		LIMIT 1`
 
 const v2VerificationJobColumns = `
 id::text, kind, language, compiler_version, compiler_platform, catalog_generation_id,

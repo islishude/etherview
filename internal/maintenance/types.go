@@ -44,11 +44,11 @@ func ValidateOperationStage(operation Operation, stage string) error {
 		}
 	case OperationReindex:
 		switch stage {
-		case "token", "stats", "trace":
+		case "proxy", "abi", "token", "stats", "trace":
 			return nil
 		default:
 			return fmt.Errorf(
-				"%w: reindex only supports stage token, stats, or trace, got %q",
+				"%w: reindex only supports stage proxy, abi, token, stats, or trace, got %q",
 				ErrInvalidRequest, stage,
 			)
 		}

@@ -3075,6 +3075,355 @@ tbody tr:hover {
   gap: 1rem;
 }
 
+.contract-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  overflow-x: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  scrollbar-width: thin;
+}
+
+.contract-tab {
+  flex: 0 0 auto;
+  min-height: 2.55rem;
+  padding: 0.55rem 0.8rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.contract-tab:hover,
+.contract-tab:focus-visible,
+.contract-tab.active {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+
+.contract-tab-panel,
+.proxy-summary {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.proxy-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.proxy-facts > div {
+  min-width: 0;
+  padding: 0.75rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.proxy-facts dt {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.proxy-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.proxy-facts dd code,
+.mono-wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.artifact-facts {
+  margin-top: 0;
+}
+
+.artifact-panel > summary {
+  padding: 0.75rem 0;
+  font-size: 0.88rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.proxy-evidence {
+  margin-top: 0.9rem;
+}
+
+.proxy-evidence > summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.proxy-evidence ul {
+  display: grid;
+  gap: 0.4rem;
+  padding-left: 1.2rem;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
+.proxy-evidence li,
+.proxy-evidence code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.proxy-history,
+.contract-functions,
+.history-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.history-card {
+  min-width: 0;
+  padding: 0.9rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.history-card-heading,
+.history-transition,
+.history-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.history-card-heading {
+  justify-content: space-between;
+}
+
+.history-card-heading > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-transition {
+  flex-wrap: wrap;
+}
+
+.history-transition code,
+.history-identity code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.history-identity {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.abi-function-explorer,
+.abi-function-section,
+.abi-function-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.abi-function-section > h2 {
+  margin: 0;
+}
+
+.abi-function-card {
+  min-width: 0;
+  overflow: clip;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.abi-function-card > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.8rem;
+  cursor: pointer;
+}
+
+.abi-function-card > summary code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.function-index {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.function-mutability {
+  padding: 0.2rem 0.4rem;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.66rem;
+}
+
+.function-mutability.payable {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+}
+
+.abi-function-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.abi-function-form > .button {
+  justify-self: start;
+}
+
+.abi-scalar-input {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(5rem, auto) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.abi-scalar-input > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.abi-scalar-input > small,
+.abi-composite-input legend small {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.abi-scalar-input input,
+.abi-scalar-input select,
+.abi-scalar-input textarea {
+  min-width: 0;
+  width: 100%;
+}
+
+.abi-scalar-input textarea {
+  resize: vertical;
+}
+
+.abi-composite-input {
+  min-width: 0;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.abi-composite-input legend {
+  max-width: 100%;
+  padding-inline: 0.4rem;
+  overflow-wrap: anywhere;
+  font-weight: 750;
+}
+
+.abi-array-item {
+  min-width: 0;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+
+.abi-array-item > .button,
+.abi-array-input > .button {
+  justify-self: start;
+}
+
+.button.tertiary {
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+  color: var(--text-soft);
+  background: transparent;
+  border-color: var(--line);
+}
+
+.button.danger {
+  color: var(--surface);
+  background: var(--danger);
+}
+
+.risk-notice {
+  padding: 0.7rem 0.8rem;
+  margin: 0;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.risk-notice code,
+.wallet-notice code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.abi-function-card > .form-error,
+.abi-function-card > .call-result,
+.abi-output {
+  margin: 0 0.9rem 0.9rem;
+}
+
+.abi-output {
+  min-width: 0;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.abi-output > span {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.abi-output code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .contract-query-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.5fr) auto;
@@ -3394,6 +3743,30 @@ tbody tr:hover {
   .contract-query-form,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .proxy-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .history-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .abi-function-card > summary,
+  .abi-scalar-input {
+    grid-template-columns: 1fr;
+  }
+
+  .abi-function-card > summary .function-index {
+    display: none;
+  }
+
+  .abi-function-form > .button,
+  .abi-array-item > .button,
+  .abi-array-input > .button {
+    width: 100%;
   }
 
   .identity-grid,

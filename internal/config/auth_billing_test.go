@@ -1,10 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/islishude/etherview/internal/apiops"
 )
 
 func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
@@ -286,6 +290,13 @@ func TestX402ConfigurationUsesClosedEligibleCatalog(t *testing.T) {
 		t.Fatalf("ineligible billing route passed: %v", err)
 	}
 	delete(cfg.Billing.Routes, "getStatus")
+	cfg.Billing.Routes["getVerifiedContract"] = BillingRouteConfig{
+		Access: "x402", AmountAtomic: "1",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not eligible") {
+		t.Fatalf("free verified-artifact read remained billable: %v", err)
+	}
+	delete(cfg.Billing.Routes, "getVerifiedContract")
 	cfg.Billing.Routes["listBlocks"] = BillingRouteConfig{
 		Access: "api_key_or_x402", AmountAtomic: "01",
 	}
@@ -361,4 +372,46 @@ func validX402Config() Config {
 		"listBlocks": {Access: "x402", AmountAtomic: "1000"},
 	}
 	return cfg
+}
+
+func TestHelmBillingRouteEnumMatchesEligibleCatalog(t *testing.T) {
+	t.Parallel()
+	encoded, err := os.ReadFile("../../deploy/helm/etherview/values.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	value := any(document)
+	for _, key := range []string{
+		"properties", "config", "properties", "billing", "properties", "routes", "propertyNames", "enum",
+	} {
+		object, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("Helm billing route schema before %q is not an object", key)
+		}
+		value, ok = object[key]
+		if !ok {
+			t.Fatalf("Helm billing route schema lacks %q", key)
+		}
+	}
+	rawOperations, ok := value.([]any)
+	if !ok {
+		t.Fatal("Helm billing route enum is not an array")
+	}
+	actual := make([]string, len(rawOperations))
+	for index, operation := range rawOperations {
+		actual[index], ok = operation.(string)
+		if !ok {
+			t.Fatalf("Helm billing route operation %d is not a string", index)
+		}
+	}
+	expected := apiops.EligibleIDs()
+	slices.Sort(actual)
+	slices.Sort(expected)
+	if !slices.Equal(actual, expected) {
+		t.Fatalf("Helm billing routes=%v, want eligible catalog=%v", actual, expected)
+	}
 }

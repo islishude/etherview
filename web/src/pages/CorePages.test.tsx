@@ -871,7 +871,7 @@ describe("core explorer pages", () => {
 
     expect(await screen.findByRole("link", { name: "Contract" })).toHaveAttribute(
       "href",
-      `/contract/${address}?code_hash=${olderHash}`,
+      `/contract/${address}`,
     );
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
     const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");

@@ -16,7 +16,7 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ABIStage = StageID{Name: "abi", Version: 1}
+var ABIStage = StageID{Name: "abi", Version: 2}
 
 const (
 	abiObjectTransactionCalldata = "transaction_calldata"
@@ -44,7 +44,7 @@ func NewPostgresABIProcessor(db *sql.DB) (*PostgresABIProcessor, error) {
 
 // NewPostgresABIProcessorWithProxyDependency is the production constructor.
 // The dependency prevents ABI guesses or unbound results from becoming
-// terminal before proxy@1 has either completed or reported explicit
+// terminal before the same-version proxy stage has either completed or reported explicit
 // unavailability for the same immutable block.
 func NewPostgresABIProcessorWithProxyDependency(db *sql.DB) (*PostgresABIProcessor, error) {
 	processor, err := NewPostgresABIProcessor(db)
@@ -410,10 +410,23 @@ func validateABILogIdentity(
 func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT transaction_hash, trace_path, to_address, input, output, reverted
-		FROM normalized_traces
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		  AND canonical
-		ORDER BY transaction_index, trace_path`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+		FROM normalized_traces AS trace
+		WHERE trace.chain_id = $1::numeric
+		  AND trace.block_number = $2::numeric
+		  AND trace.block_hash = $3
+		  AND trace.canonical
+		  AND EXISTS (
+		      SELECT 1
+		      FROM published_block_stage_results AS published
+		      WHERE published.chain_id = trace.chain_id
+		        AND published.block_hash = trace.block_hash
+		        AND published.stage = $4
+		        AND published.stage_version = $5
+		        AND published.state = 'complete'
+		  )
+		ORDER BY transaction_index, trace_path`, job.ChainID,
+		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		TraceStage.Name, TraceStage.Version)
 	if err != nil {
 		return nil, fmt.Errorf("query ABI traces: %w", err)
 	}
@@ -596,7 +609,8 @@ func loadVerifiedABIBinding(
 		  AND abi IS NOT NULL
 		  AND valid_from_block <= $4::numeric
 		  AND (valid_to_block IS NULL OR valid_to_block >= $4::numeric)
-		ORDER BY (match_type = 'full') DESC, valid_from_block DESC
+		ORDER BY (match_type = 'full') DESC, valid_from_block DESC,
+		         request_digest ASC, verification_job_id ASC
 		LIMIT 1`, target.ChainID, sourceAddress[:], sourceCodeHash[:], strconv.FormatUint(target.BlockNumber, 10)).Scan(&abi, &fromText, &to)
 	if errors.Is(err, sql.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
@@ -620,19 +634,153 @@ func loadVerifiedABIBinding(
 }
 
 func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, codeRange abiBlockRange) (persistedABIBinding, bool, error) {
-	var fromText string
 	var implementationAddressBytes, implementationCodeHashBytes []byte
 	err := tx.QueryRowContext(ctx, `
-		SELECT observation.block_number::text, observation.implementation_address, observation.implementation_code_hash
-		FROM proxy_observations AS observation
-		WHERE observation.chain_id = $1::numeric AND observation.proxy_address = $2
-		  AND observation.proxy_code_hash = $3 AND observation.canonical
-		  AND observation.block_number <= $4::numeric
-		  AND observation.implementation_address IS NOT NULL
-		  AND observation.implementation_code_hash IS NOT NULL
-		ORDER BY observation.block_number DESC
-		LIMIT 1`, target.ChainID, target.Address[:], target.CodeHash[:], strconv.FormatUint(target.BlockNumber, 10)).Scan(
-		&fromText, &implementationAddressBytes, &implementationCodeHashBytes,
+		WITH published_proxy_candidates AS (
+		    SELECT observation.*, generation.id AS observation_generation_id,
+		           generation.durable_job_id, generation.job_generation
+		    FROM proxy_observations AS observation
+		    JOIN canonical_blocks AS canonical
+		      ON canonical.chain_id = observation.chain_id
+		     AND canonical.number = observation.block_number
+		     AND canonical.block_hash = observation.block_hash
+		    JOIN proxy_observation_generations AS generation
+		      ON generation.chain_id = observation.chain_id
+		     AND generation.proxy_address = observation.proxy_address
+		     AND generation.observation_block_hash = observation.block_hash
+		     AND generation.observation_stage_version = observation.stage_version
+		    JOIN published_block_stage_results AS published
+		      ON published.chain_id = generation.chain_id
+		     AND published.block_hash = generation.observation_block_hash
+		     AND published.stage = 'proxy'
+		     AND published.stage_version = generation.observation_stage_version
+		     AND published.durable_job_id = generation.durable_job_id
+		     AND published.job_generation = generation.job_generation
+		     AND published.state = 'complete'
+		    WHERE observation.chain_id = $1::numeric
+		      AND observation.proxy_address = $2
+		      AND observation.proxy_code_hash = $3
+		      AND observation.stage_version = $6
+		      AND observation.canonical
+		      AND observation.confidence IN ('verified', 'high')
+		      AND observation.block_number <= $4::numeric
+		), resolved_candidates AS (
+		    SELECT raw.*, resolution.id AS artifact_resolution_id,
+		           resolution.proxy_kind AS resolved_kind,
+		           resolution.proxy_pattern AS resolved_pattern,
+		           resolution.implementation_address AS resolved_implementation,
+		           resolution.implementation_code_hash AS resolved_implementation_hash,
+		           resolution.beacon_address AS resolved_beacon,
+		           resolution.beacon_code_hash AS resolved_beacon_hash
+		    FROM published_proxy_candidates AS raw
+		    LEFT JOIN LATERAL (
+		        SELECT candidate.*
+		        FROM proxy_artifact_resolutions AS candidate
+		        JOIN published_block_stage_results AS published
+		          ON published.chain_id = candidate.chain_id
+		         AND published.block_hash = candidate.observation_block_hash
+		         AND published.stage = 'proxy'
+		         AND published.stage_version = candidate.observation_stage_version
+		         AND published.durable_job_id = candidate.durable_job_id
+		         AND published.job_generation = candidate.job_generation
+		         AND published.state = 'complete'
+		        WHERE candidate.chain_id = raw.chain_id
+		          AND candidate.proxy_address = raw.proxy_address
+		          AND candidate.observation_block_hash = raw.block_hash
+		          AND candidate.observation_stage_version = raw.stage_version
+		          AND candidate.proxy_code_hash = raw.proxy_code_hash
+		          AND candidate.durable_job_id = raw.durable_job_id
+		          AND candidate.job_generation = raw.job_generation
+		        ORDER BY candidate.id DESC
+		        LIMIT 1
+		    ) AS resolution ON raw.proxy_pattern <> 'clone'
+		    WHERE (
+		        raw.proxy_pattern = 'clone'
+		        AND raw.evidence_state = 'exact'
+		        AND raw.implementation_address IS NOT NULL
+		        AND raw.implementation_code_hash IS NOT NULL
+		    ) OR (
+		        resolution.id IS NOT NULL
+		        AND (
+		            resolution.proxy_pattern = 'beacon'
+		            OR (raw.block_number = $4::numeric AND raw.block_hash = $5)
+		        )
+		    ) OR (
+		        resolution.id IS NULL
+		        AND raw.proxy_kind = 'eip1967'
+		        AND raw.proxy_pattern = 'unknown'
+		        AND raw.evidence_state = 'generic'
+		        AND raw.beacon_address IS NULL
+		        AND raw.beacon_code_hash IS NULL
+		        AND raw.block_number = $4::numeric
+		        AND raw.block_hash = $5
+		        AND raw.implementation_address IS NOT NULL
+		        AND raw.implementation_code_hash IS NOT NULL
+		    )
+		), selected_proxy AS (
+		    SELECT candidate.*,
+		           CASE WHEN candidate.artifact_resolution_id IS NULL
+		                THEN candidate.proxy_pattern
+		                ELSE candidate.resolved_pattern END AS effective_pattern,
+		           CASE WHEN candidate.artifact_resolution_id IS NULL
+		                THEN candidate.implementation_address
+		                ELSE candidate.resolved_implementation END AS effective_implementation,
+		           CASE WHEN candidate.artifact_resolution_id IS NULL
+		                THEN candidate.implementation_code_hash
+		                ELSE candidate.resolved_implementation_hash END AS effective_implementation_hash
+		    FROM resolved_candidates AS candidate
+		    ORDER BY (candidate.artifact_resolution_id IS NOT NULL) DESC,
+		             candidate.block_number DESC,
+		             candidate.observation_generation_id DESC
+		    LIMIT 1
+		), published_beacon AS (
+		    SELECT observation.implementation_address,
+		           observation.implementation_code_hash
+		    FROM selected_proxy AS proxy
+		    JOIN beacon_implementation_observations AS observation
+		      ON observation.chain_id = proxy.chain_id
+		     AND observation.beacon_address = proxy.resolved_beacon
+		     AND observation.beacon_code_hash = proxy.resolved_beacon_hash
+		    JOIN canonical_blocks AS canonical
+		      ON canonical.chain_id = observation.chain_id
+		     AND canonical.number = observation.block_number
+		     AND canonical.block_hash = observation.block_hash
+		    JOIN beacon_observation_generations AS generation
+		      ON generation.chain_id = observation.chain_id
+		     AND generation.beacon_address = observation.beacon_address
+		     AND generation.observation_block_hash = observation.block_hash
+		     AND generation.observation_stage_version = observation.stage_version
+		    JOIN published_block_stage_results AS published
+		      ON published.chain_id = generation.chain_id
+		     AND published.block_hash = generation.observation_block_hash
+		     AND published.stage = 'proxy'
+		     AND published.stage_version = generation.observation_stage_version
+		     AND published.durable_job_id = generation.durable_job_id
+		     AND published.job_generation = generation.job_generation
+		     AND published.state = 'complete'
+		    WHERE proxy.effective_pattern = 'beacon'
+		      AND observation.stage_version = $6
+		      AND observation.canonical
+		      AND observation.confidence IN ('verified', 'high')
+		      AND observation.block_number <= $4::numeric
+		    ORDER BY observation.block_number DESC, generation.id DESC
+		    LIMIT 1
+		)
+		SELECT CASE WHEN proxy.effective_pattern = 'beacon'
+		                   THEN beacon.implementation_address
+		                   ELSE proxy.effective_implementation END,
+		       CASE WHEN proxy.effective_pattern = 'beacon'
+		                   THEN beacon.implementation_code_hash
+		                   ELSE proxy.effective_implementation_hash END
+		FROM selected_proxy AS proxy
+		LEFT JOIN published_beacon AS beacon
+		  ON proxy.effective_pattern = 'beacon'
+		WHERE proxy.effective_pattern <> 'beacon'
+		   OR beacon.implementation_address IS NOT NULL`,
+		target.ChainID, target.Address[:], target.CodeHash[:],
+		strconv.FormatUint(target.BlockNumber, 10), target.BlockHash[:], ProxyStage.Version,
+	).Scan(
+		&implementationAddressBytes, &implementationCodeHashBytes,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
@@ -648,27 +796,12 @@ func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, co
 	if err != nil || implementationCodeHash == (common.Hash{}) {
 		return persistedABIBinding{}, false, Permanent(errors.New("stored proxy implementation code hash is invalid"))
 	}
-	from, err := strconv.ParseUint(fromText, 10, 64)
-	if err != nil {
-		return persistedABIBinding{}, false, Permanent(fmt.Errorf("decode proxy ABI range start: %w", err))
-	}
-	proxyRange := abiBlockRange{from: from}
-	var next sql.NullString
-	if err := tx.QueryRowContext(ctx, `
-		SELECT min(block_number)::text
-		FROM proxy_observations
-		WHERE chain_id = $1::numeric AND proxy_address = $2 AND canonical
-		  AND block_number > $3::numeric`, target.ChainID, target.Address[:], fromText).Scan(&next); err != nil {
-		return persistedABIBinding{}, false, fmt.Errorf("query proxy ABI range end: %w", err)
-	}
-	if next.Valid {
-		value, err := strconv.ParseUint(next.String, 10, 64)
-		if err != nil || value == 0 {
-			return persistedABIBinding{}, false, Permanent(errors.New("stored proxy ABI range end is invalid"))
-		}
-		end := value - 1
-		proxyRange.to = &end
-	}
+	// A proxy implementation is a state observation, not a property of the
+	// proxy bytecode. Keep the ABI binding block-exact so a gap in proxy@2
+	// coverage can never make it span an implementation change that was not
+	// observed. Beacon implementations are likewise selected as of this block.
+	to := target.BlockNumber
+	proxyRange := abiBlockRange{from: target.BlockNumber, to: &to}
 	baseRange, ok := intersectABIRanges(codeRange, proxyRange)
 	if !ok {
 		return persistedABIBinding{}, false, Permanent(errors.New("proxy and code ABI ranges do not intersect"))

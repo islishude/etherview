@@ -443,7 +443,7 @@ func (c *checker) validateDependencies() {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s dependency %s does not resolve", item.id, dependency))
 					} else if dependency == plan.id {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s cannot depend on its containing plan %s", item.id, dependency))
-					} else if isActiveItem(item.status) && !isSatisfiedDependency(dependencyPlan.status) {
+					} else if requiresSatisfiedDependency(item.status) && !isSatisfiedDependency(dependencyPlan.status) {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s is %s but dependency plan %s is %s", item.id, item.status, dependency, dependencyPlan.status))
 					}
 				case workItemIDPattern.MatchString(dependency):
@@ -452,7 +452,7 @@ func (c *checker) validateDependencies() {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s dependency %s does not resolve", item.id, dependency))
 					} else if dependency == item.id {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s depends on itself", item.id))
-					} else if isActiveItem(item.status) && !isSatisfiedDependency(dependencyItem.status) {
+					} else if requiresSatisfiedDependency(item.status) && !isSatisfiedDependency(dependencyItem.status) {
 						c.add(plan.path, item.line, fmt.Sprintf("work item %s is %s but dependency %s is %s", item.id, item.status, dependency, dependencyItem.status))
 					}
 				default:
@@ -978,8 +978,12 @@ func sectionMentions(lines []numberedLine, id string) bool {
 	return false
 }
 
-func isActiveItem(status string) bool {
-	return status == "in_progress" || status == "done"
+// requiresSatisfiedDependency reports whether an item is currently allowed to
+// execute. Completed evidence remains historical when a dependency plan is
+// reopened with a later work item; reopening must not retroactively invalidate
+// already completed downstream items.
+func requiresSatisfiedDependency(status string) bool {
+	return status == "in_progress"
 }
 
 func isSatisfiedDependency(status string) bool {

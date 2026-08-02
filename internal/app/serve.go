@@ -509,11 +509,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		homeReader, err := query.NewPostgresReader(db, queryOptions)
+		writerReader, err := query.NewPostgresReader(db, queryOptions)
 		if err != nil {
 			return err
 		}
-		homeFeed, err := httpapi.NewHomeFeed(homeReader, broker, httpapi.HomeFeedOptions{
+		homeFeed, err := httpapi.NewHomeFeed(writerReader, broker, httpapi.HomeFeedOptions{
 			ChainID: cfg.Chain.ID,
 			Logger:  logger,
 		})
@@ -642,8 +642,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Analytics: analyticsReader,
-			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
+			Analytics:   analyticsReader,
+			ProxyReader: newProxyReaderAdapter(writerReader, cfg.Chain.ID),
+			Etherscan:   compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,

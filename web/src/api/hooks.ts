@@ -649,27 +649,3 @@ export function useCompilerCatalog(
     staleTime: 60_000,
   });
 }
-
-export function useVerifiedContract(
-  address: string,
-  apiKey: string,
-  requestRevision: number,
-  enabled = true,
-) {
-  return useQuery({
-    // The revision retries an edited credential without placing that credential in the cache key.
-    queryKey: ["verified-contract", address, requestRevision],
-    queryFn: async () =>
-      requireEnvelope(
-        await apiClient.GET("/contracts/{address}/verification", {
-          params: { path: { address } },
-          headers: { "X-API-Key": apiKey },
-        }),
-      ).data,
-    enabled:
-      enabled && address.length > 0 && apiKey.length > 0 && requestRevision > 0,
-    retry: false,
-    gcTime: 0,
-    staleTime: 30_000,
-  });
-}

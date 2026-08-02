@@ -73,6 +73,7 @@ interface WalletContextValue {
   connect: (uuid: string) => Promise<ActiveWallet>;
   addChain: (uuid: string) => Promise<void>;
   disconnect: () => void;
+  getActiveWallet: () => ActiveWallet | undefined;
   isActiveWallet: (expected: ActiveWallet) => boolean;
   readContract: (call: ContractCall, expectedChainID: string | undefined) => Promise<Hex>;
   sendTransaction: (
@@ -293,6 +294,11 @@ export function WalletProvider({ children }: PropsWithChildren) {
     return current !== undefined && walletIdentityMatches(current, expected);
   }, []);
 
+  const getActiveWallet = useCallback(() => {
+    const current = activeRef.current;
+    return current ? publicActiveWallet(current) : undefined;
+  }, []);
+
   const addChain = useCallback(
     async (uuid: string) => {
       const detail = providersByID.get(uuid);
@@ -424,7 +430,10 @@ export function WalletProvider({ children }: PropsWithChildren) {
           boundaryError.code === "PROVIDER_DISCONNECTED"
         ) {
           markTransactionOutcomeUnknown(wallet);
-          throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
+          throw new WalletBoundaryError(
+            "TRANSACTION_OUTCOME_UNKNOWN",
+            boundaryError.revertData,
+          );
         }
         throw boundaryError;
       }
@@ -499,6 +508,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       connect,
       addChain,
       disconnect,
+      getActiveWallet,
       isActiveWallet,
       readContract,
       sendTransaction,
@@ -512,6 +522,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       disconnect,
       discover,
       error,
+      getActiveWallet,
       internalActive,
       isActiveWallet,
       providersByID,

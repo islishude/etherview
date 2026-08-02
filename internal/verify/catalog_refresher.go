@@ -19,6 +19,8 @@ type CatalogRefresher struct {
 	interval time.Duration
 }
 
+const unavailableCatalogRetryInterval = 5 * time.Second
+
 func NewCatalogRefresher(catalog catalogRefreshStore, interval time.Duration) (*CatalogRefresher, error) {
 	if catalog == nil || interval < time.Minute || interval > 24*time.Hour {
 		return nil, errors.New("compiler catalog refresher configuration is invalid")
@@ -31,17 +33,20 @@ func (refresher *CatalogRefresher) Name() string {
 }
 
 func (refresher *CatalogRefresher) Run(ctx context.Context) error {
-	ticker := time.NewTicker(refresher.interval)
-	defer ticker.Stop()
 	for {
-		_, refreshErr := refresher.catalog.Refresh(ctx, LanguageSolidity)
-		if refreshErr != nil {
-			_, _ = refresher.catalog.Versions(ctx, LanguageSolidity)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
+		delay := refresher.refreshDelay(ctx)
+		if err := waitForContext(ctx, delay); err != nil {
+			return err
 		}
 	}
+}
+
+func (refresher *CatalogRefresher) refreshDelay(ctx context.Context) time.Duration {
+	if _, err := refresher.catalog.Refresh(ctx, LanguageSolidity); err == nil {
+		return refresher.interval
+	}
+	if _, err := refresher.catalog.Versions(ctx, LanguageSolidity); err == nil {
+		return refresher.interval
+	}
+	return min(refresher.interval, unavailableCatalogRetryInterval)
 }

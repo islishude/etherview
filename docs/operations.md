@@ -378,6 +378,14 @@ etherview reindex --config /etc/etherview/config.yaml \
   --from 12000000 --to 12000010 --stage token \
   --reason "rebuild token facts after core repair"
 
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 0 --to 12000010 --stage proxy \
+  --reason "publish proxy v2 after the OpenZeppelin schema cutover"
+
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 0 --to 12000010 --stage abi \
+  --reason "publish ABI v2 after proxy v2 is complete"
+
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
 
@@ -387,10 +395,12 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage token|stats|trace` queues work for the currently canonical
+`reindex --stage proxy|abi|token|stats|trace` queues work for the currently canonical
 block hash. It does not steal queued work or an active lease. Repair deliberately
 does not infer a downstream rebuild range; schedule each required derived
-stage explicitly and wait for its durable publication result.
+stage explicitly and wait for its durable publication result. After the
+OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
+refuses to claim a block until its same-version proxy result is published.
 
 The list command is newest-first and bounded to 1–1000 rows. Its default JSON
 output and optional `--format table` both report `failure_present` without

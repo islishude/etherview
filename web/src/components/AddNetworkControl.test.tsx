@@ -198,6 +198,7 @@ function walletState(overrides: Partial<WalletState> = {}): WalletState {
     discover: vi.fn(),
     disconnect: vi.fn(),
     error: undefined,
+    getActiveWallet: vi.fn(() => undefined),
     isActiveWallet: vi.fn(() => false),
     providers: [],
     readContract: vi.fn(async () => "0x" as const),

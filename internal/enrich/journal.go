@@ -33,7 +33,15 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 	var relations []string
 	switch stage {
 	case ProxyStage:
-		relations = []string{"contract_code_observations", "proxy_observations"}
+		relations = []string{
+			"contract_code_observations",
+			"proxy_observations",
+			"beacon_implementation_observations",
+			"uups_implementation_observations",
+			"proxy_detection_evidence",
+			"proxy_upgrade_events",
+			"proxy_initialization_events",
+		}
 	case ABIStage:
 		relations = []string{"contract_abis", "abi_decodings"}
 	case TokenStage:

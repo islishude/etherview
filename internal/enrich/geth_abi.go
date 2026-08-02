@@ -13,7 +13,9 @@ var stateProbeABI = mustGethABI(`[
 	{"type":"function","name":"symbol","inputs":[],"outputs":[{"name":"","type":"string"}]},
 	{"type":"function","name":"decimals","inputs":[],"outputs":[{"name":"","type":"uint8"}]},
 	{"type":"function","name":"totalSupply","inputs":[],"outputs":[{"name":"","type":"uint256"}]},
-	{"type":"function","name":"implementation","inputs":[],"outputs":[{"name":"","type":"address"}]}
+	{"type":"function","name":"implementation","inputs":[],"outputs":[{"name":"","type":"address"}]},
+	{"type":"function","name":"proxiableUUID","inputs":[],"outputs":[{"name":"","type":"bytes32"}]},
+	{"type":"function","name":"UPGRADE_INTERFACE_VERSION","inputs":[],"outputs":[{"name":"","type":"string"}]}
 ]`)
 
 func mustGethABI(definition string) gethabi.ABI {

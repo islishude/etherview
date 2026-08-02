@@ -109,6 +109,7 @@ test-race: web-build compiler-install
 
 test-hardhat3-provider-compat:
 	$(NPM) --prefix e2e/hardhat3 ci --ignore-scripts
+	$(NODE) --test e2e/hardhat3/transaction-sender.test.mjs
 	ETHERVIEW_HARDHAT3_NODE="$(NODE)" $(GO) test -count=1 -tags=hardhat3verify ./e2e/hardhat3
 
 hardhat3-client-image-build:

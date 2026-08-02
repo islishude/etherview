@@ -1057,24 +1057,76 @@ paths:
     get:
       operationId: getVerifiedContract
       tags: [contracts, verification]
-      security:
-        - APIKey: []
-        - X402Payment: []
       parameters:
-        - $ref: "#/components/parameters/PaymentSignature"
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
           description: Complete verified artifact for the current canonical runtime.
-          headers:
-            PAYMENT-RESPONSE:
-              $ref: "#/components/headers/PaymentResponse"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerifiedContractResponse"
-        "402":
-          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /contracts/{address}/proxy:
+    get:
+      operationId: getContractProxy
+      tags: [contracts, proxy]
+      description: >-
+        Current canonical OpenZeppelin-aware proxy detection and exact
+        interaction binding. Partial or generic evidence is visible but never
+        authorizes implementation-as-proxy or management writes.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Proxy detection, identity, and interaction state at one canonical snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyDetailsResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /contracts/{address}/proxy/upgrades:
+    get:
+      operationId: listContractProxyUpgrades
+      tags: [contracts, proxy]
+      description: >-
+        Canonical implementation changes ordered newest first. Event-backed
+        and adjacent-observation changes remain distinct, and cursors are
+        bound to the returned canonical snapshot.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/ProxyHistoryLimit"
+      responses:
+        "200":
+          description: Snapshot-stable proxy implementation upgrade history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyUpgradeHistoryResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /contracts/{address}/proxy/initializations:
+    get:
+      operationId: listContractProxyInitializations
+      tags: [contracts, proxy]
+      description: >-
+        Canonical Initializable version events ordered newest first and
+        associated with the implementation active at each event. Cursors are
+        bound to the returned canonical snapshot.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/ProxyHistoryLimit"
+      responses:
+        "200":
+          description: Snapshot-stable initialization version history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyInitializationHistoryResponse"
         default:
           $ref: "#/components/responses/Error"
   /verifier/jobs/{id}:
@@ -1274,6 +1326,14 @@ components:
         minimum: 1
         maximum: 100
         default: 25
+    ProxyHistoryLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     SearchLimit:
       name: limit
       in: query
@@ -1596,7 +1656,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 19
+          maxItems: 26
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -3224,6 +3284,281 @@ components:
             created_at:
               type: string
               format: date-time
+    ProxyDetailStatus:
+      type: string
+      enum: [not_detected, detected_unverified, verified, unavailable, failed]
+    ProxyMechanism:
+      type: string
+      enum: [eip1167, eip1967, beacon]
+    ProxyPattern:
+      type: string
+      enum: [clone, erc1967, transparent, uups, beacon, unknown]
+    ProxyEvidenceState:
+      type: string
+      enum: [exact, partial, generic]
+    ProxyConfidence:
+      type: string
+      enum: [verified, high, inferred, guess]
+    ProxyVerificationState:
+      type: string
+      enum: [unverified, verified]
+    ProxyArtifactKind:
+      type: string
+      enum:
+        - erc1967_proxy
+        - transparent_proxy
+        - beacon_proxy
+        - uups_implementation
+        - proxy_admin
+        - upgradeable_beacon
+    ProxyManagementKind:
+      type: string
+      enum: [proxy_admin, upgradeable_beacon]
+    ProxyEvidenceSource:
+      type: string
+      enum:
+        - runtime_code
+        - runtime_immutable
+        - implementation_slot
+        - admin_slot
+        - beacon_slot
+        - direct_call
+        - verified_artifact
+        - event
+    ProxyEvidenceSubject:
+      type: string
+      enum: [proxy, implementation, admin, beacon, management]
+    ProxyEvidenceResult:
+      type: string
+      enum: [authoritative, corroborating, conflicting, rejected]
+    ProxyRecognitionEvidence:
+      type: object
+      additionalProperties: false
+      required: [source, subject, result]
+      properties:
+        source:
+          $ref: "#/components/schemas/ProxyEvidenceSource"
+        subject:
+          $ref: "#/components/schemas/ProxyEvidenceSubject"
+        result:
+          $ref: "#/components/schemas/ProxyEvidenceResult"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+    ProxyContractIdentity:
+      type: object
+      additionalProperties: false
+      required: [address, code_hash, verification_state]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        verification_state:
+          $ref: "#/components/schemas/ProxyVerificationState"
+        artifact_kind:
+          $ref: "#/components/schemas/ProxyArtifactKind"
+        standard_version:
+          type: string
+          enum: [5.6.1]
+    ProxyManagement:
+      type: object
+      additionalProperties: false
+      required: [kind, target]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ProxyManagementKind"
+        target:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        affected_proxy_count:
+          $ref: "#/components/schemas/Quantity"
+    ProxyDetails:
+      type: object
+      additionalProperties: false
+      required: [address, status, snapshot, evidence]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        status:
+          $ref: "#/components/schemas/ProxyDetailStatus"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        mechanism:
+          $ref: "#/components/schemas/ProxyMechanism"
+        pattern:
+          $ref: "#/components/schemas/ProxyPattern"
+        standard_version:
+          type: string
+          enum: [5.6.1]
+        evidence_state:
+          $ref: "#/components/schemas/ProxyEvidenceState"
+        confidence:
+          $ref: "#/components/schemas/ProxyConfidence"
+        proxy:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        implementation:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        admin:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        beacon:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        management:
+          $ref: "#/components/schemas/ProxyManagement"
+        immutable_args:
+          type: string
+          pattern: '^0x([0-9a-fA-F]{2})*$'
+          maxLength: 49064
+        binding_id:
+          type: string
+          format: uuid
+          description: >-
+            Opaque current interaction-binding identity. Clients must compare
+            it immediately before implementation-as-proxy or management writes.
+        evidence:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/ProxyRecognitionEvidence"
+    ProxyHistoryCoverageState:
+      type: string
+      enum: [complete, partial]
+    ProxyHistoryCoverage:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/ProxyHistoryCoverageState"
+        from_block:
+          $ref: "#/components/schemas/Quantity"
+        to_block:
+          $ref: "#/components/schemas/Quantity"
+    ProxyHistoricalIdentity:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        verification_state:
+          $ref: "#/components/schemas/ProxyVerificationState"
+    ProxyHistoricalManagement:
+      type: object
+      additionalProperties: false
+      required: [kind, target]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ProxyManagementKind"
+        target:
+          $ref: "#/components/schemas/ProxyHistoricalIdentity"
+    ProxyUpgradeChangeType:
+      type: string
+      enum: [implementation, beacon, beacon_implementation]
+    ProxyUpgradeEvidenceType:
+      type: string
+      enum: [event, observation]
+    ProxyUpgrade:
+      type: object
+      additionalProperties: false
+      required:
+        - change_type
+        - evidence_type
+        - block_number
+        - block_hash
+        - block_timestamp
+        - new_implementation
+      properties:
+        change_type:
+          $ref: "#/components/schemas/ProxyUpgradeChangeType"
+        evidence_type:
+          $ref: "#/components/schemas/ProxyUpgradeEvidenceType"
+        old_implementation:
+          $ref: "#/components/schemas/ProxyHistoricalIdentity"
+        new_implementation:
+          $ref: "#/components/schemas/ProxyHistoricalIdentity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        emitter_address:
+          $ref: "#/components/schemas/Address"
+        beacon:
+          $ref: "#/components/schemas/ProxyHistoricalIdentity"
+        management:
+          $ref: "#/components/schemas/ProxyHistoricalManagement"
+    ProxyUpgradeHistory:
+      type: object
+      additionalProperties: false
+      required: [proxy_address, snapshot, coverage, items]
+      properties:
+        proxy_address:
+          $ref: "#/components/schemas/Address"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        coverage:
+          $ref: "#/components/schemas/ProxyHistoryCoverage"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ProxyUpgrade"
+    ProxyInitialization:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - block_number
+        - block_hash
+        - block_timestamp
+        - transaction_hash
+        - log_index
+        - implementation
+      properties:
+        version:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        implementation:
+          $ref: "#/components/schemas/ProxyHistoricalIdentity"
+    ProxyInitializationHistory:
+      type: object
+      additionalProperties: false
+      required: [contract_address, snapshot, coverage, items]
+      properties:
+        contract_address:
+          $ref: "#/components/schemas/Address"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        coverage:
+          $ref: "#/components/schemas/ProxyHistoryCoverage"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ProxyInitialization"
     APIError:
       type: object
       required: [code, message, request_id]
@@ -3597,6 +3932,30 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/VerifiedContract"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ProxyDetailsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProxyDetails"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ProxyUpgradeHistoryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProxyUpgradeHistory"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ProxyInitializationHistoryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProxyInitializationHistory"
         meta:
           $ref: "#/components/schemas/Meta"
     ErrorResponse:

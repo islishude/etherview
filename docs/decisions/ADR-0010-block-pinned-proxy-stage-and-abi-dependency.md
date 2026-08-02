@@ -102,3 +102,49 @@ before proxy discovery makes a verified implementation ABI available.
   stores replay generations and source identities; a future proxy
   representation or rollback contract requires a new stage version and a
   reviewed dependency update in both the queue and processor.
+
+## OpenZeppelin 5.x extension
+
+`proxy@2` and `abi@2` are that reviewed representation change. Version 2 keeps
+the original one-endpoint, exact-block, lease-fenced publication contract and
+adds these decisions. The `proxy@1`/`abi@1` Decision and Consequences above
+remain the historical v1 contract; the bullets below replace v1 behavior only
+where they say so:
+
+- ABI jobs depend on the Proxy stage with the same stage version; the queue no
+  longer hard-codes one historical version pair.
+- Unlike v1's creation-only Proxy replay rule, any non-empty normalized Trace
+  that completes after the initial v2 passes records a source-deduplicated
+  `proxy@2` replay request first and then an `abi@2` replay request. ABI's
+  same-version dependency prevents its replay from publishing before Proxy.
+  Ordinary `CALL` targets are included in exact-block discovery, but candidate
+  presence alone is not exact proxy-pattern evidence and never authorizes
+  management interaction.
+- Proxy observations distinguish the base mechanism from the recognized
+  pattern and retain exact clone arguments, admin, beacon, implementation, and
+  code identities. Exact pattern recognition combines the applicable runtime,
+  immutable, verified artifact, fixed-block probe, and code-hash evidence.
+  Partial or generic evidence never becomes a management authorization fact.
+- An OpenZeppelin 5.x Transparent proxy uses the verified runtime immutable
+  admin as authority. Its ERC-1967 admin slot is compatibility evidence only.
+  Likewise, a verified OpenZeppelin 5.x BeaconProxy uses its runtime immutable
+  beacon; changing the compatibility slot cannot redirect the recorded
+  relation.
+- Beacon implementations are observed once per beacon and immutable block.
+  Proxy readers resolve that shared history instead of issuing or storing one
+  duplicate beacon observation per dependent proxy.
+- Standard upgrade and initialization logs retain transaction and log order so
+  multiple transitions in one block remain visible. Observation changes fill
+  silent transitions, but history is explicitly partial unless exact derived
+  coverage proves the interval.
+- The Proxy journal and core reorg transition include the new beacon, upgrade,
+  and initialization relations. Orphan observations and events remain stored
+  with canonicality toggled by exact block hash.
+- Raw proxy facts are not publication authority. Append-only proxy and beacon
+  generation witnesses bind observations to the active durable `proxy@2`
+  lease generation, and detection evidence carries the same lease identity.
+  Observation readers require the canonical fact, its generation witness, and
+  the exact published stage generation. Upgrade and initialization event
+  readers require the event's exact canonical block to have a published
+  `proxy@2` result. Direct, superseded, pending-replay, and orphan rows remain
+  retained but are not current public evidence.

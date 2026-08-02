@@ -136,6 +136,32 @@ type AuthChallenge struct {
 	ConsumedAt pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
 }
 
+type BeaconImplementationObservation struct {
+	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BeaconAddress          []byte             `db:"beacon_address" json:"beacon_address"`
+	BlockNumber            pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash              []byte             `db:"block_hash" json:"block_hash"`
+	BeaconCodeHash         []byte             `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ImplementationAddress  []byte             `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash []byte             `db:"implementation_code_hash" json:"implementation_code_hash"`
+	StageVersion           int32              `db:"stage_version" json:"stage_version"`
+	Confidence             string             `db:"confidence" json:"confidence"`
+	Canonical              bool               `db:"canonical" json:"canonical"`
+	Details                []byte             `db:"details" json:"details"`
+	ObservedAt             pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type BeaconObservationGeneration struct {
+	ID                      int64              `db:"id" json:"id"`
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BeaconAddress           []byte             `db:"beacon_address" json:"beacon_address"`
+	ObservationBlockHash    []byte             `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion int32              `db:"observation_stage_version" json:"observation_stage_version"`
+	DurableJobID            *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64             `db:"job_generation" json:"job_generation"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type BillingPayment struct {
 	ID                   pgtype.UUID        `db:"id" json:"id"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
@@ -751,6 +777,87 @@ type OperatorLabel struct {
 	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type ProxyArtifactResolution struct {
+	ID                          int64              `db:"id" json:"id"`
+	ChainID                     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ProxyAddress                []byte             `db:"proxy_address" json:"proxy_address"`
+	ObservationBlockHash        []byte             `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion     int32              `db:"observation_stage_version" json:"observation_stage_version"`
+	ProxyCodeHash               []byte             `db:"proxy_code_hash" json:"proxy_code_hash"`
+	ProxyKind                   string             `db:"proxy_kind" json:"proxy_kind"`
+	ProxyPattern                string             `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion             string             `db:"standard_version" json:"standard_version"`
+	ImplementationAddress       []byte             `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash      []byte             `db:"implementation_code_hash" json:"implementation_code_hash"`
+	AdminAddress                []byte             `db:"admin_address" json:"admin_address"`
+	AdminCodeHash               []byte             `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress               []byte             `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash              []byte             `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ProxyArtifactJobID          pgtype.UUID        `db:"proxy_artifact_job_id" json:"proxy_artifact_job_id"`
+	ImplementationArtifactJobID pgtype.UUID        `db:"implementation_artifact_job_id" json:"implementation_artifact_job_id"`
+	DurableJobID                *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration               *int64             `db:"job_generation" json:"job_generation"`
+	Evidence                    []byte             `db:"evidence" json:"evidence"`
+	CreatedAt                   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ProxyDetectionEvidence struct {
+	ID             int64              `db:"id" json:"id"`
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address        []byte             `db:"address" json:"address"`
+	BlockNumber    pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash      []byte             `db:"block_hash" json:"block_hash"`
+	StageVersion   int32              `db:"stage_version" json:"stage_version"`
+	CodeHash       []byte             `db:"code_hash" json:"code_hash"`
+	CandidateKind  string             `db:"candidate_kind" json:"candidate_kind"`
+	DetectionState string             `db:"detection_state" json:"detection_state"`
+	Reason         string             `db:"reason" json:"reason"`
+	Canonical      bool               `db:"canonical" json:"canonical"`
+	DurableJobID   *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration  *int64             `db:"job_generation" json:"job_generation"`
+	Details        []byte             `db:"details" json:"details"`
+	ObservedAt     pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type ProxyHistoryEpoch struct {
+	EpochID             int64              `db:"epoch_id" json:"epoch_id"`
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
+	DurableJobID        int64              `db:"durable_job_id" json:"durable_job_id"`
+	RequestedGeneration int64              `db:"requested_generation" json:"requested_generation"`
+	Phase               string             `db:"phase" json:"phase"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ProxyInitializationEvent struct {
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex        int64          `db:"log_index" json:"log_index"`
+	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
+	ContractAddress []byte         `db:"contract_address" json:"contract_address"`
+	Version         pgtype.Numeric `db:"version" json:"version"`
+	StageVersion    int32          `db:"stage_version" json:"stage_version"`
+	Canonical       bool           `db:"canonical" json:"canonical"`
+}
+
+type ProxyInteractionCoverageRange struct {
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	StartBlock     pgtype.Numeric     `db:"start_block" json:"start_block"`
+	StartBlockHash []byte             `db:"start_block_hash" json:"start_block_hash"`
+	EndBlock       pgtype.Numeric     `db:"end_block" json:"end_block"`
+	EndBlockHash   []byte             `db:"end_block_hash" json:"end_block_hash"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ProxyInteractionCoveredBlock struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type ProxyObservation struct {
 	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	ProxyAddress           []byte         `db:"proxy_address" json:"proxy_address"`
@@ -764,6 +871,49 @@ type ProxyObservation struct {
 	Confidence             string         `db:"confidence" json:"confidence"`
 	Canonical              bool           `db:"canonical" json:"canonical"`
 	Details                []byte         `db:"details" json:"details"`
+	StageVersion           int32          `db:"stage_version" json:"stage_version"`
+	ProxyPattern           string         `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion        *string        `db:"standard_version" json:"standard_version"`
+	AdminAddress           []byte         `db:"admin_address" json:"admin_address"`
+	AdminCodeHash          []byte         `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconCodeHash         []byte         `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ImmutableArgs          []byte         `db:"immutable_args" json:"immutable_args"`
+	EvidenceState          string         `db:"evidence_state" json:"evidence_state"`
+}
+
+type ProxyObservationGeneration struct {
+	ID                      int64              `db:"id" json:"id"`
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ProxyAddress            []byte             `db:"proxy_address" json:"proxy_address"`
+	ObservationBlockHash    []byte             `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion int32              `db:"observation_stage_version" json:"observation_stage_version"`
+	DurableJobID            *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64             `db:"job_generation" json:"job_generation"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ProxyReplayTarget struct {
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber             pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash               []byte             `db:"block_hash" json:"block_hash"`
+	Address                 []byte             `db:"address" json:"address"`
+	TargetKind              string             `db:"target_kind" json:"target_kind"`
+	SourceKind              string             `db:"source_kind" json:"source_kind"`
+	SourceVerificationJobID pgtype.UUID        `db:"source_verification_job_id" json:"source_verification_job_id"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ProxyUpgradeEvent struct {
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash       []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex        int64          `db:"log_index" json:"log_index"`
+	TransactionHash []byte         `db:"transaction_hash" json:"transaction_hash"`
+	EmitterAddress  []byte         `db:"emitter_address" json:"emitter_address"`
+	EventKind       string         `db:"event_kind" json:"event_kind"`
+	TargetAddress   []byte         `db:"target_address" json:"target_address"`
+	StageVersion    int32          `db:"stage_version" json:"stage_version"`
+	Canonical       bool           `db:"canonical" json:"canonical"`
 }
 
 type PublishedBlockStageResult struct {
@@ -847,26 +997,29 @@ type RuntimeEvent struct {
 }
 
 type SearchCatalogDocument struct {
-	ID                  int64              `db:"id" json:"id"`
-	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	SourceKind          string             `db:"source_kind" json:"source_kind"`
-	SourceIdentity      string             `db:"source_identity" json:"source_identity"`
-	LogicalIdentity     string             `db:"logical_identity" json:"logical_identity"`
-	ValidFromGeneration int64              `db:"valid_from_generation" json:"valid_from_generation"`
-	ValidToGeneration   *int64             `db:"valid_to_generation" json:"valid_to_generation"`
-	ResultKind          *string            `db:"result_kind" json:"result_kind"`
-	ResultKey           *string            `db:"result_key" json:"result_key"`
-	ResultLabel         *string            `db:"result_label" json:"result_label"`
-	ExactTerms          []string           `db:"exact_terms" json:"exact_terms"`
-	PartialTerms        []string           `db:"partial_terms" json:"partial_terms"`
-	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
-	TargetAddress       []byte             `db:"target_address" json:"target_address"`
-	CodeHash            []byte             `db:"code_hash" json:"code_hash"`
-	ValidFromBlock      pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
-	ValidToBlock        pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
-	SourceCanonical     *bool              `db:"source_canonical" json:"source_canonical"`
-	RecordedAt          pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	ID                        int64              `db:"id" json:"id"`
+	ChainID                   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	SourceKind                string             `db:"source_kind" json:"source_kind"`
+	SourceIdentity            string             `db:"source_identity" json:"source_identity"`
+	LogicalIdentity           string             `db:"logical_identity" json:"logical_identity"`
+	ValidFromGeneration       int64              `db:"valid_from_generation" json:"valid_from_generation"`
+	ValidToGeneration         *int64             `db:"valid_to_generation" json:"valid_to_generation"`
+	ResultKind                *string            `db:"result_kind" json:"result_kind"`
+	ResultKey                 *string            `db:"result_key" json:"result_key"`
+	ResultLabel               *string            `db:"result_label" json:"result_label"`
+	ExactTerms                []string           `db:"exact_terms" json:"exact_terms"`
+	PartialTerms              []string           `db:"partial_terms" json:"partial_terms"`
+	BlockNumber               pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash                 []byte             `db:"block_hash" json:"block_hash"`
+	TargetAddress             []byte             `db:"target_address" json:"target_address"`
+	CodeHash                  []byte             `db:"code_hash" json:"code_hash"`
+	ValidFromBlock            pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock              pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
+	SourceCanonical           *bool              `db:"source_canonical" json:"source_canonical"`
+	RecordedAt                pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	VerificationMatchType     *string            `db:"verification_match_type" json:"verification_match_type"`
+	VerificationRequestDigest []byte             `db:"verification_request_digest" json:"verification_request_digest"`
+	VerificationJobID         pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
 }
 
 type SearchCatalogGeneration struct {
@@ -1128,6 +1281,35 @@ type UserSession struct {
 	RevokedAt   pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 }
 
+type UupsImplementationObservation struct {
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ImplementationAddress   []byte             `db:"implementation_address" json:"implementation_address"`
+	BlockNumber             pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash               []byte             `db:"block_hash" json:"block_hash"`
+	ImplementationCodeHash  []byte             `db:"implementation_code_hash" json:"implementation_code_hash"`
+	VerificationJobID       pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	StageVersion            int32              `db:"stage_version" json:"stage_version"`
+	StandardVersion         string             `db:"standard_version" json:"standard_version"`
+	ProbeState              string             `db:"probe_state" json:"probe_state"`
+	RejectionReason         *string            `db:"rejection_reason" json:"rejection_reason"`
+	ProxiableUuid           []byte             `db:"proxiable_uuid" json:"proxiable_uuid"`
+	UpgradeInterfaceVersion *string            `db:"upgrade_interface_version" json:"upgrade_interface_version"`
+	Canonical               bool               `db:"canonical" json:"canonical"`
+	ObservedAt              pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type UupsImplementationObservationGeneration struct {
+	ID                      int64              `db:"id" json:"id"`
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ImplementationAddress   []byte             `db:"implementation_address" json:"implementation_address"`
+	ObservationBlockHash    []byte             `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion int32              `db:"observation_stage_version" json:"observation_stage_version"`
+	VerificationJobID       pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	DurableJobID            int64              `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           int64              `db:"job_generation" json:"job_generation"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type VerificationJob struct {
 	ID                  pgtype.UUID        `db:"id" json:"id"`
 	Kind                string             `db:"kind" json:"kind"`
@@ -1161,25 +1343,29 @@ type VerificationJob struct {
 }
 
 type VerificationResult struct {
-	JobID                 pgtype.UUID        `db:"job_id" json:"job_id"`
-	RequestDigest         []byte             `db:"request_digest" json:"request_digest"`
-	OutcomeKind           string             `db:"outcome_kind" json:"outcome_kind"`
-	Outcome               []byte             `db:"outcome" json:"outcome"`
-	FileName              *string            `db:"file_name" json:"file_name"`
-	ContractName          *string            `db:"contract_name" json:"contract_name"`
-	Language              *string            `db:"language" json:"language"`
-	CompilerVersion       *string            `db:"compiler_version" json:"compiler_version"`
-	MatchType             *string            `db:"match_type" json:"match_type"`
-	Abi                   []byte             `db:"abi" json:"abi"`
-	Sources               []byte             `db:"sources" json:"sources"`
-	Settings              []byte             `db:"settings" json:"settings"`
-	CompilationArtifacts  []byte             `db:"compilation_artifacts" json:"compilation_artifacts"`
-	CreationCodeArtifacts []byte             `db:"creation_code_artifacts" json:"creation_code_artifacts"`
-	RuntimeCodeArtifacts  []byte             `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
-	ConstructorArguments  []byte             `db:"constructor_arguments" json:"constructor_arguments"`
-	Libraries             []byte             `db:"libraries" json:"libraries"`
-	IsBlueprint           *bool              `db:"is_blueprint" json:"is_blueprint"`
-	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	JobID                        pgtype.UUID        `db:"job_id" json:"job_id"`
+	RequestDigest                []byte             `db:"request_digest" json:"request_digest"`
+	OutcomeKind                  string             `db:"outcome_kind" json:"outcome_kind"`
+	Outcome                      []byte             `db:"outcome" json:"outcome"`
+	FileName                     *string            `db:"file_name" json:"file_name"`
+	ContractName                 *string            `db:"contract_name" json:"contract_name"`
+	Language                     *string            `db:"language" json:"language"`
+	CompilerVersion              *string            `db:"compiler_version" json:"compiler_version"`
+	MatchType                    *string            `db:"match_type" json:"match_type"`
+	Abi                          []byte             `db:"abi" json:"abi"`
+	Sources                      []byte             `db:"sources" json:"sources"`
+	Settings                     []byte             `db:"settings" json:"settings"`
+	CompilationArtifacts         []byte             `db:"compilation_artifacts" json:"compilation_artifacts"`
+	CreationCodeArtifacts        []byte             `db:"creation_code_artifacts" json:"creation_code_artifacts"`
+	RuntimeCodeArtifacts         []byte             `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
+	ConstructorArguments         []byte             `db:"constructor_arguments" json:"constructor_arguments"`
+	Libraries                    []byte             `db:"libraries" json:"libraries"`
+	IsBlueprint                  *bool              `db:"is_blueprint" json:"is_blueprint"`
+	CreatedAt                    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ProxyArtifactKind            *string            `db:"proxy_artifact_kind" json:"proxy_artifact_kind"`
+	ProxyStandardVersion         *string            `db:"proxy_standard_version" json:"proxy_standard_version"`
+	ProxyRuntimeImmutableAddress []byte             `db:"proxy_runtime_immutable_address" json:"proxy_runtime_immutable_address"`
+	ProxySourceManifestSha256    []byte             `db:"proxy_source_manifest_sha256" json:"proxy_source_manifest_sha256"`
 }
 
 type VerifiedContract struct {
@@ -1207,18 +1393,48 @@ type VerifiedContract struct {
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-type VerifiedProxyContract struct {
-	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	ProxyAddress           []byte             `db:"proxy_address" json:"proxy_address"`
-	ProxyCodeHash          []byte             `db:"proxy_code_hash" json:"proxy_code_hash"`
-	ObservationBlockNumber pgtype.Numeric     `db:"observation_block_number" json:"observation_block_number"`
-	ObservationBlockHash   []byte             `db:"observation_block_hash" json:"observation_block_hash"`
-	ProxyKind              string             `db:"proxy_kind" json:"proxy_kind"`
-	ImplementationAddress  []byte             `db:"implementation_address" json:"implementation_address"`
-	ImplementationCodeHash []byte             `db:"implementation_code_hash" json:"implementation_code_hash"`
-	VerificationJobID      pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
-	RequestDigest          []byte             `db:"request_digest" json:"request_digest"`
-	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+type VerifiedContractProxyArtifact struct {
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address                 []byte             `db:"address" json:"address"`
+	CodeHash                []byte             `db:"code_hash" json:"code_hash"`
+	ValidFromBlock          pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
+	VerificationJobID       pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest           []byte             `db:"request_digest" json:"request_digest"`
+	ArtifactKind            string             `db:"artifact_kind" json:"artifact_kind"`
+	StandardVersion         string             `db:"standard_version" json:"standard_version"`
+	RuntimeImmutableAddress []byte             `db:"runtime_immutable_address" json:"runtime_immutable_address"`
+	SourceManifestSha256    []byte             `db:"source_manifest_sha256" json:"source_manifest_sha256"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type VerifiedProxyBinding struct {
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ProxyAddress            []byte             `db:"proxy_address" json:"proxy_address"`
+	ProxyCodeHash           []byte             `db:"proxy_code_hash" json:"proxy_code_hash"`
+	ObservationBlockNumber  pgtype.Numeric     `db:"observation_block_number" json:"observation_block_number"`
+	ObservationBlockHash    []byte             `db:"observation_block_hash" json:"observation_block_hash"`
+	ObservationStageVersion int32              `db:"observation_stage_version" json:"observation_stage_version"`
+	ProxyKind               string             `db:"proxy_kind" json:"proxy_kind"`
+	ProxyPattern            string             `db:"proxy_pattern" json:"proxy_pattern"`
+	StandardVersion         *string            `db:"standard_version" json:"standard_version"`
+	ImplementationAddress   []byte             `db:"implementation_address" json:"implementation_address"`
+	ImplementationCodeHash  []byte             `db:"implementation_code_hash" json:"implementation_code_hash"`
+	AdminAddress            []byte             `db:"admin_address" json:"admin_address"`
+	AdminCodeHash           []byte             `db:"admin_code_hash" json:"admin_code_hash"`
+	BeaconAddress           []byte             `db:"beacon_address" json:"beacon_address"`
+	BeaconCodeHash          []byte             `db:"beacon_code_hash" json:"beacon_code_hash"`
+	ManagementKind          string             `db:"management_kind" json:"management_kind"`
+	ManagementAddress       []byte             `db:"management_address" json:"management_address"`
+	ManagementCodeHash      []byte             `db:"management_code_hash" json:"management_code_hash"`
+	ObservationGenerationID int64              `db:"observation_generation_id" json:"observation_generation_id"`
+	ArtifactResolutionID    *int64             `db:"artifact_resolution_id" json:"artifact_resolution_id"`
+	BeaconGenerationID      *int64             `db:"beacon_generation_id" json:"beacon_generation_id"`
+	ContextBlockNumber      pgtype.Numeric     `db:"context_block_number" json:"context_block_number"`
+	ContextBlockHash        []byte             `db:"context_block_hash" json:"context_block_hash"`
+	VerificationJobID       pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest           []byte             `db:"request_digest" json:"request_digest"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UupsGenerationID        *int64             `db:"uups_generation_id" json:"uups_generation_id"`
 }
 
 type Withdrawal struct {

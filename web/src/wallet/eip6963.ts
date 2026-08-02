@@ -28,6 +28,7 @@ export const EIP6963_REQUEST_EVENT = "eip6963:requestProvider";
 
 export const MAX_CONTRACT_CALLDATA_BYTES = 128 * 1024;
 export const MAX_CONTRACT_RESULT_BYTES = 1024 * 1024;
+export const MAX_REVERT_DATA_BYTES = 128 * 1024;
 export const MAX_SIGN_MESSAGE_BYTES = 4096;
 
 const UUID_V4_PATTERN =
@@ -290,11 +291,13 @@ const WALLET_ERROR_MESSAGES: Record<WalletBoundaryErrorCode, string> = {
 
 export class WalletBoundaryError extends Error {
   readonly code: WalletBoundaryErrorCode;
+  readonly revertData?: `0x${string}`;
 
-  constructor(code: WalletBoundaryErrorCode) {
+  constructor(code: WalletBoundaryErrorCode, revertData?: `0x${string}`) {
     super(WALLET_ERROR_MESSAGES[code]);
     this.name = "WalletBoundaryError";
     this.code = code;
+    this.revertData = revertData;
   }
 }
 
@@ -302,17 +305,18 @@ export function toWalletBoundaryError(cause: unknown): WalletBoundaryError {
   if (cause instanceof WalletBoundaryError) return cause;
 
   const providerCode = providerErrorCode(cause);
+  const revertData = providerRevertData(cause);
   switch (providerCode) {
     case 4001:
-      return new WalletBoundaryError("USER_REJECTED");
+      return new WalletBoundaryError("USER_REJECTED", revertData);
     case 4100:
-      return new WalletBoundaryError("NOT_CONNECTED");
+      return new WalletBoundaryError("NOT_CONNECTED", revertData);
     case 4900:
-      return new WalletBoundaryError("PROVIDER_DISCONNECTED");
+      return new WalletBoundaryError("PROVIDER_DISCONNECTED", revertData);
     case 4901:
-      return new WalletBoundaryError("CHAIN_MISMATCH");
+      return new WalletBoundaryError("CHAIN_MISMATCH", revertData);
     default:
-      return new WalletBoundaryError("REQUEST_FAILED");
+      return new WalletBoundaryError("REQUEST_FAILED", revertData);
   }
 }
 
@@ -459,4 +463,33 @@ function providerErrorCode(cause: unknown): number | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function providerRevertData(cause: unknown): `0x${string}` | undefined {
+  const visited = new Set<object>();
+  const inspect = (value: unknown, depth: number): `0x${string}` | undefined => {
+    if (depth > 4) return undefined;
+    if (
+      typeof value === "string" &&
+      value.length <= MAX_REVERT_DATA_BYTES * 2 + 2 &&
+      HEX_DATA_PATTERN.test(value)
+    ) {
+      return value as `0x${string}`;
+    }
+    if (typeof value !== "object" || value === null || visited.has(value)) {
+      return undefined;
+    }
+    visited.add(value);
+    try {
+      const record = value as Record<string, unknown>;
+      for (const key of ["data", "error", "cause"] as const) {
+        const found = inspect(record[key], depth + 1);
+        if (found !== undefined) return found;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  };
+  return inspect(cause, 0);
 }

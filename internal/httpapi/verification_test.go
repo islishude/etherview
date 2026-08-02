@@ -120,11 +120,31 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 	}
 
 	read := httptest.NewRequest(http.MethodGet, "/api/v1/contracts/"+address+"/verification", nil)
-	read.Header.Set("X-API-Key", key.Token)
 	response = httptest.NewRecorder()
 	protected.ServeHTTP(response, read)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Counter.sol") {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet, "/api/v1/contracts/"+address+"/verification?code_hash="+target.CodeHash, nil,
+	))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"invalid_query"`) {
+		t.Fatalf("verified artifact accepted caller-selected identity status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	jobPath := "/api/v1/verifier/jobs/" + service.job.ID
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, jobPath, nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous verification job status=%d body=%s", response.Code, response.Body.String())
+	}
+	jobRead := httptest.NewRequest(http.MethodGet, jobPath, nil)
+	jobRead.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, jobRead)
+	if response.Code != http.StatusOK {
+		t.Fatalf("authenticated verification job status=%d body=%s", response.Code, response.Body.String())
 	}
 
 	for _, oldPath := range []string{

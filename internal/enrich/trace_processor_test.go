@@ -170,11 +170,11 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 		result.Details["abi_requeued"] != "false" {
 		t.Fatalf("result=%+v", result)
 	}
-	if queryCount != 4 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
+	if queryCount != 5 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
 		t.Fatalf("queries=%d frames=%d stage=%v journal=%v first=%v second=%v", queryCount, insertedFrames, stageWritten, journalWritten, first.calls, second.calls)
 	}
-	if !reflect.DeepEqual(replayStages, []string{"abi"}) {
-		t.Fatalf("ordinary CALL replay stages = %v, want ABI only", replayStages)
+	if !reflect.DeepEqual(replayStages, []string{"proxy", "abi"}) {
+		t.Fatalf("ordinary CALL replay stages = %v, want Proxy then ABI", replayStages)
 	}
 	if first.calls[0].hash != txHash1.String() || first.calls[1].hash != txHash2.String() {
 		t.Fatalf("calls=%+v", first.calls)

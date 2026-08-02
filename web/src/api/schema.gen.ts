@@ -340,6 +340,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contracts/{address}/proxy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Current canonical OpenZeppelin-aware proxy detection and exact interaction binding. Partial or generic evidence is visible but never authorizes implementation-as-proxy or management writes. */
+        get: operations["getContractProxy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contracts/{address}/proxy/initializations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Canonical Initializable version events ordered newest first and associated with the implementation active at each event. Cursors are bound to the returned canonical snapshot. */
+        get: operations["listContractProxyInitializations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contracts/{address}/proxy/upgrades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Canonical implementation changes ordered newest first. Event-backed and adjacent-observation changes remain distinct, and cursors are bound to the returned canonical snapshot. */
+        get: operations["listContractProxyUpgrades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contracts/{address}/verification": {
         parameters: {
             query?: never;
@@ -1387,6 +1438,142 @@ export interface components {
             data: components["schemas"]["PendingTransaction"][];
             meta: components["schemas"]["PendingMeta"];
         };
+        /** @enum {string} */
+        ProxyArtifactKind: "erc1967_proxy" | "transparent_proxy" | "beacon_proxy" | "uups_implementation" | "proxy_admin" | "upgradeable_beacon";
+        /** @enum {string} */
+        ProxyConfidence: "verified" | "high" | "inferred" | "guess";
+        ProxyContractIdentity: {
+            address: components["schemas"]["Address"];
+            artifact_kind?: components["schemas"]["ProxyArtifactKind"];
+            code_hash: components["schemas"]["Hash"];
+            /** @enum {string} */
+            standard_version?: "5.6.1";
+            verification_state: components["schemas"]["ProxyVerificationState"];
+        };
+        ProxyDetails: {
+            address: components["schemas"]["Address"];
+            admin?: components["schemas"]["ProxyContractIdentity"];
+            beacon?: components["schemas"]["ProxyContractIdentity"];
+            /**
+             * Format: uuid
+             * @description Opaque current interaction-binding identity. Clients must compare it immediately before implementation-as-proxy or management writes.
+             */
+            binding_id?: string;
+            confidence?: components["schemas"]["ProxyConfidence"];
+            evidence: components["schemas"]["ProxyRecognitionEvidence"][];
+            evidence_state?: components["schemas"]["ProxyEvidenceState"];
+            immutable_args?: string;
+            implementation?: components["schemas"]["ProxyContractIdentity"];
+            management?: components["schemas"]["ProxyManagement"];
+            mechanism?: components["schemas"]["ProxyMechanism"];
+            pattern?: components["schemas"]["ProxyPattern"];
+            proxy?: components["schemas"]["ProxyContractIdentity"];
+            snapshot: components["schemas"]["CatalogSnapshot"];
+            /** @enum {string} */
+            standard_version?: "5.6.1";
+            status: components["schemas"]["ProxyDetailStatus"];
+        };
+        ProxyDetailsResponse: {
+            data: components["schemas"]["ProxyDetails"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        ProxyDetailStatus: "not_detected" | "detected_unverified" | "verified" | "unavailable" | "failed";
+        /** @enum {string} */
+        ProxyEvidenceResult: "authoritative" | "corroborating" | "conflicting" | "rejected";
+        /** @enum {string} */
+        ProxyEvidenceSource: "runtime_code" | "runtime_immutable" | "implementation_slot" | "admin_slot" | "beacon_slot" | "direct_call" | "verified_artifact" | "event";
+        /** @enum {string} */
+        ProxyEvidenceState: "exact" | "partial" | "generic";
+        /** @enum {string} */
+        ProxyEvidenceSubject: "proxy" | "implementation" | "admin" | "beacon" | "management";
+        ProxyHistoricalIdentity: {
+            address: components["schemas"]["Address"];
+            code_hash?: components["schemas"]["Hash"];
+            verification_state?: components["schemas"]["ProxyVerificationState"];
+        };
+        ProxyHistoricalManagement: {
+            kind: components["schemas"]["ProxyManagementKind"];
+            target: components["schemas"]["ProxyHistoricalIdentity"];
+        };
+        ProxyHistoryCoverage: {
+            from_block?: components["schemas"]["Quantity"];
+            state: components["schemas"]["ProxyHistoryCoverageState"];
+            to_block?: components["schemas"]["Quantity"];
+        };
+        /** @enum {string} */
+        ProxyHistoryCoverageState: "complete" | "partial";
+        ProxyInitialization: {
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            implementation: components["schemas"]["ProxyHistoricalIdentity"];
+            log_index: components["schemas"]["Quantity"];
+            transaction_hash: components["schemas"]["Hash"];
+            version: components["schemas"]["Quantity"];
+        };
+        ProxyInitializationHistory: {
+            contract_address: components["schemas"]["Address"];
+            coverage: components["schemas"]["ProxyHistoryCoverage"];
+            items: components["schemas"]["ProxyInitialization"][];
+            snapshot: components["schemas"]["CatalogSnapshot"];
+        };
+        ProxyInitializationHistoryResponse: {
+            data: components["schemas"]["ProxyInitializationHistory"];
+            meta: components["schemas"]["Meta"];
+        };
+        ProxyManagement: {
+            affected_proxy_count?: components["schemas"]["Quantity"];
+            kind: components["schemas"]["ProxyManagementKind"];
+            target: components["schemas"]["ProxyContractIdentity"];
+        };
+        /** @enum {string} */
+        ProxyManagementKind: "proxy_admin" | "upgradeable_beacon";
+        /** @enum {string} */
+        ProxyMechanism: "eip1167" | "eip1967" | "beacon";
+        /** @enum {string} */
+        ProxyPattern: "clone" | "erc1967" | "transparent" | "uups" | "beacon" | "unknown";
+        ProxyRecognitionEvidence: {
+            address?: components["schemas"]["Address"];
+            block_hash?: components["schemas"]["Hash"];
+            block_number?: components["schemas"]["Quantity"];
+            code_hash?: components["schemas"]["Hash"];
+            result: components["schemas"]["ProxyEvidenceResult"];
+            source: components["schemas"]["ProxyEvidenceSource"];
+            subject: components["schemas"]["ProxyEvidenceSubject"];
+        };
+        ProxyUpgrade: {
+            beacon?: components["schemas"]["ProxyHistoricalIdentity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            change_type: components["schemas"]["ProxyUpgradeChangeType"];
+            emitter_address?: components["schemas"]["Address"];
+            evidence_type: components["schemas"]["ProxyUpgradeEvidenceType"];
+            log_index?: components["schemas"]["Quantity"];
+            management?: components["schemas"]["ProxyHistoricalManagement"];
+            new_implementation: components["schemas"]["ProxyHistoricalIdentity"];
+            old_implementation?: components["schemas"]["ProxyHistoricalIdentity"];
+            transaction_hash?: components["schemas"]["Hash"];
+        };
+        /** @enum {string} */
+        ProxyUpgradeChangeType: "implementation" | "beacon" | "beacon_implementation";
+        /** @enum {string} */
+        ProxyUpgradeEvidenceType: "event" | "observation";
+        ProxyUpgradeHistory: {
+            coverage: components["schemas"]["ProxyHistoryCoverage"];
+            items: components["schemas"]["ProxyUpgrade"][];
+            proxy_address: components["schemas"]["Address"];
+            snapshot: components["schemas"]["CatalogSnapshot"];
+        };
+        ProxyUpgradeHistoryResponse: {
+            data: components["schemas"]["ProxyUpgradeHistory"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        ProxyVerificationState: "unverified" | "verified";
         PublicConfig: {
             chain_id: components["schemas"]["Quantity"];
             chain_name: string;
@@ -1874,6 +2061,7 @@ export interface components {
         Limit: number;
         /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
         PaymentSignature: string;
+        ProxyHistoryLimit: number;
         SearchLimit: number;
         TransactionHash: components["schemas"]["Hash"];
         UserID: string;
@@ -2461,13 +2649,85 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getContractProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proxy detection, identity, and interaction state at one canonical snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyDetailsResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listContractProxyInitializations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["ProxyHistoryLimit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot-stable initialization version history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyInitializationHistoryResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listContractProxyUpgrades: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["ProxyHistoryLimit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot-stable proxy implementation upgrade history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyUpgradeHistoryResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getVerifiedContract: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
-                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
-            };
+            header?: never;
             path: {
                 address: components["parameters"]["Address"];
             };
@@ -2478,14 +2738,12 @@ export interface operations {
             /** @description Complete verified artifact for the current canonical runtime. */
             200: {
                 headers: {
-                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["VerifiedContractResponse"];
                 };
             };
-            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };

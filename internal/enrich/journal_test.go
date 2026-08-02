@@ -18,7 +18,15 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 		stage     StageID
 		relations []string
 	}{
-		{stage: ProxyStage, relations: []string{"contract_code_observations", "proxy_observations"}},
+		{stage: ProxyStage, relations: []string{
+			"contract_code_observations",
+			"proxy_observations",
+			"beacon_implementation_observations",
+			"uups_implementation_observations",
+			"proxy_detection_evidence",
+			"proxy_upgrade_events",
+			"proxy_initialization_events",
+		}},
 		{stage: ABIStage, relations: []string{"contract_abis", "abi_decodings"}},
 		{stage: TokenStage, relations: []string{"token_events", "token_balance_deltas"}},
 		{stage: StatsStage, relations: []string{"block_statistics"}},

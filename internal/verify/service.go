@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -140,21 +141,68 @@ func validateProxyVerificationSubmission(request *SubmissionV2) error {
 		!fixedHex(request.Target.CodeHash, 32) ||
 		!fixedHex(request.Target.AtBlockHash, 32) ||
 		request.ProxyTarget == nil ||
-		!fixedHex(request.ProxyTarget.ImplementationAddress, 20) ||
-		!fixedHex(request.ProxyTarget.ImplementationCodeHash, 32) {
+		!validCanonicalProxyBlockNumber(request.ProxyTarget.SubmissionContextBlockNumber) ||
+		!fixedHex(request.ProxyTarget.SubmissionContextBlockHash, 32) ||
+		!nonZeroFixedHex(request.ProxyTarget.ImplementationAddress, 20) ||
+		!nonZeroFixedHex(request.ProxyTarget.ImplementationCodeHash, 32) ||
+		!validOptionalProxyIdentity(
+			request.ProxyTarget.AdminAddress,
+			request.ProxyTarget.AdminCodeHash,
+		) || !validOptionalProxyIdentity(
+		request.ProxyTarget.BeaconAddress,
+		request.ProxyTarget.BeaconCodeHash,
+	) || !validOptionalProxyIdentity(
+		request.ProxyTarget.ManagementAddress,
+		request.ProxyTarget.ManagementCodeHash,
+	) {
 		return errors.New("proxy verification target is invalid")
 	}
-	switch request.ProxyTarget.Kind {
-	case "eip1167", "eip1967", "beacon":
+	target := request.ProxyTarget
+	if !validPositiveProxyGeneration(target.ObservationGenerationID) ||
+		(target.Pattern == "clone") != (target.ArtifactResolutionID == "") ||
+		(target.ArtifactResolutionID != "" && !validPositiveProxyGeneration(target.ArtifactResolutionID)) ||
+		(target.Pattern == "beacon") != (target.BeaconGenerationID != "") ||
+		(target.BeaconGenerationID != "" && !validPositiveProxyGeneration(target.BeaconGenerationID)) ||
+		(target.Pattern == "uups") != (target.UUPSGenerationID != "") ||
+		(target.UUPSGenerationID != "" && !validPositiveProxyGeneration(target.UUPSGenerationID)) {
+		return errors.New("proxy verification generation identity is invalid")
+	}
+	if target.StandardVersion != "" && target.StandardVersion != openZeppelin561Version {
+		return errors.New("proxy verification standard version is invalid")
+	}
+	switch target.Kind {
+	case "eip1167":
+		if target.Pattern != "clone" {
+			return errors.New("proxy verification kind and pattern disagree")
+		}
+	case "eip1967":
+		if target.Pattern != "erc1967" && target.Pattern != "transparent" &&
+			target.Pattern != "uups" {
+			return errors.New("proxy verification kind and pattern disagree")
+		}
+	case "beacon":
+		if target.Pattern != "beacon" {
+			return errors.New("proxy verification kind and pattern disagree")
+		}
 	default:
 		return errors.New("proxy verification kind is invalid")
+	}
+	if err := validateProxyManagementIdentity(target); err != nil {
+		return err
 	}
 	request.Target.Address = strings.ToLower(request.Target.Address)
 	request.Target.CodeHash = strings.ToLower(request.Target.CodeHash)
 	request.Target.AtBlockHash = strings.ToLower(request.Target.AtBlockHash)
-	request.ProxyTarget.ImplementationAddress = strings.ToLower(request.ProxyTarget.ImplementationAddress)
-	request.ProxyTarget.ImplementationCodeHash = strings.ToLower(request.ProxyTarget.ImplementationCodeHash)
-	request.ProxyTarget.ExpectedImplementation = request.ProxyTarget.ImplementationAddress
+	target.ImplementationAddress = strings.ToLower(target.ImplementationAddress)
+	target.ImplementationCodeHash = strings.ToLower(target.ImplementationCodeHash)
+	target.AdminAddress = strings.ToLower(target.AdminAddress)
+	target.AdminCodeHash = strings.ToLower(target.AdminCodeHash)
+	target.BeaconAddress = strings.ToLower(target.BeaconAddress)
+	target.BeaconCodeHash = strings.ToLower(target.BeaconCodeHash)
+	target.ManagementAddress = strings.ToLower(target.ManagementAddress)
+	target.ManagementCodeHash = strings.ToLower(target.ManagementCodeHash)
+	target.SubmissionContextBlockHash = strings.ToLower(target.SubmissionContextBlockHash)
+	target.ExpectedImplementation = target.ImplementationAddress
 	request.Language = ""
 	request.CompilerVersion = ""
 	request.StandardJSON = nil
@@ -170,6 +218,84 @@ func validateProxyVerificationSubmission(request *SubmissionV2) error {
 	request.ExecutionPolicy = ""
 	request.ExecutorDigest = ""
 	return nil
+}
+
+func validCanonicalProxyBlockNumber(value string) bool {
+	if value == "" || len(value) > 78 || len(value) > 1 && value[0] == '0' {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validPositiveProxyGeneration(value string) bool {
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	return err == nil && parsed > 0 && strconv.FormatInt(parsed, 10) == value
+}
+
+func validateProxyManagementIdentity(target *ProxyVerificationTarget) error {
+	if target == nil {
+		return errors.New("proxy verification target is invalid")
+	}
+	adminPresent := target.AdminAddress != ""
+	beaconPresent := target.BeaconAddress != ""
+	managementPresent := target.ManagementAddress != ""
+	switch target.Pattern {
+	case "transparent":
+		if target.StandardVersion != openZeppelin561Version || !adminPresent || beaconPresent ||
+			target.ManagementKind != "proxy_admin" || !managementPresent ||
+			!strings.EqualFold(target.AdminAddress, target.ManagementAddress) ||
+			!strings.EqualFold(target.AdminCodeHash, target.ManagementCodeHash) {
+			return errors.New("transparent proxy management identity is invalid")
+		}
+	case "uups":
+		if target.StandardVersion != openZeppelin561Version || adminPresent || beaconPresent ||
+			target.ManagementKind != "none" || managementPresent {
+			return errors.New("UUPS proxy management identity is invalid")
+		}
+	case "beacon":
+		if target.StandardVersion != openZeppelin561Version || adminPresent || !beaconPresent ||
+			target.ManagementKind != "upgradeable_beacon" || !managementPresent ||
+			!strings.EqualFold(target.BeaconAddress, target.ManagementAddress) ||
+			!strings.EqualFold(target.BeaconCodeHash, target.ManagementCodeHash) {
+			return errors.New("beacon proxy management identity is invalid")
+		}
+	case "clone":
+		if target.StandardVersion != "" || adminPresent || beaconPresent || target.ManagementKind != "none" || managementPresent {
+			return errors.New("clone management identity is invalid")
+		}
+	case "erc1967":
+		if target.StandardVersion != openZeppelin561Version || adminPresent || beaconPresent ||
+			target.ManagementKind != "none" || managementPresent {
+			return errors.New("ERC-1967 proxy management identity is invalid")
+		}
+	default:
+		return errors.New("proxy verification pattern is invalid")
+	}
+	return nil
+}
+
+func validOptionalProxyIdentity(address, codeHash string) bool {
+	if address == "" || codeHash == "" {
+		return address == "" && codeHash == ""
+	}
+	return nonZeroFixedHex(address, 20) && nonZeroFixedHex(codeHash, 32)
+}
+
+func nonZeroFixedHex(value string, size int) bool {
+	if !fixedHex(value, size) {
+		return false
+	}
+	for _, character := range value[2:] {
+		if character != '0' {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) Job(ctx context.Context, id string) (VerificationJob, bool, error) {

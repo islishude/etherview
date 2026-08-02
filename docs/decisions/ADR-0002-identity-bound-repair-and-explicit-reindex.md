@@ -36,10 +36,12 @@ Core repair and derived reindex are separate operations:
 - A successful refresh removes replayable block-local output and rollback
   journals that directly depend on the replaced core facts. It does not guess
   how far downstream state must be rebuilt.
-- `reindex --stage token|stats|trace` addresses the currently canonical hash at
+- `reindex --stage proxy|abi|token|stats|trace` addresses the currently canonical hash at
   every selected height. It creates missing durable jobs and resets only
   terminal jobs. Queued jobs and active leases return a busy result and retain
-  their current ownership.
+  their current ownership. Versioned proxy/ABI cutovers are replayed explicitly
+  in dependency order (`proxy` before `abi`); migrations never perform an
+  unbounded historical enqueue.
 - Repair/reindex requests and reasons remain in PostgreSQL as the operator
   audit trail.
 

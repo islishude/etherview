@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
-const implementation = process.env.ETHERVIEW_HARDHAT3_PROXY_IMPLEMENTATION;
-assert.ok(implementation, "ETHERVIEW_HARDHAT3_PROXY_IMPLEMENTATION is required");
+const encoded = process.env.ETHERVIEW_HARDHAT3_CONSTRUCTOR_ARGS;
+assert.ok(encoded, "ETHERVIEW_HARDHAT3_CONSTRUCTOR_ARGS is required");
 
-export default [implementation, "0x"];
+const values = JSON.parse(encoded);
+assert.ok(Array.isArray(values), "constructor arguments must be a JSON array");
+
+export default values;

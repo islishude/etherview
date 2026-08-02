@@ -37,6 +37,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T11 | done        | P40-T09       | Atomic home snapshot EventSource with no REST polling fallback            | frontend, embedded E2E, and generation checks |
 | P50-T12 | done        | P40-T10       | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
 | P50-T13 | done        | P50-T12       | Add-network flow consolidated into the wallet menu                         | frontend unit, embedded E2E, responsive and a11y tests |
+| P50-T14 | done        | P40-T11, P50-T13 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
 
 ## Acceptance
 
@@ -52,6 +53,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Transaction detail provides deep-linkable lazy tabs for overview, token
       transfers, logs, trace, and exact state changes in both languages and
       themes.
+- [x] Verified contract pages generate bounded typed ABI forms without manual
+      API keys, ABI JSON, or calldata; every as-proxy or management write is
+      fenced by the latest binding, chain, and account identity.
 
 ## Current Blockers
 
@@ -59,6 +63,47 @@ None.
 
 ## Evidence
 
+- P50-T14 replaces the API-key, ABI-JSON, calldata, and value workbench with
+  anonymous verified-artifact-driven function panels. Direct contract and
+  implementation pages, implementation calls through a proxy, exact
+  `ProxyAdmin` and `UpgradeableBeacon` management targets, overloads, tuples,
+  nested arrays, bounded integers, bytes, payable value, multiple returns, and
+  decoded reverts share the injected-wallet boundary. Every implementation or
+  management submission refreshes and compares binding, chain, account, and
+  transaction target; high-risk upgrades expose their exact target and Beacon
+  impact, and an unmatchable submission remains an unknown outcome.
+- P50-T14 browser acceptance against the rebuilt seven-role Preview covers the
+  OpenZeppelin 5.6.1 UUPS proxy at
+  `0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9`, Transparent/ProxyAdmin,
+  two proxies sharing one UpgradeableBeacon, standard and immutable-args
+  Clones, direct-only UUPS `proxiableUUID()`, current implementation links,
+  complete upgrade and initialization timelines, and the absence of the old
+  manual workbench. Generic or incomplete evidence stays read-only; Clones are
+  explicitly immutable and have no upgrade controls.
+- P50-T14 Preview replay pins one canonical 0--387 snapshot and completes
+  `proxy@2` followed by `abi@2` at 388/388. The final UUPS binding is
+  `d3f21003-7683-4f81-b0b7-f12c2128a3c2`; upgrade reindexing invalidates the
+  prior binding, shared Beacon history stores one observation and resolves to
+  both linked proxies, runtime immutable admin/beacon values remain
+  authoritative over compatibility slots, and initialization versions 1 and 2
+  retain their event-time implementation linkage. Anonymous artifact and
+  proxy/history APIs return the verified artifacts and complete canonical
+  histories without an API key; the temporary acceptance key was revoked.
+- P50-T14 frontend verification passes TypeScript lint, all 26 Vitest files
+  with 217 tests, the production build, and the 10-flow embedded browser E2E
+  including bilingual, responsive, keyboard, and accessibility coverage. The
+  raw-signing helper used by Reth passes 3 focused Node tests and syntax checks.
+  `make generate-check`, `make test-e2e`, `make plan-check`, and
+  `git diff --check` pass. The complete `make check` passes generation,
+  ordinary/race tests, security and license scans, Dockerfile/Compose
+  validation, and Helm lint/render checks.
+- P50-T14's final `make test-hardhat3-e2e` uses the pinned real
+  `@openzeppelin/contracts@5.6.1` fixtures and passes in 456.74 seconds:
+  monolith in 223.80 seconds and the complete distributed topology in 232.20
+  seconds. It covers verified and unverified management, runtime immutable
+  authority, durable bindings, upgrade invalidation/rebinding, anonymous
+  artifacts, and the native proxy APIs. Preview remains running for manual
+  review; no commit or pull request was created.
 - P50-T11: the home route owns exactly one same-origin `/api/v1/home/stream`
   EventSource. A bounded strict validator accepts only complete status, block,
   transaction, and coverage envelopes and replaces all three UI regions in

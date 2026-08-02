@@ -351,7 +351,6 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getToken",
 		"getTransaction",
 		"getTransactionTrace",
-		"getVerifiedContract",
 		"getVerifierJob",
 		"listAddressERC20Balances",
 		"listAddressERC20Transfers",
@@ -373,5 +372,23 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, want) {
 		t.Fatalf("eligible operations=%v, want %v", got, want)
+	}
+}
+
+func TestProxyAndVerifiedArtifactReadsAreFree(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{
+		"getVerifiedContract",
+		"getContractProxy",
+		"listContractProxyUpgrades",
+		"listContractProxyInitializations",
+	} {
+		operation, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("operation %s is absent", id)
+		}
+		if operation.Method != "GET" || operation.BillingEligible || operation.MaxResponseBytes != 0 {
+			t.Fatalf("operation %s is not a free GET: %#v", id, operation)
+		}
 	}
 }

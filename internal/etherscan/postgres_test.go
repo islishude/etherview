@@ -346,7 +346,7 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	db := fakeDatabase(t,
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
 		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
-		sqlExpectation{contains: "JOIN verified_proxy_contracts AS verified", columns: fakeColumns(1)},
+		sqlExpectation{contains: "JOIN verified_proxy_bindings AS binding", columns: fakeColumns(1)},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	values := url.Values{"address": {testContract}}
@@ -363,6 +363,148 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 		source[0].ContractFileName != "" || source[0].OptimizationUsed != "1" || source[0].Runs != "200" ||
 		source[0].EVMVersion != "paris" || source[0].MatchKind != "full" {
 		t.Fatalf("source=%+v", source)
+	}
+}
+
+func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
+	t.Parallel()
+	query := compactSQL(verifiedProxySQL)
+	for _, required := range []string{
+		"observation.stage_version = 2",
+		"JOIN published_block_stage_results AS published",
+		"raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact'",
+		"evidence.reason = 'immutable_args_creation_unverified' AND raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact' AND octet_length(raw.immutable_args) > 0 AND raw.details->>'immutable_args_creation_authenticated' = 'true'",
+		"candidate.proxy_code_hash = raw.proxy_code_hash",
+		"resolution.id IS NOT NULL",
+		"FROM beacon_implementation_observations AS observation",
+		"observation.beacon_code_hash = proxy.effective_beacon_hash",
+		"observation.confidence IN ('verified', 'high')",
+		"JOIN verified_proxy_bindings AS binding",
+		"JOIN canonical_blocks AS binding_context",
+		"binding_context.block_hash = binding.context_block_hash",
+		"binding.observation_generation_id = current_proxy.observation_generation_id",
+		"binding.artifact_resolution_id IS NOT DISTINCT FROM current_proxy.artifact_resolution_id",
+		"binding.beacon_generation_id IS NOT DISTINCT FROM current_proxy.beacon_generation_id",
+		"binding.uups_generation_id IS NOT DISTINCT FROM current_proxy.uups_generation_id",
+		"ORDER BY observation.block_number DESC, observation.block_hash DESC, generation.id DESC, observation.verification_job_id DESC LIMIT 1 ) AS candidate WHERE NOT EXISTS",
+		"conflict.block_number = candidate.block_number",
+		"conflict.probe_state || ':' || COALESCE(conflict.rejection_reason, '')",
+		"probe.probe_state = 'compatible'",
+		"probe.block_number >= proxy.implementation_epoch_block",
+		"published.state = 'complete'",
+		"FROM proxy_detection_evidence AS evidence",
+		"evidence.candidate_kind = 'proxy'",
+		"evidence.job_generation >= raw.observation_job_generation",
+		"evidence.candidate_kind = 'beacon'",
+		"evidence.job_generation >= beacon.beacon_job_generation",
+		"binding.standard_version IS NOT DISTINCT FROM current_proxy.standard_version",
+		"binding.admin_address IS NOT DISTINCT FROM current_proxy.admin_address",
+		"binding.beacon_address IS NOT DISTINCT FROM current_proxy.beacon_address",
+		"proxy_interaction_coverage_contains( binding.chain_id, binding.observation_block_number, binding.observation_block_hash, current_proxy.context_number, current_proxy.context_hash )",
+		"FROM contract_code_observations AS observation",
+		"identity.current_code_hash IS DISTINCT FROM identity.code_hash",
+		"observation.block_number > binding.context_block_number",
+		"observation.block_number <= current_proxy.context_number",
+		"observation.code_hash IS DISTINCT FROM identity.code_hash",
+		"FROM transaction_state_changes AS change",
+		"change.block_number > binding.context_block_number",
+		"change.block_number <= current_proxy.context_number",
+		"change.field_kind = 'code'",
+		"lower(change.before_value) IS DISTINCT FROM lower(change.after_value)",
+		"COALESCE(code_epoch.block_number, 0::numeric)",
+		"FROM required_publication AS publication",
+		"binding.proxy_pattern <> 'clone'",
+		"verified.address = publication.address",
+		"verified.valid_from_block >= publication.epoch_block",
+		"FROM verified_contract_proxy_artifacts AS artifact",
+		"verified.verification_job_id = artifact.verification_job_id",
+		"verified.request_digest = artifact.request_digest",
+		"artifact.valid_from_block >= identity.epoch_block",
+		"artifact.verification_job_id = binding.proxy_artifact_job_id",
+		"binding.implementation_artifact_job_id",
+		"artifact.standard_version = '5.6.1'",
+	} {
+		if !strings.Contains(query, compactSQL(required)) {
+			t.Fatalf("verified proxy query lacks %q: %s", compactSQL(required), query)
+		}
+	}
+	for _, forbidden := range []string{"required_interaction_stage", "canonical_blocks AS coverage_block", "generate_series"} {
+		if strings.Contains(query, forbidden) {
+			t.Fatalf("verified proxy query retains height-dependent coverage scan %q: %s", forbidden, query)
+		}
+	}
+	if joins, complete := strings.Count(query, "published_block_stage_results AS"), strings.Count(query, "state = 'complete'"); joins != complete {
+		t.Fatalf("verified proxy query complete-publication guards=%d, want one for each of %d joins: %s", complete, joins, query)
+	}
+}
+
+func TestProxyVerificationTargetQueryFencesAllCurrentIdentities(t *testing.T) {
+	t.Parallel()
+	query := compactSQL(proxyVerificationTargetSQL)
+	for _, required := range []string{
+		"observation.stage_version = 2",
+		"JOIN published_block_stage_results AS published",
+		"raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact'",
+		"candidate.proxy_code_hash = raw.proxy_code_hash",
+		"resolution.id IS NOT NULL",
+		"FROM beacon_implementation_observations AS observation",
+		"observation.beacon_code_hash = proxy.effective_beacon_hash",
+		"observation.confidence IN ('verified', 'high')",
+		"WHEN 'transparent' THEN 'proxy_admin'",
+		"WHEN 'beacon' THEN 'upgradeable_beacon'",
+		"current_proxy.management_kind = 'none' OR EXISTS",
+		"FROM verified_contract_proxy_artifacts AS artifact",
+		"artifact.standard_version = '5.6.1'",
+		"FROM contract_code_observations AS observation",
+		"identity.current_code_hash IS DISTINCT FROM identity.code_hash",
+		"current_proxy.observation_generation_id",
+		"current_proxy.context_number::text",
+		"current_proxy.context_hash",
+		"current_proxy.artifact_resolution_id",
+		"current_proxy.beacon_generation_id",
+		"current_proxy.uups_generation_id",
+		"binding.uups_generation_id IS NOT DISTINCT FROM current_proxy.uups_generation_id",
+		"candidate.proxy_pattern <> 'uups'",
+		"ORDER BY observation.block_number DESC, observation.block_hash DESC, generation.id DESC, observation.verification_job_id DESC LIMIT 1 ) AS candidate WHERE NOT EXISTS",
+		"conflict.block_number = candidate.block_number",
+		"probe.probe_state = 'compatible'",
+		"probe.block_number, probe.block_hash, proxy.context_number, proxy.context_hash",
+		"current_proxy.proxy_pattern = 'clone' OR ( EXISTS",
+		"proxy_interaction_coverage_contains( $1::numeric, current_proxy.block_number, current_proxy.block_hash, current_proxy.context_number, current_proxy.context_hash )",
+		"proxy_interaction_coverage_contains( binding.chain_id, binding.observation_block_number, binding.observation_block_hash, current_proxy.context_number, current_proxy.context_hash )",
+		"reusable_binding AS",
+		"binding.observation_generation_id = current_proxy.observation_generation_id",
+		"observation.block_number > binding.context_block_number",
+		"FROM transaction_state_changes AS change",
+		"change.block_number > binding.context_block_number",
+		"change.block_number <= current_proxy.context_number",
+		"lower(change.before_value) IS DISTINCT FROM lower(change.after_value)",
+		"COALESCE(code_epoch.block_number, 0::numeric)",
+		"verified.valid_from_block >= identity.epoch_block",
+		"artifact.valid_from_block >= identity.epoch_block",
+		"artifact.verification_job_id = current_proxy.proxy_artifact_job_id",
+		"current_proxy.implementation_artifact_job_id",
+		"binding.verification_job_id::text",
+		"FROM proxy_detection_evidence AS evidence",
+		"evidence.candidate_kind = 'proxy'",
+		"evidence.candidate_kind = 'beacon'",
+		"verified.verification_job_id = artifact.verification_job_id",
+		"verified.request_digest = artifact.request_digest",
+	} {
+		if !strings.Contains(query, compactSQL(required)) {
+			t.Fatalf("proxy target query lacks %q: %s", compactSQL(required), query)
+		}
+	}
+	if count := strings.Count(query, "SELECT binding.verification_job_id FROM current_proxy"); count != 1 {
+		t.Fatalf("reusable binding target projection count=%d, want 1: %s", count, query)
+	}
+	if joins, complete := strings.Count(query, "published_block_stage_results AS"), strings.Count(query, "state = 'complete'"); joins != complete {
+		t.Fatalf("proxy target query complete-publication guards=%d, want one for each of %d joins: %s", complete, joins, query)
+	}
+	for _, forbidden := range []string{"required_interaction_stage", "canonical_blocks AS coverage_block", "generate_series"} {
+		if strings.Contains(query, forbidden) {
+			t.Fatalf("proxy target query retains height-dependent coverage scan %q: %s", forbidden, query)
+		}
 	}
 }
 

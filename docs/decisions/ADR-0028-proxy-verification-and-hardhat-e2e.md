@@ -57,3 +57,36 @@ than an alias for automatic discovery. The extra immutable schema and exact
 source prerequisites make the word “verified” stronger than a chain-only proxy
 guess. The full E2E intentionally depends on official compiler availability
 and fails instead of silently substituting a fixture compiler.
+
+## OpenZeppelin 5.x binding extension
+
+Current browser interaction uses a version-2 verified proxy binding rather
+than the historical mechanism-only publication:
+
+- The immutable request, result, and publication bind the proxy pattern,
+  implementation, optional admin and beacon, and optional management-contract
+  address plus every corresponding code hash. The successful proxy-verification
+  job UUID is the opaque browser `bindingId`; the request digest remains an
+  internal idempotency and queue-deduplication key and is never an interaction
+  authorization token.
+- A successful source-verification result carries the recognized OpenZeppelin
+  artifact kind, exact 5.6.1 standard version, applicable runtime immutable,
+  and source-manifest digest as immutable attestation. The artifact projection
+  is accepted only when its trigger matches that attestation and the exact
+  canonical verification block, so an ordinary verified source cannot be
+  relabeled as ProxyAdmin, UpgradeableBeacon, or another management artifact.
+- Transparent management is available only through the exact verified
+  ProxyAdmin recovered from the proxy runtime immutable. Beacon management is
+  available only through the exact verified UpgradeableBeacon recovered from
+  the BeaconProxy runtime immutable. UUPS upgrades use the implementation ABI
+  with the proxy as transaction target and have no separate management
+  contract.
+- Completion and public reads recheck the current canonical Proxy observation
+  and current code identity for the proxy, implementation, and management
+  contract on the PostgreSQL writer. A reorg, upgrade, or metamorphic code
+  change hides the old binding without mutating its historical result.
+- A generic or partial observation may remain visible as discovery evidence,
+  but cannot authorize implementation-as-proxy or management writes.
+- The production Hardhat gate pins real OpenZeppelin Contracts 5.6.1 fixtures
+  for Transparent, UUPS, Beacon, Clones, and Initializable behavior in both
+  monolith and split topologies.

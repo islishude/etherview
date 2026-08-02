@@ -376,26 +376,20 @@ func (processor *TraceRPCProcessor) persistTx(
 	}
 	creationTargets := successfulCreationTargets(transactions)
 	details["creation_targets"] = strconv.Itoa(creationTargets)
-	// Trace is optional and never blocks the first proxy/ABI pass. Only a
-	// successful normalized CREATE/CREATE2 target changes proxy discovery.
-	// Any non-empty late trace still refreshes ABI so its call data is decoded;
-	// when proxy replay is needed, requesting it first keeps ABI dependency-
-	// blocked until proxy has incorporated the new targets.
+	// Trace is optional and never blocks the first proxy/ABI pass. Every complete
+	// trace publication, including an empty replacement, refreshes Proxy before
+	// ABI: a newer generation can withdraw an earlier CREATE/CREATE2 proof used
+	// to authenticate immutable-args Clones. The source-generation key makes the
+	// invalidation bounded and prevents a replay loop.
 	if canonical {
-		proxyRequeued := false
-		if creationTargets > 0 {
-			proxyRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
-			if err != nil {
-				return StageResult{}, err
-			}
+		proxyRequeued, err := resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
+		if err != nil {
+			return StageResult{}, err
 		}
 		details["proxy_requeued"] = strconv.FormatBool(proxyRequeued)
-		abiRequeued := false
-		if frames > 0 {
-			abiRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
-			if err != nil {
-				return StageResult{}, err
-			}
+		abiRequeued, err := resetTerminalDependentStageTx(ctx, tx, job, ABIStage)
+		if err != nil {
+			return StageResult{}, err
 		}
 		details["abi_requeued"] = strconv.FormatBool(abiRequeued)
 	}

@@ -149,7 +149,12 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 		return fmt.Errorf("requeue enrichment job: read affected rows: %w", err)
 	}
 	if affected == 1 {
-		if err := clearStageReplayStateTx(ctx, tx, job); err != nil {
+		if job.Generation >= uint64(math.MaxInt64) {
+			return errors.New("enrichment replay generation is out of range")
+		}
+		replayed := job
+		replayed.Generation++
+		if err := clearStageReplayStateTx(ctx, tx, replayed); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
@@ -175,6 +180,16 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 // target keeps its token and records pending work; its Finish/Retry transition
 // consumes the pending marker without ever letting the request disappear.
 func requestDependentStageReplayTx(ctx context.Context, tx *sql.Tx, source Job, dependent StageID) (bool, error) {
+	return requestDependentStageReplayForKindTx(ctx, tx, source, dependent, "stage-completion")
+}
+
+func requestDependentStageReplayForKindTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	source Job,
+	dependent StageID,
+	sourceKind string,
+) (bool, error) {
 	if tx == nil {
 		return false, errors.New("request dependent replay using nil transaction")
 	}
@@ -184,7 +199,7 @@ func requestDependentStageReplayTx(ctx context.Context, tx *sql.Tx, source Job, 
 	if err := validateDatabaseStage(dependent); err != nil {
 		return false, err
 	}
-	replaySource, err := replaySourceForStage(source)
+	replaySource, err := replaySourceForStageKind(source, sourceKind)
 	if err != nil {
 		return false, err
 	}
@@ -273,14 +288,16 @@ func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, statu
 		return false, err
 	}
 	if status != "leased" {
-		if err := clearStageReplayStateTx(ctx, tx, target); err != nil {
+		invalidated := target
+		invalidated.Generation = uint64(nextGeneration)
+		if err := clearStageReplayStateTx(ctx, tx, invalidated); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
 }
 
-func replaySourceForStage(source Job) (ReplaySource, error) {
+func replaySourceForStageKind(source Job, kind string) (ReplaySource, error) {
 	key, err := source.IdempotencyKey()
 	if err != nil {
 		return ReplaySource{}, err
@@ -289,10 +306,14 @@ func replaySourceForStage(source Job) (ReplaySource, error) {
 	if generation == 0 {
 		generation = 1
 	}
-	return ReplaySource{
-		Kind: "stage-completion",
+	replay := ReplaySource{
+		Kind: kind,
 		Key:  fmt.Sprintf("%s:%s:%d", source.Stage, key, generation),
-	}, nil
+	}
+	if err := replay.validate(); err != nil {
+		return ReplaySource{}, err
+	}
+	return replay, nil
 }
 
 func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
@@ -356,6 +377,34 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 				return fmt.Errorf("clear replayed %s output: %w", table, err)
 			}
+		}
+	}
+	if err := requestInvalidatedEvidenceDependentsTx(ctx, tx, job); err != nil {
+		return err
+	}
+	return nil
+}
+
+// requestInvalidatedEvidenceDependentsTx withdraws downstream publications in
+// the same transaction that withdraws an evidence-producing stage generation.
+// Trace is a direct source for both immutable-args Clone authentication and ABI
+// observations. A repeated invalidation for the same source generation is
+// idempotent. StateDiff is deliberately excluded: exact proxy observations are
+// independently proven by fixed-block state calls, while public history
+// coverage is aggregated from the current stage publications at read time.
+func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx *sql.Tx, source Job) error {
+	var dependents []StageID
+	switch source.Stage {
+	case TraceStage:
+		dependents = []StageID{ProxyStage, ABIStage}
+	default:
+		return nil
+	}
+	for _, dependent := range dependents {
+		if _, err := requestDependentStageReplayForKindTx(
+			ctx, tx, source, dependent, "stage-invalidation",
+		); err != nil {
+			return fmt.Errorf("invalidate %s after %s evidence withdrawal: %w", dependent, source.Stage, err)
 		}
 	}
 	return nil
@@ -468,7 +517,21 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 		return EnqueueResult{}, fmt.Errorf("enqueue enrichment job: %w", scanErr)
 	}
 	replayed := false
-	if !created && request.Replay != (ReplaySource{}) {
+	if created && request.Replay != (ReplaySource{}) {
+		jobID, generation, identityErr := durableJobGeneration(job)
+		if identityErr != nil {
+			return EnqueueResult{}, identityErr
+		}
+		inserted, insertErr := tx.ExecContext(ctx, insertReplayRequestSQL,
+			jobID, request.Replay.Kind, request.Replay.Key, generation,
+		)
+		if insertErr != nil {
+			return EnqueueResult{}, fmt.Errorf("record initial enrichment replay source: %w", insertErr)
+		}
+		if err := requireSingleUpdate(inserted, "record initial enrichment replay source"); err != nil {
+			return EnqueueResult{}, err
+		}
+	} else if !created && request.Replay != (ReplaySource{}) {
 		replayed, err = requestJobReplayTx(ctx, tx, job, request.Replay)
 		if err != nil {
 			return EnqueueResult{}, err
@@ -1075,13 +1138,14 @@ WHERE exhausted_job.kind = 'enrichment'
   AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
   AND /*STAGES*/
   AND (
-      exhausted_job.stage <> 'abi' OR exhausted_job.stage_version <> 1
+      exhausted_job.stage <> 'abi'
       OR EXISTS (
           SELECT 1
           FROM published_block_stage_results AS dependency
           WHERE dependency.chain_id = exhausted_job.chain_id
             AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy' AND dependency.stage_version = 1
+            AND dependency.stage = 'proxy'
+            AND dependency.stage_version = exhausted_job.stage_version
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1106,13 +1170,14 @@ WHERE exhausted_job.id = $1
   AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
   AND /*STAGES*/
   AND (
-      exhausted_job.stage <> 'abi' OR exhausted_job.stage_version <> 1
+      exhausted_job.stage <> 'abi'
       OR EXISTS (
           SELECT 1
           FROM published_block_stage_results AS dependency
           WHERE dependency.chain_id = exhausted_job.chain_id
             AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy' AND dependency.stage_version = 1
+            AND dependency.stage = 'proxy'
+            AND dependency.stage_version = exhausted_job.stage_version
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1162,13 +1227,14 @@ WHERE candidate_job.kind = 'enrichment'
   )
   AND /*STAGES*/
   AND (
-      candidate_job.stage <> 'abi' OR candidate_job.stage_version <> 1
+      candidate_job.stage <> 'abi'
       OR EXISTS (
           SELECT 1
           FROM published_block_stage_results AS dependency
           WHERE dependency.chain_id = candidate_job.chain_id
             AND dependency.block_hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy' AND dependency.stage_version = 1
+            AND dependency.stage = 'proxy'
+            AND dependency.stage_version = candidate_job.stage_version
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1210,13 +1276,14 @@ WHERE job.id = $4
   )
   AND /*STAGES*/
   AND (
-      job.stage <> 'abi' OR job.stage_version <> 1
+      job.stage <> 'abi'
       OR EXISTS (
           SELECT 1
           FROM published_block_stage_results AS dependency
           WHERE dependency.chain_id = job.chain_id
             AND dependency.block_hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy' AND dependency.stage_version = 1
+            AND dependency.stage = 'proxy'
+            AND dependency.stage_version = job.stage_version
             AND dependency.state IN ('complete', 'unavailable')
       )
   )

@@ -1,7 +1,9 @@
 package etherscan
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -297,14 +299,19 @@ func TestProxyVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	blockHash := testHashBytes(82)
 	implementation := testAddressBytes(testSender)
 	implementationCodeHash := testHashBytes(84)
+	admin := testAddressBytes(testRecipient)
+	adminCodeHash := testHashBytes(85)
 	service := &fakeVerificationService{
 		submitJob: verify.VerificationJob{ID: jobID, Kind: verify.JobProxy, Status: verify.JobQueued},
 	}
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM current_proxy", columns: fakeColumns(7),
+		contains: "FROM current_proxy", columns: fakeColumns(24),
 		rows: [][]driver.Value{{
-			proxyCodeHash, blockHash, "eip1967", implementation,
-			implementationCodeHash, true, true,
+			proxyCodeHash, blockHash, "123", testHashBytes(83),
+			"eip1967", "transparent", "5.6.1",
+			implementation, implementationCodeHash, admin, adminCodeHash, nil, nil,
+			"proxy_admin", admin, adminCodeHash, int64(101), int64(102), nil, nil,
+			true, true, true, nil,
 		}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	result, err := backend.Execute(context.Background(), Request{
@@ -323,9 +330,151 @@ func TestProxyVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 		request.Target.CodeHash != "0x"+hex.EncodeToString(proxyCodeHash) ||
 		request.Target.AtBlockHash != "0x"+hex.EncodeToString(blockHash) ||
 		request.ProxyTarget.Kind != "eip1967" ||
+		request.ProxyTarget.Pattern != "transparent" ||
+		request.ProxyTarget.StandardVersion != "5.6.1" ||
+		request.ProxyTarget.SubmissionContextBlockNumber != "123" ||
+		request.ProxyTarget.SubmissionContextBlockHash != "0x"+hex.EncodeToString(testHashBytes(83)) ||
 		request.ProxyTarget.ImplementationAddress != "0x"+hex.EncodeToString(implementation) ||
-		request.ProxyTarget.ImplementationCodeHash != "0x"+hex.EncodeToString(implementationCodeHash) {
+		request.ProxyTarget.ImplementationCodeHash != "0x"+hex.EncodeToString(implementationCodeHash) ||
+		request.ProxyTarget.AdminAddress != "0x"+hex.EncodeToString(admin) ||
+		request.ProxyTarget.AdminCodeHash != "0x"+hex.EncodeToString(adminCodeHash) ||
+		request.ProxyTarget.ManagementKind != "proxy_admin" ||
+		request.ProxyTarget.ManagementAddress != "0x"+hex.EncodeToString(admin) ||
+		request.ProxyTarget.ManagementCodeHash != "0x"+hex.EncodeToString(adminCodeHash) ||
+		request.ProxyTarget.ObservationGenerationID != "101" ||
+		request.ProxyTarget.ArtifactResolutionID != "102" ||
+		request.ProxyTarget.BeaconGenerationID != "" ||
+		request.ProxyTarget.UUPSGenerationID != "" {
 		t.Fatalf("proxy request=%+v", request)
+	}
+}
+
+func TestProxyVerificationReusesStillCurrentBinding(t *testing.T) {
+	t.Parallel()
+	const bindingID = "123e4567-e89b-42d3-a456-426614174000"
+	proxyCodeHash := testHashBytes(86)
+	blockHash := testHashBytes(87)
+	implementation := testAddressBytes(testSender)
+	implementationCodeHash := testHashBytes(88)
+	service := &fakeVerificationService{}
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM current_proxy", columns: fakeColumns(24),
+		rows: [][]driver.Value{{
+			proxyCodeHash, blockHash, "124", testHashBytes(89),
+			"eip1967", "erc1967", "5.6.1",
+			implementation, implementationCodeHash, nil, nil, nil, nil,
+			"none", nil, nil, int64(201), int64(202), nil, nil,
+			true, true, true, bindingID,
+		}},
+	}), PostgresOptions{ChainID: 1, Verification: service})
+	result, err := backend.Execute(context.Background(), Request{
+		Module: "contract", Action: "verifyproxycontract",
+		Values: url.Values{
+			"address":                {testContract},
+			"expectedimplementation": {"0x" + hex.EncodeToString(implementation)},
+		},
+	})
+	if err != nil || result != bindingID {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	if service.submitted.ProxyTarget != nil {
+		t.Fatalf("still-current binding created another request: %+v", service.submitted)
+	}
+}
+
+func TestProxyVerificationRejectsUnverifiedOrMalformedManagementBinding(t *testing.T) {
+	t.Parallel()
+	proxyCodeHash := testHashBytes(91)
+	blockHash := testHashBytes(92)
+	implementation := testAddressBytes(testSender)
+	implementationCodeHash := testHashBytes(93)
+	admin := testAddressBytes(testRecipient)
+	adminCodeHash := testHashBytes(94)
+	for _, test := range []struct {
+		name               string
+		managementAddress  []byte
+		managementVerified bool
+	}{
+		{name: "unverified", managementAddress: admin, managementVerified: false},
+		{name: "wrong admin", managementAddress: implementation, managementVerified: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			service := &fakeVerificationService{}
+			backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+				contains: "FROM current_proxy", columns: fakeColumns(24),
+				rows: [][]driver.Value{{
+					proxyCodeHash, blockHash, "123", testHashBytes(95),
+					"eip1967", "transparent", "5.6.1",
+					implementation, implementationCodeHash, admin, adminCodeHash, nil, nil,
+					"proxy_admin", test.managementAddress, adminCodeHash, int64(101), int64(102), nil, nil,
+					true, true, test.managementVerified, nil,
+				}},
+			}), PostgresOptions{ChainID: 1, Verification: service})
+			result, err := backend.Execute(context.Background(), Request{
+				Module: "contract", Action: "verifyproxycontract",
+				Values: url.Values{"address": {testContract}},
+			})
+			if result != "" || !errors.Is(err, ErrProxyVerificationTargetUnavailable) ||
+				service.submitted.ProxyTarget != nil {
+				t.Fatalf("result=%#v error=%v submitted=%+v", result, err, service.submitted)
+			}
+		})
+	}
+}
+
+func TestExactProxyVerificationTargetCoversSupportedManagementShapes(t *testing.T) {
+	t.Parallel()
+	identity := func(addressByte, hashByte byte) ([]byte, []byte) {
+		return bytes.Repeat([]byte{addressByte}, 20), bytes.Repeat([]byte{hashByte}, 32)
+	}
+	implementation, implementationHash := identity(1, 2)
+	admin, adminHash := identity(3, 4)
+	beacon, beaconHash := identity(5, 6)
+	base := proxyVerificationTarget{
+		proxyCodeHash: bytes.Repeat([]byte{7}, 32), blockHash: bytes.Repeat([]byte{8}, 32),
+		contextBlockNumber: "123", contextBlockHash: bytes.Repeat([]byte{9}, 32),
+		implementationAddress: implementation, implementationCodeHash: implementationHash,
+		observationGeneration: 1, managementKind: "none",
+	}
+	clone := base
+	clone.kind, clone.pattern = "eip1167", "clone"
+	erc1967 := base
+	erc1967.kind, erc1967.pattern = "eip1967", "erc1967"
+	erc1967.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
+	erc1967.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	uups := base
+	uups.kind, uups.pattern = "eip1967", "uups"
+	uups.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
+	uups.uupsGeneration = sql.NullInt64{Int64: 4, Valid: true}
+	uups.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	transparent := base
+	transparent.kind, transparent.pattern = "eip1967", "transparent"
+	transparent.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
+	transparent.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	transparent.adminAddress, transparent.adminCodeHash = admin, adminHash
+	transparent.managementKind = "proxy_admin"
+	transparent.managementAddress, transparent.managementCodeHash = admin, adminHash
+	beaconProxy := base
+	beaconProxy.kind, beaconProxy.pattern = "beacon", "beacon"
+	beaconProxy.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
+	beaconProxy.beaconGeneration = sql.NullInt64{Int64: 3, Valid: true}
+	beaconProxy.standardVersion = sql.NullString{String: "5.6.1", Valid: true}
+	beaconProxy.beaconAddress, beaconProxy.beaconCodeHash = beacon, beaconHash
+	beaconProxy.managementKind = "upgradeable_beacon"
+	beaconProxy.managementAddress, beaconProxy.managementCodeHash = beacon, beaconHash
+	for _, target := range []proxyVerificationTarget{clone, erc1967, uups, transparent, beaconProxy} {
+		if !validExactProxyVerificationTarget(target) {
+			t.Fatalf("valid target rejected: %+v", target)
+		}
+	}
+	transparent.managementAddress = implementation
+	if validExactProxyVerificationTarget(transparent) {
+		t.Fatal("mismatched immutable ProxyAdmin was accepted")
+	}
+	beaconProxy.beaconCodeHash = nil
+	if validExactProxyVerificationTarget(beaconProxy) {
+		t.Fatal("partial immutable beacon identity was accepted")
 	}
 }
 

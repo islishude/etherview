@@ -72,6 +72,23 @@ authoritative empty result.
   reject malformed or stale traversal state. Cursor inputs and emitted
   `meta.next_cursor` values share the bounded `OpaqueCursor` schema; clients
   must not decode or construct them.
+- Proxy detail, implementation-upgrade history, and initialization history are
+  native spec-first resources under `/api/v1/contracts/{address}/proxy`. Their
+  writer-only readers select one canonical tip in a repeatable-read,
+  read-only transaction. History cursors bind chain, normalized address,
+  resource kind, the exact canonical snapshot number and hash, and the
+  published `proxy@2` durable-job generation at that snapshot. They also bind
+  an append-only per-chain epoch watermark covering every `proxy@2` replay
+  request or publication at or below the snapshot. A reorg or a late replay
+  inside that range makes an old cursor a stable `invalid_cursor` error rather
+  than silently traversing changed facts; a new canonical block above the
+  frozen snapshot does not invalidate the cursor.
+- A proxy interaction `bindingId` is the opaque identity of the exact current
+  verified binding, not an authorization token. Detail reads expose it only
+  while proxy, implementation, management, runtime immutable, published stage
+  generation, code epoch, and continuous canonical coverage still agree.
+  Generic or partial detection remains visible without enabling an
+  implementation-as-proxy or management write.
 - Contract tests inspect the raw OpenAPI YAML for duplicate mapping keys and
   enforce the native success envelope, error envelope, decimal quantity, public
   identifier, and opaque-cursor primitives. Both generated Go and TypeScript
@@ -128,11 +145,13 @@ authoritative empty result.
   JSON settings. Compatibility input likewise cannot choose the chain, address
   binding, runtime bytecode, block hash, or Sourcify consent stored in the
   durable job.
-- Disabling public submission does not disable authenticated reads of already
-  durable verification jobs and verified artifacts. Public configuration's
-  `verification` flag describes whether new native submissions are usable,
-  while `sourcify` independently describes the optional interoperability
-  surface.
+- Disabling public submission does not disable reads of already durable
+  verification data. Verified-artifact GET is anonymous and free so the
+  explorer can render ABI-derived contract functions without an API key;
+  verification submission and GUID-addressed job reads retain their existing
+  API-key boundary. Public configuration's `verification` flag describes
+  whether new native submissions are usable, while `sourcify` independently
+  describes the optional interoperability surface.
 - Every native or compatibility verification request must carry a non-empty
   runtime bytecode whose Keccak-256 hash equals its code hash. Before publishing
   a successful result, the repository rechecks in the completion transaction
@@ -140,9 +159,11 @@ authoritative empty result.
   `contract_code_observations` row joined to the canonical mapping at the same
   height. A syntactically valid client-supplied identity is not publication
   authority.
-- Proxy-verification submission and status remain explicitly unavailable until
-  production proxy observations and a durable, GUID-addressable proxy job
-  lifecycle exist; the compatibility layer never fabricates proxy success.
+- Proxy-verification submission and status use the durable GUID-addressable
+  lifecycle and only admit an exact current OpenZeppelin interaction target.
+  The compatibility layer never promotes generic detection, incomplete
+  coverage, an unverified implementation or management contract, or a stale
+  binding into proxy success.
 - Native `/api/v1` authentication accepts `X-API-Key` only. Legacy `apikey`
   query parameters and URL-encoded POST form fields are parsed solely on the
   exact `/v2/api` route. POST inspection has the same configured body bound as

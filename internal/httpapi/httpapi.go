@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -81,6 +82,7 @@ var (
 const (
 	maximumOpaqueCursorLength = 1024
 	maximumPageSize           = 100
+	maximumNativeQueryBytes   = 4096
 )
 
 type StatusSnapshot struct {
@@ -152,6 +154,12 @@ type VerificationTargetResolver interface {
 	ResolveVerificationTarget(context.Context, string) (verify.VerificationTarget, error)
 }
 
+type ProxyReader interface {
+	Proxy(context.Context, string) (gen.ProxyDetails, error)
+	ProxyUpgrades(context.Context, string, string, int) (gen.ProxyUpgradeHistory, string, error)
+	ProxyInitializations(context.Context, string, string, int) (gen.ProxyInitializationHistory, string, error)
+}
+
 type Options struct {
 	Config                config.Config
 	Reader                Reader
@@ -171,6 +179,7 @@ type Options struct {
 	VerificationSubmitter VerificationSubmitter
 	CompilerCatalog       CompilerCatalogReader
 	VerificationTargets   VerificationTargetResolver
+	ProxyReader           ProxyReader
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
 	Billing               *billing.HTTPDispatcher
@@ -203,6 +212,7 @@ type Handler struct {
 	verificationSubmitter VerificationSubmitter
 	compilerCatalog       CompilerCatalogReader
 	verificationTargets   VerificationTargetResolver
+	proxyReader           ProxyReader
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
 	billing               *billing.HTTPDispatcher
@@ -253,6 +263,7 @@ func New(options Options) (*Handler, error) {
 		verificationSubmitter: options.VerificationSubmitter,
 		compilerCatalog:       options.CompilerCatalog,
 		verificationTargets:   options.VerificationTargets,
+		proxyReader:           options.ProxyReader,
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
 		billing:               options.Billing,
@@ -362,7 +373,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/verifier/compilers", h.verifierCompilers)
 	h.mux.HandleFunc("POST /api/v1/verifier/lookup-methods", h.lookupVerifierMethods)
 	h.handleBillable("getVerifierJob", h.verificationJob)
-	h.handleBillable("getVerifiedContract", h.verifiedContract)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/verification", h.verifiedContract)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy", h.contractProxy)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/upgrades", h.contractProxyUpgrades)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/initializations", h.contractProxyInitializations)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -1891,10 +1905,10 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
-	if !h.verificationReadAvailable(w, r) {
+	if _, ok := parseExactQuery(w, r); !ok {
 		return
 	}
-	if !h.requireAPIKey(w, r) {
+	if !h.verificationReadAvailable(w, r) {
 		return
 	}
 	address := strings.ToLower(r.PathValue("address"))
@@ -1925,6 +1939,124 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.VerifiedContractResponse{Data: model, Meta: h.meta(r)})
+}
+
+func (h *Handler) contractProxy(w http.ResponseWriter, r *http.Request) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := parseExactQuery(w, r); !ok {
+		return
+	}
+	if h.proxyReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "proxy_unavailable", "proxy details are unavailable", nil)
+		return
+	}
+	detail, err := h.proxyReader.Proxy(r.Context(), address)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ProxyDetailsResponse{Data: detail, Meta: h.meta(r)})
+}
+
+func (h *Handler) contractProxyUpgrades(w http.ResponseWriter, r *http.Request) {
+	h.contractProxyHistory(w, r, true)
+}
+
+func (h *Handler) contractProxyInitializations(w http.ResponseWriter, r *http.Request) {
+	h.contractProxyHistory(w, r, false)
+}
+
+func (h *Handler) contractProxyHistory(w http.ResponseWriter, r *http.Request, upgrades bool) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	values, ok := parseExactQuery(w, r, "cursor", "limit")
+	if !ok {
+		return
+	}
+	cursor := ""
+	if items, present := values["cursor"]; present {
+		cursor = items[0]
+	}
+	if len(cursor) > maximumOpaqueCursorLength || (values.Has("cursor") && cursor == "") {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or too long", nil)
+		return
+	}
+	limit, ok := parseExactLimit(w, r, values, 20)
+	if !ok {
+		return
+	}
+	if h.proxyReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "proxy_unavailable", "proxy history is unavailable", nil)
+		return
+	}
+	if upgrades {
+		page, next, err := h.proxyReader.ProxyUpgrades(r.Context(), address, cursor, limit)
+		if err != nil {
+			h.handleReaderError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, gen.ProxyUpgradeHistoryResponse{
+			Data: page, Meta: pageMeta(h.meta(r), next),
+		})
+		return
+	}
+	page, next, err := h.proxyReader.ProxyInitializations(r.Context(), address, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ProxyInitializationHistoryResponse{
+		Data: page, Meta: pageMeta(h.meta(r), next),
+	})
+}
+
+func pageMeta(meta gen.Meta, next string) gen.Meta {
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	return meta
+}
+
+func parseExactQuery(w http.ResponseWriter, r *http.Request, allowed ...string) (url.Values, bool) {
+	if len(r.URL.RawQuery) > maximumNativeQueryBytes {
+		writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+		return nil, false
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+		return nil, false
+	}
+	allowlist := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		allowlist[name] = struct{}{}
+	}
+	for name, items := range values {
+		if _, exists := allowlist[name]; !exists || name == "" || len(items) != 1 {
+			writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+			return nil, false
+		}
+	}
+	return values, true
+}
+
+func parseExactLimit(w http.ResponseWriter, r *http.Request, values url.Values, defaultValue int) (int, bool) {
+	items, present := values["limit"]
+	if !present {
+		return defaultValue, true
+	}
+	raw := items[0]
+	value, err := strconv.Atoi(raw)
+	if err != nil || strconv.Itoa(value) != raw || value < 1 || value > maximumPageSize {
+		writeError(w, r, http.StatusBadRequest, "invalid_limit", fmt.Sprintf("limit must be between 1 and %d", maximumPageSize), nil)
+		return 0, false
+	}
+	return value, true
 }
 
 func (h *Handler) verificationReadAvailable(w http.ResponseWriter, r *http.Request) bool {

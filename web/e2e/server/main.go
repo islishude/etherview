@@ -14,20 +14,30 @@ import (
 )
 
 const (
-	testAddress            = "0x1111111111111111111111111111111111111111"
-	testEOA                = "0x2222222222222222222222222222222222222222"
-	testHash               = "0x1111111111111111111111111111111111111111111111111111111111111111"
-	secondHash             = "0x2222222222222222222222222222222222222222222222222222222222222222"
-	orphanHash             = "0x3333333333333333333333333333333333333333333333333333333333333333"
-	testTransactionHash    = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	secondTransactionHash  = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	pendingTransactionHash = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	parentHash             = "0x0000000000000000000000000000000000000000000000000000000000000000"
-	blockCursor            = "blocks/snapshot + page=2"
-	transactionCursor      = "transactions/snapshot?generation=7 + page=2&exact=true/#"
-	searchCursor           = "search/snapshot + page=2"
-	testVerificationJobID  = "123e4567-e89b-42d3-a456-426614174000"
-	testReadAPIKey         = "ev_e2e_read"
+	testAddress               = "0x1111111111111111111111111111111111111111"
+	testEOA                   = "0x2222222222222222222222222222222222222222"
+	uupsProxyAddress          = "0x3000000000000000000000000000000000000003"
+	uupsImplementation        = "0x4000000000000000000000000000000000000004"
+	beaconProxyAddress        = "0x5000000000000000000000000000000000000005"
+	beaconImplementation      = "0x6000000000000000000000000000000000000006"
+	cloneAddress              = "0x7000000000000000000000000000000000000007"
+	cloneImplementation       = "0x8000000000000000000000000000000000000008"
+	proxyAdminAddress         = "0x9000000000000000000000000000000000000009"
+	upgradeableBeacon         = "0x2000000000000000000000000000000000000020"
+	transparentImplementation = "0x3000000000000000000000000000000000000030"
+	oldImplementation         = "0x4000000000000000000000000000000000000040"
+	testHash                  = "0x1111111111111111111111111111111111111111111111111111111111111111"
+	secondHash                = "0x2222222222222222222222222222222222222222222222222222222222222222"
+	orphanHash                = "0x3333333333333333333333333333333333333333333333333333333333333333"
+	testTransactionHash       = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	secondTransactionHash     = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pendingTransactionHash    = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	parentHash                = "0x0000000000000000000000000000000000000000000000000000000000000000"
+	blockCursor               = "blocks/snapshot + page=2"
+	transactionCursor         = "transactions/snapshot?generation=7 + page=2&exact=true/#"
+	searchCursor              = "search/snapshot + page=2"
+	testVerificationJobID     = "123e4567-e89b-42d3-a456-426614174000"
+	testReadAPIKey            = "ev_e2e_read"
 )
 
 func main() {
@@ -432,34 +442,48 @@ func main() {
 		})
 	})
 	mux.HandleFunc("GET /api/v1/contracts/{address}/verification", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("address") != testAddress {
+		if rejectAuthenticatedContractRead(response, request) {
+			return
+		}
+		artifact, ok := contractArtifact(request.PathValue("address"))
+		if !ok {
 			writeNotFound(response)
 			return
 		}
-		if !authorized(request) {
-			writeUnauthorized(response)
+		writeEnvelope(response, artifact)
+	})
+	mux.HandleFunc("GET /api/v1/contracts/{address}/proxy", func(response http.ResponseWriter, request *http.Request) {
+		if rejectAuthenticatedContractRead(response, request) {
 			return
 		}
-		writeEnvelope(response, map[string]any{
-			"kind":     "verification_success",
-			"chain_id": "1", "address": testAddress, "code_hash": testHash,
-			"valid_from_block": "1", "language": "solidity",
-			"compiler_version": "0.8.30", "file_name": "ExampleCollectible.sol",
-			"contract_name": "ExampleCollectible", "is_blueprint": false,
-			"abi": []any{map[string]any{"type": "function", "name": "ownerOf"}},
-			"sources": map[string]any{
-				"ExampleCollectible.sol": map[string]any{"content": "contract ExampleCollectible {}"},
-			},
-			"settings":                map[string]any{"optimizer": map[string]any{"enabled": true}},
-			"compilation_artifacts":   map[string]any{},
-			"creation_code_artifacts": map[string]any{},
-			"runtime_code_artifacts":  map[string]any{},
-			"libraries":               map[string]any{},
-			"runtime_match": map[string]any{
-				"match_type": "full", "transformations": []any{}, "values": map[string]any{},
-			},
-			"created_at": "2026-07-23T00:00:01Z",
-		})
+		detail, ok := contractProxy(request.PathValue("address"))
+		if !ok {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, detail)
+	})
+	mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/upgrades", func(response http.ResponseWriter, request *http.Request) {
+		if rejectAuthenticatedContractRead(response, request) {
+			return
+		}
+		history, ok := proxyUpgradeHistory(request.PathValue("address"))
+		if !ok {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, history)
+	})
+	mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/initializations", func(response http.ResponseWriter, request *http.Request) {
+		if rejectAuthenticatedContractRead(response, request) {
+			return
+		}
+		history, ok := proxyInitializationHistory(request.PathValue("address"))
+		if !ok {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, history)
 	})
 	mux.HandleFunc("GET /api/v1/search", func(response http.ResponseWriter, request *http.Request) {
 		query := request.URL.Query().Get("q")
@@ -700,6 +724,307 @@ func homeStreamSession(request *http.Request) string {
 		return ""
 	}
 	return cookie.Value
+}
+
+func contractArtifact(address string) (map[string]any, bool) {
+	var contractName string
+	var abi []any
+	switch address {
+	case testAddress:
+		contractName = "TransparentUpgradeableProxy"
+		abi = proxyContractABI()
+	case uupsProxyAddress:
+		contractName = "ERC1967Proxy"
+		abi = proxyContractABI()
+	case beaconProxyAddress:
+		contractName = "BeaconProxy"
+		abi = proxyContractABI()
+	case cloneAddress:
+		contractName = "MinimalClone"
+		abi = proxyContractABI()
+	case transparentImplementation:
+		contractName = "TransparentImplementationV2"
+		abi = implementationABI(false)
+	case uupsImplementation:
+		contractName = "UUPSImplementationV2"
+		abi = implementationABI(true)
+	case beaconImplementation:
+		contractName = "BeaconImplementationV2"
+		abi = implementationABI(false)
+	case cloneImplementation:
+		contractName = "CloneImplementation"
+		abi = implementationABI(false)
+	case proxyAdminAddress:
+		contractName = "ProxyAdmin"
+		abi = []any{
+			map[string]any{
+				"type": "function", "name": "upgradeAndCall", "stateMutability": "payable",
+				"inputs": []any{
+					map[string]any{"name": "proxy", "type": "address"},
+					map[string]any{"name": "implementation", "type": "address"},
+					map[string]any{"name": "data", "type": "bytes"},
+				},
+				"outputs": []any{},
+			},
+		}
+	case upgradeableBeacon:
+		contractName = "UpgradeableBeacon"
+		abi = []any{
+			map[string]any{
+				"type": "function", "name": "implementation", "stateMutability": "view",
+				"inputs": []any{}, "outputs": []any{map[string]any{"name": "", "type": "address"}},
+			},
+			map[string]any{
+				"type": "function", "name": "upgradeTo", "stateMutability": "nonpayable",
+				"inputs":  []any{map[string]any{"name": "newImplementation", "type": "address"}},
+				"outputs": []any{},
+			},
+		}
+	default:
+		return nil, false
+	}
+
+	fileName := contractName + ".sol"
+	return map[string]any{
+		"kind": "verification_success", "chain_id": "1", "address": address,
+		"code_hash": testHash, "valid_from_block": "1", "language": "solidity",
+		"compiler_version": "0.8.30", "file_name": fileName,
+		"contract_name": contractName, "is_blueprint": false, "abi": abi,
+		"sources": map[string]any{
+			fileName: map[string]any{"content": "contract " + contractName + " {}"},
+		},
+		"settings":                map[string]any{"optimizer": map[string]any{"enabled": true}},
+		"compilation_artifacts":   map[string]any{},
+		"creation_code_artifacts": map[string]any{},
+		"runtime_code_artifacts":  map[string]any{},
+		"libraries":               map[string]any{},
+		"runtime_match": map[string]any{
+			"match_type": "full", "transformations": []any{}, "values": map[string]any{},
+		},
+		"created_at": "2026-08-02T00:00:01Z",
+	}, true
+}
+
+func proxyContractABI() []any {
+	return []any{
+		map[string]any{
+			"type": "function", "name": "proxyValue", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{"name": "value", "type": "uint256"}},
+		},
+		map[string]any{
+			"type": "function", "name": "setProxyValue", "stateMutability": "nonpayable",
+			"inputs":  []any{map[string]any{"name": "newValue", "type": "uint256"}},
+			"outputs": []any{},
+		},
+	}
+}
+
+func implementationABI(uups bool) []any {
+	abi := []any{
+		map[string]any{
+			"type": "function", "name": "value", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{"name": "", "type": "uint256"}},
+		},
+		map[string]any{
+			"type": "function", "name": "setValue", "stateMutability": "nonpayable",
+			"inputs":  []any{map[string]any{"name": "newValue", "type": "uint256"}},
+			"outputs": []any{},
+		},
+	}
+	if !uups {
+		return abi
+	}
+	return append(abi,
+		map[string]any{
+			"type": "function", "name": "proxiableUUID", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{"name": "", "type": "bytes32"}},
+		},
+		map[string]any{
+			"type": "function", "name": "upgradeToAndCall", "stateMutability": "payable",
+			"inputs": []any{
+				map[string]any{"name": "newImplementation", "type": "address"},
+				map[string]any{"name": "data", "type": "bytes"},
+			},
+			"outputs": []any{},
+		},
+	)
+}
+
+func contractProxy(address string) (map[string]any, bool) {
+	var mechanism, pattern, implementation, bindingID, proxyArtifactKind string
+	var management map[string]any
+	var admin map[string]any
+	var beacon map[string]any
+	var immutableArgs string
+	switch address {
+	case testAddress:
+		mechanism, pattern = "eip1967", "transparent"
+		implementation = transparentImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb41"
+		proxyArtifactKind = "transparent_proxy"
+		admin = contractIdentity(proxyAdminAddress, "proxy_admin")
+		management = map[string]any{
+			"kind": "proxy_admin", "target": admin, "affected_proxy_count": "1",
+		}
+	case uupsProxyAddress:
+		mechanism, pattern = "eip1967", "uups"
+		implementation = uupsImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb42"
+		proxyArtifactKind = "erc1967_proxy"
+	case beaconProxyAddress:
+		mechanism, pattern = "beacon", "beacon"
+		implementation = beaconImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb43"
+		proxyArtifactKind = "beacon_proxy"
+		beacon = contractIdentity(upgradeableBeacon, "upgradeable_beacon")
+		management = map[string]any{
+			"kind": "upgradeable_beacon", "target": beacon, "affected_proxy_count": "2",
+		}
+	case cloneAddress:
+		mechanism, pattern = "eip1167", "clone"
+		implementation = cloneImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb44"
+		immutableArgs = "0x1234"
+	default:
+		return nil, false
+	}
+
+	implementationKind := ""
+	if pattern == "uups" {
+		implementationKind = "uups_implementation"
+	}
+	proxyIdentity := contractIdentity(address, proxyArtifactKind)
+	if pattern == "clone" {
+		proxyIdentity["verification_state"] = "unverified"
+	}
+	detail := map[string]any{
+		"address": address, "status": "verified", "snapshot": contractSnapshot(),
+		"mechanism": mechanism, "pattern": pattern,
+		"evidence_state": "exact", "confidence": "verified", "binding_id": bindingID,
+		"proxy":          proxyIdentity,
+		"implementation": contractIdentity(implementation, implementationKind),
+		"evidence": []any{map[string]any{
+			"source": "verified_artifact", "subject": "proxy", "result": "authoritative",
+			"address": address, "code_hash": testHash,
+		}},
+	}
+	if pattern != "clone" {
+		detail["standard_version"] = "5.6.1"
+	}
+	if admin != nil {
+		detail["admin"] = admin
+	}
+	if beacon != nil {
+		detail["beacon"] = beacon
+	}
+	if management != nil {
+		detail["management"] = management
+	}
+	if immutableArgs != "" {
+		detail["immutable_args"] = immutableArgs
+	}
+	return detail, true
+}
+
+func contractIdentity(address, artifactKind string) map[string]any {
+	identity := map[string]any{
+		"address": address, "code_hash": testHash, "verification_state": "verified",
+	}
+	if artifactKind != "" {
+		identity["artifact_kind"] = artifactKind
+		identity["standard_version"] = "5.6.1"
+	}
+	return identity
+}
+
+func contractSnapshot() map[string]any {
+	return map[string]any{
+		"chain_id": "1", "block_number": "42", "block_hash": testHash,
+	}
+}
+
+func proxyUpgradeHistory(address string) (map[string]any, bool) {
+	detail, ok := contractProxy(address)
+	if !ok || detail["pattern"] == "clone" {
+		return nil, false
+	}
+	implementation := detail["implementation"].(map[string]any)["address"].(string)
+	changeType := "implementation"
+	var management map[string]any
+	switch detail["pattern"] {
+	case "beacon":
+		changeType = "beacon_implementation"
+		management = map[string]any{
+			"kind": "upgradeable_beacon",
+			"target": map[string]any{
+				"address": upgradeableBeacon, "code_hash": testHash, "verification_state": "verified",
+			},
+		}
+	case "transparent":
+		management = map[string]any{
+			"kind": "proxy_admin",
+			"target": map[string]any{
+				"address": proxyAdminAddress, "code_hash": testHash, "verification_state": "verified",
+			},
+		}
+	}
+	item := map[string]any{
+		"change_type": changeType, "evidence_type": "event",
+		"old_implementation": map[string]any{
+			"address": oldImplementation, "code_hash": secondHash, "verification_state": "verified",
+		},
+		"new_implementation": map[string]any{
+			"address": implementation, "code_hash": testHash, "verification_state": "verified",
+		},
+		"block_number": "40", "block_hash": testHash,
+		"block_timestamp":  "2026-08-02T00:00:00Z",
+		"transaction_hash": testTransactionHash, "log_index": "0", "emitter_address": address,
+	}
+	if management != nil {
+		item["management"] = management
+	}
+	return map[string]any{
+		"proxy_address": address, "snapshot": contractSnapshot(),
+		"coverage": map[string]any{"state": "complete", "from_block": "1", "to_block": "42"},
+		"items":    []any{item},
+	}, true
+}
+
+func proxyInitializationHistory(address string) (map[string]any, bool) {
+	detail, ok := contractProxy(address)
+	if !ok {
+		return nil, false
+	}
+	implementation := detail["implementation"].(map[string]any)["address"].(string)
+	return map[string]any{
+		"contract_address": address, "snapshot": contractSnapshot(),
+		"coverage": map[string]any{"state": "complete", "from_block": "1", "to_block": "42"},
+		"items": []any{map[string]any{
+			"version": "2", "block_number": "41", "block_hash": testHash,
+			"block_timestamp":  "2026-08-02T00:01:00Z",
+			"transaction_hash": testTransactionHash, "log_index": "1",
+			"implementation": map[string]any{
+				"address": implementation, "code_hash": testHash, "verification_state": "verified",
+			},
+		}},
+	}, true
+}
+
+func rejectAuthenticatedContractRead(response http.ResponseWriter, request *http.Request) bool {
+	for _, header := range []string{"X-API-Key", "Payment-Signature", "X-CSRF-Token"} {
+		if request.Header.Get(header) == "" {
+			continue
+		}
+		response.WriteHeader(http.StatusBadRequest)
+		writeJSON(response, map[string]any{
+			"error": map[string]any{
+				"code": "unexpected_credentials", "message": "contract reads must be anonymous",
+				"request_id": "e2e-request",
+			},
+		})
+		return true
+	}
+	return false
 }
 
 func writeEnvelope(response http.ResponseWriter, data any) {

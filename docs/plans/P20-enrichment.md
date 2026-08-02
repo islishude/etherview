@@ -36,6 +36,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T10 | done | P20-T01, P20-T07 | Lease-fenced atomic publication of derived output, stage result, journal, and job generation | stale-worker and publication-window tests |
 | P20-T11 | done | P20-T05, P20-T10 | Exact bounded transaction state differences with independent capability state | malformed, limit, replay, and reorg tests |
 | P20-T12 | done | P20-T11 | Preserve historical migration replay and DEFAULT-partition evacuation after adding state differences | migration replay and partition lifecycle integration tests |
+| P20-T13 | done | P20-T03, P20-T07, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests |
 
 ## Acceptance
 
@@ -70,12 +71,40 @@ search documents, and rollup statistics without delaying core readiness.
       normalized within per-transaction and per-block limits, retained by
       immutable block identity, and published only through the matching
       lease-fenced generation.
+- [x] OpenZeppelin 5.6.1 proxy, implementation, Beacon, Clone, upgrade, and
+      initialization facts are exact-block-bound, reorg-safe, and distinguish
+      exact evidence from partial or generic detection.
 
 ## Current Blockers
 
 None.
 
 ## Evidence
+
+- P20-T13: `proxy@2` now persists generation-witnessed EIP-1967,
+  Transparent, UUPS, Beacon, standard Clone, and authenticated immutable-args
+  Clone observations plus shared Beacon implementations, strict upgrade and
+  initialization events, exact artifact resolutions, negative detection
+  evidence, and canonical coverage inputs. `abi@2` consumes only the matching
+  published Proxy generation and shared Beacon snapshot; unpublished raw or
+  forked observations cannot shadow it.
+- P20-T13 hardening: exact OpenZeppelin 5.6.1 recognition gives runtime
+  immutables authority over compatibility slots, rejects bad UUPS UUIDs, and
+  retains Clone semantics even when the implementation currently has empty
+  code. Trace withdrawal and completion use distinct durable replay sources,
+  so capability loss withdraws dependent exact Clone evidence while a later
+  successful Trace generation can restore it without a deduplication race.
+  Legitimate zero-address calls are ignored as proxy candidates rather than
+  failing the whole block.
+- P20-T13 verification: `go test ./... -count=1`, `go test
+  -tags=integration ./internal/integration -count=1`, and `go test -race
+  -tags=integration ./internal/integration -count=1` passed against PostgreSQL
+  18. Focused integration/race coverage includes shared Beacon fanout and
+  reorg, exact-slot StateDiff replay, ordinary-call Trace replay, immutable
+  Clone negative-to-exact promotion, Trace capability loss and hostile
+  invalidation/completion interleaving, ABI published-generation selection,
+  and legal zero-address targets. `make generate-check`, `make plan-check`, and
+  `git diff --check` passed.
 
 - P20-T12: partition provisioning now discovers migration-owned partition
   families from the current schema, skips `transaction_state_changes` only

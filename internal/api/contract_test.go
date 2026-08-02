@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/apiops"
 	"gopkg.in/yaml.v3"
 )
 
@@ -70,11 +72,80 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 	paths := mappingValue(t, root, "paths")
 	assertJSONOperationsUseCommonErrors(t, paths)
 	assertVerificationBoundary(t, paths, schemas)
+	assertProxyInteractionBoundary(t, paths, components, schemas)
+	billingProperties := mappingValue(t, mappingValue(t, schemas, "BillingConfig"), "properties")
+	billingRouteLimit := mappingValue(t, mappingValue(t, billingProperties, "routes"), "maxItems")
+	assertScalar(t, billingRouteLimit, strconv.Itoa(len(apiops.EligibleIDs())))
 
 	responses := mappingValue(t, components, "responses")
 	commonError := mappingValue(t, responses, "Error")
 	errorContent := mappingValue(t, mappingValue(t, commonError, "content"), "application/json")
 	assertScalar(t, mappingValue(t, mappingValue(t, errorContent, "schema"), "$ref"), "#/components/schemas/ErrorResponse")
+}
+
+func assertProxyInteractionBoundary(
+	t *testing.T,
+	paths, components, schemas *yaml.Node,
+) {
+	t.Helper()
+	for name, want := range map[string][]string{
+		"ProxyDetailStatus": {
+			"not_detected", "detected_unverified", "verified", "unavailable", "failed",
+		},
+		"ProxyMechanism":            {"eip1167", "eip1967", "beacon"},
+		"ProxyPattern":              {"clone", "erc1967", "transparent", "uups", "beacon", "unknown"},
+		"ProxyManagementKind":       {"proxy_admin", "upgradeable_beacon"},
+		"ProxyHistoryCoverageState": {"complete", "partial"},
+	} {
+		assertEnum(t, mappingValue(t, schemas, name), want...)
+	}
+	parameters := mappingValue(t, components, "parameters")
+	historyLimit := mappingValue(t, mappingValue(t, parameters, "ProxyHistoryLimit"), "schema")
+	assertScalar(t, mappingValue(t, historyLimit, "type"), "integer")
+	assertScalar(t, mappingValue(t, historyLimit, "minimum"), "1")
+	assertScalar(t, mappingValue(t, historyLimit, "maximum"), "100")
+	assertScalar(t, mappingValue(t, historyLimit, "default"), "20")
+
+	details := mappingValue(t, schemas, "ProxyDetails")
+	assertRequired(t, details, "address", "status", "snapshot", "evidence")
+	detailProperties := mappingValue(t, details, "properties")
+	for _, identity := range []string{"proxy", "implementation", "admin", "beacon"} {
+		assertScalar(
+			t,
+			mappingValue(t, mappingValue(t, detailProperties, identity), "$ref"),
+			"#/components/schemas/ProxyContractIdentity",
+		)
+	}
+	assertScalar(t, mappingValue(t, mappingValue(t, detailProperties, "binding_id"), "format"), "uuid")
+
+	for _, operation := range []struct {
+		path      string
+		operation string
+		response  string
+		paginated bool
+	}{
+		{path: "/contracts/{address}/proxy", operation: "getContractProxy", response: "ProxyDetailsResponse"},
+		{path: "/contracts/{address}/proxy/upgrades", operation: "listContractProxyUpgrades", response: "ProxyUpgradeHistoryResponse", paginated: true},
+		{path: "/contracts/{address}/proxy/initializations", operation: "listContractProxyInitializations", response: "ProxyInitializationHistoryResponse", paginated: true},
+	} {
+		defined := mappingValue(t, mappingValue(t, paths, operation.path), "get")
+		assertScalar(t, mappingValue(t, defined, "operationId"), operation.operation)
+		response := mappingValue(t, mappingValue(t, mappingValue(t, defined, "responses"), "200"), "content")
+		response = mappingValue(t, mappingValue(t, response, "application/json"), "schema")
+		assertScalar(t, mappingValue(t, response, "$ref"), "#/components/schemas/"+operation.response)
+		if operation.paginated {
+			foundLimit := false
+			for _, parameter := range mappingValue(t, defined, "parameters").Content {
+				if ref := optionalMappingValue(parameter, "$ref"); ref != nil &&
+					scalarValue(t, ref) == "#/components/parameters/ProxyHistoryLimit" {
+					foundLimit = true
+				}
+			}
+			if !foundLimit {
+				t.Fatalf("%s does not use the proxy history limit", operation.operation)
+			}
+		}
+	}
 }
 
 func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
@@ -85,7 +156,6 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		billable bool
 	}{
 		{path: "/contracts/{address}/verification", method: "post"},
-		{path: "/contracts/{address}/verification", method: "get", billable: true},
 		{path: "/verifier/jobs/{id}", method: "get", billable: true},
 		{path: "/verifier/solidity/multipart", method: "post"},
 		{path: "/verifier/solidity/standard-json", method: "post"},
@@ -105,6 +175,38 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		mappingValue(t, security.Content[0], "APIKey")
 		if operation.billable {
 			mappingValue(t, security.Content[1], "X402Payment")
+		}
+	}
+	for _, operation := range []struct {
+		path   string
+		method string
+	}{
+		{path: "/contracts/{address}/verification", method: "get"},
+		{path: "/contracts/{address}/proxy", method: "get"},
+		{path: "/contracts/{address}/proxy/upgrades", method: "get"},
+		{path: "/contracts/{address}/proxy/initializations", method: "get"},
+	} {
+		defined := mappingValue(t, mappingValue(t, paths, operation.path), operation.method)
+		if security := optionalMappingValue(defined, "security"); security != nil {
+			t.Fatalf("%s %s must be anonymous, got security=%v", operation.method, operation.path, security.Value)
+		}
+		parameters := optionalMappingValue(defined, "parameters")
+		if parameters != nil {
+			for _, parameter := range parameters.Content {
+				if ref := optionalMappingValue(parameter, "$ref"); ref != nil &&
+					scalarValue(t, ref) == "#/components/parameters/PaymentSignature" {
+					t.Fatalf("%s %s exposes a payment signature", operation.method, operation.path)
+				}
+			}
+		}
+		responses := mappingValue(t, defined, "responses")
+		if optionalMappingValue(responses, "402") != nil {
+			t.Fatalf("%s %s exposes a payment-required response", operation.method, operation.path)
+		}
+		for index := 0; index < len(responses.Content); index += 2 {
+			if headers := optionalMappingValue(responses.Content[index+1], "headers"); headers != nil && optionalMappingValue(headers, "PAYMENT-RESPONSE") != nil {
+				t.Fatalf("%s %s exposes a payment-response header", operation.method, operation.path)
+			}
 		}
 	}
 
@@ -262,6 +364,21 @@ func assertRequired(t *testing.T, schema *yaml.Node, names ...string) {
 		if _, ok := values[name]; !ok {
 			t.Fatalf("required is missing %q", name)
 		}
+	}
+}
+
+func assertEnum(t *testing.T, schema *yaml.Node, expected ...string) {
+	t.Helper()
+	values := mappingValue(t, schema, "enum")
+	if values.Kind != yaml.SequenceNode {
+		t.Fatalf("enum must be a sequence, got kind %d", values.Kind)
+	}
+	actual := make([]string, 0, len(values.Content))
+	for _, value := range values.Content {
+		actual = append(actual, scalarValue(t, value))
+	}
+	if !slices.Equal(actual, expected) {
+		t.Fatalf("enum=%v, want %v", actual, expected)
 	}
 }
 
