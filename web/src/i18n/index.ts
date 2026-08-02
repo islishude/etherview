@@ -431,7 +431,7 @@ const resources = {
           accountChanged: "The active wallet account changed; reconnect before retrying.",
           sessionChanged: "The active wallet session changed; review the state before retrying.",
           transactionOutcomeUnknown:
-            "The transaction outcome could not be confirmed. Check your wallet and the chain before taking any further action.",
+            "The wallet changed while the transaction was pending. Its outcome is unknown; check your wallet before retrying.",
           disconnected: "The injected wallet disconnected.",
           invalidResponse: "The injected wallet returned an invalid response.",
           invalidRequest: "The contract request is invalid.",
