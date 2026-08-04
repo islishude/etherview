@@ -1,8 +1,6 @@
-FROM node:24.18.0-alpine
+FROM node:26.6.0-alpine
 
 WORKDIR /workspace
-
-RUN npm install --global npm@11.16.0
 
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts

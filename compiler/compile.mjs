@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 const solc = require("solc");
 const solcPackage = require("solc/package.json");
 const wrapperPath = fileURLToPath(import.meta.url);
-const requiredNodeVersion = "v26.5.1";
+const requiredNodeVersion = "v26.6.0";
 const requiredWrapperPackageVersion = "0.8.36";
 const selfTestResult = {
   node_version: requiredNodeVersion,

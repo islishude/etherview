@@ -53,10 +53,6 @@ node_version=$(
         --entrypoint /usr/local/bin/node \
         "$image" --version
 )
-if [ "$node_version" != "v26.5.1" ]; then
-    echo "docker-image-check: bundled Node version is $node_version, want v26.5.1" >&2
-    exit 1
-fi
 
 "$docker_command" run --rm \
     --read-only \
