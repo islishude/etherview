@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:26.6.0-alpine AS web-builder
+FROM node:26.7.0-alpine AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
@@ -10,7 +10,7 @@ COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.js
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
-FROM node:26.6.0-slim AS compiler-builder
+FROM node:26.7.0-slim AS compiler-builder
 WORKDIR /opt/etherview/compiler
 COPY compiler/package.json compiler/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \

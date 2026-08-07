@@ -22,10 +22,10 @@ const (
 	TrustedSubprocessPolicy = "trusted_subprocess"
 
 	solcJSRuntimeSchema  = "etherview-solcjs-runtime-v1"
-	solcJSNodeVersion    = "v26.6.0"
+	solcJSNodeVersion    = "v26.7.0"
 	solcJSWrapperPackage = "solc@0.8.36"
 	solcJSHeapMiB        = 384
-	solcJSSelfTestOutput = `{"node_version":"v26.6.0","wrapper_package":"solc@0.8.36","permissions":"restricted"}`
+	solcJSSelfTestOutput = `{"node_version":"v26.7.0","wrapper_package":"solc@0.8.36","permissions":"restricted"}`
 
 	maxRuntimeManifestBytes = 2 << 20
 	maxRuntimeManifestFiles = 4096
