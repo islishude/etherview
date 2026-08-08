@@ -101,19 +101,21 @@ export function ContractPage({ address }: { address: string }) {
   const upgradeCursors = upgradeState.identity === address ? upgradeState.cursors : [""];
   const initializationCursors =
     initializationState.identity === address ? initializationState.cursors : [""];
-  const clone = proxy.data?.detail.pattern === "clone";
-  const detected = proxy.data?.state !== undefined && proxy.data.state !== "not_detected";
+  const proxyDetail = proxy.data?.detail;
+  const isProxy = proxyDetail?.proxy !== undefined;
+  const clone = proxyDetail?.pattern === "clone";
+  const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(
     address,
     upgradeCursors.at(-1) || undefined,
     20,
-    validAddress && detected && !clone && activeTab === "upgrades",
+    validAddress && isProxy && detected && !clone && activeTab === "upgrades",
   );
   const initializations = useContractProxyInitializations(
     address,
     initializationCursors.at(-1) || undefined,
     20,
-    validAddress && detected && activeTab === "initializations",
+    validAddress && isProxy && detected && activeTab === "initializations",
   );
 
   const tabs = useMemo(() => {
@@ -169,7 +171,6 @@ export function ContractPage({ address }: { address: string }) {
         <p className="form-error" role="alert">{t("contracts.invalidIdentity")}</p>
       ) : (
         <div className="contract-detail-stack">
-          <ProxySummary detail={proxy.data?.detail} loading={proxy.isPending} error={proxy.error} />
           <nav aria-label={t("contracts.sections")} aria-orientation="horizontal" className="contract-tabs" role="tablist">
             {tabs.map((tab) => (
               <button
@@ -200,11 +201,16 @@ export function ContractPage({ address }: { address: string }) {
               {activeTab === tab.id ? (
                 <>
                   {activeTab === "code" && (
-                    <ArtifactPanel
-                      artifact={artifact.data}
-                      error={artifact.error}
-                      loading={artifact.isPending}
-                    />
+                    <>
+                      {isProxy ? (
+                        <ProxySummary detail={proxyDetail} loading={proxy.isPending} error={proxy.error} />
+                      ) : null}
+                      <ArtifactPanel
+                        artifact={artifact.data}
+                        error={artifact.error}
+                        loading={artifact.isPending}
+                      />
+                    </>
                   )}
                   {(activeTab === "read-contract" || activeTab === "write-contract") && (
                     <AbiFunctionExplorer
@@ -285,8 +291,8 @@ function ProxySummary({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="panel proxy-summary" aria-labelledby="proxy-summary-title">
-      <div className="panel-heading">
+    <details className="panel proxy-summary">
+      <summary className="panel-heading">
         <div>
           <span className="eyebrow">OpenZeppelin 5.x</span>
           <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
@@ -296,7 +302,7 @@ function ProxySummary({
             {proxyStatusLabel(detail.status, t)}
           </span>
         ) : null}
-      </div>
+      </summary>
       <QueryNotice loading={loading} error={error} />
       {detail?.status === "not_detected" ? (
         <p className="quiet">{t("contracts.proxy.notDetected")}</p>
@@ -359,7 +365,7 @@ function ProxySummary({
       {detail?.pattern === "clone" ? (
         <p className="context-note" role="note">{t("contracts.proxy.cloneImmutable")}</p>
       ) : null}
-    </section>
+    </details>
   );
 }
 

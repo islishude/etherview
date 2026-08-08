@@ -42,6 +42,18 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T16 | done        | P50-T15       | Etherscan-inspired verified source workspace, structured compiler settings, and summarized contract artifacts | focused frontend, embedded browser, responsive, accessibility, generation, security, and license gates |
 | P50-T17 | done        | P50-T16       | CSP-compatible CodeMirror layout with aligned source lines and gutters | focused frontend and live Preview browser regression |
 | P50-T18 | done        | P50-T17       | CSP-compatible stable semantic syntax highlighting for verified source | focused frontend and live Preview browser regression |
+| P50-T19 | done        | P50-T18       | Compact ABI read/write forms, stacked parameter inputs, copyable calldata, and explicit wallet connection guidance | focused ABI form tests, frontend lint/build, and applicable repository gates |
+| P50-T20 | done        | P50-T19       | ABI address inputs provide a current-wallet Self shortcut | focused ABI form and frontend regression tests |
+| P50-T21 | done        | P50-T20       | Compact Self control is visually inset within address inputs | focused frontend style and ABI form regression tests |
+| P50-T22 | done        | P50-T21       | Read/Write actions expose wallet guidance on hover when unavailable | focused ABI form and frontend regression tests |
+| P50-T23 | done        | P50-T22       | Remove the Actual call target label while retaining exact target visibility | focused ABI form and frontend regression tests |
+| P50-T24 | done        | P50-T23       | Replace unreliable native hover title with an explicit wallet guidance tooltip | focused ABI form and stylesheet regression tests |
+| P50-T25 | done        | P50-T24       | Refine wallet guidance tooltip into a compact floating bubble | focused ABI form and stylesheet regression tests |
+| P50-T26 | done        | P50-T25       | Remove the contract target address from ABI form presentation | focused ABI form regression tests |
+| P50-T27 | done        | P50-T26       | Close the wallet popover when the user clicks outside it | focused wallet-menu regression tests |
+| P50-T28 | done        | P50-T27       | Keep proxy identity and proxy histories scoped to actual proxy contracts, with identity shown in Code | focused ContractPage regression tests and frontend gates |
+| P50-T29 | done        | P50-T28       | Make the Proxy identity section collapsed by default in the Code tab | focused ContractPage tests and frontend gates |
+| P50-T30 | done        | P50-T29       | Keep unavailable-wallet action guidance complete and remove duplicate inline wallet messaging | focused ABI form and stylesheet regression tests |
 
 ## Acceptance
 
@@ -498,3 +510,66 @@ None.
   tests, security and license scans, Dockerfile/Compose validation, and Helm
   lint/render checks; sandboxed cache/config reads emitted warnings without
   changing their successful results.
+- P50-T19 changes ABI scalar and payable inputs to a stacked heading/type and
+  control layout, adds compact themed Query/Write and Copy calldata actions,
+  centralizes clipboard fallback reuse, and shows localized wallet connection
+  or chain mismatch guidance while keeping calldata copying wallet-independent.
+  Focused ABI coverage passes 18 tests, the full frontend suite passes 27 files
+  with 229 tests, and `npm --prefix web run lint`, `npm --prefix web run build`,
+  `make test`, `make plan-check`, and `git diff --check` pass.
+- P50-T20 adds a localized Self shortcut to every address ABI input, including
+  nested tuple and array fields. It fills the connected wallet account without
+  touching the wallet RPC boundary and stays disabled when no account is
+  active. The focused ABI suite passes 19 tests, the complete frontend suite
+  passes 27 files with 230 tests, and lint, production build,
+  `make generate-check`, `make plan-check`, and `git diff --check` pass.
+- P50-T21 reduces the Self control to a compact borderless inset action inside
+  the address input, with theme-aware hover/focus/disabled states. The focused
+  ABI and stylesheet suites pass 20 tests, and frontend lint, production build,
+  and `git diff --check` pass.
+- P50-T22 wraps disabled Read/Write actions in hoverable guidance containers so
+  browser tooltips remain available even when the buttons cannot receive hover
+  events. The focused ABI and stylesheet suites pass 20 tests, frontend lint
+  and production build pass, and the wallet guidance title is regression-tested.
+- P50-T23 removes the `Actual call target` explanatory label while retaining the
+  exact transaction target address for safety-sensitive review. The focused ABI
+  suite passes 20 tests, frontend lint and production build pass, and the
+  absence of the label is regression-tested.
+- P50-T24 replaces the unreliable native hover title with an explicit tooltip
+  that opens on hover/focus and dismisses on pointer interaction outside the
+  action. The focused ABI and stylesheet suites pass 21 tests, frontend lint
+  and production build pass, and `make plan-check` plus `git diff --check` pass.
+- P50-T25 changes the wallet guidance from a full-width action-row block to a
+  compact floating bubble above the disabled action, with content-sized width,
+  theme-aware contrast, shadow, and a short fade/slide transition. The focused
+  ABI and stylesheet suites pass 21 tests, and frontend lint, production build,
+  `make plan-check`, and `git diff --check` pass.
+- P50-T26 removes the rendered transaction target address and its obsolete
+  management-impact presentation from ABI forms while preserving the internal
+  transaction target used for calls. The focused ABI suite passes 20 tests,
+  frontend lint and production build pass, and the absence of the address is
+  regression-tested.
+- P50-T27 closes the native wallet `details` popover on pointer input outside
+  its menu while preserving internal wallet-option interactions. The focused
+  WalletMenu suite passes 2 tests, frontend type checking and production build
+  pass, and `make plan-check` plus `git diff --check` pass. The complete web
+  suite has 230 passing tests and 3 pre-existing failures in ContractPage tests
+  that still expect the transaction target removed by P50-T26.
+- P50-T28 renders Proxy identity inside the Code tab only when the API returns
+  an actual proxy identity, and exposes neither proxy history tab nor history
+  request for non-proxy contracts. The focused ContractPage suite passes 10
+  tests, the complete frontend suite passes 28 files with 234 tests, and
+  frontend lint, production build, `make plan-check`, and `git diff --check`
+  pass. Existing ContractPage assertions were aligned with P50-T26's removal
+  of rendered transaction targets.
+- P50-T29 makes Proxy identity a native details disclosure that is collapsed by
+  default, while keeping its title and status visible and preserving all
+  identity/evidence content when expanded. The ContractPage suite passes 10
+  tests, the complete frontend suite passes 28 files with 234 tests, and
+  frontend lint and production build pass.
+- P50-T30 removes the duplicate inline unavailable-wallet and chain-mismatch
+  notices from ABI forms and keeps the full wallet guidance in the action
+  tooltip. The tooltip is anchored within the action area so its text remains
+  visible at narrow widths. The focused and complete frontend suites pass (20
+  and 234 tests), frontend lint and production build pass, and
+  `make plan-check` plus `git diff --check` pass.

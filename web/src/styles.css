@@ -3125,6 +3125,34 @@ tbody tr:hover {
   padding: clamp(1rem, 3vw, 1.4rem);
 }
 
+.proxy-summary > summary {
+  padding: 0;
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 0;
+}
+
+.proxy-summary > summary::-webkit-details-marker {
+  display: none;
+}
+
+.proxy-summary > summary::after {
+  content: "+";
+  color: var(--muted);
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.proxy-summary[open] > summary {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.proxy-summary[open] > summary::after {
+  content: "−";
+}
+
 .proxy-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3315,25 +3343,122 @@ tbody tr:hover {
   justify-self: start;
 }
 
-.abi-scalar-input {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(7rem, 0.35fr) minmax(5rem, auto) minmax(0, 1fr);
+.abi-function-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.55rem;
   align-items: center;
 }
 
-.abi-scalar-input > span {
+.abi-action-tooltip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.abi-action-tooltip-text {
+  position: absolute;
+  bottom: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 3;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.45rem 0.65rem;
+  color: var(--surface);
+  background: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  box-shadow: 0 0.45rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.35rem);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.abi-action-tooltip.is-open .abi-action-tooltip-text {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.abi-function-actions .button {
+  min-height: 2.2rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.abi-scalar-input {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.abi-input-heading {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.abi-input-heading > span {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: 700;
 }
 
-.abi-scalar-input > small,
+.abi-input-heading > small,
 .abi-composite-input legend small {
+  padding: 0.18rem 0.45rem;
   color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
   font-family: var(--font-mono);
+  font-size: 0.72rem;
   overflow-wrap: anywhere;
+}
+
+.abi-address-control {
+  position: relative;
+  min-width: 0;
+}
+
+.abi-address-control input {
+  padding-right: 5.2rem;
+}
+
+.abi-self-button {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  height: calc(100% - 0.5rem);
+  min-height: 0;
+  padding: 0 0.6rem;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 0;
+  border-radius: 0.55rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.abi-self-button:hover,
+.abi-self-button:focus-visible {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+}
+
+.abi-self-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .abi-scalar-input input,

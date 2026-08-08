@@ -307,11 +307,112 @@ describe("AbiFunctionExplorer", () => {
     ]);
   });
 
+  it("keeps parameter headings above their controls and copies encoded calldata", async () => {
+    const user = userEvent.setup();
+    const writeText = mockClipboard();
+    mockWallet();
+    renderExplorer(overloadABI, "read", directTargets());
+    const card = await openFunctionCard(user, "lookup(uint256)");
+    const input = card.getByLabelText(/^id/u);
+
+    expect(input.previousElementSibling).toHaveClass("abi-input-heading");
+    expect(input.closest("label")).toHaveTextContent("iduint256");
+
+    await user.type(input, "17");
+    await user.click(card.getByRole("button", { name: "Copy calldata" }));
+
+    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
+      abi: [overloadABI[0]],
+      functionName: "lookup",
+      args: [17n],
+    }));
+    expect(card.getByRole("button", { name: "Copied" })).toBeVisible();
+  });
+
+  it("does not render the transaction target address in the form", async () => {
+    mockWallet();
+    renderExplorer(overloadABI, "read", directTargets());
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "lookup(uint256)");
+
+    expect(card.queryByText("Actual call target")).not.toBeInTheDocument();
+    expect(card.queryByText(PROXY)).not.toBeInTheDocument();
+  });
+
+  it("fills address parameters from the connected wallet with Self", async () => {
+    mockWallet();
+    renderExplorer(overloadABI, "read", directTargets());
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "lookup(address)");
+    const input = card.getByLabelText(/^owner/u);
+
+    await user.click(card.getByRole("button", { name: "Use current wallet address" }));
+
+    expect(input).toHaveValue(ACCOUNT);
+  });
+
+  it("reports invalid arguments when calldata is copied before the form is complete", async () => {
+    const user = userEvent.setup();
+    const writeText = mockClipboard();
+    mockWallet();
+    renderExplorer(overloadABI, "read", directTargets());
+    const card = await openFunctionCard(user, "lookup(uint256)");
+
+    await user.click(card.getByRole("button", { name: "Copy calldata" }));
+
+    expect(await card.findByRole("alert")).toHaveTextContent(
+      "The value at $[0] does not match its Solidity ABI type.",
+    );
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("keeps calldata copying available while requiring a wallet for contract calls", async () => {
+    const user = userEvent.setup();
+    const writeText = mockClipboard();
+    const readContract = vi.fn(async () => "0x" as Hex);
+    mockWallet({
+      active: undefined,
+      getActiveWallet: vi.fn(() => undefined),
+      readContract,
+    });
+    renderExplorer(overloadABI, "read", directTargets());
+    const card = await openFunctionCard(user, "lookup(uint256)");
+
+    expect(card.queryByRole("status")).not.toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Read contract" })).toBeDisabled();
+    const actionTooltip = card.getByRole("button", { name: "Read contract" }).parentElement;
+    await user.hover(actionTooltip as HTMLElement);
+    expect(actionTooltip).toHaveAttribute(
+      "aria-describedby",
+      expect.stringContaining("action-hint"),
+    );
+    const tooltip = await card.findByRole("tooltip");
+    expect(tooltip).toBeVisible();
+    expect(tooltip).toHaveTextContent(
+      "Connect and authorize a wallet account first.",
+    );
+    await user.click(document.body);
+    expect(card.queryByRole("tooltip")).not.toBeInTheDocument();
+    const addressCard = await openFunctionCard(user, "lookup(address)");
+    expect(addressCard.getByRole("button", { name: "Use current wallet address" })).toBeDisabled();
+
+    await user.type(card.getByLabelText(/^id/u), "17");
+    await user.click(card.getByRole("button", { name: "Copy calldata" }));
+
+    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
+      abi: [overloadABI[0]],
+      functionName: "lookup",
+      args: [17n],
+    }));
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
   it("edits tuple and nested dynamic-array values into real viem calldata", async () => {
     const sendTransaction = vi.fn(async () => TRANSACTION_HASH);
     mockWallet({ sendTransaction });
     renderExplorer(configureABI, "write", directTargets());
     const user = userEvent.setup();
+    const writeText = mockClipboard();
     const card = await openFunctionCard(
       user,
       "configure((address,uint8),(address,uint256)[][])",
@@ -323,6 +424,15 @@ describe("AbiFunctionExplorer", () => {
     await user.click(card.getAllByRole("button", { name: "Add array item" })[0]!);
     await user.type(card.getByLabelText(/^recipient/u), OTHER);
     await user.type(card.getByLabelText(/^amount/u), "9");
+    await user.click(card.getByRole("button", { name: "Copy calldata" }));
+    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
+      abi: configureABI,
+      functionName: "configure",
+      args: [
+        { owner: ACCOUNT, threshold: 7 },
+        [[{ recipient: OTHER, amount: 9n }]],
+      ],
+    }));
     await user.click(card.getByRole("button", { name: "Send transaction" }));
 
     await waitFor(() => expect(sendTransaction).toHaveBeenCalledOnce());
@@ -388,12 +498,18 @@ describe("AbiFunctionExplorer", () => {
     mockWallet({ sendTransaction });
     renderExplorer(payableABI, "write", directTargets());
     const user = userEvent.setup();
+    const writeText = mockClipboard();
     const payable = await openFunctionCard(user, "deposit()");
     const nonpayable = await openFunctionCard(user, "setLimit(uint256)");
 
     expect(payable.getByLabelText(/^Native value \(wei\)/u)).toBeVisible();
     expect(nonpayable.queryByLabelText(/^Native value \(wei\)/u)).not.toBeInTheDocument();
     await user.type(payable.getByLabelText(/^Native value \(wei\)/u), "15");
+    await user.click(payable.getByRole("button", { name: "Copy calldata" }));
+    expect(writeText).toHaveBeenCalledWith(encodeFunctionData({
+      abi: [payableABI[0]],
+      functionName: "deposit",
+    }));
     await user.click(payable.getByRole("button", { name: "Send transaction" }));
 
     await waitFor(() => expect(sendTransaction).toHaveBeenCalledOnce());
@@ -503,19 +619,16 @@ describe("AbiFunctionExplorer", () => {
 
     const transfer = await openFunctionCard(user, "transferOwnership(address)");
     expect(transfer.getByText(/high-risk ownership operation/iu)).toBeVisible();
-    expect(transfer.getByText(/management target linked to 3 proxies/iu)).toBeVisible();
-    expect(transfer.getByText(ADMIN)).toBeVisible();
+    expect(transfer.queryByText(ADMIN)).not.toBeInTheDocument();
 
     const renounce = await openFunctionCard(user, "renounceOwnership()");
     expect(renounce.getByText(/high-risk ownership operation/iu)).toBeVisible();
-    expect(renounce.getByText(/management target linked to 3 proxies/iu)).toBeVisible();
 
     const upgrade = await openFunctionCard(
       user,
       "upgradeAndCall(address,address,bytes)",
     );
     expect(upgrade.getByText(/high-risk upgrade operation/iu)).toBeVisible();
-    expect(upgrade.getByText(/management target linked to 3 proxies/iu)).toBeVisible();
     expect(upgrade.queryByText(/affects 3 linked proxies/iu)).toBeNull();
   });
 
@@ -526,8 +639,7 @@ describe("AbiFunctionExplorer", () => {
     const upgrade = await openFunctionCard(user, "upgradeTo(address)");
 
     expect(upgrade.getByText(/high-risk upgrade operation/iu)).toBeVisible();
-    expect(upgrade.getByText(/affects 4 linked proxies/iu)).toBeVisible();
-    expect(upgrade.getByText(ADMIN)).toBeVisible();
+    expect(upgrade.queryByText(ADMIN)).not.toBeInTheDocument();
   });
 
   it("performs a fresh binding GET before every bound write", async () => {
@@ -716,6 +828,16 @@ function mockWallet(
   } as ReturnType<typeof useWallet>;
   vi.mocked(useWallet).mockReturnValue(state);
   return state;
+}
+
+function mockClipboard() {
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator.clipboard, "writeText", {
+    configurable: true,
+    value: writeText,
+    writable: true,
+  });
+  return writeText;
 }
 
 function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {

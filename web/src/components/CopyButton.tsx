@@ -7,7 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-async function writeClipboard(value: string): Promise<void> {
+export async function copyTextToClipboard(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
     return;
@@ -48,7 +48,7 @@ export function CopyButton({
     event.preventDefault();
     event.stopPropagation();
     try {
-      await writeClipboard(value);
+      await copyTextToClipboard(value);
       setCopied(true);
     } catch {
       setCopied(false);

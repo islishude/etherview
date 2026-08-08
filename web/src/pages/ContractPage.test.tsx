@@ -37,6 +37,7 @@ const bindingId = "018f3b52-0b3d-7bf1-b65f-6f214827cb41";
 const nextCursor = "proxy/snapshot + page=2?fork=canonical/#";
 
 type ExactPattern = "uups" | "transparent" | "beacon";
+type ContractPattern = ExactPattern | "clone" | "none";
 type HistoryKind = "upgrades" | "initializations";
 
 beforeEach(async () => {
@@ -62,6 +63,13 @@ describe("contract proxy route", () => {
 
       expect(
         await screen.findByRole("heading", { name: "Verified artifact" }),
+      ).toBeVisible();
+      const codePanel = document.getElementById("contract-panel-code");
+      expect(codePanel).not.toBeNull();
+      await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
+      expect(codePanel!.querySelector("details.proxy-summary")).not.toHaveAttribute("open");
+      expect(
+        within(codePanel!).getByRole("heading", { name: "Proxy identity" }),
       ).toBeVisible();
       const tabs = await screen.findByRole("tablist", {
         name: "Contract interaction sections",
@@ -96,7 +104,9 @@ describe("contract proxy route", () => {
           name: "Read implementation (as proxy)",
         }),
       );
-      expect(within(screen.getByRole("tabpanel")).getByText(proxyAddress)).toBeVisible();
+      expect(
+        within(screen.getByRole("tabpanel")).getByText("value()", { exact: true }),
+      ).toBeVisible();
 
       const managementTab = within(tabs).queryByRole("tab", {
         name: "Proxy management",
@@ -107,8 +117,8 @@ describe("contract proxy route", () => {
         expect(managementTab).toBeVisible();
         await user.click(managementTab!);
         expect(
-          within(screen.getByRole("tabpanel")).getAllByText(managementAddress),
-        ).not.toHaveLength(0);
+          within(screen.getByRole("tabpanel")).getByText("value()", { exact: true }),
+        ).toBeVisible();
       }
 
       await waitFor(() => {
@@ -161,6 +171,8 @@ describe("contract proxy route", () => {
 
     renderContractRoute();
 
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
     expect(
       await screen.findByText(
         "This EIP-1167 Clone is immutable. No upgrade controls or fabricated upgrade history are exposed.",
@@ -187,6 +199,32 @@ describe("contract proxy route", () => {
       expect(
         contractRequests(fetcher).some(({ url }) =>
           url.pathname.endsWith("/proxy/upgrades"),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  it("hides proxy identity and proxy histories for a non-proxy contract", async () => {
+    const fetcher = installContractAPI({ pattern: "none" });
+
+    renderContractRoute();
+
+    expect(
+      await screen.findByRole("heading", { name: "Verified artifact" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Proxy identity" })).toBeNull();
+    const tabs = screen.getByRole("tablist", {
+      name: "Contract interaction sections",
+    });
+    expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
+    expect(
+      within(tabs).queryByRole("tab", { name: "Initialization history" }),
+    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        contractRequests(fetcher).some(({ url }) =>
+          url.pathname.endsWith("/proxy/upgrades") ||
+          url.pathname.endsWith("/proxy/initializations"),
         ),
       ).toBe(false);
     });
@@ -271,6 +309,8 @@ describe("contract proxy route", () => {
 
       renderContractRoute();
 
+      const proxyTitle = labels.language === "en" ? "Proxy identity" : "代理身份";
+      await user.click(await screen.findByRole("heading", { name: proxyTitle }));
       expect(await screen.findByText(labels.pattern)).toBeVisible();
       expect(screen.getByText(labels.mechanism)).toBeVisible();
       expect(screen.getByText(labels.evidenceState)).toBeVisible();
@@ -320,7 +360,7 @@ function installContractAPI({
   implementationArtifactCodeHash,
   managementArtifactCodeHash,
 }: {
-  pattern: ExactPattern | "clone";
+  pattern: ContractPattern;
   staleHistory?: HistoryKind;
   implementationArtifactCodeHash?: string;
   managementArtifactCodeHash?: string;
@@ -450,7 +490,15 @@ function snapshot() {
   };
 }
 
-function proxyDetail(pattern: ExactPattern | "clone") {
+function proxyDetail(pattern: ContractPattern) {
+  if (pattern === "none") {
+    return {
+      address: proxyAddress,
+      status: "not_detected",
+      snapshot: snapshot(),
+      evidence: [],
+    };
+  }
   const management = pattern === "transparent"
     ? {
         kind: "proxy_admin" as const,
@@ -606,7 +654,7 @@ function verifiedArtifact(address: string, codeHash = hash) {
 	};
 }
 
-function upgradeHistory(pattern: ExactPattern | "clone") {
+function upgradeHistory(pattern: ContractPattern) {
   const beaconEvidence = pattern === "beacon"
     ? {
         beacon: historicalIdentity(managementAddress, hash),

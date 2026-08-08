@@ -1,6 +1,8 @@
 import {
+  useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -9,12 +11,14 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   toHex,
+  type Address,
   type Abi,
   type AbiParameter,
   type Hex,
 } from "viem";
 
 import { usePublicConfig } from "@/api/hooks";
+import { copyTextToClipboard } from "@/components/CopyButton";
 import {
   ABI_LIMITS,
   AbiFormError,
@@ -146,6 +150,11 @@ function AbiFunctionCard({
   });
   const [value, setValue] = useState("");
   const [pending, setPending] = useState(false);
+  const [copyingCalldata, setCopyingCalldata] = useState(false);
+  const [calldataCopied, setCalldataCopied] = useState(false);
+  const [actionHintVisible, setActionHintVisible] = useState(false);
+  const calldataCopiedTimeoutRef = useRef<number | undefined>(undefined);
+  const actionTooltipRef = useRef<HTMLSpanElement | null>(null);
   const [result, setResult] = useState<
     | { kind: "read"; outputs: readonly FormattedAbiOutput[]; context: string }
     | { kind: "write"; hash: Hex; context: string }
@@ -167,8 +176,38 @@ function AbiFunctionCard({
   const write = entry.fn.stateMutability !== "view" && entry.fn.stateMutability !== "pure";
   const highRisk = isHighRiskFunction(entry.signature);
   const ownershipRisk = isOwnershipRiskFunction(entry.signature);
-  const impactLabel = managementImpactLabel(target, entry.signature, t);
+  const actionDisabledReason = !wallet.active
+    ? t("wallet.errors.notConnected")
+    : !expectedChainID
+      ? t("wallet.errors.chainUnavailable")
+      : !chainsMatch(wallet.active.chainID, expectedChainID)
+        ? t("wallet.errors.chainMismatch")
+        : undefined;
   const tree = inputState.tree;
+
+  useEffect(() => {
+    if (!calldataCopied) return;
+    calldataCopiedTimeoutRef.current = window.setTimeout(() => {
+      setCalldataCopied(false);
+    }, 1200);
+    return () => {
+      if (calldataCopiedTimeoutRef.current !== undefined) {
+        window.clearTimeout(calldataCopiedTimeoutRef.current);
+      }
+    };
+  }, [calldataCopied]);
+
+  useEffect(() => {
+    if (!actionHintVisible || !actionDisabledReason) return;
+    const dismissOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !actionTooltipRef.current?.contains(target)) {
+        setActionHintVisible(false);
+      }
+    };
+    document.addEventListener("pointerdown", dismissOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", dismissOnOutsidePointer);
+  }, [actionDisabledReason, actionHintVisible]);
 
   if (!tree) {
     return (
@@ -195,11 +234,9 @@ function AbiFunctionCard({
     if (pending) return;
     setResult(undefined);
     setError(undefined);
-    let args: readonly unknown[];
-    let callValue: Hex | undefined;
+    let encoded: EncodedFunctionCall;
     try {
-      args = parseAbiArguments(entry.fn.inputs, tree);
-      callValue = entry.payable ? parseNativeValue(value) : undefined;
+      encoded = encodeFunctionCall(entry, tree, value);
       assertInteractionFunctionAllowed(target, entry.signature, write);
     } catch (cause) {
       setError({
@@ -218,14 +255,8 @@ function AbiFunctionCard({
     }
 
     let fence;
-    let calldata: Hex;
     try {
       fence = captureInteractionFence(target, expectedChainID, active);
-      calldata = encodeFunctionData({
-        abi: entry.abi,
-        functionName: entry.fn.name,
-        args,
-      });
     } catch (cause) {
       setError({ context, message: interactionErrorMessage(cause, t) });
       return;
@@ -243,8 +274,8 @@ function AbiFunctionCard({
         const output = await wallet.readContract(
           {
             to: freshTarget.transactionTarget,
-            data: calldata,
-            ...(callValue === undefined ? {} : { value: callValue }),
+            data: encoded.calldata,
+            ...(encoded.callValue === undefined ? {} : { value: encoded.callValue }),
           },
           expectedChainID,
         );
@@ -278,8 +309,8 @@ function AbiFunctionCard({
           send: (freshTarget, chainID) => wallet.sendTransaction(
             {
               to: freshTarget.transactionTarget,
-              data: calldata,
-              ...(callValue === undefined ? {} : { value: callValue }),
+              data: encoded.calldata,
+              ...(encoded.callValue === undefined ? {} : { value: encoded.callValue }),
             },
             chainID,
           ),
@@ -325,14 +356,31 @@ function AbiFunctionCard({
     }
   };
 
+  const copyCalldata = async () => {
+    if (copyingCalldata) return;
+    setError(undefined);
+    setCopyingCalldata(true);
+    try {
+      const { calldata } = encodeFunctionCall(entry, tree, value);
+      await copyTextToClipboard(calldata);
+      setCalldataCopied(true);
+    } catch (cause) {
+      setCalldataCopied(false);
+      setError({
+        context,
+        message: cause instanceof AbiFormError
+          ? t("contracts.functions.invalidInput", { path: cause.path })
+          : t("contracts.functions.copyFailed"),
+      });
+    } finally {
+      setCopyingCalldata(false);
+    }
+  };
+
   return (
     <details className="abi-function-card" open={index === 0}>
       <FunctionSummary entry={entry} index={index} />
       <form aria-busy={pending} className="abi-function-form" onSubmit={(event) => void submit(event)}>
-        <p className={highRisk ? "risk-notice" : "wallet-notice"}>
-          {t("contracts.actualTarget")}: <code>{target.transactionTarget}</code>
-          {impactLabel ? <> · {impactLabel}</> : null}
-        </p>
         {highRisk ? (
           <p className="risk-notice" role="note">
             {t(ownershipRisk
@@ -356,12 +404,15 @@ function AbiFunctionCard({
             onLimitError={() => setInputState((current) => ({ ...current, limitError: true }))}
             parameter={entry.fn.inputs[parameterIndex]!}
             path={[parameterIndex]}
+            selfAddress={wallet.active?.account}
           />
         ))}
         {entry.payable ? (
           <label className="abi-scalar-input" htmlFor={`${formID}-value`}>
-            <span>{t("contracts.functions.nativeValue")}</span>
-            <small>uint256 · wei</small>
+            <span className="abi-input-heading">
+              <span>{t("contracts.functions.nativeValue")}</span>
+              <small>uint256 · wei</small>
+            </span>
             <input
               disabled={pending}
               id={`${formID}-value`}
@@ -373,13 +424,49 @@ function AbiFunctionCard({
             />
           </label>
         ) : null}
-        <button className={highRisk ? "button danger" : "button primary"} disabled={!ready || pending} type="submit">
-          {pending
-            ? t("contracts.functions.pending")
-            : entry.fn.stateMutability === "view" || entry.fn.stateMutability === "pure"
-              ? t("actions.read")
-              : t("actions.write")}
-        </button>
+        <div className="abi-function-actions">
+          <span
+            aria-describedby={actionDisabledReason && actionHintVisible ? `${formID}-action-hint` : undefined}
+            className={`abi-action-tooltip${actionHintVisible ? " is-open" : ""}`}
+            onBlur={(event) => {
+              const relatedTarget = event.relatedTarget;
+              if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+                setActionHintVisible(false);
+              }
+            }}
+            onFocus={() => setActionHintVisible(true)}
+            onMouseEnter={() => setActionHintVisible(true)}
+            onMouseLeave={() => setActionHintVisible(false)}
+            ref={actionTooltipRef}
+            tabIndex={actionDisabledReason ? 0 : undefined}
+          >
+            <button className={highRisk ? "button danger" : "button primary"} disabled={!ready || pending} type="submit">
+              {pending
+                ? t("contracts.functions.pending")
+                : entry.fn.stateMutability === "view" || entry.fn.stateMutability === "pure"
+                  ? t("actions.read")
+                : t("actions.write")}
+            </button>
+            {actionDisabledReason && actionHintVisible ? (
+              <span
+                className="abi-action-tooltip-text"
+                id={`${formID}-action-hint`}
+                role="tooltip"
+              >
+                {actionDisabledReason}
+              </span>
+            ) : null}
+          </span>
+          <button
+            aria-label={calldataCopied ? t("common.copied") : t("contracts.functions.copyCalldata")}
+            className="button secondary"
+            disabled={copyingCalldata}
+            onClick={() => void copyCalldata()}
+            type="button"
+          >
+            {calldataCopied ? t("common.copied") : t("contracts.functions.copyCalldata")}
+          </button>
+        </div>
       </form>
       {visibleError ? <p className="form-error" role="alert">{visibleError.message}</p> : null}
       {visibleResult?.kind === "write" ? (
@@ -425,6 +512,7 @@ function AbiInputEditor({
   disabled,
   onChange,
   onLimitError,
+  selfAddress,
 }: {
   parameter: AbiParameter;
   node: AbiInputNode;
@@ -433,6 +521,7 @@ function AbiInputEditor({
   disabled: boolean;
   onChange: (node: AbiInputNode) => void;
   onLimitError: () => void;
+  selfAddress?: Address;
 }) {
   const { t } = useTranslation();
   const label = parameter.name || `#${path.at(-1) ?? 0}`;
@@ -440,8 +529,10 @@ function AbiInputEditor({
   if (node.kind === "scalar") {
     return (
       <label className="abi-scalar-input" htmlFor={inputID}>
-        <span>{label}</span>
-        <small>{parameter.type}</small>
+        <span className="abi-input-heading">
+          <span>{label}</span>
+          <small>{parameter.type}</small>
+        </span>
         {parameter.type === "bool" ? (
           <select
             disabled={disabled}
@@ -463,6 +554,29 @@ function AbiInputEditor({
             spellCheck={false}
             value={node.value}
           />
+        ) : parameter.type === "address" ? (
+          <div className="abi-address-control">
+            <input
+              disabled={disabled}
+              id={inputID}
+              maxLength={42}
+              onChange={(event) => onChange({ ...node, value: event.target.value })}
+              spellCheck={false}
+              value={node.value}
+            />
+            <button
+              aria-label={t("contracts.functions.useSelf")}
+              className="abi-self-button"
+              disabled={disabled || !selfAddress}
+              onClick={() => {
+                if (selfAddress) onChange({ ...node, value: selfAddress });
+              }}
+              title={t("contracts.functions.useSelf")}
+              type="button"
+            >
+              {t("contracts.functions.self")}
+            </button>
+          </div>
         ) : (
           <input
             disabled={disabled}
@@ -494,6 +608,7 @@ function AbiInputEditor({
             onLimitError={onLimitError}
             parameter={components[index]!}
             path={[...path, index]}
+            selfAddress={selfAddress}
           />
         ))}
       </fieldset>
@@ -517,6 +632,7 @@ function AbiInputEditor({
             onLimitError={onLimitError}
             parameter={element}
             path={[...path, index]}
+            selfAddress={selfAddress}
           />
           {node.fixedLength === null ? (
             <button
@@ -576,6 +692,26 @@ function arrayElementParameter(parameter: AbiParameter): AbiParameter {
   return { ...parameter, type } as AbiParameter;
 }
 
+interface EncodedFunctionCall {
+  readonly callValue?: Hex;
+  readonly calldata: Hex;
+}
+
+function encodeFunctionCall(
+  entry: AbiFunctionEntry,
+  tree: readonly AbiInputNode[],
+  value: string,
+): EncodedFunctionCall {
+  const args = parseAbiArguments(entry.fn.inputs, tree);
+  const callValue = entry.payable ? parseNativeValue(value) : undefined;
+  const calldata = encodeFunctionData({
+    abi: entry.abi,
+    functionName: entry.fn.name,
+    args,
+  });
+  return { callValue, calldata };
+}
+
 function parseNativeValue(value: string): Hex | undefined {
   if (value === "") return undefined;
   if (!/^(?:0|[1-9][0-9]{0,77})$/u.test(value)) {
@@ -618,21 +754,6 @@ function isHighRiskFunction(signature: string): boolean {
 
 function isOwnershipRiskFunction(signature: string): boolean {
   return /^(?:transferOwnership\(|renounceOwnership\()/u.test(signature);
-}
-
-function managementImpactLabel(
-  target: ContractInteractionTarget,
-  signature: string,
-  t: Translate,
-): string | undefined {
-  if (target.kind !== "transparent_proxy_admin" && target.kind !== "beacon_management") {
-    return undefined;
-  }
-  if (target.affectedProxyCount === undefined) return undefined;
-  if (target.kind === "beacon_management" && /^upgrade/u.test(signature)) {
-    return t("contracts.functions.affectedProxies", { count: target.affectedProxyCount });
-  }
-  return t("contracts.functions.linkedProxies", { count: target.affectedProxyCount });
 }
 
 function decodeWalletRevert(abi: Abi, error: unknown) {

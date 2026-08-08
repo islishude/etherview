@@ -433,6 +433,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
   await expect(page.getByText("Transparent proxy", { exact: true })).toBeVisible();
   const transparentTabs = page.getByRole("tablist", {
     name: "Contract interaction sections",
@@ -509,6 +510,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
 
   await page.goto(`/contract/${cloneAddress}`);
   await expect(page.getByRole("heading", { name: "MinimalClone", level: 2 })).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
   await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
   const cloneTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(cloneTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
