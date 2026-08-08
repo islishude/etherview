@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { encodeAbiParameters } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
@@ -66,6 +67,54 @@ describe("contract artifact view models", () => {
 });
 
 describe("ContractArtifactPanel", () => {
+  it("shows decoded constructor parameters and preserves copyable raw encoding", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const encoded = encodeAbiParameters(
+      [{ name: "owner", type: "address" }, { name: "count", type: "uint256" }],
+      ["0x1111111111111111111111111111111111111111", 42n],
+    );
+
+    render(<ContractArtifactPanel artifact={fixtureArtifact({
+      constructor_arguments: encoded,
+      abi: [
+        { type: "constructor", stateMutability: "nonpayable", inputs: [
+          { name: "owner", type: "address" }, { name: "count", type: "uint256" },
+        ] },
+      ],
+    })} />);
+
+    await user.click(screen.getByText("Constructor arguments"));
+    const decoded = screen.getByRole("region", { name: "Decoded parameters" });
+    expect(within(decoded).getByText("owner · address")).toBeVisible();
+    expect(within(decoded).getByText("0x1111111111111111111111111111111111111111")).toBeVisible();
+    expect(within(decoded).getByText("count · uint256")).toBeVisible();
+    expect(within(decoded).getByText("42")).toBeVisible();
+    const raw = screen.getByRole("region", { name: "Raw encoded arguments" });
+    expect(within(raw).getByText(encoded)).toBeVisible();
+    await user.click(within(raw).getByRole("button", { name: "Copy" }));
+    expect(writeText).toHaveBeenCalledWith(encoded);
+  });
+
+  it("retains raw constructor arguments when ABI decoding is unavailable", async () => {
+    const user = userEvent.setup();
+    const encoded = `0x${"00".repeat(32)}`;
+    render(<ContractArtifactPanel artifact={fixtureArtifact({
+      constructor_arguments: encoded,
+      abi: [],
+    })} />);
+
+    await user.click(screen.getByText("Constructor arguments"));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "ABI decoding is unavailable; showing the raw encoding only.",
+    );
+    expect(screen.getByRole("region", { name: "Raw encoded arguments" })).toHaveTextContent(encoded);
+  });
+
   it("renders a read-only multi-file editor and structured settings", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

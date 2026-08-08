@@ -4125,6 +4125,78 @@ tbody tr:hover {
   border-top: 1px solid var(--line);
 }
 
+.constructor-arguments-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.constructor-arguments-decoded,
+.constructor-arguments-raw {
+  min-width: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.constructor-arguments-decoded > strong,
+.constructor-arguments-raw-heading > strong {
+  font-size: 0.75rem;
+}
+
+.constructor-argument-list {
+  min-width: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.constructor-argument-row {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.constructor-argument-row small {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+}
+
+.constructor-argument-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.constructor-arguments-warning {
+  margin: 0;
+}
+
+.constructor-arguments-raw-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.constructor-arguments-raw pre {
+  max-height: 16rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow: auto;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .artifact-disclosure-actions {
   position: absolute;
   z-index: 1;

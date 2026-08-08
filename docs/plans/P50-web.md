@@ -54,6 +54,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T28 | done        | P50-T27       | Keep proxy identity and proxy histories scoped to actual proxy contracts, with identity shown in Code | focused ContractPage regression tests and frontend gates |
 | P50-T29 | done        | P50-T28       | Make the Proxy identity section collapsed by default in the Code tab | focused ContractPage tests and frontend gates |
 | P50-T30 | done        | P50-T29       | Keep unavailable-wallet action guidance complete and remove duplicate inline wallet messaging | focused ABI form and stylesheet regression tests |
+| P50-T31 | done        | P50-T30       | Decode verified constructor arguments into readable ABI parameter rows while retaining raw hex | focused ABI, component, and embedded browser regressions |
 
 ## Acceptance
 
@@ -581,3 +582,14 @@ None.
   visible at narrow widths. The focused and complete frontend suites pass (20
   and 234 tests), frontend lint and production build pass, and
   `make plan-check` plus `git diff --check` pass.
+- P50-T31 decodes canonical verified constructor arguments with Viem, formats
+  named and positional values through the existing bounded ABI formatter, and
+  retains a copyable raw-hex section. Missing, ambiguous, oversized, malformed,
+  or non-canonical data fails closed to the raw encoding with bilingual guidance.
+  Focused ABI and artifact tests pass (20 tests), the complete frontend suite
+  passes 28 files with 239 tests, frontend lint and production build pass,
+  `GOCACHE=/tmp/etherview-constructor-go-cache make test`,
+  `GOCACHE=/tmp/etherview-constructor-go-cache make generate-check`,
+  `GOCACHE=/tmp/etherview-constructor-go-cache make plan-check`, and
+  `git diff --check` pass. The host-authorized `make test-e2e` passes all 10
+  embedded Chromium flows.

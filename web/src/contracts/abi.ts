@@ -1,5 +1,7 @@
 import {
+  decodeAbiParameters,
   decodeErrorResult,
+  encodeAbiParameters,
   getAddress,
   isAddress,
   type Abi,
@@ -167,6 +169,32 @@ export function parseVerifiedABI(value: unknown): Abi {
     if (error instanceof AbiFormError) throw error;
     throw new AbiFormError("INVALID_ABI", "$");
   }
+}
+
+/**
+ * Decodes canonical constructor arguments using the published, validated ABI.
+ * The encoded bytes are round-tripped through Viem so trailing or otherwise
+ * non-canonical data cannot be presented as a trustworthy decoded value.
+ */
+export function decodeConstructorArguments(
+  abi: unknown,
+  encoded: unknown,
+): readonly FormattedAbiOutput[] {
+  const parsedABI = parseVerifiedABI(abi);
+  const constructors = parsedABI.filter((item) => item.type === "constructor");
+  if (constructors.length !== 1) {
+    throw new AbiFormError("INVALID_ABI", "constructor");
+  }
+  if (typeof encoded !== "string" || !validHex(encoded, 0, ABI_LIMITS.bytesLength)) {
+    throw new AbiFormError("INVALID_ABI_VALUE", "constructorArguments");
+  }
+  const constructor = constructors[0]!;
+  const values = decodeAbiParameters(constructor.inputs, encoded as Hex);
+  const canonical = encodeAbiParameters(constructor.inputs, values);
+  if (canonical.toLowerCase() !== encoded.toLowerCase()) {
+    throw new AbiFormError("INVALID_ABI_VALUE", "constructorArguments");
+  }
+  return formatParameterValues(constructor.inputs, values, "$constructor");
 }
 
 export function canonicalFunctionSignature(fn: AbiFunction): string {

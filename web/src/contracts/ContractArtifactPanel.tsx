@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp } from "@/components/format";
 
+import { decodeConstructorArguments } from "./abi";
 import type { VerifiedContractArtifact } from "./proxy";
 
 export interface ContractSourceFile {
@@ -291,12 +292,9 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
             value={abi}
           />
           {artifact.constructor_arguments ? (
-            <ArtifactDisclosure
-              description={t("contracts.artifact.hexBytes", {
-                count: Math.max(0, artifact.constructor_arguments.replace(/^0x/u, "").length / 2),
-              })}
-              rawText={artifact.constructor_arguments}
-              title={t("contracts.artifact.constructorArguments")}
+            <ConstructorArgumentsDisclosure
+              abi={artifact.abi ?? []}
+              encoded={artifact.constructor_arguments}
             />
           ) : null}
           {artifact.creation_match ? (
@@ -566,6 +564,76 @@ function SummaryFact({
       <dt>{label}</dt>
       <dd className={mono ? "mono-wrap" : undefined}>{value}</dd>
     </div>
+  );
+}
+
+function ConstructorArgumentsDisclosure({
+  abi,
+  encoded,
+}: {
+  abi: unknown;
+  encoded: string;
+}) {
+  const { t } = useTranslation();
+  const decoded = useMemo(() => {
+    try {
+      return decodeConstructorArguments(abi, encoded);
+    } catch {
+      return undefined;
+    }
+  }, [abi, encoded]);
+  const byteCount = Math.floor(Math.max(0, encoded.replace(/^0x/u, "").length / 2));
+
+  return (
+    <details className="artifact-disclosure">
+      <summary>
+        <span>
+          <strong>{t("contracts.artifact.constructorArguments")}</strong>
+          <small>
+            {decoded
+              ? t("contracts.artifact.constructorDecodedSummary", {
+                bytes: byteCount,
+                count: decoded.length,
+              })
+              : t("contracts.artifact.hexBytes", { count: byteCount })}
+          </small>
+        </span>
+        <span aria-hidden="true">＋</span>
+      </summary>
+      <div className="artifact-disclosure-body constructor-arguments-body">
+        {decoded ? (
+          <section
+            aria-label={t("contracts.artifact.constructorDecoded")}
+            className="constructor-arguments-decoded"
+          >
+            <strong>{t("contracts.artifact.constructorDecoded")}</strong>
+            {decoded.length === 0 ? (
+              <p className="quiet">{t("contracts.artifact.constructorNoParameters")}</p>
+            ) : (
+              <div className="constructor-argument-list">
+                {decoded.map((argument) => (
+                  <div className="constructor-argument-row" key={argument.index}>
+                    <small>{argument.name || `#${argument.index}`} · {argument.type}</small>
+                    <code>{argument.display}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : (
+          <p className="form-error constructor-arguments-warning" role="status">
+            {t("contracts.artifact.constructorDecodeUnavailable")}
+          </p>
+        )}
+        <section className="constructor-arguments-raw" aria-label={t("contracts.artifact.constructorRaw")}>
+          <div className="constructor-arguments-raw-heading">
+            <strong>{t("contracts.artifact.constructorRaw")}</strong>
+            <CopyButton value={encoded} />
+          </div>
+          <pre tabIndex={0}>{encoded}</pre>
+        </section>
+      </div>
+    </details>
   );
 }
 

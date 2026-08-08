@@ -1,4 +1,5 @@
 import {
+  encodeAbiParameters,
   encodeErrorResult,
   encodeFunctionData,
   getAddress,
@@ -14,6 +15,7 @@ import {
   canonicalFunctionSignature,
   createAbiArrayItem,
   createAbiInputTree,
+  decodeConstructorArguments,
   decodeRevert,
   formatAbiResult,
   parseAbiArguments,
@@ -110,6 +112,62 @@ describe("verified ABI parsing", () => {
       simpleFunction("same", "uint"),
       simpleFunction("same", "uint256"),
     ])).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+  });
+});
+
+describe("constructor argument decoding", () => {
+  it("decodes and formats named scalar, tuple, array, and bytes parameters", () => {
+    const abi = [{
+      type: "constructor" as const,
+      stateMutability: "nonpayable" as const,
+      inputs: [
+        { name: "owner", type: "address" },
+        { name: "count", type: "uint256" },
+        {
+          name: "config",
+          type: "tuple",
+          components: [{ name: "label", type: "string" }, { name: "enabled", type: "bool" }],
+        },
+        { name: "values", type: "uint16[]" },
+        { name: "salt", type: "bytes4" },
+      ],
+    }];
+    const encoded = encodeAbiParameters(abi[0]!.inputs, [
+      getAddress(addressA),
+      42n,
+      ["ready", true],
+      [1, 65535],
+      "0xAABBCCDD",
+    ]);
+
+    expect(decodeConstructorArguments(abi, encoded).map((argument) => [
+      argument.name,
+      argument.type,
+      argument.display,
+    ])).toEqual([
+      ["owner", "address", getAddress(addressA)],
+      ["count", "uint256", "42"],
+      ["config", "tuple", "(label: ready, enabled: true)"],
+      ["values", "uint16[]", "[1, 65535]"],
+      ["salt", "bytes4", "0xaabbccdd"],
+    ]);
+  });
+
+  it("fails closed for missing or ambiguous constructors and non-canonical bytes", () => {
+    const constructor = {
+      type: "constructor" as const,
+      stateMutability: "nonpayable" as const,
+      inputs: [{ name: "value", type: "uint256" }],
+    };
+    const encoded = encodeAbiParameters(constructor.inputs, [7n]);
+
+    expect(() => decodeConstructorArguments([], encoded)).toThrowError(AbiFormError);
+    expect(() => decodeConstructorArguments([constructor, constructor], encoded))
+      .toThrowError(expect.objectContaining({ path: "constructor" }));
+    expect(() => decodeConstructorArguments([constructor], `${encoded}00`))
+      .toThrowError(expect.objectContaining({ path: "constructorArguments" }));
+    expect(() => decodeConstructorArguments([constructor], "0x0"))
+      .toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
   });
 });
 
