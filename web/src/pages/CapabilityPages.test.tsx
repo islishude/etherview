@@ -302,10 +302,9 @@ describe("P50 capability pages", () => {
         expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
-            chain_id: "1",
-            address,
-            code_hash: codeHash,
-            valid_from_block: "500",
+            resolution: "exact_address",
+            target: { chain_id: "1", address, code_hash: codeHash, block_number: "520", block_hash: blockHash },
+            source: { address, code_hash: codeHash, valid_from_block: "500", created_at: "2026-07-20T10:00:00Z" },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/ReadOnly.sol",
@@ -320,7 +319,6 @@ describe("P50 capability pages", () => {
             runtime_code_artifacts: {},
             libraries: {},
             is_blueprint: false,
-            created_at: "2026-07-20T10:00:00Z",
           },
           meta,
         });

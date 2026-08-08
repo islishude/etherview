@@ -183,7 +183,7 @@ func matchTransformedCode(
 		Libraries:   make(map[string]string),
 		Immutables:  make(map[string]string),
 	}
-	var transformations []Transformation
+	transformations := make([]Transformation, 0)
 	auxdataChanged := false
 	auxIDs := sortedAuxdataIDs(input.Auxdata)
 	for _, id := range auxIDs {

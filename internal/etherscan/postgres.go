@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/contractartifact"
 )
 
 // ErrInvalidParameter is returned when Execute is used without the Handler's
@@ -48,6 +50,7 @@ type PostgresOptions struct {
 	Price                     PriceProvider
 	State                     StateProvider
 	Verification              VerificationService
+	Artifacts                 *contractartifact.Resolver
 	VerificationMaxInputBytes int
 }
 
@@ -61,6 +64,7 @@ type PostgresBackend struct {
 	price                     PriceProvider
 	state                     StateProvider
 	verification              VerificationService
+	artifacts                 *contractartifact.Resolver
 	maxVerificationInputBytes int
 }
 
@@ -77,10 +81,19 @@ func NewPostgresBackend(db *sql.DB, options PostgresOptions) (*PostgresBackend, 
 	if maximum <= 0 {
 		maximum = defaultVerificationInputBytes
 	}
+	artifacts := options.Artifacts
+	if artifacts == nil {
+		var err error
+		artifacts, err = contractartifact.NewResolver(db)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &PostgresBackend{
 		db: db, chainID: options.ChainID,
 		chain: strconv.FormatUint(options.ChainID, 10), supply: options.Supply, price: options.Price, state: options.State,
-		verification: options.Verification, maxVerificationInputBytes: maximum,
+		verification: options.Verification, artifacts: artifacts,
+		maxVerificationInputBytes: maximum,
 	}, nil
 }
 

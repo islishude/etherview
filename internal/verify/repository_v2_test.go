@@ -99,21 +99,11 @@ func TestDecodeStoredVerificationMatchRestoresPublicationDetails(t *testing.T) {
 	if _, err := decodeStoredVerificationMatch([]byte(`{"match_type":"mismatch"}`)); err == nil {
 		t.Fatal("expected invalid stored match rejection")
 	}
-}
-
-func TestVerifiedContractQueryRestoresImmutableMatchOutcome(t *testing.T) {
-	t.Parallel()
-	query := strings.Join(strings.Fields(verifiedContractV2SQL), " ")
-	for _, required := range []string{
-		"JOIN verification_results AS result",
-		"result.job_id = verified.verification_job_id",
-		"result.request_digest = verified.request_digest",
-		"result.outcome->'creation_match'",
-		"result.outcome->'runtime_match'",
-	} {
-		if !strings.Contains(query, strings.Join(strings.Fields(required), " ")) {
-			t.Fatalf("verified contract query lacks %q: %s", required, query)
-		}
+	empty, err := decodeStoredVerificationMatch([]byte(`{
+		"match_type":"full","transformations":null,"values":{}
+	}`))
+	if err != nil || empty == nil || empty.Transformations == nil || len(empty.Transformations) != 0 {
+		t.Fatalf("null transformations = %+v, error = %v", empty, err)
 	}
 }
 

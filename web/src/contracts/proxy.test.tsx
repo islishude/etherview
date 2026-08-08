@@ -44,7 +44,7 @@ describe("proxy API adapter", () => {
       { wrapper: queryWrapper(queryClient) },
     );
 
-    await waitFor(() => expect(result.current.data?.address).toBe(proxyAddress));
+	await waitFor(() => expect(result.current.data?.target.address).toBe(proxyAddress));
     expect(result.current.data?.abi?.[0]).toMatchObject({
       name: "value",
       stateMutability: "view",
@@ -68,7 +68,10 @@ describe("proxy API adapter", () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(envelope(verifiedArtifact()))
-      .mockResolvedValueOnce(envelope({ ...verifiedArtifact(), code_hash: oldHash }));
+		.mockResolvedValueOnce(envelope({
+			...verifiedArtifact(),
+			target: { ...verifiedArtifact().target, code_hash: oldHash },
+		}));
     vi.stubGlobal("fetch", fetcher);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -82,10 +85,10 @@ describe("proxy API adapter", () => {
         wrapper: queryWrapper(queryClient),
       },
     );
-    await waitFor(() => expect(result.current.data?.code_hash).toBe(hash));
+	await waitFor(() => expect(result.current.data?.target.code_hash).toBe(hash));
 
     rerender({ expectedCodeHash: oldHash });
-    await waitFor(() => expect(result.current.data?.code_hash).toBe(oldHash));
+	await waitFor(() => expect(result.current.data?.target.code_hash).toBe(oldHash));
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(
@@ -94,14 +97,14 @@ describe("proxy API adapter", () => {
         proxyAddress,
         hash,
       ]),
-    ).toMatchObject({ code_hash: hash });
+	).toMatchObject({ target: { code_hash: hash } });
     expect(
       queryClient.getQueryData([
-        "verified-contract-artifact",
-        proxyAddress,
-        oldHash,
-      ]),
-    ).toMatchObject({ code_hash: oldHash });
+		"verified-contract-artifact",
+		proxyAddress,
+		oldHash,
+	]),
+	).toMatchObject({ target: { code_hash: oldHash } });
   });
 
   it("exposes implementation and management artifacts only for an exact verified binding", async () => {
@@ -325,7 +328,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
 }
 
 function verifiedArtifact() {
-  return {
+	return {
     kind: "verification_success",
     file_name: "Implementation.sol",
     contract_name: "Implementation",
@@ -347,12 +350,16 @@ function verifiedArtifact() {
     runtime_code_artifacts: {},
     libraries: {},
     is_blueprint: false,
-    chain_id: "1",
-    address: proxyAddress,
-    code_hash: hash,
-    valid_from_block: "1",
-    created_at: "2026-08-02T00:00:00Z",
-  };
+		resolution: "exact_address",
+		target: {
+			chain_id: "1", address: proxyAddress, code_hash: hash,
+			block_number: "42", block_hash: hash,
+		},
+		source: {
+			address: proxyAddress, code_hash: hash, valid_from_block: "1",
+			created_at: "2026-08-02T00:00:00Z",
+		},
+	};
 }
 
 function upgradeHistory() {

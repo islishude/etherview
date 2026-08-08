@@ -15,6 +15,7 @@ type ABISource string
 
 const (
 	ABISourceVerified            ABISource = "verified"
+	ABISourceCodeHash            ABISource = "code_hash"
 	ABISourceProxyImplementation ABISource = "proxy_implementation"
 	ABISourceSignatureDatabase   ABISource = "signature_database"
 	ABISourceBuiltin             ABISource = "builtin"
@@ -24,7 +25,7 @@ func (source ABISource) confidence() Confidence {
 	switch source {
 	case ABISourceVerified:
 		return ConfidenceVerified
-	case ABISourceProxyImplementation, ABISourceBuiltin:
+	case ABISourceCodeHash, ABISourceProxyImplementation, ABISourceBuiltin:
 		return ConfidenceHigh
 	case ABISourceSignatureDatabase:
 		return ConfidenceGuess
@@ -34,7 +35,7 @@ func (source ABISource) confidence() Confidence {
 }
 
 func (source ABISource) persistent() bool {
-	return source == ABISourceVerified || source == ABISourceProxyImplementation || source == ABISourceSignatureDatabase
+	return source == ABISourceVerified || source == ABISourceCodeHash || source == ABISourceProxyImplementation || source == ABISourceSignatureDatabase
 }
 
 // ABIIdentity is the exact target identity at which ABI material may be used.
@@ -92,7 +93,7 @@ func (binding ABIBinding) validate() error {
 	if binding.Identity.BlockNumber < binding.ValidFromBlock || binding.ValidToBlock != nil && binding.Identity.BlockNumber > *binding.ValidToBlock {
 		return errors.New("ABI identity block is outside binding validity range")
 	}
-	if binding.Source != ABISourceProxyImplementation &&
+	if binding.Source != ABISourceProxyImplementation && binding.Source != ABISourceCodeHash &&
 		(binding.SourceAddress != binding.Identity.Address || binding.SourceCodeHash != binding.Identity.CodeHash) {
 		return errors.New("direct and signature ABI bindings must use the target source identity")
 	}
@@ -127,6 +128,7 @@ type abiEntry struct {
 	inputs    []abiParameter
 	types     []*abiType
 	indexed   []bool
+	anonymous bool
 	source    ABISource
 	selector  [4]byte
 	topic     common.Hash
@@ -452,18 +454,14 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 		if len(item.Inputs) > limits.MaxArguments {
 			return nil, fmt.Errorf("ABI entry %s has too many inputs", item.Name)
 		}
-		if kind == ABIKindEvent && item.Anonymous {
-			// Anonymous events have no signature topic and cannot be selected from
-			// an isolated log without a contract-specific candidate set.
-			continue
-		}
 		entry := abiEntry{
-			kind:    kind,
-			name:    item.Name,
-			inputs:  item.Inputs,
-			types:   make([]*abiType, len(item.Inputs)),
-			indexed: make([]bool, len(item.Inputs)),
-			source:  source,
+			kind:      kind,
+			name:      item.Name,
+			inputs:    item.Inputs,
+			types:     make([]*abiType, len(item.Inputs)),
+			indexed:   make([]bool, len(item.Inputs)),
+			source:    source,
+			anonymous: item.Anonymous,
 		}
 		canonicalInputs := make([]string, len(item.Inputs))
 		for inputIndex, input := range item.Inputs {

@@ -43,8 +43,11 @@ interface BoundInteractionTarget extends BaseInteractionTarget {
   readonly proxyAddress: Address;
   readonly proxyCodeHash: string;
   readonly proxyChainID: string;
-  readonly bindingId: string;
-  readonly proxyPattern: Exclude<ProxyPattern, "unknown">;
+	readonly bindingId?: string;
+	readonly proxyMechanism: components["schemas"]["ProxyMechanism"];
+	readonly proxyPattern?: ProxyPattern;
+	readonly beaconAddress?: Address;
+	readonly beaconCodeHash?: string;
   readonly standardVersion?: "5.6.1";
   readonly requiresFreshBinding: true;
 }
@@ -57,20 +60,23 @@ export interface ImplementationAsProxyTarget extends BoundInteractionTarget {
 export interface UUPSImplementationDirectTarget extends BoundInteractionTarget {
   readonly kind: "uups_implementation_direct";
   readonly supportsWrites: false;
-  readonly proxyPattern: "uups";
+	readonly proxyPattern: "uups";
+	readonly bindingId: string;
 }
 
 export interface TransparentProxyAdminTarget extends BoundInteractionTarget {
   readonly kind: "transparent_proxy_admin";
   readonly supportsWrites: true;
-  readonly proxyPattern: "transparent";
+	readonly proxyPattern: "transparent";
+	readonly bindingId: string;
   readonly affectedProxyCount?: string;
 }
 
 export interface BeaconManagementTarget extends BoundInteractionTarget {
   readonly kind: "beacon_management";
   readonly supportsWrites: true;
-  readonly proxyPattern: "beacon";
+	readonly proxyPattern: "beacon";
+	readonly bindingId: string;
   readonly affectedProxyCount?: string;
 }
 
@@ -168,8 +174,8 @@ const BINDING_ID_PATTERN =
 /**
  * Builds only targets justified by the current public proxy binding. The
  * contract target is always direct; callers still decide whether its own ABI
- * is available. Partial, generic, unverified, or internally inconsistent
- * proxy details cannot create implementation or management targets.
+ * is available. High-confidence standard proxy details may create an ordinary
+ * implementation interaction target; management targets remain exact-only.
  */
 export function buildContractInteractionTargets(
   contractAddress: string,
@@ -186,27 +192,33 @@ export function buildContractInteractionTargets(
     }),
   ];
 
-  const binding = exactBinding(proxy, address);
-  if (!binding) return Object.freeze(targets);
+	const binding = exactBinding(proxy, address);
+	const interaction = standardImplementationInteraction(proxy, address);
+	if (interaction) {
+		targets.push(freezeTarget({
+			kind: "implementation_as_proxy",
+			transactionTarget: address,
+			abiAddress: interaction.implementation.address,
+			abiCodeHash: interaction.implementation.codeHash,
+			proxyAddress: address,
+			proxyCodeHash: interaction.proxy.codeHash,
+			proxyChainID: interaction.chainID,
+			proxyMechanism: interaction.mechanism,
+			...(interaction.pattern === undefined ? {} : { proxyPattern: interaction.pattern }),
+			...(interaction.beacon === undefined ? {} : {
+				beaconAddress: interaction.beacon.address,
+				beaconCodeHash: interaction.beacon.codeHash,
+			}),
+			...(interaction.standardVersion === undefined
+				? {}
+				: { standardVersion: interaction.standardVersion }),
+			...(binding?.pattern === "uups" ? { bindingId: binding.bindingId } : {}),
+			supportsWrites: true,
+			requiresFreshBinding: true,
+		}));
+	}
 
-  targets.push(
-    freezeTarget({
-      kind: "implementation_as_proxy",
-      transactionTarget: address,
-      abiAddress: binding.implementation.address,
-      abiCodeHash: binding.implementation.codeHash,
-      proxyAddress: address,
-      proxyCodeHash: binding.proxy.codeHash,
-      proxyChainID: binding.chainID,
-      bindingId: binding.bindingId,
-      proxyPattern: binding.pattern,
-      ...(binding.standardVersion === undefined
-        ? {}
-        : { standardVersion: binding.standardVersion }),
-      supportsWrites: true,
-      requiresFreshBinding: true,
-    }),
-  );
+	if (!binding) return Object.freeze(targets);
 
   if (
     binding.pattern === "uups" &&
@@ -223,7 +235,8 @@ export function buildContractInteractionTargets(
         proxyCodeHash: binding.proxy.codeHash,
         proxyChainID: binding.chainID,
         bindingId: binding.bindingId,
-        proxyPattern: "uups",
+			proxyPattern: "uups",
+			proxyMechanism: binding.mechanism,
         standardVersion: "5.6.1",
         supportsWrites: false,
         requiresFreshBinding: true,
@@ -245,7 +258,8 @@ export function buildContractInteractionTargets(
           proxyCodeHash: binding.proxy.codeHash,
           proxyChainID: binding.chainID,
           bindingId: binding.bindingId,
-          proxyPattern: "transparent",
+			proxyPattern: "transparent",
+			proxyMechanism: binding.mechanism,
           standardVersion: "5.6.1",
           supportsWrites: true,
           requiresFreshBinding: true,
@@ -275,7 +289,12 @@ export function buildContractInteractionTargets(
           proxyCodeHash: binding.proxy.codeHash,
           proxyChainID: binding.chainID,
           bindingId: binding.bindingId,
-          proxyPattern: "beacon",
+			proxyPattern: "beacon",
+			proxyMechanism: binding.mechanism,
+			...(binding.beacon === undefined ? {} : {
+				beaconAddress: binding.beacon.address,
+				beaconCodeHash: binding.beacon.codeHash,
+			}),
           standardVersion: "5.6.1",
           supportsWrites: true,
           requiresFreshBinding: true,
@@ -343,7 +362,10 @@ export function assertFreshInteractionFence(
   if (!addressesMatch(freshResponse.details.address, fence.target.proxyAddress)) {
     throw new InteractionFenceError("TARGET_CHANGED");
   }
-  if (freshResponse.details.binding_id !== fence.target.bindingId) {
+	if (
+		fence.target.bindingId !== undefined &&
+		freshResponse.details.binding_id !== fence.target.bindingId
+	) {
     throw new InteractionFenceError("BINDING_CHANGED");
   }
 
@@ -430,7 +452,11 @@ export function isInteractionFunctionAllowed(
     return canonicalSignature === PROXIABLE_UUID_SIGNATURE;
   }
   if (target.kind === "implementation_as_proxy") {
-    return canonicalSignature !== PROXIABLE_UUID_SIGNATURE;
+    if (canonicalSignature === PROXIABLE_UUID_SIGNATURE) return false;
+		if (/^(?:upgrade|changeAdmin|transferOwnership\(|renounceOwnership\()/u.test(canonicalSignature)) {
+			return target.bindingId !== undefined;
+		}
+		return true;
   }
   return true;
 }
@@ -516,14 +542,47 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
   ) {
     return undefined;
   }
-  return {
+	return {
     bindingId: proxy.binding_id,
     chainID,
-    pattern: proxy.pattern,
-    proxy: proxyIdentity,
-    standardVersion: proxy.standard_version,
-    implementation,
-  } as const;
+		pattern: proxy.pattern,
+		mechanism: proxy.mechanism!,
+		proxy: proxyIdentity,
+		standardVersion: proxy.standard_version,
+		implementation,
+		beacon: currentCodeIdentity(proxy.beacon),
+	} as const;
+}
+
+function standardImplementationInteraction(
+	proxy: ProxyDetails | undefined,
+	address: Address,
+) {
+	const interaction = proxy?.implementation_interaction;
+	const chainID = normalizeChainID(proxy?.snapshot.chain_id);
+	if (!proxy || !interaction || !chainID || !addressesMatch(proxy.address, address)) {
+		return undefined;
+	}
+	const proxyIdentity = currentCodeIdentity(interaction.proxy);
+	const implementation = currentCodeIdentity(interaction.implementation);
+	const beacon = currentCodeIdentity(interaction.beacon);
+	if (
+		!proxyIdentity || !implementation ||
+		!addressesMatch(proxyIdentity.address, address) ||
+		proxyIdentity.address === implementation.address ||
+		(interaction.mechanism === "beacon" && !beacon)
+	) {
+		return undefined;
+	}
+	return {
+		chainID,
+		mechanism: interaction.mechanism,
+		pattern: interaction.pattern,
+		proxy: proxyIdentity,
+		implementation,
+		beacon,
+		standardVersion: proxy.standard_version,
+	} as const;
 }
 
 function exactManagement(
@@ -547,6 +606,13 @@ function exactVerifiedIdentity(
   identity: components["schemas"]["ProxyContractIdentity"] | undefined,
 ) {
   return exactCodeIdentity(identity, "verified");
+}
+
+function currentCodeIdentity(
+	identity: components["schemas"]["ProxyContractIdentity"] | undefined,
+) {
+	if (!identity) return undefined;
+	return exactCodeIdentity(identity, identity.verification_state);
 }
 
 function exactCodeIdentity(
@@ -590,12 +656,19 @@ function validateTarget(target: ContractInteractionTarget): void {
       if (!HASH_PATTERN.test(target.proxyCodeHash)) {
         throw new Error("invalid proxy code hash");
       }
-      if (!normalizeChainID(target.proxyChainID)) {
-        throw new Error("invalid proxy chain ID");
-      }
-      if (!BINDING_ID_PATTERN.test(target.bindingId)) {
-        throw new Error("invalid binding ID");
-      }
+		if (!normalizeChainID(target.proxyChainID)) {
+			throw new Error("invalid proxy chain ID");
+		}
+		if (target.bindingId !== undefined && !BINDING_ID_PATTERN.test(target.bindingId)) {
+			throw new Error("invalid binding ID");
+		}
+		if (target.beaconAddress !== undefined) getAddress(target.beaconAddress);
+		if (target.beaconCodeHash !== undefined && !HASH_PATTERN.test(target.beaconCodeHash)) {
+			throw new Error("invalid beacon code hash");
+		}
+		if ((target.beaconAddress === undefined) !== (target.beaconCodeHash === undefined)) {
+			throw new Error("incomplete beacon identity");
+		}
     }
   } catch (error) {
     throw new InteractionFenceError("INVALID_TARGET", { cause: error });
@@ -646,9 +719,12 @@ function boundTargetFieldsMatch(
   return (
     loaded.proxyAddress === fresh.proxyAddress &&
     loaded.proxyCodeHash === fresh.proxyCodeHash &&
-    loaded.proxyChainID === fresh.proxyChainID &&
-    loaded.bindingId === fresh.bindingId &&
-    loaded.proxyPattern === fresh.proxyPattern &&
+		loaded.proxyChainID === fresh.proxyChainID &&
+		loaded.bindingId === fresh.bindingId &&
+		loaded.proxyMechanism === fresh.proxyMechanism &&
+		loaded.proxyPattern === fresh.proxyPattern &&
+		loaded.beaconAddress === fresh.beaconAddress &&
+		loaded.beaconCodeHash === fresh.beaconCodeHash &&
     loaded.standardVersion === fresh.standardVersion &&
     managementImpact(loaded) === managementImpact(fresh)
   );

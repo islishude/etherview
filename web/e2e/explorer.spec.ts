@@ -326,6 +326,20 @@ test("capability pages survive the embedded binary boundary in both accessible t
   });
   await expect(sourceEditor).toHaveAttribute("contenteditable", "false");
   await expect(sourceEditor).toContainText("contract TransparentUpgradeableProxy");
+  const keywordColor = await sourceEditor.locator(".tok-keyword").first().evaluate((keyword) =>
+    getComputedStyle(keyword).color
+  );
+  const editorColor = await sourceEditor.evaluate((editor) => getComputedStyle(editor).color);
+  expect(keywordColor).not.toBe(editorColor);
+  const sourceLineTop = await sourceEditor.locator(".cm-line").first().evaluate((line) =>
+    line.getBoundingClientRect().top
+  );
+  const firstLineNumberTop = await page
+    .locator(".source-editor .cm-lineNumbers .cm-gutterElement")
+    .filter({ visible: true })
+    .first()
+    .evaluate((lineNumber) => lineNumber.getBoundingClientRect().top);
+  expect(Math.abs(sourceLineTop - firstLineNumberTop)).toBeLessThan(1);
   await page.getByRole("button", { name: "lib/ProxyBase.sol" }).click();
   const libraryEditor = page.getByRole("textbox", {
     name: "Read-only source editor for lib/ProxyBase.sol",

@@ -12,11 +12,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 type verifiedContractRecord struct {
 	CodeHash        []byte
+	SourceAddress   []byte
+	Similar         bool
 	ABI             []byte
 	Sources         []byte
 	Settings        []byte
@@ -31,35 +34,33 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	if err != nil {
 		return verifiedContractRecord{}, err
 	}
-	var record verifiedContractRecord
-	var matchedCodeHash []byte
-	var language, compilerVersion, matchKind, contractName sql.NullString
-	err = b.db.QueryRowContext(ctx, verifiedContractSQL, b.chain, addressBytes).Scan(
-		&record.CodeHash, &matchedCodeHash, &record.ABI, &record.Sources, &record.Settings,
-		&language, &compilerVersion, &matchKind, &contractName,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	resolved, found, err := b.artifacts.ResolveCurrent(ctx, b.chain, addressBytes)
+	if err != nil {
+		return verifiedContractRecord{}, fmt.Errorf("resolve verified contract: %w", err)
+	}
+	if len(resolved.Target.CodeHash) == 0 {
 		return verifiedContractRecord{}, ErrStateUnavailable
 	}
-	if err != nil {
-		return verifiedContractRecord{}, fmt.Errorf("query verified contract: %w", err)
+	if !found {
+		return verifiedContractRecord{}, ErrContractUnverified
+	}
+	record := verifiedContractRecord{
+		CodeHash: resolved.Target.CodeHash, SourceAddress: resolved.Source.Address,
+		Similar: resolved.Resolution == contractartifact.ResolutionCodeHash,
+		ABI:     resolved.Source.ABI, Sources: resolved.Source.Sources,
+		Settings: resolved.Source.Settings, Language: resolved.Source.Language,
+		CompilerVersion: resolved.Source.CompilerVersion,
+		MatchKind:       resolved.Source.MatchType, ContractName: resolved.Source.ContractName,
 	}
 	if len(record.CodeHash) != 32 {
 		return verifiedContractRecord{}, errors.New("stored canonical contract code hash is invalid")
 	}
-	if len(matchedCodeHash) == 0 {
-		return verifiedContractRecord{}, ErrContractUnverified
-	}
-	if len(matchedCodeHash) != 32 || !bytes.Equal(record.CodeHash, matchedCodeHash) {
+	if len(resolved.Source.CodeHash) != 32 || !bytes.Equal(record.CodeHash, resolved.Source.CodeHash) {
 		return verifiedContractRecord{}, errors.New("stored verified contract code hash does not match canonical code")
 	}
-	if !language.Valid || !compilerVersion.Valid || !matchKind.Valid || !contractName.Valid {
+	if len(record.SourceAddress) != common.AddressLength {
 		return verifiedContractRecord{}, errors.New("stored verified contract identity is incomplete")
 	}
-	record.Language = language.String
-	record.CompilerVersion = compilerVersion.String
-	record.MatchKind = matchKind.String
-	record.ContractName = contractName.String
 	if record.Language != "solidity" && record.Language != "yul" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
@@ -117,6 +118,11 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	if err != nil {
 		return nil, err
 	}
+	similarMatch := ""
+	if record.Similar {
+		similarMatch = common.BytesToAddress(record.SourceAddress).Hex()
+		settings.constructorArguments = ""
+	}
 	return []sourceCodeResult{{
 		SourceCode: sources, ABI: abi, ContractName: record.ContractName,
 		CompilerVersion: record.CompilerVersion, CompilerType: "solc",
@@ -125,7 +131,7 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 		EVMVersion: settings.evmVersion, Library: settings.libraries,
 		ContractFileName: "", LicenseType: settings.licenseType,
 		Proxy: proxy, Implementation: implementation,
-		SwarmSource: "", SimilarMatch: "", MatchKind: record.MatchKind,
+		SwarmSource: "", SimilarMatch: similarMatch, MatchKind: record.MatchKind,
 	}}, nil
 }
 
@@ -381,56 +387,6 @@ func (b *PostgresBackend) contractCreationAbsence(ctx context.Context, queryer e
 	}
 	return ErrNotFound
 }
-
-const verifiedContractSQL = `
-WITH canonical_tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-), current_code AS (
-    SELECT observation.code_hash, tip.number AS context_number
-    FROM canonical_tip AS tip
-    JOIN LATERAL (
-        SELECT observation.code_hash
-        FROM contract_code_observations AS observation
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = observation.chain_id
-         AND canonical.number = observation.block_number
-         AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.address = $2
-          AND observation.canonical = TRUE
-          AND observation.block_number <= tip.number
-        ORDER BY observation.block_number DESC,
-                 observation.observed_at DESC,
-                 observation.code_hash DESC
-        LIMIT 1
-    ) AS observation ON TRUE
-)
-SELECT current_code.code_hash, verified.code_hash, verified.abi,
-       verified.sources, verified.settings, verified.language,
-       verified.compiler_version, verified.match_type, verified.contract_name
-FROM current_code
-LEFT JOIN LATERAL (
-    SELECT verified.code_hash, verified.abi, verified.sources,
-           verified.settings, verified.language, verified.compiler_version,
-           verified.match_type, verified.contract_name
-    FROM verified_contracts AS verified
-    WHERE verified.chain_id = $1::numeric
-      AND verified.address = $2
-      AND verified.code_hash = current_code.code_hash
-      AND verified.valid_from_block <= current_code.context_number
-      AND (verified.valid_to_block IS NULL
-           OR verified.valid_to_block >= current_code.context_number)
-	    ORDER BY (verified.match_type = 'full') DESC,
-	             verified.valid_from_block DESC,
-	             verified.request_digest ASC NULLS LAST,
-	             verified.verification_job_id ASC,
-	             verified.created_at ASC
-    LIMIT 1
-) AS verified ON TRUE`
 
 const verifiedProxySQL = proxyCurrentStateSQL + `
 , current_binding AS (

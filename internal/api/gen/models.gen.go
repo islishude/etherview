@@ -923,6 +923,78 @@ func (e TransactionStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransactionLogABISourceKind.
+const (
+	TransactionLogABISourceKindCodeHash            TransactionLogABISourceKind = "code_hash"
+	TransactionLogABISourceKindExactAddress        TransactionLogABISourceKind = "exact_address"
+	TransactionLogABISourceKindProxyImplementation TransactionLogABISourceKind = "proxy_implementation"
+	TransactionLogABISourceKindSignatureDatabase   TransactionLogABISourceKind = "signature_database"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogABISourceKind enum.
+func (e TransactionLogABISourceKind) Valid() bool {
+	switch e {
+	case TransactionLogABISourceKindCodeHash:
+		return true
+	case TransactionLogABISourceKindExactAddress:
+		return true
+	case TransactionLogABISourceKindProxyImplementation:
+		return true
+	case TransactionLogABISourceKindSignatureDatabase:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogDecodingConfidence.
+const (
+	TransactionLogDecodingConfidenceGuess    TransactionLogDecodingConfidence = "guess"
+	TransactionLogDecodingConfidenceHigh     TransactionLogDecodingConfidence = "high"
+	TransactionLogDecodingConfidenceVerified TransactionLogDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogDecodingConfidence enum.
+func (e TransactionLogDecodingConfidence) Valid() bool {
+	switch e {
+	case TransactionLogDecodingConfidenceGuess:
+		return true
+	case TransactionLogDecodingConfidenceHigh:
+		return true
+	case TransactionLogDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogDecodingStatus.
+const (
+	TransactionLogDecodingStatusAmbiguous   TransactionLogDecodingStatus = "ambiguous"
+	TransactionLogDecodingStatusDecoded     TransactionLogDecodingStatus = "decoded"
+	TransactionLogDecodingStatusMalformed   TransactionLogDecodingStatus = "malformed"
+	TransactionLogDecodingStatusUnavailable TransactionLogDecodingStatus = "unavailable"
+	TransactionLogDecodingStatusUnknown     TransactionLogDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogDecodingStatus enum.
+func (e TransactionLogDecodingStatus) Valid() bool {
+	switch e {
+	case TransactionLogDecodingStatusAmbiguous:
+		return true
+	case TransactionLogDecodingStatusDecoded:
+		return true
+	case TransactionLogDecodingStatusMalformed:
+		return true
+	case TransactionLogDecodingStatusUnavailable:
+		return true
+	case TransactionLogDecodingStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionLogsState.
 const (
 	TransactionLogsStateComplete    TransactionLogsState = "complete"
@@ -1262,6 +1334,24 @@ const (
 func (e VerifiedContractKind) Valid() bool {
 	switch e {
 	case VerifiedContractKindVerificationSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifiedContractResolution.
+const (
+	VerifiedContractResolutionCodeHash     VerifiedContractResolution = "code_hash"
+	VerifiedContractResolutionExactAddress VerifiedContractResolution = "exact_address"
+)
+
+// Valid indicates whether the value is a known member of the VerifiedContractResolution enum.
+func (e VerifiedContractResolution) Valid() bool {
+	switch e {
+	case VerifiedContractResolutionCodeHash:
+		return true
+	case VerifiedContractResolutionExactAddress:
 		return true
 	default:
 		return false
@@ -1961,6 +2051,40 @@ type Completeness struct {
 	Trace    StageState `json:"trace"`
 }
 
+// ContractArtifactSource defines model for ContractArtifactSource.
+type ContractArtifactSource struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash  Hash      `json:"code_hash"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// ValidFromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidFromBlock Quantity `json:"valid_from_block"`
+
+	// ValidToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidToBlock *Quantity `json:"valid_to_block,omitempty"`
+}
+
+// ContractArtifactTarget defines model for ContractArtifactTarget.
+type ContractArtifactTarget struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash Hash `json:"code_hash"`
+}
+
 // Decimal A canonical non-negative fixed-point decimal with at most 18 fractional digits.
 type Decimal = string
 
@@ -2246,19 +2370,20 @@ type ProxyDetails struct {
 	Beacon  *ProxyContractIdentity `json:"beacon,omitempty"`
 
 	// BindingId Opaque current interaction-binding identity. Clients must compare it immediately before implementation-as-proxy or management writes.
-	BindingId       *openapi_types.UUID          `json:"binding_id,omitempty"`
-	Confidence      *ProxyConfidence             `json:"confidence,omitempty"`
-	Evidence        []ProxyRecognitionEvidence   `json:"evidence"`
-	EvidenceState   *ProxyEvidenceState          `json:"evidence_state,omitempty"`
-	ImmutableArgs   *string                      `json:"immutable_args,omitempty"`
-	Implementation  *ProxyContractIdentity       `json:"implementation,omitempty"`
-	Management      *ProxyManagement             `json:"management,omitempty"`
-	Mechanism       *ProxyMechanism              `json:"mechanism,omitempty"`
-	Pattern         *ProxyPattern                `json:"pattern,omitempty"`
-	Proxy           *ProxyContractIdentity       `json:"proxy,omitempty"`
-	Snapshot        CatalogSnapshot              `json:"snapshot"`
-	StandardVersion *ProxyDetailsStandardVersion `json:"standard_version,omitempty"`
-	Status          ProxyDetailStatus            `json:"status"`
+	BindingId                 *openapi_types.UUID             `json:"binding_id,omitempty"`
+	Confidence                *ProxyConfidence                `json:"confidence,omitempty"`
+	Evidence                  []ProxyRecognitionEvidence      `json:"evidence"`
+	EvidenceState             *ProxyEvidenceState             `json:"evidence_state,omitempty"`
+	ImmutableArgs             *string                         `json:"immutable_args,omitempty"`
+	Implementation            *ProxyContractIdentity          `json:"implementation,omitempty"`
+	ImplementationInteraction *ProxyImplementationInteraction `json:"implementation_interaction,omitempty"`
+	Management                *ProxyManagement                `json:"management,omitempty"`
+	Mechanism                 *ProxyMechanism                 `json:"mechanism,omitempty"`
+	Pattern                   *ProxyPattern                   `json:"pattern,omitempty"`
+	Proxy                     *ProxyContractIdentity          `json:"proxy,omitempty"`
+	Snapshot                  CatalogSnapshot                 `json:"snapshot"`
+	StandardVersion           *ProxyDetailsStandardVersion    `json:"standard_version,omitempty"`
+	Status                    ProxyDetailStatus               `json:"status"`
 }
 
 // ProxyDetailsStandardVersion defines model for ProxyDetails.StandardVersion.
@@ -2310,6 +2435,15 @@ type ProxyHistoryCoverage struct {
 
 // ProxyHistoryCoverageState defines model for ProxyHistoryCoverageState.
 type ProxyHistoryCoverageState string
+
+// ProxyImplementationInteraction defines model for ProxyImplementationInteraction.
+type ProxyImplementationInteraction struct {
+	Beacon         *ProxyContractIdentity `json:"beacon,omitempty"`
+	Implementation ProxyContractIdentity  `json:"implementation"`
+	Mechanism      ProxyMechanism         `json:"mechanism"`
+	Pattern        *ProxyPattern          `json:"pattern,omitempty"`
+	Proxy          ProxyContractIdentity  `json:"proxy"`
+}
 
 // ProxyInitialization defines model for ProxyInitialization.
 type ProxyInitialization struct {
@@ -2753,13 +2887,54 @@ type TransactionListResponse struct {
 // TransactionLog defines model for TransactionLog.
 type TransactionLog struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address Address `json:"address"`
-	Data    string  `json:"data"`
+	Address  Address                `json:"address"`
+	Data     string                 `json:"data"`
+	Decoding TransactionLogDecoding `json:"decoding"`
 
 	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	LogIndex Quantity `json:"log_index"`
 	Topics   []Hash   `json:"topics"`
 }
+
+// TransactionLogABISource defines model for TransactionLogABISource.
+type TransactionLogABISource struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash                       `json:"code_hash,omitempty"`
+	Kind     TransactionLogABISourceKind `json:"kind"`
+}
+
+// TransactionLogABISourceKind defines model for TransactionLogABISource.Kind.
+type TransactionLogABISourceKind string
+
+// TransactionLogArgument defines model for TransactionLogArgument.
+type TransactionLogArgument struct {
+	Hashed  bool        `json:"hashed"`
+	Indexed bool        `json:"indexed"`
+	Name    string      `json:"name"`
+	Type    string      `json:"type"`
+	Value   interface{} `json:"value"`
+}
+
+// TransactionLogDecoding defines model for TransactionLogDecoding.
+type TransactionLogDecoding struct {
+	AbiSource  *TransactionLogABISource          `json:"abi_source,omitempty"`
+	Arguments  []TransactionLogArgument          `json:"arguments"`
+	Candidates []string                          `json:"candidates"`
+	Confidence *TransactionLogDecodingConfidence `json:"confidence,omitempty"`
+	EventName  *string                           `json:"event_name,omitempty"`
+	Signature  *string                           `json:"signature,omitempty"`
+	Status     TransactionLogDecodingStatus      `json:"status"`
+	Warning    *string                           `json:"warning,omitempty"`
+}
+
+// TransactionLogDecodingConfidence defines model for TransactionLogDecoding.Confidence.
+type TransactionLogDecodingConfidence string
+
+// TransactionLogDecodingStatus defines model for TransactionLogDecoding.Status.
+type TransactionLogDecodingStatus string
 
 // TransactionLogResponse defines model for TransactionLogResponse.
 type TransactionLogResponse struct {
@@ -3057,42 +3232,32 @@ type VerificationTransformationValues struct {
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi *[]map[string]interface{} `json:"abi,omitempty"`
-
-	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address Address `json:"address"`
-
-	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId Quantity `json:"chain_id"`
-
-	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash              Hash                      `json:"code_hash"`
-	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
-	CompilerVersion       string                    `json:"compiler_version"`
-	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
-	ContractName          string                    `json:"contract_name"`
-	CreatedAt             time.Time                 `json:"created_at"`
-	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
-	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
-	FileName              string                    `json:"file_name"`
-	IsBlueprint           bool                      `json:"is_blueprint"`
-	Kind                  VerifiedContractKind      `json:"kind"`
-	Language              VerifierLanguage          `json:"language"`
-	Libraries             map[string]string         `json:"libraries"`
-	RuntimeCodeArtifacts  map[string]interface{}    `json:"runtime_code_artifacts"`
-	RuntimeMatch          *VerificationMatchDetails `json:"runtime_match,omitempty"`
-	Settings              map[string]interface{}    `json:"settings"`
-	Sources               map[string]interface{}    `json:"sources"`
-
-	// ValidFromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ValidFromBlock Quantity `json:"valid_from_block"`
-
-	// ValidToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ValidToBlock *Quantity `json:"valid_to_block,omitempty"`
+	Abi                   *[]map[string]interface{}  `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}     `json:"compilation_artifacts"`
+	CompilerVersion       string                     `json:"compiler_version"`
+	ConstructorArguments  *string                    `json:"constructor_arguments,omitempty"`
+	ContractName          string                     `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}     `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails  `json:"creation_match,omitempty"`
+	FileName              string                     `json:"file_name"`
+	IsBlueprint           bool                       `json:"is_blueprint"`
+	Kind                  VerifiedContractKind       `json:"kind"`
+	Language              VerifierLanguage           `json:"language"`
+	Libraries             map[string]string          `json:"libraries"`
+	Resolution            VerifiedContractResolution `json:"resolution"`
+	RuntimeCodeArtifacts  map[string]interface{}     `json:"runtime_code_artifacts"`
+	RuntimeMatch          *VerificationMatchDetails  `json:"runtime_match,omitempty"`
+	Settings              map[string]interface{}     `json:"settings"`
+	Source                ContractArtifactSource     `json:"source"`
+	Sources               map[string]interface{}     `json:"sources"`
+	Target                ContractArtifactTarget     `json:"target"`
 }
 
 // VerifiedContractKind defines model for VerifiedContract.Kind.
 type VerifiedContractKind string
+
+// VerifiedContractResolution defines model for VerifiedContract.Resolution.
+type VerifiedContractResolution string
 
 // VerifiedContractResponse defines model for VerifiedContractResponse.
 type VerifiedContractResponse struct {

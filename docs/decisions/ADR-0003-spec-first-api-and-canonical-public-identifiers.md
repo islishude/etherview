@@ -87,8 +87,12 @@ authoritative empty result.
   verified binding, not an authorization token. Detail reads expose it only
   while proxy, implementation, management, runtime immutable, published stage
   generation, code epoch, and continuous canonical coverage still agree.
-  Generic or partial detection remains visible without enabling an
-  implementation-as-proxy or management write.
+  Generic or partial detection never enables a management or upgrade entry.
+  Separately, an unambiguous high-confidence current Clone, EIP-1967, or Beacon
+  relation exposes `implementation_interaction` with the proxy,
+  implementation, mechanism, and optional beacon code identities. Ordinary
+  implementation ABI reads and writes target the proxy and refresh that full
+  identity before every call or submission; they do not consume `bindingId`.
 - Contract tests inspect the raw OpenAPI YAML for duplicate mapping keys and
   enforce the native success envelope, error envelope, decimal quantity, public
   identifier, and opaque-cursor primitives. Both generated Go and TypeScript
@@ -126,12 +130,20 @@ authoritative empty result.
   explicit Etherview extension. Mined-block results omit `blockReward` because
   the durable Core model cannot authoritatively derive consensus issuance or a
   complete execution reward; the API never substitutes zero.
-- Address-only `/v2/api` ABI and source lookups first resolve the latest
-  canonical contract-code observation and select a verification record by
-  chain, address, that code hash, and its validity at the canonical tip. A
-  missing current-code observation is unavailable, while a known current code
-  without a matching record is unverified; an arbitrary open verification
-  interval is never a fallback.
+- Native and address-only `/v2/api` ABI and source lookups use one
+  writer-authoritative resolver. It first resolves the target's latest
+  canonical non-empty runtime-code identity, then prefers the target address's
+  range-valid publication and otherwise deterministically selects a verified
+  publication with the same chain and code hash. The latter is explicitly a
+  `code_hash`/`SimilarMatch` result whose ABI and sources retain their source
+  address; it does not independently verify the target, and target constructor
+  evidence is omitted. A missing current-code observation is unavailable,
+  while known code without a candidate is unverified. Verification submission
+  remains strictly address-bound.
+- Transaction logs always retain raw address, topics, and data and add one
+  structured decoding status. The public projection distinguishes decoded,
+  ambiguous, unknown, malformed, and unavailable results; an ambiguous result
+  exposes candidates without selecting one signature or argument set.
 - Public source-verification submission is exposed only when
   `security.public_verification` is enabled and requires an API key. The
   native and compatibility submission boundaries bind every job to the latest

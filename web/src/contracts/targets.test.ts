@@ -43,23 +43,30 @@ const wallet: WalletInteractionSession = Object.freeze({
 });
 
 describe("contract interaction targets", () => {
-  it("always returns one frozen direct contract target and fails closed without an exact binding", () => {
+  it("opens ordinary implementation interaction without exposing verified management", () => {
     const unverified = proxyDetails("uups", {
       status: "detected_unverified",
       binding_id: undefined,
     });
 
-    for (const details of [undefined, unverified, { ...unverified, status: "verified" as const }]) {
+    expect(buildContractInteractionTargets(PROXY)).toEqual([
+      {
+        kind: "contract",
+        transactionTarget: PROXY,
+        abiAddress: PROXY,
+        supportsWrites: true,
+        requiresFreshBinding: false,
+      },
+    ]);
+    for (const details of [unverified, { ...unverified, status: "verified" as const }]) {
       const targets = buildContractInteractionTargets(PROXY.toLowerCase(), details);
-      expect(targets).toEqual([
-        {
-          kind: "contract",
-          transactionTarget: PROXY,
-          abiAddress: PROXY,
-          supportsWrites: true,
-          requiresFreshBinding: false,
-        },
+      expect(targets.map(({ kind }) => kind)).toEqual([
+        "contract",
+        "implementation_as_proxy",
       ]);
+		const implementation = targetOfKind(targets, "implementation_as_proxy");
+		expect(isInteractionFunctionAllowed(implementation, "value()")).toBe(true);
+		expect(isInteractionFunctionAllowed(implementation, "upgradeToAndCall(address,bytes)")).toBe(false);
       expect(Object.isFrozen(targets)).toBe(true);
       expect(Object.isFrozen(targets[0])).toBe(true);
     }
@@ -80,7 +87,6 @@ describe("contract interaction targets", () => {
       proxyAddress: PROXY,
       proxyCodeHash: PROXY_HASH,
       proxyChainID: "31337",
-      bindingId: BINDING_ID,
       proxyPattern: "uups",
       supportsWrites: true,
       requiresFreshBinding: true,
@@ -102,18 +108,22 @@ describe("contract interaction targets", () => {
       .toThrow(expect.objectContaining({ code: "FUNCTION_NOT_ALLOWED" }));
   });
 
-  it("requires an exact verified proxy code identity before creating bound targets", () => {
-    for (const proxy of [
+  it("requires a valid current proxy code identity before creating bound targets", () => {
+    const base = proxyDetails("uups");
+    for (const proxyIdentity of [
       undefined,
-      { ...identity(PROXY, PROXY_HASH), verification_state: "unverified" as const },
       identity(OTHER, PROXY_HASH),
       identity(PROXY, "0x1234"),
     ]) {
       const targets = buildContractInteractionTargets(
         PROXY,
-        proxyDetails("uups", { proxy }),
+        proxyDetails("uups", {
+          implementation_interaction: proxyIdentity === undefined
+            ? undefined
+            : { ...base.implementation_interaction!, proxy: proxyIdentity },
+        }),
       );
-      expect(targets.map(({ kind }) => kind)).toEqual(["contract"]);
+      expect(targets.map(({ kind }) => kind)).not.toContain("implementation_as_proxy");
     }
   });
 
@@ -205,7 +215,7 @@ describe("interaction fences", () => {
       account: ACCOUNT,
       providerUUID: wallet.uuid,
       providerRevision: 7,
-      target: { bindingId: BINDING_ID },
+      target: { kind: "implementation_as_proxy", transactionTarget: PROXY },
     });
     expect(Object.isFrozen(fence)).toBe(true);
     expect(Object.isFrozen(fence.target)).toBe(true);
@@ -251,19 +261,18 @@ describe("interaction fences", () => {
     );
   });
 
-  it("distinguishes fresh chain, binding, target identity, and management-scope changes", () => {
+  it("distinguishes fresh chain, UUPS management binding, target identity, and management scope", () => {
     const fence = uupsFence();
     expectFenceCode(
       () => assertFreshInteractionFence(fence, wallet, proxyResponse(undefined, "1")),
       "CHAIN_CHANGED",
     );
     expectFenceCode(
-      () =>
-        assertFreshInteractionFence(
-          fence,
-          wallet,
-          proxyResponse(proxyDetails("uups", { binding_id: NEXT_BINDING_ID })),
-        ),
+      () => assertFreshInteractionFence(
+        fence,
+        wallet,
+        proxyResponse(proxyDetails("uups", { binding_id: NEXT_BINDING_ID })),
+      ),
       "BINDING_CHANGED",
     );
     expectFenceCode(
@@ -272,13 +281,7 @@ describe("interaction fences", () => {
           fence,
           wallet,
           proxyResponse(
-            proxyDetails("uups", {
-              implementation: identity(
-                IMPLEMENTATION,
-                `0x${"88".repeat(32)}`,
-                "uups_implementation",
-              ),
-            }),
+            changedInteraction("implementation", `0x${"88".repeat(32)}`),
           ),
         ),
       "TARGET_CHANGED",
@@ -289,9 +292,7 @@ describe("interaction fences", () => {
           fence,
           wallet,
           proxyResponse(
-            proxyDetails("uups", {
-              proxy: identity(PROXY, `0x${"99".repeat(32)}`),
-            }),
+            changedInteraction("proxy", `0x${"99".repeat(32)}`),
           ),
         ),
       "TARGET_CHANGED",
@@ -379,10 +380,10 @@ describe("fenced transaction outcomes", () => {
     );
   });
 
-  it("blocks a changed binding before send and never retries", async () => {
+  it("blocks a changed implementation identity before send and never retries", async () => {
     const send = vi.fn(async () => TRANSACTION_HASH);
     const loadFreshProxy = vi.fn(async () =>
-      proxyResponse(proxyDetails("uups", { binding_id: NEXT_BINDING_ID })),
+      proxyResponse(changedInteraction("implementation", `0x${"77".repeat(32)}`)),
     );
     const outcome = await submitFencedTransaction({
       fence: uupsFence(),
@@ -393,7 +394,7 @@ describe("fenced transaction outcomes", () => {
 
     expect(outcome).toMatchObject({
       status: "not_submitted",
-      error: { code: "BINDING_CHANGED" },
+      error: { code: "TARGET_CHANGED" },
     });
     expect(loadFreshProxy).toHaveBeenCalledOnce();
     expect(send).not.toHaveBeenCalled();
@@ -505,6 +506,21 @@ function proxyDetails(
       IMPLEMENTATION_HASH,
       pattern === "uups" ? "uups_implementation" : undefined,
     ),
+	implementation_interaction: {
+		mechanism: pattern === "clone" ? "eip1167" : pattern === "beacon" ? "beacon" : "eip1967",
+		pattern,
+		proxy: pattern === "clone"
+			? { ...identity(PROXY, PROXY_HASH), verification_state: "unverified" }
+			: identity(PROXY, PROXY_HASH),
+		implementation: identity(
+			IMPLEMENTATION,
+			IMPLEMENTATION_HASH,
+			pattern === "uups" ? "uups_implementation" : undefined,
+		),
+		...(pattern === "beacon"
+			? { beacon: identity(BEACON, BEACON_HASH, "upgradeable_beacon") }
+			: {}),
+	},
     binding_id: BINDING_ID,
     evidence: [],
     ...(pattern === "transparent"
@@ -540,6 +556,24 @@ function proxyResponse(
     meta: {
       chain_id: chainID,
       request_id: "request-1",
+    },
+  };
+}
+
+function changedInteraction(
+  subject: "proxy" | "implementation",
+  codeHash: string,
+): ProxyDetails {
+  const details = proxyDetails("uups");
+  return {
+    ...details,
+    implementation_interaction: {
+      ...details.implementation_interaction!,
+      [subject]: identity(
+        subject === "proxy" ? PROXY : IMPLEMENTATION,
+        codeHash,
+        subject === "implementation" ? "uups_implementation" : undefined,
+      ),
     },
   };
 }

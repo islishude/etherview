@@ -137,6 +137,14 @@ where they say so:
   multiple transitions in one block remain visible. Observation changes fill
   silent transitions, but history is explicitly partial unless exact derived
   coverage proves the interval.
+- The public proxy detail may expose a separate ordinary
+  `implementation_interaction` for a current unambiguous high-confidence
+  Clone, EIP-1967, or Beacon relation. It carries exact proxy and implementation
+  address/code-hash identities plus mechanism and, for Beacon, the beacon
+  identity. Browser reads and ordinary writes send to the proxy while loading
+  ABI material from the implementation; a fresh detail read must reproduce all
+  identities before each operation. This relation never exposes ProxyAdmin,
+  beacon upgrade, or other management controls.
 - The Proxy journal and core reorg transition include the new beacon, upgrade,
   and initialization relations. Orphan observations and events remain stored
   with canonicality toggled by exact block hash.

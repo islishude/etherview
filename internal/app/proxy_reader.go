@@ -187,6 +187,10 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		}
 		model.BindingId = &identifier
 	}
+	model.ImplementationInteraction, err = proxyImplementationInteraction(detail, model)
+	if err != nil {
+		return gen.ProxyDetails{}, err
+	}
 	for index := range detail.Evidence {
 		model.Evidence[index], err = proxyEvidence(detail.Evidence[index])
 		if err != nil {
@@ -194,6 +198,39 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		}
 	}
 	return model, nil
+}
+
+func proxyImplementationInteraction(
+	detail query.ProxyDetail,
+	model gen.ProxyDetails,
+) (*gen.ProxyImplementationInteraction, error) {
+	if detail.Status != string(gen.ProxyDetailStatusDetectedUnverified) &&
+		detail.Status != string(gen.ProxyDetailStatusVerified) {
+		return nil, nil
+	}
+	if detail.Confidence != string(gen.ProxyConfidenceHigh) &&
+		detail.Confidence != string(gen.ProxyConfidenceVerified) {
+		return nil, nil
+	}
+	if model.Mechanism == nil || model.Proxy == nil || model.Implementation == nil {
+		return nil, nil
+	}
+	if model.Proxy.Address != model.Address || model.Proxy.Address == model.Implementation.Address {
+		return nil, errors.New("proxy implementation interaction identity is inconsistent")
+	}
+	interaction := &gen.ProxyImplementationInteraction{
+		Mechanism:      *model.Mechanism,
+		Proxy:          *model.Proxy,
+		Implementation: *model.Implementation,
+		Pattern:        model.Pattern,
+	}
+	if *model.Mechanism == gen.ProxyMechanismBeacon {
+		if model.Beacon == nil {
+			return nil, errors.New("beacon interaction lacks a current beacon identity")
+		}
+		interaction.Beacon = model.Beacon
+	}
+	return interaction, nil
 }
 
 func (adapter proxyReaderAdapter) proxyUpgradeHistory(page query.ProxyUpgradePage) (gen.ProxyUpgradeHistory, error) {

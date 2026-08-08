@@ -1,0 +1,28 @@
+package contractartifact
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestArtifactResolverRestoresImmutableOutcomesAndRanksStableSources(t *testing.T) {
+	t.Parallel()
+	query := strings.Join(strings.Fields(artifactSourceSQL), " ")
+	for _, required := range []string{
+		"JOIN verification_results AS result",
+		"result.job_id = verified.verification_job_id",
+		"result.request_digest = verified.request_digest",
+		"result.outcome->'creation_match'",
+		"result.outcome->'runtime_match'",
+		"(verified.address = $2",
+		"(verified.abi IS NOT NULL) DESC",
+		"(verified.match_type = 'full') DESC",
+		"verified.request_digest ASC",
+		"verified.verification_job_id ASC",
+		"verified.address ASC",
+	} {
+		if !strings.Contains(query, strings.Join(strings.Fields(required), " ")) {
+			t.Fatalf("artifact resolver query lacks %q: %s", required, query)
+		}
+	}
+}

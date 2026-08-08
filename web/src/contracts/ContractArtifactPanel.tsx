@@ -1,6 +1,5 @@
 import { defaultKeymap } from "@codemirror/commands";
 import {
-  defaultHighlightStyle,
   StreamLanguage,
   syntaxHighlighting,
   type StreamParser,
@@ -13,7 +12,9 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { classHighlighter } from "@lezer/highlight";
 import { solidity } from "@replit/codemirror-lang-solidity";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -187,10 +188,18 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 
   useEffect(() => {
     setSelectedName(manifest.files[0]?.name ?? "");
-  }, [artifact.address, artifact.code_hash, manifest.files]);
+	}, [artifact.source.address, artifact.target.address, artifact.target.code_hash, manifest.files]);
 
   return (
-    <div className="contract-code-view">
+		<div className="contract-code-view">
+			{artifact.resolution === "code_hash" ? (
+				<p className="chain-warning" role="status">
+					{t("contracts.artifact.similarMatch")}{" "}
+					<Link params={{ address: artifact.source.address }} to="/contract/$address">
+						<code>{artifact.source.address}</code>
+					</Link>
+				</p>
+			) : null}
       <header className="artifact-hero">
         <div>
           <span className="eyebrow">{t("contracts.artifact.verified")}</span>
@@ -212,14 +221,15 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
         <SummaryFact label={t("contracts.fileName")} value={artifact.file_name} mono />
         <SummaryFact label={t("contracts.artifact.language")} value={artifact.language} />
         <SummaryFact label={t("verification.compilerVersion")} value={artifact.compiler_version} mono />
-        <SummaryFact label={t("detail.codeHash")} value={artifact.code_hash} mono wide />
-        <SummaryFact
-          label={t("contracts.validBlocks")}
-          value={`${artifact.valid_from_block} – ${artifact.valid_to_block ?? "∞"}`}
-        />
-        <SummaryFact
-          label={t("contracts.artifact.verifiedAt")}
-          value={formatTimestamp(artifact.created_at, i18n.language)}
+		<SummaryFact label={t("detail.codeHash")} value={artifact.target.code_hash} mono wide />
+		<SummaryFact label={t("contracts.artifact.sourceAddress")} value={artifact.source.address} mono wide />
+		<SummaryFact
+			label={t("contracts.validBlocks")}
+			value={`${artifact.source.valid_from_block} – ${artifact.source.valid_to_block ?? "∞"}`}
+		/>
+		<SummaryFact
+			label={t("contracts.artifact.verifiedAt")}
+			value={formatTimestamp(artifact.source.created_at, i18n.language)}
         />
         <SummaryFact
           label={t("contracts.artifact.sourceCount")}
@@ -292,7 +302,7 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
           {artifact.creation_match ? (
             <ArtifactDisclosure
               description={t("contracts.artifact.transformationSummary", {
-                count: artifact.creation_match.transformations.length,
+                count: transformationCount(artifact.creation_match),
               })}
               title={t("verification.creationMatch")}
               value={artifact.creation_match}
@@ -301,7 +311,7 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
           {artifact.runtime_match ? (
             <ArtifactDisclosure
               description={t("contracts.artifact.transformationSummary", {
-                count: artifact.runtime_match.transformations.length,
+                count: transformationCount(artifact.runtime_match),
               })}
               title={t("verification.runtimeMatch")}
               value={artifact.runtime_match}
@@ -314,6 +324,12 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
       </section>
     </div>
   );
+}
+
+function transformationCount(
+  match: VerifiedContractArtifact["creation_match"],
+): number {
+  return Array.isArray(match?.transformations) ? match.transformations.length : 0;
 }
 
 function SourceWorkspace({
@@ -350,7 +366,7 @@ function SourceWorkspace({
           lineNumbers(),
           highlightSpecialChars(),
           highlightSelectionMatches(),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          syntaxHighlighting(classHighlighter, { fallback: true }),
           keymap.of([...searchKeymap, ...defaultKeymap]),
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),

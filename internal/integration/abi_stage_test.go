@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -98,6 +99,40 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		"trace_revert:0":        "proxy_implementation:high",
 		"trace_revert:1":        "builtin:high",
 	})
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txHash := block.Block.Transactions()[0].Hash().String()
+	assertProjectedLog := func(label string) {
+		t.Helper()
+		page, readErr := catalogReader.TransactionLogs(ctx, catalog.TransactionResourceRequest{
+			ChainID: "1", TransactionHash: txHash, Limit: 10,
+		})
+		if readErr != nil {
+			t.Fatalf("%s transaction logs: %v", label, readErr)
+		}
+		if len(page.Items) != 1 || page.Items[0].Decoding.Status != "decoded" ||
+			page.Items[0].Decoding.Signature != "Transfer(address,address,uint256)" ||
+			page.Items[0].Decoding.Confidence != "high" ||
+			page.Items[0].Decoding.ABISource == nil ||
+			page.Items[0].Decoding.ABISource.Kind != "proxy_implementation" ||
+			len(page.Items[0].Decoding.Arguments) != 3 {
+			t.Fatalf("%s projected log=%+v", label, page)
+		}
+	}
+	assertProjectedLog("persisted")
+	execFixture(t, ctx, db, `
+		DELETE FROM abi_decodings
+		WHERE chain_id = 1 AND block_hash = $1 AND object_kind = 'log'`, mustBytes(t, reference.Hash))
+	execFixture(t, ctx, db, `
+		DELETE FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2
+		  AND source = 'proxy_implementation'`, mustBytes(t, reference.Hash), mustBytes(t, proxy))
+	assertProjectedLog("read-time historical proxy fallback")
+	if _, err := processor.Process(ctx, job); err != nil {
+		t.Fatalf("restore ABI stage after read-time projection check: %v", err)
+	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM contract_abis
 		WHERE chain_id = 1 AND block_hash = $1 AND source = 'signature_database'

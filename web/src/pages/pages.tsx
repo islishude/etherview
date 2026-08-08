@@ -937,15 +937,37 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                   {logs.data.items.map((log) => (
                     <article className="transaction-log" key={log.log_index}>
                       <header>
-                        <strong>{t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
+                        <div>
+                          <strong>{log.decoding.signature ?? t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
+                          <small className="table-secondary">
+                            {t(logDecodingKey(log.decoding.status))}
+                          </small>
+                        </div>
                         <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
                       </header>
-                      <dl>
-                        {log.topics.map((topic, index) => (
-                          <div key={topic}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
-                        ))}
-                        <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
-                      </dl>
+                      {log.decoding.arguments.length > 0 && (
+                        <dl aria-label={t("detail.eventArguments")}>
+                          {log.decoding.arguments.map((argument, index) => (
+                            <div key={`${argument.name}:${index}`}>
+                              <dt>{argument.name || `${index}`} <code>{argument.type}</code></dt>
+                              <dd>
+                                <code>{formatLogArgument(argument.value)}</code>
+                                {argument.hashed && <small className="table-secondary">{t("detail.indexedHash")}</small>}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                      {log.decoding.warning && <p className="quiet">{log.decoding.warning}</p>}
+                      <details className="transaction-more-details">
+                        <summary>{t("detail.rawLog")}</summary>
+                        <dl>
+                          {log.topics.map((topic, index) => (
+                            <div key={`${topic}:${index}`}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
+                          ))}
+                          <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
+                        </dl>
+                      </details>
                     </article>
                   ))}
                 </div>
@@ -3243,6 +3265,28 @@ function assertNoDuplicateJSONKeys(source: string): void {
   parseValue(0);
   skipWhitespace();
   if (offset !== source.length) throw new SyntaxError("unexpected JSON suffix");
+}
+
+function logDecodingKey(status: string) {
+  switch (status) {
+    case "decoded": return "detail.logDecoded" as const;
+    case "ambiguous": return "detail.logAmbiguous" as const;
+    case "unknown": return "detail.logUnknown" as const;
+    case "malformed": return "detail.logMalformed" as const;
+    default: return "detail.logUnavailable" as const;
+  }
+}
+
+function formatLogArgument(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean" || typeof value === "number" || value === null) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "[unavailable]";
+  }
 }
 
 export function NotFoundPage() {

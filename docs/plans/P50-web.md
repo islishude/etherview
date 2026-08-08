@@ -40,6 +40,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T14 | done        | P40-T11, P50-T13 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
 | P50-T15 | done        | P50-T14       | Viem-compatible ABI result and revert formatting, including ERC-20 `decimals()`, plus fail-closed rejection of codec-unsupported types | focused ABI/form tests and common frontend gates |
 | P50-T16 | done        | P50-T15       | Etherscan-inspired verified source workspace, structured compiler settings, and summarized contract artifacts | focused frontend, embedded browser, responsive, accessibility, generation, security, and license gates |
+| P50-T17 | done        | P50-T16       | CSP-compatible CodeMirror layout with aligned source lines and gutters | focused frontend and live Preview browser regression |
+| P50-T18 | done        | P50-T17       | CSP-compatible stable semantic syntax highlighting for verified source | focused frontend and live Preview browser regression |
 
 ## Acceptance
 
@@ -68,6 +70,29 @@ None.
 
 ## Evidence
 
+- P50-T18 replaces CodeMirror's dynamically styled default highlighter with
+  Lezer's stable semantic class highlighter, allowing the existing bundled
+  `tok-*` theme rules to work under the production CSP for Solidity and Yul.
+  The focused six-test artifact suite, TypeScript lint, production build, npm
+  audit, generation, and plan checks pass. Preview image
+  `sha256:528bfac37637434d5048e5ebe3fa0f551ab70f185276bd09b9ccd844d361bbfa`
+  was rebuilt without replacing PostgreSQL or Reth. Live verification at
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` observes distinct computed
+  colors for `tok-keyword`, `tok-comment`, and `tok-string` while retaining a
+  `0px` first-line gutter delta. Two canonical `make test-e2e` launch requests
+  did not reach the test process because sandbox permission review timed out;
+  they produced no test failure.
+- P50-T17 moves CodeMirror's required editor, scroller, content, gutter, layer,
+  and search-panel structure into the bundled stylesheet because the accepted
+  production CSP rejects the library's runtime-injected inline stylesheet. An
+  embedded-browser regression measures the first source line against its line
+  number and requires sub-pixel alignment. The focused six-test artifact suite,
+  TypeScript lint, production build, and complete 10-flow `make test-e2e` gate
+  pass. Preview image
+  `sha256:4321f56f1bd78d16cc32d4627265bf3a81d540e94485d2035795414c72f1804e`
+  was rebuilt without replacing PostgreSQL or Reth; live verification at
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` measures a `0px` first-line
+  gutter delta with the scroller restored to flex layout.
 - P50-T16 replaces raw verified-contract JSON with a verification summary,
   fail-closed inline-source parsing, main-file-first navigation, and a locally
   bundled CodeMirror 6 workspace. Solidity uses the maintained Replit grammar,

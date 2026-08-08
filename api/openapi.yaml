@@ -2752,6 +2752,7 @@ components:
         - log_index
         - topics
         - data
+        - decoding
       properties:
         address:
           $ref: "#/components/schemas/Address"
@@ -2766,6 +2767,66 @@ components:
           type: string
           pattern: '^0x[0-9a-fA-F]*$'
           maxLength: 8388610
+        decoding:
+          $ref: "#/components/schemas/TransactionLogDecoding"
+    TransactionLogDecoding:
+      type: object
+      required: [status, arguments, candidates]
+      properties:
+        status:
+          type: string
+          enum: [decoded, ambiguous, unknown, malformed, unavailable]
+        event_name:
+          type: string
+          maxLength: 4096
+        signature:
+          type: string
+          maxLength: 4096
+        arguments:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/TransactionLogArgument"
+        candidates:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 4096
+        abi_source:
+          $ref: "#/components/schemas/TransactionLogABISource"
+        confidence:
+          type: string
+          enum: [verified, high, guess]
+        warning:
+          type: string
+          maxLength: 4096
+    TransactionLogArgument:
+      type: object
+      required: [name, type, indexed, hashed, value]
+      properties:
+        name:
+          type: string
+          maxLength: 4096
+        type:
+          type: string
+          maxLength: 4096
+        indexed:
+          type: boolean
+        hashed:
+          type: boolean
+        value: {}
+    TransactionLogABISource:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [exact_address, code_hash, proxy_implementation, signature_database]
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
     TransactionLogs:
       allOf:
         - $ref: "#/components/schemas/TransactionSubresourceIdentity"
@@ -3265,25 +3326,48 @@ components:
         - $ref: "#/components/schemas/VerificationSuccess"
         - type: object
           required:
-            - chain_id
-            - address
-            - code_hash
-            - valid_from_block
-            - created_at
+            - resolution
+            - target
+            - source
           properties:
-            chain_id:
-              $ref: "#/components/schemas/Quantity"
-            address:
-              $ref: "#/components/schemas/Address"
-            code_hash:
-              $ref: "#/components/schemas/Hash"
-            valid_from_block:
-              $ref: "#/components/schemas/Quantity"
-            valid_to_block:
-              $ref: "#/components/schemas/Quantity"
-            created_at:
+            resolution:
               type: string
-              format: date-time
+              enum: [exact_address, code_hash]
+            target:
+              $ref: "#/components/schemas/ContractArtifactTarget"
+            source:
+              $ref: "#/components/schemas/ContractArtifactSource"
+    ContractArtifactTarget:
+      type: object
+      additionalProperties: false
+      required: [chain_id, address, code_hash, block_number, block_hash]
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+    ContractArtifactSource:
+      type: object
+      additionalProperties: false
+      required: [address, code_hash, valid_from_block, created_at]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        valid_from_block:
+          $ref: "#/components/schemas/Quantity"
+        valid_to_block:
+          $ref: "#/components/schemas/Quantity"
+        created_at:
+          type: string
+          format: date-time
     ProxyDetailStatus:
       type: string
       enum: [not_detected, detected_unverified, verified, unavailable, failed]
@@ -3377,6 +3461,21 @@ components:
           $ref: "#/components/schemas/ProxyContractIdentity"
         affected_proxy_count:
           $ref: "#/components/schemas/Quantity"
+    ProxyImplementationInteraction:
+      type: object
+      additionalProperties: false
+      required: [mechanism, proxy, implementation]
+      properties:
+        mechanism:
+          $ref: "#/components/schemas/ProxyMechanism"
+        pattern:
+          $ref: "#/components/schemas/ProxyPattern"
+        proxy:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        implementation:
+          $ref: "#/components/schemas/ProxyContractIdentity"
+        beacon:
+          $ref: "#/components/schemas/ProxyContractIdentity"
     ProxyDetails:
       type: object
       additionalProperties: false
@@ -3409,6 +3508,8 @@ components:
           $ref: "#/components/schemas/ProxyContractIdentity"
         management:
           $ref: "#/components/schemas/ProxyManagement"
+        implementation_interaction:
+          $ref: "#/components/schemas/ProxyImplementationInteraction"
         immutable_args:
           type: string
           pattern: '^0x([0-9a-fA-F]{2})*$'

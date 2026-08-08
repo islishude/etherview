@@ -382,9 +382,10 @@ func runHardhat3Mode(
 			deployment.InitializationData.BeaconProxyA,
 			deployment.InitializationData.BeaconProxyB,
 		}[index]
-		verifyHardhatAddress(t, ctx, h, apiKey, fmt.Sprintf("beacon-proxy-%d", index+1),
+		verifyHardhatAddressWithForce(t, ctx, h, apiKey,
+			fmt.Sprintf("beacon-proxy-%d", index+1),
 			"@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol:BeaconProxy",
-			proxy, []any{deployment.Beacon.Beacon, initializer})
+			proxy, []any{deployment.Beacon.Beacon, initializer}, index > 0)
 	}
 	for _, address := range []string{
 		deployment.Implementation, deployment.Proxy, deployment.Transparent.Proxy,
@@ -715,11 +716,26 @@ func verifyHardhatAddress(
 	apiKey, artifact, contract, address string,
 	constructorArguments []any,
 ) {
+	verifyHardhatAddressWithForce(t, ctx, h, apiKey, artifact, contract, address,
+		constructorArguments, false)
+}
+
+func verifyHardhatAddressWithForce(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	apiKey, artifact, contract, address string,
+	constructorArguments []any,
+	force bool,
+) {
 	t.Helper()
 	environment := map[string]string{"ETHERVIEW_API_KEY": apiKey}
 	arguments := []string{
 		"--build-profile", "production", "--network", "etherview",
 		"verify", "etherscan", "--contract", contract,
+	}
+	if force {
+		arguments = append(arguments, "--force")
 	}
 	if constructorArguments != nil {
 		encoded, err := json.Marshal(constructorArguments)
@@ -1266,9 +1282,11 @@ func assertHardhatAnonymousArtifact(
 	var response gen.VerifiedContractResponse
 	h.mustGetJSON(ctx, hardhatContractAPIPath(address, "/verification", nil), &response)
 	if response.Meta.ChainId != "1" || response.Meta.RequestId == "" ||
-		!strings.EqualFold(response.Data.Address, address) ||
-		response.Data.ChainId != "1" || response.Data.ContractName != contractName ||
-		!common.IsHexHash(response.Data.CodeHash) ||
+		response.Data.Resolution != gen.VerifiedContractResolutionExactAddress ||
+		!strings.EqualFold(response.Data.Target.Address, address) ||
+		response.Data.Target.ChainId != "1" || response.Data.ContractName != contractName ||
+		!common.IsHexHash(response.Data.Target.CodeHash) ||
+		!strings.EqualFold(response.Data.Source.Address, address) ||
 		response.Data.Abi == nil || len(*response.Data.Abi) == 0 {
 		t.Fatalf("anonymous verified artifact %s = %#v", address, response)
 	}

@@ -3705,8 +3705,17 @@ tbody tr:hover {
   overflow: hidden;
 }
 
+/*
+ * CodeMirror normally injects its structural stylesheet at runtime. The
+ * production CSP intentionally rejects inline stylesheets, so keep the
+ * structural rules that its view model relies on in the bundled stylesheet.
+ */
 .source-editor .cm-editor {
   height: 100%;
+  position: relative !important;
+  box-sizing: border-box;
+  display: flex !important;
+  flex-direction: column;
   color: var(--text);
   background: var(--surface);
   font-family: var(--font-mono);
@@ -3715,14 +3724,146 @@ tbody tr:hover {
 }
 
 .source-editor .cm-scroller {
+  height: 100%;
+  position: relative;
+  z-index: 0;
+  display: flex !important;
+  align-items: flex-start !important;
   overflow: auto;
+  overflow-anchor: none;
   font-family: inherit;
 }
 
+.source-editor .cm-content {
+  min-height: 100%;
+  box-sizing: border-box;
+  flex-grow: 2;
+  flex-shrink: 0;
+  display: block;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.source-editor .cm-lineWrapping {
+  flex-shrink: 1;
+  overflow-wrap: anywhere;
+  white-space: break-spaces;
+  word-break: break-word;
+}
+
+.source-editor .cm-line {
+  display: block;
+  padding: 0 2px 0 6px;
+}
+
+.source-editor .cm-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  contain: size style;
+  user-select: none;
+}
+
+.source-editor .cm-layer > * {
+  position: absolute;
+}
+
 .source-editor .cm-gutters {
+  height: 100%;
+  z-index: 200;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
   color: var(--muted);
   background: var(--surface-raised);
   border-right-color: var(--line);
+}
+
+.source-editor .cm-gutter {
+  min-height: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.source-editor .cm-gutterElement {
+  box-sizing: border-box;
+}
+
+.source-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 20px;
+  padding: 0 3px 0 5px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.source-editor .cm-announced {
+  position: fixed;
+  top: -10000px;
+}
+
+.source-editor .cm-panels {
+  position: sticky;
+  right: 0;
+  left: 0;
+  z-index: 300;
+  box-sizing: border-box;
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.source-editor .cm-panels-top {
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-editor .cm-panels-bottom {
+  bottom: 0;
+  border-top: 1px solid var(--line);
+}
+
+.source-editor .cm-dialog {
+  position: relative;
+  padding: 0.35rem 2rem 0.35rem 0.45rem;
+}
+
+.source-editor .cm-dialog label {
+  font-size: 0.75rem;
+}
+
+.source-editor .cm-dialog-close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+.source-editor .cm-textfield,
+.source-editor .cm-button {
+  padding: 0.2rem 0.45rem;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.7rem;
+}
+
+.source-editor .cm-selectionMatch {
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
+}
+
+.source-editor .cm-searchMatch .cm-selectionMatch {
+  background: transparent;
 }
 
 .source-editor .cm-activeLine,

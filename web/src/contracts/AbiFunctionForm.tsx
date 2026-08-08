@@ -593,10 +593,17 @@ function interactionContext(
   chainID: string | undefined,
   wallet: { uuid: string; account: string; chainID: string; revision: number } | undefined,
 ): string {
-  return JSON.stringify([
-    target.kind,
-    target.transactionTarget,
-    target.requiresFreshBinding ? target.bindingId : "",
+	return JSON.stringify([
+		target.kind,
+		target.transactionTarget,
+		target.requiresFreshBinding ? [
+			target.bindingId ?? "",
+			target.proxyCodeHash,
+			target.abiAddress,
+			target.abiCodeHash ?? "",
+			target.beaconAddress ?? "",
+			target.beaconCodeHash ?? "",
+		] : "",
     chainID ?? "",
     wallet?.uuid ?? "",
     wallet?.account ?? "",

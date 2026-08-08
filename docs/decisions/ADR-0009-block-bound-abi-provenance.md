@@ -42,6 +42,20 @@ independently of source would let guessed material be published as verified.
   ABI, then signature guess. Equal-confidence selector collisions remain
   `ambiguous` and retain all candidate signatures rather than selecting a
   pretend winner.
+- Transaction-log reads treat durable `abi@2` decoding as the fast path. When
+  it is absent or only a signature-database guess, the writer reader performs
+  bounded pure decoding inside the transaction's repeatable-read snapshot. It
+  resolves the target code identity at the transaction block and may use a
+  range-valid exact-address ABI (`verified`), a same-chain same-code verified
+  artifact (`high`), or the implementation from the high-confidence historical
+  proxy observation valid at that block (`high`). This projection performs no
+  RPC and no write, does not change the historical stage generation, and is
+  isolated by the exact canonical block hash.
+- Anonymous events are candidates only within the exact contract-specific ABI
+  set. Indexed dynamic values remain their 32-byte topic hash and carry an
+  explicit hashed marker. Parsing and decoding share the same limits for ABI
+  document bytes, entries, candidates, tuple depth, array elements, dynamic
+  bytes, nodes, and total work across enrichment and read projection.
 - `abi@1` writes bindings, decoded transaction/log/available normalized-trace
   observations, its stage result, and its canonicality journal in one
   transaction. Trace absence never delays or fails ABI processing; explicit
@@ -66,3 +80,6 @@ independently of source would let guessed material be published as verified.
   not a global ABI lookup.
 - ABI reindex may be useful after Trace completes, but core ingestion and other
   enrichment stages never wait for it.
+- Verification published after an old transaction can improve that
+  transaction's read projection immediately without rewriting the old
+  `abi@2` result. Raw log bytes remain available for every status.

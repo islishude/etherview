@@ -516,69 +516,78 @@ func (repository *PostgresRepository) VerifiedContract(
 	ctx context.Context,
 	chainID uint64,
 	addressHex string,
-	codeHashHex string,
 ) (VerifiedContract, bool, error) {
 	address, err := decodeFixedHex(addressHex, 20)
 	if err != nil {
 		return VerifiedContract{}, false, err
 	}
-	codeHash, err := decodeFixedHex(codeHashHex, 32)
+	if repository == nil || repository.artifacts == nil {
+		return VerifiedContract{}, false, errors.New("verification artifact resolver is unavailable")
+	}
+	resolved, found, err := repository.artifacts.ResolveCurrent(
+		ctx, strconv.FormatUint(chainID, 10), address,
+	)
 	if err != nil {
 		return VerifiedContract{}, false, err
 	}
-	var contract VerifiedContract
-	var addressBytes, codeHashBytes []byte
-	var validFrom string
-	var validTo sql.NullString
-	var abi, sources, settings, compilation, creationArtifacts, runtimeArtifacts, libraries []byte
-	var creationMatch, runtimeMatch []byte
-	var constructor []byte
-	err = repository.db.QueryRowContext(ctx, verifiedContractV2SQL,
-		strconv.FormatUint(chainID, 10), address, codeHash).Scan(
-		new(string), &addressBytes, &codeHashBytes, &validFrom, &validTo,
-		&contract.FileName, &contract.ContractName, &contract.Language,
-		&contract.CompilerVersion, &contract.MatchType, &abi, &sources, &settings,
-		&compilation, &creationArtifacts, &runtimeArtifacts, &creationMatch,
-		&runtimeMatch, &constructor, &libraries, &contract.IsBlueprint,
-		&contract.CreatedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	if !found {
 		return VerifiedContract{}, false, nil
 	}
-	if err != nil {
-		return VerifiedContract{}, false, err
-	}
-	contract.CreationMatch, err = decodeStoredVerificationMatch(creationMatch)
+	var contract VerifiedContract
+	contract.CreationMatch, err = decodeStoredVerificationMatch(resolved.Source.CreationMatch)
 	if err != nil {
 		return VerifiedContract{}, false, errors.New("stored creation match is invalid")
 	}
-	contract.RuntimeMatch, err = decodeStoredVerificationMatch(runtimeMatch)
+	contract.RuntimeMatch, err = decodeStoredVerificationMatch(resolved.Source.RuntimeMatch)
 	if err != nil || contract.RuntimeMatch == nil {
 		return VerifiedContract{}, false, errors.New("stored runtime match is invalid")
 	}
-	contract.ChainID = chainID
-	contract.Address = "0x" + hex.EncodeToString(addressBytes)
-	contract.CodeHash = "0x" + hex.EncodeToString(codeHashBytes)
-	contract.ValidFromBlock, err = strconv.ParseUint(validFrom, 10, 64)
+	contract.Resolution = string(resolved.Resolution)
+	contract.Target.ChainID = chainID
+	contract.Target.Address = "0x" + hex.EncodeToString(resolved.Target.Address)
+	contract.Target.CodeHash = "0x" + hex.EncodeToString(resolved.Target.CodeHash)
+	contract.Target.BlockHash = "0x" + hex.EncodeToString(resolved.Target.BlockHash)
+	contract.Target.BlockNumber, err = strconv.ParseUint(resolved.Target.BlockNumber, 10, 64)
 	if err != nil {
-		return VerifiedContract{}, false, errors.New("stored verified block is invalid")
+		return VerifiedContract{}, false, errors.New("stored artifact target block is invalid")
 	}
-	if validTo.Valid {
-		value, parseErr := strconv.ParseUint(validTo.String, 10, 64)
+	contract.Source.Address = "0x" + hex.EncodeToString(resolved.Source.Address)
+	contract.Source.CodeHash = "0x" + hex.EncodeToString(resolved.Source.CodeHash)
+	contract.Source.ValidFromBlock, err = strconv.ParseUint(resolved.Source.ValidFromBlock, 10, 64)
+	if err != nil {
+		return VerifiedContract{}, false, errors.New("stored artifact source block is invalid")
+	}
+	if resolved.Source.ValidToBlock.Valid {
+		value, parseErr := strconv.ParseUint(resolved.Source.ValidToBlock.String, 10, 64)
 		if parseErr != nil {
 			return VerifiedContract{}, false, parseErr
 		}
-		contract.ValidToBlock = &value
+		contract.Source.ValidToBlock = &value
 	}
-	contract.ABI, contract.Sources, contract.Settings = abi, sources, settings
-	contract.CompilationArtifacts = compilation
-	contract.CreationCodeArtifacts = creationArtifacts
-	contract.RuntimeCodeArtifacts = runtimeArtifacts
-	if err := json.Unmarshal(libraries, &contract.Libraries); err != nil {
+	contract.Source.CreatedAt = resolved.Source.CreatedAt.Time
+	contract.ChainID = chainID
+	contract.Address = contract.Source.Address
+	contract.CodeHash = contract.Source.CodeHash
+	contract.ValidFromBlock = contract.Source.ValidFromBlock
+	contract.ValidToBlock = contract.Source.ValidToBlock
+	contract.CreatedAt = contract.Source.CreatedAt
+	contract.FileName = resolved.Source.FileName
+	contract.ContractName = resolved.Source.ContractName
+	contract.Language = Language(resolved.Source.Language)
+	contract.CompilerVersion = resolved.Source.CompilerVersion
+	contract.MatchType = VerificationMatchType(resolved.Source.MatchType)
+	contract.ABI = resolved.Source.ABI
+	contract.Sources = resolved.Source.Sources
+	contract.Settings = resolved.Source.Settings
+	contract.CompilationArtifacts = resolved.Source.CompilationArtifacts
+	contract.CreationCodeArtifacts = resolved.Source.CreationCodeArtifacts
+	contract.RuntimeCodeArtifacts = resolved.Source.RuntimeCodeArtifacts
+	contract.IsBlueprint = resolved.Source.IsBlueprint
+	if err := json.Unmarshal(resolved.Source.Libraries, &contract.Libraries); err != nil {
 		return VerifiedContract{}, false, errors.New("stored verified libraries are invalid")
 	}
-	if len(constructor) > 0 {
-		contract.ConstructorArguments = "0x" + hex.EncodeToString(constructor)
+	if len(resolved.Source.ConstructorArguments) > 0 {
+		contract.ConstructorArguments = "0x" + hex.EncodeToString(resolved.Source.ConstructorArguments)
 	}
 	return contract, true, nil
 }
@@ -593,33 +602,11 @@ func decodeStoredVerificationMatch(value []byte) (*VerificationMatchDetails, err
 			details.MatchType != VerificationMatchPartial) {
 		return nil, errors.New("verification match is invalid")
 	}
+	if details.Transformations == nil {
+		details.Transformations = make([]Transformation, 0)
+	}
 	return &details, nil
 }
-
-const verifiedContractV2SQL = `
-		SELECT verified.chain_id::text, verified.address, verified.code_hash,
-		       verified.valid_from_block::text, verified.valid_to_block::text,
-		       verified.file_name, verified.contract_name,
-		       verified.language, verified.compiler_version, verified.match_type,
-		       verified.abi, verified.sources, verified.settings,
-		       verified.compilation_artifacts, verified.creation_code_artifacts,
-		       verified.runtime_code_artifacts,
-		       result.outcome->'creation_match', result.outcome->'runtime_match',
-		       verified.constructor_arguments, verified.libraries,
-		       verified.is_blueprint, verified.created_at
-		FROM verified_contracts AS verified
-		JOIN verification_results AS result
-		  ON result.job_id = verified.verification_job_id
-		 AND result.request_digest = verified.request_digest
-		 AND result.outcome_kind = 'verification_success'
-		WHERE verified.chain_id = $1::numeric
-		  AND verified.address = $2 AND verified.code_hash = $3
-		  AND verified.valid_to_block IS NULL
-		ORDER BY (verified.match_type = 'full') DESC,
-		         verified.valid_from_block DESC,
-		         verified.request_digest ASC,
-		         verified.verification_job_id ASC
-		LIMIT 1`
 
 const v2VerificationJobColumns = `
 id::text, kind, language, compiler_version, compiler_platform, catalog_generation_id,

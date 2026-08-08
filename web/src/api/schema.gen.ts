@@ -1297,6 +1297,21 @@ export interface components {
             /** @description Published trace@1 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
         };
+        ContractArtifactSource: {
+            address: components["schemas"]["Address"];
+            code_hash: components["schemas"]["Hash"];
+            /** Format: date-time */
+            created_at: string;
+            valid_from_block: components["schemas"]["Quantity"];
+            valid_to_block?: components["schemas"]["Quantity"];
+        };
+        ContractArtifactTarget: {
+            address: components["schemas"]["Address"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            chain_id: components["schemas"]["Quantity"];
+            code_hash: components["schemas"]["Hash"];
+        };
         /** @description A canonical non-negative fixed-point decimal with at most 18 fractional digits. */
         Decimal: string;
         ERC20Balance: {
@@ -1464,6 +1479,7 @@ export interface components {
             evidence_state?: components["schemas"]["ProxyEvidenceState"];
             immutable_args?: string;
             implementation?: components["schemas"]["ProxyContractIdentity"];
+            implementation_interaction?: components["schemas"]["ProxyImplementationInteraction"];
             management?: components["schemas"]["ProxyManagement"];
             mechanism?: components["schemas"]["ProxyMechanism"];
             pattern?: components["schemas"]["ProxyPattern"];
@@ -1503,6 +1519,13 @@ export interface components {
         };
         /** @enum {string} */
         ProxyHistoryCoverageState: "complete" | "partial";
+        ProxyImplementationInteraction: {
+            beacon?: components["schemas"]["ProxyContractIdentity"];
+            implementation: components["schemas"]["ProxyContractIdentity"];
+            mechanism: components["schemas"]["ProxyMechanism"];
+            pattern?: components["schemas"]["ProxyPattern"];
+            proxy: components["schemas"]["ProxyContractIdentity"];
+        };
         ProxyInitialization: {
             block_hash: components["schemas"]["Hash"];
             block_number: components["schemas"]["Quantity"];
@@ -1758,8 +1781,34 @@ export interface components {
         TransactionLog: {
             address: components["schemas"]["Address"];
             data: string;
+            decoding: components["schemas"]["TransactionLogDecoding"];
             log_index: components["schemas"]["Quantity"];
             topics: components["schemas"]["Hash"][];
+        };
+        TransactionLogABISource: {
+            address?: components["schemas"]["Address"];
+            code_hash?: components["schemas"]["Hash"];
+            /** @enum {string} */
+            kind: "exact_address" | "code_hash" | "proxy_implementation" | "signature_database";
+        };
+        TransactionLogArgument: {
+            hashed: boolean;
+            indexed: boolean;
+            name: string;
+            type: string;
+            value: unknown;
+        };
+        TransactionLogDecoding: {
+            abi_source?: components["schemas"]["TransactionLogABISource"];
+            arguments: components["schemas"]["TransactionLogArgument"][];
+            candidates: string[];
+            /** @enum {string} */
+            confidence?: "verified" | "high" | "guess";
+            event_name?: string;
+            signature?: string;
+            /** @enum {string} */
+            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";
+            warning?: string;
         };
         TransactionLogResponse: {
             data: components["schemas"]["TransactionLogs"];
@@ -1936,13 +1985,10 @@ export interface components {
             };
         };
         VerifiedContract: components["schemas"]["VerificationSuccess"] & {
-            address: components["schemas"]["Address"];
-            chain_id: components["schemas"]["Quantity"];
-            code_hash: components["schemas"]["Hash"];
-            /** Format: date-time */
-            created_at: string;
-            valid_from_block: components["schemas"]["Quantity"];
-            valid_to_block?: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            resolution: "exact_address" | "code_hash";
+            source: components["schemas"]["ContractArtifactSource"];
+            target: components["schemas"]["ContractArtifactTarget"];
         };
         VerifiedContractResponse: {
             data: components["schemas"]["VerifiedContract"];

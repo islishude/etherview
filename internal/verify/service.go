@@ -312,14 +312,14 @@ func (service *Service) Job(ctx context.Context, id string) (VerificationJob, bo
 	return job, found, nil
 }
 
-func (service *Service) VerifiedContract(ctx context.Context, chainID uint64, address, codeHash string) (VerifiedContract, bool, error) {
+func (service *Service) VerifiedContract(ctx context.Context, chainID uint64, address string) (VerifiedContract, bool, error) {
 	if service == nil || service.repository == nil {
 		return VerifiedContract{}, false, ServiceError{Code: ServiceStorageFailure, cause: errors.New("nil repository")}
 	}
-	if chainID == 0 || !fixedHex(address, 20) || !fixedHex(codeHash, 32) {
+	if chainID == 0 || !fixedHex(address, 20) {
 		return VerifiedContract{}, false, ServiceError{Code: ServiceInvalidRequest, cause: errors.New("invalid contract identity")}
 	}
-	contract, found, err := service.repository.VerifiedContract(ctx, chainID, address, codeHash)
+	contract, found, err := service.repository.VerifiedContract(ctx, chainID, address)
 	if err != nil {
 		return VerifiedContract{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
 	}

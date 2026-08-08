@@ -701,9 +701,9 @@ describe("embedded explorer shell", () => {
         expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
-            chain_id: "1",
-            address,
-            code_hash: codeHash,
+            resolution: "exact_address",
+            target: { chain_id: "1", address, code_hash: codeHash, block_number: "12", block_hash: codeHash },
+            source: { address, code_hash: codeHash, valid_from_block: "12", created_at: "2026-01-01T00:00:00Z" },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/Hostile.sol",
@@ -718,8 +718,6 @@ describe("embedded explorer shell", () => {
             runtime_code_artifacts: {},
             libraries: {},
             is_blueprint: false,
-            valid_from_block: "12",
-            created_at: "2026-01-01T00:00:00Z",
           },
           meta,
         });

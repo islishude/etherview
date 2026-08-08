@@ -497,6 +497,31 @@ function proxyDetail(pattern: ExactPattern | "clone") {
       implementationAddress,
       pattern === "uups" ? "uups_implementation" : undefined,
     ),
+	implementation_interaction: {
+		mechanism,
+		pattern,
+		proxy: pattern === "clone"
+			? {
+				address: proxyAddress,
+				code_hash: hash,
+				verification_state: "unverified" as const,
+			}
+			: currentIdentity(
+				proxyAddress,
+				pattern === "transparent"
+					? "transparent_proxy"
+					: pattern === "beacon"
+						? "beacon_proxy"
+						: "erc1967_proxy",
+			),
+		implementation: currentIdentity(
+			implementationAddress,
+			pattern === "uups" ? "uups_implementation" : undefined,
+		),
+		...(pattern === "beacon"
+			? { beacon: currentIdentity(managementAddress, "upgradeable_beacon") }
+			: {}),
+	},
     ...(pattern === "transparent"
       ? { admin: currentIdentity(managementAddress, "proxy_admin") }
       : {}),
@@ -569,12 +594,16 @@ function verifiedArtifact(address: string, codeHash = hash) {
     runtime_code_artifacts: {},
     libraries: {},
     is_blueprint: false,
-    chain_id: "1",
-    address,
-    code_hash: codeHash,
-    valid_from_block: "1",
-    created_at: "2026-08-02T00:00:00Z",
-  };
+		resolution: "exact_address",
+		target: {
+			chain_id: "1", address, code_hash: codeHash,
+			block_number: "42", block_hash: hash,
+		},
+		source: {
+			address, code_hash: codeHash, valid_from_block: "1",
+			created_at: "2026-08-02T00:00:00Z",
+		},
+	};
 }
 
 function upgradeHistory(pattern: ExactPattern | "clone") {

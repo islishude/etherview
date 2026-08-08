@@ -105,7 +105,10 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 	}
 	if detail.Snapshot.ChainId != "31337" || detail.Status != "verified" ||
 		detail.BindingId == nil || detail.Implementation == nil ||
-		detail.Implementation.VerificationState != "verified" || len(detail.Evidence) != 1 {
+		detail.Implementation.VerificationState != "verified" || len(detail.Evidence) != 1 ||
+		detail.ImplementationInteraction == nil ||
+		detail.ImplementationInteraction.Proxy.Address != detail.Address ||
+		detail.ImplementationInteraction.Implementation.Address != implementationAddress {
 		t.Fatalf("proxy detail = %+v", detail)
 	}
 	upgrades, next, err := adapter.ProxyUpgrades(context.Background(), proxyAddress, "page", 7)
@@ -124,6 +127,36 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 	if next != "next-initialization" || len(initializations.Items) != 1 ||
 		initializations.Items[0].Version != "2" || initializations.Coverage.State != "partial" {
 		t.Fatalf("proxy initializations next=%q page=%+v", next, initializations)
+	}
+}
+
+func TestProxyReaderAdapterPublishesHighConfidenceUnverifiedInteractionWithoutManagement(t *testing.T) {
+	t.Parallel()
+	const (
+		proxyAddress           = "0x1111111111111111111111111111111111111111"
+		implementationAddress  = "0x2222222222222222222222222222222222222222"
+		blockHash              = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		proxyCodeHash          = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		implementationCodeHash = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	)
+	stub := &appProxyQueryStub{detail: query.ProxyDetail{
+		Address: proxyAddress, Status: "detected_unverified",
+		Snapshot:  query.ProxySnapshot{Number: "42", Hash: blockHash},
+		Mechanism: "eip1967", Pattern: "unknown", Confidence: "high",
+		EvidenceState:  "partial",
+		Proxy:          &query.ProxyIdentity{Address: proxyAddress, CodeHash: proxyCodeHash},
+		Implementation: &query.ProxyIdentity{Address: implementationAddress, CodeHash: implementationCodeHash},
+	}}
+	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), proxyAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.BindingId != nil || detail.Management != nil || detail.ImplementationInteraction == nil {
+		t.Fatalf("ordinary interaction exposed the wrong authority: %+v", detail)
+	}
+	if detail.ImplementationInteraction.Proxy.CodeHash != proxyCodeHash ||
+		detail.ImplementationInteraction.Implementation.CodeHash != implementationCodeHash {
+		t.Fatalf("interaction identity = %+v", detail.ImplementationInteraction)
 	}
 }
 
@@ -172,7 +205,7 @@ func TestProxyReaderAdapterAllowsExactCloneBindingWithoutCloneArtifact(t *testin
 	}
 	if detail.Proxy == nil || detail.Proxy.VerificationState != "unverified" ||
 		detail.Implementation == nil || detail.Implementation.VerificationState != "verified" ||
-		detail.BindingId == nil {
+		detail.BindingId == nil || detail.ImplementationInteraction == nil {
 		t.Fatalf("clone detail = %+v", detail)
 	}
 }

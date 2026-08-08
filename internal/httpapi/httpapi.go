@@ -139,7 +139,7 @@ type readinessStatusReader interface {
 
 type VerificationReader interface {
 	Job(context.Context, string) (verify.VerificationJob, bool, error)
-	VerifiedContract(context.Context, uint64, string, string) (verify.VerifiedContract, bool, error)
+	VerifiedContract(context.Context, uint64, string) (verify.VerifiedContract, bool, error)
 }
 
 type VerificationSubmitter interface {
@@ -1630,6 +1630,7 @@ func (h *Handler) transactionLogs(w http.ResponseWriter, r *http.Request) {
 		copy(topics, item.Topics)
 		items[index] = gen.TransactionLog{
 			Address: item.Address, LogIndex: item.LogIndex, Topics: topics, Data: item.Data,
+			Decoding: transactionLogDecodingModel(item.Decoding),
 		}
 	}
 	meta := h.meta(r)
@@ -1639,6 +1640,50 @@ func (h *Handler) transactionLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TransactionLogResponse{
 		Data: transactionLogsModel(page.Identity, items), Meta: meta,
 	})
+}
+
+func transactionLogDecodingModel(value catalog.TransactionLogDecoding) gen.TransactionLogDecoding {
+	if value.Status == "" {
+		value.Status = "unavailable"
+	}
+	model := gen.TransactionLogDecoding{
+		Status:     gen.TransactionLogDecodingStatus(value.Status),
+		Arguments:  make([]gen.TransactionLogArgument, len(value.Arguments)),
+		Candidates: make([]string, len(value.Candidates)),
+	}
+	copy(model.Candidates, value.Candidates)
+	for index, argument := range value.Arguments {
+		model.Arguments[index] = gen.TransactionLogArgument{
+			Name: argument.Name, Type: argument.Type, Indexed: argument.Indexed,
+			Hashed: argument.Hashed, Value: argument.Value,
+		}
+	}
+	if value.EventName != "" {
+		model.EventName = &value.EventName
+	}
+	if value.Signature != "" {
+		model.Signature = &value.Signature
+	}
+	if value.Confidence != "" {
+		confidence := gen.TransactionLogDecodingConfidence(value.Confidence)
+		model.Confidence = &confidence
+	}
+	if value.Warning != "" {
+		model.Warning = &value.Warning
+	}
+	if value.ABISource != nil {
+		source := gen.TransactionLogABISource{Kind: gen.TransactionLogABISourceKind(value.ABISource.Kind)}
+		if value.ABISource.Address != "" {
+			address := gen.Address(value.ABISource.Address)
+			source.Address = &address
+		}
+		if value.ABISource.CodeHash != "" {
+			codeHash := gen.Hash(value.ABISource.CodeHash)
+			source.CodeHash = &codeHash
+		}
+		model.AbiSource = &source
+	}
+	return model
 }
 
 func (h *Handler) transactionStateChanges(w http.ResponseWriter, r *http.Request) {
@@ -1912,17 +1957,12 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := strings.ToLower(r.PathValue("address"))
-	if !addressPattern.MatchString(address) || h.verificationTargets == nil {
+	if !addressPattern.MatchString(address) {
 		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address must be a fixed-size hexadecimal value", nil)
 		return
 	}
-	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
-	if err != nil {
-		h.handleVerificationTargetError(w, r, err)
-		return
-	}
 	contract, found, err := h.verificationReader.VerifiedContract(
-		r.Context(), h.cfg.Chain.ID, address, strings.ToLower(target.CodeHash),
+		r.Context(), h.cfg.Chain.ID, address,
 	)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
@@ -2138,9 +2178,13 @@ func verificationJobModel(job verify.VerificationJob) gen.VerificationJob {
 func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContract, error) {
 	var abi []map[string]any
 	var sources, settings, compilation, creationArtifacts, runtimeArtifacts map[string]any
-	address, err := checksumAddress(contract.Address)
+	targetAddress, err := checksumAddress(contract.Target.Address)
 	if err != nil {
-		return gen.VerifiedContract{}, fmt.Errorf("checksum verified contract address: %w", err)
+		return gen.VerifiedContract{}, fmt.Errorf("checksum artifact target address: %w", err)
+	}
+	sourceAddress, err := checksumAddress(contract.Source.Address)
+	if err != nil {
+		return gen.VerifiedContract{}, fmt.Errorf("checksum artifact source address: %w", err)
 	}
 	if err := json.Unmarshal(contract.ABI, &abi); err != nil {
 		return gen.VerifiedContract{}, err
@@ -2174,15 +2218,25 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		fileName = "unknown"
 	}
 	model := gen.VerifiedContract{
-		ChainId: strconv.FormatUint(contract.ChainID, 10), Address: address, CodeHash: contract.CodeHash,
-		ValidFromBlock: strconv.FormatUint(contract.ValidFromBlock, 10),
-		Kind:           gen.VerifiedContractKindVerificationSuccess, Language: gen.VerifierLanguage(contract.Language),
+		Resolution: gen.VerifiedContractResolution(contract.Resolution),
+		Target: gen.ContractArtifactTarget{
+			ChainId: strconv.FormatUint(contract.Target.ChainID, 10),
+			Address: targetAddress, CodeHash: contract.Target.CodeHash,
+			BlockNumber: strconv.FormatUint(contract.Target.BlockNumber, 10),
+			BlockHash:   contract.Target.BlockHash,
+		},
+		Source: gen.ContractArtifactSource{
+			Address: sourceAddress, CodeHash: contract.Source.CodeHash,
+			ValidFromBlock: strconv.FormatUint(contract.Source.ValidFromBlock, 10),
+			CreatedAt:      contract.Source.CreatedAt.UTC(),
+		},
+		Kind: gen.VerifiedContractKindVerificationSuccess, Language: gen.VerifierLanguage(contract.Language),
 		CompilerVersion: contract.CompilerVersion, FileName: fileName,
 		ContractName: contract.ContractName, Abi: &abi, Sources: sources, Settings: settings,
 		CompilationArtifacts: compilation, CreationCodeArtifacts: creationArtifacts,
 		RuntimeCodeArtifacts: runtimeArtifacts, CreationMatch: matchDetailsModel(contract.CreationMatch),
 		RuntimeMatch: matchDetailsModel(contract.RuntimeMatch), Libraries: contract.Libraries,
-		IsBlueprint: contract.IsBlueprint, CreatedAt: contract.CreatedAt.UTC(),
+		IsBlueprint: contract.IsBlueprint,
 	}
 	if model.Libraries == nil {
 		model.Libraries = map[string]string{}
@@ -2191,9 +2245,9 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		value := contract.ConstructorArguments
 		model.ConstructorArguments = &value
 	}
-	if contract.ValidToBlock != nil {
-		value := strconv.FormatUint(*contract.ValidToBlock, 10)
-		model.ValidToBlock = &value
+	if contract.Source.ValidToBlock != nil {
+		value := strconv.FormatUint(*contract.Source.ValidToBlock, 10)
+		model.Source.ValidToBlock = &value
 	}
 	return model, nil
 }
@@ -2209,6 +2263,9 @@ func matchDetailsModel(details *verify.VerificationMatchDetails) *gen.Verificati
 	var model gen.VerificationMatchDetails
 	if json.Unmarshal(encoded, &model) != nil {
 		return nil
+	}
+	if model.Transformations == nil {
+		model.Transformations = make([]gen.VerificationTransformation, 0)
 	}
 	return &model
 }

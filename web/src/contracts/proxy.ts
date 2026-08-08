@@ -165,16 +165,16 @@ export function verifiedArtifactMatchesIdentity(
   address: string,
   expectedCodeHash: string | undefined,
 ): artifact is VerifiedContractArtifact {
-  if (
-    artifact === undefined ||
-    expectedCodeHash === undefined ||
-    !/^0x[0-9a-f]{64}$/iu.test(expectedCodeHash) ||
-    artifact.code_hash.toLowerCase() !== expectedCodeHash.toLowerCase()
-  ) {
+	if (
+		artifact === undefined ||
+		expectedCodeHash === undefined ||
+		!/^0x[0-9a-f]{64}$/iu.test(expectedCodeHash) ||
+		artifact.target.code_hash.toLowerCase() !== expectedCodeHash.toLowerCase()
+	) {
     return false;
   }
   try {
-    return getAddress(artifact.address) === getAddress(address);
+		return getAddress(artifact.target.address) === getAddress(address);
   } catch {
     return false;
   }

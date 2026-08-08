@@ -93,6 +93,7 @@ describe("ContractArtifactPanel", () => {
     });
     expect(mainEditor).toHaveAttribute("contenteditable", "false");
     expect(mainEditor).toHaveTextContent("contract Example");
+    expect(mainEditor.querySelector(".tok-keyword")).toHaveTextContent("contract");
 
     const fileNavigation = screen.getByRole("complementary", { name: "Source files" });
     await user.click(within(fileNavigation).getByRole("button", { name: /Library\.sol/u }));
@@ -126,6 +127,19 @@ describe("ContractArtifactPanel", () => {
     expect(screen.getByText(/file:\/\/\/private\/source\.sol/u)).toBeVisible();
   });
 
+  it("renders legacy match details with null transformations", () => {
+    render(<ContractArtifactPanel artifact={fixtureArtifact({
+      creation_match: {
+        match_type: "full",
+        transformations: null as never,
+        values: {},
+      },
+    })} />);
+
+    expect(screen.getAllByText("0 declared transformations")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Example" })).toBeVisible();
+  });
+
   it("supports Yul search and browser fullscreen without enabling edits", async () => {
     const user = userEvent.setup();
     let fullscreenElement: Element | null = null;
@@ -155,6 +169,7 @@ describe("ContractArtifactPanel", () => {
 
     const editor = screen.getByRole("textbox", { name: "Read-only source editor for main.yul" });
     expect(editor).toHaveAttribute("contenteditable", "false");
+    expect(editor.querySelector(".tok-keyword")).toHaveTextContent("object");
     await user.click(screen.getByRole("button", { name: "Search" }));
     expect(document.querySelector(".cm-search")).not.toBeNull();
 
@@ -172,10 +187,20 @@ function fixtureArtifact(
 ): VerifiedContractArtifact {
   return {
     kind: "verification_success",
-    chain_id: "1",
-    address: "0x1111111111111111111111111111111111111111",
-    code_hash: `0x${"ab".repeat(32)}`,
-    valid_from_block: "1",
+		resolution: "exact_address",
+		target: {
+			chain_id: "1",
+			address: "0x1111111111111111111111111111111111111111",
+			code_hash: `0x${"ab".repeat(32)}`,
+			block_number: "2",
+			block_hash: `0x${"cd".repeat(32)}`,
+		},
+		source: {
+			address: "0x1111111111111111111111111111111111111111",
+			code_hash: `0x${"ab".repeat(32)}`,
+			valid_from_block: "1",
+			created_at: "2026-08-02T00:00:01Z",
+		},
     language: "solidity",
     compiler_version: "0.8.30+commit.73712a01",
     file_name: "src/Example.sol",
@@ -206,7 +231,6 @@ function fixtureArtifact(
     runtime_code_artifacts: { sourceMap: "4:5:6" },
     runtime_match: { match_type: "full", transformations: [], values: {} },
     libraries: { Library: "0x2222222222222222222222222222222222222222" },
-    created_at: "2026-08-02T00:00:01Z",
-    ...overrides,
+		...overrides,
   };
 }

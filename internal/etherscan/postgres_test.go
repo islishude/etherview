@@ -342,12 +342,10 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	abi := []byte(`[ { "type": "function", "name": "x", "inputs": [] } ]`)
 	sources := []byte(`{"A.sol":{"content":"contract A{}"}}`)
 	settings := []byte(`{"optimizer":{"enabled":true,"runs":200},"evmVersion":"paris","libraries":{"A.sol":{"L":"0x0000000000000000000000000000000000000001"}},"constructorArguments":"00","licenseType":"MIT"}`)
-	row := []driver.Value{codeHash, codeHash, abi, sources, settings, "solidity", "v0.8.30+commit.73712a01", "full", "A"}
-	db := fakeDatabase(t,
-		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
-		sqlExpectation{contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9), rows: [][]driver.Value{row}},
-		sqlExpectation{contains: "JOIN verified_proxy_bindings AS binding", columns: fakeColumns(1)},
-	)
+	expectations := verifiedArtifactExpectations(codeHash, codeHash, abi, sources, settings)
+	expectations = append(expectations, verifiedArtifactExpectations(codeHash, codeHash, abi, sources, settings)...)
+	expectations = append(expectations, sqlExpectation{contains: "JOIN verified_proxy_bindings AS binding", columns: fakeColumns(1)})
+	db := fakeDatabase(t, expectations...)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	values := url.Values{"address": {testContract}}
 	abiResult, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getabi", Values: values})
@@ -363,6 +361,46 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 		source[0].ContractFileName != "" || source[0].OptimizationUsed != "1" || source[0].Runs != "200" ||
 		source[0].EVMVersion != "paris" || source[0].MatchKind != "full" {
 		t.Fatalf("source=%+v", source)
+	}
+}
+
+func verifiedArtifactExpectations(
+	targetCodeHash []byte,
+	sourceCodeHash []byte,
+	abi []byte,
+	sources []byte,
+	settings []byte,
+) []sqlExpectation {
+	return []sqlExpectation{
+		currentArtifactTargetExpectation(targetCodeHash),
+		verifiedArtifactSourceExpectation(true, sourceCodeHash, abi, sources, settings),
+	}
+}
+
+func currentArtifactTargetExpectation(codeHash []byte) sqlExpectation {
+	return sqlExpectation{
+		contains: "FROM contract_code_observations AS candidate", columns: fakeColumns(4),
+		rows: [][]driver.Value{{codeHash, "7", testHashBytes(3), "10"}},
+	}
+}
+
+func verifiedArtifactSourceExpectation(
+	exact bool,
+	codeHash []byte,
+	abi []byte,
+	sources []byte,
+	settings []byte,
+) sqlExpectation {
+	return sqlExpectation{
+		contains: "FROM verified_contracts AS verified", columns: fakeColumns(24),
+		rows: [][]driver.Value{{
+			exact, testAddressBytes(testContract), codeHash, "7", nil,
+			"123e4567-e89b-42d3-a456-426614174000", testHashBytes(8),
+			"A.sol", "A", "solidity", "v0.8.30+commit.73712a01", "full",
+			abi, sources, settings, []byte(`{}`), []byte(`{}`), []byte(`{}`),
+			nil, []byte(`{"match_type":"full","transformations":[],"values":{}}`),
+			nil, []byte(`{}`), false, time.Unix(100, 0).UTC(),
+		}},
 	}
 }
 
@@ -510,28 +548,20 @@ func TestProxyVerificationTargetQueryFencesAllCurrentIdentities(t *testing.T) {
 
 func TestVerifiedContractQueryBindsCanonicalCodeHashAndCurrentRange(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(verifiedContractSQL)
-	for _, required := range []string{
-		"JOIN canonical_blocks AS canonical ON canonical.chain_id = observation.chain_id AND canonical.number = observation.block_number AND canonical.block_hash = observation.block_hash",
-		"observation.canonical = TRUE",
-		"verified.code_hash = current_code.code_hash",
-		"verified.valid_from_block <= current_code.context_number",
-		"verified.valid_to_block >= current_code.context_number",
-		"ORDER BY (verified.match_type = 'full') DESC, verified.valid_from_block DESC, verified.request_digest ASC NULLS LAST",
-	} {
-		if !strings.Contains(query, compactSQL(required)) {
-			t.Fatalf("verified contract query does not contain %q: %s", compactSQL(required), query)
-		}
+	db := fakeDatabase(t)
+	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
+	if backend.artifacts == nil {
+		t.Fatal("verified contract backend has no shared artifact resolver")
 	}
 }
 
 func TestUnverifiedContractIsNotAnEmptySuccess(t *testing.T) {
 	t.Parallel()
 	currentCodeHash := testHashBytes(10)
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "verified.code_hash = current_code.code_hash", columns: fakeColumns(9),
-		rows: [][]driver.Value{{currentCodeHash, nil, nil, nil, nil, nil, nil, nil, nil}},
-	})
+	db := fakeDatabase(t,
+		currentArtifactTargetExpectation(currentCodeHash),
+		sqlExpectation{contains: "FROM verified_contracts AS verified", columns: fakeColumns(24)},
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getabi", Values: url.Values{"address": {testContract}}})
 	if result != "" || !errors.Is(err, ErrContractUnverified) {
@@ -542,7 +572,7 @@ func TestUnverifiedContractIsNotAnEmptySuccess(t *testing.T) {
 func TestVerifiedContractWithoutCanonicalCodeIsUnavailable(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t, sqlExpectation{
-		contains: "FROM contract_code_observations AS observation", columns: fakeColumns(9),
+		contains: "FROM contract_code_observations AS candidate", columns: fakeColumns(4),
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getabi", Values: url.Values{"address": {testContract}}})
@@ -553,13 +583,10 @@ func TestVerifiedContractWithoutCanonicalCodeIsUnavailable(t *testing.T) {
 
 func TestVerifiedContractRejectsMismatchedStoredCodeHash(t *testing.T) {
 	t.Parallel()
-	db := fakeDatabase(t, sqlExpectation{
-		contains: "verified.code_hash = current_code.code_hash", columns: fakeColumns(9),
-		rows: [][]driver.Value{{
-			testHashBytes(11), testHashBytes(12), []byte(`[]`), []byte(`{}`), []byte(`{}`),
-			"solidity", "v0.8.30+commit.73712a01", "full", "A",
-		}},
-	})
+	db := fakeDatabase(t,
+		currentArtifactTargetExpectation(testHashBytes(11)),
+		verifiedArtifactSourceExpectation(false, testHashBytes(12), []byte(`[]`), []byte(`{}`), []byte(`{}`)),
+	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getabi", Values: url.Values{"address": {testContract}}})
 	if result != "" || err == nil || errors.Is(err, ErrContractUnverified) || errors.Is(err, ErrStateUnavailable) {

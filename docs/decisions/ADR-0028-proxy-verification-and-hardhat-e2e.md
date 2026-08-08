@@ -44,8 +44,9 @@ canonical EIP-1167, EIP-1967, and beacon observations.
   binding only while the exact observation remains canonical and current.
   Upgrades and reorgs therefore hide stale bindings without rewriting history.
 - `getsourcecode` returns `Proxy: "1"` and the checksummed implementation only
-  for a current verified proxy binding. `getabi` continues to return the
-  queried address's own verified ABI.
+  for a current verified proxy binding. `getabi` and `getsourcecode` otherwise
+  share the native exact/same-code artifact resolver; a same-code response uses
+  `SimilarMatch` and never supplies target constructor evidence.
 - Successful E2E output is phase-bounded. Failure artifacts retain redacted
   Hardhat output, Compose state and logs, and bounded durable/public snapshots.
   API keys never enter commands, URLs recorded as artifacts, or logs.
@@ -85,8 +86,11 @@ than the historical mechanism-only publication:
   and current code identity for the proxy, implementation, and management
   contract on the PostgreSQL writer. A reorg, upgrade, or metamorphic code
   change hides the old binding without mutating its historical result.
-- A generic or partial observation may remain visible as discovery evidence,
-  but cannot authorize implementation-as-proxy or management writes.
+- A generic or partial observation may remain visible as discovery evidence
+  and, when the relation is unambiguous and high-confidence, may support
+  ordinary implementation ABI calls through the proxy under a fresh full
+  identity fence. It cannot authorize ProxyAdmin, beacon upgrade, UUPS upgrade,
+  or any other management operation; those remain exact-binding-only.
 - The production Hardhat gate pins real OpenZeppelin Contracts 5.6.1 fixtures
   for Transparent, UUPS, Beacon, Clones, and Initializable behavior in both
   monolith and split topologies.

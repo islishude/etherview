@@ -119,6 +119,23 @@ func TestABIRegistryHashesIndexedDynamicValues(t *testing.T) {
 	}
 }
 
+func TestABIRegistryDecodesAnonymousEventWithoutSignatureTopic(t *testing.T) {
+	t.Parallel()
+	registry := NewABIRegistry()
+	identity := testABIIdentity(10, 100, 1000)
+	abi := []byte(`[{"type":"event","name":"AnonymousValue","anonymous":true,"inputs":[{"name":"owner","type":"address","indexed":true},{"name":"value","type":"uint256"}]}]`)
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), abi); err != nil {
+		t.Fatal(err)
+	}
+	owner := testAddress(0x42)
+	result := registry.DecodeLog(identity, []common.Hash{addressWord(owner)}, wordBytes(uintWord(9)))
+	if result.Status != DecodeDecoded || result.Signature != "AnonymousValue(address,uint256)" ||
+		len(result.Arguments) != 2 || result.Arguments[0].Value != owner.String() ||
+		result.Arguments[1].Value != "9" {
+		t.Fatalf("anonymous result=%+v", result)
+	}
+}
+
 func TestABIRegistryIsolatesTargetCodeRangeAndFork(t *testing.T) {
 	t.Parallel()
 	registry := NewABIRegistry()

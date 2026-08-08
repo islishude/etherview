@@ -786,8 +786,16 @@ func contractArtifact(address string) (map[string]any, bool) {
 
 	fileName := contractName + ".sol"
 	return map[string]any{
-		"kind": "verification_success", "chain_id": "1", "address": address,
-		"code_hash": testHash, "valid_from_block": "1", "language": "solidity",
+		"kind": "verification_success", "resolution": "exact_address",
+		"target": map[string]any{
+			"chain_id": "1", "address": address, "code_hash": testHash,
+			"block_number": "100", "block_hash": secondHash,
+		},
+		"source": map[string]any{
+			"address": address, "code_hash": testHash, "valid_from_block": "1",
+			"created_at": "2026-08-02T00:00:01Z",
+		},
+		"language":         "solidity",
 		"compiler_version": "0.8.30", "file_name": fileName,
 		"contract_name": contractName, "is_blueprint": false, "abi": abi,
 		"sources": map[string]any{
@@ -802,7 +810,6 @@ func contractArtifact(address string) (map[string]any, bool) {
 		"runtime_match": map[string]any{
 			"match_type": "full", "transformations": []any{}, "values": map[string]any{},
 		},
-		"created_at": "2026-08-02T00:00:01Z",
 	}, true
 }
 
@@ -909,6 +916,15 @@ func contractProxy(address string) (map[string]any, bool) {
 			"address": address, "code_hash": testHash,
 		}},
 	}
+	interaction := map[string]any{
+		"mechanism": mechanism, "pattern": pattern,
+		"proxy":          proxyIdentity,
+		"implementation": contractIdentity(implementation, implementationKind),
+	}
+	if beacon != nil {
+		interaction["beacon"] = beacon
+	}
+	detail["implementation_interaction"] = interaction
 	if pattern != "clone" {
 		detail["standard_version"] = "5.6.1"
 	}
