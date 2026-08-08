@@ -75,6 +75,12 @@ describe("embedded explorer shell", () => {
     vi.unstubAllGlobals();
   });
 
+  it("returns 404 for the removed standalone contract route", async () => {
+    renderExplorer(`/contract/0x${"11".repeat(20)}`);
+
+    expect(await screen.findByRole("heading", { name: "404 ·" })).toBeVisible();
+  });
+
   it("renders a deep-linked route and switches language and theme", async () => {
     renderExplorer("/tokens");
 
@@ -697,6 +703,20 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
+      if (path === `/api/v1/addresses/${address}`) {
+        return Response.json({
+          data: {
+            address,
+            type: "contract",
+            balance: "0",
+            nonce: "0",
+            code_hash: codeHash,
+            at_block: codeHash,
+            completeness: {},
+          },
+          meta,
+        });
+      }
       if (path === `/api/v1/contracts/${address}/verification`) {
         expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
@@ -736,7 +756,7 @@ describe("embedded explorer shell", () => {
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/contract/${address}`);
+    renderExplorer(`/address/${address}#code`);
 
     expect(await screen.findByRole("heading", { name: "HostileText", level: 2 })).toBeVisible();
     const editor = screen.getByRole("textbox", {

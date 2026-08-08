@@ -237,7 +237,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("State block hash", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveAttribute(
     "href",
-    `/contract/${address}`,
+    `/address/${address}#code`,
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
@@ -315,7 +315,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
 
-  await page.goto(`/contract/${address}`);
+  await page.goto(`/address/${address}#code`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
@@ -388,7 +388,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     `/address/${address}`,
     `/address/${walletAccount}`,
     "/contracts",
-    `/contract/${address}`,
+    `/address/${address}#code`,
     "/verify",
     "/charts",
     "/charts/execution-fees?range=7d&interval=day",
@@ -429,7 +429,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     });
   });
 
-  await page.goto(`/contract/${address}`);
+  await page.goto(`/address/${address}#code`);
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();
@@ -474,7 +474,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await activateInView(transparentTabs.getByRole("tab", { name: "Initialization history" }));
   await expect(page.getByText("Initialized version 2", { exact: true })).toBeVisible();
 
-  await page.goto(`/contract/${uupsProxyAddress}`);
+  await page.goto(`/address/${uupsProxyAddress}#code`);
   await expect(page.getByRole("heading", { name: "ERC1967Proxy", level: 2 })).toBeVisible();
   const uupsTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(uupsTabs.getByRole("tab", { name: "Proxy management" })).toHaveCount(0);
@@ -496,7 +496,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await activateInView(uupsUpgrade.locator("summary"));
   await expect(uupsUpgrade.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
 
-  await page.goto(`/contract/${beaconProxyAddress}`);
+  await page.goto(`/address/${beaconProxyAddress}#code`);
   await expect(page.getByRole("heading", { name: "BeaconProxy", level: 2 })).toBeVisible();
   const beaconTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await activateInView(beaconTabs.getByRole("tab", { name: "Proxy management" }));
@@ -506,7 +506,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByText("Beacon implementation changed", { exact: true })).toBeVisible();
   await expect(page.getByText(beaconImplementation, { exact: true }).last()).toBeVisible();
 
-  await page.goto(`/contract/${cloneAddress}`);
+  await page.goto(`/address/${cloneAddress}#code`);
   await expect(page.getByRole("heading", { name: "MinimalClone", level: 2 })).toBeVisible();
   await page.getByRole("heading", { name: "Proxy identity" }).click();
   await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
@@ -1685,7 +1685,7 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
     };
   });
 
-  await page.goto(`/contract/${address}`);
+  await page.goto(`/address/${address}#code`);
   await activateInView(page.getByText("Connect wallet", { exact: true }).first());
   await activateInView(page.getByRole("button", { name: /E2E Wallet/ }));
 

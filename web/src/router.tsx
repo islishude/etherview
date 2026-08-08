@@ -19,7 +19,6 @@ import {
   TransactionsPage,
   VerifyPage,
 } from "@/pages/pages";
-import { ContractPage } from "@/pages/ContractPage";
 import {
   ChartMetricPage,
   ChartsPage,
@@ -106,11 +105,6 @@ const contractsRoute = createRoute({
   path: "/contracts",
   component: ContractsPage,
 });
-const contractRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/contract/$address",
-  component: ContractRoutePage,
-});
 const verifyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/verify",
@@ -188,7 +182,6 @@ const routeTree = rootRoute.addChildren([
   tokenRoute,
   nftRoute,
   contractsRoute,
-  contractRoute,
   verifyRoute,
   chartsRoute,
   chartMetricRoute,
@@ -225,11 +218,6 @@ function TokenRoutePage() {
 function NFTRoutePage() {
   const { address, tokenID } = nftRoute.useParams();
   return <EntityPage kind="nft" identifier={address} secondary={tokenID} />;
-}
-
-function ContractRoutePage() {
-  const { address } = contractRoute.useParams();
-  return <ContractPage address={address} />;
 }
 
 function SearchRoutePage() {

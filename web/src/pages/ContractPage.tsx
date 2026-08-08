@@ -5,10 +5,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
+import { ApiError } from "@/api/client";
 import { QueryNotice } from "@/components/QueryNotice";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
 import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
@@ -28,9 +29,7 @@ import {
   type ContractInteractionTarget,
 } from "@/contracts/targets";
 
-import { Page } from "./pages";
-
-type ContractTab =
+export type ContractTab =
   | "code"
   | "read-contract"
   | "write-contract"
@@ -40,6 +39,39 @@ type ContractTab =
   | "upgrades"
   | "initializations";
 
+export const CONTRACT_TAB_IDS: readonly ContractTab[] = [
+  "code",
+  "read-contract",
+  "write-contract",
+  "read-implementation",
+  "write-implementation",
+  "management",
+  "upgrades",
+  "initializations",
+];
+
+export function isContractTabHash(hash: string): hash is ContractTab {
+  return CONTRACT_TAB_IDS.includes(hash.replace(/^#/u, "") as ContractTab);
+}
+
+function contractTabFromHash(hash: string): ContractTab | undefined {
+  const normalized = hash.replace(/^#/u, "");
+  return isContractTabHash(normalized) ? normalized : undefined;
+}
+
+function contractTabLabel(tab: ContractTab, t: Translate): string {
+  switch (tab) {
+    case "code": return t("contracts.tabs.code");
+    case "read-contract": return t("contracts.tabs.readContract");
+    case "write-contract": return t("contracts.tabs.writeContract");
+    case "read-implementation": return t("contracts.tabs.readImplementation");
+    case "write-implementation": return t("contracts.tabs.writeImplementation");
+    case "management": return t("contracts.tabs.management");
+    case "upgrades": return t("contracts.tabs.upgrades");
+    case "initializations": return t("contracts.tabs.initializations");
+  }
+}
+
 interface CursorState {
   identity: string;
   cursors: string[];
@@ -47,7 +79,11 @@ interface CursorState {
 
 export function ContractPage({ address }: { address: string }) {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const validAddress = isAddress(address);
+  const requestedTab = contractTabFromHash(location.hash);
+  const activeTab = requestedTab ?? "code";
   const artifact = useVerifiedContractArtifact(address, validAddress);
   const proxy = useContractProxy(address, validAddress);
   const interactionTargets = useMemo<readonly ContractInteractionTarget[]>(() => {
@@ -89,7 +125,6 @@ export function ContractPage({ address }: { address: string }) {
     managementAddress,
     managementTarget?.abiCodeHash,
   );
-  const [activeTab, setActiveTab] = useState<ContractTab>("code");
   const [upgradeState, setUpgradeState] = useState<CursorState>({
     identity: address,
     cursors: [""],
@@ -119,6 +154,21 @@ export function ContractPage({ address }: { address: string }) {
     validAddress && isProxy && detected && activeTab === "initializations",
   );
 
+  const contractQueriesPending = artifact.isPending || proxy.isPending
+    || (implementationAddress.length > 0 && implementationArtifact.isPending)
+    || (managementAddress.length > 0 && managementArtifact.isPending);
+  const contractQueryErrors = [
+    artifact.error,
+    proxy.error,
+    implementationArtifact.error,
+    managementArtifact.error,
+  ];
+  const contractQueryTemporarilyUnavailable = contractQueryErrors.some((error) => {
+    if (error === undefined) return false;
+    return error instanceof TypeError || (error instanceof ApiError && (error.status >= 500 || error.status === 429));
+  });
+  const contractQueriesSettling = contractQueriesPending || contractQueryTemporarilyUnavailable;
+
   const tabs = useMemo(() => {
     const next: Array<{ id: ContractTab; label: string }> = [
       { id: "code", label: t("contracts.tabs.code") },
@@ -144,12 +194,31 @@ export function ContractPage({ address }: { address: string }) {
     if (detected) {
       next.push({ id: "initializations", label: t("contracts.tabs.initializations") });
     }
+    if (requestedTab && contractQueriesSettling && !next.some((tab) => tab.id === requestedTab)) {
+      next.push({ id: requestedTab, label: contractTabLabel(requestedTab, t) });
+    }
     return next;
-  }, [artifact.data?.abi, clone, detected, implementationArtifact.data?.abi, implementationArtifactMatches, managementArtifact.data?.abi, managementArtifactMatches, t]);
+  }, [artifact.data?.abi, clone, contractQueriesSettling, detected, implementationArtifact.data?.abi, implementationArtifactMatches, managementArtifact.data?.abi, managementArtifactMatches, requestedTab, t]);
 
   useEffect(() => {
-    if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab("code");
-  }, [activeTab, tabs]);
+    if (!requestedTab || contractQueriesSettling || tabs.some((tab) => tab.id === requestedTab)) return;
+    void navigate({
+      to: "/address/$address",
+      params: { address },
+      search: {},
+      hash: "code",
+      replace: true,
+    });
+  }, [address, contractQueriesSettling, navigate, requestedTab, tabs]);
+
+  const selectTab = (tabID: ContractTab) => {
+    void navigate({
+      to: "/address/$address",
+      params: { address },
+      search: {},
+      hash: tabID,
+    });
+  };
 
   const navigateTabs = (event: ReactKeyboardEvent<HTMLButtonElement>, tabID: ContractTab) => {
     const current = tabs.findIndex((tab) => tab.id === tabID);
@@ -162,12 +231,16 @@ export function ContractPage({ address }: { address: string }) {
     event.preventDefault();
     const selected = tabs[next];
     if (!selected) return;
-    setActiveTab(selected.id);
-    document.getElementById(`contract-tab-${selected.id}`)?.focus();
+    void navigate({
+      to: "/address/$address",
+      params: { address },
+      search: {},
+      hash: selected.id,
+    }).then(() => document.getElementById(`contract-tab-${selected.id}`)?.focus());
   };
 
   return (
-    <Page title={t("page.contract")} description={address} mono>
+    <>
       {!validAddress ? (
         <p className="form-error" role="alert">{t("contracts.invalidIdentity")}</p>
       ) : (
@@ -180,7 +253,7 @@ export function ContractPage({ address }: { address: string }) {
                 className={activeTab === tab.id ? "contract-tab active" : "contract-tab"}
                 id={`contract-tab-${tab.id}`}
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => selectTab(tab.id)}
                 onKeyDown={(event) => navigateTabs(event, tab.id)}
                 role="tab"
                 tabIndex={activeTab === tab.id ? 0 : -1}
@@ -277,7 +350,7 @@ export function ContractPage({ address }: { address: string }) {
           ))}
         </div>
       )}
-    </Page>
+    </>
   );
 }
 
@@ -411,7 +484,7 @@ function IdentityFact({
       <dd>
         {identity ? (
           <>
-            <Link to="/contract/$address" params={{ address: identity.address }}>
+            <Link hash="code" search={{}} to="/address/$address" params={{ address: identity.address }}>
               <code>{identity.address}</code>
             </Link>{" "}
             <small>{proxyVerificationLabel(identity.verification_state, t)}</small>
@@ -484,7 +557,7 @@ function UpgradeHistory({
           <p className="history-transition">
             <code>{item.old_implementation?.address ?? "—"}</code>
             <span aria-hidden="true">→</span>
-            <Link to="/contract/$address" params={{ address: item.new_implementation.address }}>
+            <Link hash="code" search={{}} to="/address/$address" params={{ address: item.new_implementation.address }}>
               <code>{item.new_implementation.address}</code>
             </Link>
           </p>
@@ -501,7 +574,7 @@ function UpgradeHistory({
             {item.emitter_address ? (
               <p>
                 <small>{t("contracts.history.emitter")}: </small>
-                <Link to="/contract/$address" params={{ address: item.emitter_address }}>
+                <Link hash="code" search={{}} to="/address/$address" params={{ address: item.emitter_address }}>
                   <code>{item.emitter_address}</code>
                 </Link>
               </p>
@@ -562,7 +635,7 @@ function InitializationHistory({
         <article className="history-card" key={`${item.transaction_hash}:${item.log_index}`}>
           <div className="history-card-heading">
             <strong>{t("contracts.initializations.version", { version: item.version })}</strong>
-            <Link to="/contract/$address" params={{ address: item.implementation.address }}>
+            <Link hash="code" search={{}} to="/address/$address" params={{ address: item.implementation.address }}>
               <code>{item.implementation.address}</code>
             </Link>
           </div>
@@ -674,7 +747,7 @@ function HistoryAddressFact({
   return (
     <p>
       <small>{label}: </small>
-      <Link to="/contract/$address" params={{ address: identity.address }}>
+      <Link hash="code" search={{}} to="/address/$address" params={{ address: identity.address }}>
         <code>{identity.address}</code>
       </Link>
       {identity.verification_state ? (

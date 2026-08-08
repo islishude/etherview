@@ -915,7 +915,7 @@ describe("core explorer pages", () => {
 
     expect(await screen.findByRole("link", { name: "Contract" })).toHaveAttribute(
       "href",
-      `/contract/${address}`,
+      `/address/${address}#code`,
     );
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
     const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");
@@ -1025,6 +1025,33 @@ describe("core explorer pages", () => {
     const txRow = txRowHash.closest("tr");
     if (!txRow) throw new Error("transactions row missing");
     expect(within(txRow).getByText("1.5")).toBeVisible();
+  });
+
+  it("clears a contract hash for an EOA and returns to transactions", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${address}`) {
+        return envelope({
+          address,
+          type: "eoa",
+          balance: "0",
+          nonce: "0",
+          at_block: canonicalHash,
+          completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${address}/transactions`) return envelope([]);
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${address}#code`);
+
+    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const transactions = within(addressTabs).getByRole("link", { name: "Transactions" });
+    await waitFor(() => expect(transactions).toHaveAttribute("aria-current", "page"));
+    expect(screen.queryByRole("link", { name: "Contract" })).not.toBeInTheDocument();
+    expect(await screen.findByText("No matching address activity is available in this snapshot.")).toBeVisible();
   });
 
   it("refreshes the first transaction page when a newly indexed transaction becomes visible", async () => {

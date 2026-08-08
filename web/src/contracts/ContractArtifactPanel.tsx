@@ -196,7 +196,7 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 			{artifact.resolution === "code_hash" ? (
 				<p className="chain-warning" role="status">
 					{t("contracts.artifact.similarMatch")}{" "}
-					<Link params={{ address: artifact.source.address }} to="/contract/$address">
+					<Link hash="code" params={{ address: artifact.source.address }} search={{}} to="/address/$address">
 						<code>{artifact.source.address}</code>
 					</Link>
 				</p>

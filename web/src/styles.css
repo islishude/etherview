@@ -1227,6 +1227,11 @@ tbody tr:hover {
   border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line));
 }
 
+.transaction-tab.contract-entry.active {
+  color: var(--on-brand);
+  background: var(--brand);
+}
+
 .address-activity {
   min-width: 0;
 }

@@ -49,6 +49,63 @@ afterEach(() => {
 });
 
 describe("contract proxy route", () => {
+  it("restores contract subpages from hashes and navigates between them", async () => {
+    installContractAPI({ pattern: "uups" });
+    renderContractRoute("read-contract");
+
+    const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
+    const read = within(tabs).getByRole("tab", { name: "Read contract" });
+    expect(read).toHaveAttribute("aria-selected", "true");
+    await userEvent.setup().click(await within(tabs).findByRole("tab", { name: "Write contract" }));
+    expect(within(tabs).getByRole("tab", { name: "Write contract" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("falls back to Code when a requested subpage is unavailable", async () => {
+    installContractAPI({ pattern: "none" });
+    renderContractRoute("management");
+
+    const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
+    await waitFor(() => expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    ));
+    expect(within(tabs).queryByRole("tab", { name: "Management" })).toBeNull();
+  });
+
+  it("preserves a requested subpage while a contract API request is temporarily unavailable", async () => {
+    installContractAPI({ pattern: "none", proxyStatus: 503 });
+    renderContractRoute("management");
+
+    const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
+    await waitFor(() => expect(within(tabs).getByRole("tab", { name: "Proxy management" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    ));
+  });
+
+  it.each([
+    ["code", "Code"],
+    ["read-contract", "Read contract"],
+    ["write-contract", "Write contract"],
+    ["read-implementation", "Read implementation (as proxy)"],
+    ["write-implementation", "Write implementation (as proxy)"],
+    ["management", "Proxy management"],
+    ["upgrades", "Upgrade history"],
+    ["initializations", "Initialization history"],
+  ] as const)("restores the %s deep link", async (hashID, label) => {
+    installContractAPI({ pattern: "transparent" });
+    renderContractRoute(hashID);
+
+    const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
+    await waitFor(() => expect(within(tabs).getByRole("tab", { name: label })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    ));
+  });
+
   it("shows a confirmed Safe shell and singleton without enabling legacy proxy writes", async () => {
     installContractAPI({ pattern: "none", safeDetection: true });
     renderContractRoute();
@@ -346,9 +403,9 @@ describe("contract proxy route", () => {
   );
 });
 
-function renderContractRoute() {
+function renderContractRoute(hash = "code") {
   const router = makeRouter(
-    createMemoryHistory({ initialEntries: [`/contract/${proxyAddress}`] }),
+    createMemoryHistory({ initialEntries: [`/address/${proxyAddress}#${hash}`] }),
   );
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -374,12 +431,14 @@ function installContractAPI({
   implementationArtifactCodeHash,
   managementArtifactCodeHash,
   safeDetection,
+  proxyStatus,
 }: {
   pattern: ContractPattern;
   staleHistory?: HistoryKind;
   implementationArtifactCodeHash?: string;
   managementArtifactCodeHash?: string;
   safeDetection?: boolean;
+  proxyStatus?: number;
 }) {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
     const url = new URL(String(input), "http://localhost");
@@ -393,7 +452,24 @@ function installContractAPI({
         features: { user_auth: false },
       });
     }
+    if (url.pathname === `/api/v1/addresses/${proxyAddress}`) {
+      return envelope({
+        address: proxyAddress,
+        type: "contract",
+        balance: "0",
+        nonce: "0",
+        code_hash: hash,
+        at_block: hash,
+        completeness: {},
+      });
+    }
     if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy`) {
+      if (proxyStatus !== undefined) {
+        return Response.json(
+          { error: { code: "temporary_failure", message: "temporarily unavailable" } },
+          { status: proxyStatus },
+        );
+      }
       const detail = proxyDetail(pattern);
       return envelope(safeDetection ? {
         ...detail,

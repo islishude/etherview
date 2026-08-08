@@ -55,6 +55,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T29 | done        | P50-T28       | Make the Proxy identity section collapsed by default in the Code tab | focused ContractPage tests and frontend gates |
 | P50-T30 | done        | P50-T29       | Keep unavailable-wallet action guidance complete and remove duplicate inline wallet messaging | focused ABI form and stylesheet regression tests |
 | P50-T31 | done        | P50-T30       | Decode verified constructor arguments into readable ABI parameter rows while retaining raw hex | focused ABI, component, and embedded browser regressions |
+| P50-T32 | done        | P50-T30       | Embed Contract beside address activity tabs and support hash-driven contract subpage deep links | focused frontend, embedded browser, accessibility, and generation regressions |
 
 ## Acceptance
 
@@ -593,3 +594,16 @@ None.
   `GOCACHE=/tmp/etherview-constructor-go-cache make plan-check`, and
   `git diff --check` pass. The host-authorized `make test-e2e` passes all 10
   embedded Chromium flows.
+- P50-T32 embeds the contract workspace under `/address/:address`, removes the
+  legacy `/contract/:address` route, and maps every contract subtab to a
+  browser-history-preserving hash. Recognized hashes override activity query
+  state, activity links clear hashes, contract lookup/search/artifact/proxy
+  links use `#code`, and unresolved EOA/unknown addresses replace an invalid
+  contract hash only after address classification. Contract requests remain
+  lazy and preserve a requested hash while dynamic tabs load; unavailable
+  hashes normalize to `#code`. The complete frontend suite passes 28 files and
+  252 tests; frontend lint and production build pass; `make generate-check`,
+  `make plan-check`, `git diff --check`, and the host-authorized `make check`
+  pass. The embedded Playwright suite passes all 10 flows with the bundled
+  single-process browser configuration, including deep links, keyboard/history,
+  responsive, bilingual, and WCAG coverage.

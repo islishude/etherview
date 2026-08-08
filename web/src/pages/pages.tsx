@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { getAddress, isAddress } from "viem";
@@ -40,6 +40,7 @@ import {
   useVerificationJob,
 } from "@/api/hooks";
 import { useHomeSnapshotStream } from "@/api/homeStream";
+import { ContractPage, isContractTabHash } from "./ContractPage";
 import type {
   AddressInternalTransaction,
   AddressSummary,
@@ -1097,11 +1098,17 @@ type AddressTab =
   | "internal-transactions"
   | "erc20-transfers"
   | "nft-transfers"
-  | "assets";
+  | "assets"
+  | "contract";
 
 function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const { i18n, t } = useTranslation();
-  const activeTab = isAddressTab(tab) ? tab : "transactions";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const contractHash = isContractTabHash(location.hash.replace(/^#/u, ""));
+  const activeTab: AddressTab = contractHash
+    ? "contract"
+    : isAddressTab(tab) ? tab : "transactions";
   const transactionPager = useCursorHistory(`address-transactions:${address}`);
   const internalPager = useCursorHistory(`address-internal-transactions:${address}`);
   const erc20Pager = useCursorHistory(`address-erc20-transfers:${address}`);
@@ -1160,6 +1167,18 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const qrPayload = publicConfig.data
     ? `ethereum:${displayAddress}@${publicConfig.data.chain_id}`
     : undefined;
+  const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
+
+  useEffect(() => {
+    if (!contractHash || account.isPending || account.error || contractAvailable) return;
+    void navigate({
+      to: "/address/$address",
+      params: { address },
+      search: {},
+      hash: "",
+      replace: true,
+    });
+  }, [account.error, account.isPending, address, contractAvailable, contractHash, navigate]);
 
   return (
     <Page
@@ -1198,16 +1217,20 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
             to="/address/$address"
             params={{ address }}
             search={{ tab: tabID }}
+            hash=""
             aria-current={activeTab === tabID ? "page" : undefined}
           >
             {label}
           </Link>
         ))}
-        {account.data?.type === "contract" && account.data.code_hash ? (
+        {contractAvailable ? (
           <Link
-            className="transaction-tab contract-entry"
-            to="/contract/$address"
-            params={{ address: account.data.address }}
+            aria-current={activeTab === "contract" ? "page" : undefined}
+            className={activeTab === "contract" ? "transaction-tab contract-entry active" : "transaction-tab contract-entry"}
+            hash="code"
+            params={{ address: account.data?.address ?? address }}
+            search={{}}
+            to="/address/$address"
           >
             {t("addressTab.contract")}
           </Link>
@@ -1315,6 +1338,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
           />
         </div>
       )}
+      {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
     </Page>
   );
 }
@@ -2094,8 +2118,10 @@ function TokenDetailPage({ address }: { address: string }) {
             mono
             value={(
               <Link
-                to="/contract/$address"
+                hash="code"
                 params={{ address: token.data.address }}
+                search={{}}
+                to="/address/$address"
               >
                 {token.data.code_hash}
               </Link>
@@ -2953,8 +2979,10 @@ export function ContractsPage() {
       return;
     }
     void navigate({
-      to: "/contract/$address",
+      to: "/address/$address",
       params: { address: getAddress(address) },
+      search: {},
+      hash: "code",
     });
   };
 
@@ -3134,7 +3162,7 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     case "address":
       return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
     case "contract":
-      return <Link className="search-result" to="/contract/$address" params={{ address: result.key }}>{content}</Link>;
+      return <Link className="search-result" hash="code" params={{ address: result.key }} search={{}} to="/address/$address">{content}</Link>;
     case "token":
       return <Link className="search-result" to="/token/$address" params={{ address: result.key }}>{content}</Link>;
     default:

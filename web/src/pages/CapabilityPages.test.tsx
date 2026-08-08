@@ -298,6 +298,20 @@ describe("P50 capability pages", () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({ verification: false });
+      if (path === `/api/v1/addresses/${address}`) {
+        return Response.json({
+          data: {
+            address,
+            type: "contract",
+            balance: "0",
+            nonce: "0",
+            code_hash: codeHash,
+            at_block: blockHash,
+            completeness: {},
+          },
+          meta,
+        });
+      }
       if (path === `/api/v1/contracts/${address}/verification`) {
         expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
@@ -338,7 +352,7 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/contract/${address}`);
+    renderExplorer(`/address/${address}#code`);
 
     expect(await screen.findByText(/no API key is required/)).toBeVisible();
     expect(await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 })).toBeVisible();
@@ -349,6 +363,20 @@ describe("P50 capability pages", () => {
   it("opens automatic contract discovery without code hash or manual calldata", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/v1/config") return configResponse({});
+      if (String(input) === `/api/v1/addresses/${address}`) {
+        return Response.json({
+          data: {
+            address,
+            type: "contract",
+            balance: "0",
+            nonce: "0",
+            code_hash: codeHash,
+            at_block: blockHash,
+            completeness: {},
+          },
+          meta,
+        });
+      }
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);

@@ -221,7 +221,14 @@ func main() {
 				"at_block": secondHash, "completeness": completeness(),
 			})
 		default:
-			writeNotFound(response)
+			if _, ok := contractArtifact(request.PathValue("address")); !ok {
+				writeNotFound(response)
+				return
+			}
+			writeEnvelope(response, map[string]any{
+				"address": request.PathValue("address"), "type": "contract", "balance": "0", "nonce": "0",
+				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+			})
 		}
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/transactions", func(response http.ResponseWriter, request *http.Request) {
