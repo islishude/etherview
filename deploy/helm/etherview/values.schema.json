@@ -653,7 +653,15 @@
                   "getTransaction",
                   "listPendingTransactions",
                   "getTransactionTrace",
+                  "listTransactionTokenTransfers",
+                  "listTransactionLogs",
+                  "listTransactionStateChanges",
                   "getAddress",
+                  "listAddressTransactions",
+                  "listAddressInternalTransactions",
+                  "listAddressERC20Transfers",
+                  "listAddressNFTTransfers",
+                  "listAddressERC20Balances",
                   "listAddressNFTBalances",
                   "listTokens",
                   "getToken",
@@ -661,9 +669,10 @@
                   "getNFTOwner",
                   "getBlockStats",
                   "getAggregateStats",
+                  "getChartOverview",
+                  "getChartMetric",
                   "search",
-                  "getVerifierJob",
-                  "getVerifiedContract"
+                  "getVerifierJob"
                 ]
               },
               "additionalProperties": {

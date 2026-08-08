@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AppendBillingPaymentEvent(ctx context.Context, arg AppendBillingPaymentEventParams) error
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
+	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error)
 	CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) (AuthChallenge, error)
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
@@ -29,9 +30,18 @@ type Querier interface {
 	GetCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric) (GetCanonicalBlockRow, error)
 	GetCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (GetCanonicalTipRow, error)
 	GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error)
+	GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error)
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
 	GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error)
+	GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error)
+	GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error)
 	GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUserForLoginParams) (GetOrCreateUserForLoginRow, error)
+	// Public proxy reads are executed on the PostgreSQL writer inside a
+	// repeatable-read, read-only transaction. Every derived fact below is joined
+	// to its current proxy@2 publication witness; raw or superseded generations
+	// are retained for audit but never cross the public boundary.
+	GetProxyAPISnapshot(ctx context.Context, chainID pgtype.Numeric) (GetProxyAPISnapshotRow, error)
+	GetProxyHistoryCoverage(ctx context.Context, arg GetProxyHistoryCoverageParams) (GetProxyHistoryCoverageRow, error)
 	GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, address []byte) (User, error)
 	GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (User, error)
 	GetX402TestnetWriterFence(ctx context.Context) (GetX402TestnetWriterFenceRow, error)
@@ -42,6 +52,8 @@ type Querier interface {
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
 	ListGenesisAccounts(ctx context.Context, arg ListGenesisAccountsParams) ([]ListGenesisAccountsRow, error)
 	ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric) ([]ListOperatorLabelsRow, error)
+	ListProxyInitializationHistory(ctx context.Context, arg ListProxyInitializationHistoryParams) ([]ListProxyInitializationHistoryRow, error)
+	ListProxyUpgradeHistory(ctx context.Context, arg ListProxyUpgradeHistoryParams) ([]ListProxyUpgradeHistoryRow, error)
 	ListRepairRequests(ctx context.Context, chainID pgtype.Numeric, rowLimit int32) ([]ListRepairRequestsRow, error)
 	ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]BillingPayment, error)
 	ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error)
@@ -67,6 +79,7 @@ type Querier interface {
 	UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error)
 	UpdateCurrentUserDisplayName(ctx context.Context, displayName *string, updatedAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	UpsertOperatorLabel(ctx context.Context, arg UpsertOperatorLabelParams) (UpsertOperatorLabelRow, error)
+	ValidateProxyAPISnapshot(ctx context.Context, arg ValidateProxyAPISnapshotParams) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)

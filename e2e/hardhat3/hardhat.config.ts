@@ -22,6 +22,13 @@ export default defineConfig({
     cache: "./build/cache",
   },
   solidity: {
+    npmFilesToBuild: [
+      "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
+      "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol",
+      "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol",
+      "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol",
+      "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol",
+    ],
     profiles: {
       default: {
         version: "0.8.30",

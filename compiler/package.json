@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "26.5.0"
+    "node": ">= 26.5.0"
   },
   "dependencies": {
     "solc": "0.8.36"

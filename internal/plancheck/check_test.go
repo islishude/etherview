@@ -62,6 +62,25 @@ func TestCheckAcceptsSupersededWorkItemAsSatisfiedDependency(t *testing.T) {
 	}
 }
 
+func TestCheckAcceptsCompletedItemWhenDependencyPlanIsReopened(t *testing.T) {
+	t.Parallel()
+
+	root := copyFixture(t)
+	replaceInFile(t, filepath.Join(root, "PLAN.md"),
+		"| P10 | [Indexing](docs/plans/P10-indexing.md) | planned |",
+		"| P10 | [Indexing](docs/plans/P10-indexing.md) | in_progress |",
+	)
+	planPath := filepath.Join(root, "docs", "plans", "P10-indexing.md")
+	replaceInFile(t, planPath, "Status: `planned`", "Status: `in_progress`")
+	replaceInFile(t, planPath, "| P10-T01 | todo | P00 |", "| P10-T01 | done | P00 |")
+	replaceInFile(t, planPath, "None yet.", "- P10-T01: historical fixture evidence passed.")
+
+	report := Check(root)
+	if !report.OK() {
+		t.Fatalf("reopened dependency fixture failed:\n%s", diagnosticText(report))
+	}
+}
+
 func TestCheckInvalidFixture(t *testing.T) {
 	t.Parallel()
 

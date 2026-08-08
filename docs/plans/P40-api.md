@@ -30,6 +30,7 @@ the agreed Etherscan V2 subset.
 | P40-T08 | done | P40-T02, P40-T07 | Snapshot-stable address transaction, internal-call, ERC-20, and NFT activity resources | contract, cursor, reorg, and capability tests |
 | P40-T09 | done | P40-T02, P40-T05 | Writer-authoritative home snapshot and centralized SSE fanout | contract, replay, concurrency, and integration tests |
 | P40-T10 | done | P20, P40-T08 | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration | contract, state, cursor, reorg, and configuration tests |
+| P40-T11 | done | P30-T15, P40-T10 | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests |
 
 ## Acceptance
 
@@ -41,12 +42,37 @@ the agreed Etherscan V2 subset.
 - [x] API keys are one-time revealed and only keyed hashes are stored.
 - [x] Transaction subresources expose one inclusion identity, stable pagination,
       bounded hostile data, and explicit optional-capability state.
+- [x] Proxy detail and histories expose only the current canonical published
+      generation, bind pagination to an immutable chain and publication
+      snapshot, and return a stable stale-cursor error after reorganization or
+      same-block publication replay.
 
 ## Current Blockers
 
 None.
 
 ## Evidence
+
+- P40-T11: the native API exposes current proxy identity plus separately
+  paginated upgrade and initialization histories from writer-authoritative,
+  canonical published generations. Opaque cursors bind the chain snapshot and
+  publication identity; exact OpenZeppelin 5.6.1 verification bindings fence
+  implementation and management targets, while verified-artifact GET is
+  anonymous and absent from API-key and x402 pricing surfaces.
+- P40-T11 verification: OpenAPI and generated Go/TypeScript contracts,
+  operation inventory, handlers, PostgreSQL queries, migrations, and runtime
+  wiring pass focused ordinary and race tests, the complete ordinary Go suite,
+  owned PostgreSQL integration and integration-race gates, and
+  `make generate-check`. Regressions cover stale cursors, same-block replay,
+  reorgs, Beacon fanout, initialization versions, binding invalidation,
+  immutable runtime authority, unverified management, and late exact Clone
+  evidence in split-stage publication.
+- P40-T11 production E2E: `make test-hardhat3-e2e` passes the real
+  `@openzeppelin/contracts@5.6.1` fixture in both production topologies
+  (`monolith` 225.84s and `distributed` 185.98s). It verifies Transparent,
+  UUPS, Beacon, standard and immutable-args Clones, initializer histories,
+  anonymous artifacts, native proxy APIs, and upgrade-driven binding
+  invalidation and rebinding.
 
 - P40-T09: `/api/v1/home/stream` publishes a bounded complete home snapshot
   with the durable runtime-event tail id. A single API-replica feed reads

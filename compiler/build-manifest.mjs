@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   lstatSync,
   readFileSync,
@@ -51,9 +51,6 @@ const nodeVersion = execFileSync(nodePath, ["--version"], {
   encoding: "utf8",
   env: {},
 }).trim();
-if (nodeVersion !== "v26.5.0") {
-  throw new Error(`unexpected Node version ${nodeVersion}`);
-}
 
 const manifest = {
   schema: "etherview-solcjs-runtime-v1",

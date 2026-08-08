@@ -680,7 +680,6 @@ describe("embedded explorer shell", () => {
   it("renders verified source artifacts as inert preformatted text", async () => {
     const address = `0x${"77".repeat(20)}`;
     const codeHash = `0x${"88".repeat(32)}`;
-    const secret = "ev_live_contract-query";
     const malicious = '<img src=x onerror="window.__etherviewPwned=true">';
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
@@ -699,12 +698,12 @@ describe("embedded explorer shell", () => {
         });
       }
       if (path === `/api/v1/contracts/${address}/verification`) {
-        expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+        expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
-            chain_id: "1",
-            address,
-            code_hash: codeHash,
+            resolution: "exact_address",
+            target: { chain_id: "1", address, code_hash: codeHash, block_number: "12", block_hash: codeHash },
+            source: { address, code_hash: codeHash, valid_from_block: "12", created_at: "2026-01-01T00:00:00Z" },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/Hostile.sol",
@@ -719,8 +718,17 @@ describe("embedded explorer shell", () => {
             runtime_code_artifacts: {},
             libraries: {},
             is_blueprint: false,
-            valid_from_block: "12",
-            created_at: "2026-01-01T00:00:00Z",
+          },
+          meta,
+        });
+      }
+      if (path === `/api/v1/contracts/${address}/proxy`) {
+        return Response.json({
+          data: {
+            address,
+            status: "not_detected",
+            snapshot: { chain_id: "1", block_number: "12", block_hash: codeHash },
+            evidence: [],
           },
           meta,
         });
@@ -728,16 +736,17 @@ describe("embedded explorer shell", () => {
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/contract/${address}?code_hash=${codeHash}`);
+    renderExplorer(`/contract/${address}`);
 
-    fireEvent.change(await screen.findByLabelText("API key"), { target: { value: secret } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Load verification" }));
-
-    expect(await screen.findByText("HostileText")).toBeVisible();
-    expect(screen.getAllByText(/<img src=x/).length).toBeGreaterThan(0);
-    expect(document.querySelector(".artifact-panel img")).toBeNull();
-    expect(document.querySelector(".artifact-panel script")).toBeNull();
-    expect(String(fetcher.mock.calls.find(([input]) => String(input).includes("/contracts/"))?.[0])).not.toContain(secret);
+    expect(await screen.findByRole("heading", { name: "HostileText", level: 2 })).toBeVisible();
+    const editor = screen.getByRole("textbox", {
+      name: "Read-only source editor for src/Hostile.sol",
+    });
+    expect(editor).toHaveAttribute("contenteditable", "false");
+    expect(editor).toHaveTextContent(malicious);
+    expect(document.querySelector(".contract-code-view img")).toBeNull();
+    expect(document.querySelector(".contract-code-view script")).toBeNull();
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 });
 

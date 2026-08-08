@@ -37,6 +37,23 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T11 | done        | P40-T09       | Atomic home snapshot EventSource with no REST polling fallback            | frontend, embedded E2E, and generation checks |
 | P50-T12 | done        | P40-T10       | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
 | P50-T13 | done        | P50-T12       | Add-network flow consolidated into the wallet menu                         | frontend unit, embedded E2E, responsive and a11y tests |
+| P50-T14 | done        | P40-T11, P50-T13 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
+| P50-T15 | done        | P50-T14       | Viem-compatible ABI result and revert formatting, including ERC-20 `decimals()`, plus fail-closed rejection of codec-unsupported types | focused ABI/form tests and common frontend gates |
+| P50-T16 | done        | P50-T15       | Etherscan-inspired verified source workspace, structured compiler settings, and summarized contract artifacts | focused frontend, embedded browser, responsive, accessibility, generation, security, and license gates |
+| P50-T17 | done        | P50-T16       | CSP-compatible CodeMirror layout with aligned source lines and gutters | focused frontend and live Preview browser regression |
+| P50-T18 | done        | P50-T17       | CSP-compatible stable semantic syntax highlighting for verified source | focused frontend and live Preview browser regression |
+| P50-T19 | done        | P50-T18       | Compact ABI read/write forms, stacked parameter inputs, copyable calldata, and explicit wallet connection guidance | focused ABI form tests, frontend lint/build, and applicable repository gates |
+| P50-T20 | done        | P50-T19       | ABI address inputs provide a current-wallet Self shortcut | focused ABI form and frontend regression tests |
+| P50-T21 | done        | P50-T20       | Compact Self control is visually inset within address inputs | focused frontend style and ABI form regression tests |
+| P50-T22 | done        | P50-T21       | Read/Write actions expose wallet guidance on hover when unavailable | focused ABI form and frontend regression tests |
+| P50-T23 | done        | P50-T22       | Remove the Actual call target label while retaining exact target visibility | focused ABI form and frontend regression tests |
+| P50-T24 | done        | P50-T23       | Replace unreliable native hover title with an explicit wallet guidance tooltip | focused ABI form and stylesheet regression tests |
+| P50-T25 | done        | P50-T24       | Refine wallet guidance tooltip into a compact floating bubble | focused ABI form and stylesheet regression tests |
+| P50-T26 | done        | P50-T25       | Remove the contract target address from ABI form presentation | focused ABI form regression tests |
+| P50-T27 | done        | P50-T26       | Close the wallet popover when the user clicks outside it | focused wallet-menu regression tests |
+| P50-T28 | done        | P50-T27       | Keep proxy identity and proxy histories scoped to actual proxy contracts, with identity shown in Code | focused ContractPage regression tests and frontend gates |
+| P50-T29 | done        | P50-T28       | Make the Proxy identity section collapsed by default in the Code tab | focused ContractPage tests and frontend gates |
+| P50-T30 | done        | P50-T29       | Keep unavailable-wallet action guidance complete and remove duplicate inline wallet messaging | focused ABI form and stylesheet regression tests |
 
 ## Acceptance
 
@@ -52,6 +69,12 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Transaction detail provides deep-linkable lazy tabs for overview, token
       transfers, logs, trace, and exact state changes in both languages and
       themes.
+- [x] Verified contract pages generate bounded typed ABI forms without manual
+      API keys, ABI JSON, or calldata; every as-proxy or management write is
+      fenced by the latest binding, chain, and account identity.
+- [x] Verified code pages expose a bilingual, theme-aware, strictly read-only
+      multi-file source workspace and summary-first compiler and artifact
+      details without external browser resources.
 
 ## Current Blockers
 
@@ -59,6 +82,134 @@ None.
 
 ## Evidence
 
+- The verified OpenZeppelin proxy browser regression now follows the compact
+  ABI form contract: target addresses and removed management-scope copy are
+  not asserted inside function cards, the Copy calldata action is present,
+  and the Clone Code tab reopens its Proxy identity disclosure before the
+  bilingual responsive checks. The documented bundled single-process
+  diagnostic run `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make
+  test-e2e` passes all 10 embedded browser flows; the ordinary host-access
+  retry was unavailable because its permission review timed out.
+- P50-T18 replaces CodeMirror's dynamically styled default highlighter with
+  Lezer's stable semantic class highlighter, allowing the existing bundled
+  `tok-*` theme rules to work under the production CSP for Solidity and Yul.
+  The focused six-test artifact suite, TypeScript lint, production build, npm
+  audit, generation, and plan checks pass. Preview image
+  `sha256:528bfac37637434d5048e5ebe3fa0f551ab70f185276bd09b9ccd844d361bbfa`
+  was rebuilt without replacing PostgreSQL or Reth. Live verification at
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` observes distinct computed
+  colors for `tok-keyword`, `tok-comment`, and `tok-string` while retaining a
+  `0px` first-line gutter delta. Two canonical `make test-e2e` launch requests
+  did not reach the test process because sandbox permission review timed out;
+  they produced no test failure.
+- P50-T17 moves CodeMirror's required editor, scroller, content, gutter, layer,
+  and search-panel structure into the bundled stylesheet because the accepted
+  production CSP rejects the library's runtime-injected inline stylesheet. An
+  embedded-browser regression measures the first source line against its line
+  number and requires sub-pixel alignment. The focused six-test artifact suite,
+  TypeScript lint, production build, and complete 10-flow `make test-e2e` gate
+  pass. Preview image
+  `sha256:4321f56f1bd78d16cc32d4627265bf3a81d540e94485d2035795414c72f1804e`
+  was rebuilt without replacing PostgreSQL or Reth; live verification at
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` measures a `0px` first-line
+  gutter delta with the scroller restored to flex layout.
+- P50-T16 replaces raw verified-contract JSON with a verification summary,
+  fail-closed inline-source parsing, main-file-first navigation, and a locally
+  bundled CodeMirror 6 workspace. Solidity uses the maintained Replit grammar,
+  Yul uses bounded local highlighting, and unknown languages remain selectable
+  plain text. Search, wrapping, copy feedback, fullscreen, keyboard selection,
+  and both CodeMirror read-only fences are covered by focused tests.
+- P50-T16 presents optimizer, runs, EVM version, via-IR, metadata, remappings,
+  source and library counts without guessing compiler defaults. Complex
+  optimizer details, output selection, model checker, linked libraries, the
+  full settings object, ABI, constructor arguments, declared transformations,
+  and compilation/code artifacts remain copyable disclosures. The existing
+  clipboard fallback is shared by the new and existing copy controls.
+- P50-T16 verification passes 14 focused artifact/contract tests, the complete
+  27-file/224-test Vitest suite, TypeScript lint, and the production build.
+  `make test-e2e` passes all 10 embedded Chromium flows, including multi-file
+  switching, strict read-only content, settings disclosure, bilingual themes,
+  narrow layout, keyboard behavior, and Axe coverage. Browser acceptance also
+  caught and closed a production-only CodeMirror chunk cycle by keeping the
+  CodeMirror, Lezer, and Solidity grammar graph in one deterministic vendor
+  chunk.
+- Final `make generate-check`, `make license-check`, `make plan-check`,
+  `git diff --check`, and `make check` pass. The web dependency audit reports
+  zero vulnerabilities, the production license scan accepts all new packages,
+  and the common gate passes generation, lint, ordinary/race tests, security
+  scans, Dockerfile/Compose validation, and Helm lint/render checks. The
+  independent Hardhat tree retains only its pre-existing low-severity
+  `elliptic` advisory below the enforced threshold.
+- P50-T15 fixes the ABI result formatter's incorrect assumption that every
+  Solidity integer decodes to `bigint`. Viem returns `number` for signed and
+  unsigned widths up to 48 bits and `bigint` above 48 bits; the formatter now
+  enforces that exact type split and the declared integer range recursively
+  through scalar, array, tuple, multi-output, and revert values. An ERC-20
+  `decimals() returns (uint8)` form now decodes and renders `18`. ABI `function`
+  values are rejected at the verified-ABI boundary because the selected Viem
+  codec cannot encode or decode that type, rather than rendering a form that
+  can only fail at submission.
+- P50-T15 focused verification passes 25 ABI and contract-form tests. The full
+  frontend suite passes all 26 files and 219 tests, TypeScript lint and the
+  production build pass, and `make test` passes the complete ordinary Go suite
+  plus the frontend suite. `GOCACHE=/tmp/etherview-abi-go-cache make
+  generate-check`, `make plan-check`, and `git diff --check` pass.
+- P50-T15 live Preview acceptance rebuilt image
+  `sha256:5889501300a320596a88be76d240cad6a95d357fc557233e00dfc71581d3a53f`
+  with `make recreate-preview`; PostgreSQL and Reth were retained and all six
+  application roles became healthy. The verified artifact for
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` contains
+  `decimals() returns (uint8)`, and an exact `eth_call` with selector
+  `0x313ce567` returns the 32-byte encoding of 18.
+- P50-T15's dependency closure updates the locked transitive `nanoid` from
+  3.3.16 to 3.3.18. `npm --prefix web audit --audit-level=high` reports zero
+  vulnerabilities, and the complete `make security-check` passes the
+  production build, Go vulnerability scan, working-tree and history secret
+  scans, all four npm high-severity audit gates, and the security-focused Go
+  tests. The independent Hardhat tree reports only its existing low-severity
+  `elliptic` advisory, which remains below the repository's enforced threshold.
+
+- P50-T14 replaces the API-key, ABI-JSON, calldata, and value workbench with
+  anonymous verified-artifact-driven function panels. Direct contract and
+  implementation pages, implementation calls through a proxy, exact
+  `ProxyAdmin` and `UpgradeableBeacon` management targets, overloads, tuples,
+  nested arrays, bounded integers, bytes, payable value, multiple returns, and
+  decoded reverts share the injected-wallet boundary. Every implementation or
+  management submission refreshes and compares binding, chain, account, and
+  transaction target; high-risk upgrades expose their exact target and Beacon
+  impact, and an unmatchable submission remains an unknown outcome.
+- P50-T14 browser acceptance against the rebuilt seven-role Preview covers the
+  OpenZeppelin 5.6.1 UUPS proxy at
+  `0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9`, Transparent/ProxyAdmin,
+  two proxies sharing one UpgradeableBeacon, standard and immutable-args
+  Clones, direct-only UUPS `proxiableUUID()`, current implementation links,
+  complete upgrade and initialization timelines, and the absence of the old
+  manual workbench. Generic or incomplete evidence stays read-only; Clones are
+  explicitly immutable and have no upgrade controls.
+- P50-T14 Preview replay pins one canonical 0--387 snapshot and completes
+  `proxy@2` followed by `abi@2` at 388/388. The final UUPS binding is
+  `d3f21003-7683-4f81-b0b7-f12c2128a3c2`; upgrade reindexing invalidates the
+  prior binding, shared Beacon history stores one observation and resolves to
+  both linked proxies, runtime immutable admin/beacon values remain
+  authoritative over compatibility slots, and initialization versions 1 and 2
+  retain their event-time implementation linkage. Anonymous artifact and
+  proxy/history APIs return the verified artifacts and complete canonical
+  histories without an API key; the temporary acceptance key was revoked.
+- P50-T14 frontend verification passes TypeScript lint, all 26 Vitest files
+  with 217 tests, the production build, and the 10-flow embedded browser E2E
+  including bilingual, responsive, keyboard, and accessibility coverage. The
+  raw-signing helper used by Reth passes 3 focused Node tests and syntax checks.
+  `make generate-check`, `make test-e2e`, `make plan-check`, and
+  `git diff --check` pass. The complete `make check` passes generation,
+  ordinary/race tests, security and license scans, Dockerfile/Compose
+  validation, and Helm lint/render checks.
+- P50-T14's final `make test-hardhat3-e2e` uses the pinned real
+  `@openzeppelin/contracts@5.6.1` fixtures and passes in 456.74 seconds:
+  monolith in 223.80 seconds and the complete distributed topology in 232.20
+  seconds. It covers verified and unverified management, runtime immutable
+  authority, durable bindings, upgrade invalidation/rebinding, anonymous
+  artifacts, and the native proxy APIs. Preview remains running for manual
+  review; no commit or pull request was created.
 - P50-T11: the home route owns exactly one same-origin `/api/v1/home/stream`
   EventSource. A bounded strict validator accepts only complete status, block,
   transaction, and coverage envelopes and replaces all three UI regions in
@@ -367,3 +518,66 @@ None.
   tests, security and license scans, Dockerfile/Compose validation, and Helm
   lint/render checks; sandboxed cache/config reads emitted warnings without
   changing their successful results.
+- P50-T19 changes ABI scalar and payable inputs to a stacked heading/type and
+  control layout, adds compact themed Query/Write and Copy calldata actions,
+  centralizes clipboard fallback reuse, and shows localized wallet connection
+  or chain mismatch guidance while keeping calldata copying wallet-independent.
+  Focused ABI coverage passes 18 tests, the full frontend suite passes 27 files
+  with 229 tests, and `npm --prefix web run lint`, `npm --prefix web run build`,
+  `make test`, `make plan-check`, and `git diff --check` pass.
+- P50-T20 adds a localized Self shortcut to every address ABI input, including
+  nested tuple and array fields. It fills the connected wallet account without
+  touching the wallet RPC boundary and stays disabled when no account is
+  active. The focused ABI suite passes 19 tests, the complete frontend suite
+  passes 27 files with 230 tests, and lint, production build,
+  `make generate-check`, `make plan-check`, and `git diff --check` pass.
+- P50-T21 reduces the Self control to a compact borderless inset action inside
+  the address input, with theme-aware hover/focus/disabled states. The focused
+  ABI and stylesheet suites pass 20 tests, and frontend lint, production build,
+  and `git diff --check` pass.
+- P50-T22 wraps disabled Read/Write actions in hoverable guidance containers so
+  browser tooltips remain available even when the buttons cannot receive hover
+  events. The focused ABI and stylesheet suites pass 20 tests, frontend lint
+  and production build pass, and the wallet guidance title is regression-tested.
+- P50-T23 removes the `Actual call target` explanatory label while retaining the
+  exact transaction target address for safety-sensitive review. The focused ABI
+  suite passes 20 tests, frontend lint and production build pass, and the
+  absence of the label is regression-tested.
+- P50-T24 replaces the unreliable native hover title with an explicit tooltip
+  that opens on hover/focus and dismisses on pointer interaction outside the
+  action. The focused ABI and stylesheet suites pass 21 tests, frontend lint
+  and production build pass, and `make plan-check` plus `git diff --check` pass.
+- P50-T25 changes the wallet guidance from a full-width action-row block to a
+  compact floating bubble above the disabled action, with content-sized width,
+  theme-aware contrast, shadow, and a short fade/slide transition. The focused
+  ABI and stylesheet suites pass 21 tests, and frontend lint, production build,
+  `make plan-check`, and `git diff --check` pass.
+- P50-T26 removes the rendered transaction target address and its obsolete
+  management-impact presentation from ABI forms while preserving the internal
+  transaction target used for calls. The focused ABI suite passes 20 tests,
+  frontend lint and production build pass, and the absence of the address is
+  regression-tested.
+- P50-T27 closes the native wallet `details` popover on pointer input outside
+  its menu while preserving internal wallet-option interactions. The focused
+  WalletMenu suite passes 2 tests, frontend type checking and production build
+  pass, and `make plan-check` plus `git diff --check` pass. The complete web
+  suite has 230 passing tests and 3 pre-existing failures in ContractPage tests
+  that still expect the transaction target removed by P50-T26.
+- P50-T28 renders Proxy identity inside the Code tab only when the API returns
+  an actual proxy identity, and exposes neither proxy history tab nor history
+  request for non-proxy contracts. The focused ContractPage suite passes 10
+  tests, the complete frontend suite passes 28 files with 234 tests, and
+  frontend lint, production build, `make plan-check`, and `git diff --check`
+  pass. Existing ContractPage assertions were aligned with P50-T26's removal
+  of rendered transaction targets.
+- P50-T29 makes Proxy identity a native details disclosure that is collapsed by
+  default, while keeping its title and status visible and preserving all
+  identity/evidence content when expanded. The ContractPage suite passes 10
+  tests, the complete frontend suite passes 28 files with 234 tests, and
+  frontend lint and production build pass.
+- P50-T30 removes the duplicate inline unavailable-wallet and chain-mismatch
+  notices from ABI forms and keeps the full wallet guidance in the action
+  tooltip. The tooltip is anchored within the action area so its text remains
+  visible at narrow widths. The focused and complete frontend suites pass (20
+  and 234 tests), frontend lint and production build pass, and
+  `make plan-check` plus `git diff --check` pass.

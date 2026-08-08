@@ -187,6 +187,51 @@ func TestPostgresEnqueueIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPostgresEnqueueRecordsInitialReplaySource(t *testing.T) {
+	t.Parallel()
+	stage := StageID{Name: "proxy", Version: 2}
+	hash := uintWord(11)
+	recorded := false
+	backend := &fakeSQLBackend{
+		query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+			switch {
+			case strings.Contains(query, "FROM durable_jobs"):
+				return emptyJobRows(), nil
+			case strings.Contains(query, "INSERT INTO durable_jobs"):
+				return durableJobRow(42, 0, stage, hash, 100), nil
+			default:
+				return nil, fmt.Errorf("unexpected query: %s", query)
+			}
+		},
+		exec: func(query string, arguments []driver.NamedValue) (driver.Result, error) {
+			if !strings.Contains(query, "INSERT INTO durable_job_replay_requests") {
+				return nil, fmt.Errorf("unexpected exec: %s", query)
+			}
+			if len(arguments) != 4 || arguments[0].Value != int64(42) ||
+				arguments[1].Value != "verification-publication" ||
+				arguments[2].Value != "verification-job" || arguments[3].Value != int64(1) {
+				t.Fatalf("initial replay source arguments = %+v", arguments)
+			}
+			recorded = true
+			return driver.RowsAffected(1), nil
+		},
+	}
+	queue, err := NewPostgresJobQueue(openFakeSQLDB(t, backend))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := queue.Enqueue(t.Context(), EnqueueRequest{
+		Stage: stage, ChainID: "1", BlockHash: hash, BlockNumber: 100,
+		Replay: ReplaySource{Kind: "verification-publication", Key: "verification-job"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.Replayed || result.Job.Generation != 1 || !recorded {
+		t.Fatalf("initial replay enqueue = %+v recorded=%t", result, recorded)
+	}
+}
+
 func TestPostgresClaimUsesAdvisoryFirstRevalidationAndConcurrentTokens(t *testing.T) {
 	t.Parallel()
 	stage := StageID{Name: "trace", Version: 3}

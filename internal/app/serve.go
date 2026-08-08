@@ -19,6 +19,7 @@ import (
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -509,11 +510,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		homeReader, err := query.NewPostgresReader(db, queryOptions)
+		writerReader, err := query.NewPostgresReader(db, queryOptions)
 		if err != nil {
 			return err
 		}
-		homeFeed, err := httpapi.NewHomeFeed(homeReader, broker, httpapi.HomeFeedOptions{
+		homeFeed, err := httpapi.NewHomeFeed(writerReader, broker, httpapi.HomeFeedOptions{
 			ChainID: cfg.Chain.ID,
 			Logger:  logger,
 		})
@@ -548,9 +549,14 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if redisAccelerator != nil {
 			publicReader = redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
 		}
+		artifactResolver, err := contractartifact.NewResolver(db)
+		if err != nil {
+			return err
+		}
 		compatibilityOptions := etherscan.PostgresOptions{
 			ChainID: cfg.Chain.ID, State: compatibilityState, Price: priceProvider,
-			Verification: compatibilityVerification, VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
+			Verification: compatibilityVerification, Artifacts: artifactResolver,
+			VerificationMaxInputBytes: cfg.Verification.MaxInputBytes,
 		}
 		readCompatibilityBackend, err := etherscan.NewPostgresBackend(readDB, compatibilityOptions)
 		if err != nil {
@@ -642,8 +648,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Analytics: analyticsReader,
-			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
+			Analytics:   analyticsReader,
+			ProxyReader: newProxyReaderAdapter(writerReader, cfg.Chain.ID),
+			Etherscan:   compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,

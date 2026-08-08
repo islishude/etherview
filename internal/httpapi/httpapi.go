@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -81,6 +82,7 @@ var (
 const (
 	maximumOpaqueCursorLength = 1024
 	maximumPageSize           = 100
+	maximumNativeQueryBytes   = 4096
 )
 
 type StatusSnapshot struct {
@@ -137,7 +139,7 @@ type readinessStatusReader interface {
 
 type VerificationReader interface {
 	Job(context.Context, string) (verify.VerificationJob, bool, error)
-	VerifiedContract(context.Context, uint64, string, string) (verify.VerifiedContract, bool, error)
+	VerifiedContract(context.Context, uint64, string) (verify.VerifiedContract, bool, error)
 }
 
 type VerificationSubmitter interface {
@@ -150,6 +152,12 @@ type CompilerCatalogReader interface {
 
 type VerificationTargetResolver interface {
 	ResolveVerificationTarget(context.Context, string) (verify.VerificationTarget, error)
+}
+
+type ProxyReader interface {
+	Proxy(context.Context, string) (gen.ProxyDetails, error)
+	ProxyUpgrades(context.Context, string, string, int) (gen.ProxyUpgradeHistory, string, error)
+	ProxyInitializations(context.Context, string, string, int) (gen.ProxyInitializationHistory, string, error)
 }
 
 type Options struct {
@@ -171,6 +179,7 @@ type Options struct {
 	VerificationSubmitter VerificationSubmitter
 	CompilerCatalog       CompilerCatalogReader
 	VerificationTargets   VerificationTargetResolver
+	ProxyReader           ProxyReader
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
 	Billing               *billing.HTTPDispatcher
@@ -203,6 +212,7 @@ type Handler struct {
 	verificationSubmitter VerificationSubmitter
 	compilerCatalog       CompilerCatalogReader
 	verificationTargets   VerificationTargetResolver
+	proxyReader           ProxyReader
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
 	billing               *billing.HTTPDispatcher
@@ -253,6 +263,7 @@ func New(options Options) (*Handler, error) {
 		verificationSubmitter: options.VerificationSubmitter,
 		compilerCatalog:       options.CompilerCatalog,
 		verificationTargets:   options.VerificationTargets,
+		proxyReader:           options.ProxyReader,
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
 		billing:               options.Billing,
@@ -362,7 +373,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/verifier/compilers", h.verifierCompilers)
 	h.mux.HandleFunc("POST /api/v1/verifier/lookup-methods", h.lookupVerifierMethods)
 	h.handleBillable("getVerifierJob", h.verificationJob)
-	h.handleBillable("getVerifiedContract", h.verifiedContract)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/verification", h.verifiedContract)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy", h.contractProxy)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/upgrades", h.contractProxyUpgrades)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/initializations", h.contractProxyInitializations)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -1616,6 +1630,7 @@ func (h *Handler) transactionLogs(w http.ResponseWriter, r *http.Request) {
 		copy(topics, item.Topics)
 		items[index] = gen.TransactionLog{
 			Address: item.Address, LogIndex: item.LogIndex, Topics: topics, Data: item.Data,
+			Decoding: transactionLogDecodingModel(item.Decoding),
 		}
 	}
 	meta := h.meta(r)
@@ -1625,6 +1640,50 @@ func (h *Handler) transactionLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TransactionLogResponse{
 		Data: transactionLogsModel(page.Identity, items), Meta: meta,
 	})
+}
+
+func transactionLogDecodingModel(value catalog.TransactionLogDecoding) gen.TransactionLogDecoding {
+	if value.Status == "" {
+		value.Status = "unavailable"
+	}
+	model := gen.TransactionLogDecoding{
+		Status:     gen.TransactionLogDecodingStatus(value.Status),
+		Arguments:  make([]gen.TransactionLogArgument, len(value.Arguments)),
+		Candidates: make([]string, len(value.Candidates)),
+	}
+	copy(model.Candidates, value.Candidates)
+	for index, argument := range value.Arguments {
+		model.Arguments[index] = gen.TransactionLogArgument{
+			Name: argument.Name, Type: argument.Type, Indexed: argument.Indexed,
+			Hashed: argument.Hashed, Value: argument.Value,
+		}
+	}
+	if value.EventName != "" {
+		model.EventName = &value.EventName
+	}
+	if value.Signature != "" {
+		model.Signature = &value.Signature
+	}
+	if value.Confidence != "" {
+		confidence := gen.TransactionLogDecodingConfidence(value.Confidence)
+		model.Confidence = &confidence
+	}
+	if value.Warning != "" {
+		model.Warning = &value.Warning
+	}
+	if value.ABISource != nil {
+		source := gen.TransactionLogABISource{Kind: gen.TransactionLogABISourceKind(value.ABISource.Kind)}
+		if value.ABISource.Address != "" {
+			address := gen.Address(value.ABISource.Address)
+			source.Address = &address
+		}
+		if value.ABISource.CodeHash != "" {
+			codeHash := gen.Hash(value.ABISource.CodeHash)
+			source.CodeHash = &codeHash
+		}
+		model.AbiSource = &source
+	}
+	return model
 }
 
 func (h *Handler) transactionStateChanges(w http.ResponseWriter, r *http.Request) {
@@ -1891,24 +1950,19 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
+	if _, ok := parseExactQuery(w, r); !ok {
+		return
+	}
 	if !h.verificationReadAvailable(w, r) {
 		return
 	}
-	if !h.requireAPIKey(w, r) {
-		return
-	}
 	address := strings.ToLower(r.PathValue("address"))
-	if !addressPattern.MatchString(address) || h.verificationTargets == nil {
+	if !addressPattern.MatchString(address) {
 		writeError(w, r, http.StatusBadRequest, "invalid_contract_identity", "address must be a fixed-size hexadecimal value", nil)
 		return
 	}
-	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
-	if err != nil {
-		h.handleVerificationTargetError(w, r, err)
-		return
-	}
 	contract, found, err := h.verificationReader.VerifiedContract(
-		r.Context(), h.cfg.Chain.ID, address, strings.ToLower(target.CodeHash),
+		r.Context(), h.cfg.Chain.ID, address,
 	)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
@@ -1925,6 +1979,124 @@ func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.VerifiedContractResponse{Data: model, Meta: h.meta(r)})
+}
+
+func (h *Handler) contractProxy(w http.ResponseWriter, r *http.Request) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := parseExactQuery(w, r); !ok {
+		return
+	}
+	if h.proxyReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "proxy_unavailable", "proxy details are unavailable", nil)
+		return
+	}
+	detail, err := h.proxyReader.Proxy(r.Context(), address)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ProxyDetailsResponse{Data: detail, Meta: h.meta(r)})
+}
+
+func (h *Handler) contractProxyUpgrades(w http.ResponseWriter, r *http.Request) {
+	h.contractProxyHistory(w, r, true)
+}
+
+func (h *Handler) contractProxyInitializations(w http.ResponseWriter, r *http.Request) {
+	h.contractProxyHistory(w, r, false)
+}
+
+func (h *Handler) contractProxyHistory(w http.ResponseWriter, r *http.Request, upgrades bool) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	values, ok := parseExactQuery(w, r, "cursor", "limit")
+	if !ok {
+		return
+	}
+	cursor := ""
+	if items, present := values["cursor"]; present {
+		cursor = items[0]
+	}
+	if len(cursor) > maximumOpaqueCursorLength || (values.Has("cursor") && cursor == "") {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or too long", nil)
+		return
+	}
+	limit, ok := parseExactLimit(w, r, values, 20)
+	if !ok {
+		return
+	}
+	if h.proxyReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "proxy_unavailable", "proxy history is unavailable", nil)
+		return
+	}
+	if upgrades {
+		page, next, err := h.proxyReader.ProxyUpgrades(r.Context(), address, cursor, limit)
+		if err != nil {
+			h.handleReaderError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, gen.ProxyUpgradeHistoryResponse{
+			Data: page, Meta: pageMeta(h.meta(r), next),
+		})
+		return
+	}
+	page, next, err := h.proxyReader.ProxyInitializations(r.Context(), address, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.ProxyInitializationHistoryResponse{
+		Data: page, Meta: pageMeta(h.meta(r), next),
+	})
+}
+
+func pageMeta(meta gen.Meta, next string) gen.Meta {
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	return meta
+}
+
+func parseExactQuery(w http.ResponseWriter, r *http.Request, allowed ...string) (url.Values, bool) {
+	if len(r.URL.RawQuery) > maximumNativeQueryBytes {
+		writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+		return nil, false
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+		return nil, false
+	}
+	allowlist := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		allowlist[name] = struct{}{}
+	}
+	for name, items := range values {
+		if _, exists := allowlist[name]; !exists || name == "" || len(items) != 1 {
+			writeError(w, r, http.StatusBadRequest, "invalid_query", "query parameters are invalid", nil)
+			return nil, false
+		}
+	}
+	return values, true
+}
+
+func parseExactLimit(w http.ResponseWriter, r *http.Request, values url.Values, defaultValue int) (int, bool) {
+	items, present := values["limit"]
+	if !present {
+		return defaultValue, true
+	}
+	raw := items[0]
+	value, err := strconv.Atoi(raw)
+	if err != nil || strconv.Itoa(value) != raw || value < 1 || value > maximumPageSize {
+		writeError(w, r, http.StatusBadRequest, "invalid_limit", fmt.Sprintf("limit must be between 1 and %d", maximumPageSize), nil)
+		return 0, false
+	}
+	return value, true
 }
 
 func (h *Handler) verificationReadAvailable(w http.ResponseWriter, r *http.Request) bool {
@@ -2006,9 +2178,13 @@ func verificationJobModel(job verify.VerificationJob) gen.VerificationJob {
 func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContract, error) {
 	var abi []map[string]any
 	var sources, settings, compilation, creationArtifacts, runtimeArtifacts map[string]any
-	address, err := checksumAddress(contract.Address)
+	targetAddress, err := checksumAddress(contract.Target.Address)
 	if err != nil {
-		return gen.VerifiedContract{}, fmt.Errorf("checksum verified contract address: %w", err)
+		return gen.VerifiedContract{}, fmt.Errorf("checksum artifact target address: %w", err)
+	}
+	sourceAddress, err := checksumAddress(contract.Source.Address)
+	if err != nil {
+		return gen.VerifiedContract{}, fmt.Errorf("checksum artifact source address: %w", err)
 	}
 	if err := json.Unmarshal(contract.ABI, &abi); err != nil {
 		return gen.VerifiedContract{}, err
@@ -2042,15 +2218,25 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		fileName = "unknown"
 	}
 	model := gen.VerifiedContract{
-		ChainId: strconv.FormatUint(contract.ChainID, 10), Address: address, CodeHash: contract.CodeHash,
-		ValidFromBlock: strconv.FormatUint(contract.ValidFromBlock, 10),
-		Kind:           gen.VerifiedContractKindVerificationSuccess, Language: gen.VerifierLanguage(contract.Language),
+		Resolution: gen.VerifiedContractResolution(contract.Resolution),
+		Target: gen.ContractArtifactTarget{
+			ChainId: strconv.FormatUint(contract.Target.ChainID, 10),
+			Address: targetAddress, CodeHash: contract.Target.CodeHash,
+			BlockNumber: strconv.FormatUint(contract.Target.BlockNumber, 10),
+			BlockHash:   contract.Target.BlockHash,
+		},
+		Source: gen.ContractArtifactSource{
+			Address: sourceAddress, CodeHash: contract.Source.CodeHash,
+			ValidFromBlock: strconv.FormatUint(contract.Source.ValidFromBlock, 10),
+			CreatedAt:      contract.Source.CreatedAt.UTC(),
+		},
+		Kind: gen.VerifiedContractKindVerificationSuccess, Language: gen.VerifierLanguage(contract.Language),
 		CompilerVersion: contract.CompilerVersion, FileName: fileName,
 		ContractName: contract.ContractName, Abi: &abi, Sources: sources, Settings: settings,
 		CompilationArtifacts: compilation, CreationCodeArtifacts: creationArtifacts,
 		RuntimeCodeArtifacts: runtimeArtifacts, CreationMatch: matchDetailsModel(contract.CreationMatch),
 		RuntimeMatch: matchDetailsModel(contract.RuntimeMatch), Libraries: contract.Libraries,
-		IsBlueprint: contract.IsBlueprint, CreatedAt: contract.CreatedAt.UTC(),
+		IsBlueprint: contract.IsBlueprint,
 	}
 	if model.Libraries == nil {
 		model.Libraries = map[string]string{}
@@ -2059,9 +2245,9 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		value := contract.ConstructorArguments
 		model.ConstructorArguments = &value
 	}
-	if contract.ValidToBlock != nil {
-		value := strconv.FormatUint(*contract.ValidToBlock, 10)
-		model.ValidToBlock = &value
+	if contract.Source.ValidToBlock != nil {
+		value := strconv.FormatUint(*contract.Source.ValidToBlock, 10)
+		model.Source.ValidToBlock = &value
 	}
 	return model, nil
 }
@@ -2077,6 +2263,9 @@ func matchDetailsModel(details *verify.VerificationMatchDetails) *gen.Verificati
 	var model gen.VerificationMatchDetails
 	if json.Unmarshal(encoded, &model) != nil {
 		return nil
+	}
+	if model.Transformations == nil {
+		model.Transformations = make([]gen.VerificationTransformation, 0)
 	}
 	return &model
 }

@@ -208,6 +208,21 @@ describe("billing pages", () => {
     expect(screen.getByText(apiKeyPrefix, { exact: true })).toBeVisible();
     expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(count, { exact: true }).length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("option", { name: "getVerifiedContract" }),
+    ).not.toBeInTheDocument();
+    for (const operation of [
+      "listTransactionTokenTransfers",
+      "listTransactionLogs",
+      "listTransactionStateChanges",
+      "listAddressTransactions",
+      "listAddressInternalTransactions",
+      "listAddressERC20Transfers",
+      "listAddressNFTTransfers",
+      "listAddressERC20Balances",
+    ]) {
+      expect(screen.getByRole("option", { name: operation })).toBeInTheDocument();
+    }
 
     const networkInput = screen.getByRole("textbox", { name: "Network" });
     await user.type(networkInput, "ethereum-mainnet");

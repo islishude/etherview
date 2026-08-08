@@ -168,8 +168,10 @@ of the callback. The routing and lag contract is specified in
   and keeps the process alive and scrapeable until operator cancellation and a
   repair/restart. The Prometheus rule alerts on that durable in-process signal.
 - A core refresh invalidates replayable output directly derived from that
-  block. Rebuilding ABI, token, statistics, or trace output is an explicit,
-  block-hash-scoped reindex operation; active leases are never reset.
+  block. Rebuilding proxy, ABI, token, statistics, or trace output is an
+  explicit, block-hash-scoped reindex operation; active leases are never
+  reset. A versioned proxy/ABI cutover is replayed in dependency order,
+  `proxy` before `abi`, rather than by an unbounded migration enqueue.
 - Proxy/code, ABI, token, statistics, and normalized-trace production
   processors atomically persist their block-local output, exact durable-job
   generation marker, stage result, one versioned `stage@version` journal, and
@@ -234,20 +236,40 @@ of the callback. The routing and lag contract is specified in
   transitions. They do not contain untrusted RPC data and do not claim storage,
   rollback, or replay of opcode/raw traces; trace journaling covers only the
   normalized call tree.
-- `proxy@1` acquires one state endpoint per immutable block. Every code,
+- `proxy@2` acquires one state endpoint per immutable block. Every code,
   EIP-1967 storage, and beacon `implementation()` read uses that endpoint with
   the same EIP-1898 block-hash selector; exact-state absence is unavailable and
-  never falls back to a height or `latest`. It observes creations, standard
-  upgrade events, available normalized `CREATE`/`CREATE2` frames, exact
-  replays, and ABI-consumed transaction/log/trace targets that lack canonical
-  code history. Thus genesis predeploys and non-zero indexing starts receive
-  exact code identities when first used. Exact empty code is stored as a
+  never falls back to a height or `latest`. It observes creations, strict
+  upgrade and initialization events, every available normalized trace target,
+  successful non-reverted `CREATE`/`CREATE2` results, exact replays, and
+  ABI-consumed transaction/log targets that lack canonical code history. An
+  exact code change or change to one of the three supported ERC-1967 slots in
+  a published StateDiff also requests proxy replay. Thus genesis predeploys,
+  non-zero indexing starts, internally called contracts, and silent supported
+  slot changes receive an exact-block probe. Exact empty code is stored as a
   zero-length value with Keccak-256(empty), not SQL `NULL`.
-- Proxy observations retain EIP-1167 immutable-argument variants, direct
-  EIP-1967 implementations, and the final implementation behind a beacon.
-  Proxy and implementation code hashes, block hash, canonicality, confidence,
-  and bounded controlled provenance are one idempotent stage transaction. A
-  reorg retains orphan rows and toggles them with the proxy journal; see
+- Proxy observations retain EIP-1167 immutable arguments, direct EIP-1967
+  implementations, OpenZeppelin 5.x pattern evidence, admin and beacon code
+  identities, and the final implementation behind a beacon. A shared beacon
+  implementation is read and observed once per beacon and immutable block,
+  then resolved for every associated proxy. Standard upgrade and initialization
+  events retain exact transaction/log order, including multiple transitions in
+  one block. A transaction, log, Trace, or StateDiff target is only a discovery
+  candidate: ordinary `CALL` evidence alone does not establish an exact proxy
+  pattern or authorize management interaction. Exact pattern publication
+  additionally requires the applicable runtime, immutable, verified-artifact,
+  fixed-block probe, and code-identity evidence; incomplete evidence remains
+  generic or partial.
+- Proxy, implementation, admin, and beacon code hashes, block hash,
+  canonicality, confidence, and bounded controlled provenance commit in one
+  idempotent stage transaction. Append-only proxy and beacon generation
+  witnesses bind observations to the exact durable `proxy@2` lease generation;
+  detection evidence carries the same lease identity. Observation readers
+  require that witness and its matching `published_block_stage_results`
+  generation; upgrade and initialization readers require the event's exact
+  canonical block to have a published `proxy@2` result. A raw row alone is not
+  public readiness. A reorg retains orphan observations and events and toggles
+  them with the proxy journal; see
   [ADR-0010](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md).
   Ambiguous slots, self/empty implementations, and reverting or malformed
   beacon semantics reject only that candidate after its code observation;
@@ -266,23 +288,26 @@ of the callback. The routing and lag contract is specified in
   and `Panic(uint256)` remain decoder-local rather than signature-database
   bindings; see
   [ADR-0009](../decisions/ADR-0009-block-bound-abi-provenance.md).
-- `abi@1` consumes existing canonical code and proxy observations. PostgreSQL
+- `abi@2` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact
-  `proxy@1` result first. Complete proxy facts permit decoding; unavailable
-  proxy state makes ABI unavailable instead of terminal `unbound`, while a
-  failed or absent proxy result remains dependency-blocked. The initial proxy
-  publication unlocks ABI's already queued first generation; only later proxy
-  generations request ABI replay, so concurrency cannot manufacture a
+  same-version `proxy@2` result first. Complete proxy facts permit decoding;
+  unavailable proxy state makes ABI unavailable instead of terminal `unbound`,
+  while a failed or absent proxy result remains dependency-blocked. The initial
+  proxy publication unlocks ABI's already queued first generation; only later
+  proxy generations request ABI replay, so concurrency cannot manufacture a
   topology-specific generation. ABI does not wait for Trace. Any normalized
-  traces already present are decoded in the same atomic stage transaction. A
-  non-empty Trace result that arrives later requests one source-deduplicated
-  ABI generation so its call data is decoded. It requests proxy replay only
-  for a successful, non-reverted normalized CREATE/CREATE2 target, and that
-  proxy request removes stale ABI output at the safe generation transition.
-  The absent proxy result blocks ABI until one proxy replay consumes the new
-  creation targets. Queued work is refreshed,
-  leased work keeps its token until completion or expiry, and repeating the
-  same source generation then quiesces.
+  traces already present are decoded in the same atomic stage transaction.
+  Every complete Trace generation that arrives later, including an empty
+  replacement, records one source-deduplicated Proxy replay request first and
+  then an ABI replay request. Evidence withdrawal uses a distinct
+  `stage-invalidation` identity; successful replacement publication uses
+  `stage-completion`, so the latter cannot be suppressed by the former. The ABI
+  dependency prevents the new ABI generation from publishing before the
+  replayed Proxy generation, including when the Trace contains only ordinary
+  calls or withdraws prior creation evidence. Queued work is refreshed, leased
+  work keeps its token until completion or expiry, and repeating the same
+  source generation then quiesces. Loss of Trace capability withdraws dependent
+  exact Proxy and ABI publications rather than preserving stale evidence.
 
 ## Partition Lifecycle and Identity Boundary
 
@@ -486,9 +511,10 @@ size alone is not sufficient justification to weaken those invariants.
   transformation, runtime, lease, and canonicality checks. See
   [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md).
 - Verification reads and submissions are separate runtime capabilities.
-  Authenticated job and verified-artifact reads remain backed by PostgreSQL
-  when public compilation submission is disabled; the public configuration
-  advertises only actually usable submission and Sourcify surfaces.
+  API-key-protected job reads and anonymous, free verified-artifact reads
+  remain backed by PostgreSQL when public compilation submission is disabled;
+  the public configuration advertises only actually usable submission and
+  Sourcify surfaces.
 - `/v2/api` authentication accepts the legacy API key from a header, query, or
   bounded URL-encoded POST form. Header takes precedence when equal credentials
   are repeated across sources; any conflicting sources are rejected. Form
@@ -534,10 +560,11 @@ database rechecks canonical identity and finality inside one chain-locked
 transaction. Refreshing a finalized height requires an explicit audited
 override and still cannot replace its hash or parent.
 
-`reindex --stage token|stats|trace` schedules or replays immutable
+`reindex --stage proxy|abi|token|stats|trace` schedules or replays immutable
 block-hash-scoped jobs. Existing queued or leased jobs remain owned by their
-current worker; only terminal jobs may be reset. Repair does not silently infer
-the downstream range an operator intends to rebuild. See
+current worker; only terminal jobs may be reset. A proxy/ABI cutover is run in
+dependency order, `proxy` before `abi`. Repair does not silently infer the
+downstream range an operator intends to rebuild. See
 [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md).
 
 ## Source-of-Truth Routing

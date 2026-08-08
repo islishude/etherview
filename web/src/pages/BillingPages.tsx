@@ -38,7 +38,15 @@ const BILLABLE_OPERATIONS = [
   "getTransaction",
   "listPendingTransactions",
   "getTransactionTrace",
+  "listTransactionTokenTransfers",
+  "listTransactionLogs",
+  "listTransactionStateChanges",
   "getAddress",
+  "listAddressTransactions",
+  "listAddressInternalTransactions",
+  "listAddressERC20Transfers",
+  "listAddressNFTTransfers",
+  "listAddressERC20Balances",
   "listAddressNFTBalances",
   "listTokens",
   "getToken",
@@ -50,7 +58,6 @@ const BILLABLE_OPERATIONS = [
   "getChartMetric",
   "search",
   "getVerifierJob",
-  "getVerifiedContract",
 ] as const;
 
 interface BillingFilterForm {

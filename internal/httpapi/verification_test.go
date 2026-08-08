@@ -36,10 +36,8 @@ func (service *verificationV2Service) VerifiedContract(
 	_ context.Context,
 	chainID uint64,
 	address string,
-	codeHash string,
 ) (verify.VerifiedContract, bool, error) {
-	found := chainID == service.contract.ChainID && address == service.contract.Address &&
-		codeHash == service.contract.CodeHash
+	found := chainID == service.contract.ChainID && address == service.contract.Address
 	return service.contract, found, nil
 }
 
@@ -75,12 +73,23 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 			Status: verify.JobQueued, CreatedAt: now, UpdatedAt: now,
 		},
 		contract: verify.VerifiedContract{
+			Resolution: "exact_address",
+			Target: verify.ContractCodeIdentity{
+				ChainID: 1, Address: address, CodeHash: target.CodeHash,
+				BlockNumber: 7, BlockHash: target.AtBlockHash,
+			},
+			Source: verify.VerifiedArtifactSource{
+				Address: address, CodeHash: target.CodeHash, ValidFromBlock: 7, CreatedAt: now,
+			},
 			ChainID: 1, Address: address, CodeHash: target.CodeHash, ValidFromBlock: 7,
 			Language: verify.LanguageSolidity, CompilerVersion: "0.8.30+commit.73712a01",
 			FileName: "Counter.sol", ContractName: "Counter",
 			ABI: json.RawMessage(`[]`), Sources: json.RawMessage(`{"Counter.sol":{"content":"contract Counter {}"}}`),
 			Settings: json.RawMessage(`{}`), CompilationArtifacts: json.RawMessage(`{}`),
 			CreationCodeArtifacts: json.RawMessage(`{}`), RuntimeCodeArtifacts: json.RawMessage(`{}`),
+			CreationMatch: &verify.VerificationMatchDetails{
+				MatchType: verify.VerificationMatchFull,
+			},
 			Libraries: map[string]string{}, IsBlueprint: false, CreatedAt: now,
 		},
 	}
@@ -120,11 +129,32 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 	}
 
 	read := httptest.NewRequest(http.MethodGet, "/api/v1/contracts/"+address+"/verification", nil)
-	read.Header.Set("X-API-Key", key.Token)
 	response = httptest.NewRecorder()
 	protected.ServeHTTP(response, read)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Counter.sol") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Counter.sol") ||
+		!strings.Contains(response.Body.String(), `"transformations":[]`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet, "/api/v1/contracts/"+address+"/verification?code_hash="+target.CodeHash, nil,
+	))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"invalid_query"`) {
+		t.Fatalf("verified artifact accepted caller-selected identity status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	jobPath := "/api/v1/verifier/jobs/" + service.job.ID
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, jobPath, nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous verification job status=%d body=%s", response.Code, response.Body.String())
+	}
+	jobRead := httptest.NewRequest(http.MethodGet, jobPath, nil)
+	jobRead.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, jobRead)
+	if response.Code != http.StatusOK {
+		t.Fatalf("authenticated verification job status=%d body=%s", response.Code, response.Body.String())
 	}
 
 	for _, oldPath := range []string{

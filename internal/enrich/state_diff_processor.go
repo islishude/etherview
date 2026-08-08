@@ -296,14 +296,34 @@ func normalizeStateDiff(raw json.RawMessage, limits StateDiffLimits) ([]stateCha
 		if err != nil {
 			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains invalid quantity")
 		}
+		preBalance := canonicalStateQuantity(pre.Balance)
+		postBalance := canonicalStateQuantity(post.Balance)
+		preCode := canonicalStateCode(pre.Code, &counts)
+		postCode := canonicalStateCode(post.Code, &counts)
+		// geth's prestateTracer diffMode emits complete scalar pre-state but
+		// only changed scalar fields in an existing account's post-state. An
+		// omitted post field therefore means unchanged, while an account
+		// omitted from post means deleted. Storage is intentionally excluded:
+		// a changed slot omitted from post is a clear-to-zero operation.
+		if pair.hasPre && pair.hasPost {
+			if post.Balance == nil {
+				postBalance = preBalance
+			}
+			if len(post.Nonce) == 0 || bytes.Equal(post.Nonce, []byte("null")) {
+				postNonce = preNonce
+			}
+			if post.Code == nil {
+				postCode = preCode
+			}
+		}
 		for _, field := range []struct {
 			kind   string
 			before *string
 			after  *string
 		}{
-			{kind: "balance", before: canonicalStateQuantity(pre.Balance), after: canonicalStateQuantity(post.Balance)},
+			{kind: "balance", before: preBalance, after: postBalance},
 			{kind: "nonce", before: preNonce, after: postNonce},
-			{kind: "code", before: canonicalStateCode(pre.Code, &counts), after: canonicalStateCode(post.Code, &counts)},
+			{kind: "code", before: preCode, after: postCode},
 		} {
 			if field.kind == "balance" || field.kind == "nonce" {
 				if (field.before != nil && *field.before == "") || (field.after != nil && *field.after == "") {
@@ -501,6 +521,7 @@ func (processor *StateDiffRPCProcessor) persist(
 			}
 		}
 		changeCount := 0
+		proxyRelevantChanges := 0
 		for _, transaction := range transactions {
 			for _, change := range transaction.changes {
 				if _, err := tx.ExecContext(ctx, insertStateChangeSQL,
@@ -511,13 +532,41 @@ func (processor *StateDiffRPCProcessor) persist(
 					return StageResult{}, fmt.Errorf("persist transaction state difference: %w", err)
 				}
 				changeCount++
+				if proxyRelevantStateChange(change) {
+					proxyRelevantChanges++
+				}
+			}
+		}
+		proxyRequeued := false
+		if canonical && proxyRelevantChanges > 0 {
+			proxyRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
+			if err != nil {
+				return StageResult{}, err
 			}
 		}
 		return StageResult{State: ResultComplete, Details: map[string]string{
 			"outcome": outcome, "source": "prestate_tracer",
 			"transactions": strconv.Itoa(len(transactions)), "changes": strconv.Itoa(changeCount),
+			"proxy_relevant_changes": strconv.Itoa(proxyRelevantChanges),
+			"proxy_requeued":         strconv.FormatBool(proxyRequeued),
 		}}, nil
 	})
+}
+
+func proxyRelevantStateChange(change stateChange) bool {
+	if change.kind == "code" {
+		return true
+	}
+	if change.kind != "storage" || len(change.key) != common.HashLength {
+		return false
+	}
+	key := common.BytesToHash(change.key)
+	switch key {
+	case EIP1967ImplementationSlot, EIP1967BeaconSlot, EIP1967AdminSlot:
+		return true
+	default:
+		return false
+	}
 }
 
 func nullableStateValue(value *string) any {

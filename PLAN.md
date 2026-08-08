@@ -22,6 +22,9 @@ batch semantics are not core v1 scope.
 | P30 | [Contract Verification](docs/plans/P30-contract-verification.md) | done | P10, P20 | Verification foundation; the current surface is Solidity/Yul with architecture-neutral solc-js |
 | P40 | [API](docs/plans/P40-api.md) | done | P10; incremental P20/P30 | Native REST, search, API keys, SSE, and Etherscan V2 compatibility |
 | P50 | [Web](docs/plans/P50-web.md) | done | P40; incremental P20/P30 | Bilingual embedded SPA and injected-wallet contract interaction |
+| P55 | [OpenZeppelin Proxy Interaction](docs/plans/P55-openzeppelin-proxy-interaction.md) | superseded | P20, P30, P40, P50 | Superseded coordination record for the cross-phase OpenZeppelin proxy chain |
+| P56 | [Contract Artifact Reuse and ABI UX](docs/plans/P56-contract-artifact-reuse-and-abi-ux.md) | done | P20, P30, P40, P50 | Same-code artifacts, standard proxy interaction, and decoded transaction logs |
+| P57 | [Web Contract Artifact Nullability](docs/plans/P57-web-contract-artifact-nullability.md) | done | P56 | Preview contract pages tolerate nullable verification artifact fields |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
@@ -35,23 +38,33 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P00 is complete: the repository has enforced plan governance, minimum-version
   Go/Node/npm checks that support compatible newer stable releases, a runnable
   role-aware CLI, embedded migrations and generated contracts, and a
-  binary-served SPA. Reviewable commands and results remain in
+  binary-served SPA. Restricted-host guidance now distinguishes writable
+  language-tool caches from browser and Docker boundaries that require the
+  unchanged repository target to run with approved host access. Reviewable
+  commands and results remain in
   [P00 evidence](docs/plans/P00-foundation.md#evidence).
 - P10 is complete: core history has durable coverage and leases, sticky RPC
   ingestion, canonical/orphan retention, finality-safe reorg handling, derived
   rollback journals, and identity-bound repair/reindex. Reviewable commands and
   results remain in [P10 evidence](docs/plans/P10-indexing.md#evidence).
 - P20 is complete: block-scoped ABI/proxy, token, trace, state-difference,
-  search, adapter, and statistics enrichment uses exact-state and
-  lease-fenced publication contracts. Reviewable commands and results remain in
-  [P20 evidence](docs/plans/P20-enrichment.md#evidence).
-- P30 is complete as historical verifier-v2 foundation. P70-T29 supersedes its
-  runner and language boundaries: the maintained surface is bounded automatic
-  Solidity/Yul matching with official architecture-neutral solc-js,
-  asynchronous REST and explicit Sourcify workflows, and
-  canonical-runtime-gated full/partial publication. Historical evidence
-  remains in [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
-- P40 is complete: the native spec-first API, stable cursors, authenticated
+  search, adapter, and statistics enrichment uses exact-state and lease-fenced
+  publication contracts. OpenZeppelin 5.6.1-aware `proxy@2` and dependent
+  `abi@2` add shared Beacon observations, exact Clone evidence, canonical
+  upgrade/initialization facts, and generation-safe replay. Reviewable commands
+  and results remain in [P20
+  evidence](docs/plans/P20-enrichment.md#evidence).
+- P30 is complete: its historical verifier-v2 foundation remains superseded at
+  the runner and language boundaries by P70-T29; the maintained surface is
+  bounded automatic Solidity/Yul matching with official
+  architecture-neutral solc-js, asynchronous REST and explicit Sourcify
+  workflows, and canonical-runtime-gated full/partial publication. P30-T15
+  adds source-authenticated OpenZeppelin 5.6.1 interaction bindings fenced to
+  the exact canonical proxy generation, runtime immutables, implementation and
+  management code identities, shared Beacon/UUPS generation, code epoch, and
+  continuous interaction coverage. Reviewable commands and results remain in
+  [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
+- P40's existing native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
   subset pass their contract, race, security, and PostgreSQL coverage
   boundaries, including transaction-scoped logs, token transfers, trace
@@ -60,9 +73,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P40-T09 adds a writer-authoritative complete home snapshot and centralized
   SSE fanout without changing the durable `/events` replay protocol. P40-T10
   adds snapshot-bound address origins, exact ERC-20 balances, and isolated
-  public wallet-chain configuration.
-- P50 is complete: core and capability explorer pages, exact verification-job
-  and published-artifact reads, EIP-6963 wallet discovery, session-fenced
+  public wallet-chain configuration. P40-T11 completes writer-authoritative
+  proxy detail, canonical upgrade and initialization histories, stale-cursor
+  fencing, exact verified interaction bindings, and anonymous free verified
+  artifact reads, including real OpenZeppelin 5.6.1 monolith/split coverage.
+- P50 is complete: its core and capability explorer pages, exact
+  verification-job and published-artifact reads, EIP-6963 wallet discovery,
+  session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
   bilingual, responsive, security-header, browser, and WCAG coverage. The
   transaction detail surface now adds five deep-linkable lazy subresource tabs,
@@ -80,7 +97,19 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   de-duplicated address header, QR/copy controls, origin and ERC-20 holdings,
   configured native labels, and account-independent add-network flow. P50-T13
   consolidates that flow into the existing wallet menu and removes its
-  duplicate footer surface.
+  duplicate footer surface. P50-T14 completes anonymous verified-ABI-driven
+  contract and as-proxy implementation forms, exact ProxyAdmin and Beacon
+  management targets, binding-fenced writes, upgrade and initialization
+  histories, and real OpenZeppelin 5.6.1 seven-role Preview acceptance.
+  P50-T15 corrects small-integer ABI result formatting for Viem's `number`
+  representation, including ERC-20 `decimals()` and nested/revert values, and
+  rejects types that the selected codec cannot encode or decode. Its focused,
+  ordinary, generation, production-build, live Preview, and security checks
+  pass after the locked transitive `nanoid` update clears the web audit.
+  P50-T16 completes the verified-code surface with a strictly read-only
+  multi-file CodeMirror workspace, explicit compiler-setting summaries, and
+  copyable disclosure-first ABI, transformation, and artifact details across
+  bilingual themes and responsive embedded-browser flows.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

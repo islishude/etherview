@@ -32,6 +32,15 @@ P66. Status, public configuration, authentication, billing and administration,
 health, metrics, preflight, compatibility, media, streaming, mutation,
 fallback, and unknown routes cannot be priced.
 
+Verified-artifact GET and the proxy detail, upgrade-history, and
+initialization-history GETs are also deliberately anonymous and free. They are
+part of the explorer's basic contract-reading surface and are never admitted
+to the pricing allowlist. Verification submissions and verification-job reads
+retain their separate authentication policy; making artifact reads free does
+not relax either boundary. Configuration and administration surfaces omit the
+removed verified-artifact operation, and a stale configuration that still
+tries to price it fails validation instead of silently changing policy.
+
 For `api_key_or_x402`, an absent API key selects payment. A valid API key keeps
 its existing quota and a quota rejection remains 429; an invalid supplied key
 remains 401. A pure `x402` policy requires payment even when a valid key is

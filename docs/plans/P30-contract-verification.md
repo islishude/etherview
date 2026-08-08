@@ -45,6 +45,7 @@ SSRF-safe.
 | P30-T12 | done | P30-T11 | Verification UI, deployment configuration, egress, and operations guidance | browser and deployment tests |
 | P30-T13 | done | P30-T12 | Common, race, PostgreSQL, security, license, and parity closure | applicable repository gates |
 | P30-T14 | done | P30-T13 | Runner-platform-aware compiler catalog discovery and exact platform provenance | platform/catalog/provenance regressions |
+| P30-T15 | done | P20-T13, P30-T14 | Bind verified OpenZeppelin 5.6.1 proxy, implementation, and management artifacts to exact immutable runtime identities and invalidate stale interaction bindings | verifier, PostgreSQL, immutable-source, upgrade/reorg, and Hardhat fixture tests |
 
 ## Acceptance
 
@@ -70,6 +71,9 @@ SSRF-safe.
 - [x] Every newly successful verification job and verified-contract projection
       is backed by its exact immutable result; migration-only legacy rows cannot
       be used to create new unsourced publication.
+- [x] OpenZeppelin interaction bindings authenticate the pinned 5.6.1 source
+      identity, exact runtime immutable values, canonical proxy generation,
+      implementation identity, and any verified management contract.
 - [x] Solidity, Yul, and Vyper multipart or inline-only Standard JSON compile
       twice, discover every bounded candidate, and expose deterministic
       full/partial transformation evidence for solo and batch requests.
@@ -159,6 +163,24 @@ None.
   builds successfully and reports `linux/arm64`; a PostgreSQL 18 integration
   run passes exact platform foreign-key binding and the full verification
   integration package.
+- P30-T15: migrations `0032`–`0035` authenticate the pinned OpenZeppelin
+  5.6.1 source manifest and runtime immutable authority, then bind the exact
+  published `proxy@2` observation, proxy, implementation, and management code
+  identities, Beacon or UUPS generation, code epoch, and continuous canonical
+  interaction coverage. Negative evidence, upgrades, code changes, replay, and
+  reorg invalidate stale bindings; Beacon observations are shared by Beacon
+  identity and UUPS probes by implementation identity instead of per-proxy RPC
+  fanout. Sparse `prestateTracer` post-state fields preserve unchanged code
+  identity while explicit code clears still open a new epoch.
+- P30-T15 verification: `go test ./... -count=1`, `go test -race
+  ./internal/enrich -count=1`, `make test-integration`, `make
+  test-integration-race`, and `make test-hardhat3-e2e` pass. The Hardhat gate
+  uses exact `@openzeppelin/contracts@5.6.1` and
+  `@openzeppelin/contracts-upgradeable@5.6.1` fixtures for Transparent,
+  ERC1967/UUPS, shared Beacon, standard and immutable-args Clones, and
+  initializer/reinitializer paths in monolith and split roles; the two modes
+  pass in 224.37s and 226.84s. `make generate-check`, `make plan-check`, and
+  `git diff --check` pass.
 
 - P30-T01: migration `0016_durable_verification_boundary` stores the exact
   request payload and complete-input digest, server-derived hard-isolation

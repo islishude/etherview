@@ -5,7 +5,35 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
+
+func TestProxyRelevantStateChangeRecognizesOnlyCodeAndERC1967Slots(t *testing.T) {
+	t.Parallel()
+	address := common.HexToAddress("0x0000000000000000000000000000000000000001")
+	tests := []struct {
+		name   string
+		change stateChange
+		want   bool
+	}{
+		{name: "code", change: stateChange{address: address, kind: "code"}, want: true},
+		{name: "implementation", change: stateChange{address: address, kind: "storage", key: EIP1967ImplementationSlot[:]}, want: true},
+		{name: "beacon", change: stateChange{address: address, kind: "storage", key: EIP1967BeaconSlot[:]}, want: true},
+		{name: "admin", change: stateChange{address: address, kind: "storage", key: EIP1967AdminSlot[:]}, want: true},
+		{name: "ordinary storage", change: stateChange{address: address, kind: "storage", key: common.HexToHash("0x01").Bytes()}, want: false},
+		{name: "balance", change: stateChange{address: address, kind: "balance"}, want: false},
+		{name: "short storage key", change: stateChange{address: address, kind: "storage", key: []byte{1}}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := proxyRelevantStateChange(test.change); got != test.want {
+				t.Fatalf("proxy relevance=%t want=%t change=%+v", got, test.want, test.change)
+			}
+		})
+	}
+}
 
 func TestNormalizeStateDiffCanonicalizesAndSortsChanges(t *testing.T) {
 	t.Parallel()
@@ -70,6 +98,53 @@ func TestNormalizeStateDiffAcceptsGethNumericNonce(t *testing.T) {
 		changes[0].key == nil || len(changes[0].key) != 0 ||
 		changes[0].before != nil || changes[0].after == nil || *changes[0].after != "1" {
 		t.Fatalf("numeric nonce changes = %+v", changes)
+	}
+}
+
+func TestNormalizeStateDiffTreatsOmittedPostScalarsAsUnchanged(t *testing.T) {
+	t.Parallel()
+	address := "0x0000000000000000000000000000000000000001"
+	key := "0x" + strings.Repeat("00", 31) + "01"
+	beforeStorage := "0x" + strings.Repeat("00", 31) + "02"
+	afterStorage := "0x" + strings.Repeat("00", 31) + "03"
+	raw := json.RawMessage(`{
+		"pre":{"` + address + `":{
+			"balance":"0x2a","nonce":"0x7","code":"0x6000",
+			"storage":{"` + key + `":"` + beforeStorage + `"}
+		}},
+		"post":{"` + address + `":{
+			"storage":{"` + key + `":"` + afterStorage + `"}
+		}}
+	}`)
+
+	changes, counts, err := normalizeStateDiff(raw, DefaultStateDiffLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].kind != "storage" {
+		t.Fatalf("sparse post-state changes = %+v, want only storage", changes)
+	}
+	if counts.code != 2 {
+		t.Fatalf("validated code bytes = %d, want 2", counts.code)
+	}
+}
+
+func TestNormalizeStateDiffDistinguishesExplicitCodeClearFromOmission(t *testing.T) {
+	t.Parallel()
+	address := "0x0000000000000000000000000000000000000001"
+	raw := json.RawMessage(`{
+		"pre":{"` + address + `":{"code":"0x6000"}},
+		"post":{"` + address + `":{"code":"0x"}}
+	}`)
+
+	changes, _, err := normalizeStateDiff(raw, DefaultStateDiffLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].kind != "code" ||
+		changes[0].before == nil || *changes[0].before != "0x6000" ||
+		changes[0].after == nil || *changes[0].after != "0x" {
+		t.Fatalf("explicit code clear = %+v", changes)
 	}
 }
 

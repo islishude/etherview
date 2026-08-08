@@ -401,6 +401,369 @@ func (e GenesisAccountType) Valid() bool {
 	}
 }
 
+// Defines values for ProxyArtifactKind.
+const (
+	ProxyArtifactKindBeaconProxy        ProxyArtifactKind = "beacon_proxy"
+	ProxyArtifactKindErc1967Proxy       ProxyArtifactKind = "erc1967_proxy"
+	ProxyArtifactKindProxyAdmin         ProxyArtifactKind = "proxy_admin"
+	ProxyArtifactKindTransparentProxy   ProxyArtifactKind = "transparent_proxy"
+	ProxyArtifactKindUpgradeableBeacon  ProxyArtifactKind = "upgradeable_beacon"
+	ProxyArtifactKindUupsImplementation ProxyArtifactKind = "uups_implementation"
+)
+
+// Valid indicates whether the value is a known member of the ProxyArtifactKind enum.
+func (e ProxyArtifactKind) Valid() bool {
+	switch e {
+	case ProxyArtifactKindBeaconProxy:
+		return true
+	case ProxyArtifactKindErc1967Proxy:
+		return true
+	case ProxyArtifactKindProxyAdmin:
+		return true
+	case ProxyArtifactKindTransparentProxy:
+		return true
+	case ProxyArtifactKindUpgradeableBeacon:
+		return true
+	case ProxyArtifactKindUupsImplementation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyConfidence.
+const (
+	ProxyConfidenceGuess    ProxyConfidence = "guess"
+	ProxyConfidenceHigh     ProxyConfidence = "high"
+	ProxyConfidenceInferred ProxyConfidence = "inferred"
+	ProxyConfidenceVerified ProxyConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the ProxyConfidence enum.
+func (e ProxyConfidence) Valid() bool {
+	switch e {
+	case ProxyConfidenceGuess:
+		return true
+	case ProxyConfidenceHigh:
+		return true
+	case ProxyConfidenceInferred:
+		return true
+	case ProxyConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyContractIdentityStandardVersion.
+const (
+	ProxyContractIdentityStandardVersionN561 ProxyContractIdentityStandardVersion = "5.6.1"
+)
+
+// Valid indicates whether the value is a known member of the ProxyContractIdentityStandardVersion enum.
+func (e ProxyContractIdentityStandardVersion) Valid() bool {
+	switch e {
+	case ProxyContractIdentityStandardVersionN561:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyDetailStatus.
+const (
+	ProxyDetailStatusDetectedUnverified ProxyDetailStatus = "detected_unverified"
+	ProxyDetailStatusFailed             ProxyDetailStatus = "failed"
+	ProxyDetailStatusNotDetected        ProxyDetailStatus = "not_detected"
+	ProxyDetailStatusUnavailable        ProxyDetailStatus = "unavailable"
+	ProxyDetailStatusVerified           ProxyDetailStatus = "verified"
+)
+
+// Valid indicates whether the value is a known member of the ProxyDetailStatus enum.
+func (e ProxyDetailStatus) Valid() bool {
+	switch e {
+	case ProxyDetailStatusDetectedUnverified:
+		return true
+	case ProxyDetailStatusFailed:
+		return true
+	case ProxyDetailStatusNotDetected:
+		return true
+	case ProxyDetailStatusUnavailable:
+		return true
+	case ProxyDetailStatusVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyDetailsStandardVersion.
+const (
+	ProxyDetailsStandardVersionN561 ProxyDetailsStandardVersion = "5.6.1"
+)
+
+// Valid indicates whether the value is a known member of the ProxyDetailsStandardVersion enum.
+func (e ProxyDetailsStandardVersion) Valid() bool {
+	switch e {
+	case ProxyDetailsStandardVersionN561:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyEvidenceResult.
+const (
+	Authoritative ProxyEvidenceResult = "authoritative"
+	Conflicting   ProxyEvidenceResult = "conflicting"
+	Corroborating ProxyEvidenceResult = "corroborating"
+	Rejected      ProxyEvidenceResult = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ProxyEvidenceResult enum.
+func (e ProxyEvidenceResult) Valid() bool {
+	switch e {
+	case Authoritative:
+		return true
+	case Conflicting:
+		return true
+	case Corroborating:
+		return true
+	case Rejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyEvidenceSource.
+const (
+	ProxyEvidenceSourceAdminSlot          ProxyEvidenceSource = "admin_slot"
+	ProxyEvidenceSourceBeaconSlot         ProxyEvidenceSource = "beacon_slot"
+	ProxyEvidenceSourceDirectCall         ProxyEvidenceSource = "direct_call"
+	ProxyEvidenceSourceEvent              ProxyEvidenceSource = "event"
+	ProxyEvidenceSourceImplementationSlot ProxyEvidenceSource = "implementation_slot"
+	ProxyEvidenceSourceRuntimeCode        ProxyEvidenceSource = "runtime_code"
+	ProxyEvidenceSourceRuntimeImmutable   ProxyEvidenceSource = "runtime_immutable"
+	ProxyEvidenceSourceVerifiedArtifact   ProxyEvidenceSource = "verified_artifact"
+)
+
+// Valid indicates whether the value is a known member of the ProxyEvidenceSource enum.
+func (e ProxyEvidenceSource) Valid() bool {
+	switch e {
+	case ProxyEvidenceSourceAdminSlot:
+		return true
+	case ProxyEvidenceSourceBeaconSlot:
+		return true
+	case ProxyEvidenceSourceDirectCall:
+		return true
+	case ProxyEvidenceSourceEvent:
+		return true
+	case ProxyEvidenceSourceImplementationSlot:
+		return true
+	case ProxyEvidenceSourceRuntimeCode:
+		return true
+	case ProxyEvidenceSourceRuntimeImmutable:
+		return true
+	case ProxyEvidenceSourceVerifiedArtifact:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyEvidenceState.
+const (
+	ProxyEvidenceStateExact   ProxyEvidenceState = "exact"
+	ProxyEvidenceStateGeneric ProxyEvidenceState = "generic"
+	ProxyEvidenceStatePartial ProxyEvidenceState = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ProxyEvidenceState enum.
+func (e ProxyEvidenceState) Valid() bool {
+	switch e {
+	case ProxyEvidenceStateExact:
+		return true
+	case ProxyEvidenceStateGeneric:
+		return true
+	case ProxyEvidenceStatePartial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyEvidenceSubject.
+const (
+	ProxyEvidenceSubjectAdmin          ProxyEvidenceSubject = "admin"
+	ProxyEvidenceSubjectBeacon         ProxyEvidenceSubject = "beacon"
+	ProxyEvidenceSubjectImplementation ProxyEvidenceSubject = "implementation"
+	ProxyEvidenceSubjectManagement     ProxyEvidenceSubject = "management"
+	ProxyEvidenceSubjectProxy          ProxyEvidenceSubject = "proxy"
+)
+
+// Valid indicates whether the value is a known member of the ProxyEvidenceSubject enum.
+func (e ProxyEvidenceSubject) Valid() bool {
+	switch e {
+	case ProxyEvidenceSubjectAdmin:
+		return true
+	case ProxyEvidenceSubjectBeacon:
+		return true
+	case ProxyEvidenceSubjectImplementation:
+		return true
+	case ProxyEvidenceSubjectManagement:
+		return true
+	case ProxyEvidenceSubjectProxy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyHistoryCoverageState.
+const (
+	ProxyHistoryCoverageStateComplete ProxyHistoryCoverageState = "complete"
+	ProxyHistoryCoverageStatePartial  ProxyHistoryCoverageState = "partial"
+)
+
+// Valid indicates whether the value is a known member of the ProxyHistoryCoverageState enum.
+func (e ProxyHistoryCoverageState) Valid() bool {
+	switch e {
+	case ProxyHistoryCoverageStateComplete:
+		return true
+	case ProxyHistoryCoverageStatePartial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyManagementKind.
+const (
+	ProxyManagementKindProxyAdmin        ProxyManagementKind = "proxy_admin"
+	ProxyManagementKindUpgradeableBeacon ProxyManagementKind = "upgradeable_beacon"
+)
+
+// Valid indicates whether the value is a known member of the ProxyManagementKind enum.
+func (e ProxyManagementKind) Valid() bool {
+	switch e {
+	case ProxyManagementKindProxyAdmin:
+		return true
+	case ProxyManagementKindUpgradeableBeacon:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyMechanism.
+const (
+	ProxyMechanismBeacon  ProxyMechanism = "beacon"
+	ProxyMechanismEip1167 ProxyMechanism = "eip1167"
+	ProxyMechanismEip1967 ProxyMechanism = "eip1967"
+)
+
+// Valid indicates whether the value is a known member of the ProxyMechanism enum.
+func (e ProxyMechanism) Valid() bool {
+	switch e {
+	case ProxyMechanismBeacon:
+		return true
+	case ProxyMechanismEip1167:
+		return true
+	case ProxyMechanismEip1967:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyPattern.
+const (
+	ProxyPatternBeacon      ProxyPattern = "beacon"
+	ProxyPatternClone       ProxyPattern = "clone"
+	ProxyPatternErc1967     ProxyPattern = "erc1967"
+	ProxyPatternTransparent ProxyPattern = "transparent"
+	ProxyPatternUnknown     ProxyPattern = "unknown"
+	ProxyPatternUups        ProxyPattern = "uups"
+)
+
+// Valid indicates whether the value is a known member of the ProxyPattern enum.
+func (e ProxyPattern) Valid() bool {
+	switch e {
+	case ProxyPatternBeacon:
+		return true
+	case ProxyPatternClone:
+		return true
+	case ProxyPatternErc1967:
+		return true
+	case ProxyPatternTransparent:
+		return true
+	case ProxyPatternUnknown:
+		return true
+	case ProxyPatternUups:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyUpgradeChangeType.
+const (
+	ProxyUpgradeChangeTypeBeacon               ProxyUpgradeChangeType = "beacon"
+	ProxyUpgradeChangeTypeBeaconImplementation ProxyUpgradeChangeType = "beacon_implementation"
+	ProxyUpgradeChangeTypeImplementation       ProxyUpgradeChangeType = "implementation"
+)
+
+// Valid indicates whether the value is a known member of the ProxyUpgradeChangeType enum.
+func (e ProxyUpgradeChangeType) Valid() bool {
+	switch e {
+	case ProxyUpgradeChangeTypeBeacon:
+		return true
+	case ProxyUpgradeChangeTypeBeaconImplementation:
+		return true
+	case ProxyUpgradeChangeTypeImplementation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyUpgradeEvidenceType.
+const (
+	ProxyUpgradeEvidenceTypeEvent       ProxyUpgradeEvidenceType = "event"
+	ProxyUpgradeEvidenceTypeObservation ProxyUpgradeEvidenceType = "observation"
+)
+
+// Valid indicates whether the value is a known member of the ProxyUpgradeEvidenceType enum.
+func (e ProxyUpgradeEvidenceType) Valid() bool {
+	switch e {
+	case ProxyUpgradeEvidenceTypeEvent:
+		return true
+	case ProxyUpgradeEvidenceTypeObservation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyVerificationState.
+const (
+	ProxyVerificationStateUnverified ProxyVerificationState = "unverified"
+	ProxyVerificationStateVerified   ProxyVerificationState = "verified"
+)
+
+// Valid indicates whether the value is a known member of the ProxyVerificationState enum.
+func (e ProxyVerificationState) Valid() bool {
+	switch e {
+	case ProxyVerificationStateUnverified:
+		return true
+	case ProxyVerificationStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchResultKind.
 const (
 	SearchResultKindAddress     SearchResultKind = "address"
@@ -554,6 +917,78 @@ func (e TransactionStatus) Valid() bool {
 	case TransactionStatusSuccess:
 		return true
 	case TransactionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogABISourceKind.
+const (
+	TransactionLogABISourceKindCodeHash            TransactionLogABISourceKind = "code_hash"
+	TransactionLogABISourceKindExactAddress        TransactionLogABISourceKind = "exact_address"
+	TransactionLogABISourceKindProxyImplementation TransactionLogABISourceKind = "proxy_implementation"
+	TransactionLogABISourceKindSignatureDatabase   TransactionLogABISourceKind = "signature_database"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogABISourceKind enum.
+func (e TransactionLogABISourceKind) Valid() bool {
+	switch e {
+	case TransactionLogABISourceKindCodeHash:
+		return true
+	case TransactionLogABISourceKindExactAddress:
+		return true
+	case TransactionLogABISourceKindProxyImplementation:
+		return true
+	case TransactionLogABISourceKindSignatureDatabase:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogDecodingConfidence.
+const (
+	TransactionLogDecodingConfidenceGuess    TransactionLogDecodingConfidence = "guess"
+	TransactionLogDecodingConfidenceHigh     TransactionLogDecodingConfidence = "high"
+	TransactionLogDecodingConfidenceVerified TransactionLogDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogDecodingConfidence enum.
+func (e TransactionLogDecodingConfidence) Valid() bool {
+	switch e {
+	case TransactionLogDecodingConfidenceGuess:
+		return true
+	case TransactionLogDecodingConfidenceHigh:
+		return true
+	case TransactionLogDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionLogDecodingStatus.
+const (
+	TransactionLogDecodingStatusAmbiguous   TransactionLogDecodingStatus = "ambiguous"
+	TransactionLogDecodingStatusDecoded     TransactionLogDecodingStatus = "decoded"
+	TransactionLogDecodingStatusMalformed   TransactionLogDecodingStatus = "malformed"
+	TransactionLogDecodingStatusUnavailable TransactionLogDecodingStatus = "unavailable"
+	TransactionLogDecodingStatusUnknown     TransactionLogDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TransactionLogDecodingStatus enum.
+func (e TransactionLogDecodingStatus) Valid() bool {
+	switch e {
+	case TransactionLogDecodingStatusAmbiguous:
+		return true
+	case TransactionLogDecodingStatusDecoded:
+		return true
+	case TransactionLogDecodingStatusMalformed:
+		return true
+	case TransactionLogDecodingStatusUnavailable:
+		return true
+	case TransactionLogDecodingStatusUnknown:
 		return true
 	default:
 		return false
@@ -899,6 +1334,24 @@ const (
 func (e VerifiedContractKind) Valid() bool {
 	switch e {
 	case VerifiedContractKindVerificationSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifiedContractResolution.
+const (
+	VerifiedContractResolutionCodeHash     VerifiedContractResolution = "code_hash"
+	VerifiedContractResolutionExactAddress VerifiedContractResolution = "exact_address"
+)
+
+// Valid indicates whether the value is a known member of the VerifiedContractResolution enum.
+func (e VerifiedContractResolution) Valid() bool {
+	switch e {
+	case VerifiedContractResolutionCodeHash:
+		return true
+	case VerifiedContractResolutionExactAddress:
 		return true
 	default:
 		return false
@@ -1598,6 +2051,40 @@ type Completeness struct {
 	Trace    StageState `json:"trace"`
 }
 
+// ContractArtifactSource defines model for ContractArtifactSource.
+type ContractArtifactSource struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash  Hash      `json:"code_hash"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// ValidFromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidFromBlock Quantity `json:"valid_from_block"`
+
+	// ValidToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidToBlock *Quantity `json:"valid_to_block,omitempty"`
+}
+
+// ContractArtifactTarget defines model for ContractArtifactTarget.
+type ContractArtifactTarget struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash Hash `json:"code_hash"`
+}
+
 // Decimal A canonical non-negative fixed-point decimal with at most 18 fractional digits.
 type Decimal = string
 
@@ -1850,6 +2337,234 @@ type PendingTransactionListResponse struct {
 	Data []PendingTransaction `json:"data"`
 	Meta PendingMeta          `json:"meta"`
 }
+
+// ProxyArtifactKind defines model for ProxyArtifactKind.
+type ProxyArtifactKind string
+
+// ProxyConfidence defines model for ProxyConfidence.
+type ProxyConfidence string
+
+// ProxyContractIdentity defines model for ProxyContractIdentity.
+type ProxyContractIdentity struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address      Address            `json:"address"`
+	ArtifactKind *ProxyArtifactKind `json:"artifact_kind,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash          Hash                                  `json:"code_hash"`
+	StandardVersion   *ProxyContractIdentityStandardVersion `json:"standard_version,omitempty"`
+	VerificationState ProxyVerificationState                `json:"verification_state"`
+}
+
+// ProxyContractIdentityStandardVersion defines model for ProxyContractIdentity.StandardVersion.
+type ProxyContractIdentityStandardVersion string
+
+// ProxyDetailStatus defines model for ProxyDetailStatus.
+type ProxyDetailStatus string
+
+// ProxyDetails defines model for ProxyDetails.
+type ProxyDetails struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address                `json:"address"`
+	Admin   *ProxyContractIdentity `json:"admin,omitempty"`
+	Beacon  *ProxyContractIdentity `json:"beacon,omitempty"`
+
+	// BindingId Opaque current interaction-binding identity. Clients must compare it immediately before implementation-as-proxy or management writes.
+	BindingId                 *openapi_types.UUID             `json:"binding_id,omitempty"`
+	Confidence                *ProxyConfidence                `json:"confidence,omitempty"`
+	Evidence                  []ProxyRecognitionEvidence      `json:"evidence"`
+	EvidenceState             *ProxyEvidenceState             `json:"evidence_state,omitempty"`
+	ImmutableArgs             *string                         `json:"immutable_args,omitempty"`
+	Implementation            *ProxyContractIdentity          `json:"implementation,omitempty"`
+	ImplementationInteraction *ProxyImplementationInteraction `json:"implementation_interaction,omitempty"`
+	Management                *ProxyManagement                `json:"management,omitempty"`
+	Mechanism                 *ProxyMechanism                 `json:"mechanism,omitempty"`
+	Pattern                   *ProxyPattern                   `json:"pattern,omitempty"`
+	Proxy                     *ProxyContractIdentity          `json:"proxy,omitempty"`
+	Snapshot                  CatalogSnapshot                 `json:"snapshot"`
+	StandardVersion           *ProxyDetailsStandardVersion    `json:"standard_version,omitempty"`
+	Status                    ProxyDetailStatus               `json:"status"`
+}
+
+// ProxyDetailsStandardVersion defines model for ProxyDetails.StandardVersion.
+type ProxyDetailsStandardVersion string
+
+// ProxyDetailsResponse defines model for ProxyDetailsResponse.
+type ProxyDetailsResponse struct {
+	Data ProxyDetails `json:"data"`
+	Meta Meta         `json:"meta"`
+}
+
+// ProxyEvidenceResult defines model for ProxyEvidenceResult.
+type ProxyEvidenceResult string
+
+// ProxyEvidenceSource defines model for ProxyEvidenceSource.
+type ProxyEvidenceSource string
+
+// ProxyEvidenceState defines model for ProxyEvidenceState.
+type ProxyEvidenceState string
+
+// ProxyEvidenceSubject defines model for ProxyEvidenceSubject.
+type ProxyEvidenceSubject string
+
+// ProxyHistoricalIdentity defines model for ProxyHistoricalIdentity.
+type ProxyHistoricalIdentity struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash          *Hash                   `json:"code_hash,omitempty"`
+	VerificationState *ProxyVerificationState `json:"verification_state,omitempty"`
+}
+
+// ProxyHistoricalManagement defines model for ProxyHistoricalManagement.
+type ProxyHistoricalManagement struct {
+	Kind   ProxyManagementKind     `json:"kind"`
+	Target ProxyHistoricalIdentity `json:"target"`
+}
+
+// ProxyHistoryCoverage defines model for ProxyHistoryCoverage.
+type ProxyHistoryCoverage struct {
+	// FromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	FromBlock *Quantity                 `json:"from_block,omitempty"`
+	State     ProxyHistoryCoverageState `json:"state"`
+
+	// ToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ToBlock *Quantity `json:"to_block,omitempty"`
+}
+
+// ProxyHistoryCoverageState defines model for ProxyHistoryCoverageState.
+type ProxyHistoryCoverageState string
+
+// ProxyImplementationInteraction defines model for ProxyImplementationInteraction.
+type ProxyImplementationInteraction struct {
+	Beacon         *ProxyContractIdentity `json:"beacon,omitempty"`
+	Implementation ProxyContractIdentity  `json:"implementation"`
+	Mechanism      ProxyMechanism         `json:"mechanism"`
+	Pattern        *ProxyPattern          `json:"pattern,omitempty"`
+	Proxy          ProxyContractIdentity  `json:"proxy"`
+}
+
+// ProxyInitialization defines model for ProxyInitialization.
+type ProxyInitialization struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity                `json:"block_number"`
+	BlockTimestamp time.Time               `json:"block_timestamp"`
+	Implementation ProxyHistoricalIdentity `json:"implementation"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity `json:"log_index"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// Version A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Version Quantity `json:"version"`
+}
+
+// ProxyInitializationHistory defines model for ProxyInitializationHistory.
+type ProxyInitializationHistory struct {
+	// ContractAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ContractAddress Address               `json:"contract_address"`
+	Coverage        ProxyHistoryCoverage  `json:"coverage"`
+	Items           []ProxyInitialization `json:"items"`
+	Snapshot        CatalogSnapshot       `json:"snapshot"`
+}
+
+// ProxyInitializationHistoryResponse defines model for ProxyInitializationHistoryResponse.
+type ProxyInitializationHistoryResponse struct {
+	Data ProxyInitializationHistory `json:"data"`
+	Meta Meta                       `json:"meta"`
+}
+
+// ProxyManagement defines model for ProxyManagement.
+type ProxyManagement struct {
+	// AffectedProxyCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AffectedProxyCount *Quantity             `json:"affected_proxy_count,omitempty"`
+	Kind               ProxyManagementKind   `json:"kind"`
+	Target             ProxyContractIdentity `json:"target"`
+}
+
+// ProxyManagementKind defines model for ProxyManagementKind.
+type ProxyManagementKind string
+
+// ProxyMechanism defines model for ProxyMechanism.
+type ProxyMechanism string
+
+// ProxyPattern defines model for ProxyPattern.
+type ProxyPattern string
+
+// ProxyRecognitionEvidence defines model for ProxyRecognitionEvidence.
+type ProxyRecognitionEvidence struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash *Hash `json:"block_hash,omitempty"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber *Quantity `json:"block_number,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash                `json:"code_hash,omitempty"`
+	Result   ProxyEvidenceResult  `json:"result"`
+	Source   ProxyEvidenceSource  `json:"source"`
+	Subject  ProxyEvidenceSubject `json:"subject"`
+}
+
+// ProxyUpgrade defines model for ProxyUpgrade.
+type ProxyUpgrade struct {
+	Beacon *ProxyHistoricalIdentity `json:"beacon,omitempty"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity               `json:"block_number"`
+	BlockTimestamp time.Time              `json:"block_timestamp"`
+	ChangeType     ProxyUpgradeChangeType `json:"change_type"`
+
+	// EmitterAddress A 20-byte address; responses use the EIP-55 checksum form.
+	EmitterAddress *Address                 `json:"emitter_address,omitempty"`
+	EvidenceType   ProxyUpgradeEvidenceType `json:"evidence_type"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex          *Quantity                  `json:"log_index,omitempty"`
+	Management        *ProxyHistoricalManagement `json:"management,omitempty"`
+	NewImplementation ProxyHistoricalIdentity    `json:"new_implementation"`
+	OldImplementation *ProxyHistoricalIdentity   `json:"old_implementation,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash *Hash `json:"transaction_hash,omitempty"`
+}
+
+// ProxyUpgradeChangeType defines model for ProxyUpgradeChangeType.
+type ProxyUpgradeChangeType string
+
+// ProxyUpgradeEvidenceType defines model for ProxyUpgradeEvidenceType.
+type ProxyUpgradeEvidenceType string
+
+// ProxyUpgradeHistory defines model for ProxyUpgradeHistory.
+type ProxyUpgradeHistory struct {
+	Coverage ProxyHistoryCoverage `json:"coverage"`
+	Items    []ProxyUpgrade       `json:"items"`
+
+	// ProxyAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ProxyAddress Address         `json:"proxy_address"`
+	Snapshot     CatalogSnapshot `json:"snapshot"`
+}
+
+// ProxyUpgradeHistoryResponse defines model for ProxyUpgradeHistoryResponse.
+type ProxyUpgradeHistoryResponse struct {
+	Data ProxyUpgradeHistory `json:"data"`
+	Meta Meta                `json:"meta"`
+}
+
+// ProxyVerificationState defines model for ProxyVerificationState.
+type ProxyVerificationState string
 
 // PublicConfig defines model for PublicConfig.
 type PublicConfig struct {
@@ -2172,13 +2887,54 @@ type TransactionListResponse struct {
 // TransactionLog defines model for TransactionLog.
 type TransactionLog struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address Address `json:"address"`
-	Data    string  `json:"data"`
+	Address  Address                `json:"address"`
+	Data     string                 `json:"data"`
+	Decoding TransactionLogDecoding `json:"decoding"`
 
 	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	LogIndex Quantity `json:"log_index"`
 	Topics   []Hash   `json:"topics"`
 }
+
+// TransactionLogABISource defines model for TransactionLogABISource.
+type TransactionLogABISource struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash                       `json:"code_hash,omitempty"`
+	Kind     TransactionLogABISourceKind `json:"kind"`
+}
+
+// TransactionLogABISourceKind defines model for TransactionLogABISource.Kind.
+type TransactionLogABISourceKind string
+
+// TransactionLogArgument defines model for TransactionLogArgument.
+type TransactionLogArgument struct {
+	Hashed  bool        `json:"hashed"`
+	Indexed bool        `json:"indexed"`
+	Name    string      `json:"name"`
+	Type    string      `json:"type"`
+	Value   interface{} `json:"value"`
+}
+
+// TransactionLogDecoding defines model for TransactionLogDecoding.
+type TransactionLogDecoding struct {
+	AbiSource  *TransactionLogABISource          `json:"abi_source,omitempty"`
+	Arguments  []TransactionLogArgument          `json:"arguments"`
+	Candidates []string                          `json:"candidates"`
+	Confidence *TransactionLogDecodingConfidence `json:"confidence,omitempty"`
+	EventName  *string                           `json:"event_name,omitempty"`
+	Signature  *string                           `json:"signature,omitempty"`
+	Status     TransactionLogDecodingStatus      `json:"status"`
+	Warning    *string                           `json:"warning,omitempty"`
+}
+
+// TransactionLogDecodingConfidence defines model for TransactionLogDecoding.Confidence.
+type TransactionLogDecodingConfidence string
+
+// TransactionLogDecodingStatus defines model for TransactionLogDecoding.Status.
+type TransactionLogDecodingStatus string
 
 // TransactionLogResponse defines model for TransactionLogResponse.
 type TransactionLogResponse struct {
@@ -2476,42 +3232,32 @@ type VerificationTransformationValues struct {
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi *[]map[string]interface{} `json:"abi,omitempty"`
-
-	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address Address `json:"address"`
-
-	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId Quantity `json:"chain_id"`
-
-	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash              Hash                      `json:"code_hash"`
-	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
-	CompilerVersion       string                    `json:"compiler_version"`
-	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
-	ContractName          string                    `json:"contract_name"`
-	CreatedAt             time.Time                 `json:"created_at"`
-	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
-	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
-	FileName              string                    `json:"file_name"`
-	IsBlueprint           bool                      `json:"is_blueprint"`
-	Kind                  VerifiedContractKind      `json:"kind"`
-	Language              VerifierLanguage          `json:"language"`
-	Libraries             map[string]string         `json:"libraries"`
-	RuntimeCodeArtifacts  map[string]interface{}    `json:"runtime_code_artifacts"`
-	RuntimeMatch          *VerificationMatchDetails `json:"runtime_match,omitempty"`
-	Settings              map[string]interface{}    `json:"settings"`
-	Sources               map[string]interface{}    `json:"sources"`
-
-	// ValidFromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ValidFromBlock Quantity `json:"valid_from_block"`
-
-	// ValidToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ValidToBlock *Quantity `json:"valid_to_block,omitempty"`
+	Abi                   *[]map[string]interface{}  `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}     `json:"compilation_artifacts"`
+	CompilerVersion       string                     `json:"compiler_version"`
+	ConstructorArguments  *string                    `json:"constructor_arguments,omitempty"`
+	ContractName          string                     `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}     `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails  `json:"creation_match,omitempty"`
+	FileName              string                     `json:"file_name"`
+	IsBlueprint           bool                       `json:"is_blueprint"`
+	Kind                  VerifiedContractKind       `json:"kind"`
+	Language              VerifierLanguage           `json:"language"`
+	Libraries             map[string]string          `json:"libraries"`
+	Resolution            VerifiedContractResolution `json:"resolution"`
+	RuntimeCodeArtifacts  map[string]interface{}     `json:"runtime_code_artifacts"`
+	RuntimeMatch          *VerificationMatchDetails  `json:"runtime_match,omitempty"`
+	Settings              map[string]interface{}     `json:"settings"`
+	Source                ContractArtifactSource     `json:"source"`
+	Sources               map[string]interface{}     `json:"sources"`
+	Target                ContractArtifactTarget     `json:"target"`
 }
 
 // VerifiedContractKind defines model for VerifiedContract.Kind.
 type VerifiedContractKind string
+
+// VerifiedContractResolution defines model for VerifiedContract.Resolution.
+type VerifiedContractResolution string
 
 // VerifiedContractResponse defines model for VerifiedContractResponse.
 type VerifiedContractResponse struct {
@@ -2622,6 +3368,9 @@ type Limit = int
 
 // PaymentSignature defines model for PaymentSignature.
 type PaymentSignature = string
+
+// ProxyHistoryLimit defines model for ProxyHistoryLimit.
+type ProxyHistoryLimit = int
 
 // SearchLimit defines model for SearchLimit.
 type SearchLimit = int
@@ -2773,10 +3522,16 @@ type GetBlockParams struct {
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
-// GetVerifiedContractParams defines parameters for GetVerifiedContract.
-type GetVerifiedContractParams struct {
-	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
-	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+// ListContractProxyInitializationsParams defines parameters for ListContractProxyInitializations.
+type ListContractProxyInitializationsParams struct {
+	Cursor *Cursor            `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *ProxyHistoryLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListContractProxyUpgradesParams defines parameters for ListContractProxyUpgrades.
+type ListContractProxyUpgradesParams struct {
+	Cursor *Cursor            `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *ProxyHistoryLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // StreamHeadEventsParams defines parameters for StreamHeadEvents.

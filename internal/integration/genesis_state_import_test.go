@@ -147,7 +147,7 @@ func TestGenesisStateImportIsAtomicAndPersistsExactPredeployCode(t *testing.T) {
 		FROM durable_jobs
 		WHERE chain_id = 777
 		  AND stage = 'proxy'
-		  AND stage_version = 1
+		  AND stage_version = 2
 		  AND payload ->> 'block_hash' = '0x' || $1`,
 		integrationGenesisBlockHash,
 	).Scan(&proxyJobs, &requestedGeneration); err != nil {

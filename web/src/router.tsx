@@ -8,7 +8,6 @@ import {
 import { AppShell } from "@/components/AppShell";
 import {
   BlocksPage,
-  ContractPage,
   ContractsPage,
   EntityPage,
   GenesisPage,
@@ -20,6 +19,7 @@ import {
   TransactionsPage,
   VerifyPage,
 } from "@/pages/pages";
+import { ContractPage } from "@/pages/ContractPage";
 import {
   ChartMetricPage,
   ChartsPage,
@@ -109,9 +109,6 @@ const contractsRoute = createRoute({
 const contractRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/contract/$address",
-  validateSearch: (search: Record<string, unknown>) => ({
-    code_hash: typeof search.code_hash === "string" ? search.code_hash : "",
-  }),
   component: ContractRoutePage,
 });
 const verifyRoute = createRoute({
@@ -232,8 +229,7 @@ function NFTRoutePage() {
 
 function ContractRoutePage() {
   const { address } = contractRoute.useParams();
-  const { code_hash: codeHash } = contractRoute.useSearch();
-  return <ContractPage address={address} codeHash={codeHash} />;
+  return <ContractPage address={address} />;
 }
 
 function SearchRoutePage() {

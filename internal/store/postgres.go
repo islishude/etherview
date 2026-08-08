@@ -667,6 +667,8 @@ func deleteBundleFactsTx(ctx context.Context, tx *sql.Tx, chainID string, refere
 	// reindex the affected ABI/token/stats/trace range after core refresh.
 	for _, table := range []string{
 		"block_stage_results",
+		"proxy_upgrade_events",
+		"proxy_initialization_events",
 		"abi_decodings",
 		"contract_abis",
 		"token_balance_deltas",
@@ -1047,20 +1049,27 @@ func insertCoreOutboxTx(ctx context.Context, tx *sql.Tx, chainID, topic string, 
 	return nil
 }
 
+var derivedCanonicalRelations = [...]string{
+	"contract_code_observations",
+	"proxy_observations",
+	"beacon_implementation_observations",
+	"uups_implementation_observations",
+	"proxy_detection_evidence",
+	"proxy_upgrade_events",
+	"proxy_initialization_events",
+	"contract_abis",
+	"abi_decodings",
+	"token_events",
+	"token_balance_deltas",
+	"normalized_traces",
+	"transaction_state_changes",
+	"block_statistics",
+	"name_records",
+	"address_activities",
+}
+
 func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash common.Hash, canonical bool) error {
-	for _, table := range []string{
-		"contract_code_observations",
-		"proxy_observations",
-		"contract_abis",
-		"abi_decodings",
-		"token_events",
-		"token_balance_deltas",
-		"normalized_traces",
-		"transaction_state_changes",
-		"block_statistics",
-		"name_records",
-		"address_activities",
-	} {
+	for _, table := range derivedCanonicalRelations {
 		statement := fmt.Sprintf(`UPDATE %s SET canonical = $3 WHERE chain_id = $1::numeric AND block_hash = $2`, table)
 		if _, err := tx.ExecContext(ctx, statement, chainID, mustHashBytes(hash), canonical); err != nil {
 			return fmt.Errorf("set %s canonical=%t: %w", table, canonical, err)

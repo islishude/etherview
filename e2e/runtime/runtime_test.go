@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/loadtest"
 	"github.com/islishude/etherview/internal/testcompose"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -740,14 +741,17 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state = 'complete' AND (stage, stage_version) IN (
-					    ('proxy',1),('abi',1),('token',1),('stats',3),('trace',1),('state_diff',1))),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
+					    ('stats',3),('trace',1),('state_diff',1))),
 				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
-					    ('proxy',1),('abi',1),('token',1),('stats',3),('trace',1),('state_diff',1))),
+					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
+					    ('stats',3),('trace',1),('state_diff',1))),
 				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL)
-		`, heightArgument, expected).Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished)
+		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version).
+			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished)
 		state := fmt.Sprintf("hash=%s checkpoint=%d complete=%d active=%d failed=%d outbox=%d",
 			canonical, checkpoint, complete, active, failed, unpublished)
 		return err == nil && canonical == expected && checkpoint == int64(height) &&

@@ -17,6 +17,7 @@ export function WalletMenu() {
   const wallet = useWallet();
   const auth = useAuth();
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDetailsElement | null>(null);
   const summaryRef = useRef<HTMLElement | null>(null);
   const focusAfterTransition = useRef(false);
   const focusWithinMenu = useRef(false);
@@ -39,10 +40,24 @@ export function WalletMenu() {
     focusAfterTransition.current = false;
   }, [wallet.active]);
 
+  useEffect(() => {
+    if (!open) return;
+    const dismissOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !menuRef.current?.contains(target)) {
+        if (menuRef.current) menuRef.current.open = false;
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", dismissOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", dismissOnOutsidePointer);
+  }, [open]);
+
   return (
     <>
       <details
         className="wallet-menu"
+        ref={menuRef}
         onBlurCapture={(event) => {
           const next = event.relatedTarget;
           if (next instanceof Node && !event.currentTarget.contains(next)) {

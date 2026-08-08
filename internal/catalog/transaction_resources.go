@@ -94,22 +94,43 @@ func (catalog *Postgres) TransactionLogs(
 		return TransactionLogPage{}, fmt.Errorf("list transaction logs: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
+	type rawLog struct {
+		index     int64
+		raw       []byte
+		persisted persistedLogDecoding
+	}
+	rawLogs := make([]rawLog, 0, resolution.limit+1)
 	for rows.Next() {
 		var raw []byte
 		var logIndex int64
-		if err := rows.Scan(&logIndex, &raw); err != nil {
+		var persisted persistedLogDecoding
+		if err := rows.Scan(
+			&logIndex, &raw, &persisted.status, &persisted.signature,
+			&persisted.source, &persisted.confidence, &persisted.arguments,
+			&persisted.candidates, &persisted.warning,
+			&persisted.targetAddress, &persisted.targetCodeHash,
+		); err != nil {
 			return TransactionLogPage{}, fmt.Errorf("scan transaction log: %w", err)
 		}
 		if logIndex < 0 {
 			return TransactionLogPage{}, ErrCorruptData
 		}
+		rawLogs = append(rawLogs, rawLog{index: logIndex, raw: raw, persisted: persisted})
+	}
+	if err := rows.Err(); err != nil {
+		return TransactionLogPage{}, fmt.Errorf("iterate transaction logs: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return TransactionLogPage{}, fmt.Errorf("close transaction logs: %w", err)
+	}
+	for _, stored := range rawLogs {
 		blockNumber, parseErr := strconv.ParseUint(resolution.identity.BlockNumber, 10, 64)
 		if parseErr != nil {
 			return TransactionLogPage{}, ErrCorruptData
 		}
 		decoded, decodeErr := chainbundle.DecodeLog(
-			raw, common.BytesToHash(resolution.txHash), common.BytesToHash(resolution.blockHash),
-			blockNumber, uint64(resolution.txIndex), uint64(logIndex),
+			stored.raw, common.BytesToHash(resolution.txHash), common.BytesToHash(resolution.blockHash),
+			blockNumber, uint64(resolution.txIndex), uint64(stored.index),
 		)
 		if decodeErr != nil {
 			return TransactionLogPage{}, ErrCorruptData
@@ -118,13 +139,17 @@ func (catalog *Postgres) TransactionLogs(
 		for index := range decoded.Topics {
 			topics[index] = decoded.Topics[index].Hex()
 		}
+		decoding, decodeErr := resolveTransactionLogDecoding(
+			ctx, tx, request.ChainID, blockNumber, resolution.blockHash,
+			decoded.Address, decoded.Topics, decoded.Data, stored.persisted,
+		)
+		if decodeErr != nil {
+			return TransactionLogPage{}, fmt.Errorf("decode transaction log ABI: %w", decodeErr)
+		}
 		page.Items = append(page.Items, TransactionLog{
-			Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(logIndex, 10),
-			Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data),
+			Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10),
+			Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: decoding,
 		})
-	}
-	if err := rows.Err(); err != nil {
-		return TransactionLogPage{}, fmt.Errorf("iterate transaction logs: %w", err)
 	}
 	if len(page.Items) > resolution.limit {
 		page.Items = page.Items[:resolution.limit]
@@ -355,10 +380,20 @@ ORDER BY event.log_index, event.sub_index
 LIMIT $4 OFFSET $5`
 
 const transactionLogsSQL = `
-SELECT log_index, raw
-FROM logs
-WHERE chain_id = $1::numeric AND block_hash = $2 AND tx_hash = $3
-ORDER BY log_index
+SELECT log.log_index, log.raw, decoding.status, decoding.signature,
+       decoding.source, decoding.confidence, decoding.arguments,
+       decoding.candidates, decoding.warning,
+       decoding.target_address, decoding.target_code_hash
+FROM logs AS log
+LEFT JOIN abi_decodings AS decoding
+  ON decoding.chain_id = log.chain_id
+ AND decoding.block_hash = log.block_hash
+ AND decoding.transaction_hash = log.tx_hash
+ AND decoding.object_kind = 'log'
+ AND decoding.object_index = log.log_index::text
+ AND decoding.canonical
+WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3
+ORDER BY log.log_index
 LIMIT $4 OFFSET $5`
 
 const transactionStateChangesSQL = `

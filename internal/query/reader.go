@@ -461,6 +461,10 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 		return nil, "", parseErr
 	} else if isHash {
 		results, err = r.searchHash(ctx, tx, hash, generation, limit+1)
+	} else if _, addressErr := ethrpc.ParseAddress(value); addressErr == nil {
+		results, err = r.searchText(
+			ctx, tx, value, snapshot.SnapshotNumber, generation, resolvedNameAddress, boundary, limit+2,
+		)
 	} else if height, blockParseErr := parseBlockNumber(value); blockParseErr == nil {
 		results, err = r.searchBlockNumber(ctx, tx, height, generation)
 	} else {
@@ -477,7 +481,14 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 			return nil, "", err
 		}
 		extra := gen.SearchResult{Kind: gen.SearchResultKindAddress, Key: checksummed, Label: checksummed, Rank: 50}
-		if boundary == nil || afterSearchBoundary(extra, *boundary) {
+		catalogHasAddress := false
+		for _, result := range results {
+			if strings.EqualFold(result.Key, checksummed) {
+				catalogHasAddress = true
+				break
+			}
+		}
+		if !catalogHasAddress && (boundary == nil || afterSearchBoundary(extra, *boundary)) {
 			results = mergeSearchResults(results, extra, limit+2)
 		}
 	}
@@ -879,7 +890,12 @@ WITH visible_documents AS (
                  WHEN lower(document.result_key) = $2 THEN 104
                  WHEN $2 = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
-           CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical
+           CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
+           document.verification_match_type,
+           document.valid_from_block AS verification_valid_from_block,
+           document.verification_request_digest,
+           document.verification_job_id,
+           proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact
     FROM visible_documents AS document
     LEFT JOIN canonical_blocks AS canonical
       ON document.source_kind IN ('name', 'token')
@@ -901,6 +917,14 @@ WITH visible_documents AS (
         ORDER BY observation.block_number DESC, observation.block_hash DESC
         LIMIT 1
     ) AS current_code ON TRUE
+    LEFT JOIN verified_contract_proxy_artifacts AS proxy_artifact
+      ON document.source_kind = 'verified_contract'
+     AND proxy_artifact.chain_id = document.chain_id
+     AND proxy_artifact.address = document.target_address
+     AND proxy_artifact.code_hash = document.code_hash
+     AND proxy_artifact.valid_from_block = document.valid_from_block
+     AND proxy_artifact.verification_job_id = document.verification_job_id
+     AND proxy_artifact.request_digest = document.verification_request_digest
     WHERE document.source_kind <> 'code'
       AND (
           document.source_kind <> 'name'
@@ -938,6 +962,7 @@ WITH visible_documents AS (
           )
           OR (
               document.source_kind = 'verified_contract'
+              AND document.verification_job_id IS NOT NULL
               AND current_code.code_hash = document.code_hash
               AND document.valid_from_block <= current_code.block_number
               AND (document.valid_to_block IS NULL OR document.valid_to_block >= current_code.block_number)
@@ -946,7 +971,13 @@ WITH visible_documents AS (
 ), deduplicated AS (
     SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical
     FROM candidates
-    ORDER BY kind, key, rank DESC, label
+    ORDER BY kind, key, rank DESC,
+             verification_proxy_artifact DESC,
+             (verification_match_type = 'full') DESC NULLS LAST,
+             verification_valid_from_block DESC NULLS LAST,
+             verification_request_digest ASC NULLS LAST,
+             verification_job_id ASC NULLS LAST,
+             label
 )
 SELECT kind, key, label, rank, canonical
 FROM deduplicated

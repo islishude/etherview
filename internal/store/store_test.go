@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +14,13 @@ import (
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
 )
+
+func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(derivedCanonicalRelations[:], "uups_implementation_observations") {
+		t.Fatalf("derived canonical relations=%v", derivedCanonicalRelations)
+	}
+}
 
 func TestMemoryRepositoryCommitsCanonicalChainAndCheckpoint(t *testing.T) {
 	t.Parallel()
@@ -301,7 +309,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -316,7 +324,166 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			addressActivitySQL = migration.SQL
 		case "0027_verifier_v2":
 			verifierV2SQL = migration.SQL
+		case "0032_openzeppelin_proxy_interaction":
+			proxyInteractionSQL = migration.SQL
+		case "0033_proxy_interaction_coverage_ranges":
+			proxyCoverageRangesSQL = migration.SQL
+		case "0034_uups_implementation_observations":
+			uupsObservationSQL = migration.SQL
+		case "0035_uups_proxy_binding_identity":
+			uupsBindingSQL = migration.SQL
+		case "0036_proxy_history_epochs":
+			proxyHistoryEpochSQL = migration.SQL
 		}
+	}
+	for _, fragment := range []string{
+		"ADD COLUMN stage_version INTEGER NOT NULL DEFAULT 1",
+		"PRIMARY KEY (chain_id, proxy_address, block_hash, stage_version)",
+		"CREATE TABLE beacon_implementation_observations",
+		"CREATE TABLE proxy_detection_evidence",
+		"'immutable_args_creation_unverified'",
+		"CREATE TABLE proxy_upgrade_events",
+		"CREATE TABLE proxy_initialization_events",
+		"REFERENCES logs(chain_id, block_number, block_hash, log_index)",
+		"ADD COLUMN proxy_artifact_kind TEXT",
+		"ADD COLUMN proxy_standard_version TEXT",
+		"ADD COLUMN proxy_runtime_immutable_address BYTEA",
+		"ADD COLUMN proxy_source_manifest_sha256 BYTEA",
+		"CONSTRAINT verification_results_proxy_attestation_shape",
+		"AND runtime_immutable_address IS NOT NULL",
+		"result.proxy_artifact_kind = NEW.artifact_kind",
+		"result.proxy_standard_version = NEW.standard_version",
+		"result.proxy_runtime_immutable_address IS NOT DISTINCT FROM",
+		"result.proxy_source_manifest_sha256 = NEW.source_manifest_sha256",
+		"target_block.hash = job.block_hash",
+		"target_block.number = NEW.valid_from_block",
+		"NEW.runtime_immutable_address = job.address",
+		"observation_stage_version",
+		"CREATE TABLE verified_proxy_bindings",
+		"CONSTRAINT verified_proxy_bindings_management_semantics",
+		"management_address IS NOT DISTINCT FROM admin_address",
+		"management_address IS NOT DISTINCT FROM beacon_address",
+		"NEW.proxy_pattern <> 'clone' OR (\n                  observation.proxy_kind = NEW.proxy_kind",
+		"JOIN proxy_observations AS observation",
+		"observation.proxy_code_hash = NEW.proxy_code_hash",
+		"observation.beacon_code_hash = NEW.beacon_code_hash",
+		"observation.confidence IN ('verified', 'high')",
+		"newer_observation.block_number > observation.block_number",
+		"newer_generation.id > generation.id",
+	} {
+		if !strings.Contains(proxyInteractionSQL, fragment) {
+			t.Errorf("proxy interaction migration missing %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"CHECK (target_kind IN ('proxy', 'beacon', 'uups'))",
+		"CREATE TABLE uups_implementation_observations",
+		"CREATE TABLE uups_implementation_observation_generations",
+		"CREATE INDEX uups_implementation_observations_latest_idx",
+		"uups_implementation_observations_exact_probe",
+		"360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+		"upgrade_interface_version = '5.0.0'",
+		"artifact.artifact_kind = 'uups_implementation'",
+		"artifact.runtime_immutable_address = NEW.implementation_address",
+		"code_observation.code_hash = NEW.implementation_code_hash",
+		"code_observation.canonical = TRUE",
+		"FOR EACH ROW EXECUTE FUNCTION enforce_proxy_observation_generation()",
+		"DEFERRABLE INITIALLY DEFERRED",
+		"UUPS implementation observation lacks a lease-fenced generation witness",
+		"UUPS implementation observations are append-only",
+	} {
+		if !strings.Contains(uupsObservationSQL, fragment) {
+			t.Errorf("UUPS implementation observation migration missing %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"ADD COLUMN uups_generation_id BIGINT",
+		"verified_proxy_bindings_uups_generation_shape",
+		"CREATE INDEX transaction_state_changes_code_epoch_idx",
+		"WHERE canonical AND field_kind = 'code'",
+		"CREATE INDEX proxy_detection_evidence_negative_shadow_idx",
+		"chain_id, address, candidate_kind, code_hash",
+		"WHERE canonical AND stage_version = 2",
+		"(proxy_pattern = 'uups') = (uups_generation_id IS NOT NULL)",
+		"WHEN 'uups' THEN 'erc1967'",
+		"resolution.implementation_artifact_job_id IS NULL",
+		"UUPS compatibility is shared implementation evidence, not a proxy artifact resolution",
+		"result.outcome->>'uups_generation_id'",
+		"generation.id = NEW.uups_generation_id",
+		"published.state = 'complete'",
+		"proxy binding lacks continuous observation-to-context coverage",
+		"'etherview:proxy-interaction-coverage:' || NEW.chain_id::text",
+		"proxy binding context is not the canonical tip",
+		"proxy binding is shadowed by published negative detection evidence",
+		"evidence.reason = 'immutable_args_creation_unverified'",
+		"exact_clone.details->>'immutable_args_creation_authenticated' = 'true'",
+		"proxy binding beacon is shadowed by published negative detection evidence",
+		"evidence.candidate_kind = 'proxy'",
+		"evidence.candidate_kind = 'beacon'",
+		"observation.probe_state = 'compatible'",
+		"artifact.valid_from_block >= code_epoch.block_number",
+		"proxy_interaction_coverage_contains(",
+		"conflict_generation.id > generation.id",
+		"UUPS implementation generation is not the latest compatible published evidence",
+	} {
+		if !strings.Contains(uupsBindingSQL, fragment) {
+			t.Errorf("UUPS proxy binding migration missing %q", fragment)
+		}
+	}
+	if joins, complete := strings.Count(uupsBindingSQL, "JOIN published_block_stage_results AS"), strings.Count(uupsBindingSQL, ".state = 'complete'"); joins != complete {
+		t.Errorf("UUPS binding migration complete-publication guards=%d, want one for each of %d joins", complete, joins)
+	}
+	lockPosition := strings.Index(uupsBindingSQL, "PERFORM pg_advisory_xact_lock")
+	tipPosition := strings.Index(uupsBindingSQL, "proxy binding context is not the canonical tip")
+	if lockPosition < 0 || tipPosition < 0 || lockPosition > tipPosition {
+		t.Errorf("UUPS binding trigger must acquire the coverage lock before its canonical-tip recheck")
+	}
+	for _, fragment := range []string{
+		"CREATE TABLE proxy_history_epochs",
+		"phase IN ('requested', 'published')",
+		"CREATE INDEX proxy_history_epochs_latest_idx",
+		"INCLUDE (block_number, block_hash)",
+		"CREATE TRIGGER durable_jobs_proxy_history_epoch",
+		"CREATE TRIGGER block_stage_results_proxy_history_epoch",
+		"proxy history epochs are append-only",
+	} {
+		if !strings.Contains(proxyHistoryEpochSQL, fragment) {
+			t.Errorf("proxy history epoch migration missing %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"CREATE TABLE proxy_interaction_covered_blocks",
+		"CREATE TABLE proxy_interaction_coverage_ranges",
+		"CREATE OR REPLACE FUNCTION proxy_interaction_coverage_contains",
+		"CREATE OR REPLACE FUNCTION refresh_proxy_interaction_coverage_block",
+		"pg_advisory_xact_lock(hashtextextended(",
+		"('trace'::text, 1)",
+		"('state_diff'::text, 1)",
+		"('proxy'::text, 2)",
+		"CREATE TRIGGER proxy_interaction_coverage_canonical_trigger",
+		"CREATE TRIGGER proxy_interaction_coverage_stage_result_trigger",
+		"CREATE TRIGGER proxy_interaction_coverage_job_trigger",
+		"CREATE TRIGGER proxy_interaction_coverage_journal_trigger",
+		"CREATE TRIGGER proxy_interaction_coverage_outbox_trigger",
+		"covered.block_number - row_number() OVER",
+		"required_start.block_hash = target_start_hash",
+		"required_end.block_hash = target_end_hash",
+		"range_start.block_hash = coverage.start_block_hash",
+		"range_end.block_hash = coverage.end_block_hash",
+	} {
+		if !strings.Contains(proxyCoverageRangesSQL, fragment) {
+			t.Errorf("proxy coverage-ranges migration missing %q", fragment)
+		}
+	}
+	membershipSQL, _, found := strings.Cut(
+		proxyCoverageRangesSQL,
+		"CREATE OR REPLACE FUNCTION refresh_proxy_interaction_coverage_block",
+	)
+	if !found {
+		t.Fatal("proxy coverage-ranges migration lacks refresh function boundary")
+	}
+	if strings.Contains(membershipSQL, "generate_series") {
+		t.Error("proxy coverage membership function must not scan generated chain heights")
 	}
 	for _, fragment := range []string{
 		"DROP TABLE IF EXISTS verification_jobs CASCADE",

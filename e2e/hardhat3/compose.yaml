@@ -27,6 +27,8 @@ services:
       ETHERVIEW_HARDHAT3_EXPLORER_URL: http://${ETHERVIEW_HARDHAT3_API_SERVICE}:8080
       ETHERVIEW_HARDHAT3_API_URL: http://${ETHERVIEW_HARDHAT3_API_SERVICE}:8080/v2/api
       ETHERVIEW_HARDHAT3_DEPLOYMENT_FILE: /e2e-output/deployment.json
+      ETHERVIEW_HARDHAT3_SLOT_TAMPER_FILE: /e2e-output/slot-tamper.json
+      ETHERVIEW_HARDHAT3_UPGRADE_FILE: /e2e-output/upgrades.json
     volumes:
       - hardhat-build:/workspace/build
       - ${ETHERVIEW_HARDHAT3_ARTIFACT_DIR}:/e2e-output

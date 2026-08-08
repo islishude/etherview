@@ -378,6 +378,32 @@ type TransactionLog struct {
 	LogIndex string
 	Topics   []string
 	Data     string
+	Decoding TransactionLogDecoding
+}
+
+type TransactionLogDecoding struct {
+	Status     string
+	EventName  string
+	Signature  string
+	Arguments  []TransactionLogArgument
+	Candidates []string
+	ABISource  *TransactionLogABISource
+	Confidence string
+	Warning    string
+}
+
+type TransactionLogArgument struct {
+	Name    string
+	Type    string
+	Indexed bool
+	Hashed  bool
+	Value   any
+}
+
+type TransactionLogABISource struct {
+	Kind     string
+	Address  string
+	CodeHash string
 }
 
 type TransactionLogPage struct {

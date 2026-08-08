@@ -829,6 +829,9 @@ expect_render_failure external-billing-without-fingerprint-pepper \
 expect_render_failure invalid-x402-operation \
   --set-string config.billing.routes.notEligible.access=x402 \
   --set-string config.billing.routes.notEligible.amount_atomic=1
+expect_render_failure free-verified-artifact-read \
+  --set-string config.billing.routes.getVerifiedContract.access=x402 \
+  --set-string config.billing.routes.getVerifiedContract.amount_atomic=1
 expect_render_failure invalid-x402-access \
   --set-string config.billing.routes.listBlocks.access=free \
   --set-string config.billing.routes.listBlocks.amount_atomic=1

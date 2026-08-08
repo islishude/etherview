@@ -295,18 +295,16 @@ describe("P50 capability pages", () => {
   });
 
   it("loads published artifacts independently of the submission feature flag", async () => {
-    const secret = "ev_live_artifact_read";
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/v1/config") return configResponse({ verification: false });
       if (path === `/api/v1/contracts/${address}/verification`) {
-        expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+        expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
-            chain_id: "1",
-            address,
-            code_hash: codeHash,
-            valid_from_block: "500",
+            resolution: "exact_address",
+            target: { chain_id: "1", address, code_hash: codeHash, block_number: "520", block_hash: blockHash },
+            source: { address, code_hash: codeHash, valid_from_block: "500", created_at: "2026-07-20T10:00:00Z" },
             language: "solidity",
             compiler_version: "0.8.30",
             file_name: "src/ReadOnly.sol",
@@ -321,7 +319,17 @@ describe("P50 capability pages", () => {
             runtime_code_artifacts: {},
             libraries: {},
             is_blueprint: false,
-            created_at: "2026-07-20T10:00:00Z",
+          },
+          meta,
+        });
+      }
+      if (path === `/api/v1/contracts/${address}/proxy`) {
+        return Response.json({
+          data: {
+            address,
+            status: "not_detected",
+            snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
+            evidence: [],
           },
           meta,
         });
@@ -330,16 +338,15 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/contract/${address}?code_hash=${codeHash}`);
+    renderExplorer(`/contract/${address}`);
 
-    expect(await screen.findByText(/published-artifact reads remain available/)).toBeVisible();
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: secret } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Load verification" }));
-    expect(await screen.findByText("ReadOnlyArtifact")).toBeVisible();
+    expect(await screen.findByText(/no API key is required/)).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 })).toBeVisible();
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Public verification is unavailable" })).toBeNull();
   });
 
-  it("opens wallet-only contract tools without requiring a code hash", async () => {
+  it("opens automatic contract discovery without code hash or manual calldata", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/v1/config") return configResponse({});
       return apiError("not_found", 404);
@@ -350,13 +357,13 @@ describe("P50 capability pages", () => {
     fireEvent.change(await screen.findByLabelText("Address"), {
       target: { value: address },
     });
-    expect(screen.getByLabelText("Code hash (optional)")).toHaveValue("");
+    expect(screen.queryByLabelText("Code hash (optional)")).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Open contract" }));
 
     expect(await screen.findByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-    expect(screen.getByLabelText("Calldata")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Read contract" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send transaction" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Code" })).toBeVisible();
+    expect(screen.queryByLabelText("Calldata")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 
   it("rejects nested duplicate Standard JSON keys before submission", async () => {

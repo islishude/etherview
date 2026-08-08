@@ -534,7 +534,9 @@ func TestSolcJSExecutorMigrationDeletesVyperAndPreservesSolidity(t *testing.T) {
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verified_contracts WHERE language = 'vyper'`, 0)
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_proxy_contracts`, 0)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM pg_class
+		WHERE oid = to_regclass(current_schema() || '.verified_proxy_contracts')`, 0)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM compiler_catalog_generations WHERE language = 'vyper'`, 0)
 	assertRowCount(t, ctx, db, `

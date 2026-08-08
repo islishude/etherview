@@ -13,6 +13,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/contractartifact"
 )
 
 var (
@@ -100,6 +102,9 @@ type VerificationLease struct {
 }
 
 type VerifiedContract struct {
+	Resolution            string
+	Target                ContractCodeIdentity
+	Source                VerifiedArtifactSource
 	ChainID               uint64
 	Address               string
 	CodeHash              string
@@ -125,13 +130,29 @@ type VerifiedContract struct {
 	CreatedAt             time.Time
 }
 
+type ContractCodeIdentity struct {
+	ChainID     uint64
+	Address     string
+	CodeHash    string
+	BlockNumber uint64
+	BlockHash   string
+}
+
+type VerifiedArtifactSource struct {
+	Address        string
+	CodeHash       string
+	ValidFromBlock uint64
+	ValidToBlock   *uint64
+	CreatedAt      time.Time
+}
+
 type Repository interface {
 	Claim(context.Context, string, time.Duration) (VerificationLease, bool, error)
 	Renew(context.Context, VerificationLease, time.Duration) error
 	BindCompiler(context.Context, VerificationLease, CompilerProvenance) error
 	Fail(context.Context, VerificationLease, ErrorCode) error
 	Job(context.Context, string) (VerificationJob, bool, error)
-	VerifiedContract(context.Context, uint64, string, string) (VerifiedContract, bool, error)
+	VerifiedContract(context.Context, uint64, string) (VerifiedContract, bool, error)
 }
 
 type RepositoryOptions struct {
@@ -153,9 +174,10 @@ func (options *RepositoryOptions) defaults() {
 }
 
 type PostgresRepository struct {
-	db      *sql.DB
-	options RepositoryOptions
-	random  io.Reader
+	db        *sql.DB
+	artifacts *contractartifact.Resolver
+	options   RepositoryOptions
+	random    io.Reader
 }
 
 func NewPostgresRepository(db *sql.DB, options RepositoryOptions) (*PostgresRepository, error) {
@@ -166,7 +188,11 @@ func NewPostgresRepository(db *sql.DB, options RepositoryOptions) (*PostgresRepo
 	if options.MaxRequestBytes <= 0 || options.MaxResultBytes <= 0 || options.MaxAttempts > 100 {
 		return nil, errors.New("verification repository limits must be positive")
 	}
-	return &PostgresRepository{db: db, options: options, random: rand.Reader}, nil
+	artifacts, err := contractartifact.NewResolver(db)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgresRepository{db: db, artifacts: artifacts, options: options, random: rand.Reader}, nil
 }
 
 func verificationRequestDigest(payload []byte, _ ...bool) [sha256.Size]byte {

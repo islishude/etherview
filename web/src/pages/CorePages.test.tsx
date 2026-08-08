@@ -297,6 +297,50 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
+  it("renders decoded log arguments first and keeps raw topics and data disclosed", async () => {
+    const eventTopic = `0x${"77".repeat(32)}`;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: "0x", status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/logs`) {
+        return envelope({
+          state: "complete", chain_id: "1", block_number: "12",
+          block_hash: canonicalHash, transaction_hash: transactionHash,
+          canonical: true, finality: "safe",
+          items: [{
+            address, log_index: "0", topics: [eventTopic], data: "0x1234",
+            decoding: {
+              status: "decoded", event_name: "Changed", signature: "Changed(string)",
+              confidence: "verified", abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+              arguments: [{ name: "message", type: "string", indexed: true, hashed: true, value: eventTopic }],
+              candidates: ["Changed(string)"],
+            },
+          }],
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}?tab=logs`);
+
+    expect(await screen.findByText("Changed(string)")).toBeVisible();
+    expect(screen.getByText("Decoded")).toBeVisible();
+    expect(screen.getByText("indexed value hash")).toBeVisible();
+    const raw = screen.getByText("Raw topics and data");
+    expect(raw).toBeVisible();
+    await userEvent.setup().click(raw);
+    expect(screen.getByText("0x1234")).toBeVisible();
+    expect(screen.getAllByText(eventTopic)).toHaveLength(2);
+  });
+
   it("copies transaction addresses from the detail page", async () => {
     const txFrom = `0x${"55".repeat(20)}`;
     const txTo = `0x${"66".repeat(20)}`;
@@ -871,7 +915,7 @@ describe("core explorer pages", () => {
 
     expect(await screen.findByRole("link", { name: "Contract" })).toHaveAttribute(
       "href",
-      `/contract/${address}?code_hash=${olderHash}`,
+      `/contract/${address}`,
     );
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
     const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");

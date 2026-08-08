@@ -72,6 +72,27 @@ authoritative empty result.
   reject malformed or stale traversal state. Cursor inputs and emitted
   `meta.next_cursor` values share the bounded `OpaqueCursor` schema; clients
   must not decode or construct them.
+- Proxy detail, implementation-upgrade history, and initialization history are
+  native spec-first resources under `/api/v1/contracts/{address}/proxy`. Their
+  writer-only readers select one canonical tip in a repeatable-read,
+  read-only transaction. History cursors bind chain, normalized address,
+  resource kind, the exact canonical snapshot number and hash, and the
+  published `proxy@2` durable-job generation at that snapshot. They also bind
+  an append-only per-chain epoch watermark covering every `proxy@2` replay
+  request or publication at or below the snapshot. A reorg or a late replay
+  inside that range makes an old cursor a stable `invalid_cursor` error rather
+  than silently traversing changed facts; a new canonical block above the
+  frozen snapshot does not invalidate the cursor.
+- A proxy interaction `bindingId` is the opaque identity of the exact current
+  verified binding, not an authorization token. Detail reads expose it only
+  while proxy, implementation, management, runtime immutable, published stage
+  generation, code epoch, and continuous canonical coverage still agree.
+  Generic or partial detection never enables a management or upgrade entry.
+  Separately, an unambiguous high-confidence current Clone, EIP-1967, or Beacon
+  relation exposes `implementation_interaction` with the proxy,
+  implementation, mechanism, and optional beacon code identities. Ordinary
+  implementation ABI reads and writes target the proxy and refresh that full
+  identity before every call or submission; they do not consume `bindingId`.
 - Contract tests inspect the raw OpenAPI YAML for duplicate mapping keys and
   enforce the native success envelope, error envelope, decimal quantity, public
   identifier, and opaque-cursor primitives. Both generated Go and TypeScript
@@ -109,12 +130,20 @@ authoritative empty result.
   explicit Etherview extension. Mined-block results omit `blockReward` because
   the durable Core model cannot authoritatively derive consensus issuance or a
   complete execution reward; the API never substitutes zero.
-- Address-only `/v2/api` ABI and source lookups first resolve the latest
-  canonical contract-code observation and select a verification record by
-  chain, address, that code hash, and its validity at the canonical tip. A
-  missing current-code observation is unavailable, while a known current code
-  without a matching record is unverified; an arbitrary open verification
-  interval is never a fallback.
+- Native and address-only `/v2/api` ABI and source lookups use one
+  writer-authoritative resolver. It first resolves the target's latest
+  canonical non-empty runtime-code identity, then prefers the target address's
+  range-valid publication and otherwise deterministically selects a verified
+  publication with the same chain and code hash. The latter is explicitly a
+  `code_hash`/`SimilarMatch` result whose ABI and sources retain their source
+  address; it does not independently verify the target, and target constructor
+  evidence is omitted. A missing current-code observation is unavailable,
+  while known code without a candidate is unverified. Verification submission
+  remains strictly address-bound.
+- Transaction logs always retain raw address, topics, and data and add one
+  structured decoding status. The public projection distinguishes decoded,
+  ambiguous, unknown, malformed, and unavailable results; an ambiguous result
+  exposes candidates without selecting one signature or argument set.
 - Public source-verification submission is exposed only when
   `security.public_verification` is enabled and requires an API key. The
   native and compatibility submission boundaries bind every job to the latest
@@ -128,11 +157,13 @@ authoritative empty result.
   JSON settings. Compatibility input likewise cannot choose the chain, address
   binding, runtime bytecode, block hash, or Sourcify consent stored in the
   durable job.
-- Disabling public submission does not disable authenticated reads of already
-  durable verification jobs and verified artifacts. Public configuration's
-  `verification` flag describes whether new native submissions are usable,
-  while `sourcify` independently describes the optional interoperability
-  surface.
+- Disabling public submission does not disable reads of already durable
+  verification data. Verified-artifact GET is anonymous and free so the
+  explorer can render ABI-derived contract functions without an API key;
+  verification submission and GUID-addressed job reads retain their existing
+  API-key boundary. Public configuration's `verification` flag describes
+  whether new native submissions are usable, while `sourcify` independently
+  describes the optional interoperability surface.
 - Every native or compatibility verification request must carry a non-empty
   runtime bytecode whose Keccak-256 hash equals its code hash. Before publishing
   a successful result, the repository rechecks in the completion transaction
@@ -140,9 +171,11 @@ authoritative empty result.
   `contract_code_observations` row joined to the canonical mapping at the same
   height. A syntactically valid client-supplied identity is not publication
   authority.
-- Proxy-verification submission and status remain explicitly unavailable until
-  production proxy observations and a durable, GUID-addressable proxy job
-  lifecycle exist; the compatibility layer never fabricates proxy success.
+- Proxy-verification submission and status use the durable GUID-addressable
+  lifecycle and only admit an exact current OpenZeppelin interaction target.
+  The compatibility layer never promotes generic detection, incomplete
+  coverage, an unverified implementation or management contract, or a stale
+  binding into proxy success.
 - Native `/api/v1` authentication accepts `X-API-Key` only. Legacy `apikey`
   query parameters and URL-encoded POST form fields are parsed solely on the
   exact `/v2/api` route. POST inspection has the same configured body bound as

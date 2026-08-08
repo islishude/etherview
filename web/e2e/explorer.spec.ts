@@ -2,6 +2,16 @@ import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
+const transparentImplementation = "0x3000000000000000000000000000000000000030";
+const uupsProxyAddress = "0x3000000000000000000000000000000000000003";
+const uupsImplementation = "0x4000000000000000000000000000000000000004";
+const beaconProxyAddress = "0x5000000000000000000000000000000000000005";
+const beaconImplementation = "0x6000000000000000000000000000000000000006";
+const cloneAddress = "0x7000000000000000000000000000000000000007";
+const cloneImplementation = "0x8000000000000000000000000000000000000008";
+const proxyAdminAddress = "0x9000000000000000000000000000000000000009";
+const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
+const oldImplementation = "0x4000000000000000000000000000000000000040";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
 const readAPIKey = "ev_e2e_read";
 const verificationJobID = "123e4567-e89b-42d3-a456-426614174000";
@@ -227,7 +237,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByText("State block hash", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveAttribute(
     "href",
-    `/contract/${address}?code_hash=${codeHash}`,
+    `/contract/${address}`,
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
@@ -305,12 +315,45 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
 
-  await page.goto(`/contract/${address}?code_hash=${codeHash}`);
-  await expect(page.getByText(/published-artifact reads remain available/)).toBeVisible();
-  await page.getByLabel("API key", { exact: true }).fill(readAPIKey);
-  await activateInView(page.getByRole("button", { name: "Load verification", exact: true }));
-  await expect(page.getByText("ExampleCollectible", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "ABI", exact: true })).toBeVisible();
+  await page.goto(`/contract/${address}`);
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Contract source code", level: 3 })).toBeVisible();
+  const sourceEditor = page.getByRole("textbox", {
+    name: "Read-only source editor for TransparentUpgradeableProxy.sol",
+  });
+  await expect(sourceEditor).toHaveAttribute("contenteditable", "false");
+  await expect(sourceEditor).toContainText("contract TransparentUpgradeableProxy");
+  const keywordColor = await sourceEditor.locator(".tok-keyword").first().evaluate((keyword) =>
+    getComputedStyle(keyword).color
+  );
+  const editorColor = await sourceEditor.evaluate((editor) => getComputedStyle(editor).color);
+  expect(keywordColor).not.toBe(editorColor);
+  const sourceLineTop = await sourceEditor.locator(".cm-line").first().evaluate((line) =>
+    line.getBoundingClientRect().top
+  );
+  const firstLineNumberTop = await page
+    .locator(".source-editor .cm-lineNumbers .cm-gutterElement")
+    .filter({ visible: true })
+    .first()
+    .evaluate((lineNumber) => lineNumber.getBoundingClientRect().top);
+  expect(Math.abs(sourceLineTop - firstLineNumberTop)).toBeLessThan(1);
+  await page.getByRole("button", { name: "lib/ProxyBase.sol" }).click();
+  const libraryEditor = page.getByRole("textbox", {
+    name: "Read-only source editor for lib/ProxyBase.sol",
+  });
+  await expect(libraryEditor).toHaveAttribute("contenteditable", "false");
+  await expect(libraryEditor).toContainText("abstract contract ProxyBase");
+  await expect(page.getByText("Not explicitly set (compiler default)").first()).toBeVisible();
+  await page.getByText("Complete compiler settings", { exact: true }).click();
+  await expect(page.getByText(/"optimizer"/u)).toBeVisible();
+  await expect(page.getByText(/functions ·/u)).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Read contract" })).toBeVisible();
+  await expect(page.getByLabel(/API key/iu)).toHaveCount(0);
+  await expect(page.getByLabel(/calldata/iu)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Load verification" })).toHaveCount(0);
 
   await page.goto("/charts");
   await expect(page.getByRole("heading", { name: "Overview stats", level: 2 })).toBeVisible();
@@ -345,7 +388,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     `/address/${address}`,
     `/address/${walletAccount}`,
     "/contracts",
-    `/contract/${address}?code_hash=${codeHash}`,
+    `/contract/${address}`,
     "/verify",
     "/charts",
     "/charts/execution-fees?range=7d&interval=day",
@@ -365,6 +408,144 @@ test("capability pages survive the embedded binary boundary in both accessible t
     await assertAccessibleRoute(page, route);
   }
   expect(externalRequests).toEqual([]);
+});
+
+test("verified OpenZeppelin proxy pages use anonymous generated forms and exact bound targets", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const contractRequests: Array<{
+    headers: Record<string, string>;
+    method: string;
+    pathname: string;
+  }> = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith("/api/v1/contracts/")) return;
+    contractRequests.push({
+      headers: request.headers(),
+      method: request.method(),
+      pathname: url.pathname,
+    });
+  });
+
+  await page.goto(`/contract/${address}`);
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText("Transparent proxy", { exact: true })).toBeVisible();
+  const transparentTabs = page.getByRole("tablist", {
+    name: "Contract interaction sections",
+  });
+  const codeTab = transparentTabs.getByRole("tab", { name: "Code" });
+  await codeTab.focus();
+  await codeTab.press("ArrowRight");
+  const readContractTab = transparentTabs.getByRole("tab", { name: "Read contract" });
+  await expect(readContractTab).toBeFocused();
+  await expect(readContractTab).toHaveAttribute("aria-selected", "true");
+  const directRead = page.locator(".abi-function-card").filter({ hasText: "proxyValue()" });
+  await expect(directRead.getByText(address, { exact: true })).toHaveCount(0);
+
+  await activateInView(transparentTabs.getByRole("tab", { name: "Write contract" }));
+  await expect(page.getByText("setProxyValue(uint256)", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("newValue")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy calldata" })).toBeVisible();
+
+  await activateInView(transparentTabs.getByRole("tab", {
+    name: "Read implementation (as proxy)",
+  }));
+  const transparentRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
+  await expect(transparentRead.getByText(address, { exact: true })).toHaveCount(0);
+  await expect(transparentRead.getByText(transparentImplementation, { exact: true })).toHaveCount(0);
+
+  await activateInView(transparentTabs.getByRole("tab", { name: "Proxy management" }));
+  const proxyAdminUpgrade = page.locator(".abi-function-card").filter({
+    hasText: "upgradeAndCall(address,address,bytes)",
+  });
+  await expect(proxyAdminUpgrade.getByText(proxyAdminAddress, { exact: true })).toHaveCount(0);
+  await expect(proxyAdminUpgrade.getByText(/High-risk upgrade operation/)).toBeVisible();
+
+  await activateInView(transparentTabs.getByRole("tab", { name: "Upgrade history" }));
+  await expect(page.getByRole("heading", { name: "Canonical implementation upgrades" })).toBeVisible();
+  await expect(page.getByText(oldImplementation, { exact: true })).toBeVisible();
+  await expect(page.getByText(transparentImplementation, { exact: true }).last()).toBeVisible();
+
+  await activateInView(transparentTabs.getByRole("tab", { name: "Initialization history" }));
+  await expect(page.getByText("Initialized version 2", { exact: true })).toBeVisible();
+
+  await page.goto(`/contract/${uupsProxyAddress}`);
+  await expect(page.getByRole("heading", { name: "ERC1967Proxy", level: 2 })).toBeVisible();
+  const uupsTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await expect(uupsTabs.getByRole("tab", { name: "Proxy management" })).toHaveCount(0);
+  await activateInView(uupsTabs.getByRole("tab", {
+    name: "Read implementation (as proxy)",
+  }));
+  const uupsValue = page.locator(".abi-function-card").filter({ hasText: "value()" }).first();
+  await expect(uupsValue.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
+  const proxiable = page.locator(".abi-function-card").filter({ hasText: "proxiableUUID()" });
+  await activateInView(proxiable.locator("summary"));
+  await expect(proxiable.getByText(uupsImplementation, { exact: true })).toHaveCount(0);
+  await expect(proxiable.getByText(/called directly on the implementation/)).toBeVisible();
+  await activateInView(uupsTabs.getByRole("tab", {
+    name: "Write implementation (as proxy)",
+  }));
+  const uupsUpgrade = page.locator(".abi-function-card").filter({
+    hasText: "upgradeToAndCall(address,bytes)",
+  });
+  await activateInView(uupsUpgrade.locator("summary"));
+  await expect(uupsUpgrade.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
+
+  await page.goto(`/contract/${beaconProxyAddress}`);
+  await expect(page.getByRole("heading", { name: "BeaconProxy", level: 2 })).toBeVisible();
+  const beaconTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await activateInView(beaconTabs.getByRole("tab", { name: "Proxy management" }));
+  const beaconUpgrade = page.locator(".abi-function-card").filter({ hasText: "upgradeTo(address)" });
+  await expect(beaconUpgrade.getByText(upgradeableBeacon, { exact: true })).toHaveCount(0);
+  await activateInView(beaconTabs.getByRole("tab", { name: "Upgrade history" }));
+  await expect(page.getByText("Beacon implementation changed", { exact: true })).toBeVisible();
+  await expect(page.getByText(beaconImplementation, { exact: true }).last()).toBeVisible();
+
+  await page.goto(`/contract/${cloneAddress}`);
+  await expect(page.getByRole("heading", { name: "MinimalClone", level: 2 })).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
+  const cloneTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await expect(cloneTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
+  await activateInView(cloneTabs.getByRole("tab", {
+    name: "Read implementation (as proxy)",
+  }));
+  const cloneRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
+  await expect(cloneRead.getByText(cloneAddress, { exact: true })).toHaveCount(0);
+  await expect(cloneRead.getByText(cloneImplementation, { exact: true })).toHaveCount(0);
+  await expect.poll(() => contractRequests.some(({ pathname }) =>
+    pathname === `/api/v1/contracts/${cloneAddress}/proxy/upgrades`)).toBe(false);
+  const cloneCodeTab = cloneTabs.getByRole("tab", { name: "Code" });
+  await cloneCodeTab.click();
+  await expect(cloneCodeTab).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await assertA11yAndNoOverflow(page, "clone contract page in English dark mode");
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByRole("tab", { name: "读取实现（经代理）" })).toBeVisible();
+  await expect(page.getByText(/该 EIP-1167 Clone 不可升级/)).toBeVisible();
+  await assertA11yAndNoOverflow(page, "clone contract page in Chinese dark mode");
+
+  expect(contractRequests.length).toBeGreaterThan(12);
+  for (const request of contractRequests) {
+    expect(request.method).toBe("GET");
+    expect(request.headers["x-api-key"]).toBeUndefined();
+    expect(request.headers["payment-signature"]).toBeUndefined();
+    expect(request.headers["x-csrf-token"]).toBeUndefined();
+  }
+  expect(contractRequests.some(({ pathname }) =>
+    pathname === `/api/v1/contracts/${proxyAdminAddress}/verification`)).toBe(true);
+  expect(contractRequests.some(({ pathname }) =>
+    pathname === `/api/v1/contracts/${upgradeableBeacon}/verification`)).toBe(true);
 });
 
 test("embedded server isolates SPA fallback and serves only hashed immutable assets", async ({
@@ -1198,7 +1379,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
           if (method === "eth_accounts") return [account];
           if (method === "eth_chainId") return "0x1";
           if (method === "eth_call") {
-            return mode === "invalid-call" ? { result: "0xfeed" } : "0xfeed";
+            return mode === "invalid-call"
+              ? { result: "0xfeed" }
+              : `0x${"0".repeat(63)}2`;
           }
           if (method === "eth_sendTransaction") {
             if (mode === "delayed-write") {
@@ -1256,9 +1439,12 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
 
   await page.goto("/contracts");
   await page.getByLabel("Address", { exact: true }).fill(address);
-  await expect(page.getByLabel("Code hash (optional)")).toHaveValue("");
   await activateInView(page.getByRole("button", { name: "Open contract" }));
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Proxy management" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Etherview home" })
       .getByText("Ethereum", { exact: true }),
@@ -1275,9 +1461,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   });
   await expect(addNetworkButton).toBeVisible();
   await activateInView(addNetworkButton);
-  await expect(
-    walletPopover.getByText("Ethereum was added to the wallet."),
-  ).toBeVisible();
+  await expect.poll(async () => page.evaluate(
+    () => (window as WalletWindow).__etherviewE2EWallet.requests,
+  )).toContainEqual(expect.objectContaining({ method: "wallet_addEthereumChain" }));
   const addNetworkRequests = await page.evaluate(
     () => (window as WalletWindow).__etherviewE2EWallet.requests,
   );
@@ -1306,12 +1492,12 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await activateInView(page.locator(".wallet-option"));
   await expect(page.locator(".wallet-summary")).toBeFocused();
 
-  const calldata = page.getByLabel("Calldata");
+  await activateInView(page.getByRole("tab", { name: "Read contract" }));
   await expect(page.getByRole("button", { name: "Read contract" })).toBeEnabled();
-  await calldata.fill("0x1234");
-  await page.getByLabel("Value in wei (optional)").fill("15");
   await activateInView(page.getByRole("button", { name: "Read contract" }));
-  await expect(page.getByText("0xfeed", { exact: true })).toBeVisible();
+  await expect(page.locator(".abi-output").getByText("2", { exact: true })).toBeVisible();
+  await activateInView(page.getByRole("tab", { name: "Write contract" }));
+  await page.getByLabel("newValue").fill("15");
   await activateInView(page.getByRole("button", { name: "Send transaction" }));
   await expect(page.getByText(walletTransactionHash, { exact: true })).toBeVisible();
   expect(backendRequests).toEqual([]);
@@ -1322,28 +1508,30 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   expect(requests.find(({ method }) => method === "eth_call")).toEqual({
     method: "eth_call",
     params: [
-      {
+      expect.objectContaining({
         chainId: "0x1",
-        data: "0x1234",
         from: walletAccount,
         to: address,
-        value: "0xf",
-      },
+      }),
       "latest",
     ],
   });
   expect(requests.find(({ method }) => method === "eth_sendTransaction")).toEqual({
     method: "eth_sendTransaction",
-    params: [
-      {
-        chainId: "0x1",
-        data: "0x1234",
-        from: walletAccount,
-        to: address,
-        value: "0xf",
-      },
-    ],
+    params: [expect.objectContaining({
+      chainId: "0x1",
+      from: walletAccount,
+      to: address,
+    })],
   });
+  const generatedCalls = requests.filter(({ method }) =>
+    method === "eth_call" || method === "eth_sendTransaction");
+  for (const request of generatedCalls) {
+    const transaction = request.params?.[0] as Record<string, unknown>;
+    expect(transaction.data).toMatch(/^0x[0-9a-f]+$/u);
+    expect(transaction.data).not.toBe("0x1234");
+    expect(transaction.value).toBeUndefined();
+  }
   expect(
     requests.every(({ method }) =>
       [
@@ -1362,7 +1550,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     (window as WalletWindow).__etherviewE2EWallet.setMode("delayed-write");
   });
   await activateInView(page.getByRole("button", { name: "Send transaction" }));
-  await expect(page.getByText("Confirm or reject the transaction in your wallet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Waiting for wallet…" })).toBeDisabled();
   await page.evaluate(
     ({ account }) => {
       const wallet = (window as WalletWindow).__etherviewE2EWallet;
@@ -1371,8 +1559,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     },
     { account: walletAccount },
   );
-  await expect(page.getByRole("button", { name: "Read contract" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Send transaction" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Waiting for wallet…" })).toBeDisabled();
   await page.evaluate(
     ({ transactionHash }) => {
       (window as WalletWindow).__etherviewE2EWallet.resolveWrite(transactionHash);
@@ -1380,7 +1567,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     { transactionHash: walletTransactionHash },
   );
   await expect(
-    page.locator(".contract-workbench").getByRole("alert").filter({
+    page.locator(".abi-function-card").getByRole("alert").filter({
       hasText:
         "The wallet changed while the transaction was pending. Its outcome is unknown; check your wallet before retrying.",
     }),
@@ -1424,7 +1611,6 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   ).toBeVisible();
   await expect(page.locator(".wallet-summary")).toBeFocused();
   await expect(page.getByText(/secret-wallet-message/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "读取合约" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "发送交易" })).toBeDisabled();
   await page.locator(".wallet-summary").press("Enter");
 
@@ -1457,6 +1643,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await page.evaluate(() => {
     (window as WalletWindow).__etherviewE2EWallet.setMode("invalid-call");
   });
+  await activateInView(page.getByRole("tab", { name: "读取合约" }));
   await activateInView(page.getByRole("button", { name: "读取合约" }));
   await expect(
     page.getByRole("alert").filter({ hasText: "注入式钱包返回了无效响应。" }),
@@ -1502,9 +1689,13 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
   await activateInView(page.getByText("Connect wallet", { exact: true }).first());
   await activateInView(page.getByRole("button", { name: /E2E Wallet/ }));
 
-  await expect(page.getByRole("status").filter({ hasText: "Switch the wallet to chain 1 (currently 2)." })).toBeVisible();
-  await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+  await expect(page.locator(".wallet-summary")).toHaveAttribute(
+    "aria-label",
+    /Connected E2E Wallet wallet/u,
+  );
+  await activateInView(page.getByRole("tab", { name: "Read contract" }));
   await expect(page.getByRole("button", { name: "Read contract" })).toBeDisabled();
+  await activateInView(page.getByRole("tab", { name: "Write contract" }));
   await expect(page.getByRole("button", { name: "Send transaction" })).toBeDisabled();
   const requests = await page.evaluate(
     () => (window as WalletWindow).__etherviewE2EWallet.requests,
@@ -1518,9 +1709,7 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(
-    page.getByRole("status").filter({ hasText: "请将钱包切换到链 1（当前为 2）。" }),
-  ).toBeVisible();
+  await expect(page.locator(".wallet-popover")).toContainText("链 2");
   const mismatchScan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
@@ -1552,4 +1741,18 @@ async function assertAccessibleRoute(page: import("@playwright/test").Page, rout
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow, route).toBeLessThanOrEqual(1);
+}
+
+async function assertA11yAndNoOverflow(
+  page: import("@playwright/test").Page,
+  context: string,
+) {
+  const scan = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(scan.violations, `${context}\n${JSON.stringify(scan.violations, null, 2)}`).toEqual([]);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, context).toBeLessThanOrEqual(1);
 }

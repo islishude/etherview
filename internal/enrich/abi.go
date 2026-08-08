@@ -21,9 +21,10 @@ type ABIRegistry struct {
 }
 
 type abiCandidateSet struct {
-	functions map[[4]byte][]abiEntry
-	errors    map[[4]byte][]abiEntry
-	events    map[common.Hash][]abiEntry
+	functions       map[[4]byte][]abiEntry
+	errors          map[[4]byte][]abiEntry
+	events          map[common.Hash][]abiEntry
+	anonymousEvents []abiEntry
 }
 
 func NewABIRegistry() *ABIRegistry {
@@ -75,7 +76,11 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		case ABIKindError:
 			candidates.errors[entry.selector] = appendUniqueABIEntry(candidates.errors[entry.selector], entry)
 		case ABIKindEvent:
-			candidates.events[entry.topic] = appendUniqueABIEntry(candidates.events[entry.topic], entry)
+			if entry.anonymous {
+				candidates.anonymousEvents = appendUniqueABIEntry(candidates.anonymousEvents, entry)
+			} else {
+				candidates.events[entry.topic] = appendUniqueABIEntry(candidates.events[entry.topic], entry)
+			}
 		}
 	}
 	return nil
@@ -83,7 +88,7 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 
 func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
 	for index, existing := range entries {
-		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source {
+		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source && existing.anonymous == candidate.anonymous {
 			entries[index] = candidate
 			return entries
 		}
@@ -285,9 +290,6 @@ func uniqueDecodedSignatures(entries []decodedABICandidate) []string {
 }
 
 func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Hash, data []byte) DecodeResult {
-	if len(topics) == 0 {
-		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindEvent, Warning: "log has no signature topic"}
-	}
 	if registry == nil {
 		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindEvent, Warning: "no ABI registry"}
 	}
@@ -298,11 +300,18 @@ func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Has
 	candidates := registry.bindings[identity]
 	var entries []abiEntry
 	if candidates != nil {
-		entries = append(entries, candidates.events[topics[0]]...)
+		if len(topics) > 0 {
+			entries = append(entries, candidates.events[topics[0]]...)
+		}
+		entries = append(entries, candidates.anonymousEvents...)
 	}
 	registry.mu.RUnlock()
 	if len(entries) == 0 {
-		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindEvent, Warning: "unknown event topic " + topics[0].String()}
+		identifier := "anonymous log"
+		if len(topics) > 0 {
+			identifier = "event topic " + topics[0].String()
+		}
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindEvent, Warning: "unknown " + identifier}
 	}
 	var decoded []decodedABICandidate
 	var failures []string
@@ -342,15 +351,19 @@ func (registry *ABIRegistry) decodeEvent(entry abiEntry, topics []common.Hash, d
 			nonIndexedTypes = append(nonIndexedTypes, entry.types[index])
 		}
 	}
-	if len(topics) != indexedCount+1 {
-		return nil, fmt.Errorf("got %d indexed topics, want %d", len(topics)-1, indexedCount)
+	signatureTopics := 1
+	if entry.anonymous {
+		signatureTopics = 0
+	}
+	if len(topics) != indexedCount+signatureTopics {
+		return nil, fmt.Errorf("got %d indexed topics, want %d", len(topics)-signatureTopics, indexedCount)
 	}
 	nonIndexedValues, err := decodeABIValuesWithBudget(nonIndexedTypes, data, registry.limits, budget)
 	if err != nil {
 		return nil, fmt.Errorf("decode event data: %w", err)
 	}
 	arguments := make([]DecodedArgument, len(entry.inputs))
-	topicIndex, dataIndex := 1, 0
+	topicIndex, dataIndex := signatureTopics, 0
 	for index, input := range entry.inputs {
 		argument := DecodedArgument{Name: input.Name, Type: input.Type, Indexed: input.Indexed}
 		if !input.Indexed {

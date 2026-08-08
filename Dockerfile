@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 
-FROM node:26.5.0-alpine AS web-builder
+FROM node:26.7.0-alpine AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
 RUN --mount=type=cache,target=/root/.npm npm --prefix web ci
@@ -10,7 +10,7 @@ COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.js
 COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
-FROM node:26.5.0-bookworm-slim AS compiler-builder
+FROM node:26.7.0-slim AS compiler-builder
 WORKDIR /opt/etherview/compiler
 COPY compiler/package.json compiler/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -19,16 +19,16 @@ COPY compiler/compile.mjs ./compile.mjs
 COPY compiler/build-manifest.mjs /tmp/build-manifest.mjs
 RUN mkdir -p lib \
     && for library in libatomic.so.1 libstdc++.so.6 libgcc_s.so.1; do \
-        library_path="$(ldd /usr/local/bin/node | awk -v name="$library" '$1 == name { print $3 }')"; \
-        test -f "$library_path"; \
-        cp -L "$library_path" "lib/$library"; \
+    library_path="$(ldd /usr/local/bin/node | awk -v name="$library" '$1 == name { print $3 }')"; \
+    test -f "$library_path"; \
+    cp -L "$library_path" "lib/$library"; \
     done \
     && rm -rf node_modules/.bin \
     && test -z "$(find . -type l -print -quit)" \
     && node /tmp/build-manifest.mjs \
-        /usr/local/bin/node \
-        /opt/etherview/compiler \
-        /opt/etherview/compiler/runtime-manifest.json \
+    /usr/local/bin/node \
+    /opt/etherview/compiler \
+    /opt/etherview/compiler/runtime-manifest.json \
     && find /opt/etherview/compiler -type d -exec chmod 0555 {} + \
     && find /opt/etherview/compiler -type f -exec chmod 0444 {} + \
     && chmod 0555 /opt/etherview

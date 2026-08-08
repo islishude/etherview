@@ -35,12 +35,25 @@ func TestCatalogRefresherRetainsLastSuccessfulGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Use the same refresh loop behavior directly because the public minimum
-	// interval intentionally prevents a timing-dependent minute-long test.
-	if _, refreshErr := refresher.catalog.Refresh(context.Background(), LanguageSolidity); refreshErr != nil {
-		if _, retainedErr := refresher.catalog.Versions(context.Background(), LanguageSolidity); retainedErr != nil {
-			t.Fatal(retainedErr)
-		}
+	if delay := refresher.refreshDelay(context.Background()); delay != time.Minute {
+		t.Fatalf("refresh delay=%s, want 1m", delay)
+	}
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+	if catalog.refresh != 1 {
+		t.Fatalf("refresh calls=%d", catalog.refresh)
+	}
+}
+
+func TestCatalogRefresherRetriesWhenNoGenerationExists(t *testing.T) {
+	t.Parallel()
+	catalog := &refresherCatalog{}
+	refresher, err := NewCatalogRefresher(catalog, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delay := refresher.refreshDelay(context.Background()); delay != unavailableCatalogRetryInterval {
+		t.Fatalf("refresh delay=%s, want %s", delay, unavailableCatalogRetryInterval)
 	}
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()

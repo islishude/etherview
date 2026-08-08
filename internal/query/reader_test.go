@@ -588,6 +588,28 @@ func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 	}
 }
 
+func TestSearchTreatsLowNumericAddressAsAddressBeforeBlockNumber(t *testing.T) {
+	t.Parallel()
+	address := "0x00000000000000000000000000000000000026c0"
+	db := testDatabase(t,
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
+		queryExpectation{
+			contains: "FROM search_catalog_documents AS document", columns: columns(5),
+			rows: [][]driver.Value{{"contract", address, "Artifact", int64(104), nil}},
+		},
+	)
+	reader := testReader(t, db, Options{ChainID: 1})
+	results, _, err := reader.Search(context.Background(), address, "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Kind != gen.SearchResultKindContract ||
+		results[0].Label != "Artifact" || results[0].Rank != 104 {
+		t.Fatalf("low numeric address search = %+v", results)
+	}
+}
+
 func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 	t.Parallel()
 	tokenAddress := "0x5aAe" + "b6053F3E94C9b9A09f33669435E7Ef1BeAed"
@@ -612,6 +634,28 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 		results[1].Kind != gen.SearchResultKindAddress || results[1].Canonical == nil || !*results[1].Canonical ||
 		results[2].Kind != gen.SearchResultKindToken || results[2].Key != tokenAddress {
 		t.Fatalf("results=%+v", results)
+	}
+}
+
+func TestSearchVerifiedContractWinnerUsesCanonicalPublicationOrder(t *testing.T) {
+	t.Parallel()
+	query := compactSQL(searchTextSQL)
+	for _, required := range []string{
+		"LEFT JOIN verified_contract_proxy_artifacts AS proxy_artifact",
+		"proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact",
+		"verification_proxy_artifact DESC",
+		"document.verification_match_type",
+		"document.verification_request_digest",
+		"document.verification_job_id",
+		"document.verification_job_id IS NOT NULL",
+		"(verification_match_type = 'full') DESC NULLS LAST",
+		"verification_valid_from_block DESC NULLS LAST",
+		"verification_request_digest ASC NULLS LAST",
+		"verification_job_id ASC NULLS LAST",
+	} {
+		if !strings.Contains(query, compactSQL(required)) {
+			t.Fatalf("search verified-contract ordering lacks %q: %s", required, query)
+		}
 	}
 }
 

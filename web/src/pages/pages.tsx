@@ -5,12 +5,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
-import { getAddress, isAddress, toHex, type Hex } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import {
   useAddressERC20Balances,
@@ -39,7 +38,6 @@ import {
   useSubmitVerification,
   useCompilerCatalog,
   useVerificationJob,
-  useVerifiedContract,
 } from "@/api/hooks";
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import type {
@@ -58,7 +56,6 @@ import type {
   VerificationMatchDetails,
   VerificationSuccess,
   VerificationSubmission,
-  VerifiedContract,
 } from "@/api/types";
 import {
   formatGweiFromWei,
@@ -68,15 +65,8 @@ import {
   formatTimestamp,
   shorten,
 } from "@/components/format";
+import { CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
-import {
-  chainsMatch,
-  isContractCalldata,
-  MAX_CONTRACT_CALLDATA_BYTES,
-  WalletBoundaryError,
-  walletErrorTranslationKey,
-} from "@/wallet/eip6963";
-import { useWallet } from "@/wallet/WalletProvider";
 
 const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
@@ -947,15 +937,37 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                   {logs.data.items.map((log) => (
                     <article className="transaction-log" key={log.log_index}>
                       <header>
-                        <strong>{t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
+                        <div>
+                          <strong>{log.decoding.signature ?? t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
+                          <small className="table-secondary">
+                            {t(logDecodingKey(log.decoding.status))}
+                          </small>
+                        </div>
                         <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
                       </header>
-                      <dl>
-                        {log.topics.map((topic, index) => (
-                          <div key={topic}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
-                        ))}
-                        <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
-                      </dl>
+                      {log.decoding.arguments.length > 0 && (
+                        <dl aria-label={t("detail.eventArguments")}>
+                          {log.decoding.arguments.map((argument, index) => (
+                            <div key={`${argument.name}:${index}`}>
+                              <dt>{argument.name || `${index}`} <code>{argument.type}</code></dt>
+                              <dd>
+                                <code>{formatLogArgument(argument.value)}</code>
+                                {argument.hashed && <small className="table-secondary">{t("detail.indexedHash")}</small>}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                      {log.decoding.warning && <p className="quiet">{log.decoding.warning}</p>}
+                      <details className="transaction-more-details">
+                        <summary>{t("detail.rawLog")}</summary>
+                        <dl>
+                          {log.topics.map((topic, index) => (
+                            <div key={`${topic}:${index}`}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
+                          ))}
+                          <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
+                        </dl>
+                      </details>
                     </article>
                   ))}
                 </div>
@@ -1196,7 +1208,6 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
             className="transaction-tab contract-entry"
             to="/contract/$address"
             params={{ address: account.data.address }}
-            search={{ code_hash: account.data.code_hash }}
           >
             {t("addressTab.contract")}
           </Link>
@@ -2085,7 +2096,6 @@ function TokenDetailPage({ address }: { address: string }) {
               <Link
                 to="/contract/$address"
                 params={{ address: token.data.address }}
-                search={{ code_hash: token.data.code_hash }}
               >
                 {token.data.code_hash}
               </Link>
@@ -2411,68 +2421,6 @@ function DetailList({ label, children }: { label: string; children: React.ReactN
       <h2>{label}</h2>
       <dl className="detail-grid">{children}</dl>
     </section>
-  );
-}
-
-function CopyableField({ children, value }: { children: React.ReactNode; value: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!copied) return;
-    timeoutRef.current = window.setTimeout(() => setCopied(false), 1200);
-    return () => {
-      if (timeoutRef.current !== undefined) {
-        window.clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [copied]);
-
-  const copy = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = value;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        textarea.setAttribute("readonly", "");
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copiedToClipboard = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (!copiedToClipboard) {
-          throw new Error("fallback copy failed");
-        }
-      }
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-
-    if (timeoutRef.current !== undefined) {
-      window.clearTimeout(timeoutRef.current);
-    }
-  };
-
-  return (
-    <span className="copyable-field">
-      <span className="copyable-content">{children}</span>
-      <button
-        aria-label={copied ? t("common.copied") : t("common.copy")}
-        className={copied ? "copyable-copy-button copied" : "copyable-copy-button"}
-        onClick={copy}
-        title={copied ? t("common.copied") : t("common.copy")}
-        type="button"
-      >
-        {copied ? "✓" : "⎘"}
-      </button>
-    </span>
   );
 }
 
@@ -2995,20 +2943,18 @@ export function ContractsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [address, setAddress] = useState("");
-  const [codeHash, setCodeHash] = useState("");
   const [error, setError] = useState<string>();
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(undefined);
-    if (!isAddress(address) || (codeHash !== "" && !HASH_PATTERN.test(codeHash))) {
+    if (!isAddress(address)) {
       setError(t("contracts.invalidIdentity"));
       return;
     }
     void navigate({
       to: "/contract/$address",
       params: { address: getAddress(address) },
-      search: { code_hash: codeHash },
     });
   };
 
@@ -3018,7 +2964,6 @@ export function ContractsPage() {
         <h2>{t("contracts.lookup")}</h2>
         <p className="quiet">{t("contracts.addressFirst")}</p>
         <FormField id="contract-address-lookup" label={t("page.address")} value={address} onChange={setAddress} />
-        <FormField id="contract-code-hash-lookup" label={t("contracts.optionalCodeHash")} value={codeHash} onChange={setCodeHash} />
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button primary" type="submit">{t("contracts.open")}</button>
       </form>
@@ -3189,99 +3134,12 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     case "address":
       return <Link className="search-result" to="/address/$address" params={{ address: result.key }}>{content}</Link>;
     case "contract":
-      return <Link className="search-result" to="/contract/$address" params={{ address: result.key }} search={{ code_hash: "" }}>{content}</Link>;
+      return <Link className="search-result" to="/contract/$address" params={{ address: result.key }}>{content}</Link>;
     case "token":
       return <Link className="search-result" to="/token/$address" params={{ address: result.key }}>{content}</Link>;
     default:
       return <a className="search-result" href={`/search?q=${encodeURIComponent(result.key)}`}>{content}</a>;
   }
-}
-
-export function ContractPage({ address, codeHash }: { address: string; codeHash: string }) {
-  const { t } = useTranslation();
-  const [apiKey, setAPIKey] = useState("");
-  const [submittedAPIKey, setSubmittedAPIKey] = useState("");
-  const [requestRevision, setRequestRevision] = useState(0);
-  const [formError, setFormError] = useState<string>();
-  const validAddress = isAddress(address);
-  const contract = useVerifiedContract(
-    address,
-    submittedAPIKey,
-    requestRevision,
-    validAddress,
-  );
-
-  const loadVerification = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFormError(undefined);
-    if (!validAddress || !apiKey) {
-      setFormError(t("contracts.invalidRequest"));
-      return;
-    }
-    setSubmittedAPIKey(apiKey);
-    setRequestRevision((current) => current + 1);
-  };
-
-  return (
-    <Page title={t("page.contract")} description={address} mono>
-      <div className="contract-detail-stack">
-        <section className="panel verified-contract-card" aria-labelledby="verified-contract-title">
-          <h2 id="verified-contract-title">{t("contracts.verifiedArtifact")}</h2>
-          <p className="quiet">{t("contracts.readIndependent")}</p>
-          <form className="contract-query-form" autoComplete="off" onSubmit={loadVerification}>
-            <label className="field-control" htmlFor="contract-detail-api-key">
-              <span>{t("verification.apiKey")}</span>
-              <input
-                autoComplete="off"
-                id="contract-detail-api-key"
-                name="contract-detail-api-key"
-                onChange={(event) => setAPIKey(event.target.value)}
-                spellCheck={false}
-                type="password"
-                value={apiKey}
-              />
-            </label>
-            <button className="button primary" type="submit">{t("contracts.load")}</button>
-          </form>
-          <p className="quiet api-key-note">{t("verification.apiKeyNotice")}</p>
-          {formError && <p className="form-error" role="alert">{formError}</p>}
-          <QueryNotice loading={contract.isPending && requestRevision > 0} error={contract.error} />
-          {contract.data && <VerifiedContractView contract={contract.data} />}
-        </section>
-        <ContractWorkbench address={address} />
-      </div>
-    </Page>
-  );
-}
-
-function VerifiedContractView({ contract }: { contract: VerifiedContract }) {
-  const { t } = useTranslation();
-  return (
-    <div className="verified-artifacts">
-      <DetailList label={t("contracts.identity") }>
-        <Detail label={t("contracts.contractName")} value={contract.contract_name} />
-        <Detail label={t("contracts.fileName")} value={contract.file_name} />
-        <Detail label={t("verification.language")} value={verificationLanguageLabel(contract.language, t)} />
-        <Detail label={t("verification.compilerVersion")} value={contract.compiler_version} />
-        <Detail label={t("contracts.matchKind")} value={verificationMatchLabel(contract.runtime_match?.match_type, t)} />
-        <Detail label={t("contracts.blueprint")} value={yesNo(contract.is_blueprint, t)} />
-        <Detail label={t("detail.codeHash")} value={contract.code_hash} mono />
-        <Detail label={t("contracts.validBlocks")} value={`${contract.valid_from_block} – ${contract.valid_to_block ?? "∞"}`} />
-      </DetailList>
-      <TextArtifact title={t("contracts.abi")} value={contract.abi} />
-      <TextArtifact title={t("contracts.sources")} value={contract.sources} />
-      <TextArtifact title={t("contracts.settings")} value={contract.settings} />
-      <TextArtifact title={t("contracts.compilationArtifacts")} value={contract.compilation_artifacts} />
-      <TextArtifact title={t("contracts.creationArtifacts")} value={contract.creation_code_artifacts} />
-      <TextArtifact title={t("contracts.runtimeArtifacts")} value={contract.runtime_code_artifacts} />
-      {contract.creation_match && (
-        <VerificationMatchView title={t("verification.creationTransformations")} match={contract.creation_match} />
-      )}
-      {contract.runtime_match && (
-        <VerificationMatchView title={t("verification.runtimeTransformations")} match={contract.runtime_match} />
-      )}
-    </div>
-  );
 }
 
 function TextArtifact({ title, value }: { title: string; value: unknown }) {
@@ -3409,274 +3267,26 @@ function assertNoDuplicateJSONKeys(source: string): void {
   if (offset !== source.length) throw new SyntaxError("unexpected JSON suffix");
 }
 
-function ContractWorkbench({ address }: { address: string }) {
-  const { t } = useTranslation();
-  const publicConfig = usePublicConfig();
-  const wallet = useWallet();
-  const [calldata, setCalldata] = useState("0x");
-  const [value, setValue] = useState("");
-  const [result, setResult] = useState<{
-    kind: "read" | "write";
-    value: Hex;
-    context: string;
-  }>();
-  const [error, setError] = useState<{
-    message: string;
-    context: string;
-    sticky?: boolean;
-  }>();
-  const [pending, setPending] = useState<"read" | "write">();
-  const operationSequence = useRef(0);
-  const activeOperation = useRef<
-    | {
-        id: number;
-        kind: "read" | "write";
-        context: string;
-      }
-    | undefined
-  >(undefined);
-  const expectedChainID = publicConfig.data?.chain_id;
-  const validAddress = isAddress(address);
-  const chainReady = wallet.active && chainsMatch(wallet.active.chainID, expectedChainID);
-  const ready = Boolean(validAddress && chainReady && expectedChainID);
-  const canSubmit = ready && pending === undefined;
-  const walletIdentity = wallet.active
-    ? `${wallet.active.uuid}:${wallet.active.account}:${wallet.active.chainID}:${wallet.active.revision}`
-    : "";
-  const operationContext = JSON.stringify([address, expectedChainID ?? "", walletIdentity]);
-  const latestOperationContext = useRef(operationContext);
-  latestOperationContext.current = operationContext;
-  const visibleError =
-    error && (error.sticky || error.context === operationContext) ? error.message : undefined;
-  const visibleResult = result?.context === operationContext ? result : undefined;
-
-  const chainMessage = useMemo(() => {
-    if (!validAddress) return t("wallet.invalidTarget");
-    if (publicConfig.isPending) return t("wallet.chainLoading");
-    if (!expectedChainID) return t("wallet.chainUnknown");
-    if (wallet.active && !chainsMatch(wallet.active.chainID, expectedChainID)) {
-      return t("wallet.wrongChain", { expected: expectedChainID, actual: wallet.active.chainID });
-    }
-    return undefined;
-  }, [expectedChainID, publicConfig.isPending, t, validAddress, wallet.active]);
-
-  const read = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (activeOperation.current) return;
-    setError(undefined);
-    setResult(undefined);
-    if (!validAddress) {
-      setError({ context: operationContext, message: t("wallet.invalidTarget") });
-      return;
-    }
-    if (!isContractCalldata(calldata)) {
-      setError({ context: operationContext, message: t("wallet.invalidCalldata") });
-      return;
-    }
-    const transactionValue = parseContractValue(value);
-    if (transactionValue === null) {
-      setError({ context: operationContext, message: t("wallet.invalidValue") });
-      return;
-    }
-    const operation = {
-      id: operationSequence.current + 1,
-      kind: "read" as const,
-      context: operationContext,
-    };
-    operationSequence.current = operation.id;
-    activeOperation.current = operation;
-    setPending("read");
-    try {
-      const output = await wallet.readContract(
-        {
-          to: getAddress(address),
-          data: calldata,
-          ...(transactionValue === undefined ? {} : { value: transactionValue }),
-        },
-        expectedChainID,
-      );
-      if (activeOperation.current === operation) {
-        if (operation.context !== latestOperationContext.current) {
-          setError({
-            context: latestOperationContext.current,
-            message: t("wallet.errors.sessionChanged"),
-          });
-          return;
-        }
-        setResult({ kind: "read", value: output, context: operation.context });
-      }
-    } catch (cause) {
-      if (activeOperation.current === operation) {
-        setError({
-          context: latestOperationContext.current,
-          message: t(
-            walletErrorTranslationKey(
-              cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED",
-            ),
-          ),
-        });
-      }
-    } finally {
-      if (activeOperation.current === operation) {
-        activeOperation.current = undefined;
-        setPending(undefined);
-      }
-    }
-  };
-
-  const write = async () => {
-    if (activeOperation.current) return;
-    setError(undefined);
-    setResult(undefined);
-    if (!validAddress) {
-      setError({ context: operationContext, message: t("wallet.invalidTarget") });
-      return;
-    }
-    if (!isContractCalldata(calldata)) {
-      setError({ context: operationContext, message: t("wallet.invalidCalldata") });
-      return;
-    }
-    const transactionValue = parseContractValue(value);
-    if (transactionValue === null) {
-      setError({ context: operationContext, message: t("wallet.invalidValue") });
-      return;
-    }
-    const operation = {
-      id: operationSequence.current + 1,
-      kind: "write" as const,
-      context: operationContext,
-    };
-    operationSequence.current = operation.id;
-    activeOperation.current = operation;
-    setPending("write");
-    try {
-      const hash = await wallet.sendTransaction(
-        {
-          to: getAddress(address),
-          data: calldata,
-          ...(transactionValue === undefined ? {} : { value: transactionValue }),
-        },
-        expectedChainID,
-      );
-      if (activeOperation.current === operation) {
-        if (operation.context !== latestOperationContext.current) {
-          setError({
-            context: latestOperationContext.current,
-            message: t("wallet.errors.transactionOutcomeUnknown"),
-            sticky: true,
-          });
-          return;
-        }
-        setResult({ kind: "write", value: hash, context: operation.context });
-      }
-    } catch (cause) {
-      if (activeOperation.current === operation) {
-        const code =
-          cause instanceof WalletBoundaryError ? cause.code : "REQUEST_FAILED";
-        setError({
-          context: latestOperationContext.current,
-          message: t(walletErrorTranslationKey(code)),
-          sticky: code === "TRANSACTION_OUTCOME_UNKNOWN",
-        });
-      }
-    } finally {
-      if (activeOperation.current === operation) {
-        activeOperation.current = undefined;
-        setPending(undefined);
-      }
-    }
-  };
-
-  return (
-    <section className="panel contract-workbench" aria-labelledby="wallet-workbench-title">
-      <div className="panel-heading">
-        <div>
-          <span className="eyebrow">{t("common.walletBoundary")}</span>
-          <h2 id="wallet-workbench-title">{t("wallet.title")}</h2>
-        </div>
-        <span className={ready ? "availability yes" : "availability no"}>
-          {ready || wallet.active ? t("wallet.connected") : t("actions.connect")}
-        </span>
-      </div>
-      <p className="wallet-notice" id="wallet-boundary-notice">{t("wallet.directNotice")}</p>
-      {chainMessage && <p className="chain-warning" role="status">{chainMessage}</p>}
-      {wallet.error && (
-        <p className="form-error">
-          {t(walletErrorTranslationKey(wallet.error))}
-        </p>
-      )}
-      <form
-        aria-busy={pending !== undefined}
-        aria-describedby="wallet-boundary-notice"
-        className="contract-form"
-        onSubmit={read}
-      >
-        <label htmlFor="contract-calldata">{t("wallet.calldata")}</label>
-        <textarea
-          id="contract-calldata"
-          aria-describedby="wallet-boundary-notice contract-calldata-hint"
-          disabled={pending !== undefined}
-          maxLength={MAX_CONTRACT_CALLDATA_BYTES * 2 + 2}
-          spellCheck={false}
-          value={calldata}
-          onChange={(event) => {
-            setCalldata(event.target.value);
-            setError(undefined);
-            setResult(undefined);
-          }}
-        />
-        <p className="field-hint" id="contract-calldata-hint">{t("wallet.calldataHint")}</p>
-        <label htmlFor="transaction-value">{t("wallet.value")}</label>
-        <input
-          disabled={pending !== undefined}
-          id="transaction-value"
-          inputMode="numeric"
-          maxLength={78}
-          pattern="[0-9]*"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setError(undefined);
-            setResult(undefined);
-          }}
-        />
-        <div className="contract-actions">
-          <button className="button primary" disabled={!canSubmit} type="submit">
-            {t("actions.read")}
-          </button>
-          <button
-            className="button secondary"
-            disabled={!canSubmit}
-            onClick={() => void write()}
-            type="button"
-          >
-            {t("actions.write")}
-          </button>
-        </div>
-      </form>
-      {pending && (
-        <p role="status">
-          {pending === "read" ? t("wallet.pendingRead") : t("wallet.pendingWrite")}
-        </p>
-      )}
-      {visibleError && <p className="form-error" role="alert">{visibleError}</p>}
-      {visibleResult && (
-        <div className="call-result" role="status">
-          <span>
-            {visibleResult.kind === "read" ? t("wallet.result") : t("wallet.transactionHash")}
-          </span>
-          <code>{visibleResult.value}</code>
-        </div>
-      )}
-    </section>
-  );
+function logDecodingKey(status: string) {
+  switch (status) {
+    case "decoded": return "detail.logDecoded" as const;
+    case "ambiguous": return "detail.logAmbiguous" as const;
+    case "unknown": return "detail.logUnknown" as const;
+    case "malformed": return "detail.logMalformed" as const;
+    default: return "detail.logUnavailable" as const;
+  }
 }
 
-function parseContractValue(value: string): Hex | null | undefined {
-  if (value === "") return undefined;
-  if (!/^(?:0|[1-9][0-9]{0,77})$/u.test(value)) return null;
-  const numericValue = BigInt(value);
-  return numericValue >= 1n << 256n ? null : toHex(numericValue);
+function formatLogArgument(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean" || typeof value === "number" || value === null) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "[unavailable]";
+  }
 }
 
 export function NotFoundPage() {

@@ -441,6 +441,12 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 					Identity: identity, NextCursor: "log-next",
 					Items: []catalog.TransactionLog{{
 						Address: address, LogIndex: "4", Topics: []string{blockHash}, Data: "0x1234",
+						Decoding: catalog.TransactionLogDecoding{
+							Status: "decoded", EventName: "Changed", Signature: "Changed(uint256)",
+							Confidence: "verified", Candidates: []string{"Changed(uint256)"},
+							Arguments: []catalog.TransactionLogArgument{{Name: "value", Type: "uint256", Value: "42"}},
+							ABISource: &catalog.TransactionLogABISource{Kind: "exact_address", Address: address, CodeHash: blockHash},
+						},
 					}},
 				}
 			},
@@ -451,7 +457,11 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 					t.Fatal(err)
 				}
 				if response.Data.TransactionHash != hash || len(response.Data.Items) != 1 ||
-					response.Data.Items[0].LogIndex != "4" {
+					response.Data.Items[0].LogIndex != "4" ||
+					response.Data.Items[0].Decoding.Signature == nil ||
+					*response.Data.Items[0].Decoding.Signature != "Changed(uint256)" ||
+					response.Data.Items[0].Decoding.AbiSource == nil ||
+					response.Data.Items[0].Decoding.AbiSource.Kind != "exact_address" {
 					t.Fatalf("response=%+v", response)
 				}
 			},

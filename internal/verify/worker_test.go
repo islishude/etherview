@@ -92,7 +92,6 @@ func (repository *verifyMemoryRepository) VerifiedContract(
 	context.Context,
 	uint64,
 	string,
-	string,
 ) (VerifiedContract, bool, error) {
 	return VerifiedContract{}, false, nil
 }

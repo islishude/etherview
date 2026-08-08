@@ -12,11 +12,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 type verifiedContractRecord struct {
 	CodeHash        []byte
+	SourceAddress   []byte
+	Similar         bool
 	ABI             []byte
 	Sources         []byte
 	Settings        []byte
@@ -31,35 +34,33 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	if err != nil {
 		return verifiedContractRecord{}, err
 	}
-	var record verifiedContractRecord
-	var matchedCodeHash []byte
-	var language, compilerVersion, matchKind, contractName sql.NullString
-	err = b.db.QueryRowContext(ctx, verifiedContractSQL, b.chain, addressBytes).Scan(
-		&record.CodeHash, &matchedCodeHash, &record.ABI, &record.Sources, &record.Settings,
-		&language, &compilerVersion, &matchKind, &contractName,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	resolved, found, err := b.artifacts.ResolveCurrent(ctx, b.chain, addressBytes)
+	if err != nil {
+		return verifiedContractRecord{}, fmt.Errorf("resolve verified contract: %w", err)
+	}
+	if len(resolved.Target.CodeHash) == 0 {
 		return verifiedContractRecord{}, ErrStateUnavailable
 	}
-	if err != nil {
-		return verifiedContractRecord{}, fmt.Errorf("query verified contract: %w", err)
+	if !found {
+		return verifiedContractRecord{}, ErrContractUnverified
+	}
+	record := verifiedContractRecord{
+		CodeHash: resolved.Target.CodeHash, SourceAddress: resolved.Source.Address,
+		Similar: resolved.Resolution == contractartifact.ResolutionCodeHash,
+		ABI:     resolved.Source.ABI, Sources: resolved.Source.Sources,
+		Settings: resolved.Source.Settings, Language: resolved.Source.Language,
+		CompilerVersion: resolved.Source.CompilerVersion,
+		MatchKind:       resolved.Source.MatchType, ContractName: resolved.Source.ContractName,
 	}
 	if len(record.CodeHash) != 32 {
 		return verifiedContractRecord{}, errors.New("stored canonical contract code hash is invalid")
 	}
-	if len(matchedCodeHash) == 0 {
-		return verifiedContractRecord{}, ErrContractUnverified
-	}
-	if len(matchedCodeHash) != 32 || !bytes.Equal(record.CodeHash, matchedCodeHash) {
+	if len(resolved.Source.CodeHash) != 32 || !bytes.Equal(record.CodeHash, resolved.Source.CodeHash) {
 		return verifiedContractRecord{}, errors.New("stored verified contract code hash does not match canonical code")
 	}
-	if !language.Valid || !compilerVersion.Valid || !matchKind.Valid || !contractName.Valid {
+	if len(record.SourceAddress) != common.AddressLength {
 		return verifiedContractRecord{}, errors.New("stored verified contract identity is incomplete")
 	}
-	record.Language = language.String
-	record.CompilerVersion = compilerVersion.String
-	record.MatchKind = matchKind.String
-	record.ContractName = contractName.String
 	if record.Language != "solidity" && record.Language != "yul" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
@@ -117,6 +118,11 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	if err != nil {
 		return nil, err
 	}
+	similarMatch := ""
+	if record.Similar {
+		similarMatch = common.BytesToAddress(record.SourceAddress).Hex()
+		settings.constructorArguments = ""
+	}
 	return []sourceCodeResult{{
 		SourceCode: sources, ABI: abi, ContractName: record.ContractName,
 		CompilerVersion: record.CompilerVersion, CompilerType: "solc",
@@ -125,7 +131,7 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 		EVMVersion: settings.evmVersion, Library: settings.libraries,
 		ContractFileName: "", LicenseType: settings.licenseType,
 		Proxy: proxy, Implementation: implementation,
-		SwarmSource: "", SimilarMatch: "", MatchKind: record.MatchKind,
+		SwarmSource: "", SimilarMatch: similarMatch, MatchKind: record.MatchKind,
 	}}, nil
 }
 
@@ -382,95 +388,230 @@ func (b *PostgresBackend) contractCreationAbsence(ctx context.Context, queryer e
 	return ErrNotFound
 }
 
-const verifiedContractSQL = `
-WITH canonical_tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
+const verifiedProxySQL = proxyCurrentStateSQL + `
+, current_binding AS (
+    SELECT binding.*, current_proxy.context_number,
+           current_proxy.proxy_artifact_job_id,
+           current_proxy.implementation_artifact_job_id
+    FROM current_proxy
+    JOIN verified_proxy_bindings AS binding
+      ON binding.chain_id = $1::numeric
+     AND binding.proxy_address = $2
+     AND binding.observation_stage_version = 2
+     AND binding.observation_block_number = current_proxy.block_number
+     AND binding.observation_block_hash = current_proxy.block_hash
+     AND binding.observation_generation_id = current_proxy.observation_generation_id
+     AND binding.artifact_resolution_id IS NOT DISTINCT FROM
+         current_proxy.artifact_resolution_id
+     AND binding.beacon_generation_id IS NOT DISTINCT FROM
+         current_proxy.beacon_generation_id
+     AND binding.uups_generation_id IS NOT DISTINCT FROM
+         current_proxy.uups_generation_id
+     AND binding.proxy_code_hash = current_proxy.proxy_code_hash
+     AND binding.proxy_kind = current_proxy.proxy_kind
+     AND binding.proxy_pattern = current_proxy.proxy_pattern
+     AND binding.standard_version IS NOT DISTINCT FROM current_proxy.standard_version
+     AND binding.implementation_address = current_proxy.implementation_address
+     AND binding.implementation_code_hash = current_proxy.implementation_code_hash
+     AND binding.admin_address IS NOT DISTINCT FROM current_proxy.admin_address
+     AND binding.admin_code_hash IS NOT DISTINCT FROM current_proxy.admin_code_hash
+     AND binding.beacon_address IS NOT DISTINCT FROM current_proxy.beacon_address
+     AND binding.beacon_code_hash IS NOT DISTINCT FROM current_proxy.beacon_code_hash
+     AND binding.management_kind = current_proxy.management_kind
+     AND binding.management_address IS NOT DISTINCT FROM
+         current_proxy.management_address
+     AND binding.management_code_hash IS NOT DISTINCT FROM
+         current_proxy.management_code_hash
+    JOIN canonical_blocks AS binding_context
+      ON binding_context.chain_id = binding.chain_id
+     AND binding_context.number = binding.context_block_number
+     AND binding_context.block_hash = binding.context_block_hash
+    WHERE current_proxy.proxy_code_hash = $3
+      AND (
+          (binding.proxy_pattern = 'transparent'
+           AND binding.management_kind = 'proxy_admin'
+           AND binding.management_address = binding.admin_address
+           AND binding.management_code_hash = binding.admin_code_hash)
+       OR (binding.proxy_pattern = 'beacon'
+           AND binding.management_kind = 'upgradeable_beacon'
+           AND binding.management_address = binding.beacon_address
+           AND binding.management_code_hash = binding.beacon_code_hash)
+       OR (binding.proxy_pattern IN ('clone', 'erc1967', 'uups')
+           AND binding.management_kind = 'none'
+           AND binding.management_address IS NULL
+           AND binding.management_code_hash IS NULL)
+      )
+      AND proxy_interaction_coverage_contains(
+              binding.chain_id,
+              binding.observation_block_number,
+              binding.observation_block_hash,
+              current_proxy.context_number,
+              current_proxy.context_hash
+          )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM (VALUES
+              (binding.proxy_address, binding.proxy_code_hash),
+              (binding.implementation_address, binding.implementation_code_hash),
+              (binding.admin_address, binding.admin_code_hash),
+              (binding.beacon_address, binding.beacon_code_hash),
+              (binding.management_address, binding.management_code_hash)
+          ) AS identity(address, code_hash)
+          JOIN contract_code_observations AS observation
+            ON observation.chain_id = binding.chain_id
+           AND observation.address = identity.address
+           AND observation.canonical = TRUE
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = observation.chain_id
+           AND canonical.number = observation.block_number
+           AND canonical.block_hash = observation.block_hash
+          WHERE identity.address IS NOT NULL
+            AND observation.block_number > binding.context_block_number
+            AND observation.block_number <= current_proxy.context_number
+            AND observation.code_hash IS DISTINCT FROM identity.code_hash
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM expected_identity AS identity
+          JOIN transaction_state_changes AS change
+            ON change.chain_id = binding.chain_id
+           AND change.address = identity.address
+           AND change.field_kind = 'code'
+           AND change.canonical = TRUE
+          JOIN canonical_blocks AS canonical
+            ON canonical.chain_id = change.chain_id
+           AND canonical.number = change.block_number
+           AND canonical.block_hash = change.block_hash
+          WHERE change.block_number > binding.context_block_number
+            AND change.block_number <= current_proxy.context_number
+            AND lower(change.before_value) IS DISTINCT FROM
+                lower(change.after_value)
+      )
+    ORDER BY binding.created_at DESC, binding.verification_job_id DESC
     LIMIT 1
-), current_code AS (
-    SELECT observation.code_hash, tip.number AS context_number
-    FROM canonical_tip AS tip
-    JOIN LATERAL (
-        SELECT observation.code_hash
-        FROM contract_code_observations AS observation
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = observation.chain_id
-         AND canonical.number = observation.block_number
-         AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.address = $2
-          AND observation.canonical = TRUE
-          AND observation.block_number <= tip.number
-        ORDER BY observation.block_number DESC,
-                 observation.observed_at DESC,
-                 observation.code_hash DESC
-        LIMIT 1
-    ) AS observation ON TRUE
+), required_publication(address, code_hash, epoch_block) AS (
+    SELECT publication.address, publication.code_hash, identity.epoch_block
+    FROM current_binding AS binding
+    CROSS JOIN LATERAL (VALUES
+        (binding.proxy_address, binding.proxy_code_hash,
+         binding.proxy_pattern <> 'clone'),
+        (binding.implementation_address, binding.implementation_code_hash, TRUE),
+        (binding.management_address, binding.management_code_hash,
+         binding.management_kind <> 'none')
+    ) AS publication(address, code_hash, required)
+    JOIN expected_identity AS identity
+      ON identity.address = publication.address
+     AND identity.code_hash = publication.code_hash
+    WHERE publication.required
 )
-SELECT current_code.code_hash, verified.code_hash, verified.abi,
-       verified.sources, verified.settings, verified.language,
-       verified.compiler_version, verified.match_type, verified.contract_name
-FROM current_code
-LEFT JOIN LATERAL (
-    SELECT verified.code_hash, verified.abi, verified.sources,
-           verified.settings, verified.language, verified.compiler_version,
-           verified.match_type, verified.contract_name
-    FROM verified_contracts AS verified
-    WHERE verified.chain_id = $1::numeric
-      AND verified.address = $2
-      AND verified.code_hash = current_code.code_hash
-      AND verified.valid_from_block <= current_code.context_number
-      AND (verified.valid_to_block IS NULL
-           OR verified.valid_to_block >= current_code.context_number)
-	    ORDER BY (verified.match_type = 'full') DESC,
-	             verified.valid_from_block DESC,
-	             verified.request_digest ASC NULLS LAST,
-	             verified.created_at ASC
-    LIMIT 1
-) AS verified ON TRUE`
-
-const verifiedProxySQL = `
-WITH canonical_tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-), current_proxy AS (
-    SELECT observation.proxy_code_hash, observation.block_hash,
-           observation.implementation_address,
-           observation.implementation_code_hash
-    FROM canonical_tip AS tip
-    JOIN LATERAL (
-        SELECT observation.*
-        FROM proxy_observations AS observation
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = observation.chain_id
-         AND canonical.number = observation.block_number
-         AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.proxy_address = $2
-          AND observation.canonical = TRUE
-          AND observation.confidence IN ('verified', 'high')
-          AND observation.implementation_address IS NOT NULL
-          AND observation.implementation_code_hash IS NOT NULL
-          AND observation.block_number <= tip.number
-        ORDER BY observation.block_number DESC, observation.block_hash DESC
-        LIMIT 1
-    ) AS observation ON TRUE
+SELECT binding.implementation_address
+FROM current_binding AS binding
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM current_identity AS identity
+    WHERE identity.current_code_hash IS DISTINCT FROM identity.code_hash
 )
-SELECT current_proxy.implementation_address
-FROM current_proxy
-JOIN verified_proxy_contracts AS verified
-  ON verified.chain_id = $1::numeric
- AND verified.proxy_address = $2
- AND verified.proxy_code_hash = current_proxy.proxy_code_hash
- AND verified.observation_block_hash = current_proxy.block_hash
- AND verified.implementation_address = current_proxy.implementation_address
- AND verified.implementation_code_hash = current_proxy.implementation_code_hash
-WHERE current_proxy.proxy_code_hash = $3`
+  AND NOT EXISTS (
+      SELECT 1
+      FROM required_publication AS publication
+      WHERE NOT EXISTS (
+          SELECT 1
+          FROM verified_contracts AS verified
+          WHERE verified.chain_id = $1::numeric
+            AND verified.address = publication.address
+            AND verified.code_hash = publication.code_hash
+            AND verified.valid_from_block >= publication.epoch_block
+            AND verified.valid_from_block <= binding.context_number
+            AND (verified.valid_to_block IS NULL
+                 OR verified.valid_to_block >= binding.context_number)
+      )
+  )
+  AND (
+      binding.management_kind = 'none' OR EXISTS (
+          SELECT 1
+          FROM verified_contract_proxy_artifacts AS artifact
+          JOIN verified_contracts AS verified
+            ON verified.chain_id = artifact.chain_id
+           AND verified.address = artifact.address
+           AND verified.code_hash = artifact.code_hash
+           AND verified.valid_from_block = artifact.valid_from_block
+           AND verified.verification_job_id = artifact.verification_job_id
+           AND verified.request_digest = artifact.request_digest
+          JOIN expected_identity AS identity
+            ON identity.address = artifact.address
+           AND identity.code_hash = artifact.code_hash
+          WHERE artifact.chain_id = $1::numeric
+            AND artifact.address = binding.management_address
+            AND artifact.code_hash = binding.management_code_hash
+            AND artifact.standard_version = '5.6.1'
+            AND artifact.artifact_kind = CASE binding.management_kind
+                WHEN 'proxy_admin' THEN 'proxy_admin'
+                WHEN 'upgradeable_beacon' THEN 'upgradeable_beacon'
+            END
+            AND artifact.valid_from_block >= identity.epoch_block
+            AND artifact.valid_from_block <= binding.context_number
+            AND (verified.valid_to_block IS NULL
+                 OR verified.valid_to_block >= binding.context_number)
+      )
+  )
+  AND (
+      binding.proxy_pattern = 'clone' OR EXISTS (
+          SELECT 1
+          FROM verified_contract_proxy_artifacts AS artifact
+          JOIN verified_contracts AS verified
+            ON verified.chain_id = artifact.chain_id
+           AND verified.address = artifact.address
+           AND verified.code_hash = artifact.code_hash
+           AND verified.valid_from_block = artifact.valid_from_block
+           AND verified.verification_job_id = artifact.verification_job_id
+           AND verified.request_digest = artifact.request_digest
+          JOIN expected_identity AS identity
+            ON identity.address = artifact.address
+           AND identity.code_hash = artifact.code_hash
+          WHERE artifact.verification_job_id = binding.proxy_artifact_job_id
+            AND artifact.chain_id = $1::numeric
+            AND artifact.address = binding.proxy_address
+            AND artifact.code_hash = binding.proxy_code_hash
+            AND artifact.standard_version = '5.6.1'
+            AND artifact.artifact_kind = CASE binding.proxy_pattern
+                WHEN 'erc1967' THEN 'erc1967_proxy'
+                WHEN 'transparent' THEN 'transparent_proxy'
+                WHEN 'uups' THEN 'erc1967_proxy'
+                WHEN 'beacon' THEN 'beacon_proxy'
+            END
+            AND artifact.valid_from_block >= identity.epoch_block
+            AND artifact.valid_from_block <= binding.context_number
+            AND (verified.valid_to_block IS NULL
+                 OR verified.valid_to_block >= binding.context_number)
+      )
+  )
+  AND (
+      binding.proxy_pattern <> 'uups' OR EXISTS (
+          SELECT 1
+          FROM verified_contract_proxy_artifacts AS artifact
+          JOIN verified_contracts AS verified
+            ON verified.chain_id = artifact.chain_id
+           AND verified.address = artifact.address
+           AND verified.code_hash = artifact.code_hash
+           AND verified.valid_from_block = artifact.valid_from_block
+           AND verified.verification_job_id = artifact.verification_job_id
+           AND verified.request_digest = artifact.request_digest
+          JOIN expected_identity AS identity
+            ON identity.address = artifact.address
+           AND identity.code_hash = artifact.code_hash
+          WHERE artifact.verification_job_id =
+                binding.implementation_artifact_job_id
+            AND artifact.chain_id = $1::numeric
+            AND artifact.address = binding.implementation_address
+            AND artifact.code_hash = binding.implementation_code_hash
+            AND artifact.standard_version = '5.6.1'
+            AND artifact.artifact_kind = 'uups_implementation'
+            AND artifact.valid_from_block >= identity.epoch_block
+            AND artifact.valid_from_block <= binding.context_number
+            AND (verified.valid_to_block IS NULL
+                 OR verified.valid_to_block >= binding.context_number)
+      )
+  )`
 
 const contractCreationSQL = `
 WITH candidates AS (
