@@ -11,6 +11,7 @@ import { isAddress } from "viem";
 
 import { QueryNotice } from "@/components/QueryNotice";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
+import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import {
   useContractProxy,
   useContractProxyInitializations,
@@ -408,36 +409,8 @@ function ArtifactPanel({
         <p className="quiet">{t("contracts.readIndependent")}</p>
       </div>
       <QueryNotice loading={loading} error={error} />
-      {artifact ? (
-        <>
-          <dl className="proxy-facts artifact-facts">
-            <Fact label={t("contracts.contractName")} value={artifact.contract_name} />
-            <Fact label={t("contracts.fileName")} value={artifact.file_name} />
-            <Fact label={t("verification.compilerVersion")} value={artifact.compiler_version} />
-            <Fact label={t("detail.codeHash")} value={artifact.code_hash} mono />
-            <Fact
-              label={t("contracts.validBlocks")}
-              value={`${artifact.valid_from_block} – ${artifact.valid_to_block ?? "∞"}`}
-            />
-          </dl>
-          <ArtifactJSON title={t("contracts.abi")} value={artifact.abi ?? []} />
-          <ArtifactJSON title={t("contracts.sources")} value={artifact.sources} />
-          <ArtifactJSON title={t("contracts.settings")} value={artifact.settings} />
-          <ArtifactJSON title={t("contracts.compilationArtifacts")} value={artifact.compilation_artifacts} />
-          <ArtifactJSON title={t("contracts.creationArtifacts")} value={artifact.creation_code_artifacts} />
-          <ArtifactJSON title={t("contracts.runtimeArtifacts")} value={artifact.runtime_code_artifacts} />
-        </>
-      ) : null}
+      {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
     </div>
-  );
-}
-
-function ArtifactJSON({ title, value }: { title: string; value: unknown }) {
-  return (
-    <details className="artifact-panel">
-      <summary>{title}</summary>
-      <pre tabIndex={0}>{JSON.stringify(value, null, 2)}</pre>
-    </details>
   );
 }
 

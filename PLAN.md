@@ -36,7 +36,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P00 is complete: the repository has enforced plan governance, minimum-version
   Go/Node/npm checks that support compatible newer stable releases, a runnable
   role-aware CLI, embedded migrations and generated contracts, and a
-  binary-served SPA. Reviewable commands and results remain in
+  binary-served SPA. Restricted-host guidance now distinguishes writable
+  language-tool caches from browser and Docker boundaries that require the
+  unchanged repository target to run with approved host access. Reviewable
+  commands and results remain in
   [P00 evidence](docs/plans/P00-foundation.md#evidence).
 - P10 is complete: core history has durable coverage and leases, sticky RPC
   ingestion, canonical/orphan retention, finality-safe reorg handling, derived
@@ -101,6 +104,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   rejects types that the selected codec cannot encode or decode. Its focused,
   ordinary, generation, production-build, live Preview, and security checks
   pass after the locked transitive `nanoid` update clears the web audit.
+  P50-T16 completes the verified-code surface with a strictly read-only
+  multi-file CodeMirror workspace, explicit compiler-setting summaries, and
+  copyable disclosure-first ABI, transformation, and artifact details across
+  bilingual themes and responsive embedded-browser flows.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

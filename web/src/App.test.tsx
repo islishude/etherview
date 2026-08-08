@@ -740,10 +740,14 @@ describe("embedded explorer shell", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer(`/contract/${address}`);
 
-    expect(await screen.findByText("HostileText")).toBeVisible();
-    expect(screen.getAllByText(/<img src=x/).length).toBeGreaterThan(0);
-    expect(document.querySelector(".artifact-panel img")).toBeNull();
-    expect(document.querySelector(".artifact-panel script")).toBeNull();
+    expect(await screen.findByRole("heading", { name: "HostileText", level: 2 })).toBeVisible();
+    const editor = screen.getByRole("textbox", {
+      name: "Read-only source editor for src/Hostile.sol",
+    });
+    expect(editor).toHaveAttribute("contenteditable", "false");
+    expect(editor).toHaveTextContent(malicious);
+    expect(document.querySelector(".contract-code-view img")).toBeNull();
+    expect(document.querySelector(".contract-code-view script")).toBeNull();
     expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   });
 });

@@ -4,6 +4,52 @@ The Makefile is the command source of truth. Only implemented targets are
 listed as runnable commands here; future gates remain in their owning plan
 until the Makefile target exists.
 
+## Restricted automation hosts
+
+Codex and other filesystem-restricted automation should preserve the exact
+Makefile target and change only host execution plumbing. A writable cache
+prefix avoids repeated failures from npm, the Go build cache, and
+golangci-lint trying to update user-owned directories:
+
+```sh
+env \
+  GOCACHE=/tmp/etherview-codex-go-build \
+  GOLANGCI_LINT_CACHE=/tmp/etherview-codex-golangci-lint \
+  npm_config_cache=/tmp/etherview-codex-npm \
+  make check
+```
+
+Use the same prefix with focused `go`, npm, or Makefile commands as needed.
+Do not set `GOMODCACHE` merely because Go cannot update its optional module
+download stat cache: retaining read access to the warmed shared module cache is
+faster and supports offline work. Relocate it only when a command proves that
+the module contents themselves must be written, and expect that a fresh module
+cache may require approved network access.
+
+On a Codex/macOS host already known to restrict browser process bootstrap and
+Docker's user state, request sandbox-external execution up front for `make
+test-e2e`, `make deployment-check`, and `make check`; the last target includes
+the deployment gate. Pass the writable cache prefix to that approved command.
+Pure frontend, Go, generation, plan, security, and license targets should stay
+inside the sandbox unless their own output proves that broader access is
+required.
+
+Use this failure matrix instead of repeatedly trying unrelated workarounds:
+
+| Failure signal | Required response |
+| --- | --- |
+| npm cache `EPERM`, Go build-cache `operation not permitted`, or golangci-lint cache warnings | Retry the same command with the writable cache prefix above. |
+| Chromium `MachPortRendezvousServer`, `bootstrap_check_in`, `SIGABRT`, or `kill EPERM` on macOS | Request sandbox-external execution and rerun the exact browser target. If approval is unavailable, the bundled single-process fallback below is diagnostic evidence, not an automatic substitute for the canonical gate. |
+| Docker socket/config denial or Buildx activity/config write failure | Request sandbox-external execution and rerun the exact Docker-backed target. Keep `.github/scripts/compose.sh` and `.github/scripts/buildx.sh`; do not point Docker at an empty temporary configuration or bypass repository wrappers. |
+| Browser launches but the app is blank, the root is missing, or locators fail across unrelated routes | Inspect the first browser console error and the built asset graph. This is a runtime/build regression until evidence proves otherwise. |
+| Fixed E2E port is already in use | Stop the temporary diagnostic server, confirm the port is free, and rerun the repository target so its own lifecycle remains authoritative. |
+
+An approved sandbox-external run is still a local test run. Record the exact
+canonical target and result in plan evidence; mention the host permission
+boundary only when it materially affected execution. Read-only inspection in
+the in-app browser is useful for diagnosing a built SPA, but it does not
+replace a required `make test-e2e` pass.
+
 ## Common Gates
 
 - `make toolchain-check`: require at least Go 1.26.5, Node 24.18.0, and npm
@@ -21,10 +67,13 @@ until the Makefile target exists.
   run Playwright against that embedded distribution. Local runs use installed
   Chrome; CI sets `PLAYWRIGHT_USE_BUNDLED=1` after installing Playwright
   Chromium. On a restricted macOS automation host that denies Chromium's Mach
-  bootstrap rendezvous, use `PLAYWRIGHT_USE_BUNDLED=1
-  PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e`; this opt-in fallback gives every
-  test an isolated worker because a single-process browser cannot safely reuse
-  test contexts. CI remains on the ordinary multi-process browser.
+  bootstrap rendezvous, first rerun the unchanged target outside the process
+  sandbox with approval. If that is unavailable, use
+  `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` only as
+  the documented diagnostic fallback; it gives every test an isolated worker
+  because a single-process browser cannot safely reuse test contexts. A
+  launched browser with blank pages still requires console/runtime diagnosis.
+  CI remains on the ordinary multi-process browser.
 - `make test-integration`: build the embedded SPA, then run real migrations and
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its

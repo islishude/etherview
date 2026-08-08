@@ -317,7 +317,25 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await page.goto(`/contract/${address}`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
-  await expect(page.getByText("TransparentUpgradeableProxy", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Contract source code", level: 3 })).toBeVisible();
+  const sourceEditor = page.getByRole("textbox", {
+    name: "Read-only source editor for TransparentUpgradeableProxy.sol",
+  });
+  await expect(sourceEditor).toHaveAttribute("contenteditable", "false");
+  await expect(sourceEditor).toContainText("contract TransparentUpgradeableProxy");
+  await page.getByRole("button", { name: "lib/ProxyBase.sol" }).click();
+  const libraryEditor = page.getByRole("textbox", {
+    name: "Read-only source editor for lib/ProxyBase.sol",
+  });
+  await expect(libraryEditor).toHaveAttribute("contenteditable", "false");
+  await expect(libraryEditor).toContainText("abstract contract ProxyBase");
+  await expect(page.getByText("Not explicitly set (compiler default)").first()).toBeVisible();
+  await page.getByText("Complete compiler settings", { exact: true }).click();
+  await expect(page.getByText(/"optimizer"/u)).toBeVisible();
+  await expect(page.getByText(/functions ·/u)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Read contract" })).toBeVisible();
   await expect(page.getByLabel(/API key/iu)).toHaveCount(0);
   await expect(page.getByLabel(/calldata/iu)).toHaveCount(0);
@@ -398,7 +416,9 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   });
 
   await page.goto(`/contract/${address}`);
-  await expect(page.getByText("TransparentUpgradeableProxy", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
   await expect(page.getByText("Transparent proxy", { exact: true })).toBeVisible();
   const transparentTabs = page.getByRole("tablist", {
     name: "Contract interaction sections",
@@ -441,7 +461,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByText("Initialized version 2", { exact: true })).toBeVisible();
 
   await page.goto(`/contract/${uupsProxyAddress}`);
-  await expect(page.getByText("ERC1967Proxy", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ERC1967Proxy", level: 2 })).toBeVisible();
   const uupsTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(uupsTabs.getByRole("tab", { name: "Proxy management" })).toHaveCount(0);
   await activateInView(uupsTabs.getByRole("tab", {
@@ -463,7 +483,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(uupsUpgrade.getByText(uupsProxyAddress, { exact: true })).toBeVisible();
 
   await page.goto(`/contract/${beaconProxyAddress}`);
-  await expect(page.getByText("BeaconProxy", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "BeaconProxy", level: 2 })).toBeVisible();
   const beaconTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await activateInView(beaconTabs.getByRole("tab", { name: "Proxy management" }));
   const beaconUpgrade = page.locator(".abi-function-card").filter({ hasText: "upgradeTo(address)" });
@@ -474,7 +494,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(page.getByText(beaconImplementation, { exact: true }).last()).toBeVisible();
 
   await page.goto(`/contract/${cloneAddress}`);
-  await expect(page.getByText("MinimalClone", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "MinimalClone", level: 2 })).toBeVisible();
   await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
   const cloneTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(cloneTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
@@ -1403,7 +1423,9 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await page.getByLabel("Address", { exact: true }).fill(address);
   await activateInView(page.getByRole("button", { name: "Open contract" }));
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-  await expect(page.getByText("TransparentUpgradeableProxy", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
+  ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Proxy management" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Etherview home" })

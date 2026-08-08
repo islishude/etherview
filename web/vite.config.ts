@@ -61,6 +61,13 @@ export default defineConfig({
             },
 
             {
+              name: 'codemirror-vendor',
+              test:
+                /node_modules[\\/](?:@codemirror|@lezer|@replit[\\/]codemirror-lang-solidity)(?:[\\/]|$)/,
+              priority: 45,
+            },
+
+            {
               name: 'echarts-vendor',
               test:
                 /node_modules[\\/](?:echarts|zrender)(?:[\\/]|$)/,

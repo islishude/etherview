@@ -791,7 +791,8 @@ func contractArtifact(address string) (map[string]any, bool) {
 		"compiler_version": "0.8.30", "file_name": fileName,
 		"contract_name": contractName, "is_blueprint": false, "abi": abi,
 		"sources": map[string]any{
-			fileName: map[string]any{"content": "contract " + contractName + " {}"},
+			fileName:            map[string]any{"content": "contract " + contractName + " {}"},
+			"lib/ProxyBase.sol": map[string]any{"content": "abstract contract ProxyBase {}"},
 		},
 		"settings":                map[string]any{"optimizer": map[string]any{"enabled": true}},
 		"compilation_artifacts":   map[string]any{},

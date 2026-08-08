@@ -39,6 +39,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T13 | done        | P50-T12       | Add-network flow consolidated into the wallet menu                         | frontend unit, embedded E2E, responsive and a11y tests |
 | P50-T14 | done        | P40-T11, P50-T13 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
 | P50-T15 | done        | P50-T14       | Viem-compatible ABI result and revert formatting, including ERC-20 `decimals()`, plus fail-closed rejection of codec-unsupported types | focused ABI/form tests and common frontend gates |
+| P50-T16 | done        | P50-T15       | Etherscan-inspired verified source workspace, structured compiler settings, and summarized contract artifacts | focused frontend, embedded browser, responsive, accessibility, generation, security, and license gates |
 
 ## Acceptance
 
@@ -57,6 +58,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Verified contract pages generate bounded typed ABI forms without manual
       API keys, ABI JSON, or calldata; every as-proxy or management write is
       fenced by the latest binding, chain, and account identity.
+- [x] Verified code pages expose a bilingual, theme-aware, strictly read-only
+      multi-file source workspace and summary-first compiler and artifact
+      details without external browser resources.
 
 ## Current Blockers
 
@@ -64,6 +68,33 @@ None.
 
 ## Evidence
 
+- P50-T16 replaces raw verified-contract JSON with a verification summary,
+  fail-closed inline-source parsing, main-file-first navigation, and a locally
+  bundled CodeMirror 6 workspace. Solidity uses the maintained Replit grammar,
+  Yul uses bounded local highlighting, and unknown languages remain selectable
+  plain text. Search, wrapping, copy feedback, fullscreen, keyboard selection,
+  and both CodeMirror read-only fences are covered by focused tests.
+- P50-T16 presents optimizer, runs, EVM version, via-IR, metadata, remappings,
+  source and library counts without guessing compiler defaults. Complex
+  optimizer details, output selection, model checker, linked libraries, the
+  full settings object, ABI, constructor arguments, declared transformations,
+  and compilation/code artifacts remain copyable disclosures. The existing
+  clipboard fallback is shared by the new and existing copy controls.
+- P50-T16 verification passes 14 focused artifact/contract tests, the complete
+  27-file/224-test Vitest suite, TypeScript lint, and the production build.
+  `make test-e2e` passes all 10 embedded Chromium flows, including multi-file
+  switching, strict read-only content, settings disclosure, bilingual themes,
+  narrow layout, keyboard behavior, and Axe coverage. Browser acceptance also
+  caught and closed a production-only CodeMirror chunk cycle by keeping the
+  CodeMirror, Lezer, and Solidity grammar graph in one deterministic vendor
+  chunk.
+- Final `make generate-check`, `make license-check`, `make plan-check`,
+  `git diff --check`, and `make check` pass. The web dependency audit reports
+  zero vulnerabilities, the production license scan accepts all new packages,
+  and the common gate passes generation, lint, ordinary/race tests, security
+  scans, Dockerfile/Compose validation, and Helm lint/render checks. The
+  independent Hardhat tree retains only its pre-existing low-severity
+  `elliptic` advisory below the enforced threshold.
 - P50-T15 fixes the ABI result formatter's incorrect assumption that every
   Solidity integer decodes to `bigint`. Viem returns `number` for signed and
   unsigned widths up to 48 bits and `bigint` above 48 bits; the formatter now

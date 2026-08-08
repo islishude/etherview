@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -66,6 +65,7 @@ import {
   formatTimestamp,
   shorten,
 } from "@/components/format";
+import { CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
 
 const CORE_PAGE_SIZE = 25;
@@ -2399,68 +2399,6 @@ function DetailList({ label, children }: { label: string; children: React.ReactN
       <h2>{label}</h2>
       <dl className="detail-grid">{children}</dl>
     </section>
-  );
-}
-
-function CopyableField({ children, value }: { children: React.ReactNode; value: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!copied) return;
-    timeoutRef.current = window.setTimeout(() => setCopied(false), 1200);
-    return () => {
-      if (timeoutRef.current !== undefined) {
-        window.clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [copied]);
-
-  const copy = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = value;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        textarea.setAttribute("readonly", "");
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copiedToClipboard = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (!copiedToClipboard) {
-          throw new Error("fallback copy failed");
-        }
-      }
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-
-    if (timeoutRef.current !== undefined) {
-      window.clearTimeout(timeoutRef.current);
-    }
-  };
-
-  return (
-    <span className="copyable-field">
-      <span className="copyable-content">{children}</span>
-      <button
-        aria-label={copied ? t("common.copied") : t("common.copy")}
-        className={copied ? "copyable-copy-button copied" : "copyable-copy-button"}
-        onClick={copy}
-        title={copied ? t("common.copied") : t("common.copy")}
-        type="button"
-      >
-        {copied ? "✓" : "⎘"}
-      </button>
-    </span>
   );
 }
 

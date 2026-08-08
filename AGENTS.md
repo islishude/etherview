@@ -36,6 +36,29 @@ later superseded. Use the current `Makefile`, `docs/testing.md`, and maintained
 operator documentation as command truth; do not resurrect a removed test
 driver solely because an older evidence entry cites it.
 
+## Restricted automation hosts
+
+- Follow the sandbox-aware command matrix in `docs/testing.md`. Keep the
+  Makefile target unchanged when retrying; a host permission workaround must
+  not weaken or replace the repository gate.
+- When user cache directories are read-only, use repository-specific writable
+  cache paths under `/tmp` for npm, the Go build cache, and golangci-lint. Do
+  not relocate `GOMODCACHE` by default: the shared module cache is useful even
+  when its optional stat-cache writes emit a warning.
+- Browser and Docker boundaries are different from ordinary cache writes. If
+  macOS denies Chromium Mach bootstrap/process operations, or Docker Buildx
+  cannot access its daemon, configuration, or activity state, rerun the exact
+  target outside the filesystem/process sandbox with approval. On a host
+  already known to enforce those restrictions, request approval before running
+  `make test-e2e`, `make deployment-check`, or `make check` (which includes the
+  deployment gate) instead of first producing a predictable failure.
+- Once a browser process launches, treat a blank page, missing application
+  root, or JavaScript console exception as a product/build failure until
+  diagnosed. Do not classify it as a sandbox failure or accept a weaker
+  single-process browser result without inspecting the first runtime error.
+- Stop temporary local servers after diagnosis and confirm their fixed ports
+  are free before rerunning repository-owned E2E targets.
+
 ## Architecture guardrails
 
 - PostgreSQL is the correctness authority for chain facts, canonicality, jobs,

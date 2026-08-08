@@ -343,7 +343,7 @@ describe("P50 capability pages", () => {
     renderExplorer(`/contract/${address}`);
 
     expect(await screen.findByText(/no API key is required/)).toBeVisible();
-    expect(await screen.findByText("ReadOnlyArtifact")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 })).toBeVisible();
     expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Public verification is unavailable" })).toBeNull();
   });
