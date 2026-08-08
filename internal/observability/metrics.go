@@ -14,6 +14,7 @@ import (
 )
 
 var requestDurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+var proxyDetectionDurationBuckets = []float64{0.1, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 1000}
 
 // Registry contains Etherview's bounded-cardinality operational metrics. It is
 // safe for concurrent use and exports the Prometheus text format directly.
@@ -52,6 +53,14 @@ type Registry struct {
 	analyticsBackfill             float64
 	rateLimits                    map[string]uint64
 	x402Requests                  map[pair]uint64
+	proxyDetectionDuration        *histogram
+	proxyDetectionRPCCalls        map[string]uint64
+	proxyDetectionRPCErrors       map[string]uint64
+	proxyDetectionResults         map[proxyDetectionResultKey]uint64
+	proxyDetectionAmbiguous       uint64
+	proxyDetectionInconsistent    uint64
+	safeProxyFingerprintMatches   uint64
+	safeProxyCompatibleCandidates uint64
 }
 
 type requestKey struct {
@@ -65,6 +74,13 @@ type pair struct {
 	Second string
 }
 
+type proxyDetectionResultKey struct {
+	Detector   string
+	Family     string
+	Status     string
+	Confidence string
+}
+
 type histogram struct {
 	Buckets []uint64
 	Count   uint64
@@ -74,26 +90,84 @@ type histogram struct {
 // NewRegistry constructs a process-local registry for one runtime role.
 func NewRegistry(version, role string) *Registry {
 	return &Registry{
-		version:             safeLabel(version),
-		role:                safeLabel(role),
-		httpRequests:        make(map[requestKey]uint64),
-		httpDuration:        make(map[requestKey]*histogram),
-		httpPanics:          make(map[pair]uint64),
-		syncHalted:          make(map[string]float64),
-		rpcRequests:         make(map[pair]uint64),
-		jobsPending:         make(map[string]float64),
-		durableJobs:         make(map[pair]float64),
-		verificationCurrent: make(map[string]float64),
-		repairCurrent:       make(map[pair]float64),
-		billingSettling:     make(map[pair]float64),
-		enrichmentJobs:      make(map[pair]uint64),
-		traceJobs:           make(map[string]uint64),
-		verifyJobs:          make(map[string]uint64),
-		metadata:            make(map[string]uint64),
-		maintenance:         make(map[pair]uint64),
-		analyticsRollups:    make(map[string]uint64),
-		rateLimits:          make(map[string]uint64),
-		x402Requests:        make(map[pair]uint64),
+		version:                 safeLabel(version),
+		role:                    safeLabel(role),
+		httpRequests:            make(map[requestKey]uint64),
+		httpDuration:            make(map[requestKey]*histogram),
+		httpPanics:              make(map[pair]uint64),
+		syncHalted:              make(map[string]float64),
+		rpcRequests:             make(map[pair]uint64),
+		jobsPending:             make(map[string]float64),
+		durableJobs:             make(map[pair]float64),
+		verificationCurrent:     make(map[string]float64),
+		repairCurrent:           make(map[pair]float64),
+		billingSettling:         make(map[pair]float64),
+		enrichmentJobs:          make(map[pair]uint64),
+		traceJobs:               make(map[string]uint64),
+		verifyJobs:              make(map[string]uint64),
+		metadata:                make(map[string]uint64),
+		maintenance:             make(map[pair]uint64),
+		analyticsRollups:        make(map[string]uint64),
+		rateLimits:              make(map[string]uint64),
+		x402Requests:            make(map[pair]uint64),
+		proxyDetectionDuration:  &histogram{Buckets: make([]uint64, len(proxyDetectionDurationBuckets))},
+		proxyDetectionRPCCalls:  make(map[string]uint64),
+		proxyDetectionRPCErrors: make(map[string]uint64),
+		proxyDetectionResults:   make(map[proxyDetectionResultKey]uint64),
+	}
+}
+
+// ObserveProxyDetectionRun records one bounded detector-suite execution. RPC
+// counts come from the block-pinned shared context, so memoized reads are not
+// double counted across detectors.
+func (registry *Registry) ObserveProxyDetectionRun(
+	duration time.Duration,
+	getCodeCalls, storageCalls, callCalls,
+	getCodeErrors, storageErrors, callErrors uint64,
+	ambiguous bool,
+) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	durationMS := float64(duration) / float64(time.Millisecond)
+	registry.proxyDetectionDuration.Count++
+	registry.proxyDetectionDuration.Sum += durationMS
+	for index, upperBound := range proxyDetectionDurationBuckets {
+		if durationMS <= upperBound {
+			registry.proxyDetectionDuration.Buckets[index]++
+		}
+	}
+	registry.proxyDetectionRPCCalls["eth_getCode"] += getCodeCalls
+	registry.proxyDetectionRPCCalls["eth_getStorageAt"] += storageCalls
+	registry.proxyDetectionRPCCalls["eth_call"] += callCalls
+	registry.proxyDetectionRPCErrors["eth_getCode"] += getCodeErrors
+	registry.proxyDetectionRPCErrors["eth_getStorageAt"] += storageErrors
+	registry.proxyDetectionRPCErrors["eth_call"] += callErrors
+	if ambiguous {
+		registry.proxyDetectionAmbiguous++
+	}
+}
+
+// RecordProxyDetectionResult records only the detector protocol's closed label
+// vocabulary. Unexpected future values collapse to "other".
+func (registry *Registry) RecordProxyDetectionResult(detector, family, status, confidence string) {
+	detector = boundedProxyDetector(detector)
+	family = boundedProxyFamily(family)
+	status = boundedProxyDetectionStatus(status)
+	confidence = boundedProxyConfidence(confidence)
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.proxyDetectionResults[proxyDetectionResultKey{
+		Detector: detector, Family: family, Status: status, Confidence: confidence,
+	}]++
+	if status == "inconsistent" {
+		registry.proxyDetectionInconsistent++
+	}
+	if detector == "safe" && family == "safe" &&
+		(status == "confirmed" || status == "inconsistent" || status == "unknown") {
+		registry.safeProxyFingerprintMatches++
+	}
+	if detector == "safe" && family == "safe" && status == "candidate" && confidence == "medium" {
+		registry.safeProxyCompatibleCandidates++
 	}
 }
 
@@ -332,6 +406,25 @@ func (registry *Registry) Gather() string {
 	writeHelp(&output, "etherview_observability_refresh_failures_total", "Failed PostgreSQL metric refresh attempts.", "counter")
 	fmt.Fprintf(&output, "etherview_observability_refresh_failures_total %d\n", registry.metricsRefreshFailures)
 	writePairCounters(&output, "etherview_enrichment_jobs_total", "Enrichment job attempts grouped by stage and result.", "stage", "result", registry.enrichmentJobs)
+	writeHelp(&output, "etherview_proxy_detection_duration_ms", "Evidence-based proxy detector-suite duration in milliseconds.", "histogram")
+	for index, upperBound := range proxyDetectionDurationBuckets {
+		fmt.Fprintf(&output, "etherview_proxy_detection_duration_ms_bucket{le=%s} %d\n",
+			quote(formatFloat(upperBound)), registry.proxyDetectionDuration.Buckets[index])
+	}
+	fmt.Fprintf(&output, "etherview_proxy_detection_duration_ms_bucket{le=\"+Inf\"} %d\n", registry.proxyDetectionDuration.Count)
+	fmt.Fprintf(&output, "etherview_proxy_detection_duration_ms_sum %s\n", formatFloat(registry.proxyDetectionDuration.Sum))
+	fmt.Fprintf(&output, "etherview_proxy_detection_duration_ms_count %d\n", registry.proxyDetectionDuration.Count)
+	writeCounters(&output, "etherview_proxy_detection_rpc_calls_total", "Block-pinned RPC calls made by proxy detection V2.", "method", registry.proxyDetectionRPCCalls)
+	writeCounters(&output, "etherview_proxy_detection_rpc_errors_total", "Block-pinned RPC transport errors observed by proxy detection V2.", "method", registry.proxyDetectionRPCErrors)
+	writeProxyDetectionResults(&output, registry.proxyDetectionResults)
+	writeHelp(&output, "etherview_proxy_detection_ambiguous_total", "Proxy resolutions with conflicting detector outcomes.", "counter")
+	fmt.Fprintf(&output, "etherview_proxy_detection_ambiguous_total %d\n", registry.proxyDetectionAmbiguous)
+	writeHelp(&output, "etherview_proxy_detection_inconsistent_total", "Inconsistent detector outcomes.", "counter")
+	fmt.Fprintf(&output, "etherview_proxy_detection_inconsistent_total %d\n", registry.proxyDetectionInconsistent)
+	writeHelp(&output, "etherview_safe_proxy_fingerprint_match_total", "Canonical Safe runtime fingerprint matches.", "counter")
+	fmt.Fprintf(&output, "etherview_safe_proxy_fingerprint_match_total %d\n", registry.safeProxyFingerprintMatches)
+	writeHelp(&output, "etherview_safe_proxy_compatible_candidate_total", "Unknown-runtime Safe-compatible candidates.", "counter")
+	fmt.Fprintf(&output, "etherview_safe_proxy_compatible_candidate_total %d\n", registry.safeProxyCompatibleCandidates)
 	writeCounters(&output, "etherview_trace_jobs_total", "Trace jobs grouped by result.", "result", registry.traceJobs)
 	writeCounters(&output, "etherview_verification_jobs_total", "Verification jobs grouped by result.", "result", registry.verifyJobs)
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
@@ -373,6 +466,23 @@ func writePairCounters(output *strings.Builder, name, help, firstLabel, secondLa
 	})
 	for _, key := range keys {
 		fmt.Fprintf(output, "%s{%s=%s,%s=%s} %d\n", name, firstLabel, quote(key.First), secondLabel, quote(key.Second), values[key])
+	}
+}
+
+func writeProxyDetectionResults(output *strings.Builder, values map[proxyDetectionResultKey]uint64) {
+	writeHelp(output, "etherview_proxy_detection_results_total", "Evidence-based proxy detector outcomes.", "counter")
+	keys := make([]proxyDetectionResultKey, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		left := keys[i].Detector + "\x00" + keys[i].Family + "\x00" + keys[i].Status + "\x00" + keys[i].Confidence
+		right := keys[j].Detector + "\x00" + keys[j].Family + "\x00" + keys[j].Status + "\x00" + keys[j].Confidence
+		return left < right
+	})
+	for _, key := range keys {
+		fmt.Fprintf(output, "etherview_proxy_detection_results_total{detector=%s,family=%s,status=%s,confidence=%s} %d\n",
+			quote(key.Detector), quote(key.Family), quote(key.Status), quote(key.Confidence), values[key])
 	}
 }
 
@@ -473,6 +583,44 @@ func boundedJobStage(value string) string {
 	case "state_diff", "state_diff@1":
 		return "state_diff"
 	case "nft-metadata", "verification":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedProxyDetector(value string) string {
+	switch strings.TrimSpace(value) {
+	case "openzeppelin", "safe":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedProxyFamily(value string) string {
+	switch strings.TrimSpace(value) {
+	case "erc1167", "erc1967", "safe", "custom":
+		return strings.TrimSpace(value)
+	case "":
+		return "none"
+	default:
+		return "other"
+	}
+}
+
+func boundedProxyDetectionStatus(value string) string {
+	switch strings.TrimSpace(value) {
+	case "confirmed", "candidate", "inconsistent", "not-detected", "unknown":
+		return strings.TrimSpace(value)
+	default:
+		return "other"
+	}
+}
+
+func boundedProxyConfidence(value string) string {
+	switch strings.TrimSpace(value) {
+	case "high", "medium", "low":
 		return strings.TrimSpace(value)
 	default:
 		return "other"

@@ -31,6 +31,7 @@ WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 GENERATED_PATHS := \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
+	internal/enrich/manifests/safe-proxy-fingerprints.json \
 	web/src/api/schema.gen.ts
 
 IMAGE ?= etherview:local

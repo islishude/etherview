@@ -103,6 +103,7 @@ export function ContractPage({ address }: { address: string }) {
     initializationState.identity === address ? initializationState.cursors : [""];
   const proxyDetail = proxy.data?.detail;
   const isProxy = proxyDetail?.proxy !== undefined;
+  const showProxySummary = isProxy || proxyDetail?.proxy_detection_v2 !== undefined;
   const clone = proxyDetail?.pattern === "clone";
   const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(
@@ -202,7 +203,7 @@ export function ContractPage({ address }: { address: string }) {
                 <>
                   {activeTab === "code" && (
                     <>
-                      {isProxy ? (
+                      {showProxySummary ? (
                         <ProxySummary detail={proxyDetail} loading={proxy.isPending} error={proxy.error} />
                       ) : null}
                       <ArtifactPanel
@@ -290,25 +291,48 @@ function ProxySummary({
   error: unknown;
 }) {
   const { t } = useTranslation();
+  const detectionV2 = detail?.proxy_detection_v2;
+  const v2Primary = detectionV2?.primary;
+  const v2Detected = detectionV2 !== undefined && detectionV2.status !== "not-detected";
   return (
     <details className="panel proxy-summary">
       <summary className="panel-heading">
         <div>
-          <span className="eyebrow">OpenZeppelin 5.x</span>
+          <span className="eyebrow">{v2Primary?.family === "safe" ? "Safe Proxy" : "OpenZeppelin 5.x"}</span>
           <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
         </div>
         {detail ? (
-          <span className={detail.status === "verified" ? "availability yes" : "availability no"}>
-            {proxyStatusLabel(detail.status, t)}
+          <span className={detail.status === "verified" || detectionV2?.status === "confirmed" ? "availability yes" : "availability no"}>
+            {detectionV2 ? proxyDetectionV2StatusLabel(detectionV2.status, t) : proxyStatusLabel(detail.status, t)}
           </span>
         ) : null}
       </summary>
       <QueryNotice loading={loading} error={error} />
-      {detail?.status === "not_detected" ? (
+      {detail?.status === "not_detected" && !v2Detected ? (
         <p className="quiet">{t("contracts.proxy.notDetected")}</p>
       ) : null}
-      {detail && detail.status !== "not_detected" ? (
+      {detail && (detail.status !== "not_detected" || v2Detected) ? (
         <dl className="proxy-facts">
+          {detectionV2 ? (
+            <>
+              <Fact label={t("contracts.proxy.detectorStatus")} value={proxyDetectionV2StatusLabel(detectionV2.status, t)} />
+              <Fact label={t("contracts.proxy.family")} value={v2Primary?.family ?? "—"} />
+              <Fact label={t("contracts.proxy.variant")} value={v2Primary?.variant ?? "—"} />
+              <Fact
+                label={v2Primary?.implementation_role === "singleton" ? t("contracts.proxy.singleton") : t("contracts.proxy.implementation")}
+                value={v2Primary?.implementation ?? "—"}
+                mono
+              />
+              <Fact label={t("contracts.proxy.officialSingleton")} value={v2Primary?.official_singleton ? t("common.yes") : t("common.no")} />
+              <Fact label={t("contracts.proxy.detectorVersion")} value={v2Primary?.detector_version ?? "—"} />
+              {v2Primary && v2Primary.warnings.length > 0 ? (
+                <Fact label={t("contracts.proxy.warnings")} value={v2Primary.warnings.join(" · ")} />
+              ) : null}
+              {detectionV2.conflicts.length > 0 ? (
+                <Fact label={t("contracts.proxy.conflicts")} value={detectionV2.conflicts.join(" · ")} />
+              ) : null}
+            </>
+          ) : null}
           <Fact
             label={t("contracts.proxy.pattern")}
             value={detail.pattern ? proxyPatternLabel(detail.pattern, t) : "—"}
@@ -669,6 +693,19 @@ function proxyStatusLabel(status: ContractProxyDetails["status"], t: Translate):
     case "verified": return t("contracts.proxy.status.verified");
     case "unavailable": return t("contracts.proxy.status.unavailable");
     case "failed": return t("contracts.proxy.status.failed");
+  }
+}
+
+function proxyDetectionV2StatusLabel(
+  status: NonNullable<ContractProxyDetails["proxy_detection_v2"]>["status"],
+  t: Translate,
+): string {
+  switch (status) {
+    case "confirmed": return t("contracts.proxy.v2Status.confirmed");
+    case "candidate": return t("contracts.proxy.v2Status.candidate");
+    case "inconsistent": return t("contracts.proxy.v2Status.inconsistent");
+    case "not-detected": return t("contracts.proxy.v2Status.notDetected");
+    case "unknown": return t("contracts.proxy.v2Status.unknown");
   }
 }
 

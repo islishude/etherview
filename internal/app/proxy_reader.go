@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -24,12 +25,16 @@ type proxyQueryReader interface {
 // repository-local values so malformed persisted identities cannot leak into
 // the generated OpenAPI response types.
 type proxyReaderAdapter struct {
-	reader  proxyQueryReader
-	chainID string
+	reader            proxyQueryReader
+	chainID           string
+	publicDetectionV2 bool
 }
 
-func newProxyReaderAdapter(reader proxyQueryReader, chainID uint64) proxyReaderAdapter {
-	return proxyReaderAdapter{reader: reader, chainID: strconv.FormatUint(chainID, 10)}
+func newProxyReaderAdapter(reader proxyQueryReader, chainID uint64, publicDetectionV2 bool) proxyReaderAdapter {
+	return proxyReaderAdapter{
+		reader: reader, chainID: strconv.FormatUint(chainID, 10),
+		publicDetectionV2: publicDetectionV2,
+	}
 }
 
 func (adapter proxyReaderAdapter) Proxy(ctx context.Context, address string) (gen.ProxyDetails, error) {
@@ -121,6 +126,19 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		Snapshot: snapshot,
 		Evidence: make([]gen.ProxyRecognitionEvidence, len(detail.Evidence)),
 	}
+	if adapter.publicDetectionV2 && len(detail.DetectionV2) != 0 {
+		if len(detail.DetectionV2) > 64<<10 {
+			return gen.ProxyDetails{}, errors.New("proxy detection V2 exceeds the public bound")
+		}
+		var detection gen.ProxyDetectionV2
+		if err := json.Unmarshal(detail.DetectionV2, &detection); err != nil {
+			return gen.ProxyDetails{}, fmt.Errorf("invalid proxy detection V2: %w", err)
+		}
+		if err := adapter.validateProxyDetectionV2(detection, address); err != nil {
+			return gen.ProxyDetails{}, err
+		}
+		model.ProxyDetectionV2 = &detection
+	}
 	if model.Proxy, err = proxyCurrentIdentity(detail.Proxy); err != nil {
 		return gen.ProxyDetails{}, fmt.Errorf("invalid proxy identity: %w", err)
 	}
@@ -198,6 +216,46 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		}
 	}
 	return model, nil
+}
+
+func (adapter proxyReaderAdapter) validateProxyDetectionV2(
+	detection gen.ProxyDetectionV2,
+	proxy gen.Address,
+) error {
+	if !detection.Status.Valid() || len(detection.Outcomes) > 16 || len(detection.Conflicts) > 16 {
+		return errors.New("proxy detection V2 resolution is outside the public contract")
+	}
+	validate := func(outcome gen.ProxyDetectionV2Outcome) error {
+		if outcome.Detector == "" || !outcome.Status.Valid() || !outcome.Confidence.Valid() ||
+			outcome.Proxy != proxy || string(outcome.ChainId) != adapter.chainID ||
+			len(outcome.Evidence) > 64 || len(outcome.Warnings) > 64 ||
+			len(outcome.ImplementationPath) > 8 {
+			return errors.New("proxy detection V2 outcome is outside the public contract")
+		}
+		if outcome.Family != nil && !outcome.Family.Valid() {
+			return errors.New("proxy detection V2 family is invalid")
+		}
+		if outcome.ImplementationRole != nil && !outcome.ImplementationRole.Valid() {
+			return errors.New("proxy detection V2 implementation role is invalid")
+		}
+		for _, evidence := range outcome.Evidence {
+			if !evidence.Kind.Valid() || evidence.Description == "" {
+				return errors.New("proxy detection V2 evidence is invalid")
+			}
+		}
+		return nil
+	}
+	for _, outcome := range detection.Outcomes {
+		if err := validate(outcome); err != nil {
+			return err
+		}
+	}
+	if detection.Primary != nil {
+		if err := validate(*detection.Primary); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func proxyImplementationInteraction(

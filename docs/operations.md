@@ -402,6 +402,61 @@ stage explicitly and wait for its durable publication result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until its same-version proxy result is published.
 
+### Proxy detection V2 shadow rollout
+
+Proxy detection V2 is additive and defaults off. It never replaces the legacy
+OpenZeppelin observation, verified binding, ABI dependency, or browser write
+authority.
+
+1. Apply migration `0038_proxy_detection_v2.sql` and enable only shadow
+   collection on every `enrich`/`all` process:
+
+   ```yaml
+   features:
+     proxy_detection_v2: true
+     safe_proxy_detection: true
+     proxy_detection_v2_public: false
+   ```
+
+   The equivalent environment variables are
+   `ETHERVIEW_FEATURE_PROXY_DETECTION_V2=true` and
+   `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION=true` and
+   `ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC=false`.
+2. Reindex a bounded canonical range. The maintenance command resolves each
+   number to its current exact block hash, and the normal durable generation
+   fence makes retries idempotent:
+
+   ```sh
+   etherview reindex --config /etc/etherview/config.yaml \
+     --from 21000000 --to 21010000 --stage proxy \
+     --reason "Safe proxy detector shadow sample"
+   ```
+
+3. Compare `proxy_detection_evidence` rows whose `candidate_kind` is
+   `proxy_v2` with the published legacy proxy observation from the same durable
+   job generation. Review all `inconsistent` and `unknown` results, all V2/OZ
+   disagreements, confirmed and compatible Safe samples, and a random negative
+   sample. `unknown` may be reindexed after the historical RPC is healthy;
+   `not-detected` is terminal evidence and is not automatically retried.
+4. Monitor `etherview_proxy_detection_duration_ms`,
+   `etherview_proxy_detection_rpc_calls_total`,
+   `etherview_proxy_detection_rpc_errors_total`,
+   `etherview_proxy_detection_results_total`, the ambiguous/inconsistent
+   counters, and both `etherview_safe_proxy_*` counters. A non-Safe fingerprint
+   miss must add no Safe-specific storage or call request.
+5. After sample approval, enable `proxy_detection_v2_public` on API processes.
+   The contract page then shows the V2 family, evidence status, and Safe
+   singleton role. This still does not enable implementation-as-proxy writes
+   for Safe.
+
+Rollback is a configuration restart: disable `proxy_detection_v2_public`
+first. Disable only `safe_proxy_detection` to stop the Safe detector while
+retaining framework/OZ shadow comparisons; disable `proxy_detection_v2` to stop
+the entire V2 suite. Retain the additive evidence rows for audit.
+No database rollback or legacy reindex is required because old readers exclude
+the `proxy_v2` candidate kind. Re-enable shadow collection before public
+exposure; validation rejects the inverse configuration.
+
 The list command is newest-first and bounded to 1–1000 rows. Its default JSON
 output and optional `--format table` both report `failure_present` without
 returning stored nested error text. Use the stable

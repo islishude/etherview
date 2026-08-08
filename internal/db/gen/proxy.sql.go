@@ -942,6 +942,38 @@ func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID 
 	return i, err
 }
 
+const getLatestPublishedProxyDetectionV2 = `-- name: GetLatestPublishedProxyDetectionV2 :one
+SELECT evidence.details
+FROM proxy_detection_evidence AS evidence
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = evidence.chain_id
+ AND canonical.number = evidence.block_number
+ AND canonical.block_hash = evidence.block_hash
+JOIN published_block_stage_results AS published
+  ON published.chain_id = evidence.chain_id
+ AND published.block_hash = evidence.block_hash
+ AND published.stage = 'proxy'
+ AND published.stage_version = evidence.stage_version
+ AND published.durable_job_id = evidence.durable_job_id
+ AND published.job_generation = evidence.job_generation
+ AND published.state = 'complete'
+WHERE evidence.chain_id = $1::numeric
+  AND evidence.address = $2::bytea
+  AND evidence.candidate_kind = 'proxy_v2'
+  AND evidence.stage_version = 2
+  AND evidence.canonical = TRUE
+ORDER BY evidence.block_number DESC, evidence.block_hash DESC,
+         evidence.id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetectionV2, chainID, proxyAddress)
+	var details []byte
+	err := row.Scan(&details)
+	return details, err
+}
+
 const getLatestPublishedProxyNegativeEvidence = `-- name: GetLatestPublishedProxyNegativeEvidence :one
 SELECT evidence.block_number::text AS block_number,
        evidence.block_hash, evidence.code_hash,

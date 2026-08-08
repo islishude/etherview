@@ -49,6 +49,20 @@ afterEach(() => {
 });
 
 describe("contract proxy route", () => {
+  it("shows a confirmed Safe shell and singleton without enabling legacy proxy writes", async () => {
+    installContractAPI({ pattern: "none", safeDetection: true });
+    renderContractRoute();
+
+    await screen.findByRole("heading", { name: "Proxy identity" });
+    const summary = document.querySelector("details.proxy-summary");
+    expect(summary).not.toBeNull();
+    summary!.setAttribute("open", "");
+    expect(await screen.findByText("Safe Proxy")).toBeVisible();
+    expect(screen.getAllByText("Confirmed").length).toBeGreaterThan(0);
+    expect(screen.getByText(implementationAddress)).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "Read implementation (as proxy)" })).not.toBeInTheDocument();
+  });
+
   it.each([
     { pattern: "uups", managementKind: undefined },
     { pattern: "transparent", managementKind: "proxy_admin" },
@@ -359,11 +373,13 @@ function installContractAPI({
   staleHistory,
   implementationArtifactCodeHash,
   managementArtifactCodeHash,
+  safeDetection,
 }: {
   pattern: ContractPattern;
   staleHistory?: HistoryKind;
   implementationArtifactCodeHash?: string;
   managementArtifactCodeHash?: string;
+  safeDetection?: boolean;
 }) {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
     const url = new URL(String(input), "http://localhost");
@@ -378,7 +394,11 @@ function installContractAPI({
       });
     }
     if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy`) {
-      return envelope(proxyDetail(pattern));
+      const detail = proxyDetail(pattern);
+      return envelope(safeDetection ? {
+        ...detail,
+        proxy_detection_v2: safeProxyDetection(),
+      } : detail);
     }
     if (url.pathname.endsWith("/verification")) {
       const address = url.pathname.split("/").at(-2) ?? "";
@@ -420,6 +440,38 @@ function installContractAPI({
   });
   vi.stubGlobal("fetch", fetcher);
   return fetcher;
+}
+
+function safeProxyDetection() {
+  const primary = {
+    detector: "safe",
+    detector_version: "1.0.0+manifest.1",
+    priority: 200,
+    family: "safe" as const,
+    variant: "safe-proxy",
+    status: "confirmed" as const,
+    confidence: "high" as const,
+    proxy: proxyAddress,
+    implementation: implementationAddress,
+    implementation_role: "singleton" as const,
+    implementation_path: [proxyAddress, implementationAddress],
+    canonical_proxy_shell: true,
+    implementation_has_code: true,
+    official_singleton: false,
+    singleton_changed: false,
+    evidence: [],
+    warnings: [],
+    chain_id: "1",
+    block_number: "42",
+    block_hash: hash,
+  };
+  return {
+    status: "confirmed" as const,
+    primary,
+    outcomes: [primary],
+    conflicts: [],
+    shadow_diff: { different: true, reasons: ["v2_positive_legacy_not_detected"] },
+  };
 }
 
 function contractRequests(fetcher: ReturnType<typeof installContractAPI>) {

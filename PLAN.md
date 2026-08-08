@@ -25,6 +25,7 @@ batch semantics are not core v1 scope.
 | P55 | [OpenZeppelin Proxy Interaction](docs/plans/P55-openzeppelin-proxy-interaction.md) | superseded | P20, P30, P40, P50 | Superseded coordination record for the cross-phase OpenZeppelin proxy chain |
 | P56 | [Contract Artifact Reuse and ABI UX](docs/plans/P56-contract-artifact-reuse-and-abi-ux.md) | done | P20, P30, P40, P50 | Same-code artifacts, standard proxy interaction, and decoded transaction logs |
 | P57 | [Web Contract Artifact Nullability](docs/plans/P57-web-contract-artifact-nullability.md) | done | P56 | Preview contract pages tolerate nullable verification artifact fields |
+| P58 | [Evidence-based Proxy Detection](docs/plans/P58-evidence-based-proxy-detection.md) | in_progress | P20, P30, P40, P50, P60 | Stable OZ 5.x detection, composable detectors, and block-pinned Safe Proxy recognition |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |

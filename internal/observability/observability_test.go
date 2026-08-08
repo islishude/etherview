@@ -275,6 +275,8 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 	registry.RecordRPC("head", "error")
 	registry.SetJobsPending("trace", 9)
 	registry.RecordMetadataFetch("ssrf_rejected")
+	registry.ObserveProxyDetectionRun(2*time.Millisecond, 1, 1, 0, 0, 0, 0, true)
+	registry.RecordProxyDetectionResult("safe", "safe", "confirmed", "high")
 	registry.RecordRateLimit("rejected")
 
 	clock := []time.Time{time.Unix(1, 0), time.Unix(1, int64(20*time.Millisecond)), time.Unix(1, int64(20*time.Millisecond))}
@@ -307,6 +309,10 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 		`etherview_rpc_requests_total{purpose="head",result="error"} 1`,
 		`etherview_jobs_pending{queue="trace"} 9`,
 		`etherview_metadata_fetches_total{result="ssrf_rejected"} 1`,
+		`etherview_proxy_detection_rpc_calls_total{method="eth_getCode"} 1`,
+		`etherview_proxy_detection_results_total{detector="safe",family="safe",status="confirmed",confidence="high"} 1`,
+		`etherview_proxy_detection_ambiguous_total 1`,
+		`etherview_safe_proxy_fingerprint_match_total 1`,
 	} {
 		if !strings.Contains(exposition, expected) {
 			t.Fatalf("metrics missing %q:\n%s", expected, exposition)

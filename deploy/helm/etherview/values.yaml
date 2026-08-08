@@ -310,6 +310,9 @@ config:
     pricing: false
     user_auth: false
     x402_billing: false
+    proxy_detection_v2: false
+    safe_proxy_detection: false
+    proxy_detection_v2_public: false
   security:
     public_verification: false
     api_key_pepper: ""

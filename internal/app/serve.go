@@ -648,9 +648,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Analytics:   analyticsReader,
-			ProxyReader: newProxyReaderAdapter(writerReader, cfg.Chain.ID),
-			Etherscan:   compatibility, Events: broker, HomeSnapshots: homeFeed,
+			Analytics: analyticsReader,
+			ProxyReader: newProxyReaderAdapter(
+				writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,
+			),
+			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,
@@ -766,7 +768,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if err != nil {
 			return err
 		}
-		proxyProcessor, err := enrich.NewPostgresProxyProcessor(db, rpcBuild.Pool, enrich.ProxyLimits{})
+		proxyProcessor, err := enrich.NewPostgresProxyProcessorWithOptions(
+			db, rpcBuild.Pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
+				Enabled: cfg.Features.ProxyDetectionV2, SafeEnabled: cfg.Features.SafeProxyDetection,
+				Observer: registry,
+			},
+		)
 		if err != nil {
 			return err
 		}

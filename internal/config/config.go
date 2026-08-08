@@ -176,15 +176,18 @@ type MetadataConfig struct {
 }
 
 type FeatureConfig struct {
-	Trace           bool `yaml:"trace"`
-	Mempool         bool `yaml:"mempool"`
-	HistoricalState bool `yaml:"historical_state"`
-	Verification    bool `yaml:"verification"`
-	Sourcify        bool `yaml:"sourcify"`
-	NFTMetadata     bool `yaml:"nft_metadata"`
-	Pricing         bool `yaml:"pricing"`
-	UserAuth        bool `yaml:"user_auth"`
-	X402Billing     bool `yaml:"x402_billing"`
+	Trace                  bool `yaml:"trace"`
+	Mempool                bool `yaml:"mempool"`
+	HistoricalState        bool `yaml:"historical_state"`
+	Verification           bool `yaml:"verification"`
+	Sourcify               bool `yaml:"sourcify"`
+	NFTMetadata            bool `yaml:"nft_metadata"`
+	Pricing                bool `yaml:"pricing"`
+	UserAuth               bool `yaml:"user_auth"`
+	X402Billing            bool `yaml:"x402_billing"`
+	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
+	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
+	ProxyDetectionV2Public bool `yaml:"proxy_detection_v2_public"`
 }
 
 type SecurityConfig struct {
@@ -693,6 +696,12 @@ func (c Config) Validate() error {
 	}
 	if c.Security.PublicVerification && !c.Features.Verification {
 		errs = append(errs, errors.New("public verification requires features.verification"))
+	}
+	if c.Features.ProxyDetectionV2Public && !c.Features.ProxyDetectionV2 {
+		errs = append(errs, errors.New("features.proxy_detection_v2_public requires features.proxy_detection_v2"))
+	}
+	if c.Features.SafeProxyDetection && !c.Features.ProxyDetectionV2 {
+		errs = append(errs, errors.New("features.safe_proxy_detection requires features.proxy_detection_v2"))
 	}
 	if c.Security.PublicVerification && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("public verification requires API key authentication"))
@@ -1691,19 +1700,22 @@ func applyEnvironmentForRoles(
 		}
 	}
 	for name, target := range map[string]*bool{
-		"FEATURE_TRACE":            &cfg.Features.Trace,
-		"FEATURE_MEMPOOL":          &cfg.Features.Mempool,
-		"FEATURE_HISTORICAL_STATE": &cfg.Features.HistoricalState,
-		"FEATURE_VERIFICATION":     &cfg.Features.Verification,
-		"FEATURE_SOURCIFY":         &cfg.Features.Sourcify,
-		"FEATURE_NFT_METADATA":     &cfg.Features.NFTMetadata,
-		"FEATURE_PRICING":          &cfg.Features.Pricing,
-		"FEATURE_USER_AUTH":        &cfg.Features.UserAuth,
-		"FEATURE_X402_BILLING":     &cfg.Features.X402Billing,
-		"PUBLIC_VERIFICATION":      &cfg.Security.PublicVerification,
+		"FEATURE_TRACE":                                       &cfg.Features.Trace,
+		"FEATURE_MEMPOOL":                                     &cfg.Features.Mempool,
+		"FEATURE_HISTORICAL_STATE":                            &cfg.Features.HistoricalState,
+		"FEATURE_VERIFICATION":                                &cfg.Features.Verification,
+		"FEATURE_SOURCIFY":                                    &cfg.Features.Sourcify,
+		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
+		"FEATURE_PRICING":                                     &cfg.Features.Pricing,
+		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
+		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
+		"FEATURE_PROXY_DETECTION_V2":                          &cfg.Features.ProxyDetectionV2,
+		"FEATURE_SAFE_PROXY_DETECTION":                        &cfg.Features.SafeProxyDetection,
+		"FEATURE_PROXY_DETECTION_V2_PUBLIC":                   &cfg.Features.ProxyDetectionV2Public,
+		"PUBLIC_VERIFICATION":                                 &cfg.Security.PublicVerification,
 		"VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": &cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
-		"S3_PATH_STYLE":       &cfg.Adapters.S3PathStyle,
-		"OTLP_TRACE_INSECURE": &cfg.Observability.OTLPTraceInsecure,
+		"S3_PATH_STYLE":                                       &cfg.Adapters.S3PathStyle,
+		"OTLP_TRACE_INSECURE":                                 &cfg.Observability.OTLPTraceInsecure,
 	} {
 		if err := setBool(lookup, name, target); err != nil {
 			return err

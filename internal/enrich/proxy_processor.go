@@ -10,6 +10,8 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -55,7 +57,7 @@ func (limits *ProxyLimits) defaults() {
 		limits.MaxCodeBytes = 1 << 20
 	}
 	if limits.MaxDetailsBytes <= 0 {
-		limits.MaxDetailsBytes = 2048
+		limits.MaxDetailsBytes = 16 << 10
 	}
 }
 
@@ -141,6 +143,8 @@ type proxyDetection struct {
 	proxy     *proxyResolution
 	exact     *proxyArtifactResolution
 	rejected  string
+	v2        ProxyDetectionResolution
+	v2Active  bool
 }
 
 type beaconDetection struct {
@@ -178,12 +182,38 @@ type proxyBlockEvents struct {
 // state endpoint is acquired for the whole immutable block and every state
 // request uses the same EIP-1898 block-hash selector.
 type PostgresProxyProcessor struct {
-	db     *sql.DB
-	pool   *ethrpc.Pool
-	limits ProxyLimits
+	db      *sql.DB
+	pool    *ethrpc.Pool
+	limits  ProxyLimits
+	options ProxyDetectionOptions
+}
+
+type ProxyDetectionOptions struct {
+	Enabled     bool
+	SafeEnabled bool
+	Observer    ProxyDetectionObserver
+}
+
+type ProxyDetectionObserver interface {
+	ObserveProxyDetectionRun(
+		duration time.Duration,
+		getCodeCalls, storageCalls, callCalls,
+		getCodeErrors, storageErrors, callErrors uint64,
+		ambiguous bool,
+	)
+	RecordProxyDetectionResult(detector, family, status, confidence string)
 }
 
 func NewPostgresProxyProcessor(db *sql.DB, pool *ethrpc.Pool, limits ProxyLimits) (*PostgresProxyProcessor, error) {
+	return NewPostgresProxyProcessorWithOptions(db, pool, limits, ProxyDetectionOptions{})
+}
+
+func NewPostgresProxyProcessorWithOptions(
+	db *sql.DB,
+	pool *ethrpc.Pool,
+	limits ProxyLimits,
+	options ProxyDetectionOptions,
+) (*PostgresProxyProcessor, error) {
 	if db == nil || pool == nil {
 		return nil, errors.New("proxy processor requires a database and RPC pool")
 	}
@@ -191,7 +221,10 @@ func NewPostgresProxyProcessor(db *sql.DB, pool *ethrpc.Pool, limits ProxyLimits
 	if err := limits.validate(); err != nil {
 		return nil, err
 	}
-	return &PostgresProxyProcessor{db: db, pool: pool, limits: limits}, nil
+	if options.SafeEnabled && !options.Enabled {
+		return nil, errors.New("safe proxy detector requires proxy detection V2")
+	}
+	return &PostgresProxyProcessor{db: db, pool: pool, limits: limits, options: options}, nil
 }
 
 func (*PostgresProxyProcessor) Stage() StageID { return ProxyStage }
@@ -230,6 +263,8 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	}
 	detector := rpcProxyDetector{
 		caller: endpoint.Client, limits: processor.limits,
+		v2Enabled: processor.options.Enabled, safeEnabled: processor.options.SafeEnabled,
+		observer:                  processor.options.Observer,
 		codeCache:                 make(map[common.Address][]byte),
 		beaconImplementationCache: make(map[common.Address]cachedBeaconImplementation),
 		artifact: func(ctx context.Context, address common.Address, hash common.Hash) (proxyArtifactEvidence, bool, error) {
@@ -1039,6 +1074,9 @@ type rpcProxyDetector struct {
 	cloneCreation             func(context.Context, common.Address, []byte) (bool, error)
 	codeCache                 map[common.Address][]byte
 	beaconImplementationCache map[common.Address]cachedBeaconImplementation
+	v2Enabled                 bool
+	safeEnabled               bool
+	observer                  ProxyDetectionObserver
 }
 
 type cachedBeaconImplementation struct {
@@ -1050,18 +1088,68 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 	if detector.caller == nil {
 		return nil, errors.New("proxy RPC detector is not configured")
 	}
-	blockReference := rpc.BlockNumberOrHashWithHash(job.BlockHash, true)
 	if detector.codeCache == nil {
 		detector.codeCache = make(map[common.Address][]byte)
 	}
 	if detector.beaconImplementationCache == nil {
 		detector.beaconImplementationCache = make(map[common.Address]cachedBeaconImplementation)
 	}
+	memo := &proxyDetectionRPCMemo{}
 	result := make([]proxyDetection, 0, len(candidates))
 	for _, candidate := range candidates {
-		detection, err := detector.detect(ctx, candidate, blockReference)
+		if !detector.v2Enabled {
+			detection, err := detector.detect(
+				ctx, candidate, rpc.BlockNumberOrHashWithHash(job.BlockHash, true),
+			)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, detection)
+			continue
+		}
+		started := time.Now()
+		detectionContext, err := newProxyDetectionContext(
+			job.ChainID, candidate.address, job.BlockNumber, job.BlockHash,
+			ProxyDetectionBulk, detector.caller, detector.limits.MaxCodeBytes, memo,
+		)
 		if err != nil {
 			return nil, err
+		}
+		beforeCounters := detectionContext.Counters()
+		adapter := &openZeppelinProxyDetectorAdapter{legacy: detector, candidate: candidate}
+		detectors := []ProxyDetector{adapter}
+		if detector.safeEnabled {
+			detectors = append(detectors, newSafeProxyDetector())
+		}
+		resolved, err := RunProxyDetectors(ctx, detectionContext, detectors)
+		if err != nil {
+			return nil, err
+		}
+		if adapter.err != nil {
+			// The framework runs in compatibility mode until the V2 observation is
+			// persisted. Preserve proxy@2's stage-level RPC failure contract.
+			return nil, adapter.err
+		}
+		if adapter.legacyResult == nil {
+			return nil, Permanent(errors.New("OpenZeppelin detector omitted its legacy result"))
+		}
+		detection := *adapter.legacyResult
+		compareLegacyProxyProjection(detection, &resolved)
+		detection.v2 = resolved
+		detection.v2Active = true
+		if detector.observer != nil {
+			counters := detectionContext.Counters().since(beforeCounters)
+			detector.observer.ObserveProxyDetectionRun(
+				time.Since(started), counters.GetCode, counters.GetStorageAt, counters.Call,
+				counters.GetCodeErrors, counters.GetStorageAtErrors, counters.CallErrors,
+				len(resolved.Conflicts) != 0,
+			)
+			for _, outcome := range resolved.Outcomes {
+				detector.observer.RecordProxyDetectionResult(
+					outcome.Detector, string(outcome.Family), string(outcome.Status),
+					string(outcome.Confidence),
+				)
+			}
 		}
 		result = append(result, detection)
 	}
@@ -1584,6 +1672,7 @@ func (processor *PostgresProxyProcessor) persistTx(
 	beaconObservations := make(map[common.Address]proxyBeaconObservation)
 	proxyCount := 0
 	rejectedCount := 0
+	v2DifferenceCount := 0
 	uupsCompatibleCount := 0
 	uupsRejectedCount := 0
 	for _, result := range uupsProbes {
@@ -1599,6 +1688,9 @@ func (processor *PostgresProxyProcessor) persistTx(
 		}
 	}
 	for _, detection := range detections {
+		if detection.v2Active && detection.v2.LegacyProjectionChanged {
+			v2DifferenceCount++
+		}
 		if err := mergeProxyCodeObservation(codeObservations, detection.candidate.address, detection.codeHash, detection.code); err != nil {
 			return StageResult{}, Permanent(err)
 		}
@@ -1723,6 +1815,11 @@ func (processor *PostgresProxyProcessor) persistTx(
 				return StageResult{}, err
 			}
 		}
+		if detection.v2Active {
+			if err := processor.persistProxyDetectionV2(ctx, tx, job, detection); err != nil {
+				return StageResult{}, err
+			}
+		}
 	}
 	for _, detection := range beacons {
 		if detection.implementation == (common.Address{}) {
@@ -1800,18 +1897,19 @@ func (processor *PostgresProxyProcessor) persistTx(
 	details := map[string]string{
 		"outcome": outcome, "candidates": strconv.Itoa(len(detections) + len(beacons) + len(uupsProbes)),
 		"code_observations": strconv.Itoa(len(codeObservations)), "proxies": strconv.Itoa(proxyCount),
-		"beacons":               strconv.Itoa(len(beaconObservations)),
-		"uups_probes":           strconv.Itoa(len(uupsProbes)),
-		"uups_compatible":       strconv.Itoa(uupsCompatibleCount),
-		"uups_rejected":         strconv.Itoa(uupsRejectedCount),
-		"upgrade_events":        strconv.Itoa(len(events.upgrades)),
-		"initialization_events": strconv.Itoa(len(events.initializations)),
-		"rejected_events":       strconv.Itoa(events.rejected),
-		"rejected_candidates":   strconv.Itoa(rejectedCount),
-		"carried_proxies":       strconv.FormatInt(carried.proxies, 10),
-		"carried_beacons":       strconv.FormatInt(carried.beacons, 10),
-		"carried_uups":          strconv.FormatInt(carried.uups, 10),
-		"carried_resolutions":   strconv.FormatInt(carried.resolutions, 10),
+		"beacons":                        strconv.Itoa(len(beaconObservations)),
+		"uups_probes":                    strconv.Itoa(len(uupsProbes)),
+		"uups_compatible":                strconv.Itoa(uupsCompatibleCount),
+		"uups_rejected":                  strconv.Itoa(uupsRejectedCount),
+		"upgrade_events":                 strconv.Itoa(len(events.upgrades)),
+		"initialization_events":          strconv.Itoa(len(events.initializations)),
+		"rejected_events":                strconv.Itoa(events.rejected),
+		"rejected_candidates":            strconv.Itoa(rejectedCount),
+		"proxy_detection_v2_differences": strconv.Itoa(v2DifferenceCount),
+		"carried_proxies":                strconv.FormatInt(carried.proxies, 10),
+		"carried_beacons":                strconv.FormatInt(carried.beacons, 10),
+		"carried_uups":                   strconv.FormatInt(carried.uups, 10),
+		"carried_resolutions":            strconv.FormatInt(carried.resolutions, 10),
 		"carried_negative_evidence": strconv.FormatInt(
 			carried.negativeEvidence, 10,
 		),
@@ -1948,6 +2046,42 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 	}
 	if affected != 1 {
 		return Permanent(errors.New("existing proxy detection evidence conflicts with RPC state"))
+	}
+	return nil
+}
+
+func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	detection proxyDetection,
+) error {
+	details, err := marshalProxyDetectionResolution(detection.v2)
+	if err != nil {
+		return fmt.Errorf("encode proxy detection V2 resolution: %w", err)
+	}
+	if len(details) > processor.limits.MaxDetailsBytes {
+		return Permanent(errors.New("proxy detection V2 resolution exceeds configured limit"))
+	}
+	jobID, generation, err := proxyGenerationSQLIdentity(job)
+	if err != nil {
+		return Permanent(err)
+	}
+	state := strings.ReplaceAll(string(detection.v2.Status), "-", "_")
+	result, err := tx.ExecContext(ctx, upsertProxyDetectionEvidenceSQL,
+		job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
+		job.BlockHash[:], job.Stage.Version, detection.codeHash[:], "proxy_v2", state, "resolver",
+		jobID, generation, string(details),
+	)
+	if err != nil {
+		return fmt.Errorf("persist proxy detection V2 resolution: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read proxy detection V2 persistence result: %w", err)
+	}
+	if affected != 1 {
+		return Permanent(errors.New("existing proxy detection V2 conflicts with RPC state"))
 	}
 	return nil
 }

@@ -271,6 +271,13 @@ of the callback. The routing and lag contract is specified in
   public readiness. A reorg retains orphan observations and events and toggles
   them with the proxy journal; see
   [ADR-0010](../decisions/ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md).
+- Feature-gated proxy detection V2 runs evidence-producing detectors through
+  one exact-block memoized context and retains every resolver outcome. Its Safe
+  detector fingerprints the already-fetched runtime before reading slot 0, so
+  a non-Safe bulk candidate adds no Safe RPC. Canonical Safe shell identity and
+  official singleton identity remain independent. V2 is generation-fenced
+  additive evidence and cannot authorize legacy proxy interaction; see
+  [ADR-0032](../decisions/ADR-0032-evidence-based-proxy-detection.md).
   Ambiguous slots, self/empty implementations, and reverting or malformed
   beacon semantics reject only that candidate after its code observation;
   they cannot fail the block or prevent valid peers from completing. Transport

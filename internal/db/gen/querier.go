@@ -34,6 +34,7 @@ type Querier interface {
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
 	GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error)
 	GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error)
+	GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error)
 	GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error)
 	GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUserForLoginParams) (GetOrCreateUserForLoginRow, error)
 	// Public proxy reads are executed on the PostgreSQL writer inside a

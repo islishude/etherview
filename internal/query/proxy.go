@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -77,6 +78,7 @@ type ProxyDetail struct {
 	Beacon          *ProxyIdentity
 	Management      *ProxyManagement
 	Evidence        []ProxyEvidence
+	DetectionV2     json.RawMessage
 }
 
 type ProxyHistoryCoverage struct {
@@ -178,6 +180,17 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		case "complete":
 		default:
 			return fmt.Errorf("stored proxy stage state %q is invalid", snapshot.StageState)
+		}
+		v2, v2Err := queries.GetLatestPublishedProxyDetectionV2(
+			ctx, chainID, address.Bytes(),
+		)
+		if v2Err == nil {
+			if !json.Valid(v2) {
+				return errors.New("stored proxy detection V2 is invalid JSON")
+			}
+			result.DetectionV2 = append(json.RawMessage(nil), v2...)
+		} else if !errors.Is(v2Err, pgx.ErrNoRows) {
+			return v2Err
 		}
 
 		detection, detectionErr := queries.GetLatestPublishedProxyDetection(

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -98,7 +99,7 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 			}},
 		},
 	}
-	adapter := newProxyReaderAdapter(stub, 31337)
+	adapter := newProxyReaderAdapter(stub, 31337, false)
 	detail, err := adapter.Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +148,7 @@ func TestProxyReaderAdapterPublishesHighConfidenceUnverifiedInteractionWithoutMa
 		Proxy:          &query.ProxyIdentity{Address: proxyAddress, CodeHash: proxyCodeHash},
 		Implementation: &query.ProxyIdentity{Address: implementationAddress, CodeHash: implementationCodeHash},
 	}}
-	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), proxyAddress)
+	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,8 +171,40 @@ func TestProxyReaderAdapterRejectsMalformedPersistedPublicIdentity(t *testing.T)
 			Hash:   "0x" + strings.Repeat("a", 64),
 		},
 	}}
-	if _, err := newProxyReaderAdapter(stub, 1).Proxy(context.Background(), stub.detail.Address); err == nil {
+	if _, err := newProxyReaderAdapter(stub, 1, false).Proxy(context.Background(), stub.detail.Address); err == nil {
 		t.Fatal("malformed persisted proxy status was published")
+	}
+}
+
+func TestProxyReaderAdapterGatesSafeDetectionV2PublicProjection(t *testing.T) {
+	t.Parallel()
+	const proxyAddress = "0x1111111111111111111111111111111111111111"
+	raw := json.RawMessage(`{
+		"status":"confirmed",
+		"primary":{"detector":"safe","detector_version":"safe-proxy@1","priority":200,"family":"safe","variant":"safe-proxy","status":"confirmed","confidence":"high","proxy":"0x1111111111111111111111111111111111111111","implementation":"0x2222222222222222222222222222222222222222","implementation_role":"singleton","implementation_path":["0x1111111111111111111111111111111111111111","0x2222222222222222222222222222222222222222"],"canonical_proxy_shell":true,"implementation_has_code":true,"official_singleton":false,"singleton_changed":false,"evidence":[],"warnings":[],"chain_id":"31337","block_number":"42","block_hash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		"outcomes":[{"detector":"safe","detector_version":"safe-proxy@1","priority":200,"family":"safe","variant":"safe-proxy","status":"confirmed","confidence":"high","proxy":"0x1111111111111111111111111111111111111111","implementation":"0x2222222222222222222222222222222222222222","implementation_role":"singleton","implementation_path":[],"canonical_proxy_shell":true,"implementation_has_code":true,"official_singleton":false,"singleton_changed":false,"evidence":[],"warnings":[],"chain_id":"31337","block_number":"42","block_hash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+		"conflicts":[]}`)
+	stub := &appProxyQueryStub{detail: query.ProxyDetail{
+		Address: proxyAddress, Status: "not_detected",
+		Snapshot:    query.ProxySnapshot{Number: "42", Hash: "0x" + strings.Repeat("a", 64)},
+		DetectionV2: raw,
+	}}
+	shadow, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shadow.ProxyDetectionV2 != nil {
+		t.Fatal("shadow-only V2 leaked through the public API")
+	}
+	public, err := newProxyReaderAdapter(stub, 31337, true).Proxy(context.Background(), proxyAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if public.ProxyDetectionV2 == nil || public.ProxyDetectionV2.Primary == nil ||
+		public.ProxyDetectionV2.Primary.Family == nil || *public.ProxyDetectionV2.Primary.Family != "safe" ||
+		public.ProxyDetectionV2.Primary.ImplementationRole == nil ||
+		*public.ProxyDetectionV2.Primary.ImplementationRole != "singleton" {
+		t.Fatalf("public Safe projection=%+v", public.ProxyDetectionV2)
 	}
 }
 
@@ -199,7 +232,7 @@ func TestProxyReaderAdapterAllowsExactCloneBindingWithoutCloneArtifact(t *testin
 			Verified: true,
 		},
 	}}
-	detail, err := newProxyReaderAdapter(stub, 31337).Proxy(context.Background(), cloneAddress)
+	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), cloneAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,28 @@
+[
+  {
+    "name": "GnosisSafeProxy 1.3.0 with canonical singleton",
+    "chainId": "1",
+    "address": "0xee7f7f53f0d0c8c56a38e97c5a58e4d321a174dc",
+    "blockNumber": "25711126",
+    "blockHash": "0x034a2be575c576e27e12aa92044bd42e30924448eea16e39345ddc1e24829206",
+    "runtimeCodeHash": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+    "singleton": "0xd9db270c1b5e3bd161e8c8503c55ceabee709552",
+    "singletonCodeHash": "0xbba688fbdb21ad2bb58bc320638b43d94e7d100f6f3ebaab0a4e4de6304b1c2e",
+    "family": "safe",
+    "variant": "gnosis-safe-proxy",
+    "source": "Ethereum mainnet fixed-block RPC; proxy identity cross-checked against Etherscan"
+  },
+  {
+    "name": "SafeProxy 1.4.1 with canonical singleton",
+    "chainId": "1",
+    "address": "0x81ad394c0fa87e99ca46e1aca093bee020f203f4",
+    "blockNumber": "25711126",
+    "blockHash": "0x034a2be575c576e27e12aa92044bd42e30924448eea16e39345ddc1e24829206",
+    "runtimeCodeHash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+    "singleton": "0x41675c099f32341bf84bfc5382af534df5c7461a",
+    "singletonCodeHash": "0x1fe2df852ba3299d6534ef416eefa406e56ced995bca886ab7a553e6d0c5e1c4",
+    "family": "safe",
+    "variant": "safe-proxy",
+    "source": "Ethereum mainnet fixed-block RPC; proxy identity cross-checked against Etherscan"
+  }
+]
