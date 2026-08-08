@@ -82,6 +82,14 @@ None.
 
 ## Evidence
 
+- The verified OpenZeppelin proxy browser regression now follows the compact
+  ABI form contract: target addresses and removed management-scope copy are
+  not asserted inside function cards, the Copy calldata action is present,
+  and the Clone Code tab reopens its Proxy identity disclosure before the
+  bilingual responsive checks. The documented bundled single-process
+  diagnostic run `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make
+  test-e2e` passes all 10 embedded browser flows; the ordinary host-access
+  retry was unavailable because its permission review timed out.
 - P50-T18 replaces CodeMirror's dynamically styled default highlighter with
   Lezer's stable semantic class highlighter, allowing the existing bundled
   `tok-*` theme rules to work under the production CSP for Solidity and Yul.

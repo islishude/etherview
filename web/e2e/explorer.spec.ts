@@ -445,26 +445,25 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(readContractTab).toBeFocused();
   await expect(readContractTab).toHaveAttribute("aria-selected", "true");
   const directRead = page.locator(".abi-function-card").filter({ hasText: "proxyValue()" });
-  await expect(directRead.getByText(address, { exact: true })).toBeVisible();
+  await expect(directRead.getByText(address, { exact: true })).toHaveCount(0);
 
   await activateInView(transparentTabs.getByRole("tab", { name: "Write contract" }));
   await expect(page.getByText("setProxyValue(uint256)", { exact: true })).toBeVisible();
   await expect(page.getByLabel("newValue")).toBeVisible();
-  await expect(page.getByLabel(/calldata/iu)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy calldata" })).toBeVisible();
 
   await activateInView(transparentTabs.getByRole("tab", {
     name: "Read implementation (as proxy)",
   }));
   const transparentRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
-  await expect(transparentRead.getByText(address, { exact: true })).toBeVisible();
-  await expect(page.getByText(transparentImplementation, { exact: true }).first()).toBeVisible();
+  await expect(transparentRead.getByText(address, { exact: true })).toHaveCount(0);
+  await expect(transparentRead.getByText(transparentImplementation, { exact: true })).toHaveCount(0);
 
   await activateInView(transparentTabs.getByRole("tab", { name: "Proxy management" }));
   const proxyAdminUpgrade = page.locator(".abi-function-card").filter({
     hasText: "upgradeAndCall(address,address,bytes)",
   });
-  await expect(proxyAdminUpgrade.getByText(proxyAdminAddress, { exact: true })).toBeVisible();
-  await expect(proxyAdminUpgrade).toContainText("management target linked to 1 proxies");
+  await expect(proxyAdminUpgrade.getByText(proxyAdminAddress, { exact: true })).toHaveCount(0);
   await expect(proxyAdminUpgrade.getByText(/High-risk upgrade operation/)).toBeVisible();
 
   await activateInView(transparentTabs.getByRole("tab", { name: "Upgrade history" }));
@@ -483,10 +482,10 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     name: "Read implementation (as proxy)",
   }));
   const uupsValue = page.locator(".abi-function-card").filter({ hasText: "value()" }).first();
-  await expect(uupsValue.getByText(uupsProxyAddress, { exact: true })).toBeVisible();
+  await expect(uupsValue.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
   const proxiable = page.locator(".abi-function-card").filter({ hasText: "proxiableUUID()" });
   await activateInView(proxiable.locator("summary"));
-  await expect(proxiable.getByText(uupsImplementation, { exact: true })).toBeVisible();
+  await expect(proxiable.getByText(uupsImplementation, { exact: true })).toHaveCount(0);
   await expect(proxiable.getByText(/called directly on the implementation/)).toBeVisible();
   await activateInView(uupsTabs.getByRole("tab", {
     name: "Write implementation (as proxy)",
@@ -495,15 +494,14 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     hasText: "upgradeToAndCall(address,bytes)",
   });
   await activateInView(uupsUpgrade.locator("summary"));
-  await expect(uupsUpgrade.getByText(uupsProxyAddress, { exact: true })).toBeVisible();
+  await expect(uupsUpgrade.getByText(uupsProxyAddress, { exact: true })).toHaveCount(0);
 
   await page.goto(`/contract/${beaconProxyAddress}`);
   await expect(page.getByRole("heading", { name: "BeaconProxy", level: 2 })).toBeVisible();
   const beaconTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await activateInView(beaconTabs.getByRole("tab", { name: "Proxy management" }));
   const beaconUpgrade = page.locator(".abi-function-card").filter({ hasText: "upgradeTo(address)" });
-  await expect(beaconUpgrade.getByText(upgradeableBeacon, { exact: true })).toBeVisible();
-  await expect(beaconUpgrade).toContainText("affects 2 linked proxies");
+  await expect(beaconUpgrade.getByText(upgradeableBeacon, { exact: true })).toHaveCount(0);
   await activateInView(beaconTabs.getByRole("tab", { name: "Upgrade history" }));
   await expect(page.getByText("Beacon implementation changed", { exact: true })).toBeVisible();
   await expect(page.getByText(beaconImplementation, { exact: true }).last()).toBeVisible();
@@ -518,10 +516,14 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     name: "Read implementation (as proxy)",
   }));
   const cloneRead = page.locator(".abi-function-card").filter({ hasText: "value()" });
-  await expect(cloneRead.getByText(cloneAddress, { exact: true })).toBeVisible();
-  await expect(page.getByText(cloneImplementation, { exact: true }).first()).toBeVisible();
+  await expect(cloneRead.getByText(cloneAddress, { exact: true })).toHaveCount(0);
+  await expect(cloneRead.getByText(cloneImplementation, { exact: true })).toHaveCount(0);
   await expect.poll(() => contractRequests.some(({ pathname }) =>
     pathname === `/api/v1/contracts/${cloneAddress}/proxy/upgrades`)).toBe(false);
+  const cloneCodeTab = cloneTabs.getByRole("tab", { name: "Code" });
+  await cloneCodeTab.click();
+  await expect(cloneCodeTab).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
