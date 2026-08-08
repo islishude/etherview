@@ -76,6 +76,8 @@ describe("verified ABI parsing", () => {
     expect(() => parseVerifiedABI([
       simpleFunction("deep", `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`),
     ])).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")]))
+      .toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
   });
 
   it("normalizes canonical overload signatures and rejects canonical duplicates", () => {
@@ -186,7 +188,6 @@ describe("ABI argument trees", () => {
     expect(parseScalarArgument("address", addressA)).toBe(getAddress(addressA));
     expect(parseScalarArgument("bytes4", "0x01020304")).toBe("0x01020304");
     expect(parseScalarArgument("bytes", "0xA0ff")).toBe("0xa0ff");
-    expect(parseScalarArgument("function", `0x${"11".repeat(24)}`)).toBe(`0x${"11".repeat(24)}`);
     expect(parseScalarArgument("bool", "false")).toBe(false);
     expect(parseScalarArgument("string", "hello")).toBe("hello");
 
@@ -198,7 +199,6 @@ describe("ABI argument trees", () => {
       ["address", "0x1234"],
       ["bytes4", "0x0102"],
       ["bytes", "0x0"],
-      ["function", `0x${"11".repeat(23)}`],
       ["bool", "TRUE"],
     ]) {
       expect(() => parseScalarArgument(type!, value!)).toThrowError(
@@ -266,7 +266,7 @@ describe("ABI result and revert formatting", () => {
     const fn = abi[0] as AbiFunction;
     const formatted = formatAbiResult(fn, [
       12345678901234567890n,
-      { owner: addressA, values: [1n, 65535n], label: "ready" },
+      { owner: addressA, values: [1, 65535], label: "ready" },
       "0xAABB",
     ]);
 
@@ -303,6 +303,32 @@ describe("ABI result and revert formatting", () => {
     }])[0] as AbiFunction;
     expect(formatAbiResult(single, 7n)[0]?.display).toBe("7");
     expect(() => formatAbiResult(fn, [1n])).toThrowError(AbiFormError);
+  });
+
+  it("matches viem's number representation for integers up to 48 bits", () => {
+    const abi = parseVerifiedABI([{
+      type: "function",
+      name: "smallIntegers",
+      stateMutability: "view",
+      inputs: [],
+      outputs: [
+        { name: "decimals", type: "uint8" },
+        { name: "minimum", type: "int48" },
+        { name: "large", type: "uint56" },
+      ],
+    }]);
+    const fn = abi[0] as AbiFunction;
+
+    expect(formatAbiResult(fn, [18, -(2 ** 47), (1n << 56n) - 1n])
+      .map((output) => output.display)).toEqual([
+      "18",
+      "-140737488355328",
+      "72057594037927935",
+    ]);
+    expect(() => formatAbiResult(fn, [18n, -(2 ** 47), (1n << 56n) - 1n]))
+      .toThrowError(expect.objectContaining({ path: "$result[0]" }));
+    expect(() => formatAbiResult(fn, [256, -(2 ** 47), (1n << 56n) - 1n]))
+      .toThrowError(expect.objectContaining({ path: "$result[0]" }));
   });
 
   it("decodes custom and Solidity builtin reverts without exposing decoder errors", () => {
@@ -349,6 +375,17 @@ describe("ABI result and revert formatting", () => {
     }]);
     const panicData = encodeErrorResult({ abi: panicAbi, errorName: "Panic", args: [17n] });
     expect(decodeRevert(parseVerifiedABI([]), panicData)?.display).toBe("Panic(uint256): 17");
+
+    const smallIntegerErrorABI = parseVerifiedABI([{
+      type: "error", name: "BadDecimals", inputs: [{ name: "decimals", type: "uint8" }],
+    }]);
+    const smallIntegerErrorData = encodeErrorResult({
+      abi: smallIntegerErrorABI,
+      errorName: "BadDecimals",
+      args: [18],
+    });
+    expect(decodeRevert(smallIntegerErrorABI, smallIntegerErrorData)?.display)
+      .toBe("BadDecimals(uint8): 18");
     expect(decodeRevert(abi, "0xdeadbeef")).toBeUndefined();
     expect(decodeRevert(abi, "not hex")).toBeUndefined();
     expect(decodeRevert(abi, `0x${"00".repeat(ABI_LIMITS.bytesLength + 1)}`)).toBeUndefined();

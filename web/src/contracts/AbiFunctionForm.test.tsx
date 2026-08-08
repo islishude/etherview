@@ -117,6 +117,16 @@ const multipleOutputABI = [
   },
 ] as const satisfies Abi;
 
+const erc20DecimalsABI = [
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+] as const satisfies Abi;
+
 const payableABI = [
   {
     type: "function",
@@ -350,6 +360,27 @@ describe("AbiFunctionExplorer", () => {
     expect(within(output).getByText(total.toString())).toBeVisible();
     expect(within(output).getByText(OTHER)).toBeVisible();
     expect(within(output).getByText("true")).toBeVisible();
+  });
+
+  it("decodes and renders an ERC-20 decimals() uint8 result", async () => {
+    const readContract = vi.fn(async () => encodeFunctionResult({
+      abi: erc20DecimalsABI,
+      functionName: "decimals",
+      result: 18,
+    }));
+    mockWallet({ readContract });
+    renderExplorer(erc20DecimalsABI, "read", directTargets(IMPLEMENTATION));
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "decimals()");
+
+    await user.click(card.getByRole("button", { name: "Read contract" }));
+
+    const output = await card.findByRole("status");
+    expect(within(output).getByText("18")).toBeVisible();
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({ to: IMPLEMENTATION }),
+      "31337",
+    );
   });
 
   it("shows and forwards native value only for payable functions", async () => {
@@ -642,8 +673,8 @@ async function openFunctionCard(
   return within(details);
 }
 
-function directTargets(): readonly ContractInteractionTarget[] {
-  return buildContractInteractionTargets(PROXY).filter(
+function directTargets(address = PROXY): readonly ContractInteractionTarget[] {
+  return buildContractInteractionTargets(address).filter(
     (target) => target.kind === "contract",
   );
 }

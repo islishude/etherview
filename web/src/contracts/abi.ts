@@ -486,7 +486,7 @@ function parseType(type: string, path: string): ParsedAbiType {
 }
 
 function validBaseType(type: string): boolean {
-  if (["address", "bool", "string", "bytes", "function", "tuple"].includes(type)) {
+  if (["address", "bool", "string", "bytes", "tuple"].includes(type)) {
     return true;
   }
   const bytes = /^bytes([0-9]+)$/u.exec(type);
@@ -692,9 +692,6 @@ function parseScalar(type: string, value: string, path: string): unknown {
         throw new AbiFormError("INVALID_ABI_VALUE", path);
       }
       return value.toLowerCase() as Hex;
-    case "function":
-      if (!validHex(value, 24, 24)) throw new AbiFormError("INVALID_ABI_VALUE", path);
-      return value.toLowerCase() as Hex;
     default:
       break;
   }
@@ -783,9 +780,25 @@ function formatValue(
 }
 
 function formatScalar(type: string, value: unknown, path: string): string {
-  if (/^(?:u?int)(?:[0-9]*)$/u.test(type)) {
-    if (typeof value !== "bigint") throw new AbiFormError("INVALID_ABI_VALUE", path);
-    return value.toString(10);
+  const integer = /^(u?int)([0-9]*)$/u.exec(type);
+  if (integer) {
+    const signed = integer[1] === "int";
+    const bits = integer[2] === "" ? 256 : Number(integer[2]);
+    const expectedType = bits <= 48 ? "number" : "bigint";
+    if (typeof value !== expectedType) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    const parsed = typeof value === "number" ? BigInt(value) : value as bigint;
+    const minimum = signed ? -(1n << BigInt(bits - 1)) : 0n;
+    const maximum = signed ? (1n << BigInt(bits - 1)) - 1n : (1n << BigInt(bits)) - 1n;
+    if (
+      (typeof value === "number" && !Number.isSafeInteger(value)) ||
+      parsed < minimum ||
+      parsed > maximum
+    ) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    return parsed.toString(10);
   }
   if (type === "bool") {
     if (typeof value !== "boolean") throw new AbiFormError("INVALID_ABI_VALUE", path);
@@ -806,12 +819,6 @@ function formatScalar(type: string, value: unknown, path: string): string {
   }
   if (type === "bytes") {
     if (typeof value !== "string" || !validHex(value, 0, ABI_LIMITS.bytesLength)) {
-      throw new AbiFormError("INVALID_ABI_VALUE", path);
-    }
-    return value.toLowerCase();
-  }
-  if (type === "function") {
-    if (typeof value !== "string" || !validHex(value, 24, 24)) {
       throw new AbiFormError("INVALID_ABI_VALUE", path);
     }
     return value.toLowerCase();

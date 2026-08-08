@@ -38,6 +38,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T12 | done        | P40-T10       | Address origins, QR/copy header, ERC-20 assets, configurable native labels, and add-network wallet flow | frontend unit, build, and generation checks |
 | P50-T13 | done        | P50-T12       | Add-network flow consolidated into the wallet menu                         | frontend unit, embedded E2E, responsive and a11y tests |
 | P50-T14 | done        | P40-T11, P50-T13 | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
+| P50-T15 | done        | P50-T14       | Viem-compatible ABI result and revert formatting, including ERC-20 `decimals()`, plus fail-closed rejection of codec-unsupported types | focused ABI/form tests and common frontend gates |
 
 ## Acceptance
 
@@ -62,6 +63,35 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T15 fixes the ABI result formatter's incorrect assumption that every
+  Solidity integer decodes to `bigint`. Viem returns `number` for signed and
+  unsigned widths up to 48 bits and `bigint` above 48 bits; the formatter now
+  enforces that exact type split and the declared integer range recursively
+  through scalar, array, tuple, multi-output, and revert values. An ERC-20
+  `decimals() returns (uint8)` form now decodes and renders `18`. ABI `function`
+  values are rejected at the verified-ABI boundary because the selected Viem
+  codec cannot encode or decode that type, rather than rendering a form that
+  can only fail at submission.
+- P50-T15 focused verification passes 25 ABI and contract-form tests. The full
+  frontend suite passes all 26 files and 219 tests, TypeScript lint and the
+  production build pass, and `make test` passes the complete ordinary Go suite
+  plus the frontend suite. `GOCACHE=/tmp/etherview-abi-go-cache make
+  generate-check`, `make plan-check`, and `git diff --check` pass.
+- P50-T15 live Preview acceptance rebuilt image
+  `sha256:5889501300a320596a88be76d240cad6a95d357fc557233e00dfc71581d3a53f`
+  with `make recreate-preview`; PostgreSQL and Reth were retained and all six
+  application roles became healthy. The verified artifact for
+  `0x5FbDB2315678afecb367f032d93F642f64180aa3` contains
+  `decimals() returns (uint8)`, and an exact `eth_call` with selector
+  `0x313ce567` returns the 32-byte encoding of 18.
+- P50-T15's dependency closure updates the locked transitive `nanoid` from
+  3.3.16 to 3.3.18. `npm --prefix web audit --audit-level=high` reports zero
+  vulnerabilities, and the complete `make security-check` passes the
+  production build, Go vulnerability scan, working-tree and history secret
+  scans, all four npm high-severity audit gates, and the security-focused Go
+  tests. The independent Hardhat tree reports only its existing low-severity
+  `elliptic` advisory, which remains below the repository's enforced threshold.
 
 - P50-T14 replaces the API-key, ABI-JSON, calldata, and value workbench with
   anonymous verified-artifact-driven function panels. Direct contract and

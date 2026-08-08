@@ -96,6 +96,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   contract and as-proxy implementation forms, exact ProxyAdmin and Beacon
   management targets, binding-fenced writes, upgrade and initialization
   histories, and real OpenZeppelin 5.6.1 seven-role Preview acceptance.
+  P50-T15 corrects small-integer ABI result formatting for Viem's `number`
+  representation, including ERC-20 `decimals()` and nested/revert values, and
+  rejects types that the selected codec cannot encode or decode. Its focused,
+  ordinary, generation, production-build, live Preview, and security checks
+  pass after the locked transitive `nanoid` update clears the web audit.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
