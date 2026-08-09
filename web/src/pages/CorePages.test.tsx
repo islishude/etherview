@@ -532,8 +532,11 @@ describe("core explorer pages", () => {
     expect(requested).toContain(`/api/v1/transactions/${transactionHash}/authorizations`);
   });
 
-  it("renders decoded log arguments first and keeps raw topics and data disclosed", async () => {
+  it("renders topics and data directly in collapsed details and converts anonymous topic zero", async () => {
     const eventTopic = `0x${"77".repeat(32)}`;
+    const addressTopic = "0x00000000000000000000000052908400098527886e0f7030069857d2e4169ee7";
+    const textTopic = `0x68656c6c6f${"00".repeat(27)}`;
+    const numberTopic = `0x${"0".repeat(63)}2`;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
       if (url.pathname === "/api/v1/config") return configResponse();
@@ -550,16 +553,38 @@ describe("core explorer pages", () => {
           state: "complete", chain_id: "1", block_number: "12",
           block_hash: canonicalHash, transaction_hash: transactionHash,
           canonical: true, finality: "safe",
-          items: [{
-            address, log_index: "0", topics: [eventTopic], data: "0x1234",
-            decoding: {
-              status: "decoded", event_name: "Changed", signature: "Changed(string)",
-              confidence: "verified", abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
-              arguments: [{ name: "message", type: "string", indexed: true, hashed: true, value: eventTopic }],
-              candidates: ["Changed(string)"],
-              attribution: { mode: "address_fallback", trace_path: [] },
+          items: [
+            {
+              address, log_index: "0", topics: [eventTopic, addressTopic, textTopic, numberTopic], data: "0x1234",
+              decoding: {
+                status: "decoded", event_name: "Changed", signature: "Changed(tuple,uint256[],address,string,uint256)",
+                confidence: "verified", abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+                arguments: [
+                  { name: "pair", type: "tuple", indexed: false, hashed: false, value: ["7", address] },
+                  { name: "values", type: "uint256[]", indexed: false, hashed: false, value: ["1", "2"] },
+                  { name: "owner", type: "address", indexed: true, hashed: false, value: address },
+                  { name: "message", type: "string", indexed: true, hashed: true, value: textTopic },
+                  { name: "count", type: "uint256", indexed: true, hashed: false, value: "2" },
+                ],
+                candidates: ["Changed(tuple,uint256[],address,string,uint256)"],
+                attribution: { mode: "exact_trace", trace_path: [0, 1], execution_address: address },
+              },
             },
-          }],
+            {
+              address, log_index: "1", topics: [addressTopic, textTopic, numberTopic], data: "0xabcd",
+              decoding: {
+                status: "decoded", event_name: "AnonymousChanged", signature: "AnonymousChanged(address,string,uint256)",
+                confidence: "verified", abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+                arguments: [
+                  { name: "owner", type: "address", indexed: true, hashed: false, value: address },
+                  { name: "message", type: "string", indexed: true, hashed: true, value: textTopic },
+                  { name: "count", type: "uint256", indexed: true, hashed: false, value: "2" },
+                ],
+                candidates: ["AnonymousChanged(address,string,uint256)"],
+                attribution: { mode: "address_fallback", trace_path: [] },
+              },
+            },
+          ],
         });
       }
       return notFound();
@@ -567,14 +592,67 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/tx/${transactionHash}?tab=logs`);
 
-    expect(await screen.findByText("Changed(string)")).toBeVisible();
-    expect(screen.getByText("Decoded")).toBeVisible();
-    expect(screen.getByText("indexed value hash")).toBeVisible();
-    const raw = screen.getByText("Raw topics and data");
+    expect(await screen.findByText("Changed(tuple,uint256[],address,string,uint256)")).toBeVisible();
+    expect(await screen.findByText("AnonymousChanged(address,string,uint256)")).toBeVisible();
+    expect(screen.queryByText("Decoded")).not.toBeInTheDocument();
+    const cards = document.querySelectorAll<HTMLElement>(".transaction-log");
+    const card = cards[0];
+    const anonymousCard = cards[1];
+    if (!card || !anonymousCard) throw new Error("transaction log cards are missing");
+    const user = userEvent.setup();
+    const argumentsTable = within(card).getByRole("table", { name: "Event arguments" });
+    for (const heading of ["Name", "Type", "Indexed", "Data"]) {
+      expect(within(argumentsTable).getByRole("columnheader", { name: heading })).toBeVisible();
+    }
+    expect(within(argumentsTable).getByText("pair", { exact: true })).toBeVisible();
+    expect(within(argumentsTable).getByText("pair[0]", { exact: true })).toBeVisible();
+    expect(within(argumentsTable).getByText("pair[1]", { exact: true })).toBeVisible();
+    expect(within(argumentsTable).getByText("values[0]", { exact: true })).toBeVisible();
+    expect(within(argumentsTable).queryByText(".pair[0]", { exact: true })).not.toBeInTheDocument();
+    expect(within(argumentsTable).getAllByRole("button", { name: "Copy" }).length).toBeGreaterThanOrEqual(7);
+    expect(card.querySelectorAll(":scope > .transaction-log-topics")).toHaveLength(0);
+    const raw = within(card).getByText("More details");
     expect(raw).toBeVisible();
-    await userEvent.setup().click(raw);
-    expect(screen.getByText("0x1234")).toBeVisible();
-    expect(screen.getAllByText(eventTopic)).toHaveLength(2);
+    expect(raw.closest("details")).not.toHaveAttribute("open");
+    await user.click(raw);
+    expect(within(card).getByRole("heading", { name: "ABI provenance" })).toBeVisible();
+    expect(within(card).getByText("Exact address", { exact: true })).toBeVisible();
+    expect(within(card).getByText("Execution context", { exact: true })).toBeVisible();
+    expect(within(card).getByText("Exact Trace frame", { exact: true })).toBeVisible();
+    expect(within(card).getByText("[0, 1]", { exact: true })).toBeVisible();
+    expect(within(card).queryByText("Raw topics and data")).not.toBeInTheDocument();
+    expect(within(card).getByRole("heading", { name: "Topics" })).toBeVisible();
+    expect(within(card).queryByRole("combobox", { name: "Topic 0 display mode" })).not.toBeInTheDocument();
+    const addressMode = within(card).getByRole("combobox", { name: "Topic 1 display mode" });
+    await user.selectOptions(addressMode, "address");
+    expect(within(card).getByText("0x52908400098527886E0F7030069857D2E4169EE7", { exact: true })).toBeVisible();
+    await user.selectOptions(within(card).getByRole("combobox", { name: "Topic 2 display mode" }), "text");
+    expect(within(card).getByText("hello", { exact: true })).toBeVisible();
+    const numberMode = within(card).getByRole("combobox", { name: "Topic 3 display mode" });
+    await user.selectOptions(numberMode, "number");
+    const numberTopicRow = numberMode.closest<HTMLElement>(".transaction-topic");
+    if (!numberTopicRow) throw new Error("number topic row is missing");
+    expect(within(numberTopicRow).getByText("2", { exact: true })).toBeVisible();
+    const addressTopicRow = within(card).getByRole("combobox", { name: "Topic 1 display mode" }).closest<HTMLElement>(".transaction-topic");
+    if (!addressTopicRow) throw new Error("address topic row is missing");
+    expect(within(addressTopicRow).getByRole("button", { name: "Copy" })).toBeVisible();
+    expect(within(numberTopicRow).getByRole("button", { name: "Copy" })).toBeVisible();
+    expect(within(card).getByText("0x1234")).toBeVisible();
+
+    const anonymousDetails = within(anonymousCard).getByText("More details");
+    expect(anonymousDetails.closest("details")).not.toHaveAttribute("open");
+    await user.click(anonymousDetails);
+    const anonymousTopicZeroMode = within(anonymousCard).getByRole("combobox", { name: "Topic 0 display mode" });
+    await user.selectOptions(anonymousTopicZeroMode, "address");
+    expect(within(anonymousCard).getByText("0x52908400098527886E0F7030069857D2E4169EE7", { exact: true })).toBeVisible();
+    await user.selectOptions(within(anonymousCard).getByRole("combobox", { name: "Topic 1 display mode" }), "text");
+    expect(within(anonymousCard).getByText("hello", { exact: true })).toBeVisible();
+    const anonymousNumberMode = within(anonymousCard).getByRole("combobox", { name: "Topic 2 display mode" });
+    await user.selectOptions(anonymousNumberMode, "number");
+    const anonymousNumberRow = anonymousNumberMode.closest<HTMLElement>(".transaction-topic");
+    if (!anonymousNumberRow) throw new Error("anonymous number topic row is missing");
+    expect(anonymousNumberRow.querySelector(".copyable-field code")).toHaveTextContent("2");
+    expect(within(anonymousCard).getByText("0xabcd", { exact: true })).toBeVisible();
   });
 
   it("copies transaction addresses from the detail page", async () => {

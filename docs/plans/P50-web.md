@@ -63,6 +63,10 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T37 | done        | P50-T36       | Make inactive address tabs explicitly transparent and reserve the green background for the active state | focused frontend and stylesheet regressions |
 | P50-T38 | done        | P50-T37       | Enforce the shared address-tab visual states against legacy Contract styling overrides | focused frontend, production build, and embedded browser regressions |
 | P50-T39 | done        | P40-T12, P50-T38 | Protocol detail tabs for transactions and blocks, withdrawals, typed transaction fields, and address origin evidence | focused frontend, generated-client, responsive, accessibility, and embedded browser regressions |
+| P50-T40 | done        | P50-T39 | Compact decoded transaction logs with topic format conversion and copy controls | focused frontend, responsive, accessibility, and common frontend gates |
+| P50-T41 | done        | P50-T40 | Structured ABI provenance and recursive Name/Type/Indexed/Data event log decoding | focused frontend, responsive, accessibility, and common frontend gates |
+| P50-T42 | done        | P50-T41 | Consolidate topic display into the expanded More details disclosure | focused frontend, topic conversion, responsive, and accessibility gates |
+| P50-T43 | done        | P50-T42 | Expose convertible topics and data directly in More details, including anonymous-event topic zero | focused frontend, topic conversion, responsive, accessibility, and embedded browser gates |
 
 ## Acceptance
 
@@ -671,3 +675,43 @@ None.
   The focused CorePages/styles suite passes 25 tests; the complete frontend
   suite passes 28 files with 263 tests; frontend lint/build, `make check`,
   `make plan-check`, and `make test-e2e` (12 flows) pass.
+- P50-T40 renders transaction logs as compact decoded-first cards with the log
+  index in the header, copyable decoded values, per-topic Hex/Address/Text/
+  Number conversion, and a collapsed raw/provenance disclosure. Topic text
+  decoding is strict UTF-8 and Number conversion uses bigint string output;
+  malformed conversions fail closed without changing the raw value.
+- P50-T40 verification passes the focused 33-test log/core suite, the complete
+  frontend suite with 29 files and 277 tests, TypeScript lint, production
+  build, `make plan-check`, `make generate-check`, `git diff --check`, and the
+  full host-authorized `make check` gate. The embedded browser suite passes all
+  12 flows, including the updated disclosure assertion that opens collapsed
+  details before checking exact provenance.
+- P50-T41 replaces the event-log argument list with a copyable recursive
+  Name/Type/Indexed/Data table. Tuple, struct, and array children use bounded
+  jq-style paths without a leading dot, nested Indexed cells show `—`, and
+  composite values copy their complete JSON representation. The default
+  collapsed More details panel now groups ABI source and execution provenance;
+  raw topics/data remain in a separate disclosure with copy controls.
+- P50-T41 verification passes the focused log-format/CorePages suite (38
+  tests), the complete frontend suite (29 files, 282 tests), frontend lint and
+  production build, `make generate-check`, `make plan-check`, `git diff
+  --check`, host-authorized `make check`, and `make test-e2e` (12/12 flows).
+- P50-T42 removes the duplicate top-level Topics rendering. Topic values and
+  Hex/Address/Text/Number conversion controls now live only under the expanded
+  More details → Raw topics and data disclosure; topic #0 remains raw event
+  signature Hex and converted values remain copyable.
+- P50-T42 verification passes focused log/CorePages tests (38), the complete
+  frontend suite (29 files, 282 tests), production build, and embedded E2E
+  (12/12 flows).
+- P50-T43 removes the nested Raw topics and data disclosure and its duplicate
+  raw-topic list. More details remains collapsed by default and directly shows
+  ABI provenance, convertible topics, and copyable data when expanded. A
+  successfully decoded event whose topic count equals its indexed argument
+  count is anonymous, so topic zero receives the same Hex/Address/Text/Number
+  conversion controls; unknown, malformed, and inconsistent results fail
+  closed with topic zero reserved as Hex.
+- P50-T43 verification passes the focused log-format/CorePages suite (41
+  tests), the complete frontend suite (29 files, 285 tests), frontend lint and
+  production build, `make generate-check`, `make plan-check`, `git diff
+  --check`, host-authorized `make test-e2e` (12/12 flows), and the full
+  host-authorized `make check` gate.

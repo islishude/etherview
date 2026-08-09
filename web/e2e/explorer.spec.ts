@@ -132,16 +132,29 @@ test("trace and log disclosures retain raw data and exact execution provenance",
 
   await activateInView(page.getByRole("tab", { name: "Logs" }));
   await expect(page.getByText("ValueChanged(uint256)", { exact: true })).toBeVisible();
-  const provenance = page.getByText(/Executed by .*exact Trace frame.*ABI exact_address/);
-  await expect(provenance).toContainText(`Executed by ${uupsImplementation} (exact Trace frame)`);
-  await expect(provenance).toContainText(`ABI exact_address from ${uupsImplementation}`);
-  await expect(page.getByRole("link", { name: uupsProxyAddress })).toBeVisible();
+  const log = page.locator(".transaction-log").first();
+  const moreDetails = log.getByText("More details", { exact: true });
+  await expect(log.locator(".transaction-log-details")).not.toHaveAttribute("open", "");
+  await activateInView(moreDetails);
+  await expect(log.getByRole("heading", { name: "ABI provenance", exact: true })).toBeVisible();
+  await expect(log.getByText("Exact address", { exact: true })).toBeVisible();
+  await expect(log.getByText("Actual execution code", { exact: true })).toBeVisible();
+  const executionProvenance = log.locator(".transaction-log-provenance-card").filter({ hasText: "Actual execution code" });
+  await expect(executionProvenance.getByRole("link", { name: uupsImplementation })).toBeVisible();
+  await expect(log.getByText("Exact Trace frame", { exact: true })).toBeVisible();
+  await expect(executionProvenance.getByText(/^\[\d+(, \d+)*\]$/)).toBeVisible();
+  await expect(log.getByRole("link", { name: uupsProxyAddress }).first()).toBeVisible();
+  await expect(log.getByText("Raw topics and data", { exact: true })).toHaveCount(0);
+  await expect(log.getByRole("heading", { name: "Topics", exact: true })).toBeVisible();
+  await expect(log.locator(".transaction-log-data code")).toBeVisible();
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await page.setViewportSize({ width: 390, height: 844 });
-  const localizedProvenance = page.getByText(/执行代码 .*精确 Trace 调用帧.*ABI exact_address/);
-  await expect(localizedProvenance).toContainText(`执行代码 ${uupsImplementation}（精确 Trace 调用帧）`);
-  await expect(localizedProvenance).toContainText(`ABI exact_address，来自 ${uupsImplementation}`);
+  await expect(log.getByRole("heading", { name: "ABI 来源", exact: true, level: 3 })).toBeVisible();
+  await expect(log.getByText("实际执行代码", { exact: true })).toBeVisible();
+  await expect(log.getByText("精确 Trace 调用帧", { exact: true })).toBeVisible();
+  await expect(log.getByText("原始 topics 与 data", { exact: true })).toHaveCount(0);
+  await expect(log.getByRole("heading", { name: "主题", exact: true })).toBeVisible();
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}?tab=trace`);
 });
 

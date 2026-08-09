@@ -69,6 +69,7 @@ import type {
   NFTBalance,
   SearchResult,
   TokenEvent,
+  TransactionLog,
   TransactionSummary,
   VerificationJob,
   VerificationMatchDetails,
@@ -85,6 +86,13 @@ import {
 } from "@/components/format";
 import { CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
+import {
+  flattenLogArgument,
+  formatTopicValue,
+  isAnonymousDecodedLog,
+  type LogArgumentRow,
+  type TopicDisplayMode,
+} from "@/components/logFormat";
 
 const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
@@ -1582,49 +1590,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
               {logIdentityCurrent && logs.data && logs.data.items.length > 0 && (
                 <div className="transaction-log-list">
                   {logs.data.items.map((log) => (
-                    <article className="transaction-log" key={log.log_index}>
-                      <header>
-                        <div>
-                          <strong>{log.decoding.signature ?? t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</strong>
-                          <small className="table-secondary">
-                            {t(logDecodingKey(log.decoding.status))}
-                          </small>
-                        </div>
-                        <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
-                      </header>
-                      {log.decoding.arguments.length > 0 && (
-                        <dl aria-label={t("detail.eventArguments")}>
-                          {log.decoding.arguments.map((argument, index) => (
-                            <div key={`${argument.name}:${index}`}>
-                              <dt>{argument.name || `${index}`} <code>{argument.type}</code></dt>
-                              <dd>
-                                <code>{formatLogArgument(argument.value)}</code>
-                                {argument.hashed && <small className="table-secondary">{t("detail.indexedHash")}</small>}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                      {log.decoding.warning && <p className="quiet">{log.decoding.warning}</p>}
-                      <p className="quiet">
-                        {t("detail.logEmitter", { address: log.address })} · {" "}
-                        {log.decoding.attribution.mode === "exact_trace" && log.decoding.attribution.execution_address
-                          ? t("detail.logExecutionAddress", { address: log.decoding.attribution.execution_address })
-                          : t("detail.logAddressFallback")}
-                        {log.decoding.abi_source?.address
-                          ? ` · ${t("detail.abiSource", { kind: log.decoding.abi_source.kind, address: log.decoding.abi_source.address })}`
-                          : ""}
-                      </p>
-                      <details className="transaction-more-details">
-                        <summary>{t("detail.rawLog")}</summary>
-                        <dl>
-                          {log.topics.map((topic, index) => (
-                            <div key={`${topic}:${index}`}><dt>{t("detail.topic", { index })}</dt><dd><code>{topic}</code></dd></div>
-                          ))}
-                          <div><dt>{t("detail.data")}</dt><dd><code>{log.data}</code></dd></div>
-                        </dl>
-                      </details>
-                    </article>
+                    <TransactionLogCard key={log.log_index} log={log} locale={locale} />
                   ))}
                 </div>
               )}
@@ -1762,6 +1728,247 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
         </>
       )}
     </Page>
+  );
+}
+
+function TransactionLogCard({
+  log,
+  locale,
+}: {
+  log: TransactionLog;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  const [topicModes, setTopicModes] = useState<Record<string, TopicDisplayMode>>({});
+  const signature = log.decoding.signature ?? log.decoding.event_name
+    ?? t("detail.logIndex", { index: formatInteger(log.log_index, locale) });
+  const decoded = log.decoding.status === "decoded";
+  const anonymous = isAnonymousDecodedLog(log.decoding.status, log.topics.length, log.decoding.arguments);
+  const setTopicMode = (index: number, mode: TopicDisplayMode) => {
+    setTopicModes((current) => ({ ...current, [String(index)]: mode }));
+  };
+
+  return (
+    <article className="transaction-log">
+      <header className="transaction-log-header">
+        <div className="transaction-log-heading">
+          <strong>{signature}</strong>
+          {!decoded && <small className="transaction-log-status">{t(logDecodingKey(log.decoding.status))}</small>}
+        </div>
+        <span className="transaction-log-index">
+          <span className="sr-only">{t("detail.logIndex", { index: formatInteger(log.log_index, locale) })}</span>
+          {formatInteger(log.log_index, locale)}
+        </span>
+      </header>
+
+      <div className="transaction-log-address">
+        <span className="transaction-log-label">{t("detail.address")}</span>
+        <CopyableField value={log.address}>
+          <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
+        </CopyableField>
+      </div>
+
+      {log.decoding.arguments.length > 0 && (
+        <TransactionLogArgumentsTable arguments={log.decoding.arguments} />
+      )}
+
+      {log.decoding.warning && <p className="quiet transaction-log-warning">{log.decoding.warning}</p>}
+
+      <details className="transaction-more-details transaction-log-details">
+        <summary>{t("detail.moreDetails")}</summary>
+        <div className="transaction-log-details-content">
+          <TransactionLogProvenance log={log} />
+          <TransactionLogTopicsAndData
+            allowTopicZeroConversion={anonymous}
+            data={log.data}
+            logIndex={log.log_index}
+            onTopicModeChange={setTopicMode}
+            topicModes={topicModes}
+            topics={log.topics}
+          />
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function TransactionLogArgumentsTable({
+  arguments: values,
+}: {
+  arguments: TransactionLog["decoding"]["arguments"];
+}) {
+  const { t } = useTranslation();
+  const rows = values.flatMap((argument, index) => flattenLogArgument(argument, index));
+
+  return (
+    <div className="transaction-log-arguments-scroll" tabIndex={0}>
+      <div className="transaction-log-arguments-table" role="table" aria-label={t("detail.eventArguments")}>
+        <div className="transaction-log-arguments-row transaction-log-arguments-header" role="row">
+          <span role="columnheader">{t("detail.argumentName")}</span>
+          <span role="columnheader">{t("detail.argumentType")}</span>
+          <span role="columnheader">{t("detail.argumentIndexed")}</span>
+          <span role="columnheader">{t("detail.argumentData")}</span>
+        </div>
+        {rows.map((row, index) => (
+          <TransactionLogArgumentRow key={`${row.path}:${index}`} row={row} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TransactionLogArgumentRow({ row }: { row: LogArgumentRow }) {
+  const { t } = useTranslation();
+  const value = formatLogArgument(row.value);
+  return (
+    <div
+      className={`transaction-log-arguments-row transaction-log-argument-depth-${Math.min(row.depth, 6)}${row.composite ? " transaction-log-argument-composite" : ""}`}
+      role="row"
+    >
+      <span className="transaction-log-argument-name" role="cell">{row.path}</span>
+      <code className="transaction-log-argument-type" role="cell">{row.type || "—"}</code>
+      <span className="transaction-log-argument-indexed" role="cell">
+        {row.indexed === undefined ? "—" : yesNo(row.indexed, t)}
+      </span>
+      <span className="transaction-log-argument-data" role="cell">
+        <CopyableField value={value}><code>{value}</code></CopyableField>
+      </span>
+    </div>
+  );
+}
+
+function TransactionLogProvenance({ log }: { log: TransactionLog }) {
+  const { t } = useTranslation();
+  const source = log.decoding.abi_source;
+  const attribution = log.decoding.attribution;
+  return (
+    <section className="transaction-log-provenance" aria-labelledby={`log-provenance-${log.log_index}`}>
+      <h3 id={`log-provenance-${log.log_index}`}>{t("detail.abiProvenance")}</h3>
+      <div className="transaction-log-provenance-grid">
+        {source && (
+          <div className="transaction-log-provenance-card">
+            <h4>{t("detail.abiSourceLabel")}</h4>
+            <dl>
+              <div>
+                <dt>{t("detail.sourceKind")}</dt>
+                <dd><span className="transaction-provenance-badge">{abiSourceKindLabel(source.kind, t)}</span></dd>
+              </div>
+              {source.address && (
+                <div>
+                  <dt>{t("detail.sourceAddress")}</dt>
+                  <dd><CopyableField value={source.address}><Link to="/address/$address" params={{ address: source.address }}><code>{source.address}</code></Link></CopyableField></dd>
+                </div>
+              )}
+              {source.code_hash && (
+                <div>
+                  <dt>{t("detail.sourceCodeHash")}</dt>
+                  <dd><CopyableField value={source.code_hash}><code>{source.code_hash}</code></CopyableField></dd>
+                </div>
+              )}
+              {log.decoding.confidence && (
+                <div>
+                  <dt>{t("detail.confidence")}</dt>
+                  <dd><span className="transaction-provenance-badge">{confidenceLabel(log.decoding.confidence, t)}</span></dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
+        <div className="transaction-log-provenance-card">
+          <h4>{t("detail.executionProvenance")}</h4>
+          <dl>
+            <div>
+              <dt>{t("detail.emitterAddress")}</dt>
+              <dd><CopyableField value={log.address}><Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link></CopyableField></dd>
+            </div>
+            {attribution.execution_address && (
+              <div>
+                <dt>{t("detail.executionAddress")}</dt>
+                <dd><CopyableField value={attribution.execution_address}><Link to="/address/$address" params={{ address: attribution.execution_address }}><code>{attribution.execution_address}</code></Link></CopyableField></dd>
+              </div>
+            )}
+            <div>
+              <dt>{t("detail.attribution")}</dt>
+              <dd><span className="transaction-provenance-badge">{attributionLabel(attribution.mode, t)}</span></dd>
+            </div>
+            <div>
+              <dt>{t("detail.tracePath")}</dt>
+              <dd><code>[{attribution.trace_path.join(", ")}]</code></dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TransactionLogTopicsAndData({
+  allowTopicZeroConversion,
+  data,
+  logIndex,
+  onTopicModeChange,
+  topicModes,
+  topics,
+}: {
+  allowTopicZeroConversion: boolean;
+  data: string;
+  logIndex: string;
+  onTopicModeChange: (index: number, mode: TopicDisplayMode) => void;
+  topicModes: Record<string, TopicDisplayMode>;
+  topics: readonly string[];
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <section className="transaction-log-topics" aria-labelledby={`log-topics-${logIndex}`}>
+        <h3 id={`log-topics-${logIndex}`}>{t("detail.topics")}</h3>
+        <div className="transaction-topic-list">
+          {topics.map((topic, index) => {
+            const convertible = index > 0 || allowTopicZeroConversion;
+            const mode = topicModes[String(index)] ?? "hex";
+            const value = formatTopicValue(topic, mode);
+            const displayValue = value ?? t("detail.topicUnavailable");
+            return (
+              <div
+                className={`transaction-topic${convertible ? " transaction-topic-convertible" : ""}`}
+                key={`${topic}:${index}`}
+              >
+                <span className="transaction-topic-index" aria-hidden="true">{index}</span>
+                {!convertible ? (
+                  <CopyableField value={topic}><code>{topic}</code></CopyableField>
+                ) : (
+                  <>
+                    <label className="sr-only" htmlFor={`topic-mode-${logIndex}-${index}`}>
+                      {t("detail.topicMode", { index })}
+                    </label>
+                    <select
+                      aria-label={t("detail.topicMode", { index })}
+                      className="topic-mode-select"
+                      id={`topic-mode-${logIndex}-${index}`}
+                      onChange={(event) => onTopicModeChange(index, event.target.value as TopicDisplayMode)}
+                      value={mode}
+                    >
+                      <option value="hex">{t("detail.topicModes.hex")}</option>
+                      <option value="address">{t("detail.topicModes.address")}</option>
+                      <option value="text">{t("detail.topicModes.text")}</option>
+                      <option value="number">{t("detail.topicModes.number")}</option>
+                    </select>
+                    <CopyableField value={value ?? topic}><code>{displayValue}</code></CopyableField>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      <dl className="transaction-log-data">
+        <div>
+          <dt>{t("detail.data")}</dt>
+          <dd><CopyableField value={data}><code>{data}</code></CopyableField></dd>
+        </div>
+      </dl>
+    </>
   );
 }
 
@@ -4071,6 +4278,23 @@ function logDecodingKey(status: string) {
   }
 }
 
+function abiSourceKindLabel(value: string, t: Translate): string {
+  switch (value) {
+    case "exact_address": return t("detail.abiSourceKinds.exactAddress");
+    case "code_hash": return t("detail.abiSourceKinds.codeHash");
+    case "proxy_implementation": return t("detail.abiSourceKinds.proxyImplementation");
+    case "signature_database": return t("detail.abiSourceKinds.signatureDatabase");
+    case "builtin": return t("detail.abiSourceKinds.builtin");
+    default: return value;
+  }
+}
+
+function attributionLabel(value: string, t: Translate): string {
+  return value === "exact_trace"
+    ? t("detail.attributionKinds.exactTrace")
+    : t("detail.attributionKinds.addressFallback");
+}
+
 function traceDecodingKey(status: string) {
   switch (status) {
     case "decoded": return "detail.traceDecoded" as const;
@@ -4098,7 +4322,7 @@ function formatLogArgument(value: unknown): string {
     return String(value);
   }
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(value) ?? "[unavailable]";
   } catch {
     return "[unavailable]";
   }
