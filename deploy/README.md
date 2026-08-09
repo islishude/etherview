@@ -72,11 +72,17 @@ final API-role configuration before adding a paid route.
 
 ## Full-stack Preview
 
-`compose.preview.yaml` runs the local Reth development chain and all six
+`compose.preview.yaml` runs the local Geth development chain and all six
 application roles. It enables public
 verification and NFT metadata while leaving Sourcify, pricing, and x402 billing
 disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
+
+The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes
+the read-only Genesis file into the persistent `geth-data` volume before every
+start, then `exec`s Geth in five-second developer mode. Override the execution
+image, Genesis source, or published ports with `GETH_IMAGE`,
+`GETH_GENESIS_FILE`, `GETH_HTTP_PORT`, and `GETH_WS_PORT`.
 
 ```sh
 make preview-cert
@@ -99,7 +105,7 @@ listener is
 `https://etherview.localhost:8080`; health and metrics on the operations listener remain
 plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
 the checked-in command path also works for curl builds that do not consult it.
-The add-network control advertises the local Reth endpoint as
+The add-network control advertises the local Geth endpoint as
 `http://localhost:8545`. Wallet metadata validation permits that exact
 Preview-local HTTP RPC exception only; production RPC URLs and every block
 explorer or icon URL remain HTTPS-only.
@@ -167,7 +173,7 @@ Compose, and Helm. Do not enable it in production or use it to admit an
 unreviewed compiler origin.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
-the six application containers while preserving PostgreSQL and Reth. The
+the six application containers while preserving PostgreSQL and Geth. The
 API-owned compiler cache is intentionally disposable.
 `make stop-preview` removes the deployment and all persistent volumes. Override
 the application tag with `ETHERVIEW_IMAGE`.

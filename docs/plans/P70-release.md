@@ -62,6 +62,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T32 | done | P70-T29 | Make the trusted solc-js runtime paths explicit and operator-configurable without changing its fixed runtime identity or deployment mount boundary | config, runtime, Compose, Helm, production-image, and real compiler gates |
 | P70-T33 | superseded | P60, P70-T13 | Superseded by P70-T34: remove the auxiliary role-probe image and perform bounded Preview readiness checks through the host Docker CLI and the running API container | historical focused checker regressions and live Preview lifecycle validation |
 | P70-T34 | done | P60-T01, P60-T03, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
+| P70-T35 | done | P60, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
 
 ## Acceptance
 
@@ -182,6 +183,10 @@ and user/operator evidence sufficient for a production public release.
       owner. No post-wait checker command or package remains; Compose render,
       production-image, and application-native healthcheck regressions cover
       the static and live deployment boundaries without a second verdict.
+- [x] P70-T35: Preview uses the official Geth image with a Shell entrypoint
+      that initializes the mounted Genesis into the persistent data volume on
+      every start, then `exec`s Geth in developer mode with five-second blocks,
+      the required HTTP/WS namespaces, and no remaining current Reth wiring.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -997,3 +1002,30 @@ those gates.
   serialized full suite both passed immediately afterward. `make docker-check
   docker-image-check`, `make compose-runtime-smoke`, and the aggregate `make
   check` pass on the completed working tree.
+- P70-T35 implementation: Preview now uses `ethereum/client-go:stable` as the
+  `geth` service. The read-only `deploy/geth-entrypoint.sh` mount runs
+  `geth --datadir=/gethdata init /config/genesis.json` before `exec`-starting
+  Geth, with `geth-data` preserving the chain across restarts. Current Preview
+  configuration and checks contain no Reth service or `RETH_*` wiring; the
+  existing WS `debug,txpool` APIs remain enabled.
+- P70-T35 verification: `sh -n deploy/geth-entrypoint.sh`, Preview Compose
+  rendering, `make compose-check`, `make helm-check`, `make plan-check`,
+  `go test ./internal/config`, the focused wallet test, `git diff --check`,
+  `make docker-check`, and the final targeted/common Go, race, frontend,
+  security, license, and audit gates pass. The first aggregate `make check`
+  run had one isolated flaky HTTP API subscriber test; its standalone rerun
+  passed. A second aggregate run passed that test and all source/security
+  gates, then encountered a transient Docker Hub `EOF` during `docker-check`;
+  the standalone retry passed.
+- P70-T35 Preview runtime: the approved `make recreate-preview` build and
+  Compose wait completed with PostgreSQL and all six application roles
+  healthy, Geth running, and migration exited successfully. Geth reported
+  Genesis hash
+  `0x649686ab91507f6017131ff123f67aad4425c8a5b8c3086b56e968af53adcc47`, chain
+  ID `48815`, and five-second block progression. HTTP `eth_chainId`,
+  `eth_blockNumber`, `eth_getBalance`, `txpool_content`, and
+  `debug_traceBlockByNumber` succeeded; a raw WS `eth_chainId` request returned
+  `0xbeaf`, and the configured Genesis account retained its expected balance.
+  After restarting only Geth, the entrypoint wrote the same Genesis hash,
+  loaded the previous head at block 13, and continued through blocks 14–17,
+  proving persistent non-reset startup.

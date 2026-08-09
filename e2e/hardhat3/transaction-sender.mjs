@@ -58,7 +58,7 @@ export function createTransactionSender({
       chainId: BigInt(chainID),
       nonce: getNumber(nonce),
       gasLimit: BigInt(request.gas),
-      // Reth's empty dev chain may suggest one wei even though its transaction
+      // An empty dev chain may suggest one wei even though its transaction
       // pool still enforces the normal minimum priority fee.
       gasPrice: suggestedGasPrice > LOCAL_SIGNING_GAS_PRICE_FLOOR
         ? suggestedGasPrice

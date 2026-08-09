@@ -150,7 +150,7 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 	}{
 		{name: "http", url: "http://rpc.example"},
 		{name: "HTTP loopback address", url: "http://127.0.0.1:8545"},
-		{name: "HTTP internal hostname", url: "http://reth:8545"},
+		{name: "HTTP internal hostname", url: "http://geth:8545"},
 		{name: "non-HTTP localhost", url: "ftp://localhost:8545"},
 		{name: "credentials", url: "https://user:secret@rpc.example"},
 		{name: "query", url: "https://rpc.example/?key=secret"},

@@ -5,7 +5,7 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Keep authoritative HTTP polling and add a newHeads wake hint so locally
   # mined blocks do not wait for the normal polling interval.
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://reth:8545,ws://reth:8546}
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://geth:8545,ws://geth:8546}
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
@@ -49,7 +49,7 @@ x-etherview-runtime-depends-on: &etherview-runtime-depends-on
     condition: service_healthy
   migration:
     condition: service_completed_successfully
-  reth:
+  geth:
     condition: service_started
 
 services:
@@ -68,31 +68,30 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
 
-  reth:
-    image: ${RETH_IMAGE:-ghcr.io/paradigmxyz/reth:latest}
+  geth:
+    image: ${GETH_IMAGE:-ethereum/client-go:stable}
+    entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
     command:
-      - node
       - --dev
-      - --chain=${RETH_CHAIN:-/config/genesis.json}
-      - --dev.block-time=5s
-      - --datadir=/rethdata
+      - --dev.period=5
       - --http
       - --http.addr=0.0.0.0
       - --http.port=8545
       - --http.api=eth,net,web3,debug,txpool
       - --http.corsdomain=*
+      - --http.vhosts=*
       - --ws
       - --ws.addr=0.0.0.0
       - --ws.port=8546
-      - --ws.api=eth,net,web3
+      - --ws.api=eth,net,web3,debug,txpool
       - --ws.origins=*
-      - --disable-auth-server
     volumes:
-      - reth-data:/rethdata
-      - ${RETH_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
+      - geth-data:/gethdata
+      - ./deploy/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
+      - ${GETH_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
     ports:
-      - "${RETH_HTTP_PORT:-8545}:8545"
-      - "${RETH_WS_PORT:-8546}:8546"
+      - "${GETH_HTTP_PORT:-8545}:8545"
+      - "${GETH_WS_PORT:-8546}:8546"
     restart: unless-stopped
 
   migration:
@@ -180,4 +179,4 @@ services:
 
 volumes:
   postgres-data:
-  reth-data:
+  geth-data:

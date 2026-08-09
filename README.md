@@ -44,7 +44,7 @@ correctness and readiness do not depend on them. See
 [deploy/README.md](deploy/README.md) for configuration, Secret, read-replica,
 authentication, billing, and deployment details.
 
-For the repository's full-stack Preview, including the local Reth development
+For the repository's full-stack Preview, including the local Geth development
 chain, all six application roles, host-native public verification, and NFT
 metadata:
 
@@ -64,7 +64,7 @@ artifacts and executes each bounded Standard JSON compilation in a fresh,
 permission-restricted Node subprocess. There is no standalone runner, Docker
 socket, nested runtime, or compiler CPU-platform selection. Use
 `make recreate-preview` to rebuild the application roles while preserving
-PostgreSQL and Reth; the compiler cache is disposable. Use `make stop-preview`
+PostgreSQL and Geth; the compiler cache is disposable. Use `make stop-preview`
 to remove the complete Preview and its volumes. See the
 [deployment guide](deploy/README.md#full-stack-preview) for prerequisites,
 enabled features, and endpoint overrides.

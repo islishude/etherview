@@ -25,11 +25,59 @@ const removedEnvironment = [
 
 assert.equal(services.etherview, undefined, "Preview monolith service must not exist");
 assert.equal(services.verify, undefined, "removed Preview verify service");
+assert.equal(services.reth, undefined, "removed Preview Reth service");
 assert.ok(
   !Object.keys(services).some((name) => name.includes("compiler-runner")),
   "removed Preview compiler-runner service",
 );
 assertNoPlatform(config, "compose.preview.yaml");
+
+const geth = requireService("geth");
+assert.equal(geth.image, "ethereum/client-go:stable", "Preview Geth image");
+assert.deepEqual(
+  geth.entrypoint,
+  ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"],
+  "Preview Geth shell entrypoint",
+);
+assert.deepEqual(
+  geth.command,
+  [
+    "--dev",
+    "--dev.period=5",
+    "--http",
+    "--http.addr=0.0.0.0",
+    "--http.port=8545",
+    "--http.api=eth,net,web3,debug,txpool",
+    "--http.corsdomain=*",
+    "--http.vhosts=*",
+    "--ws",
+    "--ws.addr=0.0.0.0",
+    "--ws.port=8546",
+    "--ws.api=eth,net,web3,debug,txpool",
+    "--ws.origins=*",
+  ],
+  "Preview Geth command",
+);
+assert.ok(
+  (geth.volumes ?? []).some(
+    (volume) => volume.source === "geth-data" && volume.target === "/gethdata",
+  ),
+  "Preview Geth data volume",
+);
+assert.ok(
+  (geth.volumes ?? []).some(
+    (volume) =>
+      volume.target === "/usr/local/bin/etherview-geth-entrypoint.sh" &&
+      volume.read_only,
+  ),
+  "Preview Geth shell entrypoint mount",
+);
+assert.ok(
+  (geth.volumes ?? []).some(
+    (volume) => volume.target === "/config/genesis.json" && volume.read_only,
+  ),
+  "Preview Geth Genesis mount",
+);
 
 const applicationImage = requireService("api").image;
 for (const role of roles) {
@@ -42,7 +90,12 @@ for (const role of roles) {
   );
   assert.ok(service.command.includes(`--roles=${role}`), `${role} command`);
   assertApplicationHealthcheck(service, role);
-  for (const dependency of ["postgres", "migration", "reth"]) {
+  assert.equal(
+    service.environment.ETHERVIEW_RPC_URLS,
+    "http://geth:8545,ws://geth:8546",
+    `${role} Preview Geth RPC URLs`,
+  );
+  for (const dependency of ["postgres", "migration", "geth"]) {
     assert.ok(service.depends_on?.[dependency], `${role} dependency ${dependency}`);
   }
   assert.equal(

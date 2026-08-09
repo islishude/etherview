@@ -158,7 +158,7 @@ describe("EIP-6963 wallet boundary", () => {
     for (const rpcURL of [
       "http://rpc.example",
       "http://127.0.0.1:8545",
-      "http://reth:8545",
+      "http://geth:8545",
       "ftp://localhost:8545",
       "https://user:secret@rpc.example",
       "https://rpc.example/?key=secret",
