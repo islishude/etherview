@@ -848,6 +848,73 @@ describe("core explorer pages", () => {
     expect(within(detailNativeBalanceRow).getByText("1 ETH")).toBeVisible();
   });
 
+  it("renders Genesis for both EOA origin fields without address or transaction links", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/addresses/${address}`) {
+        return envelope({
+          address,
+          type: "eoa",
+          balance: "0",
+          nonce: "0",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          origin: { kind: "funding", state: "genesis" },
+        });
+      }
+      if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${address}`);
+
+    const fundedBy = await screen.findByText("Funded by");
+    const fundedByRow = fundedBy.closest(".detail-item") as HTMLElement | null;
+    if (!fundedByRow) throw new Error("funded-by row is missing");
+    expect(within(fundedByRow).getByText("Genesis")).toBeVisible();
+    const fundingTransaction = screen.getByText("Funding transaction");
+    const fundingTransactionRow = fundingTransaction.closest(".detail-item") as HTMLElement | null;
+    if (!fundingTransactionRow) throw new Error("funding-transaction row is missing");
+    expect(within(fundingTransactionRow).getByText("Genesis")).toBeVisible();
+    expect(within(fundedByRow).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(fundingTransactionRow).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("renders Genesis for predeploy contract origin fields", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/addresses/${address}`) {
+        return envelope({
+          address,
+          type: "contract",
+          balance: "0",
+          nonce: "0",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          code_hash: canonicalHash,
+          origin: { kind: "contract_creation", state: "genesis" },
+        });
+      }
+      if (path === `/api/v1/addresses/${address}/nfts`) return envelope([]);
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${address}`);
+
+    const creator = await screen.findByText("Contract creator");
+    const creatorRow = creator.closest(".detail-item") as HTMLElement | null;
+    if (!creatorRow) throw new Error("contract-creator row is missing");
+    expect(within(creatorRow).getByText("Genesis")).toBeVisible();
+    const creationTransaction = screen.getByText("Creation transaction");
+    const creationTransactionRow = creationTransaction.closest(".detail-item") as HTMLElement | null;
+    if (!creationTransactionRow) throw new Error("creation-transaction row is missing");
+    expect(within(creationTransactionRow).getByText("Genesis")).toBeVisible();
+    expect(within(creatorRow).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(creationTransactionRow).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("loads address activity tabs on demand and exposes contracts without summary hashes", async () => {
     const requestedPaths: string[] = [];
     const createdAddress = `0x${"55".repeat(20)}`;

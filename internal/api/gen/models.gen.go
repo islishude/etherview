@@ -59,6 +59,7 @@ func (e AddressOriginKind) Valid() bool {
 // Defines values for AddressOriginState.
 const (
 	AddressOriginStateFound       AddressOriginState = "found"
+	AddressOriginStateGenesis     AddressOriginState = "genesis"
 	AddressOriginStateNotFound    AddressOriginState = "not_found"
 	AddressOriginStateUnavailable AddressOriginState = "unavailable"
 )
@@ -67,6 +68,8 @@ const (
 func (e AddressOriginState) Valid() bool {
 	switch e {
 	case AddressOriginStateFound:
+		return true
+	case AddressOriginStateGenesis:
 		return true
 	case AddressOriginStateNotFound:
 		return true

@@ -28,6 +28,7 @@ func TestAddressOriginFoundAndKind(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			db := testDatabase(t,
 				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
 				queryExpectation{contains: test.query, columns: columns(3), rows: [][]driver.Value{{"4", source.Bytes(), hash.Bytes()}}},
 				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
 			)
@@ -45,6 +46,41 @@ func TestAddressOriginFoundAndKind(t *testing.T) {
 			if origin.Kind != test.kind || origin.State != gen.AddressOriginStateFound ||
 				origin.SourceAddress == nil || *origin.SourceAddress != source.Hex() ||
 				origin.TransactionHash == nil || *origin.TransactionHash != hash.Hex() {
+				t.Fatalf("origin=%+v", origin)
+			}
+		})
+	}
+}
+
+func TestAddressOriginGenesisAllocation(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		accountType gen.AddressSummaryType
+		kind        gen.AddressOriginKind
+	}{
+		{name: "eoa", accountType: gen.AddressSummaryTypeEoa, kind: gen.Funding},
+		{name: "delegated eoa", accountType: gen.AddressSummaryTypeDelegatedEoa, kind: gen.Funding},
+		{name: "predeploy contract", accountType: gen.AddressSummaryTypeContract, kind: gen.ContractCreation},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := testDatabase(t,
+				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{true}}},
+			)
+			reader, err := NewPostgresReader(db, Options{ChainID: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			origin, err := reader.AddressOrigin(t.Context(),
+				"0x2222222222222222222222222222222222222222",
+				test.accountType, 12, common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if origin.Kind != test.kind || origin.State != gen.AddressOriginStateGenesis ||
+				origin.SourceAddress != nil || origin.TransactionHash != nil {
 				t.Fatalf("origin=%+v", origin)
 			}
 		})
@@ -71,6 +107,7 @@ func TestAddressOriginCoverageAndCanonicality(t *testing.T) {
 	t.Run("coverage gap", func(t *testing.T) {
 		db := testDatabase(t,
 			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
 			queryExpectation{contains: "trace.value > 0", columns: columns(3)},
 			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{false}}},
 		)
@@ -90,6 +127,7 @@ func TestAddressOriginCoverageAndCanonicality(t *testing.T) {
 	t.Run("complete empty history", func(t *testing.T) {
 		db := testDatabase(t,
 			queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+			queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
 			queryExpectation{contains: "trace.value > 0", columns: columns(3)},
 			queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
 		)
@@ -136,6 +174,15 @@ func TestAddressOriginQueriesExcludeFailedRevertedAndZeroValueCandidates(t *test
 	} {
 		if !strings.Contains(compactSQL(firstContractOriginSQL+" "+firstFundingOriginSQL), compactSQL(fragment)) {
 			t.Fatalf("origin queries do not enforce %q", fragment)
+		}
+	}
+	for _, fragment := range []string{
+		"FROM genesis_account_observations",
+		"canonical.number = 0",
+		"imported.state = 'complete'",
+	} {
+		if !strings.Contains(compactSQL(genesisAddressOriginSQL), compactSQL(fragment)) {
+			t.Fatalf("genesis origin query does not enforce %q", fragment)
 		}
 	}
 }

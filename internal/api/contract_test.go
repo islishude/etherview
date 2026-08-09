@@ -68,6 +68,8 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 
 	assertRequired(t, mappingValue(t, schemas, "APIError"), "code", "message", "request_id")
 	assertRequired(t, mappingValue(t, schemas, "ErrorResponse"), "error")
+	originProperties := mappingValue(t, mappingValue(t, schemas, "AddressOrigin"), "properties")
+	assertEnum(t, mappingValue(t, originProperties, "state"), "found", "genesis", "not_found", "unavailable")
 	assertSuccessEnvelopes(t, schemas)
 	paths := mappingValue(t, root, "paths")
 	assertJSONOperationsUseCommonErrors(t, paths)
@@ -81,6 +83,21 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 	commonError := mappingValue(t, responses, "Error")
 	errorContent := mappingValue(t, mappingValue(t, commonError, "content"), "application/json")
 	assertScalar(t, mappingValue(t, mappingValue(t, errorContent, "schema"), "$ref"), "#/components/schemas/ErrorResponse")
+}
+
+func TestGenesisAddressOriginOmitsTransactionIdentities(t *testing.T) {
+	t.Parallel()
+	origin := gen.AddressOrigin{Kind: gen.Funding, State: gen.AddressOriginStateGenesis}
+	encoded, err := json.Marshal(origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `{"kind":"funding","state":"genesis"}`; got != want {
+		t.Fatalf("genesis origin JSON=%s, want %s", got, want)
+	}
+	if !gen.AddressOriginStateGenesis.Valid() {
+		t.Fatal("generated genesis origin state is not valid")
+	}
 }
 
 func assertProxyInteractionBoundary(

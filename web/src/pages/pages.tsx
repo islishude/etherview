@@ -1631,6 +1631,14 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
   const transactionLabel = origin.kind === "contract_creation"
     ? t("detail.creationTransaction")
     : t("detail.fundingTransaction");
+  if (origin.state === "genesis") {
+    return (
+      <>
+        <Detail label={sourceLabel} value={t("state.originGenesis")} />
+        <Detail label={transactionLabel} value={t("state.originGenesis")} />
+      </>
+    );
+  }
   if (origin.state === "unavailable") {
     return <Detail label={sourceLabel} value={t("state.originUnavailable")} wide />;
   }

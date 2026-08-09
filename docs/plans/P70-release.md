@@ -63,6 +63,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T33 | superseded | P60, P70-T13 | Superseded by P70-T34: remove the auxiliary role-probe image and perform bounded Preview readiness checks through the host Docker CLI and the running API container | historical focused checker regressions and live Preview lifecycle validation |
 | P70-T34 | done | P60-T01, P60-T03, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
 | P70-T35 | done | P60, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
+| P70-T36 | done | P70-T08, P40-T10, P50-T12 | Mark authenticated genesis allocation addresses as the explicit address-origin source | OpenAPI, generated contracts, query, API, frontend, and common gates |
 
 ## Acceptance
 
@@ -187,6 +188,10 @@ and user/operator evidence sufficient for a production public release.
       that initializes the mounted Genesis into the persistent data volume on
       every start, then `exec`s Geth in developer mode with five-second blocks,
       the required HTTP/WS namespaces, and no remaining current Reth wiring.
+- [x] P70-T36: authenticated canonical genesis allocation addresses return
+      `AddressOrigin.state=genesis` without fabricated address or transaction
+      identifiers, and the bilingual address page renders Genesis for both
+      origin fields across EOA, delegated EOA, and predeploy contracts.
 - [x] P70-T16: `stats@3` publishes receipt-authenticated execution fees,
       priority fees, failed transactions, and successful top-level creations;
       additive UTC hourly rollups, dirty generations, and fenced newest-first
@@ -1029,3 +1034,18 @@ those gates.
   After restarting only Geth, the entrypoint wrote the same Genesis hash,
   loaded the previous head at block 13, and continued through blocks 14–17,
   proving persistent non-reset startup.
+- P70-T36 implementation: `AddressOrigin` now checks the complete genesis
+  allocation observation bound to canonical block zero before transaction and
+  trace candidates. Genesis origins return the new `state=genesis` enum without
+  source address or transaction hash fields and do not depend on Trace
+  coverage; ordinary origins retain the existing coverage and canonicality
+  behavior. The bilingual address page renders Genesis for both origin rows,
+  including EOA, delegated EOA, and genesis predeploy contract kinds.
+- P70-T36 verification: `GOCACHE=/tmp/etherview-gocache go test ./internal/query
+  ./internal/api ./internal/state ./internal/httpapi -count=1`, full web Vitest
+  (`28` files, `257` tests), `npm --prefix web run lint`, and
+  `GOCACHE=/tmp/etherview-gocache NPM_CONFIG_CACHE=/tmp/etherview-npm-cache
+  make generate-check` pass. Contract regressions verify the new OpenAPI enum
+  and omission of fabricated genesis identifiers; query regressions cover EOA,
+  delegated EOA, predeploy, incomplete/non-genesis fallback, and Trace-gap
+  behavior.

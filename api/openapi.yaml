@@ -2240,7 +2240,7 @@ components:
           enum: [contract_creation, funding]
         state:
           type: string
-          enum: [found, not_found, unavailable]
+          enum: [found, genesis, not_found, unavailable]
         source_address:
           $ref: "#/components/schemas/Address"
         transaction_hash:

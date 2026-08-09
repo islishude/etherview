@@ -1002,7 +1002,7 @@ export interface components {
             kind: "contract_creation" | "funding";
             source_address?: components["schemas"]["Address"];
             /** @enum {string} */
-            state: "found" | "not_found" | "unavailable";
+            state: "found" | "genesis" | "not_found" | "unavailable";
             transaction_hash?: components["schemas"]["Hash"];
         };
         AddressResponse: {

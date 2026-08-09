@@ -13,10 +13,11 @@ import (
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
-// AddressOrigin resolves the first transaction-backed origin for an account at
-// one already-observed canonical state reference. It deliberately requires
-// genesis-through-reference Core and Trace proof before calling a candidate
-// "first"; partial history is exposed as unavailable instead.
+// AddressOrigin resolves the first genesis- or transaction-backed origin for an
+// account at one already-observed canonical state reference. Genesis
+// allocations are authenticated independently by the canonical block-zero
+// import; transaction-backed candidates still require genesis-through-
+// reference Core and Trace proof before being called "first".
 func (r *PostgresReader) AddressOrigin(
 	ctx context.Context,
 	rawAddress string,
@@ -58,6 +59,20 @@ func (r *PostgresReader) AddressOrigin(
 	}
 	if !canonical {
 		return gen.AddressOrigin{}, fmt.Errorf("%w: address state reference is no longer canonical", httpapi.ErrNotReady)
+	}
+
+	var genesis bool
+	if err := tx.QueryRowContext(ctx, genesisAddressOriginSQL,
+		r.chainID, address.Bytes(),
+	).Scan(&genesis); err != nil {
+		return gen.AddressOrigin{}, fmt.Errorf("check genesis address origin: %w", err)
+	}
+	if genesis {
+		result.State = gen.AddressOriginStateGenesis
+		if err := tx.Commit(); err != nil {
+			return gen.AddressOrigin{}, fmt.Errorf("commit genesis address origin snapshot: %w", err)
+		}
+		return result, nil
 	}
 
 	coverageEnd := referenceNumber
@@ -153,6 +168,22 @@ WITH core_complete AS (
 )
 SELECT core_complete.complete AND trace_complete.complete
 FROM core_complete CROSS JOIN trace_complete`
+
+const genesisAddressOriginSQL = `
+SELECT EXISTS (
+    SELECT 1
+    FROM genesis_account_observations AS observation
+    JOIN genesis_state_imports AS imported
+      ON imported.chain_id = observation.chain_id
+     AND imported.block_hash = observation.block_hash
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = observation.chain_id
+     AND canonical.number = 0
+     AND canonical.block_hash = observation.block_hash
+    WHERE observation.chain_id = $1::numeric
+      AND observation.address = $2
+      AND imported.state = 'complete'
+)`
 
 const firstContractOriginSQL = `
 WITH candidates AS (
