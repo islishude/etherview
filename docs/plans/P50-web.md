@@ -67,6 +67,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T41 | done        | P50-T40 | Structured ABI provenance and recursive Name/Type/Indexed/Data event log decoding | focused frontend, responsive, accessibility, and common frontend gates |
 | P50-T42 | done        | P50-T41 | Consolidate topic display into the expanded More details disclosure | focused frontend, topic conversion, responsive, and accessibility gates |
 | P50-T43 | done        | P50-T42 | Expose convertible topics and data directly in More details, including anonymous-event topic zero | focused frontend, topic conversion, responsive, accessibility, and embedded browser gates |
+| P50-T44 | done        | P50-T43 | Align transaction-log data presentation with the Topics heading and value column | focused frontend, responsive, accessibility, and embedded browser gates |
 
 ## Acceptance
 
@@ -715,3 +716,13 @@ None.
   production build, `make generate-check`, `make plan-check`, `git diff
   --check`, host-authorized `make test-e2e` (12/12 flows), and the full
   host-authorized `make check` gate.
+- P50-T44 replaces the generic two-column data definition list with the same
+  heading-and-value rhythm as Topics. Its value row reserves the exact topic
+  index column and gap, keeping Data aligned with topic zero on desktop and
+  narrow layouts while preserving wrapping and copy controls.
+- P50-T44 verification passes the focused CorePages/styles suite (30 tests),
+  the complete frontend suite (29 files, 285 tests), frontend lint and
+  production build, `make generate-check`, `make plan-check`, `git diff
+  --check`, and host-authorized `make test-e2e` (12/12 flows). The embedded
+  browser asserts the Data and topic-zero value starts differ by at most one
+  pixel at both desktop and 390px viewport widths.

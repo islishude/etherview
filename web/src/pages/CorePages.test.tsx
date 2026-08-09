@@ -637,7 +637,11 @@ describe("core explorer pages", () => {
     if (!addressTopicRow) throw new Error("address topic row is missing");
     expect(within(addressTopicRow).getByRole("button", { name: "Copy" })).toBeVisible();
     expect(within(numberTopicRow).getByRole("button", { name: "Copy" })).toBeVisible();
-    expect(within(card).getByText("0x1234")).toBeVisible();
+    const dataSection = card.querySelector<HTMLElement>(".transaction-log-data");
+    if (!dataSection) throw new Error("transaction log data section is missing");
+    expect(within(dataSection).getByRole("heading", { name: "Data", level: 3 })).toBeVisible();
+    expect(within(dataSection).getByText("0x1234")).toBeVisible();
+    expect(dataSection.querySelector("dl")).not.toBeInTheDocument();
 
     const anonymousDetails = within(anonymousCard).getByText("More details");
     expect(anonymousDetails.closest("details")).not.toHaveAttribute("open");

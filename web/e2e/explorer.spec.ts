@@ -147,6 +147,11 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await expect(log.getByText("Raw topics and data", { exact: true })).toHaveCount(0);
   await expect(log.getByRole("heading", { name: "Topics", exact: true })).toBeVisible();
   await expect(log.locator(".transaction-log-data code")).toBeVisible();
+  const topicZeroBox = await log.locator(".transaction-topic").first().locator(".copyable-field code").boundingBox();
+  const dataBox = await log.locator(".transaction-log-data code").boundingBox();
+  expect(topicZeroBox).not.toBeNull();
+  expect(dataBox).not.toBeNull();
+  expect(Math.abs((topicZeroBox?.x ?? 0) - (dataBox?.x ?? 0))).toBeLessThanOrEqual(1);
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await page.setViewportSize({ width: 390, height: 844 });
@@ -155,6 +160,11 @@ test("trace and log disclosures retain raw data and exact execution provenance",
   await expect(log.getByText("精确 Trace 调用帧", { exact: true })).toBeVisible();
   await expect(log.getByText("原始 topics 与 data", { exact: true })).toHaveCount(0);
   await expect(log.getByRole("heading", { name: "主题", exact: true })).toBeVisible();
+  const narrowTopicZeroBox = await log.locator(".transaction-topic").first().locator(".copyable-field code").boundingBox();
+  const narrowDataBox = await log.locator(".transaction-log-data code").boundingBox();
+  expect(narrowTopicZeroBox).not.toBeNull();
+  expect(narrowDataBox).not.toBeNull();
+  expect(Math.abs((narrowTopicZeroBox?.x ?? 0) - (narrowDataBox?.x ?? 0))).toBeLessThanOrEqual(1);
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}?tab=trace`);
 });
 

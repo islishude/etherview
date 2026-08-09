@@ -1962,12 +1962,12 @@ function TransactionLogTopicsAndData({
           })}
         </div>
       </section>
-      <dl className="transaction-log-data">
-        <div>
-          <dt>{t("detail.data")}</dt>
-          <dd><CopyableField value={data}><code>{data}</code></CopyableField></dd>
+      <section className="transaction-log-data" aria-labelledby={`log-data-${logIndex}`}>
+        <h3 id={`log-data-${logIndex}`}>{t("detail.data")}</h3>
+        <div className="transaction-log-data-value">
+          <CopyableField value={data}><code>{data}</code></CopyableField>
         </div>
-      </dl>
+      </section>
     </>
   );
 }

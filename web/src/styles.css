@@ -1791,7 +1791,8 @@ tbody tr:hover {
 }
 
 .transaction-log-label,
-.transaction-log-topics h3 {
+.transaction-log-topics h3,
+.transaction-log-data h3 {
   color: var(--text-soft);
   font-size: 0.72rem;
   font-weight: 800;
@@ -1926,7 +1927,8 @@ tbody tr:hover {
   border-top: 1px solid var(--line);
 }
 
-.transaction-log-topics h3 {
+.transaction-log-topics h3,
+.transaction-log-data h3 {
   margin: 0;
 }
 
@@ -2066,14 +2068,27 @@ tbody tr:hover {
 }
 
 .transaction-log-data {
+  display: grid;
+  gap: 0.45rem;
   margin: 0.25rem 0 0;
 }
 
-.transaction-log-data dd .copyable-field {
-  max-width: 100%;
+.transaction-log-data-value {
+  display: grid;
+  grid-template-columns: 1.55rem minmax(0, 1fr);
+  gap: 0.65rem;
+  min-width: 0;
 }
 
-.transaction-log-data dd code {
+.transaction-log-data-value::before {
+  content: "";
+}
+
+.transaction-log-data-value .copyable-field {
+  min-width: 0;
+}
+
+.transaction-log-data-value code {
   overflow-wrap: anywhere;
   word-break: break-all;
 }
