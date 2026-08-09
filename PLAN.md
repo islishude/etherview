@@ -28,6 +28,7 @@ batch semantics are not core v1 scope.
 | P58 | [Evidence-based Proxy Detection](docs/plans/P58-evidence-based-proxy-detection.md) | in_progress | P20, P30, P40, P50, P60 | Stable OZ 5.x detection, composable detectors, and block-pinned Safe Proxy recognition |
 | P59 | [Trace-bound ABI Decoding](docs/plans/P59-trace-bound-abi-decoding.md) | done | P20, P40, P50, P56 | Exact trace-frame log attribution and decoded calls, returns, and reverts |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
+| P61 | [EIP-7702 Delegated Accounts](docs/plans/P61-eip7702-delegated-accounts.md) | done | P20, P30, P40, P50, P59, P60 | Exact authorization, execution-code, constructor, API, and delegated-account interaction semantics |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
@@ -124,6 +125,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   exact-runtime artifact as `code_hash`/`high` without backdating verified
   address provenance; the reported Preview transaction now decodes all four
   exact-trace-attributed logs.
+- P61 is complete: migration `0040` and `state_diff@2` preserve and replay
+  type-4 authorization outcomes into canonical delegation and transaction-time
+  execution-code facts; `trace@3` and `abi@3` expose exact EIP-7702 execution
+  identity and verified CREATE/CREATE2 constructor decoding without changing
+  raw context, emitter, initcode, input, or output. Generated authorization and
+  delegation APIs plus the bilingual delegated-EOA interaction surface use a
+  writer-authoritative binding fence before every write. PostgreSQL, browser,
+  monolith/six-role runtime, real Hardhat verification, and common-gate results
+  remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

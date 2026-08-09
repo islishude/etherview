@@ -142,6 +142,30 @@ func TestABIRegistryDecodesOutputsBoundToSelectedFunction(t *testing.T) {
 	}
 }
 
+func TestABIRegistryDecodesExactConstructorArguments(t *testing.T) {
+	t.Parallel()
+	identity := testABIIdentity(14, 140, 141)
+	registry := NewABIRegistry()
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(`[
+		{"type":"constructor","inputs":[{"name":"initialOwner","type":"address"}]},
+		{"type":"function","name":"owner","inputs":[],"outputs":[{"name":"","type":"address"}]}
+	]`)); err != nil {
+		t.Fatal(err)
+	}
+	owner := testAddress(0x77)
+	encodedOwner := addressWord(owner)
+	result := registry.DecodeConstructor(identity, encodedOwner[:])
+	if result.Status != DecodeDecoded || result.Kind != ABIKindConstructor ||
+		result.Signature != "constructor(address)" || len(result.Arguments) != 1 ||
+		result.Arguments[0].Name != "initialOwner" || result.Arguments[0].Value != owner.Hex() {
+		t.Fatalf("constructor decoding = %+v", result)
+	}
+	malformed := registry.DecodeConstructor(identity, []byte{1})
+	if malformed.Status != DecodeMalformed || malformed.Kind != ABIKindConstructor {
+		t.Fatalf("malformed constructor decoding = %+v", malformed)
+	}
+}
+
 func TestABIRegistryHashesIndexedDynamicValues(t *testing.T) {
 	t.Parallel()
 	registry := NewABIRegistry()

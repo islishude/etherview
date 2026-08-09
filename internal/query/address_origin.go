@@ -143,7 +143,7 @@ WITH core_complete AS (
               AND result.block_number = canonical.number
               AND result.block_hash = canonical.block_hash
               AND result.stage = 'trace'
-            ORDER BY result.stage_version DESC
+              AND result.stage_version = 3
             LIMIT 1
         ) AS latest ON TRUE
         WHERE canonical.chain_id = $1::numeric

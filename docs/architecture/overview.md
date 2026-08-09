@@ -234,11 +234,12 @@ of the callback. The routing and lag contract is specified in
   budgets apply independently to each transaction and cumulatively to the
   complete block attempt. Work decoded before an adapter fallback remains
   charged to that block budget.
-- `trace@2` retains direct frame failure separately from ancestor rollback. It
+- `trace@3` retains direct frame failure separately from ancestor rollback. It
   validates every returned callTracer log against the persisted receipt log's
   global index, emitter, topics, and data before recording a trace path and
-  execution code address. `DELEGATECALL` and `CALLCODE` keep the receipt emitter
-  as storage context while using frame `to` as the ABI code identity. A zero-log
+  execution code address. `DELEGATECALL` and `CALLCODE` expose frame `to` as the
+  storage/call context and use a separate exact execution identity for ABI and
+  log attribution. A zero-log
   ordinary trace remains publishable; partial, duplicate, misplaced, or
   contradictory tracer logs fail permanently.
 - Derived journal payloads contain only controlled relation-level canonicality
@@ -308,7 +309,7 @@ of the callback. The routing and lag contract is specified in
   and `Panic(uint256)` remain decoder-local rather than signature-database
   bindings; see
   [ADR-0009](../decisions/ADR-0009-block-bound-abi-provenance.md).
-- Transaction logs prefer a published `trace@2` attribution and decode against
+- Transaction logs prefer a published `trace@3` attribution and decode against
   its execution code address while preserving the original emitter and raw
   receipt bytes. Without exact attribution they use only the emitter,
   published historical proxy observations, and same-code verified artifacts.
@@ -316,7 +317,12 @@ of the callback. The routing and lag contract is specified in
   independent direct-revert data; successful children remain output-decodable
   even when an ancestor later rolls back; see
   [ADR-0033](../decisions/ADR-0033-trace-bound-log-attribution-and-call-decoding.md).
-- `abi@2` consumes existing canonical code and proxy observations. PostgreSQL
+- `state_diff@2` replays geth-owned EIP-7702 authorization tuples against exact
+  per-transaction pre/post evidence and publishes first-hop execution-code
+  identity. Missing evidence is unavailable; contradictory nonce/code evidence
+  fails permanently rather than consulting block-end or latest state. See
+  [ADR-0034](../decisions/ADR-0034-eip7702-execution-identity-and-constructor-decoding.md).
+- `abi@3` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact
   same-version `proxy@2` result first. Complete proxy facts permit decoding;
   unavailable proxy state makes ABI unavailable instead of terminal `unbound`,
@@ -327,7 +333,9 @@ of the callback. The routing and lag contract is specified in
   traces already present are decoded in the same atomic stage transaction.
   Every complete Trace generation that arrives later, including an empty
   replacement, records one source-deduplicated Proxy replay request first and
-  then an ABI replay request. Evidence withdrawal uses a distinct
+  then an ABI replay request. Exact successful creation matches may also decode
+  constructor arguments after byte-for-byte re-encoding; runtime equality alone
+  is insufficient. Evidence withdrawal uses a distinct
   `stage-invalidation` identity; successful replacement publication uses
   `stage-completion`, so the latter cannot be suppressed by the former. The ABI
   dependency prevents the new ABI generation from publishing before the

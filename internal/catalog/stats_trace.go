@@ -265,7 +265,7 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 		} else if found {
 			var envelope cachedTransactionTrace
 			if decodeErr := json.Unmarshal(cached, &envelope); decodeErr == nil &&
-				envelope.Schema == 2 && envelope.JobID == identity.JobID && envelope.JobGeneration == identity.JobGeneration &&
+				envelope.Schema == 3 && envelope.JobID == identity.JobID && envelope.JobGeneration == identity.JobGeneration &&
 				catalog.validateCachedTrace(identity, envelope.Trace) == nil {
 				decorated, decorateErr := catalog.decorateCachedTrace(ctx, identity, envelope.Trace)
 				if decorateErr == nil {
@@ -285,9 +285,10 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 		cacheTrace.Frames = append([]TraceFrame(nil), result.Frames...)
 		for index := range cacheTrace.Frames {
 			cacheTrace.Frames[index].Decoding = nil
+			cacheTrace.Frames[index].Execution = nil
 		}
 		encoded, encodeErr := json.Marshal(cachedTransactionTrace{
-			Schema: 2, JobID: identity.JobID, JobGeneration: identity.JobGeneration, Trace: cacheTrace,
+			Schema: 3, JobID: identity.JobID, JobGeneration: identity.JobGeneration, Trace: cacheTrace,
 		})
 		if encodeErr != nil {
 			catalog.logTraceCacheBypass(ctx, "optional S3 trace cache encode failed", encodeErr)
@@ -309,7 +310,7 @@ type traceIdentity struct {
 }
 
 func (identity traceIdentity) cacheKey() string {
-	return fmt.Sprintf("trace/v2/%s/%s/%d-%d/%s.json",
+	return fmt.Sprintf("trace/v3/%s/%s/%d-%d/%s.json",
 		identity.ChainID, strings.TrimPrefix(identity.BlockHash, "0x"), identity.JobID,
 		identity.JobGeneration, strings.TrimPrefix(identity.TransactionHash, "0x"))
 }
@@ -477,7 +478,7 @@ func (catalog *Postgres) validateCachedTrace(identity traceIdentity, trace Trans
 	dataBytes := 0
 	rootCount := 0
 	for index, frame := range trace.Frames {
-		if frame.Decoding != nil || frame.CallType == "" || len(frame.CallType) > 128 ||
+		if frame.Decoding != nil || frame.Execution != nil || frame.CallType == "" || len(frame.CallType) > 128 ||
 			int(frame.Depth) != len(frame.Path) || len(frame.Path) > 128 || frame.DirectReverted && !frame.Reverted {
 			return ErrCorruptData
 		}
@@ -559,16 +560,19 @@ type scannedTraceFrame struct {
 
 func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, error) {
 	var (
-		result                           scannedTraceFrame
-		depth                            int64
-		from, to, created, input, output []byte
-		value, gas, gasUsed, traceError  sql.NullString
-		directReverted                   bool
+		result                              scannedTraceFrame
+		depth                               int64
+		from, to, created, input, output    []byte
+		executionAddress, executionCodeHash []byte
+		value, gas, gasUsed, traceError     sql.NullString
+		executionResolution                 string
+		directReverted                      bool
 	)
 	if err := row.Scan(
 		&result.pathText, &result.parentText, &depth, &result.frame.CallType,
 		&from, &to, &created, &value, &gas, &gasUsed, &input, &output,
 		&traceError, &directReverted, &result.frame.Reverted,
+		&executionAddress, &executionCodeHash, &executionResolution,
 	); err != nil {
 		return scannedTraceFrame{}, err
 	}
@@ -603,6 +607,34 @@ func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, erro
 	}
 	if result.frame.CreatedAddress, err = optionalChecksumAddress(created); err != nil {
 		return scannedTraceFrame{}, err
+	}
+	contextAddress := result.frame.To
+	if contextAddress == nil {
+		contextAddress = result.frame.CreatedAddress
+	}
+	if contextAddress == nil {
+		contextAddress = result.frame.From
+	}
+	if contextAddress != nil {
+		execution := &TraceExecution{ContextAddress: *contextAddress, Resolution: executionResolution}
+		if len(executionAddress) != 0 {
+			value, addressErr := optionalChecksumAddress(executionAddress)
+			if addressErr != nil || value == nil {
+				return scannedTraceFrame{}, ErrCorruptData
+			}
+			execution.Address = *value
+		}
+		if len(executionCodeHash) != 0 {
+			value, hashErr := lowerHex(executionCodeHash)
+			if hashErr != nil {
+				return scannedTraceFrame{}, ErrCorruptData
+			}
+			execution.CodeHash = value
+		}
+		if !validTraceExecution(execution) {
+			return scannedTraceFrame{}, ErrCorruptData
+		}
+		result.frame.Execution = execution
 	}
 	for _, optional := range []struct {
 		source      sql.NullString
@@ -781,7 +813,8 @@ const transactionTraceSQL = `
 SELECT trace_path, parent_path, depth, call_type,
        from_address, to_address, created_address,
        value::text, gas::text, gas_used::text,
-       input, output, error, direct_reverted, reverted
+       input, output, error, direct_reverted, reverted,
+       execution_address, execution_code_hash, execution_resolution
 FROM normalized_traces
 WHERE chain_id = $1::numeric
   AND block_number = $2::numeric

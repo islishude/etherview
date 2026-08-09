@@ -15,6 +15,7 @@ export type ProxyDetails = components["schemas"]["ProxyDetails"];
 export type ProxyDetailsResponse = components["schemas"]["ProxyDetailsResponse"];
 export type ProxyPattern = components["schemas"]["ProxyPattern"];
 export type FreshProxyDetails = ProxyDetails | ProxyDetailsResponse;
+export type DelegationBinding = components["schemas"]["DelegationBinding"];
 
 export const PROXIABLE_UUID_SIGNATURE = "proxiableUUID()" as const;
 
@@ -52,6 +53,16 @@ interface BoundInteractionTarget extends BaseInteractionTarget {
   readonly requiresFreshBinding: true;
 }
 
+export interface DelegatedEOAInteractionTarget extends BaseInteractionTarget {
+  readonly kind: "delegated_eoa";
+  readonly authorityAddress: Address;
+  readonly delegationChainID: string;
+  readonly delegationBlockNumber: string;
+  readonly delegationBlockHash: string;
+  readonly supportsWrites: true;
+  readonly requiresFreshBinding: true;
+}
+
 export interface ImplementationAsProxyTarget extends BoundInteractionTarget {
   readonly kind: "implementation_as_proxy";
   readonly supportsWrites: true;
@@ -85,7 +96,8 @@ export type ContractInteractionTarget =
   | ImplementationAsProxyTarget
   | UUPSImplementationDirectTarget
   | TransparentProxyAdminTarget
-  | BeaconManagementTarget;
+  | BeaconManagementTarget
+  | DelegatedEOAInteractionTarget;
 
 export type BoundContractInteractionTarget = Exclude<
   ContractInteractionTarget,
@@ -109,6 +121,7 @@ export type InteractionFenceErrorCode =
   | "PROVIDER_CHANGED"
   | "PROVIDER_REVISION_CHANGED"
   | "FRESH_PROXY_REQUIRED"
+  | "FRESH_BINDING_REQUIRED"
   | "BINDING_CHANGED"
   | "TARGET_CHANGED"
   | "FUNCTION_NOT_ALLOWED";
@@ -122,6 +135,7 @@ const FENCE_ERROR_MESSAGES: Record<InteractionFenceErrorCode, string> = {
   PROVIDER_CHANGED: "The injected wallet provider changed",
   PROVIDER_REVISION_CHANGED: "The injected wallet session changed",
   FRESH_PROXY_REQUIRED: "A fresh proxy response is required",
+  FRESH_BINDING_REQUIRED: "A fresh delegation binding is required",
   BINDING_CHANGED: "The verified proxy binding changed; refresh before continuing",
   TARGET_CHANGED: "The verified interaction target changed; refresh before continuing",
   FUNCTION_NOT_ALLOWED: "The function cannot be called through this interaction target",
@@ -143,6 +157,9 @@ export interface RefreshInteractionOptions {
   readonly loadFreshProxy?: (
     proxyAddress: Address,
   ) => Promise<FreshProxyDetails>;
+  readonly loadFreshDelegation?: (
+    authorityAddress: Address,
+  ) => Promise<DelegationBinding>;
 }
 
 export interface SubmitFencedTransactionOptions extends RefreshInteractionOptions {
@@ -309,6 +326,37 @@ export function buildContractInteractionTargets(
   return Object.freeze(targets);
 }
 
+export function buildDelegatedEOAInteractionTarget(
+  authorityAddress: string,
+  binding: DelegationBinding,
+): DelegatedEOAInteractionTarget {
+  const authority = checkedAddress(authorityAddress);
+  if (
+    binding.status !== "delegated" ||
+    !binding.delegate ||
+    !binding.delegate_code_hash ||
+    !addressesMatch(binding.authority, authority) ||
+    !normalizeChainID(binding.chain_id) ||
+    !/^\d+$/u.test(binding.block_number) ||
+    !HASH_PATTERN.test(binding.block_hash) ||
+    !HASH_PATTERN.test(binding.delegate_code_hash)
+  ) {
+    throw new InteractionFenceError("INVALID_TARGET");
+  }
+  return freezeTarget({
+    kind: "delegated_eoa",
+    transactionTarget: authority,
+    abiAddress: checkedAddress(binding.delegate),
+    abiCodeHash: binding.delegate_code_hash.toLowerCase(),
+    authorityAddress: authority,
+    delegationChainID: binding.chain_id,
+    delegationBlockNumber: binding.block_number,
+    delegationBlockHash: binding.block_hash.toLowerCase(),
+    supportsWrites: true,
+    requiresFreshBinding: true,
+  });
+}
+
 /** Captures the exact wallet and proxy target identity shown to the user. */
 export function captureInteractionFence(
   target: ContractInteractionTarget,
@@ -321,7 +369,10 @@ export function captureInteractionFence(
   if (normalizeChainID(checkedWallet.chainID) !== chainID) {
     throw new InteractionFenceError("CHAIN_CHANGED");
   }
-  if (target.requiresFreshBinding && target.proxyChainID !== chainID) {
+  const targetChainID = target.kind === "delegated_eoa"
+    ? target.delegationChainID
+    : target.requiresFreshBinding ? target.proxyChainID : chainID;
+  if (target.requiresFreshBinding && targetChainID !== chainID) {
     throw new InteractionFenceError("CHAIN_CHANGED");
   }
   validateTarget(target);
@@ -347,6 +398,9 @@ export function assertFreshInteractionFence(
 ): ContractInteractionTarget {
   assertWalletFence(fence, currentWallet);
   if (!fence.target.requiresFreshBinding) return fence.target;
+  if (fence.target.kind === "delegated_eoa") {
+    throw new InteractionFenceError("FRESH_BINDING_REQUIRED");
+  }
   if (!fresh) throw new InteractionFenceError("FRESH_PROXY_REQUIRED");
 
   const freshResponse = freshProxyResponse(fresh);
@@ -379,6 +433,32 @@ export function assertFreshInteractionFence(
   return freshTarget;
 }
 
+export function assertFreshDelegationFence(
+  fence: InteractionFence,
+  currentWallet: WalletInteractionSession | undefined,
+  fresh?: DelegationBinding,
+): DelegatedEOAInteractionTarget {
+  assertWalletFence(fence, currentWallet);
+  if (fence.target.kind !== "delegated_eoa" || !fresh) {
+    throw new InteractionFenceError("FRESH_BINDING_REQUIRED");
+  }
+  let freshTarget: DelegatedEOAInteractionTarget;
+  try {
+    freshTarget = buildDelegatedEOAInteractionTarget(fence.target.authorityAddress, fresh);
+  } catch (error) {
+    throw new InteractionFenceError("BINDING_CHANGED", { cause: error });
+  }
+  if (
+    freshTarget.delegationChainID !== fence.chainID ||
+    freshTarget.delegationBlockNumber !== fence.target.delegationBlockNumber ||
+    freshTarget.delegationBlockHash !== fence.target.delegationBlockHash ||
+    !targetsMatch(fence.target, freshTarget)
+  ) {
+    throw new InteractionFenceError("BINDING_CHANGED");
+  }
+  return freshTarget;
+}
+
 /**
  * Forces one fresh proxy GET for every bound implementation or management
  * operation and rechecks the wallet after that network boundary.
@@ -387,9 +467,15 @@ export async function refreshInteractionTarget({
   fence,
   getCurrentWallet,
   loadFreshProxy,
+  loadFreshDelegation,
 }: RefreshInteractionOptions): Promise<ContractInteractionTarget> {
   assertWalletFence(fence, getCurrentWallet());
   if (!fence.target.requiresFreshBinding) return fence.target;
+  if (fence.target.kind === "delegated_eoa") {
+    if (!loadFreshDelegation) throw new InteractionFenceError("FRESH_BINDING_REQUIRED");
+    const fresh = await loadFreshDelegation(fence.target.authorityAddress);
+    return assertFreshDelegationFence(fence, getCurrentWallet(), fresh);
+  }
   if (!loadFreshProxy) throw new InteractionFenceError("FRESH_PROXY_REQUIRED");
 
   const fresh = await loadFreshProxy(fence.target.proxyAddress);
@@ -652,6 +738,16 @@ function validateTarget(target: ContractInteractionTarget): void {
       throw new Error("invalid code hash");
     }
     if (target.requiresFreshBinding) {
+      if (target.kind === "delegated_eoa") {
+        getAddress(target.authorityAddress);
+        if (target.authorityAddress !== target.transactionTarget ||
+            !normalizeChainID(target.delegationChainID) ||
+            !/^\d+$/u.test(target.delegationBlockNumber) ||
+            !HASH_PATTERN.test(target.delegationBlockHash)) {
+          throw new Error("invalid delegation identity");
+        }
+        return;
+      }
       getAddress(target.proxyAddress);
       if (!HASH_PATTERN.test(target.proxyCodeHash)) {
         throw new Error("invalid proxy code hash");
@@ -715,6 +811,13 @@ function boundTargetFieldsMatch(
 ): boolean {
   if (!loaded.requiresFreshBinding || !fresh.requiresFreshBinding) {
     return !loaded.requiresFreshBinding && !fresh.requiresFreshBinding;
+  }
+  if (loaded.kind === "delegated_eoa" || fresh.kind === "delegated_eoa") {
+    return loaded.kind === "delegated_eoa" && fresh.kind === "delegated_eoa" &&
+      loaded.authorityAddress === fresh.authorityAddress &&
+      loaded.delegationChainID === fresh.delegationChainID &&
+      loaded.delegationBlockNumber === fresh.delegationBlockNumber &&
+      loaded.delegationBlockHash === fresh.delegationBlockHash;
   }
   return (
     loaded.proxyAddress === fresh.proxyAddress &&

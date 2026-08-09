@@ -67,22 +67,26 @@ func (limits TraceLimits) validate() error {
 }
 
 type CallFrame struct {
-	Index          int
-	ParentIndex    int
-	TraceAddress   []uint32
-	Type           string
-	From           *common.Address
-	To             *common.Address
-	Value          string
-	Gas            string
-	GasUsed        string
-	Input          []byte
-	Output         []byte
-	Error          string
-	RevertReason   string
-	DirectReverted bool
-	Reverted       bool // True when this frame or any ancestor reverted.
-	Logs           []TraceLog
+	Index               int
+	ParentIndex         int
+	TraceAddress        []uint32
+	Type                string
+	From                *common.Address
+	To                  *common.Address
+	CodeAddress         *common.Address // RPC target before context normalization; never persisted directly.
+	Value               string
+	Gas                 string
+	GasUsed             string
+	Input               []byte
+	Output              []byte
+	Error               string
+	RevertReason        string
+	DirectReverted      bool
+	Reverted            bool // True when this frame or any ancestor reverted.
+	ExecutionAddress    *common.Address
+	ExecutionCodeHash   *common.Hash
+	ExecutionResolution string
+	Logs                []TraceLog
 }
 
 type TraceLog struct {
@@ -230,6 +234,7 @@ func (builder *traceBuilder) callFrame(wire callTracerWire, path []uint32, paren
 		Input: input, Output: output, Error: wire.Error, RevertReason: wire.RevertReason,
 		DirectReverted: direct, Reverted: ancestorReverted || direct, Logs: logs,
 	}
+	normalizeCallExecutionContext(&frame)
 	if err := validateTraceFrameAddresses(frame); err != nil {
 		return CallFrame{}, err
 	}
@@ -601,10 +606,24 @@ func (builder *traceBuilder) traceAPIFrame(wire traceAPIWire, path []uint32) (Ca
 	if err := builder.addData(len(frame.Input) + len(frame.Output)); err != nil {
 		return CallFrame{}, err
 	}
+	normalizeCallExecutionContext(&frame)
 	if err := validateTraceFrameAddresses(frame); err != nil {
 		return CallFrame{}, err
 	}
 	return frame, nil
+}
+
+func normalizeCallExecutionContext(frame *CallFrame) {
+	if frame == nil {
+		return
+	}
+	switch frame.Type {
+	case "CALL", "STATICCALL":
+		frame.CodeAddress = frame.To
+	case "DELEGATECALL", "CALLCODE":
+		frame.CodeAddress = frame.To
+		frame.To = frame.From
+	}
 }
 
 func validateTraceFrameAddresses(frame CallFrame) error {

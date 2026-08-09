@@ -76,3 +76,8 @@ correctness implementation and break the PostgreSQL-only deployment.
   covered by an idempotent durable invalidation generation. Adding an
   accelerator as the only copy of data or as a lease/completion witness
   requires a replacement ADR and compatible persistence protocol.
+
+Trace cache schema v3 still contains only raw normalized frames. EIP-7702
+execution identity, constructor decoding, and ABI projection are attached from
+PostgreSQL on every read, so a stale cache cannot freeze an old delegation or
+verification result.

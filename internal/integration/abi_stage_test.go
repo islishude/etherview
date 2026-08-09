@@ -51,7 +51,8 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	commitCanonical(t, ctx, repository, block)
 	reference := mustBlockRef(t, block)
 	proxyRuntime, implementationRuntime := []byte{0x60, 0x00}, []byte{0x60, 0x01}
-	directCode := testHash(72_000)
+	directRuntime := []byte{0x60, 0x02}
+	directCode := crypto.Keccak256Hash(directRuntime)
 	proxyCode := crypto.Keccak256Hash(proxyRuntime)
 	implementationCode := crypto.Keccak256Hash(implementationRuntime)
 	insertABICodeObservation(t, ctx, db, reference, direct, directCode)
@@ -60,6 +61,9 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	insertABISignatureCandidates(t, ctx, db)
+	publishABIStateDiff(t, ctx, db, reference, map[common.Address][]byte{
+		direct: directRuntime, proxy: proxyRuntime,
+	})
 	publishABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
 
 	job := abiIntegrationJob(t, reference)
@@ -144,7 +148,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@2' AND canonical`, 1, mustBytes(t, reference.Hash))
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3' AND canonical`, 1, mustBytes(t, reference.Hash))
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
 
@@ -270,7 +274,8 @@ func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
 	commitCanonical(t, ctx, repository, block100)
 	ref99, ref100 := mustBlockRef(t, block99), mustBlockRef(t, block100)
 
-	oldDirectCode, currentDirectCode := testHash(92_099), testHash(92_100)
+	oldDirectRuntime, currentDirectRuntime := []byte{0x60, 0x31}, []byte{0x60, 0x32}
+	oldDirectCode, currentDirectCode := crypto.Keccak256Hash(oldDirectRuntime), crypto.Keccak256Hash(currentDirectRuntime)
 	proxyRuntime := []byte{0x60, 0x20}
 	proxyCode := crypto.Keccak256Hash(proxyRuntime)
 	oldImplementation, currentImplementation := testAddress(924), testAddress(925)
@@ -286,6 +291,7 @@ func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {
 	)
 	insertABIVerifiedContract(t, ctx, db, direct, currentDirectCode)
 	insertABIVerifiedContract(t, ctx, db, currentImplementation, currentImplementationCode)
+	publishABIStateDiff(t, ctx, db, ref100, map[common.Address][]byte{direct: currentDirectRuntime})
 
 	result, err := processor.Process(ctx, abiIntegrationJob(t, ref100))
 	if err != nil {
@@ -736,6 +742,67 @@ func publishABITrace(
 	}
 	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
 		ID: "abi-trace-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
+}
+
+type abiStateDiffService struct{ raw json.RawMessage }
+
+func (service *abiStateDiffService) TraceTransaction(
+	context.Context, common.Hash, map[string]any,
+) (json.RawMessage, error) {
+	return append(json.RawMessage(nil), service.raw...), nil
+}
+
+func publishABIStateDiff(
+	t *testing.T, ctx context.Context, db *sql.DB, block store.BlockRef,
+	code map[common.Address][]byte,
+) {
+	t.Helper()
+	pre := make(map[string]any, len(code))
+	post := make(map[string]any, len(code))
+	for address, runtime := range code {
+		pre[address.Hex()] = map[string]any{"nonce": "0x0", "code": "0x" + hex.EncodeToString(runtime)}
+		post[address.Hex()] = map[string]any{}
+	}
+	raw, err := json.Marshal(map[string]any{"pre": pre, "post": post})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "abi-state-diff", Client: newIntegrationRPCClient(t, "debug", &abiStateDiffService{raw: raw}),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewStateDiffRPCProcessor(db, pool, enrich.StateDiffLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.StateDiffStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-state-diff-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)

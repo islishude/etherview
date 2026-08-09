@@ -173,6 +173,27 @@ export function useTransactionTrace(hash: string, enabled = true) {
   });
 }
 
+export function useTransactionAuthorizations(
+  hash: string,
+  cursor?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["transaction", hash, "authorizations", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/authorizations", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { ...response.data, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useTransactionTokenTransfers(
   hash: string,
   cursor?: string,

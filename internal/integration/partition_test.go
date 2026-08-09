@@ -22,15 +22,18 @@ const (
 )
 
 var partitionTableNames = map[string]string{
-	"transaction_inclusions":    "etherview_p_txi_1000000_2000000",
-	"receipts":                  "etherview_p_rcp_1000000_2000000",
-	"logs":                      "etherview_p_log_1000000_2000000",
-	"withdrawals":               "etherview_p_wdr_1000000_2000000",
-	"token_events":              "etherview_p_tev_1000000_2000000",
-	"token_balance_deltas":      "etherview_p_tbd_1000000_2000000",
-	"normalized_traces":         "etherview_p_trc_1000000_2000000",
-	"transaction_state_changes": "etherview_p_sdf_1000000_2000000",
-	"address_activities":        "etherview_p_act_1000000_2000000",
+	"transaction_inclusions":                 "etherview_p_txi_1000000_2000000",
+	"receipts":                               "etherview_p_rcp_1000000_2000000",
+	"logs":                                   "etherview_p_log_1000000_2000000",
+	"withdrawals":                            "etherview_p_wdr_1000000_2000000",
+	"token_events":                           "etherview_p_tev_1000000_2000000",
+	"token_balance_deltas":                   "etherview_p_tbd_1000000_2000000",
+	"normalized_traces":                      "etherview_p_trc_1000000_2000000",
+	"trace_log_attributions":                 "etherview_p_tla_1000000_2000000",
+	"transaction_state_changes":              "etherview_p_sdf_1000000_2000000",
+	"eip7702_authorizations":                 "etherview_p_e7a_1000000_2000000",
+	"transaction_execution_code_resolutions": "etherview_p_ecr_1000000_2000000",
+	"address_activities":                     "etherview_p_act_1000000_2000000",
 }
 
 func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {
@@ -225,11 +228,34 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *sql.D
 		) VALUES (1, $1::numeric, $2, $3, 0, '0', 0, 'CALL', $4, $5, 1, FALSE, TRUE)`,
 		height, blockHash, transactionHash, fromAddress, toAddress)
 	execFixture(t, ctx, db, `
+		INSERT INTO trace_log_attributions (
+			chain_id, block_number, block_hash, transaction_hash, log_index,
+			trace_path, call_type, execution_address, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, '0', 'CALL', $4, TRUE)`,
+		height, blockHash, transactionHash, toAddress)
+	execFixture(t, ctx, db, `
 		INSERT INTO transaction_state_changes (
 			chain_id, block_number, block_hash, transaction_hash, transaction_index,
 			address, field_kind, before_value, after_value, canonical
 		) VALUES (1, $1::numeric, $2, $3, 0, $4, 'balance', '1', '2', TRUE)`,
 		height, blockHash, transactionHash, fromAddress)
+	execFixture(t, ctx, db, `
+		INSERT INTO eip7702_authorizations (
+			chain_id, block_number, block_hash, transaction_hash, transaction_index,
+			authorization_index, authorization_chain_id, authorization_nonce,
+			delegate_address, y_parity, r, s, authority, signature_status,
+			application_status, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, 0, 1, 0, $4, 0, $5, $5,
+			$6, 'valid', 'applied', TRUE)`,
+		height, blockHash, transactionHash, toAddress, topic, fromAddress)
+	execFixture(t, ctx, db, `
+		INSERT INTO transaction_execution_code_resolutions (
+			chain_id, block_number, block_hash, transaction_hash, transaction_index,
+			context_address, execution_address, execution_code_hash, resolution,
+			evidence_source, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, $4, $4, $5, 'direct',
+			'prestate_tracer', TRUE)`,
+		height, blockHash, transactionHash, toAddress, topic)
 	execFixture(t, ctx, db, `
 		INSERT INTO address_activities (
 			chain_id, block_number, block_hash, transaction_hash, activity_index,

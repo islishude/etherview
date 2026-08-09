@@ -1,6 +1,7 @@
 package enrich
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,17 +12,19 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ABIStage = StageID{Name: "abi", Version: 2}
+var ABIStage = StageID{Name: "abi", Version: 3}
 
 const (
 	abiObjectTransactionCalldata = "transaction_calldata"
 	abiObjectLog                 = "log"
 	abiObjectTraceCalldata       = "trace_calldata"
+	abiObjectTraceConstructor    = "trace_constructor"
 	abiObjectTraceRevert         = "trace_revert"
 	abiSignatureCandidatesPerID  = 64
 )
@@ -229,6 +232,7 @@ type abiObservation struct {
 	data            []byte
 	output          []byte
 	directReverted  bool
+	malformed       string
 }
 
 func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
@@ -244,27 +248,142 @@ func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 	if err != nil {
 		return nil, err
 	}
-	result := make([]abiObservation, 0, len(transactions)+len(logs)+len(traces))
+	constructors, err := loadABIConstructors(ctx, tx, job)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]abiObservation, 0, len(transactions)+len(logs)+len(traces)+len(constructors))
 	result = append(result, transactions...)
 	result = append(result, logs...)
 	result = append(result, traces...)
+	result = append(result, constructors...)
 	return result, nil
+}
+
+func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT DISTINCT ON (trace.transaction_hash, trace.trace_path)
+		       trace.transaction_hash, trace.trace_path, trace.created_address,
+		       trace.input, verified.constructor_arguments, verified.abi,
+		       verified.code_hash
+		FROM normalized_traces AS trace
+		JOIN contract_code_observations AS code
+		  ON code.chain_id = trace.chain_id
+		 AND code.block_number = trace.block_number
+		 AND code.block_hash = trace.block_hash
+		 AND code.address = trace.created_address
+		 AND code.canonical
+		JOIN verified_contracts AS verified
+		  ON verified.chain_id = trace.chain_id
+		 AND verified.address = trace.created_address
+		 AND verified.code_hash = code.code_hash
+		 AND verified.valid_from_block <= trace.block_number
+		 AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= trace.block_number)
+		 AND verified.abi IS NOT NULL
+		JOIN verification_results AS result
+		  ON result.job_id = verified.verification_job_id
+		 AND result.request_digest = verified.request_digest
+		 AND result.outcome_kind = 'verification_success'
+		 AND result.outcome->'creation_match'->>'match_type' = 'full'
+		WHERE trace.chain_id = $1::numeric
+		  AND trace.block_number = $2::numeric
+		  AND trace.block_hash = $3
+		  AND trace.call_type IN ('CREATE', 'CREATE2')
+		  AND trace.created_address IS NOT NULL
+		  AND NOT trace.reverted
+		  AND trace.canonical
+		ORDER BY trace.transaction_hash, trace.trace_path, verified.valid_from_block DESC`,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query exact constructor observations: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	var observations []abiObservation
+	for rows.Next() {
+		var transactionHashBytes, targetBytes, initcode, arguments, abiJSON, codeHashBytes []byte
+		var tracePath string
+		if err := rows.Scan(
+			&transactionHashBytes, &tracePath, &targetBytes, &initcode,
+			&arguments, &abiJSON, &codeHashBytes,
+		); err != nil {
+			return nil, fmt.Errorf("scan exact constructor observation: %w", err)
+		}
+		transactionHash, err := WordFromBytes(transactionHashBytes)
+		if err != nil || len(targetBytes) != common.AddressLength || len(codeHashBytes) != common.HashLength {
+			return nil, Permanent(errors.New("exact constructor identity is invalid"))
+		}
+		observation := abiObservation{
+			objectKind: abiObjectTraceConstructor, transactionHash: transactionHash,
+			objectIndex: tracePath, target: common.BytesToAddress(targetBytes), input: common.CopyBytes(arguments),
+		}
+		if !bytes.HasSuffix(initcode, arguments) {
+			observation.malformed = "verified constructor arguments are not an exact initcode suffix"
+		} else if err := validateConstructorArguments(abiJSON, arguments); err != nil {
+			observation.malformed = "verified constructor arguments do not re-encode exactly"
+		}
+		observations = append(observations, observation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exact constructor observations: %w", err)
+	}
+	return observations, nil
+}
+
+func validateConstructorArguments(document, arguments []byte) error {
+	parsed, err := gethabi.JSON(strings.NewReader(string(document)))
+	if err != nil {
+		return err
+	}
+	values, err := parsed.Constructor.Inputs.Unpack(arguments)
+	if err != nil {
+		return err
+	}
+	reencoded, err := parsed.Constructor.Inputs.Pack(values...)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(reencoded, arguments) {
+		return errors.New("constructor argument round trip mismatch")
+	}
+	return nil
 }
 
 func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT tx_hash, raw
-		FROM transaction_inclusions
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		ORDER BY tx_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+		SELECT inclusion.tx_hash, inclusion.raw, resolution.execution_address,
+		       resolution.execution_code_hash
+		FROM transaction_inclusions AS inclusion
+		LEFT JOIN transaction_execution_code_resolutions AS resolution
+		  ON resolution.chain_id = inclusion.chain_id
+		 AND resolution.block_number = inclusion.block_number
+		 AND resolution.block_hash = inclusion.block_hash
+		 AND resolution.transaction_hash = inclusion.tx_hash
+		 AND resolution.context_address = decode(substring(inclusion.raw->>'to' from 3), 'hex')
+		 AND resolution.resolution IN ('direct', 'eip7702_delegate')
+		 AND resolution.canonical
+		 AND EXISTS (
+		     SELECT 1 FROM published_block_stage_results AS published
+		     WHERE published.chain_id = resolution.chain_id
+		       AND published.block_number = resolution.block_number
+		       AND published.block_hash = resolution.block_hash
+		       AND published.stage = $4
+		       AND published.stage_version = $5
+		       AND published.state = 'complete'
+		 )
+		WHERE inclusion.chain_id = $1::numeric
+		  AND inclusion.block_number = $2::numeric
+		  AND inclusion.block_hash = $3
+		ORDER BY inclusion.tx_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		StateDiffStage.Name, StateDiffStage.Version)
 	if err != nil {
 		return nil, fmt.Errorf("query ABI transaction inputs: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
 	var result []abiObservation
 	for rows.Next() {
-		var transactionHashBytes, raw []byte
-		if err := rows.Scan(&transactionHashBytes, &raw); err != nil {
+		var transactionHashBytes, raw, executionAddress, executionCodeHash []byte
+		if err := rows.Scan(&transactionHashBytes, &raw, &executionAddress, &executionCodeHash); err != nil {
 			return nil, fmt.Errorf("scan ABI transaction input: %w", err)
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
@@ -279,10 +398,13 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 			return nil, Permanent(err)
 		}
 		to := wire.To()
-		if to == nil {
+		if to == nil || len(executionAddress) == 0 {
 			continue
 		}
-		target := *to
+		if len(executionAddress) != common.AddressLength || len(executionCodeHash) != common.HashLength {
+			return nil, Permanent(errors.New("transaction execution-code identity is invalid"))
+		}
+		target := common.BytesToAddress(executionAddress)
 		input := wire.Data()
 		result = append(result, abiObservation{
 			objectKind: abiObjectTransactionCalldata, transactionHash: transactionHash,
@@ -436,12 +558,13 @@ func validateABILogIdentity(
 
 func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_hash, trace_path, to_address, input, output, direct_reverted
+		SELECT transaction_hash, trace_path, execution_address, input, output, direct_reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
 		  AND trace.block_number = $2::numeric
 		  AND trace.block_hash = $3
 		  AND trace.canonical
+		  AND trace.execution_resolution IN ('direct', 'eip7702_delegate')
 		  AND EXISTS (
 		      SELECT 1
 		      FROM published_block_stage_results AS published
@@ -1131,6 +1254,15 @@ func decodeABIObservation(registry *ABIRegistry, identity ABIIdentity, observati
 			}
 		}
 		return decodedABIObservation{result: decoded.Input, returnStatus: decoded.ReturnStatus, returns: decoded.Returns}
+	case abiObjectTraceConstructor:
+		if observation.malformed != "" {
+			return decodedABIObservation{result: DecodeResult{
+				Status: DecodeMalformed, Kind: ABIKindConstructor, Warning: observation.malformed,
+			}, returnStatus: ReturnNotApplicable}
+		}
+		return decodedABIObservation{
+			result: registry.DecodeConstructor(identity, observation.input), returnStatus: ReturnNotApplicable,
+		}
 	case abiObjectTraceRevert:
 		return decodedABIObservation{result: registry.DecodeRevert(identity, observation.input), returnStatus: ReturnNotApplicable}
 	case abiObjectLog:
@@ -1187,16 +1319,17 @@ func persistABIDecoding(
 			chain_id, block_number, block_hash, object_kind, transaction_hash,
 			object_index, target_address, target_code_hash, abi_kind, status,
 			signature, source, confidence, source_address, source_code_hash,
-			arguments, candidates, warning, return_status, return_arguments, canonical
+			arguments, candidates, warning, return_status, return_arguments,
+			decoding_kind, canonical
 		) VALUES (
 			$1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10,
 			$11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18,
-			$19, $20::jsonb, TRUE
+			$19, $20::jsonb, $21, TRUE
 		)`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		observation.objectKind, observation.transactionHash[:], observation.objectIndex,
 		identity.Address[:], identity.CodeHash[:], result.Kind, result.Status,
 		signature, source, confidence, sourceAddress, sourceCodeHash,
-		arguments, candidates, result.Warning, decoded.returnStatus, returnArguments,
+		arguments, candidates, result.Warning, decoded.returnStatus, returnArguments, result.Kind,
 	); err != nil {
 		return fmt.Errorf("persist ABI decoding: %w", err)
 	}

@@ -358,8 +358,12 @@ func TestProxyStageCreationUpgradeBeaconDependencyAndReorg(t *testing.T) {
 	}
 	processOne(t, ctx, stateDiffWorker)
 	assertJobStatus(t, ctx, db, stateDiffJobResult.Job.ID, "succeeded")
-	assertStageDetail(t, ctx, db, blockThreeWord, "state_diff", "proxy_requeued", "false")
+	assertStageDetail(t, ctx, db, blockThreeWord, "state_diff", "trace_requeued", "true")
 
+	// StateDiff withdrew the first Trace generation. Rebuild Trace before Proxy
+	// so CREATE attribution remains tied to the current execution evidence.
+	processOne(t, ctx, traceWorker)
+	assertJobStatus(t, ctx, db, traceJobResult.Job.ID, "succeeded")
 	processOne(t, ctx, worker)
 	assertCanonicalProxyImplementation(t, ctx, db, blockThree, createdBeaconProxy, beaconImplementation, "beacon", &beacon)
 	assertCanonicalProxyImplementation(t, ctx, db, blockThree, createdBeaconProxyTwo, beaconImplementation, "beacon", &beacon)
@@ -385,7 +389,7 @@ func TestProxyStageCreationUpgradeBeaconDependencyAndReorg(t *testing.T) {
 	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "trace_coverage", "complete")
 	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "state_diff_coverage", "complete")
 	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "trace_job_id", traceJobResult.Job.ID)
-	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "trace_job_generation", "1")
+	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "trace_job_generation", "2")
 	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "state_diff_job_id", stateDiffJobResult.Job.ID)
 	assertStageDetail(t, ctx, db, blockThreeWord, "proxy", "state_diff_job_generation", "1")
 	processOne(t, ctx, worker)

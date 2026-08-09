@@ -742,15 +742,16 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state = 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
-					    ('stats',3),('trace',2),('state_diff',1))),
+					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer))),
 				(SELECT count(*) FROM durable_jobs WHERE status IN ('queued','leased')),
 				(SELECT count(*) FROM published_block_stage_results
 					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
 					  AND state <> 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
-					    ('stats',3),('trace',2),('state_diff',1))),
+					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer))),
 				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL)
-		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version).
+		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version,
+			enrich.TraceStage.Version, enrich.StateDiffStage.Version).
 			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished)
 		state := fmt.Sprintf("hash=%s checkpoint=%d complete=%d active=%d failed=%d outbox=%d",
 			canonical, checkpoint, complete, active, failed, unpublished)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -370,7 +371,7 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 2`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
 		0, mustBytes(t, reference.Hash))
 
 	proxyLease, found, err = queue.Claim(ctx, "proxy-generation-two", []enrich.StageID{enrich.ProxyStage}, time.Minute)
@@ -427,12 +428,18 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = now()`)
 	reference := mustBlockRef(t, block)
 	word, _ := enrich.ParseWord(reference.Hash.String())
-	directCode, proxyCode, implementationCode := testHash(72_000), testHash(72_001), testHash(72_002)
+	directRuntime, proxyRuntime := []byte{0x60, 0x02}, []byte{0x60, 0x00}
+	directCode := crypto.Keccak256Hash(directRuntime)
+	proxyCode := crypto.Keccak256Hash(proxyRuntime)
+	implementationCode := testHash(72_002)
 	insertABICodeObservation(t, ctx, db, reference, direct, directCode)
 	insertABICodeObservation(t, ctx, db, reference, proxy, proxyCode)
 	insertABIVerifiedContract(t, ctx, db, direct, directCode)
 	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
 	insertABISignatureCandidates(t, ctx, db)
+	publishABIStateDiff(t, ctx, db, reference, map[common.Address][]byte{
+		direct: directRuntime, proxy: proxyRuntime,
+	})
 	publishABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
 
 	queue, err := enrich.NewPostgresJobQueue(db)
@@ -460,7 +467,7 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 		t.Fatalf("publish crash fixture proxy: %v", err)
 	}
 	// The proxy stage sees exact code history and therefore has no RPC candidate.
-	// Keep a later raw observation in the fixture to prove abi@2 does not consume
+	// Keep a later raw observation in the fixture to prove abi@3 does not consume
 	// evidence that is outside the published proxy generation.
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	abiLease, found, err := queue.Claim(ctx, "crash-abi-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
@@ -483,11 +490,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 2`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
 		1, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@2'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3'`,
 		1, mustBytes(t, reference.Hash))
 
 	// Model a late Trace/Proxy completion through the public enqueue contract:
@@ -526,11 +533,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 2`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@2'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3'`,
 		0, mustBytes(t, reference.Hash))
 	if err := queue.Finish(ctx, abiLease, enrich.StageResult{State: enrich.ResultFailed, Error: "expired writer"}); !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("expired generation-one terminal write err=%v, want ErrLeaseLost", err)

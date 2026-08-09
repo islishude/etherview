@@ -182,8 +182,12 @@ func main() {
 					"from": testEOA, "to": uupsProxyAddress, "value": "0", "gas": "100000", "gas_used": "50000",
 					"input": "0x2e64cec1", "output": "0x000000000000000000000000000000000000000000000000000000000000002a",
 					"direct_reverted": false, "reverted": false,
+					"execution": map[string]any{
+						"context_address": uupsProxyAddress, "address": uupsProxyAddress,
+						"code_hash": testHash, "resolution": "direct",
+					},
 					"decoding": map[string]any{
-						"status": "decoded", "function_name": "retrieve", "signature": "retrieve()",
+						"kind": "function", "status": "decoded", "function_name": "retrieve", "signature": "retrieve()",
 						"inputs": []any{}, "output_status": "decoded",
 						"outputs":    []any{map[string]any{"name": "value", "type": "uint256", "value": "42"}},
 						"candidates": []any{"retrieve()"},
@@ -197,8 +201,12 @@ func main() {
 					"input":  "0x8e4a23d60000000000000000000000002222222222222222222222222222222222222222",
 					"output": "0x4e487b710000000000000000000000000000000000000000000000000000000000000011",
 					"error":  "execution reverted", "direct_reverted": true, "reverted": true,
+					"execution": map[string]any{
+						"context_address": uupsProxyAddress, "address": uupsImplementation,
+						"code_hash": testHash, "resolution": "direct",
+					},
 					"decoding": map[string]any{
-						"status": "decoded", "function_name": "setOwner", "signature": "setOwner(address)",
+						"kind": "function", "status": "decoded", "function_name": "setOwner", "signature": "setOwner(address)",
 						"inputs":        []any{map[string]any{"name": "owner", "type": "address", "value": testEOA}},
 						"output_status": "not_applicable", "outputs": []any{}, "candidates": []any{"setOwner(address)"},
 						"revert": map[string]any{

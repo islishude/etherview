@@ -14,7 +14,7 @@ lease fences would also let stale work survive a replay or reorganization.
 
 ## Decision
 
-- `state_diff@1` is an independent optional enrichment stage. It uses
+- `state_diff@2` is an independent optional enrichment stage. It uses
   `debug_traceTransaction` with geth's `prestateTracer` in diff mode and never
   falls back to an unpinned height, `latest`, a browser provider, or an
   on-demand public-request RPC call.
@@ -54,3 +54,7 @@ and expose a stable unavailable state instead of fabricated empty data.
 Adding another state-difference adapter, widening limits, changing the durable
 row identity, or changing publication semantics requires a new stage version
 and a reviewed update to this decision.
+
+ADR-0034 upgrades this stage to `state_diff@2`. The same transaction-pinned
+pre/post evidence proves EIP-7702 tuple application and execution-code identity;
+absent evidence is unavailable and a nonce/code contradiction is permanent.

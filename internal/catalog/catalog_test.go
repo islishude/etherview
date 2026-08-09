@@ -510,9 +510,14 @@ func TestBlockStatsRequireCompleteCanonicalRange(t *testing.T) {
 }
 
 func traceRow(path string, parent driver.Value, depth int64, callType string) []driver.Value {
+	executionAddress, executionCodeHash, resolution := driver.Value(bytesOf(0x22, 20)), driver.Value(bytesOf(0x33, 32)), "direct"
+	if callType == "CREATE" || callType == "CREATE2" {
+		executionAddress, executionCodeHash, resolution = nil, nil, "not_applicable"
+	}
 	return []driver.Value{
 		path, parent, depth, callType, bytesOf(0x11, 20), bytesOf(0x22, 20), nil,
 		"1", "1", "1", []byte{0x12, 0x34}, []byte{}, nil, false, false,
+		executionAddress, executionCodeHash, resolution,
 	}
 }
 
@@ -521,7 +526,7 @@ func TestTransactionTraceSortsAndValidatesNormalizedTree(t *testing.T) {
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", blockHash, "9007199254740993"})},
 		traceStageStep("complete"),
-		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(15,
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18,
 			traceRow("", nil, 0, "CALL"),
 			traceRow("10", "", 1, "CREATE2"),
 			traceRow("2", "", 1, "DELEGATECALL"),
@@ -566,7 +571,7 @@ func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
-		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(15)},
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18)},
 	)
 	_, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if !errors.Is(err, ErrCorruptData) {
@@ -579,7 +584,7 @@ func TestTransactionTraceRootOnlyIsACompleteEmptyInternalCallTree(t *testing.T) 
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
-		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(15, traceRow("", nil, 0, "CALL"))},
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))},
 	)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if err != nil || trace.State != StageComplete || len(trace.Frames) != 1 || trace.Frames[0].Depth != 0 {

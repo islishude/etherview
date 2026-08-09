@@ -130,6 +130,15 @@ type AddressEnrichmentActivityReader interface {
 	AddressNFTTransfers(context.Context, catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error)
 }
 
+type DelegationBindingReader interface {
+	AddressDelegation(context.Context, string) (gen.DelegationBinding, error)
+}
+
+type delegationCatalogReader interface {
+	TransactionAuthorizations(context.Context, catalog.TransactionResourceRequest) (catalog.TransactionAuthorizationPage, error)
+	AddressDelegations(context.Context, catalog.AddressDelegationRequest) (catalog.DelegationHistoryPage, error)
+}
+
 // readinessStatusReader lets a cache-decorated Reader bypass its cache for the
 // readiness decision. A cached success must not hide loss of a configured
 // PostgreSQL reader or writer pool.
@@ -338,13 +347,16 @@ func (h *Handler) routes() {
 		h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
 		h.handleBillable("listTransactionLogs", h.transactionLogs)
 		h.handleBillable("listTransactionStateChanges", h.transactionStateChanges)
+		h.handleBillable("listTransactionAuthorizations", h.transactionAuthorizations)
 	}
 	h.handleBillable("getAddress", h.address)
+	h.handleBillable("getAddressDelegation", h.addressDelegation)
 	h.handleBillable("listAddressTransactions", h.addressTransactions)
 	h.handleBillable("listAddressInternalTransactions", h.addressInternalTransactions)
 	h.handleBillable("listAddressERC20Transfers", h.addressERC20Transfers)
 	h.handleBillable("listAddressNFTTransfers", h.addressNFTTransfers)
 	if h.catalog != nil {
+		h.handleBillable("listAddressDelegations", h.addressDelegations)
 		h.handleBillable("listAddressNFTBalances", h.nftBalances)
 		h.handleBillable("listAddressERC20Balances", h.erc20Balances)
 		h.handleBillable("listTokens", h.tokens)
@@ -1736,6 +1748,108 @@ func (h *Handler) transactionStateChanges(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (h *Handler) transactionAuthorizations(w http.ResponseWriter, r *http.Request) {
+	reader, exists := h.catalog.(delegationCatalogReader)
+	if !exists {
+		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "authorization history is unavailable", nil)
+		return
+	}
+	request, ok := h.transactionResourceRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := reader.TransactionAuthorizations(r.Context(), request)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.EIP7702Authorization, len(page.Items))
+	for index, item := range page.Items {
+		items[index] = gen.EIP7702Authorization{
+			Index: item.Index, ChainId: item.ChainID, Nonce: item.Nonce,
+			Delegate: item.Delegate, YParity: item.YParity, R: item.R, S: item.S,
+			SignatureStatus:   gen.EIP7702AuthorizationSignatureStatus(item.SignatureStatus),
+			ApplicationStatus: gen.EIP7702AuthorizationApplicationStatus(item.ApplicationStatus),
+		}
+		items[index].Authority = item.Authority
+		if item.SkipReason != nil {
+			reason := gen.EIP7702AuthorizationSkipReason(*item.SkipReason)
+			items[index].SkipReason = &reason
+		}
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionAuthorizationResponse{
+		Data: gen.TransactionAuthorizations{
+			ChainId: page.Identity.ChainID, BlockNumber: page.Identity.BlockNumber,
+			BlockHash: page.Identity.BlockHash, TransactionHash: page.Identity.TransactionHash,
+			TransactionIndex: page.Identity.TransactionIndex,
+			State:            gen.TransactionAuthorizationsState(page.Identity.State), Items: items,
+		},
+		Meta: meta,
+	})
+}
+
+func (h *Handler) addressDelegations(w http.ResponseWriter, r *http.Request) {
+	reader, exists := h.catalog.(delegationCatalogReader)
+	if !exists {
+		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "delegation history is unavailable", nil)
+		return
+	}
+	address := r.PathValue("address")
+	if !addressPattern.MatchString(address) {
+		writeError(w, r, http.StatusBadRequest, "invalid_address", "address must be 20 bytes", nil)
+		return
+	}
+	limit, cursor, ok := parseCatalogPage(w, r)
+	if !ok {
+		return
+	}
+	page, err := reader.AddressDelegations(r.Context(), catalog.AddressDelegationRequest{
+		ChainID: h.chainID(), Address: address, Cursor: cursor, Limit: limit,
+	})
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.DelegationHistoryItem, len(page.Items))
+	for index, item := range page.Items {
+		items[index] = gen.DelegationHistoryItem{
+			Authority: item.Authority, Kind: gen.DelegationHistoryItemKind(item.Kind),
+			Delegate: item.Delegate, PreviousDelegate: item.PreviousDelegate,
+			BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
+			TransactionHash: item.TransactionHash, TransactionIndex: item.TransactionIndex,
+			AuthorizationIndex: item.AuthorizationIndex,
+		}
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.DelegationHistoryResponse{Data: items, Meta: meta})
+}
+
+func (h *Handler) addressDelegation(w http.ResponseWriter, r *http.Request) {
+	reader, ok := h.reader.(DelegationBindingReader)
+	if !ok {
+		writeError(w, r, http.StatusServiceUnavailable, "capability_unavailable", "delegation state is unavailable", nil)
+		return
+	}
+	address := r.PathValue("address")
+	if !addressPattern.MatchString(address) {
+		writeError(w, r, http.StatusBadRequest, "invalid_address", "address must be 20 bytes", nil)
+		return
+	}
+	binding, err := reader.AddressDelegation(r.Context(), address)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.DelegationBindingResponse{Data: binding, Meta: h.meta(r)})
+}
+
 func (h *Handler) transactionResourceRequest(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -2552,6 +2666,19 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 			Input: frame.Input, Output: frame.Output, Error: frame.Error,
 			DirectReverted: frame.DirectReverted, Reverted: frame.Reverted,
 		}
+		if frame.Execution != nil {
+			execution := gen.TraceExecution{
+				ContextAddress: frame.Execution.ContextAddress,
+				Resolution:     gen.TraceExecutionResolution(frame.Execution.Resolution),
+			}
+			if frame.Execution.Address != "" {
+				execution.Address = &frame.Execution.Address
+			}
+			if frame.Execution.CodeHash != "" {
+				execution.CodeHash = &frame.Execution.CodeHash
+			}
+			frames[index].Execution = execution
+		}
 		if frame.Decoding != nil {
 			frames[index].Decoding = traceCallDecodingModel(frame.Decoding)
 		}
@@ -2568,6 +2695,7 @@ func traceCallDecodingModel(value *catalog.TraceCallDecoding) *gen.TraceCallDeco
 		return nil
 	}
 	result := &gen.TraceCallDecoding{
+		Kind:   gen.TraceCallDecodingKind(value.Kind),
 		Status: gen.TraceCallDecodingStatus(value.Status), Inputs: abiValuesModel(value.Inputs),
 		OutputStatus: gen.TraceCallDecodingOutputStatus(value.OutputStatus), Outputs: abiValuesModel(value.Outputs),
 		Candidates: append([]string(nil), value.Candidates...), AbiSource: abiSourceModel(value.ABISource),

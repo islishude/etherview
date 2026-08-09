@@ -128,3 +128,8 @@ an Etherview public, persistent, or hostile-input contract.
 - P70-T09 remains a release dependency until focused compatibility,
   integration, generation, security, license, and common gates establish these
   boundaries.
+
+`state_diff@2` uses go-ethereum's type-4 transaction and
+`SetCodeAuthorization.Authority` directly. Repository rows preserve raw tuples
+and controlled application projections without introducing a replacement
+protocol signature model.

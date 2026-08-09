@@ -20,6 +20,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/delegation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAddressDelegation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/addresses/{address}/delegations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressDelegations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}/erc20-balances": {
         parameters: {
             query?: never;
@@ -684,6 +716,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/authorizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionAuthorizations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{hash}/logs": {
         parameters: {
             query?: never;
@@ -967,6 +1015,7 @@ export interface components {
             balance: components["schemas"]["Quantity"];
             code_hash?: components["schemas"]["Hash"];
             completeness: components["schemas"]["Completeness"];
+            delegation?: components["schemas"]["DelegationBinding"];
             name?: string;
             nonce: components["schemas"]["Quantity"];
             origin?: components["schemas"]["AddressOrigin"];
@@ -1305,7 +1354,7 @@ export interface components {
             metadata: components["schemas"]["StageState"];
             /** @description Configured historical-state RPC capability; transaction state differences have an independent per-transaction state. */
             state: components["schemas"]["StageState"];
-            /** @description Published trace@2 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
+            /** @description Published trace@3 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
         };
         ContractArtifactSource: {
@@ -1325,6 +1374,54 @@ export interface components {
         };
         /** @description A canonical non-negative fixed-point decimal with at most 18 fractional digits. */
         Decimal: string;
+        DelegationBinding: {
+            authority: components["schemas"]["Address"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            chain_id: components["schemas"]["Quantity"];
+            delegate?: components["schemas"]["Address"];
+            delegate_code_hash?: components["schemas"]["Hash"];
+            /** @enum {string} */
+            reason?: "state_unavailable";
+            /** @enum {string} */
+            status: "delegated" | "not_delegated" | "unavailable";
+        };
+        DelegationBindingResponse: {
+            data: components["schemas"]["DelegationBinding"];
+            meta: components["schemas"]["Meta"];
+        };
+        DelegationHistoryItem: {
+            authority: components["schemas"]["Address"];
+            authorization_index: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            delegate: components["schemas"]["Address"];
+            /** @enum {string} */
+            kind: "delegated" | "redelegated" | "cleared";
+            previous_delegate?: components["schemas"]["Address"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+        };
+        DelegationHistoryResponse: {
+            data: components["schemas"]["DelegationHistoryItem"][];
+            meta: components["schemas"]["Meta"];
+        };
+        EIP7702Authorization: {
+            /** @enum {string} */
+            application_status: "applied" | "skipped" | "unavailable";
+            authority?: components["schemas"]["Address"];
+            chain_id: components["schemas"]["Quantity"];
+            delegate: components["schemas"]["Address"];
+            index: components["schemas"]["Quantity"];
+            nonce: components["schemas"]["Quantity"];
+            r: components["schemas"]["Hash"];
+            s: components["schemas"]["Hash"];
+            /** @enum {string} */
+            signature_status: "valid" | "invalid" | "unavailable";
+            /** @enum {string} */
+            skip_reason?: "wrong_chain_id" | "nonce_overflow" | "invalid_signature" | "authority_has_code" | "nonce_mismatch" | "state_unavailable";
+            y_parity: number;
+        };
         ERC20Balance: {
             balance: components["schemas"]["Quantity"];
             chain_id: components["schemas"]["Quantity"];
@@ -1799,6 +1896,8 @@ export interface components {
             function_name?: string;
             inputs: components["schemas"]["ABIValue"][];
             /** @enum {string} */
+            kind: "function" | "constructor";
+            /** @enum {string} */
             output_status: "decoded" | "empty" | "unknown" | "malformed" | "unavailable" | "not_applicable";
             outputs: components["schemas"]["ABIValue"][];
             revert?: components["schemas"]["TraceRevertDecoding"];
@@ -1807,6 +1906,13 @@ export interface components {
             status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";
             warning?: string;
         };
+        TraceExecution: {
+            address?: components["schemas"]["Address"];
+            code_hash?: components["schemas"]["Hash"];
+            context_address: components["schemas"]["Address"];
+            /** @enum {string} */
+            resolution: "direct" | "eip7702_delegate" | "empty" | "unavailable" | "not_applicable";
+        };
         TraceFrame: {
             call_type: string;
             created_address?: components["schemas"]["Address"];
@@ -1814,6 +1920,7 @@ export interface components {
             depth: number;
             direct_reverted: boolean;
             error?: string;
+            execution: components["schemas"]["TraceExecution"];
             from?: components["schemas"]["Address"];
             gas?: components["schemas"]["Quantity"];
             gas_used?: components["schemas"]["Quantity"];
@@ -1869,6 +1976,13 @@ export interface components {
             tx_fee_wei?: components["schemas"]["Quantity"];
             type?: string;
             value: components["schemas"]["Quantity"];
+        };
+        TransactionAuthorizationResponse: {
+            data: components["schemas"]["TransactionAuthorizations"];
+            meta: components["schemas"]["Meta"];
+        };
+        TransactionAuthorizations: components["schemas"]["TransactionSubresourceIdentity"] & {
+            items: components["schemas"]["EIP7702Authorization"][];
         };
         TransactionListResponse: {
             data: components["schemas"]["Transaction"][];
@@ -2242,6 +2356,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AddressResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getAddressDelegation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Writer-authoritative delegation binding at the exact canonical tip. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DelegationBindingResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressDelegations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical EIP-7702 delegation, redelegation, and clearing history. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DelegationHistoryResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];
@@ -3400,6 +3573,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionAuthorizations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact EIP-7702 authorization tuples and their transaction-time application outcomes. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionAuthorizationResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

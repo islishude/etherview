@@ -86,6 +86,12 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	traceJob, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.TraceStage, ChainID: "1", BlockHash: word, BlockNumber: reference.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	proxyLease, found, err := queue.Claim(ctx, "state-diff-proxy-one", []enrich.StageID{enrich.ProxyStage}, time.Minute)
 	if err != nil || !found {
 		t.Fatalf("claim initial Proxy: lease=%+v found=%t err=%v", proxyLease, found, err)
@@ -126,12 +132,12 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ordinary.Details["proxy_relevant_changes"] != "0" || ordinary.Details["proxy_requeued"] != "false" {
+	if ordinary.Details["proxy_relevant_changes"] != "0" || ordinary.Details["trace_requeued"] != "true" {
 		t.Fatalf("ordinary StateDiff result=%+v", ordinary)
 	}
 	assertPublishedGeneration(t, ctx, db, stateJob.Job.ID, 1)
 	assertReplayGeneration(t, ctx, db, proxyJob.Job.ID, replayGenerationState{
-		Status: "succeeded", Requested: 1, Claimed: 1, Completed: 1,
+		Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM transaction_state_changes
@@ -160,12 +166,12 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if relevant.Details["proxy_relevant_changes"] != "4" || relevant.Details["proxy_requeued"] != "true" {
+	if relevant.Details["proxy_relevant_changes"] != "4" || relevant.Details["trace_requeued"] != "true" {
 		t.Fatalf("proxy-relevant StateDiff result=%+v", relevant)
 	}
 	assertPublishedGeneration(t, ctx, db, stateJob.Job.ID, 2)
-	assertReplayGeneration(t, ctx, db, proxyJob.Job.ID, replayGenerationState{
-		Status: "queued", Requested: 2, Claimed: 1, Completed: 1,
+	assertReplayGeneration(t, ctx, db, traceJob.Job.ID, replayGenerationState{
+		Status: "queued", Requested: 4, Claimed: 0, Completed: 0,
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM transaction_state_changes
@@ -175,16 +181,39 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 		mustBytes(t, reference.Hash), enrich.EIP1967ImplementationSlot.Bytes(),
 		enrich.EIP1967BeaconSlot.Bytes(), enrich.EIP1967AdminSlot.Bytes())
 
+	traceRaw := traceStageCallTracerResponse(t, block.Block.Transactions()[0])
+	tracePool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state-diff-trace", Client: newIntegrationRPCClient(t, "debug", &traceStageService{raw: traceRaw}),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	traceProcessor, err := enrich.NewTraceRPCProcessor(db, tracePool, enrich.TraceLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	traceLease, found, err := queue.Claim(ctx, "state-diff-trace-two", []enrich.StageID{enrich.TraceStage}, time.Minute)
+	if err != nil || !found || traceLease.Job.Generation != 4 {
+		t.Fatalf("claim state-dependent Trace: lease=%+v found=%t err=%v", traceLease, found, err)
+	}
+	if _, err := traceProcessor.ProcessLease(ctx, traceLease, queue); err != nil {
+		t.Fatalf("publish state-dependent Trace: %v", err)
+	}
+
 	proxyLease, found, err = queue.Claim(
 		ctx, "state-diff-proxy-two", []enrich.StageID{enrich.ProxyStage}, time.Minute,
 	)
-	if err != nil || !found || proxyLease.Job.Generation != 2 {
+	if err != nil || !found || proxyLease.Job.Generation != 5 {
 		t.Fatalf("claim silent-upgrade Proxy: lease=%+v found=%t err=%v", proxyLease, found, err)
 	}
 	if _, err := proxyProcessor.ProcessLease(ctx, proxyLease, queue); err != nil {
 		t.Fatalf("publish silent-upgrade Proxy: %v", err)
 	}
-	assertPublishedGeneration(t, ctx, db, proxyJob.Job.ID, 2)
+	assertPublishedGeneration(t, ctx, db, proxyJob.Job.ID, 5)
 	assertCanonicalProxyImplementation(
 		t, ctx, db, block, implementationAddress, silentImplementation, "eip1967", nil,
 	)
@@ -193,8 +222,8 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 		WHERE chain_id = 1 AND block_hash = $1 AND emitter_address = $2`, 0,
 		mustBytes(t, reference.Hash), implementationAddress.Bytes())
 	assertStageDetail(t, ctx, db, word, "proxy", "state_diff_coverage", "complete")
-	assertStageDetail(t, ctx, db, word, "proxy", "trace_coverage", "missing")
-	assertStageDetail(t, ctx, db, word, "proxy", "history_coverage", "event_only")
+	assertStageDetail(t, ctx, db, word, "proxy", "trace_coverage", "complete")
+	assertStageDetail(t, ctx, db, word, "proxy", "history_coverage", "complete")
 	if service.calls != 2 {
 		t.Fatalf("StateDiff RPC calls=%d want=2", service.calls)
 	}

@@ -383,6 +383,135 @@ func (e CompilationFailureOutcomeKind) Valid() bool {
 	}
 }
 
+// Defines values for DelegationBindingReason.
+const (
+	DelegationBindingReasonStateUnavailable DelegationBindingReason = "state_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DelegationBindingReason enum.
+func (e DelegationBindingReason) Valid() bool {
+	switch e {
+	case DelegationBindingReasonStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DelegationBindingStatus.
+const (
+	DelegationBindingStatusDelegated    DelegationBindingStatus = "delegated"
+	DelegationBindingStatusNotDelegated DelegationBindingStatus = "not_delegated"
+	DelegationBindingStatusUnavailable  DelegationBindingStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DelegationBindingStatus enum.
+func (e DelegationBindingStatus) Valid() bool {
+	switch e {
+	case DelegationBindingStatusDelegated:
+		return true
+	case DelegationBindingStatusNotDelegated:
+		return true
+	case DelegationBindingStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DelegationHistoryItemKind.
+const (
+	DelegationHistoryItemKindCleared     DelegationHistoryItemKind = "cleared"
+	DelegationHistoryItemKindDelegated   DelegationHistoryItemKind = "delegated"
+	DelegationHistoryItemKindRedelegated DelegationHistoryItemKind = "redelegated"
+)
+
+// Valid indicates whether the value is a known member of the DelegationHistoryItemKind enum.
+func (e DelegationHistoryItemKind) Valid() bool {
+	switch e {
+	case DelegationHistoryItemKindCleared:
+		return true
+	case DelegationHistoryItemKindDelegated:
+		return true
+	case DelegationHistoryItemKindRedelegated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EIP7702AuthorizationApplicationStatus.
+const (
+	EIP7702AuthorizationApplicationStatusApplied     EIP7702AuthorizationApplicationStatus = "applied"
+	EIP7702AuthorizationApplicationStatusSkipped     EIP7702AuthorizationApplicationStatus = "skipped"
+	EIP7702AuthorizationApplicationStatusUnavailable EIP7702AuthorizationApplicationStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the EIP7702AuthorizationApplicationStatus enum.
+func (e EIP7702AuthorizationApplicationStatus) Valid() bool {
+	switch e {
+	case EIP7702AuthorizationApplicationStatusApplied:
+		return true
+	case EIP7702AuthorizationApplicationStatusSkipped:
+		return true
+	case EIP7702AuthorizationApplicationStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EIP7702AuthorizationSignatureStatus.
+const (
+	EIP7702AuthorizationSignatureStatusInvalid     EIP7702AuthorizationSignatureStatus = "invalid"
+	EIP7702AuthorizationSignatureStatusUnavailable EIP7702AuthorizationSignatureStatus = "unavailable"
+	EIP7702AuthorizationSignatureStatusValid       EIP7702AuthorizationSignatureStatus = "valid"
+)
+
+// Valid indicates whether the value is a known member of the EIP7702AuthorizationSignatureStatus enum.
+func (e EIP7702AuthorizationSignatureStatus) Valid() bool {
+	switch e {
+	case EIP7702AuthorizationSignatureStatusInvalid:
+		return true
+	case EIP7702AuthorizationSignatureStatusUnavailable:
+		return true
+	case EIP7702AuthorizationSignatureStatusValid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EIP7702AuthorizationSkipReason.
+const (
+	EIP7702AuthorizationSkipReasonAuthorityHasCode EIP7702AuthorizationSkipReason = "authority_has_code"
+	EIP7702AuthorizationSkipReasonInvalidSignature EIP7702AuthorizationSkipReason = "invalid_signature"
+	EIP7702AuthorizationSkipReasonNonceMismatch    EIP7702AuthorizationSkipReason = "nonce_mismatch"
+	EIP7702AuthorizationSkipReasonNonceOverflow    EIP7702AuthorizationSkipReason = "nonce_overflow"
+	EIP7702AuthorizationSkipReasonStateUnavailable EIP7702AuthorizationSkipReason = "state_unavailable"
+	EIP7702AuthorizationSkipReasonWrongChainId     EIP7702AuthorizationSkipReason = "wrong_chain_id"
+)
+
+// Valid indicates whether the value is a known member of the EIP7702AuthorizationSkipReason enum.
+func (e EIP7702AuthorizationSkipReason) Valid() bool {
+	switch e {
+	case EIP7702AuthorizationSkipReasonAuthorityHasCode:
+		return true
+	case EIP7702AuthorizationSkipReasonInvalidSignature:
+		return true
+	case EIP7702AuthorizationSkipReasonNonceMismatch:
+		return true
+	case EIP7702AuthorizationSkipReasonNonceOverflow:
+		return true
+	case EIP7702AuthorizationSkipReasonStateUnavailable:
+		return true
+	case EIP7702AuthorizationSkipReasonWrongChainId:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Finality.
 const (
 	FinalityFinalized Finality = "finalized"
@@ -1070,6 +1199,24 @@ func (e TraceCallDecodingConfidence) Valid() bool {
 	}
 }
 
+// Defines values for TraceCallDecodingKind.
+const (
+	Constructor TraceCallDecodingKind = "constructor"
+	Function    TraceCallDecodingKind = "function"
+)
+
+// Valid indicates whether the value is a known member of the TraceCallDecodingKind enum.
+func (e TraceCallDecodingKind) Valid() bool {
+	switch e {
+	case Constructor:
+		return true
+	case Function:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TraceCallDecodingOutputStatus.
 const (
 	TraceCallDecodingOutputStatusDecoded       TraceCallDecodingOutputStatus = "decoded"
@@ -1121,6 +1268,33 @@ func (e TraceCallDecodingStatus) Valid() bool {
 	case TraceCallDecodingStatusUnavailable:
 		return true
 	case TraceCallDecodingStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TraceExecutionResolution.
+const (
+	TraceExecutionResolutionDirect          TraceExecutionResolution = "direct"
+	TraceExecutionResolutionEip7702Delegate TraceExecutionResolution = "eip7702_delegate"
+	TraceExecutionResolutionEmpty           TraceExecutionResolution = "empty"
+	TraceExecutionResolutionNotApplicable   TraceExecutionResolution = "not_applicable"
+	TraceExecutionResolutionUnavailable     TraceExecutionResolution = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TraceExecutionResolution enum.
+func (e TraceExecutionResolution) Valid() bool {
+	switch e {
+	case TraceExecutionResolutionDirect:
+		return true
+	case TraceExecutionResolutionEip7702Delegate:
+		return true
+	case TraceExecutionResolutionEmpty:
+		return true
+	case TraceExecutionResolutionNotApplicable:
+		return true
+	case TraceExecutionResolutionUnavailable:
 		return true
 	default:
 		return false
@@ -1193,6 +1367,30 @@ func (e TransactionStatus) Valid() bool {
 	case TransactionStatusSuccess:
 		return true
 	case TransactionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionAuthorizationsState.
+const (
+	TransactionAuthorizationsStateComplete    TransactionAuthorizationsState = "complete"
+	TransactionAuthorizationsStateFailed      TransactionAuthorizationsState = "failed"
+	TransactionAuthorizationsStateMissing     TransactionAuthorizationsState = "missing"
+	TransactionAuthorizationsStateUnavailable TransactionAuthorizationsState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionAuthorizationsState enum.
+func (e TransactionAuthorizationsState) Valid() bool {
+	switch e {
+	case TransactionAuthorizationsStateComplete:
+		return true
+	case TransactionAuthorizationsStateFailed:
+		return true
+	case TransactionAuthorizationsStateMissing:
+		return true
+	case TransactionAuthorizationsStateUnavailable:
 		return true
 	default:
 		return false
@@ -1788,9 +1986,10 @@ type AddressSummary struct {
 	Balance Quantity `json:"balance"`
 
 	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash     *Hash        `json:"code_hash,omitempty"`
-	Completeness Completeness `json:"completeness"`
-	Name         *string      `json:"name,omitempty"`
+	CodeHash     *Hash              `json:"code_hash,omitempty"`
+	Completeness Completeness       `json:"completeness"`
+	Delegation   *DelegationBinding `json:"delegation,omitempty"`
+	Name         *string            `json:"name,omitempty"`
 
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Nonce  Quantity           `json:"nonce"`
@@ -2377,6 +2576,116 @@ type ContractArtifactTarget struct {
 
 // Decimal A canonical non-negative fixed-point decimal with at most 18 fractional digits.
 type Decimal = string
+
+// DelegationBinding defines model for DelegationBinding.
+type DelegationBinding struct {
+	// Authority A 20-byte address; responses use the EIP-55 checksum form.
+	Authority Address `json:"authority"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// Delegate A 20-byte address; responses use the EIP-55 checksum form.
+	Delegate *Address `json:"delegate,omitempty"`
+
+	// DelegateCodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	DelegateCodeHash *Hash                    `json:"delegate_code_hash,omitempty"`
+	Reason           *DelegationBindingReason `json:"reason,omitempty"`
+	Status           DelegationBindingStatus  `json:"status"`
+}
+
+// DelegationBindingReason defines model for DelegationBinding.Reason.
+type DelegationBindingReason string
+
+// DelegationBindingStatus defines model for DelegationBinding.Status.
+type DelegationBindingStatus string
+
+// DelegationBindingResponse defines model for DelegationBindingResponse.
+type DelegationBindingResponse struct {
+	Data DelegationBinding `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// DelegationHistoryItem defines model for DelegationHistoryItem.
+type DelegationHistoryItem struct {
+	// Authority A 20-byte address; responses use the EIP-55 checksum form.
+	Authority Address `json:"authority"`
+
+	// AuthorizationIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	AuthorizationIndex Quantity `json:"authorization_index"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// Delegate A 20-byte address; responses use the EIP-55 checksum form.
+	Delegate Address                   `json:"delegate"`
+	Kind     DelegationHistoryItemKind `json:"kind"`
+
+	// PreviousDelegate A 20-byte address; responses use the EIP-55 checksum form.
+	PreviousDelegate *Address `json:"previous_delegate,omitempty"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// DelegationHistoryItemKind defines model for DelegationHistoryItem.Kind.
+type DelegationHistoryItemKind string
+
+// DelegationHistoryResponse defines model for DelegationHistoryResponse.
+type DelegationHistoryResponse struct {
+	Data []DelegationHistoryItem `json:"data"`
+	Meta Meta                    `json:"meta"`
+}
+
+// EIP7702Authorization defines model for EIP7702Authorization.
+type EIP7702Authorization struct {
+	ApplicationStatus EIP7702AuthorizationApplicationStatus `json:"application_status"`
+
+	// Authority A 20-byte address; responses use the EIP-55 checksum form.
+	Authority *Address `json:"authority,omitempty"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity `json:"chain_id"`
+
+	// Delegate A 20-byte address; responses use the EIP-55 checksum form.
+	Delegate Address `json:"delegate"`
+
+	// Index A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Index Quantity `json:"index"`
+
+	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Nonce Quantity `json:"nonce"`
+
+	// R A 32-byte hash; responses use normalized lowercase hexadecimal.
+	R Hash `json:"r"`
+
+	// S A 32-byte hash; responses use normalized lowercase hexadecimal.
+	S               Hash                                `json:"s"`
+	SignatureStatus EIP7702AuthorizationSignatureStatus `json:"signature_status"`
+	SkipReason      *EIP7702AuthorizationSkipReason     `json:"skip_reason,omitempty"`
+	YParity         int                                 `json:"y_parity"`
+}
+
+// EIP7702AuthorizationApplicationStatus defines model for EIP7702Authorization.ApplicationStatus.
+type EIP7702AuthorizationApplicationStatus string
+
+// EIP7702AuthorizationSignatureStatus defines model for EIP7702Authorization.SignatureStatus.
+type EIP7702AuthorizationSignatureStatus string
+
+// EIP7702AuthorizationSkipReason defines model for EIP7702Authorization.SkipReason.
+type EIP7702AuthorizationSkipReason string
 
 // ERC20Balance defines model for ERC20Balance.
 type ERC20Balance struct {
@@ -3164,6 +3473,7 @@ type TraceCallDecoding struct {
 	Confidence   *TraceCallDecodingConfidence  `json:"confidence,omitempty"`
 	FunctionName *string                       `json:"function_name,omitempty"`
 	Inputs       []ABIValue                    `json:"inputs"`
+	Kind         TraceCallDecodingKind         `json:"kind"`
 	OutputStatus TraceCallDecodingOutputStatus `json:"output_status"`
 	Outputs      []ABIValue                    `json:"outputs"`
 	Revert       *TraceRevertDecoding          `json:"revert,omitempty"`
@@ -3175,11 +3485,30 @@ type TraceCallDecoding struct {
 // TraceCallDecodingConfidence defines model for TraceCallDecoding.Confidence.
 type TraceCallDecodingConfidence string
 
+// TraceCallDecodingKind defines model for TraceCallDecoding.Kind.
+type TraceCallDecodingKind string
+
 // TraceCallDecodingOutputStatus defines model for TraceCallDecoding.OutputStatus.
 type TraceCallDecodingOutputStatus string
 
 // TraceCallDecodingStatus defines model for TraceCallDecoding.Status.
 type TraceCallDecodingStatus string
+
+// TraceExecution defines model for TraceExecution.
+type TraceExecution struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash `json:"code_hash,omitempty"`
+
+	// ContextAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ContextAddress Address                  `json:"context_address"`
+	Resolution     TraceExecutionResolution `json:"resolution"`
+}
+
+// TraceExecutionResolution defines model for TraceExecution.Resolution.
+type TraceExecutionResolution string
 
 // TraceFrame defines model for TraceFrame.
 type TraceFrame struct {
@@ -3191,6 +3520,7 @@ type TraceFrame struct {
 	Depth          int                `json:"depth"`
 	DirectReverted bool               `json:"direct_reverted"`
 	Error          *string            `json:"error,omitempty"`
+	Execution      TraceExecution     `json:"execution"`
 
 	// From A 20-byte address; responses use the EIP-55 checksum form.
 	From *Address `json:"from,omitempty"`
@@ -3295,6 +3625,35 @@ type Transaction struct {
 
 // TransactionStatus defines model for Transaction.Status.
 type TransactionStatus string
+
+// TransactionAuthorizationResponse defines model for TransactionAuthorizationResponse.
+type TransactionAuthorizationResponse struct {
+	Data TransactionAuthorizations `json:"data"`
+	Meta Meta                      `json:"meta"`
+}
+
+// TransactionAuthorizations defines model for TransactionAuthorizations.
+type TransactionAuthorizations struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity                       `json:"chain_id"`
+	Items   []EIP7702Authorization         `json:"items"`
+	State   TransactionAuthorizationsState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionAuthorizationsState defines model for TransactionAuthorizations.State.
+type TransactionAuthorizationsState string
 
 // TransactionListResponse defines model for TransactionListResponse.
 type TransactionListResponse struct {
@@ -3813,6 +4172,21 @@ type GetAddressParams struct {
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }
 
+// GetAddressDelegationParams defines parameters for GetAddressDelegation.
+type GetAddressDelegationParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressDelegationsParams defines parameters for ListAddressDelegations.
+type ListAddressDelegationsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
 // ListAddressERC20BalancesParams defines parameters for ListAddressERC20Balances.
 type ListAddressERC20BalancesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -4059,6 +4433,15 @@ type ListTransactionsParams struct {
 
 // GetTransactionParams defines parameters for GetTransaction.
 type GetTransactionParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListTransactionAuthorizationsParams defines parameters for ListTransactionAuthorizations.
+type ListTransactionAuthorizationsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

@@ -483,6 +483,29 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /transactions/{hash}/authorizations:
+    get:
+      operationId: listTransactionAuthorizations
+      tags: [transactions, state]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Exact EIP-7702 authorization tuples and their transaction-time application outcomes.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionAuthorizationResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}:
     get:
       operationId: getAddress
@@ -500,6 +523,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddressResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/delegations:
+    get:
+      operationId: listAddressDelegations
+      tags: [addresses, state]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical EIP-7702 delegation, redelegation, and clearing history.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationHistoryResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/delegation:
+    get:
+      operationId: getAddressDelegation
+      tags: [addresses, state]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Writer-authoritative delegation binding at the exact canonical tip.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationBindingResponse"
         "402":
           $ref: "#/components/responses/PaymentRequired"
         default:
@@ -1656,7 +1723,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 26
+          maxItems: 29
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -1773,7 +1840,7 @@ components:
           description: Current gap-free core indexing readiness.
         trace:
           $ref: "#/components/schemas/StageState"
-          description: Published trace@2 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage.
+          description: Published trace@3 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage.
         metadata:
           $ref: "#/components/schemas/StageState"
         state:
@@ -2092,6 +2159,78 @@ components:
           $ref: "#/components/schemas/AddressOrigin"
         completeness:
           $ref: "#/components/schemas/Completeness"
+        delegation:
+          $ref: "#/components/schemas/DelegationBinding"
+    DelegationBinding:
+      type: object
+      additionalProperties: false
+      required: [authority, status, chain_id, block_number, block_hash]
+      properties:
+        authority:
+          $ref: "#/components/schemas/Address"
+        status:
+          type: string
+          enum: [delegated, not_delegated, unavailable]
+        delegate:
+          $ref: "#/components/schemas/Address"
+        delegate_code_hash:
+          $ref: "#/components/schemas/Hash"
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        reason:
+          type: string
+          enum: [state_unavailable]
+    DelegationBindingResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DelegationBinding"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    DelegationHistoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        [authority, kind, delegate, block_number, block_hash, transaction_hash,
+         transaction_index, authorization_index]
+      properties:
+        authority:
+          $ref: "#/components/schemas/Address"
+        kind:
+          type: string
+          enum: [delegated, redelegated, cleared]
+        delegate:
+          $ref: "#/components/schemas/Address"
+        previous_delegate:
+          $ref: "#/components/schemas/Address"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        authorization_index:
+          $ref: "#/components/schemas/Quantity"
+    DelegationHistoryResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/DelegationHistoryItem"
+        meta:
+          $ref: "#/components/schemas/Meta"
     AddressOrigin:
       type: object
       required: [kind, state]
@@ -2544,7 +2683,7 @@ components:
           type: boolean
     TraceFrame:
       type: object
-      required: [path, parent_path, depth, call_type, direct_reverted, reverted]
+      required: [path, parent_path, depth, call_type, direct_reverted, reverted, execution]
       properties:
         path:
           type: array
@@ -2585,8 +2724,24 @@ components:
           type: boolean
         reverted:
           type: boolean
+        execution:
+          $ref: "#/components/schemas/TraceExecution"
         decoding:
           $ref: "#/components/schemas/TraceCallDecoding"
+    TraceExecution:
+      type: object
+      additionalProperties: false
+      required: [context_address, resolution]
+      properties:
+        context_address:
+          $ref: "#/components/schemas/Address"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        resolution:
+          type: string
+          enum: [direct, eip7702_delegate, empty, unavailable, not_applicable]
     ABIValue:
       type: object
       additionalProperties: false
@@ -2647,8 +2802,11 @@ components:
     TraceCallDecoding:
       type: object
       additionalProperties: false
-      required: [status, inputs, output_status, outputs, candidates]
+      required: [kind, status, inputs, output_status, outputs, candidates]
       properties:
+        kind:
+          type: string
+          enum: [function, constructor]
         status:
           type: string
           enum: [decoded, ambiguous, unknown, malformed, unavailable]
@@ -2974,6 +3132,52 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/TransactionStateChange"
+    EIP7702Authorization:
+      type: object
+      additionalProperties: false
+      required:
+        [index, chain_id, nonce, delegate, y_parity, r, s,
+         signature_status, application_status]
+      properties:
+        index:
+          $ref: "#/components/schemas/Quantity"
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        nonce:
+          $ref: "#/components/schemas/Quantity"
+        delegate:
+          $ref: "#/components/schemas/Address"
+        y_parity:
+          type: integer
+          minimum: 0
+          maximum: 1
+        r:
+          $ref: "#/components/schemas/Hash"
+        s:
+          $ref: "#/components/schemas/Hash"
+        authority:
+          $ref: "#/components/schemas/Address"
+        signature_status:
+          type: string
+          enum: [valid, invalid, unavailable]
+        application_status:
+          type: string
+          enum: [applied, skipped, unavailable]
+        skip_reason:
+          type: string
+          enum:
+            [wrong_chain_id, nonce_overflow, invalid_signature,
+             authority_has_code, nonce_mismatch, state_unavailable]
+    TransactionAuthorizations:
+      allOf:
+        - $ref: "#/components/schemas/TransactionSubresourceIdentity"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/EIP7702Authorization"
     SearchResult:
       type: object
       required: [kind, key, label, rank]
@@ -4267,6 +4471,14 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/TransactionStateChanges"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionAuthorizationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionAuthorizations"
         meta:
           $ref: "#/components/schemas/Meta"
     SearchResponse:

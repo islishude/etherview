@@ -21,6 +21,7 @@ type ABIRegistry struct {
 }
 
 type abiCandidateSet struct {
+	constructors    []abiEntry
 	functions       map[[4]byte][]abiEntry
 	errors          map[[4]byte][]abiEntry
 	events          map[common.Hash][]abiEntry
@@ -73,6 +74,8 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		entry.sourceAddress = binding.SourceAddress
 		entry.sourceCodeHash = binding.SourceCodeHash
 		switch entry.kind {
+		case ABIKindConstructor:
+			candidates.constructors = appendUniqueABIEntry(candidates.constructors, entry)
 		case ABIKindFunction:
 			candidates.functions[entry.selector] = appendUniqueABIEntry(candidates.functions[entry.selector], entry)
 		case ABIKindError:
@@ -86,6 +89,52 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		}
 	}
 	return nil
+}
+
+func (registry *ABIRegistry) DecodeConstructor(identity ABIIdentity, arguments []byte) DecodeResult {
+	if registry == nil {
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindConstructor, Warning: "no ABI registry"}
+	}
+	if err := identity.validate(); err != nil {
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindConstructor, Warning: err.Error()}
+	}
+	registry.mu.RLock()
+	candidates := registry.bindings[identity]
+	var entries []abiEntry
+	if candidates != nil {
+		entries = append(entries, candidates.constructors...)
+	}
+	registry.mu.RUnlock()
+	if len(entries) == 0 {
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindConstructor, Warning: "verified ABI has no constructor"}
+	}
+	return registry.decodeConstructors(entries, arguments)
+}
+
+func (registry *ABIRegistry) decodeConstructors(entries []abiEntry, payload []byte) DecodeResult {
+	var decoded []decodedABICandidate
+	var failures []string
+	budget := newABIDecodeBudget(registry.limits)
+	for _, entry := range entries {
+		values, err := decodeABIValuesWithBudget(entry.types, payload, registry.limits, budget)
+		if err != nil {
+			failures = append(failures, entry.signature+": "+err.Error())
+			if errors.Is(err, ErrABIDecodeLimit) {
+				return DecodeResult{Status: DecodeMalformed, Kind: ABIKindConstructor, Candidates: uniqueSignatures(entries), Warning: strings.Join(failures, "; ")}
+			}
+			continue
+		}
+		arguments := make([]DecodedArgument, len(values))
+		for index, value := range values {
+			arguments[index] = DecodedArgument{Name: entry.inputs[index].Name, Type: entry.inputs[index].Type, Value: value}
+		}
+		decoded = append(decoded, decodedABICandidate{entry: entry, arguments: arguments})
+	}
+	if len(decoded) == 0 {
+		return DecodeResult{Status: DecodeMalformed, Kind: ABIKindConstructor, Candidates: uniqueSignatures(entries), Warning: strings.Join(failures, "; ")}
+	}
+	result, _ := chooseDecodedABICandidate(ABIKindConstructor, decoded)
+	return result
 }
 
 func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
@@ -182,17 +231,47 @@ func (registry *ABIRegistry) DecodeRevert(identity ABIIdentity, data []byte) Dec
 	}
 	var selector [4]byte
 	copy(selector[:], data[:4])
-	if selector == SignatureSelector("Error(string)") {
-		entry := builtinEntry(ABIKindError, "Error", []abiParameter{{Name: "message", Type: "string"}}, registry.limits)
-		return registry.decodeCallables(ABIKindError, selector, []abiEntry{entry}, data[4:])
-	}
-	if selector == SignatureSelector("Panic(uint256)") {
-		entry := builtinEntry(ABIKindError, "Panic", []abiParameter{{Name: "code", Type: "uint256"}}, registry.limits)
-		return registry.decodeCallables(ABIKindError, selector, []abiEntry{entry}, data[4:])
+	if builtin := registry.decodeBuiltinRevert(selector, data[4:]); builtin != nil {
+		return *builtin
 	}
 	entries := registry.callableEntries(identity, ABIKindError, selector)
 	result, _ := registry.decodeCallablesWithEntry(ABIKindError, selector, entries, data[4:])
 	return result
+}
+
+// DecodeBuiltinRevert decodes Solidity's protocol-stable Error and Panic
+// payloads without requiring a contract identity. Custom errors deliberately
+// remain bound to an exact ABI candidate.
+func (registry *ABIRegistry) DecodeBuiltinRevert(data []byte) DecodeResult {
+	if registry == nil {
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindError, Warning: "no ABI registry"}
+	}
+	if len(data) == 0 {
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindError, Warning: "empty revert data"}
+	}
+	if len(data) < 4 {
+		return DecodeResult{Status: DecodeMalformed, Kind: ABIKindError, Warning: "revert data has no complete selector"}
+	}
+	var selector [4]byte
+	copy(selector[:], data[:4])
+	if builtin := registry.decodeBuiltinRevert(selector, data[4:]); builtin != nil {
+		return *builtin
+	}
+	return DecodeResult{Status: DecodeUnknown, Kind: ABIKindError, Warning: "revert selector has no builtin ABI"}
+}
+
+func (registry *ABIRegistry) decodeBuiltinRevert(selector [4]byte, payload []byte) *DecodeResult {
+	var entry abiEntry
+	switch selector {
+	case SignatureSelector("Error(string)"):
+		entry = builtinEntry(ABIKindError, "Error", []abiParameter{{Name: "message", Type: "string"}}, registry.limits)
+	case SignatureSelector("Panic(uint256)"):
+		entry = builtinEntry(ABIKindError, "Panic", []abiParameter{{Name: "code", Type: "uint256"}}, registry.limits)
+	default:
+		return nil
+	}
+	result := registry.decodeCallables(ABIKindError, selector, []abiEntry{entry}, payload)
+	return &result
 }
 
 func builtinEntry(kind ABIKind, name string, inputs []abiParameter, limits DecodeLimits) abiEntry {

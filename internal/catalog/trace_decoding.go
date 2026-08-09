@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/enrich"
 )
@@ -63,6 +65,9 @@ func (catalog *Postgres) decorateTraceFrames(
 	identity traceIdentity,
 	trace *TransactionTrace,
 ) error {
+	if err := catalog.attachTraceExecutions(ctx, tx, identity, trace); err != nil {
+		return err
+	}
 	blockNumber, err := strconv.ParseUint(identity.BlockNumber, 10, 64)
 	if err != nil {
 		return ErrCorruptData
@@ -78,8 +83,12 @@ func (catalog *Postgres) decorateTraceFrames(
 	needsABI := false
 	for index := range trace.Frames {
 		frame := &trace.Frames[index]
-		if callLikeTraceType(frame.CallType) && frame.To != nil && frame.Input != nil &&
+		if callLikeTraceType(frame.CallType) && frame.Execution != nil && frame.Execution.Address != "" && frame.Input != nil &&
 			(len(*frame.Input) >= 10 || frame.DirectReverted && frame.Output != nil && len(*frame.Output) >= 10) {
+			needsABI = true
+			break
+		}
+		if (frame.CallType == "CREATE" || frame.CallType == "CREATE2") && frame.CreatedAddress != nil && frame.Input != nil {
 			needsABI = true
 			break
 		}
@@ -94,13 +103,19 @@ func (catalog *Postgres) decorateTraceFrames(
 	loaded := make(map[common.Address]traceRegistryResult)
 	for index := range trace.Frames {
 		frame := &trace.Frames[index]
+		if frame.CallType == "CREATE" || frame.CallType == "CREATE2" {
+			if err := catalog.decorateConstructorFrame(ctx, tx, identity, frame, persisted); err != nil {
+				return err
+			}
+			continue
+		}
 		if !callLikeTraceType(frame.CallType) {
 			continue
 		}
 		frame.Decoding = unavailableTraceCallDecoding(frame.DirectReverted, "no ABI is available for the call target at this block")
-		if frame.To == nil || frame.Input == nil {
+		if frame.Execution == nil || frame.Execution.Address == "" || frame.Input == nil {
 			frame.Decoding.Status = "unknown"
-			frame.Decoding.Warning = "call frame has no decodable target or calldata"
+			frame.Decoding.Warning = "call frame has no exact execution code identity or calldata"
 			continue
 		}
 		if len(*frame.Input) < 10 && (!frame.DirectReverted || frame.Output == nil || len(*frame.Output) < 10) {
@@ -108,7 +123,7 @@ func (catalog *Postgres) decorateTraceFrames(
 			frame.Decoding.Warning = "calldata has no function selector"
 			continue
 		}
-		targetBytes, err := decodeFixedHex(*frame.To, common.AddressLength)
+		targetBytes, err := decodeFixedHex(frame.Execution.Address, common.AddressLength)
 		if err != nil {
 			return ErrCorruptData
 		}
@@ -166,6 +181,250 @@ func (catalog *Postgres) decorateTraceFrames(
 		}
 	}
 	return nil
+}
+
+func (catalog *Postgres) decorateConstructorFrame(
+	ctx context.Context, tx *sql.Tx, identity traceIdentity, frame *TraceFrame,
+	persisted map[string]*persistedTraceDecoding,
+) error {
+	frame.Decoding = &TraceCallDecoding{
+		Kind: "constructor", Status: "unavailable", Inputs: []ABIValue{},
+		OutputStatus: string(enrich.ReturnNotApplicable), Outputs: []ABIValue{},
+		Candidates: []string{}, Warning: "no exact verified creation match is available",
+	}
+	if frame.DirectReverted && frame.Output != nil {
+		output, err := decodeTraceData(*frame.Output)
+		if err != nil {
+			return ErrCorruptData
+		}
+		frame.Decoding.Revert = publicTraceRevert(enrich.NewABIRegistry().DecodeBuiltinRevert(output))
+	}
+	if frame.CreatedAddress == nil || frame.Input == nil {
+		return nil
+	}
+	targetBytes, err := decodeFixedHex(*frame.CreatedAddress, common.AddressLength)
+	if err != nil {
+		return ErrCorruptData
+	}
+	target := common.BytesToAddress(targetBytes)
+	path := tracePathText(frame.Path)
+	if stored := persisted[path+"\x00"+"trace_constructor"]; stored != nil && stored.strongFor(target) {
+		decoding, err := stored.publicConstructor()
+		if err != nil {
+			return err
+		}
+		frame.Decoding = decoding
+		return nil
+	}
+	blockNumber, err := strconv.ParseUint(identity.BlockNumber, 10, 64)
+	if err != nil {
+		return ErrCorruptData
+	}
+	blockHash, err := decodeFixedHex(identity.BlockHash, common.HashLength)
+	if err != nil {
+		return ErrCorruptData
+	}
+	registry, abiIdentity, arguments, warning, err := loadExactConstructorRegistry(
+		ctx, tx, identity.ChainID, blockNumber, blockHash, target, *frame.Input,
+	)
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		frame.Decoding.Status = "malformed"
+		frame.Decoding.Warning = warning
+		return nil
+	}
+	if registry == nil {
+		return nil
+	}
+	if frame.DirectReverted && frame.Output != nil {
+		output, err := decodeTraceData(*frame.Output)
+		if err != nil {
+			return ErrCorruptData
+		}
+		frame.Decoding.Revert = publicTraceRevert(registry.DecodeRevert(abiIdentity, output))
+	}
+	if frame.Reverted {
+		return nil
+	}
+	decoded := registry.DecodeConstructor(abiIdentity, arguments)
+	revert := frame.Decoding.Revert
+	frame.Decoding = publicTraceConstructor(decoded)
+	frame.Decoding.Revert = revert
+	return nil
+}
+
+func loadExactConstructorRegistry(
+	ctx context.Context, tx *sql.Tx, chainID string, blockNumber uint64,
+	blockHash []byte, address common.Address, initcode string,
+) (*enrich.ABIRegistry, enrich.ABIIdentity, []byte, string, error) {
+	var codeHash, abiJSON, arguments []byte
+	var validFromText string
+	var validTo sql.NullString
+	err := tx.QueryRowContext(ctx, exactConstructorArtifactSQL,
+		chainID, strconv.FormatUint(blockNumber, 10), blockHash, address[:],
+	).Scan(&codeHash, &abiJSON, &arguments, &validFromText, &validTo)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, enrich.ABIIdentity{}, nil, "", nil
+	}
+	if err != nil {
+		return nil, enrich.ABIIdentity{}, nil, "", fmt.Errorf("query exact constructor artifact: %w", err)
+	}
+	if len(codeHash) != common.HashLength {
+		return nil, enrich.ABIIdentity{}, nil, "", ErrCorruptData
+	}
+	input, err := decodeTraceData(initcode)
+	if err != nil {
+		return nil, enrich.ABIIdentity{}, nil, "", ErrCorruptData
+	}
+	if !bytes.HasSuffix(input, arguments) {
+		return nil, enrich.ABIIdentity{}, nil, "verified constructor arguments are not an exact initcode suffix", nil
+	}
+	if err := validateReadTimeConstructorArguments(abiJSON, arguments); err != nil {
+		return nil, enrich.ABIIdentity{}, nil, "verified constructor arguments do not re-encode exactly", nil
+	}
+	validFrom, err := strconv.ParseUint(validFromText, 10, 64)
+	if err != nil {
+		return nil, enrich.ABIIdentity{}, nil, "", ErrCorruptData
+	}
+	var validToBlock *uint64
+	if validTo.Valid {
+		value, err := strconv.ParseUint(validTo.String, 10, 64)
+		if err != nil {
+			return nil, enrich.ABIIdentity{}, nil, "", ErrCorruptData
+		}
+		validToBlock = &value
+	}
+	abiIdentity := enrich.ABIIdentity{
+		ChainID: chainID, Address: address, CodeHash: common.BytesToHash(codeHash),
+		BlockNumber: blockNumber, BlockHash: common.BytesToHash(blockHash),
+	}
+	registry := enrich.NewABIRegistry()
+	if err := registry.RegisterJSON(enrich.ABIBinding{
+		Identity: abiIdentity, Source: enrich.ABISourceVerified,
+		SourceAddress: address, SourceCodeHash: abiIdentity.CodeHash,
+		ValidFromBlock: validFrom, ValidToBlock: validToBlock,
+	}, abiJSON); err != nil {
+		return nil, enrich.ABIIdentity{}, nil, "verified constructor ABI is malformed", nil
+	}
+	return registry, abiIdentity, arguments, "", nil
+}
+
+func validateReadTimeConstructorArguments(document, arguments []byte) error {
+	parsed, err := gethabi.JSON(strings.NewReader(string(document)))
+	if err != nil {
+		return err
+	}
+	values, err := parsed.Constructor.Inputs.Unpack(arguments)
+	if err != nil {
+		return err
+	}
+	reencoded, err := parsed.Constructor.Inputs.Pack(values...)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(reencoded, arguments) {
+		return errors.New("constructor argument round trip mismatch")
+	}
+	return nil
+}
+
+func publicTraceConstructor(decoded enrich.DecodeResult) *TraceCallDecoding {
+	result := &TraceCallDecoding{
+		Kind: "constructor", Status: string(decoded.Status), FunctionName: decoded.Name,
+		Signature: decoded.Signature, Inputs: publicABIValues(decoded.Arguments),
+		OutputStatus: string(enrich.ReturnNotApplicable), Outputs: []ABIValue{},
+		Candidates: append([]string(nil), decoded.Candidates...),
+		ABISource:  publicDecodeSource(decoded), Confidence: string(decoded.Confidence),
+		Warning: decoded.Warning,
+	}
+	if decoded.Status == enrich.DecodeAmbiguous {
+		result.FunctionName, result.Signature = "", ""
+		result.Inputs, result.ABISource = []ABIValue{}, nil
+	}
+	return result
+}
+
+func (catalog *Postgres) attachTraceExecutions(
+	ctx context.Context, tx *sql.Tx, identity traceIdentity, trace *TransactionTrace,
+) error {
+	needsProjection := false
+	for index := range trace.Frames {
+		if trace.Frames[index].Execution == nil {
+			needsProjection = true
+			break
+		}
+	}
+	if !needsProjection {
+		return nil
+	}
+	rows, err := tx.QueryContext(ctx, transactionTraceExecutionSQL,
+		identity.ChainID, identity.BlockNumber, mustDecodeHash(identity.BlockHash),
+		mustDecodeHash(identity.TransactionHash), catalog.options.MaxTraceFrames+1,
+	)
+	if err != nil {
+		return fmt.Errorf("query trace execution projections: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	byPath := make(map[string]*TraceExecution)
+	for rows.Next() {
+		var path, resolution string
+		var contextAddress, executionAddress, codeHash []byte
+		if err := rows.Scan(&path, &contextAddress, &executionAddress, &codeHash, &resolution); err != nil {
+			return fmt.Errorf("scan trace execution projection: %w", err)
+		}
+		context, err := optionalChecksumAddress(contextAddress)
+		if err != nil || context == nil {
+			return ErrCorruptData
+		}
+		item := &TraceExecution{ContextAddress: *context, Resolution: resolution}
+		if len(executionAddress) != 0 {
+			address, err := optionalChecksumAddress(executionAddress)
+			if err != nil || address == nil {
+				return ErrCorruptData
+			}
+			item.Address = *address
+		}
+		if len(codeHash) != 0 {
+			item.CodeHash, err = lowerHex(codeHash)
+			if err != nil {
+				return ErrCorruptData
+			}
+		}
+		if !validTraceExecution(item) {
+			return ErrCorruptData
+		}
+		byPath[path] = item
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate trace execution projections: %w", err)
+	}
+	for index := range trace.Frames {
+		path := tracePathText(trace.Frames[index].Path)
+		item, exists := byPath[path]
+		if !exists {
+			return ErrCorruptData
+		}
+		trace.Frames[index].Execution = item
+	}
+	return nil
+}
+
+func validTraceExecution(value *TraceExecution) bool {
+	if value == nil || value.ContextAddress == "" {
+		return false
+	}
+	switch value.Resolution {
+	case "direct", "eip7702_delegate":
+		return value.Address != "" && value.CodeHash != ""
+	case "empty", "not_applicable":
+		return value.Address == "" && value.CodeHash == ""
+	case "unavailable":
+		return value.CodeHash == ""
+	default:
+		return false
+	}
 }
 
 func callLikeTraceType(value string) bool {
@@ -275,6 +534,7 @@ func (value *persistedTraceDecoding) publicCall(directReverted bool) (*TraceCall
 		return nil, err
 	}
 	result := &TraceCallDecoding{
+		Kind:   "function",
 		Status: value.status.String, Signature: value.signature.String,
 		Inputs: inputs, Outputs: outputs, Candidates: candidates,
 		OutputStatus: value.returnStatus.String, Confidence: value.confidence.String,
@@ -296,6 +556,32 @@ func (value *persistedTraceDecoding) publicCall(directReverted bool) (*TraceCall
 			result.OutputStatus = string(enrich.ReturnUnknown)
 		}
 		result.ABISource = nil
+	}
+	return result, nil
+}
+
+func (value *persistedTraceDecoding) publicConstructor() (*TraceCallDecoding, error) {
+	inputs, err := decodeStoredABIValues(value.arguments)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := decodeStoredCandidates(value.candidates)
+	if err != nil {
+		return nil, err
+	}
+	result := &TraceCallDecoding{
+		Kind: "constructor", Status: value.status.String,
+		FunctionName: "constructor", Signature: value.signature.String,
+		Inputs: inputs, OutputStatus: string(enrich.ReturnNotApplicable), Outputs: []ABIValue{},
+		Candidates: candidates, Confidence: value.confidence.String, Warning: value.warning.String,
+	}
+	result.ABISource, err = value.publicSource()
+	if err != nil {
+		return nil, err
+	}
+	if result.Status == string(enrich.DecodeAmbiguous) {
+		result.FunctionName, result.Signature = "", ""
+		result.Inputs, result.ABISource = []ABIValue{}, nil
 	}
 	return result, nil
 }
@@ -395,6 +681,7 @@ func publicTraceCall(decoded enrich.CallDecodeResult) *TraceCallDecoding {
 		}
 	}
 	result := &TraceCallDecoding{
+		Kind:   "function",
 		Status: string(decoded.Input.Status), FunctionName: decoded.Input.Name,
 		Signature: decoded.Input.Signature, Inputs: publicABIValues(decoded.Input.Arguments),
 		OutputStatus: string(decoded.ReturnStatus), Outputs: publicABIValues(decoded.Returns),
@@ -451,6 +738,7 @@ func unavailableTraceCallDecoding(directReverted bool, warning string) *TraceCal
 		outputStatus = string(enrich.ReturnNotApplicable)
 	}
 	result := &TraceCallDecoding{
+		Kind:   "function",
 		Status: "unavailable", Inputs: []ABIValue{}, OutputStatus: outputStatus,
 		Outputs: []ABIValue{}, Candidates: []string{}, Warning: warning,
 	}
@@ -487,7 +775,7 @@ FROM abi_decodings AS decoding
 WHERE decoding.chain_id = $1::numeric
   AND decoding.block_hash = $2
   AND decoding.transaction_hash = $3
-  AND decoding.object_kind IN ('trace_calldata', 'trace_revert')
+  AND decoding.object_kind IN ('trace_calldata', 'trace_constructor', 'trace_revert')
   AND decoding.canonical
   AND EXISTS (
       SELECT 1
@@ -495,7 +783,43 @@ WHERE decoding.chain_id = $1::numeric
       WHERE published.chain_id = decoding.chain_id
         AND published.block_hash = decoding.block_hash
         AND published.stage = 'abi'
-        AND published.stage_version = 2
+        AND published.stage_version = 3
         AND published.state = 'complete'
   )
 ORDER BY decoding.object_index, decoding.object_kind`
+
+const exactConstructorArtifactSQL = `
+SELECT verified.code_hash, verified.abi, verified.constructor_arguments,
+       verified.valid_from_block::text, verified.valid_to_block::text
+FROM contract_code_observations AS code
+JOIN verified_contracts AS verified
+  ON verified.chain_id = code.chain_id
+ AND verified.address = code.address
+ AND verified.code_hash = code.code_hash
+ AND verified.valid_from_block <= $2::numeric
+ AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $2::numeric)
+JOIN verification_results AS result
+  ON result.job_id = verified.verification_job_id
+ AND result.request_digest = verified.request_digest
+ AND result.outcome_kind = 'verification_success'
+ AND result.outcome->'creation_match'->>'match_type' = 'full'
+WHERE code.chain_id = $1::numeric
+  AND code.block_number = $2::numeric
+  AND code.block_hash = $3
+  AND code.address = $4
+  AND code.canonical
+  AND verified.abi IS NOT NULL
+ORDER BY verified.valid_from_block DESC
+LIMIT 1`
+
+const transactionTraceExecutionSQL = `
+SELECT trace_path, COALESCE(to_address, created_address, from_address), execution_address,
+       execution_code_hash, execution_resolution
+FROM normalized_traces
+WHERE chain_id = $1::numeric
+  AND block_number = $2::numeric
+  AND block_hash = $3
+  AND transaction_hash = $4
+  AND canonical
+ORDER BY depth, trace_path
+LIMIT $5`

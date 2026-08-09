@@ -5,8 +5,10 @@ import { WalletBoundaryError } from "@/wallet/eip6963";
 
 import {
   assertFreshInteractionFence,
+  assertFreshDelegationFence,
   assertInteractionFunctionAllowed,
   buildContractInteractionTargets,
+  buildDelegatedEOAInteractionTarget,
   captureInteractionFence,
   type ContractInteractionTarget,
   InteractionFenceError,
@@ -43,6 +45,33 @@ const wallet: WalletInteractionSession = Object.freeze({
 });
 
 describe("contract interaction targets", () => {
+  it("keeps delegated EOA transactions on the authority and fences the full tip binding", async () => {
+    const binding = {
+      authority: PROXY,
+      status: "delegated" as const,
+      delegate: IMPLEMENTATION,
+      delegate_code_hash: IMPLEMENTATION_HASH,
+      chain_id: "31337",
+      block_number: "12",
+      block_hash: BLOCK_HASH,
+    };
+    const target = buildDelegatedEOAInteractionTarget(PROXY, binding);
+    expect(target).toMatchObject({
+      kind: "delegated_eoa",
+      transactionTarget: PROXY,
+      abiAddress: IMPLEMENTATION,
+      abiCodeHash: IMPLEMENTATION_HASH,
+    });
+    const fence = captureInteractionFence(target, "31337", wallet);
+    expect(assertFreshDelegationFence(fence, wallet, binding)).toEqual(target);
+
+    await expect(refreshInteractionTarget({
+      fence,
+      getCurrentWallet: () => wallet,
+      loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
+    })).rejects.toMatchObject({ code: "BINDING_CHANGED" });
+  });
+
   it("opens ordinary implementation interaction without exposing verified management", () => {
     const unverified = proxyDetails("uups", {
       status: "detected_unverified",

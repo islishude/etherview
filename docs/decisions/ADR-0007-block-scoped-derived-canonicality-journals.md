@@ -19,8 +19,8 @@ arbitrary executable SQL would create a second migration and security surface.
 
 ## Decision
 
-- Every successful or stale production `proxy@2`, `abi@2`, `token@1`,
-  `stats@3`, `trace@2`, and `state_diff@1`
+- Every successful or stale production `proxy@2`, `abi@3`, `token@1`,
+  `stats@3`, `trace@3`, and `state_diff@2`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
 - The journal, `block_stage_results` row, and all output written by that stage
@@ -57,7 +57,8 @@ arbitrary executable SQL would create a second migration and security surface.
   `contract_code_observations` plus `proxy_observations`, `contract_abis` plus
   `abi_decodings`, `token_events` plus
   `token_balance_deltas`, `block_statistics`, `normalized_traces` plus
-  `trace_log_attributions`, or `transaction_state_changes`. It is
+  `trace_log_attributions`, or `transaction_state_changes` plus
+  `eip7702_authorizations` and `transaction_execution_code_resolutions`. It is
   descriptive, not executable, and never includes
   RPC/log/trace input or worker result details.
 - Journal canonicality is calculated inside the upsert from the exact
@@ -71,7 +72,7 @@ arbitrary executable SQL would create a second migration and security surface.
 - Public and aggregate readers continue to require both the canonical mapping
   and the derived row's canonical flag. A stage result on an orphan is not
   evidence that the replacement canonical block has enrichment output.
-- A `trace@2` completion for a block with transactions contains exactly one
+- A `trace@3` completion for a block with transactions contains exactly one
   normalized root per canonical transaction. The adapter binds trace API
   identity fields and the normalized root call to the stored core inclusion;
   an empty trace response is a failed source response, while a transaction
@@ -112,3 +113,8 @@ This replay-generation decision does not by itself merge a successful
 processor's output transaction with durable lease completion. Fencing that
 publication window, including a worker that continues after lease expiry, is
 the separate P20-T10 consistency boundary.
+
+Migration `0040` extends the `state_diff@2` journal with authorization and
+transaction execution-code relations; `trace@3` journals normalized frames and
+trace-log attribution. Reorg, replay, refresh, and cleanup therefore move these
+facts with their exact block hash.

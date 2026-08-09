@@ -309,7 +309,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -334,6 +334,20 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			uupsBindingSQL = migration.SQL
 		case "0036_proxy_history_epochs":
 			proxyHistoryEpochSQL = migration.SQL
+		case "0040_eip7702_delegated_accounts":
+			delegatedAccountsSQL = migration.SQL
+		}
+	}
+	for _, fragment := range []string{
+		"CREATE TABLE IF NOT EXISTS eip7702_authorizations",
+		"CREATE TABLE IF NOT EXISTS transaction_execution_code_resolutions",
+		"ADD COLUMN IF NOT EXISTS execution_address BYTEA",
+		"ADD COLUMN IF NOT EXISTS decoding_kind TEXT",
+		"'trace_constructor'",
+		"TRUNCATE TABLE proxy_interaction_coverage_ranges",
+	} {
+		if !strings.Contains(delegatedAccountsSQL, fragment) {
+			t.Errorf("delegated account migration missing %q", fragment)
 		}
 	}
 	for _, fragment := range []string{

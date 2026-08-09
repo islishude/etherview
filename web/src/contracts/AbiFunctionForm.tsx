@@ -35,6 +35,7 @@ import {
   type FormattedAbiOutput,
 } from "@/contracts/abi";
 import { getContractProxyResponse } from "@/contracts/proxy";
+import { getAddressDelegation } from "@/contracts/delegation";
 import {
   assertInteractionFunctionAllowed,
   captureInteractionFence,
@@ -269,6 +270,7 @@ function AbiFunctionCard({
           fence,
           getCurrentWallet: wallet.getActiveWallet,
           loadFreshProxy: getContractProxyResponse,
+          loadFreshDelegation: getAddressDelegation,
         });
         assertInteractionFunctionAllowed(freshTarget, entry.signature, write);
         const output = await wallet.readContract(
@@ -306,6 +308,7 @@ function AbiFunctionCard({
           fence,
           getCurrentWallet: wallet.getActiveWallet,
           loadFreshProxy: getContractProxyResponse,
+          loadFreshDelegation: getAddressDelegation,
           send: (freshTarget, chainID) => wallet.sendTransaction(
             {
               to: freshTarget.transactionTarget,
@@ -732,20 +735,34 @@ function interactionContext(
 	return JSON.stringify([
 		target.kind,
 		target.transactionTarget,
-		target.requiresFreshBinding ? [
-			target.bindingId ?? "",
-			target.proxyCodeHash,
-			target.abiAddress,
-			target.abiCodeHash ?? "",
-			target.beaconAddress ?? "",
-			target.beaconCodeHash ?? "",
-		] : "",
+		interactionBindingContext(target),
     chainID ?? "",
     wallet?.uuid ?? "",
     wallet?.account ?? "",
     wallet?.chainID ?? "",
     wallet?.revision ?? 0,
   ]);
+}
+
+function interactionBindingContext(target: ContractInteractionTarget): readonly string[] | string {
+	if (!target.requiresFreshBinding) return "";
+	if (target.kind === "delegated_eoa") {
+		return [
+			target.delegationChainID,
+			target.delegationBlockNumber,
+			target.delegationBlockHash,
+			target.abiAddress,
+			target.abiCodeHash ?? "",
+		];
+	}
+	return [
+		target.bindingId ?? "",
+		target.proxyCodeHash,
+		target.abiAddress,
+		target.abiCodeHash ?? "",
+		target.beaconAddress ?? "",
+		target.beaconCodeHash ?? "",
+	];
 }
 
 function isHighRiskFunction(signature: string): boolean {

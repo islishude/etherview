@@ -33,8 +33,10 @@ func (stage Stage) Version() int {
 	case StageStats:
 		return 3
 	case StageTrace:
+		return 3
+	case StageStateDiff:
 		return 2
-	case StageCore, StageToken, StageStateDiff:
+	case StageCore, StageToken:
 		return 1
 	default:
 		return 0
@@ -348,7 +350,15 @@ type TraceFrame struct {
 	Error          *string
 	DirectReverted bool
 	Reverted       bool
+	Execution      *TraceExecution
 	Decoding       *TraceCallDecoding
+}
+
+type TraceExecution struct {
+	ContextAddress string
+	Address        string
+	CodeHash       string
+	Resolution     string
 }
 
 type ABIValue struct {
@@ -366,6 +376,7 @@ type ABISource struct {
 type TransactionLogABISource = ABISource
 
 type TraceCallDecoding struct {
+	Kind         string
 	Status       string
 	FunctionName string
 	Signature    string
@@ -474,6 +485,51 @@ type TransactionStateChangePage struct {
 	Identity   TransactionResourceIdentity
 	Items      []TransactionStateChange
 	NextCursor string
+}
+
+type EIP7702Authorization struct {
+	Index             string
+	ChainID           string
+	Nonce             string
+	Delegate          string
+	YParity           int
+	R                 string
+	S                 string
+	Authority         *string
+	SignatureStatus   string
+	ApplicationStatus string
+	SkipReason        *string
+}
+
+type TransactionAuthorizationPage struct {
+	Identity   TransactionResourceIdentity
+	Items      []EIP7702Authorization
+	NextCursor string
+}
+
+type AddressDelegationRequest struct {
+	ChainID string
+	Address string
+	Cursor  string
+	Limit   int
+}
+
+type DelegationHistoryItem struct {
+	Authority          string
+	Kind               string
+	Delegate           string
+	PreviousDelegate   *string
+	BlockNumber        string
+	BlockHash          string
+	TransactionHash    string
+	TransactionIndex   string
+	AuthorizationIndex string
+}
+
+type DelegationHistoryPage struct {
+	Items      []DelegationHistoryItem
+	NextCursor string
+	Snapshot   Snapshot
 }
 
 type Reader interface {

@@ -388,13 +388,15 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 // requestInvalidatedEvidenceDependentsTx withdraws downstream publications in
 // the same transaction that withdraws an evidence-producing stage generation.
 // Trace is a direct source for both immutable-args Clone authentication and ABI
-// observations. A repeated invalidation for the same source generation is
-// idempotent. StateDiff is deliberately excluded: exact proxy observations are
-// independently proven by fixed-block state calls, while public history
-// coverage is aggregated from the current stage publications at read time.
+// observations. StateDiff owns the transaction-time EIP-7702 execution-code
+// evidence consumed by Trace, so withdrawing it first withdraws Trace; Trace
+// then fans out to Proxy and ABI. Repeated invalidation for the same source
+// generation is idempotent.
 func requestInvalidatedEvidenceDependentsTx(ctx context.Context, tx *sql.Tx, source Job) error {
 	var dependents []StageID
 	switch source.Stage {
+	case StateDiffStage:
+		dependents = []StageID{TraceStage}
 	case TraceStage:
 		dependents = []StageID{ProxyStage, ABIStage}
 	default:
@@ -650,8 +652,8 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 		}
 	}
 
-	selectQuery := strings.Replace(selectClaimCandidateIDSQL, "/*STAGES*/", claimCandidatePredicate, 1)
-	claimQuery := strings.Replace(claimCandidateJobSQL, "/*STAGES*/", claimLockedPredicate, 1)
+	selectQuery := bindCurrentStageVersions(strings.Replace(selectClaimCandidateIDSQL, "/*STAGES*/", claimCandidatePredicate, 1))
+	claimQuery := bindCurrentStageVersions(strings.Replace(claimCandidateJobSQL, "/*STAGES*/", claimLockedPredicate, 1))
 	for range 32 {
 		tx, beginErr := queue.db.BeginTx(ctx, nil)
 		if beginErr != nil {
@@ -731,7 +733,7 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return false, err
 	}
-	candidateQuery := strings.Replace(selectExhaustedCandidateIDSQL, "/*STAGES*/", candidatePredicate, 1)
+	candidateQuery := bindCurrentStageVersions(strings.Replace(selectExhaustedCandidateIDSQL, "/*STAGES*/", candidatePredicate, 1))
 	var candidateID int64
 	if err := tx.QueryRowContext(ctx, candidateQuery, stageArguments...).Scan(&candidateID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -742,7 +744,7 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := lockPublicationJobTx(ctx, tx, candidateID); err != nil {
 		return false, err
 	}
-	lockedQuery := strings.Replace(selectExhaustedJobSQL, "/*STAGES*/", lockedPredicate, 1)
+	lockedQuery := bindCurrentStageVersions(strings.Replace(selectExhaustedJobSQL, "/*STAGES*/", lockedPredicate, 1))
 	arguments := append([]any{candidateID}, stageArguments...)
 	job, reason, err := scanExhaustedJob(tx.QueryRowContext(ctx, lockedQuery, arguments...))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -788,6 +790,10 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 		return false, fmt.Errorf("commit exhausted enrichment job: %w", err)
 	}
 	return true, nil
+}
+
+func bindCurrentStageVersions(query string) string {
+	return strings.ReplaceAll(query, "/*ABI_PROXY_VERSION*/", strconv.FormatUint(uint64(ProxyStage.Version), 10))
 }
 
 func durableIdentityForJob(job Job) (durablePublicationIdentity, error) {
@@ -1145,7 +1151,7 @@ WHERE exhausted_job.kind = 'enrichment'
           WHERE dependency.chain_id = exhausted_job.chain_id
             AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
             AND dependency.stage = 'proxy'
-            AND dependency.stage_version = exhausted_job.stage_version
+            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1177,7 +1183,7 @@ WHERE exhausted_job.id = $1
           WHERE dependency.chain_id = exhausted_job.chain_id
             AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
             AND dependency.stage = 'proxy'
-            AND dependency.stage_version = exhausted_job.stage_version
+            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1234,7 +1240,7 @@ WHERE candidate_job.kind = 'enrichment'
           WHERE dependency.chain_id = candidate_job.chain_id
             AND dependency.block_hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
             AND dependency.stage = 'proxy'
-            AND dependency.stage_version = candidate_job.stage_version
+            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
             AND dependency.state IN ('complete', 'unavailable')
       )
   )
@@ -1283,7 +1289,7 @@ WHERE job.id = $4
           WHERE dependency.chain_id = job.chain_id
             AND dependency.block_hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
             AND dependency.stage = 'proxy'
-            AND dependency.stage_version = job.stage_version
+            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
             AND dependency.state IN ('complete', 'unavailable')
       )
   )

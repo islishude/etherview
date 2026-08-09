@@ -24,12 +24,12 @@ ambiguous pattern existed in two historical ABI observation lookups.
   capability unavailable.
 - `completeness.trace` describes the exact current canonical indexed block. It
   is `complete`, `unavailable`, or `failed` only when the matching
-  `trace@2` result is published for that block number and hash. A missing
+  `trace@3` result is published for that block number and hash. A missing
   indexed block or matching publication is `pending`. A disabled feature or
   absent Trace RPC is `unavailable`.
 - This status does not claim gap-free historical Trace coverage.
   Transaction-level state differences retain their independent
-  `state_diff@1` publication state and do not redefine
+  `state_diff@2` publication state and do not redefine
   `completeness.state`.
 - Status reads bind core coverage, the indexed block identity, and its Trace
   publication in one PostgreSQL statement snapshot. A result for an orphaned

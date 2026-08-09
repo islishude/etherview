@@ -432,7 +432,7 @@ LEFT JOIN trace_log_attributions AS attribution
      WHERE published.chain_id = attribution.chain_id
        AND published.block_hash = attribution.block_hash
        AND published.stage = 'trace'
-       AND published.stage_version = 2
+       AND published.stage_version = 3
        AND published.state = 'complete'
  )
 WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3

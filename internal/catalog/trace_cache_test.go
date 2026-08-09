@@ -64,12 +64,13 @@ func traceIdentitySteps(generation int64) []catalogQueryStep {
 func TestTransactionTraceUsesGenerationBoundS3CacheAfterPostcheck(t *testing.T) {
 	t.Parallel()
 	trace := cachedTraceFixture()
-	encoded, err := json.Marshal(cachedTransactionTrace{Schema: 2, JobID: 42, JobGeneration: 3, Trace: trace})
+	encoded, err := json.Marshal(cachedTransactionTrace{Schema: 3, JobID: 42, JobGeneration: 3, Trace: trace})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cache := &fakeTraceBlobStore{value: encoded, found: true}
 	steps := append(traceIdentitySteps(3), traceIdentitySteps(3)...)
+	steps = append(steps, traceExecutionProjectionStep())
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)
@@ -77,7 +78,7 @@ func TestTransactionTraceUsesGenerationBoundS3CacheAfterPostcheck(t *testing.T) 
 	if err != nil || len(got.Frames) != 1 || got.BlockHash != trace.BlockHash {
 		t.Fatalf("trace=%+v err=%v", got, err)
 	}
-	if cache.getKey != "trace/v2/1/"+strings.Repeat("aa", 32)+"/42-3/"+strings.Repeat("bb", 32)+".json" || cache.putKey != "" {
+	if cache.getKey != "trace/v3/1/"+strings.Repeat("aa", 32)+"/42-3/"+strings.Repeat("bb", 32)+".json" || cache.putKey != "" {
 		t.Fatalf("get=%q put=%q", cache.getKey, cache.putKey)
 	}
 	assertCatalogConsumed(t, backend)
@@ -88,7 +89,7 @@ func TestTransactionTraceS3OutageFallsBackToPostgreSQL(t *testing.T) {
 	cache := &fakeTraceBlobStore{getErr: errors.New("s3://access:secret@example unavailable"), putErr: errors.New("write unavailable")}
 	steps := traceIdentitySteps(3)
 	steps = append(steps, traceIdentitySteps(3)...)
-	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(15, traceRow("", nil, 0, "CALL"))})
+	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))})
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)
@@ -102,7 +103,7 @@ func TestTransactionTraceS3OutageFallsBackToPostgreSQL(t *testing.T) {
 func TestTransactionTraceReplayGenerationNeverServesStaleS3Object(t *testing.T) {
 	t.Parallel()
 	trace := cachedTraceFixture()
-	encoded, err := json.Marshal(cachedTransactionTrace{Schema: 2, JobID: 42, JobGeneration: 3, Trace: trace})
+	encoded, err := json.Marshal(cachedTransactionTrace{Schema: 3, JobID: 42, JobGeneration: 3, Trace: trace})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestTransactionTraceReplayGenerationNeverServesStaleS3Object(t *testing.T) 
 	steps := traceIdentitySteps(3)
 	steps = append(steps, traceIdentitySteps(4)...)
 	steps = append(steps, traceIdentitySteps(4)...)
-	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(15, traceRow("", nil, 0, "CALL"))})
+	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))})
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)
@@ -121,4 +122,13 @@ func TestTransactionTraceReplayGenerationNeverServesStaleS3Object(t *testing.T) 
 		t.Fatalf("new generation was not cached separately: %q", cache.putKey)
 	}
 	assertCatalogConsumed(t, backend)
+}
+
+func traceExecutionProjectionStep() catalogQueryStep {
+	return catalogQueryStep{
+		contains: "COALESCE(to_address, created_address, from_address)",
+		rows: catalogRows(5, []driver.Value{
+			"", bytesOf(0x22, 20), bytesOf(0x22, 20), bytesOf(0x33, 32), "direct",
+		}),
+	}
 }

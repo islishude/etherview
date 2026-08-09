@@ -342,6 +342,7 @@ func sortParameters(parameters []ParameterSpec) {
 func TestEligibleInventoryIsClosed(t *testing.T) {
 	want := []string{
 		"getAddress",
+		"getAddressDelegation",
 		"getAggregateStats",
 		"getBlock",
 		"getBlockStats",
@@ -352,6 +353,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getTransaction",
 		"getTransactionTrace",
 		"getVerifierJob",
+		"listAddressDelegations",
 		"listAddressERC20Balances",
 		"listAddressERC20Transfers",
 		"listAddressInternalTransactions",
@@ -362,6 +364,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listPendingTransactions",
 		"listTokenTransfers",
 		"listTokens",
+		"listTransactionAuthorizations",
 		"listTransactionLogs",
 		"listTransactionStateChanges",
 		"listTransactionTokenTransfers",

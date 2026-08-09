@@ -46,6 +46,11 @@ projected reliably.
 
 ## Consequences
 
+ADR-0034 supersedes the frame-`to` convention for `trace@3`: public `to` is the
+call/storage context and a separate execution identity names loaded code. Its
+EIP-7702 and constructor rules otherwise preserve this ADR's attribution,
+revert, bounded fallback, and cache boundaries.
+
 Log decoding can name both the immutable receipt emitter and the exact executed
 code when evidence exists. A provider that omits supported log detail degrades
 availability rather than fabricating ownership, while hostile partial data

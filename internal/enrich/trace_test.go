@@ -83,7 +83,8 @@ func TestNormalizeCallTracerHandlesNestedRevertsAndCallKinds(t *testing.T) {
 	}
 	delegate, destroyed, created := trace.Frames[1], trace.Frames[2], trace.Frames[3]
 	if delegate.Type != "DELEGATECALL" || !delegate.DirectReverted || !delegate.Reverted ||
-		delegate.RevertReason != "custom error 0xdeadbeef" || string(delegate.Output) != string([]byte{0xde, 0xad, 0xbe, 0xef}) {
+		delegate.RevertReason != "custom error 0xdeadbeef" || string(delegate.Output) != string([]byte{0xde, 0xad, 0xbe, 0xef}) ||
+		delegate.To == nil || delegate.To.Hex() != traceAddress2 || delegate.CodeAddress == nil || delegate.CodeAddress.Hex() != traceAddress3 {
 		t.Fatalf("delegate=%+v", delegate)
 	}
 	if destroyed.Type != "SELFDESTRUCT" || destroyed.DirectReverted || !destroyed.Reverted || destroyed.ParentIndex != 1 {
@@ -159,6 +160,10 @@ func TestNormalizeTraceAPIValidatesIdentityAndNormalizesTree(t *testing.T) {
 	}
 	if trace.Frames[1].Type != "DELEGATECALL" || trace.Frames[2].Type != "CREATE2" || trace.Frames[3].Type != "SELFDESTRUCT" {
 		t.Fatalf("frames=%+v", trace.Frames)
+	}
+	if trace.Frames[1].To == nil || trace.Frames[1].To.Hex() != traceAddress2 ||
+		trace.Frames[1].CodeAddress == nil || trace.Frames[1].CodeAddress.Hex() != traceAddress3 {
+		t.Fatalf("delegate execution context=%+v", trace.Frames[1])
 	}
 	for _, frame := range trace.Frames[1:] {
 		if frame.ParentIndex != 0 || !frame.Reverted {

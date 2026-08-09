@@ -30,6 +30,7 @@ import {
   useTokenTransfers,
   useTokens,
   useTransaction,
+  useTransactionAuthorizations,
   useTransactionLogs,
   useTransactionStateChanges,
   useTransactionTokenTransfers,
@@ -41,6 +42,7 @@ import {
 } from "@/api/hooks";
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import { ContractPage, isContractTabHash } from "./ContractPage";
+import { DelegatedAccountPanel } from "@/contracts/DelegatedAccountPanel";
 import type {
   AddressInternalTransaction,
   AddressSummary,
@@ -631,7 +633,7 @@ function BlockDetailPage({ identifier }: { identifier: string }) {
   );
 }
 
-const TRANSACTION_TABS = ["overview", "token-transfers", "logs", "trace", "state-changes"] as const;
+const TRANSACTION_TABS = ["overview", "authorizations", "token-transfers", "logs", "trace", "state-changes"] as const;
 type TransactionTab = typeof TRANSACTION_TABS[number];
 
 function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
@@ -643,6 +645,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
   const logPager = useCursorHistory(`transaction-logs:${hash}`);
   const statePager = useCursorHistory(`transaction-state-changes:${hash}`);
+  const authorizationPager = useCursorHistory(`transaction-authorizations:${hash}`);
   const transaction = useTransaction(hash);
   const tokenTransfers = useTransactionTokenTransfers(
     hash,
@@ -651,6 +654,11 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   );
   const logs = useTransactionLogs(hash, logPager.cursor, activeTab === "logs");
   const trace = useTransactionTrace(hash, activeTab === "trace");
+  const authorizations = useTransactionAuthorizations(
+    hash,
+    authorizationPager.cursor,
+    activeTab === "authorizations",
+  );
   const stateChanges = useTransactionStateChanges(
     hash,
     statePager.cursor,
@@ -667,11 +675,13 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const logIdentityCurrent = identityMatches(logs.data?.block_hash);
   const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
   const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
+  const authorizationIdentityCurrent = identityMatches(authorizations.data?.block_hash);
   useEffect(() => {
     const resource = activeTab === "token-transfers" || activeTab === "overview"
       ? tokenTransfers
       : activeTab === "logs" ? logs
       : activeTab === "trace" ? trace
+      : activeTab === "authorizations" ? authorizations
       : stateChanges;
     const resourceBlockHash = resource.data?.block_hash;
     const overviewBlockHash = transaction.data?.block_hash;
@@ -682,6 +692,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     void Promise.all([transaction.refetch(), resource.refetch()]);
   }, [
     activeTab,
+    authorizations,
     logs,
     stateChanges,
     tokenTransfers,
@@ -878,6 +889,60 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
             </div>
           )}
 
+          {activeTab === "authorizations" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <QueryNotice loading={authorizations.isPending} error={authorizations.error} />
+              {authorizations.data && !authorizationIdentityCurrent ? (
+                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+              ) : null}
+              {authorizationIdentityCurrent && authorizations.data?.state !== "complete" && authorizations.data ? (
+                <CapabilityDegraded stage="state_diff" state={authorizations.data.state} />
+              ) : null}
+              {authorizationIdentityCurrent && authorizations.data?.state === "complete" && authorizations.data.items.length === 0 ? (
+                <p className="empty-result">{t("state.noAuthorizations")}</p>
+              ) : null}
+              {authorizationIdentityCurrent && authorizations.data?.state === "complete" && authorizations.data.items.length > 0 ? (
+                <div className="transaction-log-list">
+                  {authorizations.data.items.map((authorization) => (
+                    <article className="transaction-log" key={authorization.index}>
+                      <header>
+                        <strong>{t("detail.authorizationIndex", { index: authorization.index })}</strong>
+                        <span>{authorization.application_status}</span>
+                      </header>
+                      <dl>
+                        <div><dt>{t("delegation.authority")}</dt><dd><code>{authorization.authority ?? "—"}</code></dd></div>
+                        <div><dt>{t("delegation.delegate")}</dt><dd><code>{authorization.delegate}</code></dd></div>
+                        <div><dt>{t("detail.chainID")}</dt><dd><code>{authorization.chain_id}</code></dd></div>
+                        <div><dt>{t("detail.nonce")}</dt><dd><code>{authorization.nonce}</code></dd></div>
+                        <div><dt>{t("detail.signatureStatus")}</dt><dd>{authorization.signature_status}</dd></div>
+                        <div><dt>{t("detail.skipReason")}</dt><dd>{authorization.skip_reason ?? "—"}</dd></div>
+                      </dl>
+                      <details className="transaction-more-details">
+                        <summary>{t("detail.rawAuthorization")}</summary>
+                        <dl>
+                          <div><dt>yParity</dt><dd><code>{authorization.y_parity}</code></dd></div>
+                          <div><dt>r</dt><dd><code>{authorization.r}</code></dd></div>
+                          <div><dt>s</dt><dd><code>{authorization.s}</code></dd></div>
+                        </dl>
+                      </details>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+              {authorizationIdentityCurrent && authorizations.data ? (
+                <CursorPagination
+                  busy={authorizations.isFetching}
+                  hasNext={Boolean(authorizations.data.next_cursor)}
+                  hasPrevious={authorizationPager.hasPrevious}
+                  label={t("transactionTabs.authorizations")}
+                  onNext={() => authorizationPager.next(authorizations.data?.next_cursor)}
+                  onPrevious={authorizationPager.previous}
+                  page={authorizationPager.page}
+                />
+              ) : null}
+            </section>
+          )}
+
           {activeTab === "token-transfers" && (
             <section className="panel transaction-tab-panel" role="tabpanel">
               <QueryNotice loading={tokenTransfers.isPending} error={tokenTransfers.error} />
@@ -961,6 +1026,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       )}
                       {log.decoding.warning && <p className="quiet">{log.decoding.warning}</p>}
                       <p className="quiet">
+                        {t("detail.logEmitter", { address: log.address })} · {" "}
                         {log.decoding.attribution.mode === "exact_trace" && log.decoding.attribution.execution_address
                           ? t("detail.logExecutionAddress", { address: log.decoding.attribution.execution_address })
                           : t("detail.logAddressFallback")}
@@ -1019,6 +1085,12 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                           <code>{frame.from ? shorten(frame.from) : "—"} → {frame.to
                             ? shorten(frame.to)
                             : frame.created_address ? shorten(frame.created_address) : "—"}</code>
+                          <small className="table-secondary">
+                            {t("detail.executionContext", { address: frame.execution.context_address })}
+                            {frame.execution.address
+                              ? ` · ${t("detail.executionCode", { address: frame.execution.address })}`
+                              : ` · ${t(`detail.executionResolution.${frame.execution.resolution}`)}`}
+                          </small>
                         </div>
                         <span>{formatNativeAmount(frame.value, locale, nativeDecimals)} {nativeSymbol}</span>
                         <span>{frame.direct_reverted
@@ -1059,6 +1131,9 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                           </>
                         )}
                         <dl className="transaction-trace-raw">
+                          <div><dt>{t("detail.executionContextLabel")}</dt><dd><code>{frame.execution.context_address}</code></dd></div>
+                          <div><dt>{t("detail.executionCodeLabel")}</dt><dd><code>{frame.execution.address ?? "—"}</code></dd></div>
+                          <div><dt>{t("detail.codeHash")}</dt><dd><code>{frame.execution.code_hash ?? "—"}</code></dd></div>
                           <div><dt>{t("detail.input")}</dt><dd><code>{frame.input ?? "0x"}</code></dd></div>
                           <div><dt>{t("detail.output")}</dt><dd><code>{frame.output ?? "0x"}</code></dd></div>
                         </dl>
@@ -1169,6 +1244,7 @@ type AddressTab =
   | "erc20-transfers"
   | "nft-transfers"
   | "assets"
+  | "delegation"
   | "contract";
 
 function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
@@ -1238,6 +1314,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
     ? `ethereum:${displayAddress}@${publicConfig.data.chain_id}`
     : undefined;
   const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
+  const delegationAvailable = account.data?.type === "delegated_eoa";
 
   useEffect(() => {
     if (!contractHash || account.isPending || account.error || contractAvailable) return;
@@ -1303,6 +1380,18 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
             to="/address/$address"
           >
             {t("addressTab.contract")}
+          </Link>
+        ) : null}
+        {delegationAvailable ? (
+          <Link
+            aria-current={activeTab === "delegation" ? "page" : undefined}
+            className={activeTab === "delegation" ? "transaction-tab contract-entry active" : "transaction-tab contract-entry"}
+            hash=""
+            params={{ address }}
+            search={{ tab: "delegation" }}
+            to="/address/$address"
+          >
+            {t("addressTab.delegation")}
           </Link>
         ) : null}
       </nav>
@@ -1409,6 +1498,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         </div>
       )}
       {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
+      {activeTab === "delegation" && delegationAvailable ? <DelegatedAccountPanel authority={displayAddress} /> : null}
     </Page>
   );
 }
@@ -1580,6 +1670,7 @@ function isAddressTab(tab: string): tab is AddressTab {
     "erc20-transfers",
     "nft-transfers",
     "assets",
+    "delegation",
   ].includes(tab);
 }
 

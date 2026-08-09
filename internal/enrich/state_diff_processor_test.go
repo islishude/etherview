@@ -3,11 +3,259 @@ package enrich
 import (
 	"encoding/json"
 	"errors"
+	"math"
+	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 )
+
+func TestDeriveEIP7702EvidenceReplaysOrderedAuthorizationsAndExecution(t *testing.T) {
+	t.Parallel()
+	key, err := crypto.HexToECDSA("4f3edf983ac63ad7c9b3f5a7b5c4e2f6a7b8c9d0e1f2233445566778899aabbc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := crypto.PubkeyToAddress(key.PublicKey)
+	sender := testAddress(0x91)
+	firstDelegate, secondDelegate := testAddress(0xa1), testAddress(0xa2)
+	first, err := types.SignSetCode(key, types.SetCodeAuthorization{ChainID: *uint256.NewInt(0), Address: firstDelegate, Nonce: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := types.SignSetCode(key, types.SetCodeAuthorization{ChainID: *uint256.NewInt(1), Address: secondDelegate, Nonce: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := testAddress(0xb1)
+	tx := types.NewTx(&types.SetCodeTx{
+		ChainID: uint256.NewInt(1), To: target, AuthList: []types.SetCodeAuthorization{first, second},
+		GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), Value: uint256.NewInt(0),
+	})
+	finalCode := types.AddressToDelegation(secondDelegate)
+	evidence := transactionStateEvidence{
+		pre: map[common.Address]stateAccountEvidence{
+			authority: {nonce: 7}, sender: {nonce: 3},
+			firstDelegate: {code: []byte{0x60, 0x00}}, secondDelegate: {code: []byte{0x60, 0x01}},
+		},
+		post: map[common.Address]stateAccountEvidence{
+			authority: {nonce: 9, code: finalCode}, sender: {nonce: 4},
+		},
+	}
+	results, executions, err := deriveEIP7702Evidence("1", tx, sender, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].applicationStatus != "applied" ||
+		results[1].applicationStatus != "applied" || results[1].authority == nil || *results[1].authority != authority {
+		t.Fatalf("authorization results = %+v", results)
+	}
+	for index := range executions {
+		item := executions[index]
+		if item.context == authority {
+			if item.resolution != "eip7702_delegate" || item.execution == nil || *item.execution != secondDelegate ||
+				item.codeHash == nil || *item.codeHash != crypto.Keccak256Hash([]byte{0x60, 0x01}) {
+				t.Fatalf("authority execution = %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatal("authority execution missing")
+}
+
+func TestDeriveEIP7702EvidenceHonorsSenderNonceAndStableSkipReasons(t *testing.T) {
+	t.Parallel()
+	key, err := crypto.HexToECDSA("6cbed15c177e12c9e9c9e7b3d9f1a9ce3a0f1d2c3b4a59687766554433221100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := crypto.PubkeyToAddress(key.PublicKey)
+	delegate := testAddress(0xc1)
+	auth, err := types.SignSetCode(key, types.SetCodeAuthorization{ChainID: *uint256.NewInt(1), Address: delegate, Nonce: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongChain := auth
+	wrongChain.ChainID = *uint256.NewInt(2)
+	target := testAddress(0xc2)
+	tx := types.NewTx(&types.SetCodeTx{
+		ChainID: uint256.NewInt(1), Nonce: 5, To: target,
+		AuthList:  []types.SetCodeAuthorization{wrongChain, auth},
+		GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), Value: uint256.NewInt(0),
+	})
+	evidence := transactionStateEvidence{
+		pre:  map[common.Address]stateAccountEvidence{authority: {nonce: 5}, delegate: {code: []byte{0x60}}},
+		post: map[common.Address]stateAccountEvidence{authority: {nonce: 7, code: types.AddressToDelegation(delegate)}},
+	}
+	results, _, err := deriveEIP7702Evidence("1", tx, authority, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].skipReason != "wrong_chain_id" ||
+		results[0].applicationStatus != "skipped" || results[1].applicationStatus != "applied" {
+		t.Fatalf("authorization results = %+v", results)
+	}
+}
+
+func TestDeriveEIP7702EvidenceUsesSingleDelegationLayerAndEmptyTarget(t *testing.T) {
+	t.Parallel()
+	authority, delegate, second := testAddress(0xd1), testAddress(0xd2), testAddress(0xd3)
+	tx := types.NewTx(&types.LegacyTx{To: &authority})
+	for _, test := range []struct {
+		name         string
+		delegateCode []byte
+		want         string
+		wantHash     common.Hash
+	}{
+		{name: "delegate to delegate", delegateCode: types.AddressToDelegation(second), want: "eip7702_delegate", wantHash: crypto.Keccak256Hash(types.AddressToDelegation(second))},
+		{name: "empty delegate", delegateCode: nil, want: "empty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			evidence := transactionStateEvidence{
+				pre: map[common.Address]stateAccountEvidence{
+					authority: {code: types.AddressToDelegation(delegate)}, delegate: {code: test.delegateCode},
+				}, post: map[common.Address]stateAccountEvidence{},
+			}
+			_, executions, err := deriveEIP7702Evidence("1", tx, testAddress(0xee), evidence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, item := range executions {
+				if item.context == authority {
+					if item.resolution != test.want || test.wantHash != (common.Hash{}) &&
+						(item.codeHash == nil || *item.codeHash != test.wantHash) {
+						t.Fatalf("execution=%+v", item)
+					}
+					return
+				}
+			}
+			t.Fatal("authority execution missing")
+		})
+	}
+
+	t.Run("precompile omitted from state", func(t *testing.T) {
+		precompile := common.BytesToAddress([]byte{1})
+		evidence := transactionStateEvidence{pre: map[common.Address]stateAccountEvidence{
+			authority: {code: types.AddressToDelegation(precompile)},
+		}}
+		_, executions, err := deriveEIP7702Evidence("1", tx, testAddress(0xee), evidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range executions {
+			if item.context == authority {
+				if item.resolution != "empty" || item.execution != nil || item.codeHash != nil {
+					t.Fatalf("precompile execution=%+v", item)
+				}
+				return
+			}
+		}
+		t.Fatal("precompile authority execution missing")
+	})
+}
+
+func TestDeriveEIP7702EvidenceRejectsInvalidTuplesAndClearsDelegation(t *testing.T) {
+	t.Parallel()
+	key, err := crypto.HexToECDSA("8f2a5594903ef45b7b5a8f9f033b0f037b3a3fce0fdd7f1464d31dce1a4f809d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := crypto.PubkeyToAddress(key.PublicKey)
+	sender, delegate := testAddress(0xe1), testAddress(0xe2)
+	sign := func(address common.Address, nonce uint64) types.SetCodeAuthorization {
+		t.Helper()
+		auth, signErr := types.SignSetCode(key, types.SetCodeAuthorization{
+			ChainID: *uint256.NewInt(1), Address: address, Nonce: nonce,
+		})
+		if signErr != nil {
+			t.Fatal(signErr)
+		}
+		return auth
+	}
+	transaction := func(auth types.SetCodeAuthorization) *types.Transaction {
+		return types.NewTx(&types.SetCodeTx{
+			ChainID: uint256.NewInt(1), To: sender, AuthList: []types.SetCodeAuthorization{auth},
+			GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), Value: uint256.NewInt(0),
+		})
+	}
+
+	highS := sign(delegate, 4)
+	highS.S.SetFromBig(new(big.Int).Sub(crypto.S256().Params().N, highS.S.ToBig()))
+	for _, test := range []struct {
+		name       string
+		auth       types.SetCodeAuthorization
+		pre        stateAccountEvidence
+		wantReason string
+	}{
+		{name: "high s", auth: highS, pre: stateAccountEvidence{nonce: 4}, wantReason: "invalid_signature"},
+		{name: "authorization nonce overflow", auth: types.SetCodeAuthorization{ChainID: *uint256.NewInt(1), Nonce: math.MaxUint64}, wantReason: "nonce_overflow"},
+		{name: "nonce mismatch", auth: sign(delegate, 4), pre: stateAccountEvidence{nonce: 3}, wantReason: "nonce_mismatch"},
+		{name: "ordinary authority code", auth: sign(delegate, 4), pre: stateAccountEvidence{nonce: 4, code: []byte{0x60}}, wantReason: "authority_has_code"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			evidence := transactionStateEvidence{pre: map[common.Address]stateAccountEvidence{
+				sender: {}, authority: test.pre,
+			}}
+			results, _, deriveErr := deriveEIP7702Evidence("1", transaction(test.auth), sender, evidence)
+			if deriveErr != nil {
+				t.Fatal(deriveErr)
+			}
+			if len(results) != 1 || results[0].applicationStatus != "skipped" || results[0].skipReason != test.wantReason {
+				t.Fatalf("authorization results=%+v", results)
+			}
+		})
+	}
+
+	clear := sign(common.Address{}, 4)
+	results, executions, err := deriveEIP7702Evidence("1", transaction(clear), sender, transactionStateEvidence{
+		pre: map[common.Address]stateAccountEvidence{
+			sender: {}, authority: {nonce: 4, code: types.AddressToDelegation(delegate)},
+		},
+		post: map[common.Address]stateAccountEvidence{authority: {nonce: 5}},
+	})
+	if err != nil || len(results) != 1 || results[0].applicationStatus != "applied" {
+		t.Fatalf("clear results=%+v err=%v", results, err)
+	}
+	for _, execution := range executions {
+		if execution.context == authority && execution.resolution != "empty" {
+			t.Fatalf("cleared execution=%+v", execution)
+		}
+	}
+}
+
+func TestDeriveEIP7702EvidenceFailsClosedOnNonceAndPostStateContradictions(t *testing.T) {
+	t.Parallel()
+	key, err := crypto.HexToECDSA("9f2a5594903ef45b7b5a8f9f033b0f037b3a3fce0fdd7f1464d31dce1a4f809c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority, sender, delegate := crypto.PubkeyToAddress(key.PublicKey), testAddress(0xf1), testAddress(0xf2)
+	auth, err := types.SignSetCode(key, types.SetCodeAuthorization{ChainID: *uint256.NewInt(1), Address: delegate, Nonce: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := types.NewTx(&types.SetCodeTx{
+		ChainID: uint256.NewInt(1), To: sender, AuthList: []types.SetCodeAuthorization{auth},
+		GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), Value: uint256.NewInt(0),
+	})
+	_, _, err = deriveEIP7702Evidence("1", tx, sender, transactionStateEvidence{
+		pre: map[common.Address]stateAccountEvidence{sender: {nonce: math.MaxUint64}, authority: {nonce: 4}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "sender nonce overflow") {
+		t.Fatalf("sender overflow err=%v", err)
+	}
+	_, _, err = deriveEIP7702Evidence("1", tx, sender, transactionStateEvidence{
+		pre:  map[common.Address]stateAccountEvidence{sender: {}, authority: {nonce: 4}, delegate: {code: []byte{0x60}}},
+		post: map[common.Address]stateAccountEvidence{authority: {nonce: 5, code: types.AddressToDelegation(testAddress(0xff))}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "contradicts post-state") {
+		t.Fatalf("post-state contradiction err=%v", err)
+	}
+}
 
 func TestProxyRelevantStateChangeRecognizesOnlyCodeAndERC1967Slots(t *testing.T) {
 	t.Parallel()

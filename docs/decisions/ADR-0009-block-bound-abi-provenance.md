@@ -50,7 +50,7 @@ independently of source would let guessed material be published as verified.
   implementation ABI, then signature guess. Equal-confidence selector collisions remain
   `ambiguous` and retain all candidate signatures rather than selecting a
   pretend winner.
-- Transaction-log reads treat durable `abi@2` decoding as the fast path. When
+- Transaction-log reads treat durable `abi@3` decoding as the fast path. When
   it is absent or only a signature-database guess, the writer reader performs
   bounded pure decoding inside the transaction's repeatable-read snapshot. It
   resolves the target code identity at the transaction block and may use a
@@ -70,11 +70,11 @@ independently of source would let guessed material be published as verified.
   candidate. A signature-only candidate without outputs reports output
   `unavailable`; explicit empty outputs, malformed payloads, ambiguity, and
   bounded-work exhaustion remain distinct stable states.
-- `abi@2` writes bindings, decoded transaction/log/available normalized-trace
+- `abi@3` writes bindings, decoded transaction/log/available normalized-trace
   observations, its stage result, and its canonicality journal in one
   transaction. Trace absence never delays or fails ABI processing; explicit
   ABI reindex after Trace may add those optional decodings.
-- Production `abi@2` is claim- and processor-gated on `proxy@2` for the exact
+- Production `abi@3` is claim- and processor-gated on `proxy@2` for the exact
   block hash. Complete proxy facts permit decoding; explicit proxy
   unavailability makes ABI unavailable rather than persisting `unbound` or a
   lower-priority guess. Late proxy or Trace facts safely reset only terminal
@@ -96,6 +96,11 @@ independently of source would let guessed material be published as verified.
   enrichment stages never wait for it.
 - Verification published after an old transaction can improve that
   transaction's read projection immediately without rewriting the old
-  `abi@2` result. When only exact runtime equality reaches back before the
+  `abi@3` result. When only exact runtime equality reaches back before the
   artifact's address validity, the result is `code_hash`/`high`, not
   `verified`. Raw log bytes remain available for every status.
+
+ADR-0034 extends this boundary in `abi@3`: calls bind to the execution
+address/code hash proven by `state_diff@2`, while constructors require a full
+verified creation match and exact persisted argument suffix. EIP-7702 never
+changes the call/storage context or invents proxy provenance.

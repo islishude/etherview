@@ -7,16 +7,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"sort"
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 var (
-	StateDiffStage        = StageID{Name: "state_diff", Version: 1}
+	StateDiffStage        = StageID{Name: "state_diff", Version: 2}
 	ErrStateDiffLimit     = errors.New("state difference exceeds configured limit")
 	errStateDiffRPCAbsent = errors.New("state difference RPC capability unavailable")
 )
@@ -86,9 +92,41 @@ func (processor *StateDiffRPCProcessor) ProcessLease(
 }
 
 type stateDiffTransaction struct {
-	index   uint64
-	hash    common.Hash
-	changes []stateChange
+	index       uint64
+	hash        common.Hash
+	raw         json.RawMessage
+	tx          *types.Transaction
+	sender      common.Address
+	changes     []stateChange
+	authorities []eip7702AuthorizationResult
+	executions  []executionCodeResolution
+}
+
+type eip7702AuthorizationResult struct {
+	index             uint64
+	authorization     types.SetCodeAuthorization
+	authority         *common.Address
+	signatureStatus   string
+	applicationStatus string
+	skipReason        string
+}
+
+type executionCodeResolution struct {
+	context        common.Address
+	execution      *common.Address
+	codeHash       *common.Hash
+	resolution     string
+	evidenceSource string
+}
+
+type stateAccountEvidence struct {
+	nonce uint64
+	code  []byte
+}
+
+type transactionStateEvidence struct {
+	pre  map[common.Address]stateAccountEvidence
+	post map[common.Address]stateAccountEvidence
 }
 
 type stateChange struct {
@@ -180,6 +218,20 @@ func (processor *StateDiffRPCProcessor) Process(ctx context.Context, job Job) (S
 			return StageResult{}, Permanent(err)
 		}
 		transactions[index].changes = changes
+		evidence, err := decodeTransactionStateEvidence(raw)
+		if err != nil {
+			processor.pool.ReportFailure(endpoint.Name)
+			return StageResult{}, Permanent(fmt.Errorf("decode transaction state evidence: %w", err))
+		}
+		authorities, executions, err := deriveEIP7702Evidence(
+			job.ChainID, transactions[index].tx, transactions[index].sender, evidence,
+		)
+		if err != nil {
+			processor.pool.ReportFailure(endpoint.Name)
+			return StageResult{}, Permanent(fmt.Errorf("derive EIP-7702 evidence: %w", err))
+		}
+		transactions[index].authorities = authorities
+		transactions[index].executions = executions
 	}
 	processor.pool.ReportSuccess(endpoint.Name)
 	return processor.persist(ctx, job, transactions, "complete")
@@ -208,21 +260,247 @@ func (processor *StateDiffRPCProcessor) transactions(
 	var result []stateDiffTransaction
 	for rows.Next() {
 		var index int64
-		var hashBytes []byte
-		if err := rows.Scan(&index, &hashBytes); err != nil {
+		var hashBytes, raw []byte
+		if err := rows.Scan(&index, &hashBytes, &raw); err != nil {
 			return nil, false, fmt.Errorf("scan state difference transaction: %w", err)
 		}
 		if index < 0 || len(hashBytes) != common.HashLength {
 			return nil, false, Permanent(errors.New("state difference transaction identity is invalid"))
 		}
+		hash := common.BytesToHash(hashBytes)
+		decoded, sender, err := chainbundle.DecodeTransaction(
+			json.RawMessage(raw), job.BlockHash, job.BlockNumber, uint64(index),
+		)
+		if err != nil {
+			return nil, false, Permanent(fmt.Errorf("decode stored state difference transaction: %w", err))
+		}
 		result = append(result, stateDiffTransaction{
-			index: uint64(index), hash: common.BytesToHash(hashBytes),
+			index: uint64(index), hash: hash, raw: append(json.RawMessage(nil), raw...),
+			tx: decoded, sender: sender,
 		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, fmt.Errorf("iterate state difference transactions: %w", err)
 	}
 	return result, true, nil
+}
+
+func decodeTransactionStateEvidence(raw json.RawMessage) (transactionStateEvidence, error) {
+	var wire stateDiffWire
+	if err := json.Unmarshal(raw, &wire); err != nil || wire.Pre == nil || wire.Post == nil {
+		return transactionStateEvidence{}, errors.New("invalid state difference JSON")
+	}
+	pairs := make(map[common.Address]*stateAccountPair, len(wire.Pre)+len(wire.Post))
+	for addressText, account := range wire.Pre {
+		address, err := ethrpc.ParseAddress(addressText)
+		if err != nil {
+			return transactionStateEvidence{}, errors.New("state difference contains invalid account address")
+		}
+		pair := pairs[address]
+		if pair == nil {
+			pair = &stateAccountPair{address: address}
+			pairs[address] = pair
+		}
+		pair.pre, pair.hasPre = account, true
+	}
+	for addressText, account := range wire.Post {
+		address, err := ethrpc.ParseAddress(addressText)
+		if err != nil {
+			return transactionStateEvidence{}, errors.New("state difference contains invalid account address")
+		}
+		pair := pairs[address]
+		if pair == nil {
+			pair = &stateAccountPair{address: address}
+			pairs[address] = pair
+		}
+		pair.post, pair.hasPost = account, true
+	}
+	evidence := transactionStateEvidence{
+		pre:  make(map[common.Address]stateAccountEvidence, len(pairs)),
+		post: make(map[common.Address]stateAccountEvidence, len(pairs)),
+	}
+	for address, pair := range pairs {
+		preWire, err := decodeStateAccount(pair.pre)
+		if err != nil {
+			return transactionStateEvidence{}, err
+		}
+		postWire, err := decodeStateAccount(pair.post)
+		if err != nil {
+			return transactionStateEvidence{}, err
+		}
+		pre, err := decodeStateAccountEvidence(preWire)
+		if err != nil {
+			return transactionStateEvidence{}, err
+		}
+		post, err := decodeStateAccountEvidence(postWire)
+		if err != nil {
+			return transactionStateEvidence{}, err
+		}
+		if pair.hasPre {
+			evidence.pre[address] = pre
+		}
+		if pair.hasPre && pair.hasPost {
+			if len(postWire.Nonce) == 0 || bytes.Equal(postWire.Nonce, []byte("null")) {
+				post.nonce = pre.nonce
+			}
+			if postWire.Code == nil {
+				post.code = append([]byte(nil), pre.code...)
+			}
+		}
+		if pair.hasPost {
+			evidence.post[address] = post
+		}
+	}
+	return evidence, nil
+}
+
+func decodeStateAccountEvidence(wire stateAccountWire) (stateAccountEvidence, error) {
+	nonceText, err := canonicalStateNonce(wire.Nonce)
+	if err != nil {
+		return stateAccountEvidence{}, errors.New("state difference contains invalid quantity")
+	}
+	var nonce uint64
+	if nonceText != nil {
+		nonce, err = strconv.ParseUint(*nonceText, 10, 64)
+		if err != nil {
+			return stateAccountEvidence{}, errors.New("state difference contains invalid quantity")
+		}
+	}
+	var code []byte
+	if wire.Code != nil {
+		code, err = ethrpc.ParseData(*wire.Code)
+		if err != nil {
+			return stateAccountEvidence{}, errors.New("state difference contains invalid code")
+		}
+	}
+	return stateAccountEvidence{nonce: nonce, code: append([]byte(nil), code...)}, nil
+}
+
+func deriveEIP7702Evidence(
+	chainIDText string,
+	tx *types.Transaction,
+	sender common.Address,
+	evidence transactionStateEvidence,
+) ([]eip7702AuthorizationResult, []executionCodeResolution, error) {
+	if tx == nil {
+		return nil, nil, errors.New("transaction is nil")
+	}
+	chainID, ok := new(big.Int).SetString(chainIDText, 10)
+	if !ok || chainID.Sign() < 0 {
+		return nil, nil, errors.New("chain id is invalid")
+	}
+	state := make(map[common.Address]stateAccountEvidence, len(evidence.pre))
+	for address, account := range evidence.pre {
+		state[address] = stateAccountEvidence{nonce: account.nonce, code: append([]byte(nil), account.code...)}
+	}
+	authorizations := tx.SetCodeAuthorizations()
+	if len(authorizations) > 0 && tx.To() != nil {
+		senderAccount, exists := state[sender]
+		if !exists {
+			return nil, nil, errors.New("set-code transaction lacks sender pre-state evidence")
+		}
+		if senderAccount.nonce == math.MaxUint64 {
+			return nil, nil, errors.New("sender nonce overflow")
+		}
+		senderAccount.nonce++
+		state[sender] = senderAccount
+	}
+	results := make([]eip7702AuthorizationResult, 0, len(authorizations))
+	for index := range authorizations {
+		auth := authorizations[index]
+		result := eip7702AuthorizationResult{
+			index: uint64(index), authorization: auth,
+			signatureStatus: "unavailable", applicationStatus: "skipped",
+		}
+		if !auth.ChainID.IsZero() && auth.ChainID.CmpBig(chainID) != 0 {
+			result.skipReason = "wrong_chain_id"
+			results = append(results, result)
+			continue
+		}
+		if auth.Nonce == math.MaxUint64 {
+			result.skipReason = "nonce_overflow"
+			results = append(results, result)
+			continue
+		}
+		authority, err := auth.Authority()
+		if err != nil {
+			result.signatureStatus = "invalid"
+			result.skipReason = "invalid_signature"
+			results = append(results, result)
+			continue
+		}
+		result.signatureStatus = "valid"
+		result.authority = addressPointer(authority)
+		account := state[authority]
+		if _, delegated := types.ParseDelegation(account.code); len(account.code) != 0 && !delegated {
+			result.skipReason = "authority_has_code"
+			results = append(results, result)
+			continue
+		}
+		if account.nonce != auth.Nonce {
+			result.skipReason = "nonce_mismatch"
+			results = append(results, result)
+			continue
+		}
+		account.nonce = auth.Nonce + 1
+		if auth.Address == (common.Address{}) {
+			account.code = nil
+		} else {
+			account.code = types.AddressToDelegation(auth.Address)
+		}
+		state[authority] = account
+		result.applicationStatus = "applied"
+		results = append(results, result)
+	}
+	for _, result := range results {
+		if result.applicationStatus != "applied" || result.authority == nil {
+			continue
+		}
+		actual, exists := evidence.post[*result.authority]
+		if !exists {
+			return nil, nil, errors.New("applied authorization lacks post-state evidence")
+		}
+		expected := state[*result.authority]
+		if !bytes.Equal(actual.code, expected.code) || actual.nonce < expected.nonce {
+			return nil, nil, errors.New("authorization result contradicts post-state evidence")
+		}
+	}
+	executions := make([]executionCodeResolution, 0, len(state))
+	for contextAddress, account := range state {
+		resolution := executionCodeResolution{context: contextAddress, evidenceSource: "prestate_tracer"}
+		if delegate, delegated := types.ParseDelegation(account.code); delegated {
+			delegateAccount, exists := state[delegate]
+			if !exists {
+				if _, precompile := vm.PrecompiledContractsPrague[delegate]; precompile {
+					resolution.resolution = "empty"
+					executions = append(executions, resolution)
+					continue
+				}
+				resolution.resolution = "unavailable"
+				resolution.execution = addressPointer(delegate)
+				resolution.evidenceSource = "unavailable"
+			} else if len(delegateAccount.code) == 0 {
+				resolution.resolution = "empty"
+			} else {
+				resolution.resolution = "eip7702_delegate"
+				resolution.execution = addressPointer(delegate)
+				hash := crypto.Keccak256Hash(delegateAccount.code)
+				resolution.codeHash = &hash
+			}
+		} else if len(account.code) == 0 {
+			resolution.resolution = "empty"
+		} else {
+			resolution.resolution = "direct"
+			resolution.execution = addressPointer(contextAddress)
+			hash := crypto.Keccak256Hash(account.code)
+			resolution.codeHash = &hash
+		}
+		executions = append(executions, resolution)
+	}
+	sort.Slice(executions, func(i, j int) bool {
+		return bytes.Compare(executions[i].context[:], executions[j].context[:]) < 0
+	})
+	return results, executions, nil
 }
 
 type normalizedStateDiffCounts struct {
@@ -519,8 +797,18 @@ func (processor *StateDiffRPCProcessor) persist(
 			); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous transaction state differences: %w", err)
 			}
+			if _, err := tx.ExecContext(ctx, deleteEIP7702AuthorizationsBlockSQL,
+				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+			); err != nil {
+				return StageResult{}, fmt.Errorf("clear previous EIP-7702 authorizations: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, deleteExecutionCodeResolutionsBlockSQL,
+				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+			); err != nil {
+				return StageResult{}, fmt.Errorf("clear previous execution-code resolutions: %w", err)
+			}
 		}
-		changeCount := 0
+		changeCount, authorizationCount, executionCount := 0, 0, 0
 		proxyRelevantChanges := 0
 		for _, transaction := range transactions {
 			for _, change := range transaction.changes {
@@ -536,10 +824,22 @@ func (processor *StateDiffRPCProcessor) persist(
 					proxyRelevantChanges++
 				}
 			}
+			for _, authorization := range transaction.authorities {
+				if err := persistEIP7702Authorization(ctx, tx, job, transaction, authorization); err != nil {
+					return StageResult{}, err
+				}
+				authorizationCount++
+			}
+			for _, execution := range transaction.executions {
+				if err := persistExecutionCodeResolution(ctx, tx, job, transaction, execution); err != nil {
+					return StageResult{}, err
+				}
+				executionCount++
+			}
 		}
-		proxyRequeued := false
-		if canonical && proxyRelevantChanges > 0 {
-			proxyRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, ProxyStage)
+		traceRequeued := false
+		if canonical {
+			traceRequeued, err = resetTerminalDependentStageTx(ctx, tx, job, TraceStage)
 			if err != nil {
 				return StageResult{}, err
 			}
@@ -547,10 +847,59 @@ func (processor *StateDiffRPCProcessor) persist(
 		return StageResult{State: ResultComplete, Details: map[string]string{
 			"outcome": outcome, "source": "prestate_tracer",
 			"transactions": strconv.Itoa(len(transactions)), "changes": strconv.Itoa(changeCount),
+			"authorizations":         strconv.Itoa(authorizationCount),
+			"execution_resolutions":  strconv.Itoa(executionCount),
 			"proxy_relevant_changes": strconv.Itoa(proxyRelevantChanges),
-			"proxy_requeued":         strconv.FormatBool(proxyRequeued),
+			"trace_requeued":         strconv.FormatBool(traceRequeued),
 		}}, nil
 	})
+}
+
+func persistEIP7702Authorization(
+	ctx context.Context, tx *sql.Tx, job Job, transaction stateDiffTransaction,
+	result eip7702AuthorizationResult,
+) error {
+	var authority any
+	if result.authority != nil {
+		authority = result.authority[:]
+	}
+	r := result.authorization.R.Bytes32()
+	s := result.authorization.S.Bytes32()
+	var reason any
+	if result.skipReason != "" {
+		reason = result.skipReason
+	}
+	if _, err := tx.ExecContext(ctx, insertEIP7702AuthorizationSQL,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		transaction.hash[:], transaction.index, result.index,
+		result.authorization.ChainID.ToBig().String(), result.authorization.Nonce,
+		result.authorization.Address[:], result.authorization.V, r[:], s[:], authority,
+		result.signatureStatus, result.applicationStatus, reason,
+	); err != nil {
+		return fmt.Errorf("persist EIP-7702 authorization: %w", err)
+	}
+	return nil
+}
+
+func persistExecutionCodeResolution(
+	ctx context.Context, tx *sql.Tx, job Job, transaction stateDiffTransaction,
+	resolution executionCodeResolution,
+) error {
+	var execution, codeHash any
+	if resolution.execution != nil {
+		execution = resolution.execution[:]
+	}
+	if resolution.codeHash != nil {
+		codeHash = resolution.codeHash[:]
+	}
+	if _, err := tx.ExecContext(ctx, insertExecutionCodeResolutionSQL,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		transaction.hash[:], transaction.index, resolution.context[:], execution,
+		codeHash, resolution.resolution, resolution.evidenceSource,
+	); err != nil {
+		return fmt.Errorf("persist execution-code resolution: %w", err)
+	}
+	return nil
 }
 
 func proxyRelevantStateChange(change stateChange) bool {
@@ -577,7 +926,7 @@ func nullableStateValue(value *string) any {
 }
 
 const stateDiffTransactionsSQL = `
-SELECT tx_index, tx_hash
+SELECT tx_index, tx_hash, raw
 FROM transaction_inclusions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 ORDER BY tx_index`
@@ -586,10 +935,38 @@ const deleteStateDiffBlockSQL = `
 DELETE FROM transaction_state_changes
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
 
+const deleteEIP7702AuthorizationsBlockSQL = `
+DELETE FROM eip7702_authorizations
+WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
+
+const deleteExecutionCodeResolutionsBlockSQL = `
+DELETE FROM transaction_execution_code_resolutions
+WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
+
 const insertStateChangeSQL = `
 INSERT INTO transaction_state_changes (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     address, field_kind, storage_key, before_value, after_value, canonical
+) VALUES (
+    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
+)`
+
+const insertEIP7702AuthorizationSQL = `
+INSERT INTO eip7702_authorizations (
+    chain_id, block_number, block_hash, transaction_hash, transaction_index,
+    authorization_index, authorization_chain_id, authorization_nonce,
+    delegate_address, y_parity, r, s, authority, signature_status,
+    application_status, skip_reason, canonical
+) VALUES (
+    $1::numeric, $2::numeric, $3, $4, $5, $6, $7::numeric, $8::numeric,
+    $9, $10, $11, $12, $13, $14, $15, $16, true
+)`
+
+const insertExecutionCodeResolutionSQL = `
+INSERT INTO transaction_execution_code_resolutions (
+    chain_id, block_number, block_hash, transaction_hash, transaction_index,
+    context_address, execution_address, execution_code_hash, resolution,
+    evidence_source, canonical
 ) VALUES (
     $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
 )`

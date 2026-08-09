@@ -127,6 +127,8 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 				return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: [][]driver.Value{
 					traceTransactionRow(0, txHash1), traceTransactionRow(1, txHash2),
 				}}, nil
+			case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
+				return emptyExecutionResolutionRows(), nil
 			case strings.Contains(query, "FROM logs"):
 				return &fakeSQLRows{columns: []string{"log_index", "raw"}}, nil
 			case strings.Contains(query, "FOR KEY SHARE"):
@@ -191,7 +193,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 		result.Details["abi_requeued"] != "false" {
 		t.Fatalf("result=%+v", result)
 	}
-	if queryCount != 7 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
+	if queryCount != 8 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
 		t.Fatalf("queries=%d frames=%d stage=%v journal=%v first=%v second=%v", queryCount, insertedFrames, stageWritten, journalWritten, first.calls, second.calls)
 	}
 	if !reflect.DeepEqual(replayStages, []string{"proxy", "abi"}) {
@@ -254,7 +256,8 @@ func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testin
 		t.Fatal(err)
 	}
 	baseFrame := CallFrame{
-		Type: "DELEGATECALL", To: &implementation, TraceAddress: []uint32{2, 1},
+		Type: "DELEGATECALL", To: &emitter, CodeAddress: &implementation, TraceAddress: []uint32{2, 1},
+		ExecutionAddress: &implementation, ExecutionCodeHash: &topic, ExecutionResolution: "direct",
 		Logs: []TraceLog{{Address: emitter, Topics: []common.Hash{topic}, Data: []byte{1, 2, 3}, Index: 9}},
 	}
 	for _, test := range []struct {
@@ -668,6 +671,8 @@ func traceReadBackend(txHash common.Hash) *fakeSQLBackend {
 			return &fakeSQLRows{columns: []string{"canonical"}, values: [][]driver.Value{{true}}}, nil
 		case strings.Contains(query, "FROM transaction_inclusions"):
 			return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: [][]driver.Value{traceTransactionRow(0, txHash)}}, nil
+		case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
+			return emptyExecutionResolutionRows(), nil
 		default:
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
@@ -685,9 +690,18 @@ func traceBlockReadBackend(transactionHashes ...common.Hash) *fakeSQLBackend {
 				values[index] = traceTransactionRow(int64(index), hash)
 			}
 			return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: values}, nil
+		case strings.Contains(query, "FROM transaction_execution_code_resolutions"):
+			return emptyExecutionResolutionRows(), nil
 		default:
 			return nil, fmt.Errorf("unexpected query: %s", query)
 		}
+	}}
+}
+
+func emptyExecutionResolutionRows() driver.Rows {
+	return &fakeSQLRows{columns: []string{
+		"transaction_hash", "context_address", "execution_address",
+		"execution_code_hash", "resolution", "evidence_source",
 	}}
 }
 

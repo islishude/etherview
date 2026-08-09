@@ -384,11 +384,11 @@ etherview reindex --config /etc/etherview/config.yaml \
 
 etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage abi \
-  --reason "publish ABI v2 after proxy v2 is complete"
+  --reason "publish ABI v3 after trace v3 and proxy v2 are complete"
 
 etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage trace \
-  --reason "publish trace v2 call decoding and exact log attribution"
+  --reason "publish trace v3 execution identities and constructor decoding"
 
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
@@ -399,18 +399,25 @@ holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage proxy|abi|token|stats|trace` queues work for the currently canonical
+`reindex --stage proxy|abi|token|stats|trace|state_diff` queues work for the currently canonical
 block hash. It does not steal queued work or an active lease. Repair deliberately
 does not infer a downstream rebuild range; schedule each required derived
 stage explicitly and wait for its durable publication result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
-refuses to claim a block until its same-version proxy result is published.
-The `trace@2` cutover is an explicit bounded reindex, never a migration-time
+refuses to claim a block until the current `proxy@2` result is published.
+The `trace@3` cutover is an explicit bounded reindex, never a migration-time
 historical enqueue. Each completed Trace generation requests the existing
-`proxy@2` replay and then `abi@2`; wait for those publications before treating
+`proxy@2` replay and then `abi@3`; wait for those publications before treating
 the range as proxy-interaction complete. Nodes that reject `withLog` with
 `-32602` still publish the call tree, but their logs remain visibly on the
 conservative address fallback path.
+
+Migration `0040` is another explicit bounded cutover. Run `reindex --stage
+state_diff` for the chosen canonical range and wait for `state_diff@2`. Its
+completion requests `trace@3`; after Trace publishes, wait for `proxy@2` and
+then `abi@3`, then rebuild the affected coverage range. The migration never
+enqueues unbounded history, and operators must not substitute block-end or
+`latest` code for unavailable transaction prestate.
 
 ### Proxy detection V2 shadow rollout
 

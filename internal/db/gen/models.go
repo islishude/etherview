@@ -31,6 +31,7 @@ type AbiDecoding struct {
 	SourceCodeHash  []byte             `db:"source_code_hash" json:"source_code_hash"`
 	ReturnStatus    string             `db:"return_status" json:"return_status"`
 	ReturnArguments []byte             `db:"return_arguments" json:"return_arguments"`
+	DecodingKind    string             `db:"decoding_kind" json:"decoding_kind"`
 }
 
 type AbiDecodingsDefault struct {
@@ -467,6 +468,66 @@ type DurableStagePublication struct {
 	CommittedAt   pgtype.Timestamptz `db:"committed_at" json:"committed_at"`
 }
 
+type Eip7702Authorization struct {
+	ChainID              pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber          pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash            []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash      []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex     int64          `db:"transaction_index" json:"transaction_index"`
+	AuthorizationIndex   int64          `db:"authorization_index" json:"authorization_index"`
+	AuthorizationChainID pgtype.Numeric `db:"authorization_chain_id" json:"authorization_chain_id"`
+	AuthorizationNonce   pgtype.Numeric `db:"authorization_nonce" json:"authorization_nonce"`
+	DelegateAddress      []byte         `db:"delegate_address" json:"delegate_address"`
+	YParity              int16          `db:"y_parity" json:"y_parity"`
+	R                    []byte         `db:"r" json:"r"`
+	S                    []byte         `db:"s" json:"s"`
+	Authority            []byte         `db:"authority" json:"authority"`
+	SignatureStatus      string         `db:"signature_status" json:"signature_status"`
+	ApplicationStatus    string         `db:"application_status" json:"application_status"`
+	SkipReason           *string        `db:"skip_reason" json:"skip_reason"`
+	Canonical            bool           `db:"canonical" json:"canonical"`
+}
+
+type Eip7702AuthorizationsDefault struct {
+	ChainID              pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber          pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash            []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash      []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex     int64          `db:"transaction_index" json:"transaction_index"`
+	AuthorizationIndex   int64          `db:"authorization_index" json:"authorization_index"`
+	AuthorizationChainID pgtype.Numeric `db:"authorization_chain_id" json:"authorization_chain_id"`
+	AuthorizationNonce   pgtype.Numeric `db:"authorization_nonce" json:"authorization_nonce"`
+	DelegateAddress      []byte         `db:"delegate_address" json:"delegate_address"`
+	YParity              int16          `db:"y_parity" json:"y_parity"`
+	R                    []byte         `db:"r" json:"r"`
+	S                    []byte         `db:"s" json:"s"`
+	Authority            []byte         `db:"authority" json:"authority"`
+	SignatureStatus      string         `db:"signature_status" json:"signature_status"`
+	ApplicationStatus    string         `db:"application_status" json:"application_status"`
+	SkipReason           *string        `db:"skip_reason" json:"skip_reason"`
+	Canonical            bool           `db:"canonical" json:"canonical"`
+}
+
+type Eip7702AuthorizationsP01000000 struct {
+	ChainID              pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber          pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash            []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash      []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex     int64          `db:"transaction_index" json:"transaction_index"`
+	AuthorizationIndex   int64          `db:"authorization_index" json:"authorization_index"`
+	AuthorizationChainID pgtype.Numeric `db:"authorization_chain_id" json:"authorization_chain_id"`
+	AuthorizationNonce   pgtype.Numeric `db:"authorization_nonce" json:"authorization_nonce"`
+	DelegateAddress      []byte         `db:"delegate_address" json:"delegate_address"`
+	YParity              int16          `db:"y_parity" json:"y_parity"`
+	R                    []byte         `db:"r" json:"r"`
+	S                    []byte         `db:"s" json:"s"`
+	Authority            []byte         `db:"authority" json:"authority"`
+	SignatureStatus      string         `db:"signature_status" json:"signature_status"`
+	ApplicationStatus    string         `db:"application_status" json:"application_status"`
+	SkipReason           *string        `db:"skip_reason" json:"skip_reason"`
+	Canonical            bool           `db:"canonical" json:"canonical"`
+}
+
 type Erc1155BalanceReconciliation struct {
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte             `db:"token_address" json:"token_address"`
@@ -703,27 +764,30 @@ type NftMetadataSourceObservation struct {
 }
 
 type NormalizedTrace struct {
-	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
-	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
-	TracePath        string         `db:"trace_path" json:"trace_path"`
-	ParentPath       *string        `db:"parent_path" json:"parent_path"`
-	Depth            int32          `db:"depth" json:"depth"`
-	CallType         string         `db:"call_type" json:"call_type"`
-	FromAddress      []byte         `db:"from_address" json:"from_address"`
-	ToAddress        []byte         `db:"to_address" json:"to_address"`
-	CreatedAddress   []byte         `db:"created_address" json:"created_address"`
-	Value            pgtype.Numeric `db:"value" json:"value"`
-	Gas              pgtype.Numeric `db:"gas" json:"gas"`
-	GasUsed          pgtype.Numeric `db:"gas_used" json:"gas_used"`
-	Input            []byte         `db:"input" json:"input"`
-	Output           []byte         `db:"output" json:"output"`
-	Error            *string        `db:"error" json:"error"`
-	Reverted         bool           `db:"reverted" json:"reverted"`
-	Canonical        bool           `db:"canonical" json:"canonical"`
-	DirectReverted   bool           `db:"direct_reverted" json:"direct_reverted"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash     []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex    int64          `db:"transaction_index" json:"transaction_index"`
+	TracePath           string         `db:"trace_path" json:"trace_path"`
+	ParentPath          *string        `db:"parent_path" json:"parent_path"`
+	Depth               int32          `db:"depth" json:"depth"`
+	CallType            string         `db:"call_type" json:"call_type"`
+	FromAddress         []byte         `db:"from_address" json:"from_address"`
+	ToAddress           []byte         `db:"to_address" json:"to_address"`
+	CreatedAddress      []byte         `db:"created_address" json:"created_address"`
+	Value               pgtype.Numeric `db:"value" json:"value"`
+	Gas                 pgtype.Numeric `db:"gas" json:"gas"`
+	GasUsed             pgtype.Numeric `db:"gas_used" json:"gas_used"`
+	Input               []byte         `db:"input" json:"input"`
+	Output              []byte         `db:"output" json:"output"`
+	Error               *string        `db:"error" json:"error"`
+	Reverted            bool           `db:"reverted" json:"reverted"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	DirectReverted      bool           `db:"direct_reverted" json:"direct_reverted"`
+	ExecutionAddress    []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash   []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	ExecutionResolution string         `db:"execution_resolution" json:"execution_resolution"`
 }
 
 type NormalizedTracesDefault struct {
@@ -1214,6 +1278,48 @@ type Transaction struct {
 	TxType     pgtype.Numeric     `db:"tx_type" json:"tx_type"`
 	Raw        []byte             `db:"raw" json:"raw"`
 	InsertedAt pgtype.Timestamptz `db:"inserted_at" json:"inserted_at"`
+}
+
+type TransactionExecutionCodeResolution struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionExecutionCodeResolutionsDefault struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionExecutionCodeResolutionsP01000000 struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
 }
 
 type TransactionInclusion struct {

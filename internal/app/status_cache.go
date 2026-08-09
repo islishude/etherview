@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -66,4 +67,14 @@ func (reader redisStatusReader) Status(ctx context.Context) (httpapi.StatusSnaps
 		reader.cache.CacheStore(ctx, key, generation, value)
 	}
 	return snapshot, nil
+}
+
+// AddressDelegation deliberately bypasses Redis because it is a writer- and
+// canonical-tip-fenced external state read, not a cacheable projection.
+func (reader redisStatusReader) AddressDelegation(ctx context.Context, address string) (gen.DelegationBinding, error) {
+	delegate, ok := reader.Reader.(httpapi.DelegationBindingReader)
+	if !ok {
+		return gen.DelegationBinding{}, httpapi.ErrUnavailable
+	}
+	return delegate.AddressDelegation(ctx, address)
 }

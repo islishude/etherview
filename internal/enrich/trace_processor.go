@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	TraceStage             = StageID{Name: "trace", Version: 2}
+	TraceStage             = StageID{Name: "trace", Version: 3}
 	errTraceRPCUnavailable = errors.New("trace RPC capability unavailable")
 )
 
@@ -51,13 +51,14 @@ func (processor *TraceRPCProcessor) ProcessLease(
 }
 
 type traceTransaction struct {
-	index uint64
-	hash  common.Hash
-	from  common.Address
-	to    *common.Address
-	value string
-	input []byte
-	trace NormalizedTrace
+	index      uint64
+	hash       common.Hash
+	from       common.Address
+	to         *common.Address
+	value      string
+	input      []byte
+	trace      NormalizedTrace
+	executions map[common.Address]executionCodeResolution
 }
 
 // traceBlockBudget is shared by every RPC response processed for one block
@@ -213,6 +214,53 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 	if err := rows.Err(); err != nil {
 		return nil, false, fmt.Errorf("iterate trace transactions: %w", err)
 	}
+	resolutionRows, err := processor.db.QueryContext(ctx, traceExecutionResolutionsSQL,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		StateDiffStage.Name, StateDiffStage.Version,
+	)
+	if err != nil {
+		return nil, false, fmt.Errorf("query trace execution-code resolutions: %w", err)
+	}
+	defer resolutionRows.Close() //nolint:errcheck
+	byTransaction := make(map[common.Hash]map[common.Address]executionCodeResolution)
+	for resolutionRows.Next() {
+		var transactionHash, contextAddress, executionAddress, codeHash []byte
+		var resolution, evidenceSource string
+		if err := resolutionRows.Scan(
+			&transactionHash, &contextAddress, &executionAddress, &codeHash,
+			&resolution, &evidenceSource,
+		); err != nil {
+			return nil, false, fmt.Errorf("scan trace execution-code resolution: %w", err)
+		}
+		if len(transactionHash) != common.HashLength || len(contextAddress) != common.AddressLength ||
+			(len(executionAddress) != 0 && len(executionAddress) != common.AddressLength) ||
+			(len(codeHash) != 0 && len(codeHash) != common.HashLength) {
+			return nil, false, Permanent(errors.New("trace execution-code resolution identity is invalid"))
+		}
+		transaction := common.BytesToHash(transactionHash)
+		contextAddressValue := common.BytesToAddress(contextAddress)
+		item := executionCodeResolution{
+			context: contextAddressValue, resolution: resolution, evidenceSource: evidenceSource,
+		}
+		if len(executionAddress) != 0 {
+			value := common.BytesToAddress(executionAddress)
+			item.execution = &value
+		}
+		if len(codeHash) != 0 {
+			value := common.BytesToHash(codeHash)
+			item.codeHash = &value
+		}
+		if byTransaction[transaction] == nil {
+			byTransaction[transaction] = make(map[common.Address]executionCodeResolution)
+		}
+		byTransaction[transaction][contextAddressValue] = item
+	}
+	if err := resolutionRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate trace execution-code resolutions: %w", err)
+	}
+	for index := range result {
+		result[index].executions = byTransaction[result[index].hash]
+	}
 	return result, true, nil
 }
 
@@ -274,6 +322,7 @@ func (processor *TraceRPCProcessor) fetchCallTracer(
 			return Permanent(fmt.Errorf("validate callTracer transaction %s: %w", transactions[index].hash, err))
 		}
 		transactions[index].trace = trace
+		applyTraceExecutionResolutions(&transactions[index])
 	}
 	return nil
 }
@@ -321,8 +370,39 @@ func (processor *TraceRPCProcessor) fetchTraceAPI(
 			return Permanent(fmt.Errorf("validate trace_transaction %s: %w", transactions[index].hash, err))
 		}
 		transactions[index].trace = trace
+		applyTraceExecutionResolutions(&transactions[index])
 	}
 	return nil
+}
+
+func applyTraceExecutionResolutions(transaction *traceTransaction) {
+	if transaction == nil {
+		return
+	}
+	for index := range transaction.trace.Frames {
+		frame := &transaction.trace.Frames[index]
+		if frame.Type == "CREATE" || frame.Type == "CREATE2" {
+			frame.ExecutionResolution = "not_applicable"
+			continue
+		}
+		frame.ExecutionResolution = "unavailable"
+		if frame.CodeAddress == nil {
+			continue
+		}
+		resolution, exists := transaction.executions[*frame.CodeAddress]
+		if !exists {
+			continue
+		}
+		frame.ExecutionResolution = resolution.resolution
+		if resolution.execution != nil {
+			value := *resolution.execution
+			frame.ExecutionAddress = &value
+		}
+		if resolution.codeHash != nil {
+			value := *resolution.codeHash
+			frame.ExecutionCodeHash = &value
+		}
+	}
 }
 
 func validateTransactionRoot(trace NormalizedTrace, transaction traceTransaction) error {
@@ -495,11 +575,22 @@ func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction tra
 	} else if frame.Error != "" {
 		traceError = frame.Error
 	}
+	var executionAddress, executionCodeHash any
+	if frame.ExecutionAddress != nil {
+		executionAddress = frame.ExecutionAddress[:]
+	}
+	if frame.ExecutionCodeHash != nil {
+		executionCodeHash = frame.ExecutionCodeHash[:]
+	}
+	if frame.ExecutionResolution == "" {
+		frame.ExecutionResolution = "unavailable"
+	}
 	_, err = tx.ExecContext(ctx, insertTraceFrameSQL,
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], transaction.index, tracePath, parentPath, len(frame.TraceAddress),
 		frame.Type, from, to, created, value, gas, gasUsed, nullableBytes(frame.Input),
 		nullableBytes(frame.Output), traceError, frame.DirectReverted, frame.Reverted,
+		executionAddress, executionCodeHash, frame.ExecutionResolution,
 	)
 	if err != nil {
 		return fmt.Errorf("persist normalized trace frame: %w", err)
@@ -561,6 +652,7 @@ func loadTraceLogAttributions(
 		return nil, 0, Permanent(errors.New("callTracer returned a partial receipt-log set"))
 	}
 	result := make([]traceLogAttribution, 0, captured)
+	fallback := 0
 	seen := make(map[uint64]struct{}, captured)
 	for _, frame := range transaction.trace.Frames {
 		if len(frame.Logs) == 0 {
@@ -584,13 +676,26 @@ func loadTraceLogAttributions(
 					return nil, 0, Permanent(errors.New("callTracer log topics do not match the canonical receipt"))
 				}
 			}
+			if frame.To == nil || stored.Address != *frame.To {
+				return nil, 0, Permanent(errors.New("callTracer log emitter does not match the execution context"))
+			}
+			executionAddress := frame.ExecutionAddress
+			if (frame.Type == "CREATE" || frame.Type == "CREATE2") && frame.To != nil {
+				executionAddress = frame.To
+			}
+			if executionAddress == nil || (frame.Type != "CREATE" && frame.Type != "CREATE2" &&
+				(frame.ExecutionCodeHash == nil ||
+					(frame.ExecutionResolution != "direct" && frame.ExecutionResolution != "eip7702_delegate"))) {
+				fallback++
+				continue
+			}
 			result = append(result, traceLogAttribution{
 				logIndex: traced.Index, tracePath: tracePathKey(frame.TraceAddress),
-				callType: frame.Type, executionAddress: *frame.To,
+				callType: frame.Type, executionAddress: *executionAddress,
 			})
 		}
 	}
-	return result, 0, nil
+	return result, fallback, nil
 }
 
 func persistTraceLogAttribution(
@@ -665,6 +770,27 @@ FROM transaction_inclusions
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
 ORDER BY tx_index`
 
+const traceExecutionResolutionsSQL = `
+SELECT resolution.transaction_hash, resolution.context_address,
+       resolution.execution_address, resolution.execution_code_hash,
+       resolution.resolution, resolution.evidence_source
+FROM transaction_execution_code_resolutions AS resolution
+WHERE resolution.chain_id = $1::numeric
+  AND resolution.block_number = $2::numeric
+  AND resolution.block_hash = $3
+  AND resolution.canonical
+  AND EXISTS (
+      SELECT 1
+      FROM published_block_stage_results AS published
+      WHERE published.chain_id = resolution.chain_id
+        AND published.block_number = resolution.block_number
+        AND published.block_hash = resolution.block_hash
+        AND published.stage = $4
+        AND published.stage_version = $5
+        AND published.state = 'complete'
+  )
+ORDER BY resolution.transaction_index, resolution.context_address`
+
 const deleteTraceBlockSQL = `
 DELETE FROM normalized_traces
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
@@ -678,10 +804,12 @@ INSERT INTO normalized_traces (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     trace_path, parent_path, depth, call_type, from_address, to_address,
     created_address, value, gas, gas_used, input, output, error,
-    direct_reverted, reverted, canonical
+    direct_reverted, reverted, execution_address, execution_code_hash,
+    execution_resolution, canonical
 ) VALUES (
     $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, $20, true
+    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, $20,
+    $21, $22, $23, true
 )`
 
 const traceReceiptLogsSQL = `

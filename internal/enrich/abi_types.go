@@ -145,9 +145,10 @@ func (entry abiEntry) confidence() Confidence { return entry.source.confidence()
 type ABIKind string
 
 const (
-	ABIKindFunction ABIKind = "function"
-	ABIKindEvent    ABIKind = "event"
-	ABIKindError    ABIKind = "error"
+	ABIKindFunction    ABIKind = "function"
+	ABIKindConstructor ABIKind = "constructor"
+	ABIKindEvent       ABIKind = "event"
+	ABIKindError       ABIKind = "error"
 )
 
 type DecodeStatus string
@@ -471,18 +472,22 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 	entries := make([]abiEntry, 0, len(raw))
 	for index, item := range raw {
 		kind := ABIKind(item.Type)
-		if kind != ABIKindFunction && kind != ABIKindEvent && kind != ABIKindError {
+		if kind != ABIKindFunction && kind != ABIKindConstructor && kind != ABIKindEvent && kind != ABIKindError {
 			continue
 		}
-		if item.Name == "" {
+		if item.Name == "" && kind != ABIKindConstructor {
 			return nil, fmt.Errorf("ABI entry %d has no name", index)
 		}
 		if len(item.Inputs) > limits.MaxArguments {
 			return nil, fmt.Errorf("ABI entry %s has too many inputs", item.Name)
 		}
+		name := item.Name
+		if kind == ABIKindConstructor {
+			name = "constructor"
+		}
 		entry := abiEntry{
 			kind:      kind,
-			name:      item.Name,
+			name:      name,
 			inputs:    item.Inputs,
 			types:     make([]*abiType, len(item.Inputs)),
 			indexed:   make([]bool, len(item.Inputs)),
@@ -523,7 +528,7 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 			entry.types[inputIndex] = parsedType
 			entry.indexed[inputIndex] = input.Indexed
 		}
-		entry.signature = item.Name + "(" + strings.Join(canonicalInputs, ",") + ")"
+		entry.signature = name + "(" + strings.Join(canonicalInputs, ",") + ")"
 		if len(entry.signature) > limits.MaxSignatureBytes {
 			return nil, fmt.Errorf("ABI entry %s signature exceeds byte limit", item.Name)
 		}

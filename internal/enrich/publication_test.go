@@ -87,7 +87,7 @@ func TestPostgresFinishRejectsKnownDerivedSuccessBeforeMutation(t *testing.T) {
 
 func TestPostgresWorkerRejectsFutureDerivedVersionWithoutAtomicProcessor(t *testing.T) {
 	t.Parallel()
-	stage := StageID{Name: TraceStage.Name, Version: 2}
+	stage := StageID{Name: TraceStage.Name, Version: TraceStage.Version + 1}
 	queue, err := NewPostgresJobQueue(openFakeSQLDB(t, &fakeSQLBackend{}))
 	if err != nil {
 		t.Fatal(err)
