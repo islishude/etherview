@@ -95,27 +95,36 @@ func (catalog *Postgres) TransactionLogs(
 	}
 	defer rows.Close() //nolint:errcheck
 	type rawLog struct {
-		index     int64
-		raw       []byte
-		persisted persistedLogDecoding
+		index            int64
+		raw              []byte
+		persisted        persistedLogDecoding
+		tracePath        sql.NullString
+		executionAddress []byte
 	}
 	rawLogs := make([]rawLog, 0, resolution.limit+1)
 	for rows.Next() {
 		var raw []byte
 		var logIndex int64
 		var persisted persistedLogDecoding
+		var storedTracePath sql.NullString
+		var executionAddress []byte
 		if err := rows.Scan(
 			&logIndex, &raw, &persisted.status, &persisted.signature,
 			&persisted.source, &persisted.confidence, &persisted.arguments,
 			&persisted.candidates, &persisted.warning,
 			&persisted.targetAddress, &persisted.targetCodeHash,
+			&persisted.sourceAddress, &persisted.sourceCodeHash,
+			&storedTracePath, &executionAddress,
 		); err != nil {
 			return TransactionLogPage{}, fmt.Errorf("scan transaction log: %w", err)
 		}
 		if logIndex < 0 {
 			return TransactionLogPage{}, ErrCorruptData
 		}
-		rawLogs = append(rawLogs, rawLog{index: logIndex, raw: raw, persisted: persisted})
+		rawLogs = append(rawLogs, rawLog{
+			index: logIndex, raw: raw, persisted: persisted,
+			tracePath: storedTracePath, executionAddress: executionAddress,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return TransactionLogPage{}, fmt.Errorf("iterate transaction logs: %w", err)
@@ -139,9 +148,24 @@ func (catalog *Postgres) TransactionLogs(
 		for index := range decoded.Topics {
 			topics[index] = decoded.Topics[index].Hex()
 		}
+		decodeAddress := decoded.Address
+		attribution := TransactionLogAttribution{Mode: "address_fallback", TracePath: []uint32{}}
+		if stored.tracePath.Valid || len(stored.executionAddress) != 0 {
+			if !stored.tracePath.Valid || len(stored.executionAddress) != common.AddressLength {
+				return TransactionLogPage{}, ErrCorruptData
+			}
+			path, pathErr := parseTracePath(stored.tracePath.String)
+			if pathErr != nil {
+				return TransactionLogPage{}, ErrCorruptData
+			}
+			decodeAddress = common.BytesToAddress(stored.executionAddress)
+			attribution = TransactionLogAttribution{
+				Mode: "exact_trace", TracePath: path, ExecutionAddress: decodeAddress.Hex(),
+			}
+		}
 		decoding, decodeErr := resolveTransactionLogDecoding(
 			ctx, tx, request.ChainID, blockNumber, resolution.blockHash,
-			decoded.Address, decoded.Topics, decoded.Data, stored.persisted,
+			decodeAddress, decoded.Topics, decoded.Data, stored.persisted,
 		)
 		if decodeErr != nil {
 			return TransactionLogPage{}, fmt.Errorf("decode transaction log ABI: %w", decodeErr)
@@ -150,6 +174,7 @@ func (catalog *Postgres) TransactionLogs(
 			Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10),
 			Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: decoding,
 		})
+		page.Items[len(page.Items)-1].Decoding.Attribution = attribution
 	}
 	if len(page.Items) > resolution.limit {
 		page.Items = page.Items[:resolution.limit]
@@ -383,7 +408,9 @@ const transactionLogsSQL = `
 SELECT log.log_index, log.raw, decoding.status, decoding.signature,
        decoding.source, decoding.confidence, decoding.arguments,
        decoding.candidates, decoding.warning,
-       decoding.target_address, decoding.target_code_hash
+       decoding.target_address, decoding.target_code_hash,
+       decoding.source_address, decoding.source_code_hash,
+       attribution.trace_path, attribution.execution_address
 FROM logs AS log
 LEFT JOIN abi_decodings AS decoding
   ON decoding.chain_id = log.chain_id
@@ -392,6 +419,22 @@ LEFT JOIN abi_decodings AS decoding
  AND decoding.object_kind = 'log'
  AND decoding.object_index = log.log_index::text
  AND decoding.canonical
+LEFT JOIN trace_log_attributions AS attribution
+  ON attribution.chain_id = log.chain_id
+ AND attribution.block_number = log.block_number
+ AND attribution.block_hash = log.block_hash
+ AND attribution.transaction_hash = log.tx_hash
+ AND attribution.log_index = log.log_index
+ AND attribution.canonical
+ AND EXISTS (
+     SELECT 1
+     FROM published_block_stage_results AS published
+     WHERE published.chain_id = attribution.chain_id
+       AND published.block_hash = attribution.block_hash
+       AND published.stage = 'trace'
+       AND published.stage_version = 2
+       AND published.state = 'complete'
+ )
 WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3
 ORDER BY log.log_index
 LIMIT $4 OFFSET $5`

@@ -13,12 +13,14 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 type traceRPCInvocation struct {
-	method string
-	hash   string
+	method  string
+	hash    string
+	withLog *bool
 }
 
 type traceTestCaller struct {
@@ -43,7 +45,17 @@ func (caller *traceTestCaller) CallContext(_ context.Context, result any, method
 	if !ok {
 		return fmt.Errorf("trace RPC %s hash is %T", method, params[0])
 	}
-	raw, err := caller.invoke(method, hash)
+	var withLog *bool
+	if len(params) > 1 {
+		if options, ok := params[1].(map[string]any); ok {
+			if tracerConfig, ok := options["tracerConfig"].(map[string]any); ok {
+				if value, ok := tracerConfig["withLog"].(bool); ok {
+					withLog = &value
+				}
+			}
+		}
+	}
+	raw, err := caller.invoke(method, hash, withLog)
 	if err != nil {
 		return err
 	}
@@ -58,21 +70,27 @@ func (caller *traceTestCaller) CallContext(_ context.Context, result any, method
 func (service debugTraceRPCService) TraceTransaction(
 	_ context.Context,
 	hash string,
-	_ map[string]any,
+	config map[string]any,
 ) (json.RawMessage, error) {
-	return service.caller.invoke("debug_traceTransaction", hash)
+	var withLog *bool
+	if tracerConfig, ok := config["tracerConfig"].(map[string]any); ok {
+		if value, ok := tracerConfig["withLog"].(bool); ok {
+			withLog = &value
+		}
+	}
+	return service.caller.invoke("debug_traceTransaction", hash, withLog)
 }
 
 func (service parityTraceRPCService) Transaction(
 	_ context.Context,
 	hash string,
 ) (json.RawMessage, error) {
-	return service.caller.invoke("trace_transaction", hash)
+	return service.caller.invoke("trace_transaction", hash, nil)
 }
 
-func (caller *traceTestCaller) invoke(method, hash string) (json.RawMessage, error) {
+func (caller *traceTestCaller) invoke(method, hash string, withLog *bool) (json.RawMessage, error) {
 	caller.mu.Lock()
-	caller.calls = append(caller.calls, traceRPCInvocation{method: method, hash: hash})
+	caller.calls = append(caller.calls, traceRPCInvocation{method: method, hash: hash, withLog: withLog})
 	handler := caller.handler
 	caller.mu.Unlock()
 	if handler == nil {
@@ -81,10 +99,10 @@ func (caller *traceTestCaller) invoke(method, hash string) (json.RawMessage, err
 	return handler(method, hash)
 }
 
-func callTracerRoot(from, to, value, input string) json.RawMessage {
+func callTracerRoot(from string) json.RawMessage {
 	return json.RawMessage(`{
-		"type":"CALL","from":"` + from + `","to":"` + to + `","value":"` + value + `",
-		"gas":"0x100","gasUsed":"0x20","input":"` + input + `","output":"0x"
+		"type":"CALL","from":"` + from + `","to":"` + traceAddress2 + `","value":"0x5",
+		"gas":"0x100","gasUsed":"0x20","input":"0x1234","output":"0x"
 	}`)
 }
 
@@ -109,6 +127,8 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 				return &fakeSQLRows{columns: []string{"tx_index", "tx_hash", "from", "to", "value", "input"}, values: [][]driver.Value{
 					traceTransactionRow(0, txHash1), traceTransactionRow(1, txHash2),
 				}}, nil
+			case strings.Contains(query, "FROM logs"):
+				return &fakeSQLRows{columns: []string{"log_index", "raw"}}, nil
 			case strings.Contains(query, "FOR KEY SHARE"):
 				return &fakeSQLRows{columns: []string{"one"}, values: [][]driver.Value{{int64(1)}}}, nil
 			case strings.Contains(query, "FROM durable_jobs"):
@@ -124,6 +144,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 			switch {
 			case strings.Contains(query, "UPDATE durable_jobs"):
 				return driver.RowsAffected(0), nil
+			case strings.Contains(query, "DELETE FROM trace_log_attributions"):
 			case strings.Contains(query, "DELETE FROM normalized_traces"):
 			case strings.Contains(query, "INSERT INTO normalized_traces"):
 				insertedFrames++
@@ -144,7 +165,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 		if method != "debug_traceTransaction" {
 			return nil, fmt.Errorf("unexpected RPC method %s", method)
 		}
-		return callTracerRoot(traceAddress1, traceAddress2, "0x5", "0x1234"), nil
+		return callTracerRoot(traceAddress1), nil
 	}}
 	second := &traceTestCaller{handler: first.handler}
 	endpoints := []ethrpc.Endpoint{
@@ -170,7 +191,7 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 		result.Details["abi_requeued"] != "false" {
 		t.Fatalf("result=%+v", result)
 	}
-	if queryCount != 5 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
+	if queryCount != 7 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
 		t.Fatalf("queries=%d frames=%d stage=%v journal=%v first=%v second=%v", queryCount, insertedFrames, stageWritten, journalWritten, first.calls, second.calls)
 	}
 	if !reflect.DeepEqual(replayStages, []string{"proxy", "abi"}) {
@@ -178,6 +199,125 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 	}
 	if first.calls[0].hash != txHash1.String() || first.calls[1].hash != txHash2.String() {
 		t.Fatalf("calls=%+v", first.calls)
+	}
+}
+
+func TestCallTracerWithLogInvalidParamsDowngradesOncePerBlock(t *testing.T) {
+	t.Parallel()
+	from, to := common.HexToAddress(traceAddress1), common.HexToAddress(traceAddress2)
+	transactions := []traceTransaction{
+		{hash: uintWord(880), from: from, to: &to, value: "0x5", input: []byte{0x12, 0x34}},
+		{hash: uintWord(881), from: from, to: &to, value: "0x5", input: []byte{0x12, 0x34}},
+	}
+	calls := 0
+	caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
+		calls++
+		if method != "debug_traceTransaction" {
+			return nil, fmt.Errorf("unexpected method %s", method)
+		}
+		if calls == 1 {
+			return nil, testRPCError{code: -32602, message: "unknown tracerConfig field withLog"}
+		}
+		return callTracerRoot(traceAddress1), nil
+	}}
+	processor := &TraceRPCProcessor{limits: DefaultTraceLimits()}
+	if err := processor.fetchCallTracer(context.Background(), caller, transactions, newTraceBlockBudget(processor.limits)); err != nil {
+		t.Fatal(err)
+	}
+	if len(caller.calls) != 3 || caller.calls[0].withLog == nil || !*caller.calls[0].withLog ||
+		caller.calls[1].withLog == nil || *caller.calls[1].withLog ||
+		caller.calls[2].withLog == nil || *caller.calls[2].withLog {
+		t.Fatalf("calls=%+v", caller.calls)
+	}
+}
+
+func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "trace-logs", Stage: TraceStage, ChainID: "1", BlockHash: uintWord(77), BlockNumber: 77}
+	txHash := uintWord(770)
+	emitter, implementation := testAddress(0xa1), testAddress(0xb2)
+	topic := uintWord(123)
+	stored := types.Log{
+		Address: emitter, Topics: []common.Hash{topic}, Data: []byte{1, 2, 3},
+		BlockNumber: job.BlockNumber, TxHash: txHash, TxIndex: 0,
+		BlockHash: job.BlockHash, Index: 9,
+	}
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedSecond := stored
+	storedSecond.Index = 10
+	storedSecond.Topics = []common.Hash{uintWord(124)}
+	rawSecond, err := json.Marshal(storedSecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseFrame := CallFrame{
+		Type: "DELEGATECALL", To: &implementation, TraceAddress: []uint32{2, 1},
+		Logs: []TraceLog{{Address: emitter, Topics: []common.Hash{topic}, Data: []byte{1, 2, 3}, Index: 9}},
+	}
+	for _, test := range []struct {
+		name      string
+		frame     CallFrame
+		expected  int
+		wantError bool
+		fallback  int
+	}{
+		{name: "exact delegate execution", frame: baseFrame, expected: 1},
+		{name: "missing withLog falls back", frame: CallFrame{Type: "DELEGATECALL", To: &implementation}, expected: 1, fallback: 1},
+		{name: "partial response", frame: baseFrame, expected: 2, wantError: true},
+		{name: "duplicate index", frame: func() CallFrame {
+			frame := baseFrame
+			frame.Logs = append(append([]TraceLog(nil), baseFrame.Logs...), baseFrame.Logs[0])
+			return frame
+		}(), expected: 2, wantError: true},
+		{name: "staticcall log", frame: func() CallFrame { frame := baseFrame; frame.Type = "STATICCALL"; return frame }(), expected: 1, wantError: true},
+		{name: "no receipt logs", frame: CallFrame{Type: "CALL", To: &implementation}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			backend := &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+				if !strings.Contains(query, "FROM logs") {
+					return nil, fmt.Errorf("unexpected query: %s", query)
+				}
+				rows := [][]driver.Value{}
+				if test.expected >= 1 {
+					rows = append(rows, []driver.Value{int64(stored.Index), raw})
+				}
+				if test.expected >= 2 {
+					rows = append(rows, []driver.Value{int64(storedSecond.Index), rawSecond})
+				}
+				return &fakeSQLRows{columns: []string{"log_index", "raw"}, values: rows}, nil
+			}}
+			db := openFakeSQLDB(t, backend)
+			tx, err := db.BeginTx(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback() //nolint:errcheck
+			attributions, fallback, err := loadTraceLogAttributions(context.Background(), tx, job, traceTransaction{
+				hash: txHash, trace: NormalizedTrace{Frames: []CallFrame{test.frame}},
+			})
+			if test.wantError {
+				var classified stageError
+				if !errors.As(err, &classified) || classified.kind != "permanent" {
+					t.Fatalf("err=%#v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(test.frame.Logs) > 0 {
+				if fallback != 0 || len(attributions) != 1 || attributions[0].tracePath != "2.1" ||
+					attributions[0].callType != "DELEGATECALL" || attributions[0].executionAddress != implementation {
+					t.Fatalf("attributions=%+v fallback=%d", attributions, fallback)
+				}
+			} else if len(attributions) != 0 || fallback != test.fallback {
+				t.Fatalf("empty receipt attributions=%+v fallback=%d", attributions, fallback)
+			}
+		})
 	}
 }
 
@@ -299,7 +439,7 @@ func TestTraceRPCProcessorDoesNotResetBlockBudgetOnAdapterFallback(t *testing.T)
 			if hash == txHash2.String() {
 				return nil, testRPCError{code: -32601, message: "method not found"}
 			}
-			return callTracerRoot(traceAddress1, traceAddress2, "0x5", "0x1234"), nil
+			return callTracerRoot(traceAddress1), nil
 		case "trace_transaction":
 			transactionHash, transactionIndex := txHash1, uint64(0)
 			if hash == txHash2.String() {
@@ -385,7 +525,7 @@ func TestTraceRPCProcessorRejectsEmptyOrMismatchedTrace(t *testing.T) {
 		raw  json.RawMessage
 	}{
 		{name: "empty_trace_api", raw: json.RawMessage(`[]`)},
-		{name: "mismatched_call_root", raw: callTracerRoot(traceAddress3, traceAddress2, "0x5", "0x1234")},
+		{name: "mismatched_call_root", raw: callTracerRoot(traceAddress3)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -579,6 +719,9 @@ func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 			if strings.Contains(query, "FROM durable_jobs") {
 				return emptyReplayTargetRows(), nil
 			}
+			if strings.Contains(query, "FROM logs") {
+				return &fakeSQLRows{columns: []string{"log_index", "raw"}}, nil
+			}
 			return original(query, arguments)
 		}
 	}(backend.query)
@@ -586,7 +729,8 @@ func successfulTraceBackend(t *testing.T, txHash common.Hash) *fakeSQLBackend {
 		switch {
 		case strings.Contains(query, "UPDATE durable_jobs"):
 			return driver.RowsAffected(0), nil
-		case strings.Contains(query, "DELETE FROM normalized_traces"),
+		case strings.Contains(query, "DELETE FROM trace_log_attributions"),
+			strings.Contains(query, "DELETE FROM normalized_traces"),
 			strings.Contains(query, "INSERT INTO normalized_traces"),
 			strings.Contains(query, "INSERT INTO block_stage_results"),
 			strings.Contains(query, "INSERT INTO block_journals"):

@@ -675,7 +675,7 @@ LEFT JOIN published_block_stage_results AS trace_result
  AND trace_result.block_number = contiguous.range_end
  AND trace_result.block_hash = contiguous_block.block_hash
  AND trace_result.stage = 'trace'
- AND trace_result.stage_version = 1`
+ AND trace_result.stage_version = 2`
 
 const listBlocksSQL = `
 SELECT

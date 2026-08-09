@@ -19,8 +19,8 @@ arbitrary executable SQL would create a second migration and security surface.
 
 ## Decision
 
-- Every successful or stale production `proxy@1`, `abi@1`, `token@1`,
-  `stats@2`, and `trace@1`
+- Every successful or stale production `proxy@2`, `abi@2`, `token@1`,
+  `stats@3`, `trace@2`, and `state_diff@1`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
 - The journal, `block_stage_results` row, and all output written by that stage
@@ -56,7 +56,8 @@ arbitrary executable SQL would create a second migration and security surface.
   `set_canonical` rollback/replay descriptions and a fixed relation allowlist:
   `contract_code_observations` plus `proxy_observations`, `contract_abis` plus
   `abi_decodings`, `token_events` plus
-  `token_balance_deltas`, `block_statistics`, or `normalized_traces`. It is
+  `token_balance_deltas`, `block_statistics`, `normalized_traces` plus
+  `trace_log_attributions`, or `transaction_state_changes`. It is
   descriptive, not executable, and never includes
   RPC/log/trace input or worker result details.
 - Journal canonicality is calculated inside the upsert from the exact
@@ -70,7 +71,7 @@ arbitrary executable SQL would create a second migration and security surface.
 - Public and aggregate readers continue to require both the canonical mapping
   and the derived row's canonical flag. A stage result on an orphan is not
   evidence that the replacement canonical block has enrichment output.
-- A `trace@1` completion for a block with transactions contains exactly one
+- A `trace@2` completion for a block with transactions contains exactly one
   normalized root per canonical transaction. The adapter binds trace API
   identity fields and the normalized root call to the stored core inclusion;
   an empty trace response is a failed source response, while a transaction
@@ -80,10 +81,10 @@ arbitrary executable SQL would create a second migration and security surface.
 
 ## Boundaries
 
-The trace journal covers only the normalized call tree stored in
-`normalized_traces`. Etherview does not persist opcode traces or raw trace
-responses, and this decision does not claim rollback or replay support for
-either. Token contract observations remain canonical-by-observation join and
+The trace journal covers the normalized call tree in `normalized_traces` and
+the receipt-validated frame ownership in `trace_log_attributions`. Etherview
+does not persist opcode traces or raw trace responses, and this decision does
+not claim rollback or replay support for either. Token contract observations remain canonical-by-observation join and
 are not represented as a `set_canonical` target by the token journal.
 ABI bindings and decodings follow the provenance and range rules in
 [ADR-0009](ADR-0009-block-bound-abi-provenance.md).

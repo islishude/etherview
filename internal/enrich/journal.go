@@ -49,9 +49,10 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 	case StatsStage:
 		relations = []string{"block_statistics"}
 	case TraceStage:
-		// Only the normalized call tree is persisted by TraceStage. Opcode and
-		// raw traces are intentionally outside this journal contract.
-		relations = []string{"normalized_traces"}
+		// Only the normalized call tree and exact receipt-log attribution are
+		// persisted by TraceStage. Opcode and raw traces remain outside this
+		// journal contract.
+		relations = []string{"normalized_traces", "trace_log_attributions"}
 	case StateDiffStage:
 		relations = []string{"transaction_state_changes"}
 	default:

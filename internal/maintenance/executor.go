@@ -113,7 +113,7 @@ func (executor *Executor) Reindex(ctx context.Context, request Request) error {
 	stage, ok := replayStage(request.Stage)
 	if !ok {
 		return fmt.Errorf(
-			"%w: reindex only supports proxy v2, abi v2, token v1, stats v3, or trace v1, got %q",
+			"%w: reindex only supports proxy v2, abi v2, token v1, stats v3, or trace v2, got %q",
 			ErrInvalidRequest, request.Stage,
 		)
 	}
@@ -181,7 +181,7 @@ func replayStage(name string) (enrich.StageID, bool) {
 	case "stats":
 		return enrich.StatsStage, true
 	case "trace":
-		return enrich.StageID{Name: "trace", Version: 1}, true
+		return enrich.TraceStage, true
 	default:
 		return enrich.StageID{}, false
 	}

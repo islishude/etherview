@@ -27,6 +27,10 @@ type AbiDecoding struct {
 	Warning         string             `db:"warning" json:"warning"`
 	Canonical       bool               `db:"canonical" json:"canonical"`
 	DecodedAt       pgtype.Timestamptz `db:"decoded_at" json:"decoded_at"`
+	SourceAddress   []byte             `db:"source_address" json:"source_address"`
+	SourceCodeHash  []byte             `db:"source_code_hash" json:"source_code_hash"`
+	ReturnStatus    string             `db:"return_status" json:"return_status"`
+	ReturnArguments []byte             `db:"return_arguments" json:"return_arguments"`
 }
 
 type AbiDecodingsDefault struct {
@@ -719,6 +723,7 @@ type NormalizedTrace struct {
 	Error            *string        `db:"error" json:"error"`
 	Reverted         bool           `db:"reverted" json:"reverted"`
 	Canonical        bool           `db:"canonical" json:"canonical"`
+	DirectReverted   bool           `db:"direct_reverted" json:"direct_reverted"`
 }
 
 type NormalizedTracesDefault struct {
@@ -1165,6 +1170,42 @@ type TokenEventsP01000000 struct {
 	Canonical       bool           `db:"canonical" json:"canonical"`
 	Confidence      string         `db:"confidence" json:"confidence"`
 	Raw             []byte         `db:"raw" json:"raw"`
+}
+
+type TraceLogAttribution struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	TracePath        string         `db:"trace_path" json:"trace_path"`
+	CallType         string         `db:"call_type" json:"call_type"`
+	ExecutionAddress []byte         `db:"execution_address" json:"execution_address"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type TraceLogAttributionsDefault struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	TracePath        string         `db:"trace_path" json:"trace_path"`
+	CallType         string         `db:"call_type" json:"call_type"`
+	ExecutionAddress []byte         `db:"execution_address" json:"execution_address"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type TraceLogAttributionsP01000000 struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	TracePath        string         `db:"trace_path" json:"trace_path"`
+	CallType         string         `db:"call_type" json:"call_type"`
+	ExecutionAddress []byte         `db:"execution_address" json:"execution_address"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
 }
 
 type Transaction struct {

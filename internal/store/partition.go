@@ -41,6 +41,11 @@ var blockPartitionSpecs = []blockPartitionSpec{
 	{Parent: "token_balance_deltas", Default: "token_balance_deltas_default", NameCode: "tbd", Dependencies: []string{"token_events"}},
 	{Parent: "normalized_traces", Default: "normalized_traces_default", NameCode: "trc", Dependencies: []string{"transaction_inclusions"}},
 	{
+		Parent: "trace_log_attributions", Default: "trace_log_attributions_default",
+		NameCode: "tla", Dependencies: []string{"logs", "normalized_traces"},
+		IntroducedBy: "0039_trace_bound_abi_decoding",
+	},
+	{
 		Parent: "transaction_state_changes", Default: "transaction_state_changes_default",
 		NameCode: "sdf", Dependencies: []string{"transaction_inclusions"},
 		IntroducedBy: "0025_transaction_state_changes",
@@ -53,6 +58,7 @@ var blockPartitionSpecs = []blockPartitionSpec{
 var blockPartitionDeleteOrder = []string{
 	"token_balance_deltas",
 	"token_events",
+	"trace_log_attributions",
 	"normalized_traces",
 	"transaction_state_changes",
 	"abi_decodings",

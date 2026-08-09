@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 var ErrTraceLimit = errors.New("trace exceeds configured limit")
@@ -34,24 +35,32 @@ type TraceLimits struct {
 	MaxDepth             int
 	MaxDataBytes         int
 	MaxTextBytes         int
+	MaxLogs              int
+	MaxLogDataBytes      int
 	MaxBlockPayloadBytes int
 	MaxBlockFrames       int
 	MaxBlockDataBytes    int
 	MaxBlockTextBytes    int
+	MaxBlockLogs         int
+	MaxBlockLogDataBytes int
 }
 
 func DefaultTraceLimits() TraceLimits {
 	return TraceLimits{
 		MaxPayloadBytes: 32 << 20, MaxFrames: 100_000, MaxDepth: 128,
 		MaxDataBytes: 8 << 20, MaxTextBytes: 1 << 20,
+		MaxLogs: 100_000, MaxLogDataBytes: 8 << 20,
 		MaxBlockPayloadBytes: 64 << 20, MaxBlockFrames: 200_000,
 		MaxBlockDataBytes: 32 << 20, MaxBlockTextBytes: 4 << 20,
+		MaxBlockLogs: 200_000, MaxBlockLogDataBytes: 32 << 20,
 	}
 }
 
 func (limits TraceLimits) validate() error {
 	if limits.MaxPayloadBytes <= 0 || limits.MaxFrames <= 0 || limits.MaxDepth <= 0 || limits.MaxDataBytes <= 0 || limits.MaxTextBytes <= 0 ||
-		limits.MaxBlockPayloadBytes <= 0 || limits.MaxBlockFrames <= 0 || limits.MaxBlockDataBytes <= 0 || limits.MaxBlockTextBytes <= 0 {
+		limits.MaxLogs <= 0 || limits.MaxLogDataBytes <= 0 ||
+		limits.MaxBlockPayloadBytes <= 0 || limits.MaxBlockFrames <= 0 || limits.MaxBlockDataBytes <= 0 || limits.MaxBlockTextBytes <= 0 ||
+		limits.MaxBlockLogs <= 0 || limits.MaxBlockLogDataBytes <= 0 {
 		return errors.New("all trace limits must be positive")
 	}
 	return nil
@@ -73,6 +82,15 @@ type CallFrame struct {
 	RevertReason   string
 	DirectReverted bool
 	Reverted       bool // True when this frame or any ancestor reverted.
+	Logs           []TraceLog
+}
+
+type TraceLog struct {
+	Address  common.Address
+	Topics   []common.Hash
+	Data     []byte
+	Index    uint64
+	Position uint64
 }
 
 type NormalizedTrace struct {
@@ -90,17 +108,26 @@ func UnavailableTrace(source TraceSource, reason string) NormalizedTrace {
 }
 
 type callTracerWire struct {
-	Type         string            `json:"type"`
-	From         string            `json:"from"`
-	To           string            `json:"to"`
-	Value        string            `json:"value"`
-	Gas          string            `json:"gas"`
-	GasUsed      string            `json:"gasUsed"`
-	Input        string            `json:"input"`
-	Output       string            `json:"output"`
-	Error        string            `json:"error"`
-	RevertReason string            `json:"revertReason"`
-	Calls        []json.RawMessage `json:"calls"`
+	Type         string              `json:"type"`
+	From         string              `json:"from"`
+	To           string              `json:"to"`
+	Value        string              `json:"value"`
+	Gas          string              `json:"gas"`
+	GasUsed      string              `json:"gasUsed"`
+	Input        string              `json:"input"`
+	Output       string              `json:"output"`
+	Error        string              `json:"error"`
+	RevertReason string              `json:"revertReason"`
+	Calls        []json.RawMessage   `json:"calls"`
+	Logs         []callTracerLogWire `json:"logs"`
+}
+
+type callTracerLogWire struct {
+	Address  string   `json:"address"`
+	Topics   []string `json:"topics"`
+	Data     string   `json:"data"`
+	Index    string   `json:"index"`
+	Position string   `json:"position"`
 }
 
 type traceBuilder struct {
@@ -108,6 +135,8 @@ type traceBuilder struct {
 	frames    []CallFrame
 	dataBytes int
 	textBytes int
+	logs      int
+	logBytes  int
 }
 
 func NormalizeCallTracer(data []byte, limits TraceLimits) (NormalizedTrace, error) {
@@ -186,11 +215,20 @@ func (builder *traceBuilder) callFrame(wire callTracerWire, path []uint32, paren
 		}
 	}
 	direct := wire.Error != "" || wire.RevertReason != ""
+	logs, err := builder.callLogs(wire.Logs)
+	if err != nil {
+		return CallFrame{}, err
+	}
+	for index := range logs {
+		if logs[index].Position > uint64(len(wire.Calls)) {
+			return CallFrame{}, fmt.Errorf("log %d position exceeds frame calls", index)
+		}
+	}
 	frame := CallFrame{
 		ParentIndex: parent, TraceAddress: append([]uint32(nil), path...), Type: frameType,
 		From: from, To: to, Value: wire.Value, Gas: wire.Gas, GasUsed: wire.GasUsed,
 		Input: input, Output: output, Error: wire.Error, RevertReason: wire.RevertReason,
-		DirectReverted: direct, Reverted: ancestorReverted || direct,
+		DirectReverted: direct, Reverted: ancestorReverted || direct, Logs: logs,
 	}
 	if err := validateTraceFrameAddresses(frame); err != nil {
 		return CallFrame{}, err
@@ -199,6 +237,54 @@ func (builder *traceBuilder) callFrame(wire callTracerWire, path []uint32, paren
 		return CallFrame{}, fmt.Errorf("transaction root has invalid type %q", frame.Type)
 	}
 	return frame, nil
+}
+
+func (builder *traceBuilder) callLogs(wires []callTracerLogWire) ([]TraceLog, error) {
+	if len(wires) == 0 {
+		return nil, nil
+	}
+	if builder.logs > builder.limits.MaxLogs-len(wires) {
+		return nil, fmt.Errorf("%w: log count", ErrTraceLimit)
+	}
+	builder.logs += len(wires)
+	result := make([]TraceLog, len(wires))
+	for index, wire := range wires {
+		address, err := optionalTraceAddress(wire.Address)
+		if err != nil || address == nil {
+			return nil, fmt.Errorf("log %d address is invalid", index)
+		}
+		if len(wire.Topics) > 4 {
+			return nil, fmt.Errorf("log %d has too many topics", index)
+		}
+		topics := make([]common.Hash, len(wire.Topics))
+		for topicIndex, encoded := range wire.Topics {
+			decoded, err := hexutil.Decode(encoded)
+			if err != nil || len(decoded) != common.HashLength {
+				return nil, fmt.Errorf("log %d topic %d is invalid", index, topicIndex)
+			}
+			topics[topicIndex] = common.BytesToHash(decoded)
+		}
+		data, err := optionalTraceData(wire.Data)
+		if err != nil {
+			return nil, fmt.Errorf("log %d data is invalid", index)
+		}
+		if builder.logBytes > builder.limits.MaxLogDataBytes-len(data) {
+			return nil, fmt.Errorf("%w: log data bytes", ErrTraceLimit)
+		}
+		builder.logBytes += len(data)
+		logIndex, err := hexutil.DecodeUint64(wire.Index)
+		if err != nil {
+			return nil, fmt.Errorf("log %d index is invalid", index)
+		}
+		position, err := hexutil.DecodeUint64(wire.Position)
+		if err != nil || position > uint64(builder.limits.MaxFrames) {
+			return nil, fmt.Errorf("log %d position is invalid", index)
+		}
+		result[index] = TraceLog{
+			Address: *address, Topics: topics, Data: data, Index: logIndex, Position: position,
+		}
+	}
+	return result, nil
 }
 
 func (builder *traceBuilder) addData(size int) error {

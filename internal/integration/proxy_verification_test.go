@@ -2522,7 +2522,7 @@ func publishProxyVerificationInteractionCoverage(
 		FROM published_block_stage_results
 		WHERE chain_id = 1 AND block_hash = $1
 		  AND state = 'complete'
-		  AND (stage, stage_version) IN (('trace', 1), ('state_diff', 1))`,
+		  AND (stage, stage_version) IN (('trace', 2), ('state_diff', 1))`,
 		2, block.Hash.Bytes(),
 	)
 }

@@ -104,6 +104,44 @@ func TestABIRegistryDynamicBuiltInAndMalformed(t *testing.T) {
 	}
 }
 
+func TestABIRegistryDecodesOutputsBoundToSelectedFunction(t *testing.T) {
+	t.Parallel()
+	registry := NewABIRegistry()
+	identity := testABIIdentity(13, 103, 1003)
+	binding := testABIBinding(identity, ABISourceCodeHash)
+	abi := `[{
+	  "type":"function","name":"inspect","inputs":[],
+	  "outputs":[{"name":"count","type":"uint256"},{"name":"owner","type":"address"}]
+	},{"type":"function","name":"touch","inputs":[],"outputs":[]},
+	  {"type":"function","name":"legacy","inputs":[]},
+	  {"type":"function","name":"message","inputs":[],"outputs":[{"name":"value","type":"string"}]}
+	]`
+	if err := registry.RegisterJSON(binding, []byte(abi)); err != nil {
+		t.Fatal(err)
+	}
+	output := append(wordBytes(uintWord(7)), wordBytes(addressWord(testAddress(9)))...)
+	decoded := registry.DecodeCall(identity, selectorBytes("inspect()"), output, false)
+	if decoded.Input.Status != DecodeDecoded || decoded.ReturnStatus != ReturnDecoded ||
+		len(decoded.Returns) != 2 || decoded.Returns[0].Value != "7" ||
+		decoded.Returns[1].Value != testAddress(9).String() ||
+		decoded.Input.SourceAddress != binding.SourceAddress ||
+		decoded.Input.SourceCodeHash != binding.SourceCodeHash {
+		t.Fatalf("decoded call=%+v", decoded)
+	}
+	if empty := registry.DecodeCall(identity, selectorBytes("touch()"), nil, false); empty.ReturnStatus != ReturnEmpty {
+		t.Fatalf("explicit empty outputs=%+v", empty)
+	}
+	if unavailable := registry.DecodeCall(identity, selectorBytes("legacy()"), nil, false); unavailable.ReturnStatus != ReturnUnavailable {
+		t.Fatalf("missing outputs=%+v", unavailable)
+	}
+	if malformed := registry.DecodeCall(identity, selectorBytes("message()"), wordBytes(uintWord(4096)), false); malformed.ReturnStatus != ReturnMalformed {
+		t.Fatalf("malformed dynamic output=%+v", malformed)
+	}
+	if reverted := registry.DecodeCall(identity, selectorBytes("inspect()"), output, true); reverted.Input.Status != DecodeDecoded || reverted.ReturnStatus != ReturnNotApplicable || len(reverted.Returns) != 0 {
+		t.Fatalf("direct revert call=%+v", reverted)
+	}
+}
+
 func TestABIRegistryHashesIndexedDynamicValues(t *testing.T) {
 	t.Parallel()
 	registry := NewABIRegistry()
@@ -429,7 +467,7 @@ func testABIBinding(identity ABIIdentity, source ABISource) ABIBinding {
 		Identity: identity, Source: source, SourceAddress: identity.Address,
 		SourceCodeHash: identity.CodeHash, ValidFromBlock: identity.BlockNumber,
 	}
-	if source == ABISourceProxyImplementation {
+	if source == ABISourceProxyImplementation || source == ABISourceCodeHash {
 		binding.SourceAddress = testAddress(0xee)
 		binding.SourceCodeHash = uintWord(0xee)
 	}

@@ -94,6 +94,39 @@ func TestNormalizeCallTracerHandlesNestedRevertsAndCallKinds(t *testing.T) {
 	}
 }
 
+func TestNormalizeCallTracerPreservesFrameLogsAndGlobalIndexes(t *testing.T) {
+	t.Parallel()
+	topic := strings.Repeat("11", 32)
+	data := []byte(`{
+	  "type":"CALL","from":"` + traceAddress1 + `","to":"` + traceAddress2 + `",
+	  "value":"0x0","gas":"0x100","gasUsed":"0x80","input":"0x","output":"0x",
+	  "calls":[{
+	    "type":"DELEGATECALL","from":"` + traceAddress2 + `","to":"` + traceAddress3 + `",
+	    "value":"0x0","gas":"0x40","gasUsed":"0x20","input":"0x","output":"0x",
+	    "logs":[{"address":"` + traceAddress2 + `","topics":["0x` + topic + `"],"data":"0x1234","index":"0x7","position":"0x0"}]
+	  }]
+	}`)
+	trace, err := NormalizeCallTracer(data, DefaultTraceLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trace.Frames) != 2 || len(trace.Frames[1].Logs) != 1 {
+		t.Fatalf("trace=%+v", trace)
+	}
+	log := trace.Frames[1].Logs[0]
+	if log.Index != 7 || log.Position != 0 || log.Address != common.HexToAddress(traceAddress2) ||
+		len(log.Topics) != 1 || log.Topics[0] != common.HexToHash("0x"+topic) ||
+		!strings.EqualFold(common.Bytes2Hex(log.Data), "1234") {
+		t.Fatalf("log=%+v", log)
+	}
+	limits := DefaultTraceLimits()
+	limits.MaxLogs = 1
+	tooMany := strings.Replace(string(data), `"logs":[`, `"logs":[{"address":"`+traceAddress2+`","topics":[],"data":"0x","index":"0x6","position":"0x0"},`, 1)
+	if _, err := NormalizeCallTracer([]byte(tooMany), limits); !errors.Is(err, ErrTraceLimit) {
+		t.Fatalf("log count err=%v", err)
+	}
+}
+
 func TestNormalizeTraceAPIValidatesIdentityAndNormalizesTree(t *testing.T) {
 	t.Parallel()
 	identity := traceTestIdentity()

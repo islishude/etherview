@@ -960,6 +960,14 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                         </dl>
                       )}
                       {log.decoding.warning && <p className="quiet">{log.decoding.warning}</p>}
+                      <p className="quiet">
+                        {log.decoding.attribution.mode === "exact_trace" && log.decoding.attribution.execution_address
+                          ? t("detail.logExecutionAddress", { address: log.decoding.attribution.execution_address })
+                          : t("detail.logAddressFallback")}
+                        {log.decoding.abi_source?.address
+                          ? ` · ${t("detail.abiSource", { kind: log.decoding.abi_source.kind, address: log.decoding.abi_source.address })}`
+                          : ""}
+                      </p>
                       <details className="transaction-more-details">
                         <summary>{t("detail.rawLog")}</summary>
                         <dl>
@@ -1004,12 +1012,57 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       key={frame.path.join(".") || "root"}
                       style={{ "--trace-depth": frame.depth } as React.CSSProperties}
                     >
-                      <span className="transaction-trace-kind">{frame.call_type}</span>
-                      <code>{frame.from ? shorten(frame.from) : "—"} → {frame.to
-                        ? shorten(frame.to)
-                        : frame.created_address ? shorten(frame.created_address) : "—"}</code>
-                      <span>{formatNativeAmount(frame.value, locale, nativeDecimals)} {nativeSymbol}</span>
-                      <span>{frame.reverted ? frame.error ?? t("detail.reverted") : t("detail.succeeded")}</span>
+                      <div className="transaction-trace-summary">
+                        <span className="transaction-trace-kind">{frame.call_type}</span>
+                        <div>
+                          <strong><code>{frame.decoding?.signature ?? t(traceDecodingKey(frame.decoding?.status ?? "unavailable"))}</code></strong>
+                          <code>{frame.from ? shorten(frame.from) : "—"} → {frame.to
+                            ? shorten(frame.to)
+                            : frame.created_address ? shorten(frame.created_address) : "—"}</code>
+                        </div>
+                        <span>{formatNativeAmount(frame.value, locale, nativeDecimals)} {nativeSymbol}</span>
+                        <span>{frame.direct_reverted
+                          ? frame.error ?? t("detail.directReverted")
+                          : frame.reverted ? t("detail.ancestorReverted") : t("detail.succeeded")}</span>
+                      </div>
+                      <details className="transaction-more-details transaction-trace-details">
+                        <summary>{t("detail.traceDetails")}</summary>
+                        {frame.decoding && (
+                          <>
+                            <p className="quiet">{t(traceDecodingKey(frame.decoding.status))}
+                              {frame.decoding.abi_source?.address
+                                ? ` · ${t("detail.abiSource", { kind: frame.decoding.abi_source.kind, address: frame.decoding.abi_source.address })}`
+                                : ""}
+                            </p>
+                            <dl className="transaction-trace-decode-status">
+                              <div><dt>{t("detail.callInputs")}</dt><dd>{t(traceDecodingKey(frame.decoding.status))}</dd></div>
+                              <div><dt>{t("detail.callOutputs")}</dt><dd>{t(traceOutputStatusKey(frame.decoding.output_status))}</dd></div>
+                              {frame.decoding.revert && (
+                                <div><dt>{t("detail.revertData")}</dt><dd>{t(traceDecodingKey(frame.decoding.revert.status))}</dd></div>
+                              )}
+                            </dl>
+                            {frame.decoding.inputs.length > 0 && (
+                              <TraceABIValues title={t("detail.callInputs")} values={frame.decoding.inputs} />
+                            )}
+                            {frame.decoding.outputs.length > 0 && (
+                              <TraceABIValues title={t("detail.callOutputs")} values={frame.decoding.outputs} />
+                            )}
+                            {frame.decoding.revert && frame.decoding.revert.arguments.length > 0 && (
+                              <TraceABIValues
+                                title={frame.decoding.revert.signature ?? t("detail.revertData")}
+                                values={frame.decoding.revert.arguments}
+                              />
+                            )}
+                            {(frame.decoding.warning || frame.decoding.revert?.warning) && (
+                              <p className="quiet">{frame.decoding.warning ?? frame.decoding.revert?.warning}</p>
+                            )}
+                          </>
+                        )}
+                        <dl className="transaction-trace-raw">
+                          <div><dt>{t("detail.input")}</dt><dd><code>{frame.input ?? "0x"}</code></dd></div>
+                          <div><dt>{t("detail.output")}</dt><dd><code>{frame.output ?? "0x"}</code></dd></div>
+                        </dl>
+                      </details>
                     </article>
                   ))}
                 </div>
@@ -1053,6 +1106,23 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
         </>
       )}
     </Page>
+  );
+}
+
+function TraceABIValues({ title, values }: {
+  title: string;
+  values: Array<{ name: string; type: string; value: unknown }>;
+}) {
+  return (
+    <section className="transaction-trace-values">
+      <h4>{title}</h4>
+      <dl>{values.map((value, index) => (
+        <div key={`${value.name}:${value.type}:${index}`}>
+          <dt>{value.name || `${index}`} <code>{value.type}</code></dt>
+          <dd><code>{formatLogArgument(value.value)}</code></dd>
+        </div>
+      ))}</dl>
+    </section>
   );
 }
 
@@ -3302,6 +3372,27 @@ function logDecodingKey(status: string) {
     case "unknown": return "detail.logUnknown" as const;
     case "malformed": return "detail.logMalformed" as const;
     default: return "detail.logUnavailable" as const;
+  }
+}
+
+function traceDecodingKey(status: string) {
+  switch (status) {
+    case "decoded": return "detail.traceDecoded" as const;
+    case "ambiguous": return "detail.traceAmbiguous" as const;
+    case "unknown": return "detail.traceUnknown" as const;
+    case "malformed": return "detail.traceMalformed" as const;
+    default: return "detail.traceUnavailable" as const;
+  }
+}
+
+function traceOutputStatusKey(status: string) {
+  switch (status) {
+    case "decoded": return "detail.outputDecoded" as const;
+    case "empty": return "detail.outputEmpty" as const;
+    case "unknown": return "detail.outputUnknown" as const;
+    case "malformed": return "detail.outputMalformed" as const;
+    case "not_applicable": return "detail.outputNotApplicable" as const;
+    default: return "detail.outputUnavailable" as const;
   }
 }
 

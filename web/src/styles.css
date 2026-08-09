@@ -1515,10 +1515,6 @@ tbody tr:hover {
 
 .transaction-trace-frame {
   min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(13rem, 1.4fr) minmax(8rem, 0.7fr) minmax(6rem, 0.5fr);
-  gap: 0.75rem;
-  align-items: center;
   margin-left: min(calc(var(--trace-depth) * 1.15rem), 9rem);
   padding: 0.72rem;
   background: var(--surface-raised);
@@ -1526,6 +1522,53 @@ tbody tr:hover {
   border-left: 3px solid var(--brand);
   border-radius: var(--radius-sm);
   font-size: 0.78rem;
+}
+
+.transaction-trace-summary {
+  display: grid;
+  grid-template-columns: auto minmax(13rem, 1.4fr) minmax(8rem, 0.7fr) minmax(6rem, 0.5fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.transaction-trace-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.transaction-trace-summary code,
+.transaction-trace-details code {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.transaction-trace-values h4 {
+  margin: 0.65rem 0 0.25rem;
+  font-size: 0.75rem;
+}
+
+.transaction-trace-values dl,
+.transaction-trace-decode-status,
+.transaction-trace-raw {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.transaction-trace-values dl > div,
+.transaction-trace-raw > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.2fr) minmax(0, 1fr);
+  gap: 0.8rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-trace-values dd,
+.transaction-trace-raw dd {
+  min-width: 0;
+  margin: 0;
 }
 
 .status-layout,
@@ -4402,8 +4445,14 @@ tbody tr:hover {
   }
 
   .transaction-trace-frame {
-    grid-template-columns: 1fr;
     margin-left: min(calc(var(--trace-depth) * 0.55rem), 2rem);
+  }
+
+  .transaction-trace-summary,
+  .transaction-trace-values dl > div,
+  .transaction-trace-raw > div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
   }
 
   .transaction-action-card {

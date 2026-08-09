@@ -217,7 +217,9 @@ of the callback. The routing and lag contract is specified in
   gas without the required header inputs is a permanent inconsistency; see
   [ADR-0011](../decisions/ADR-0011-snapshot-search-stats-and-bounded-adapters.md).
 - A trace attempt acquires one trace-purpose RPC endpoint for the entire block.
-  Geth `callTracer` may fall back to the compatible `trace_transaction` method
+  It first requests Geth `callTracer` with `withLog=true`. An exact `-32602`
+  rejection downgrades the remaining attempt to ordinary `callTracer`; the
+  compatible `trace_transaction` method remains a same-endpoint fallback
   only on that same endpoint, so one normalized tree never combines node
   histories. Every returned frame is bounded and, where the trace API carries
   identity fields, bound to the requested block hash, block number,
@@ -232,6 +234,13 @@ of the callback. The routing and lag contract is specified in
   budgets apply independently to each transaction and cumulatively to the
   complete block attempt. Work decoded before an adapter fallback remains
   charged to that block budget.
+- `trace@2` retains direct frame failure separately from ancestor rollback. It
+  validates every returned callTracer log against the persisted receipt log's
+  global index, emitter, topics, and data before recording a trace path and
+  execution code address. `DELEGATECALL` and `CALLCODE` keep the receipt emitter
+  as storage context while using frame `to` as the ABI code identity. A zero-log
+  ordinary trace remains publishable; partial, duplicate, misplaced, or
+  contradictory tracer logs fail permanently.
 - Derived journal payloads contain only controlled relation-level canonicality
   transitions. They do not contain untrusted RPC data and do not claim storage,
   rollback, or replay of opcode/raw traces; trace journaling covers only the
@@ -287,14 +296,23 @@ of the callback. The routing and lag contract is specified in
   code hash, context block number/hash, and an inclusive range covering that
   context. Direct verified artifacts outrank verified historical proxy
   implementation artifacts, which outrank re-hashed signature candidates.
-  PostgreSQL fixes those sources to `verified`, `high`, and `guess`
-  respectively. Candidate decoding and recursive dynamic-offset traversal
+  Same-chain verified artifacts with the same runtime code hash retain their
+  distinct source address and have `high` confidence. PostgreSQL fixes source
+  and confidence mappings. Candidate decoding and recursive dynamic-offset traversal
   share one node, work, and byte budget for the complete decode, so aliased
   offsets cannot multiply work outside the configured bound. Array cardinality
   is independent of the top-level argument limit, and Solidity `Error(string)`
   and `Panic(uint256)` remain decoder-local rather than signature-database
   bindings; see
   [ADR-0009](../decisions/ADR-0009-block-bound-abi-provenance.md).
+- Transaction logs prefer a published `trace@2` attribution and decode against
+  its execution code address while preserving the original emitter and raw
+  receipt bytes. Without exact attribution they use only the emitter,
+  published historical proxy observations, and same-code verified artifacts.
+  Trace call-like frames expose candidate-bound inputs, successful outputs, and
+  independent direct-revert data; successful children remain output-decodable
+  even when an ancestor later rolls back; see
+  [ADR-0033](../decisions/ADR-0033-trace-bound-log-attribution-and-call-decoding.md).
 - `abi@2` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact
   same-version `proxy@2` result first. Complete proxy facts permit decoding;
@@ -321,7 +339,8 @@ of the callback. The routing and lag contract is specified in
 Block-scoped fact tables use fixed half-open ranges of 1,000,000 block
 numbers. The partition manager covers `transaction_inclusions`, `receipts`,
 `logs`, `withdrawals`, `token_events`, `token_balance_deltas`,
-`normalized_traces`, `abi_decodings`, and `address_activities`. Before a core bundle can write
+`normalized_traces`, `trace_log_attributions`, `abi_decodings`, and
+`address_activities`. Before a core bundle can write
 facts in a new range, its chain-locked database transaction takes the global
 partition lifecycle lock, rechecks the PostgreSQL catalog, creates every table
 in a fixed dependency order, evacuates any matching DEFAULT rows child-first,

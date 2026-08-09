@@ -32,7 +32,9 @@ func (stage Stage) Version() int {
 	switch stage {
 	case StageStats:
 		return 3
-	case StageCore, StageToken, StageTrace, StageStateDiff:
+	case StageTrace:
+		return 2
+	case StageCore, StageToken, StageStateDiff:
 		return 1
 	default:
 		return 0
@@ -344,7 +346,48 @@ type TraceFrame struct {
 	Input          *string
 	Output         *string
 	Error          *string
+	DirectReverted bool
 	Reverted       bool
+	Decoding       *TraceCallDecoding
+}
+
+type ABIValue struct {
+	Name  string
+	Type  string
+	Value any
+}
+
+type ABISource struct {
+	Kind     string
+	Address  string
+	CodeHash string
+}
+
+type TransactionLogABISource = ABISource
+
+type TraceCallDecoding struct {
+	Status       string
+	FunctionName string
+	Signature    string
+	Inputs       []ABIValue
+	OutputStatus string
+	Outputs      []ABIValue
+	Revert       *TraceRevertDecoding
+	Candidates   []string
+	ABISource    *ABISource
+	Confidence   string
+	Warning      string
+}
+
+type TraceRevertDecoding struct {
+	Status     string
+	ErrorName  string
+	Signature  string
+	Arguments  []ABIValue
+	Candidates []string
+	ABISource  *ABISource
+	Confidence string
+	Warning    string
 }
 
 type TransactionTrace struct {
@@ -382,14 +425,15 @@ type TransactionLog struct {
 }
 
 type TransactionLogDecoding struct {
-	Status     string
-	EventName  string
-	Signature  string
-	Arguments  []TransactionLogArgument
-	Candidates []string
-	ABISource  *TransactionLogABISource
-	Confidence string
-	Warning    string
+	Status      string
+	EventName   string
+	Signature   string
+	Arguments   []TransactionLogArgument
+	Candidates  []string
+	ABISource   *ABISource
+	Attribution TransactionLogAttribution
+	Confidence  string
+	Warning     string
 }
 
 type TransactionLogArgument struct {
@@ -400,10 +444,10 @@ type TransactionLogArgument struct {
 	Value   any
 }
 
-type TransactionLogABISource struct {
-	Kind     string
-	Address  string
-	CodeHash string
+type TransactionLogAttribution struct {
+	Mode             string
+	TracePath        []uint32
+	ExecutionAddress string
 }
 
 type TransactionLogPage struct {

@@ -912,6 +912,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ABISource: {
+            address?: components["schemas"]["Address"];
+            code_hash?: components["schemas"]["Hash"];
+            /** @enum {string} */
+            kind: "exact_address" | "code_hash" | "proxy_implementation" | "signature_database" | "builtin";
+        };
+        ABIValue: {
+            name: string;
+            type: string;
+            value: unknown;
+        };
         /** @description A 20-byte address; responses use the EIP-55 checksum form. */
         Address: string;
         AddressInternalTransaction: {
@@ -1294,7 +1305,7 @@ export interface components {
             metadata: components["schemas"]["StageState"];
             /** @description Configured historical-state RPC capability; transaction state differences have an independent per-transaction state. */
             state: components["schemas"]["StageState"];
-            /** @description Published trace@1 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
+            /** @description Published trace@2 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
         };
         ContractArtifactSource: {
@@ -1780,10 +1791,28 @@ export interface components {
             data: components["schemas"]["TokenContract"];
             meta: components["schemas"]["Meta"];
         };
+        TraceCallDecoding: {
+            abi_source?: components["schemas"]["ABISource"];
+            candidates: string[];
+            /** @enum {string} */
+            confidence?: "verified" | "high" | "guess";
+            function_name?: string;
+            inputs: components["schemas"]["ABIValue"][];
+            /** @enum {string} */
+            output_status: "decoded" | "empty" | "unknown" | "malformed" | "unavailable" | "not_applicable";
+            outputs: components["schemas"]["ABIValue"][];
+            revert?: components["schemas"]["TraceRevertDecoding"];
+            signature?: string;
+            /** @enum {string} */
+            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";
+            warning?: string;
+        };
         TraceFrame: {
             call_type: string;
             created_address?: components["schemas"]["Address"];
+            decoding?: components["schemas"]["TraceCallDecoding"];
             depth: number;
+            direct_reverted: boolean;
             error?: string;
             from?: components["schemas"]["Address"];
             gas?: components["schemas"]["Quantity"];
@@ -1795,6 +1824,18 @@ export interface components {
             reverted: boolean;
             to?: components["schemas"]["Address"];
             value?: components["schemas"]["Quantity"];
+        };
+        TraceRevertDecoding: {
+            abi_source?: components["schemas"]["ABISource"];
+            arguments: components["schemas"]["ABIValue"][];
+            candidates: string[];
+            /** @enum {string} */
+            confidence?: "verified" | "high" | "guess";
+            error_name?: string;
+            signature?: string;
+            /** @enum {string} */
+            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";
+            warning?: string;
         };
         Transaction: {
             block_hash?: components["schemas"]["Hash"];
@@ -1840,12 +1881,6 @@ export interface components {
             log_index: components["schemas"]["Quantity"];
             topics: components["schemas"]["Hash"][];
         };
-        TransactionLogABISource: {
-            address?: components["schemas"]["Address"];
-            code_hash?: components["schemas"]["Hash"];
-            /** @enum {string} */
-            kind: "exact_address" | "code_hash" | "proxy_implementation" | "signature_database";
-        };
         TransactionLogArgument: {
             hashed: boolean;
             indexed: boolean;
@@ -1853,9 +1888,16 @@ export interface components {
             type: string;
             value: unknown;
         };
+        TransactionLogAttribution: {
+            execution_address?: components["schemas"]["Address"];
+            /** @enum {string} */
+            mode: "exact_trace" | "address_fallback";
+            trace_path: number[];
+        };
         TransactionLogDecoding: {
-            abi_source?: components["schemas"]["TransactionLogABISource"];
+            abi_source?: components["schemas"]["ABISource"];
             arguments: components["schemas"]["TransactionLogArgument"][];
+            attribution: components["schemas"]["TransactionLogAttribution"];
             candidates: string[];
             /** @enum {string} */
             confidence?: "verified" | "high" | "guess";

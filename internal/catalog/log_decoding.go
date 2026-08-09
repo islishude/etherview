@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -23,6 +24,8 @@ type persistedLogDecoding struct {
 	warning        sql.NullString
 	targetAddress  []byte
 	targetCodeHash []byte
+	sourceAddress  []byte
+	sourceCodeHash []byte
 }
 
 type logABICandidate struct {
@@ -50,6 +53,9 @@ func resolveTransactionLogDecoding(
 	if err != nil {
 		return TransactionLogDecoding{}, err
 	}
+	if hasStored && !bytes.Equal(persisted.targetAddress, address[:]) {
+		hasStored = false
+	}
 	if hasStored && (stored.Confidence == "verified" || stored.Confidence == "high") {
 		return stored, nil
 	}
@@ -69,7 +75,7 @@ func resolveTransactionLogDecoding(
 	}
 
 	registry := enrich.NewABIRegistry()
-	provenance := make(map[enrich.ABISource]TransactionLogABISource, len(candidates))
+	provenance := make(map[enrich.ABISource]ABISource, len(candidates))
 	for _, candidate := range candidates {
 		var validTo *uint64
 		if candidate.validTo.Valid {
@@ -87,7 +93,7 @@ func resolveTransactionLogDecoding(
 		if err := registry.RegisterJSON(binding, candidate.abi); err != nil {
 			return emptyLogDecoding("malformed", "stored ABI document is invalid or exceeds decoding limits"), nil
 		}
-		provenance[candidate.source] = TransactionLogABISource{
+		provenance[candidate.source] = ABISource{
 			Kind: candidate.sourceKind, Address: candidate.address.Hex(), CodeHash: candidate.codeHash.Hex(),
 		}
 	}
@@ -189,14 +195,16 @@ func publicPersistedLogDecoding(value persistedLogDecoding) (TransactionLogDecod
 		if kind == "" {
 			return TransactionLogDecoding{}, false, ErrCorruptData
 		}
-		result.ABISource = &TransactionLogABISource{Kind: kind}
-		if kind != "proxy_implementation" {
-			if len(value.targetAddress) != common.AddressLength || len(value.targetCodeHash) != common.HashLength {
-				return TransactionLogDecoding{}, false, ErrCorruptData
-			}
-			result.ABISource.Address = common.BytesToAddress(value.targetAddress).Hex()
-			result.ABISource.CodeHash = common.BytesToHash(value.targetCodeHash).Hex()
+		result.ABISource = &ABISource{Kind: kind}
+		sourceAddress, sourceCodeHash := value.sourceAddress, value.sourceCodeHash
+		if len(sourceAddress) == 0 && kind != "proxy_implementation" {
+			sourceAddress, sourceCodeHash = value.targetAddress, value.targetCodeHash
 		}
+		if len(sourceAddress) != common.AddressLength || len(sourceCodeHash) != common.HashLength {
+			return TransactionLogDecoding{}, false, ErrCorruptData
+		}
+		result.ABISource.Address = common.BytesToAddress(sourceAddress).Hex()
+		result.ABISource.CodeHash = common.BytesToHash(sourceCodeHash).Hex()
 	}
 	if result.Status == "ambiguous" {
 		result.EventName, result.Signature = "", ""
@@ -208,7 +216,7 @@ func publicPersistedLogDecoding(value persistedLogDecoding) (TransactionLogDecod
 
 func publicDecodeResult(
 	result enrich.DecodeResult,
-	provenance map[enrich.ABISource]TransactionLogABISource,
+	provenance map[enrich.ABISource]ABISource,
 ) TransactionLogDecoding {
 	decoded := emptyLogDecoding(string(result.Status), result.Warning)
 	decoded.EventName = result.Name
@@ -226,12 +234,32 @@ func publicDecodeResult(
 		copy := source
 		decoded.ABISource = &copy
 	}
+	if result.SourceAddress != (common.Address{}) && result.SourceCodeHash != (common.Hash{}) {
+		decoded.ABISource = &ABISource{
+			Kind: mapDecodeABISource(result.Source), Address: result.SourceAddress.Hex(), CodeHash: result.SourceCodeHash.Hex(),
+		}
+	}
 	if result.Status == enrich.DecodeAmbiguous {
 		decoded.EventName, decoded.Signature = "", ""
 		decoded.Arguments = []TransactionLogArgument{}
 		decoded.ABISource = nil
 	}
 	return decoded
+}
+
+func mapDecodeABISource(source enrich.ABISource) string {
+	switch source {
+	case enrich.ABISourceVerified:
+		return "exact_address"
+	case enrich.ABISourceCodeHash:
+		return "code_hash"
+	case enrich.ABISourceProxyImplementation:
+		return "proxy_implementation"
+	case enrich.ABISourceSignatureDatabase:
+		return "signature_database"
+	default:
+		return ""
+	}
 }
 
 func emptyLogDecoding(status, warning string) TransactionLogDecoding {
@@ -246,6 +274,10 @@ func mapStoredABISource(source string) string {
 		return "exact_address"
 	case "proxy_implementation":
 		return "proxy_implementation"
+	case "code_hash":
+		return "code_hash"
+	case "builtin":
+		return "builtin"
 	case "signature_database":
 		return "signature_database"
 	default:

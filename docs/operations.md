@@ -386,6 +386,10 @@ etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage abi \
   --reason "publish ABI v2 after proxy v2 is complete"
 
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 0 --to 12000010 --stage trace \
+  --reason "publish trace v2 call decoding and exact log attribution"
+
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
 
@@ -401,6 +405,12 @@ does not infer a downstream rebuild range; schedule each required derived
 stage explicitly and wait for its durable publication result. After the
 OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until its same-version proxy result is published.
+The `trace@2` cutover is an explicit bounded reindex, never a migration-time
+historical enqueue. Each completed Trace generation requests the existing
+`proxy@2` replay and then `abi@2`; wait for those publications before treating
+the range as proxy-interaction complete. Nodes that reject `withLog` with
+`-32602` still publish the call tree, but their logs remain visibly on the
+conservative address fallback path.
 
 ### Proxy detection V2 shadow rollout
 

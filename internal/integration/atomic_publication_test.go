@@ -638,7 +638,8 @@ func TestLeaseFencedPublicationMigrationReplaysLegacyTerminalsAndGuardsOldWorker
 		UPDATE durable_jobs SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 		WHERE id = $1`, leasedID)
 	queue, _ := enrich.NewPostgresJobQueue(db)
-	reclaimed, found, err := queue.Claim(ctx, "protocol-two-worker", []enrich.StageID{enrich.TraceStage}, time.Minute)
+	legacyTraceStage := enrich.StageID{Name: enrich.TraceStage.Name, Version: 1}
+	reclaimed, found, err := queue.Claim(ctx, "protocol-two-worker", []enrich.StageID{legacyTraceStage}, time.Minute)
 	if err != nil || !found || reclaimed.Job.ID != fmt.Sprint(leasedID) || reclaimed.Job.Attempt != 3 {
 		t.Fatalf("reclaim legacy lease=%+v found=%t err=%v", reclaimed, found, err)
 	}

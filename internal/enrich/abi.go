@@ -70,6 +70,8 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		registry.bindings[binding.Identity] = candidates
 	}
 	for _, entry := range entries {
+		entry.sourceAddress = binding.SourceAddress
+		entry.sourceCodeHash = binding.SourceCodeHash
 		switch entry.kind {
 		case ABIKindFunction:
 			candidates.functions[entry.selector] = appendUniqueABIEntry(candidates.functions[entry.selector], entry)
@@ -88,7 +90,9 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 
 func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
 	for index, existing := range entries {
-		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source && existing.anonymous == candidate.anonymous {
+		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source &&
+			existing.sourceAddress == candidate.sourceAddress && existing.sourceCodeHash == candidate.sourceCodeHash &&
+			existing.anonymous == candidate.anonymous {
 			entries[index] = candidate
 			return entries
 		}
@@ -113,7 +117,54 @@ func (registry *ABIRegistry) DecodeCalldata(identity ABIIdentity, input []byte) 
 	var selector [4]byte
 	copy(selector[:], input[:4])
 	entries := registry.callableEntries(identity, ABIKindFunction, selector)
-	return registry.decodeCallables(ABIKindFunction, selector, entries, input[4:])
+	result, _ := registry.decodeCallablesWithEntry(ABIKindFunction, selector, entries, input[4:])
+	return result
+}
+
+func (registry *ABIRegistry) DecodeCall(identity ABIIdentity, input, output []byte, directReverted bool) CallDecodeResult {
+	if directReverted {
+		return CallDecodeResult{Input: registry.DecodeCalldata(identity, input), ReturnStatus: ReturnNotApplicable}
+	}
+	if registry == nil || len(input) < 4 {
+		return CallDecodeResult{Input: registry.DecodeCalldata(identity, input), ReturnStatus: ReturnUnknown}
+	}
+	var selector [4]byte
+	copy(selector[:], input[:4])
+	entries := registry.callableEntries(identity, ABIKindFunction, selector)
+	decoded, selected := registry.decodeCallablesWithEntry(ABIKindFunction, selector, entries, input[4:])
+	result := CallDecodeResult{Input: decoded, ReturnStatus: ReturnUnknown}
+	if decoded.Status != DecodeDecoded || selected == nil {
+		return result
+	}
+	if !selected.outputsKnown {
+		result.ReturnStatus = ReturnUnavailable
+		result.Warning = "selected ABI function does not declare outputs"
+		return result
+	}
+	if len(selected.outputs) == 0 {
+		if len(output) == 0 {
+			result.ReturnStatus = ReturnEmpty
+			result.Returns = []DecodedArgument{}
+			return result
+		}
+		result.ReturnStatus = ReturnMalformed
+		result.Warning = "function declares no outputs but returned data"
+		return result
+	}
+	values, err := decodeABIValuesWithBudget(selected.outputTypes, output, registry.limits, newABIDecodeBudget(registry.limits))
+	if err != nil {
+		result.ReturnStatus = ReturnMalformed
+		result.Warning = "decode function output: " + err.Error()
+		return result
+	}
+	result.ReturnStatus = ReturnDecoded
+	result.Returns = make([]DecodedArgument, len(values))
+	for index, value := range values {
+		result.Returns[index] = DecodedArgument{
+			Name: selected.outputs[index].Name, Type: selected.outputs[index].Type, Value: value,
+		}
+	}
+	return result
 }
 
 func (registry *ABIRegistry) DecodeRevert(identity ABIIdentity, data []byte) DecodeResult {
@@ -140,7 +191,8 @@ func (registry *ABIRegistry) DecodeRevert(identity ABIIdentity, data []byte) Dec
 		return registry.decodeCallables(ABIKindError, selector, []abiEntry{entry}, data[4:])
 	}
 	entries := registry.callableEntries(identity, ABIKindError, selector)
-	return registry.decodeCallables(ABIKindError, selector, entries, data[4:])
+	result, _ := registry.decodeCallablesWithEntry(ABIKindError, selector, entries, data[4:])
+	return result
 }
 
 func builtinEntry(kind ABIKind, name string, inputs []abiParameter, limits DecodeLimits) abiEntry {
@@ -184,9 +236,14 @@ func (registry *ABIRegistry) callableEntries(identity ABIIdentity, kind ABIKind,
 }
 
 func (registry *ABIRegistry) decodeCallables(kind ABIKind, selector [4]byte, entries []abiEntry, payload []byte) DecodeResult {
+	result, _ := registry.decodeCallablesWithEntry(kind, selector, entries, payload)
+	return result
+}
+
+func (registry *ABIRegistry) decodeCallablesWithEntry(kind ABIKind, selector [4]byte, entries []abiEntry, payload []byte) (DecodeResult, *abiEntry) {
 	identifier := "0x" + hex.EncodeToString(selector[:])
 	if len(entries) == 0 {
-		return DecodeResult{Status: DecodeUnknown, Kind: kind, Warning: "unknown ABI identifier " + identifier}
+		return DecodeResult{Status: DecodeUnknown, Kind: kind, Warning: "unknown ABI identifier " + identifier}, nil
 	}
 	var decoded []decodedABICandidate
 	failures := make([]string, 0, len(entries))
@@ -199,7 +256,7 @@ func (registry *ABIRegistry) decodeCallables(kind ABIKind, selector [4]byte, ent
 				return DecodeResult{
 					Status: DecodeMalformed, Kind: kind,
 					Candidates: uniqueSignatures(entries), Warning: strings.Join(failures, "; "),
-				}
+				}, nil
 			}
 			continue
 		}
@@ -219,7 +276,7 @@ func (registry *ABIRegistry) decodeCallables(kind ABIKind, selector [4]byte, ent
 			Kind:       kind,
 			Candidates: uniqueSignatures(entries),
 			Warning:    strings.Join(failures, "; "),
-		}
+		}, nil
 	}
 	return chooseDecodedABICandidate(kind, decoded)
 }
@@ -229,7 +286,7 @@ type decodedABICandidate struct {
 	arguments []DecodedArgument
 }
 
-func chooseDecodedABICandidate(kind ABIKind, decoded []decodedABICandidate) DecodeResult {
+func chooseDecodedABICandidate(kind ABIKind, decoded []decodedABICandidate) (DecodeResult, *abiEntry) {
 	sort.SliceStable(decoded, func(left, right int) bool {
 		return confidenceRank(decoded[left].entry.confidence()) > confidenceRank(decoded[right].entry.confidence())
 	})
@@ -248,17 +305,24 @@ func chooseDecodedABICandidate(kind ABIKind, decoded []decodedABICandidate) Deco
 		warning = "multiple ABI candidates with equal confidence decoded successfully"
 	}
 	selected := decoded[0]
-	return DecodeResult{
-		Status:     status,
-		Kind:       kind,
-		Name:       selected.entry.name,
-		Signature:  selected.entry.signature,
-		Source:     selected.entry.source,
-		Confidence: selected.entry.confidence(),
-		Arguments:  selected.arguments,
-		Candidates: uniqueDecodedSignatures(decoded),
-		Warning:    warning,
+	result := DecodeResult{
+		Status:         status,
+		Kind:           kind,
+		Name:           selected.entry.name,
+		Signature:      selected.entry.signature,
+		Source:         selected.entry.source,
+		SourceAddress:  selected.entry.sourceAddress,
+		SourceCodeHash: selected.entry.sourceCodeHash,
+		Confidence:     selected.entry.confidence(),
+		Arguments:      selected.arguments,
+		Candidates:     uniqueDecodedSignatures(decoded),
+		Warning:        warning,
 	}
+	if status == DecodeAmbiguous {
+		return result, nil
+	}
+	entry := selected.entry
+	return result, &entry
 }
 
 func uniqueSignatures(entries []abiEntry) []string {
@@ -338,7 +402,8 @@ func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Has
 			Warning:    strings.Join(failures, "; "),
 		}
 	}
-	return chooseDecodedABICandidate(ABIKindEvent, decoded)
+	result, _ := chooseDecodedABICandidate(ABIKindEvent, decoded)
+	return result
 }
 
 func (registry *ABIRegistry) decodeEvent(entry abiEntry, topics []common.Hash, data []byte, budget *abiDecodeBudget) ([]DecodedArgument, error) {

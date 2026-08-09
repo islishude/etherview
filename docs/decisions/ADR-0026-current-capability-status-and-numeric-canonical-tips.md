@@ -24,7 +24,7 @@ ambiguous pattern existed in two historical ABI observation lookups.
   capability unavailable.
 - `completeness.trace` describes the exact current canonical indexed block. It
   is `complete`, `unavailable`, or `failed` only when the matching
-  `trace@1` result is published for that block number and hash. A missing
+  `trace@2` result is published for that block number and hash. A missing
   indexed block or matching publication is `pending`. A disabled feature or
   absent Trace RPC is `unavailable`.
 - This status does not claim gap-free historical Trace coverage.

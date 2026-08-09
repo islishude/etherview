@@ -322,6 +322,7 @@ describe("core explorer pages", () => {
               confidence: "verified", abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
               arguments: [{ name: "message", type: "string", indexed: true, hashed: true, value: eventTopic }],
               candidates: ["Changed(string)"],
+              attribution: { mode: "address_fallback", trace_path: [] },
             },
           }],
         });

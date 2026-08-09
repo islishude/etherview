@@ -178,7 +178,7 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		if err := persistABIDecoding(ctx, tx, job, identity, observation, result); err != nil {
 			return StageResult{}, err
 		}
-		counts[result.Status]++
+		counts[result.result.Status]++
 	}
 	return StageResult{
 		State: ResultComplete,
@@ -227,6 +227,8 @@ type abiObservation struct {
 	input           []byte
 	topics          []common.Hash
 	data            []byte
+	output          []byte
+	directReverted  bool
 }
 
 func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
@@ -341,10 +343,28 @@ func storedTransactionInclusion(
 
 func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT log_index, tx_hash, address, raw
-		FROM logs
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		ORDER BY log_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+		SELECT log.log_index, log.tx_hash, log.address, log.raw,
+		       attribution.execution_address
+		FROM logs AS log
+		LEFT JOIN trace_log_attributions AS attribution
+		  ON attribution.chain_id = log.chain_id
+		 AND attribution.block_number = log.block_number
+		 AND attribution.block_hash = log.block_hash
+		 AND attribution.transaction_hash = log.tx_hash
+		 AND attribution.log_index = log.log_index
+		 AND attribution.canonical
+		 AND EXISTS (
+		     SELECT 1
+		     FROM published_block_stage_results AS published
+		     WHERE published.chain_id = attribution.chain_id
+		       AND published.block_hash = attribution.block_hash
+		       AND published.stage = $4
+		       AND published.stage_version = $5
+		       AND published.state = 'complete'
+		 )
+		WHERE log.chain_id = $1::numeric AND log.block_number = $2::numeric AND log.block_hash = $3
+		ORDER BY log.log_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		TraceStage.Name, TraceStage.Version)
 	if err != nil {
 		return nil, fmt.Errorf("query ABI logs: %w", err)
 	}
@@ -352,8 +372,8 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 	var result []abiObservation
 	for rows.Next() {
 		var logIndex int64
-		var transactionHashBytes, addressBytes, raw []byte
-		if err := rows.Scan(&logIndex, &transactionHashBytes, &addressBytes, &raw); err != nil {
+		var transactionHashBytes, addressBytes, raw, executionAddressBytes []byte
+		if err := rows.Scan(&logIndex, &transactionHashBytes, &addressBytes, &raw, &executionAddressBytes); err != nil {
 			return nil, fmt.Errorf("scan ABI log: %w", err)
 		}
 		if logIndex < 0 {
@@ -366,12 +386,19 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 		if len(addressBytes) != common.AddressLength {
 			return nil, Permanent(errors.New("stored ABI log address is not 20 bytes"))
 		}
-		target := common.BytesToAddress(addressBytes)
+		emitter := common.BytesToAddress(addressBytes)
+		target := emitter
+		if len(executionAddressBytes) != 0 {
+			if len(executionAddressBytes) != common.AddressLength {
+				return nil, Permanent(errors.New("stored trace log execution address is not 20 bytes"))
+			}
+			target = common.BytesToAddress(executionAddressBytes)
+		}
 		var wire types.Log
 		if err := json.Unmarshal(raw, &wire); err != nil {
 			return nil, Permanent(fmt.Errorf("decode stored ABI log: %w", err))
 		}
-		if err := validateABILogIdentity(wire, job, uint64(logIndex), transactionHash, target); err != nil {
+		if err := validateABILogIdentity(wire, job, uint64(logIndex), transactionHash, emitter); err != nil {
 			return nil, Permanent(err)
 		}
 		data := common.CopyBytes(wire.Data)
@@ -409,7 +436,7 @@ func validateABILogIdentity(
 
 func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_hash, trace_path, to_address, input, output, reverted
+		SELECT transaction_hash, trace_path, to_address, input, output, direct_reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
 		  AND trace.block_number = $2::numeric
@@ -435,8 +462,8 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	for rows.Next() {
 		var transactionHashBytes, targetBytes, input, output []byte
 		var tracePath string
-		var reverted bool
-		if err := rows.Scan(&transactionHashBytes, &tracePath, &targetBytes, &input, &output, &reverted); err != nil {
+		var directReverted bool
+		if err := rows.Scan(&transactionHashBytes, &tracePath, &targetBytes, &input, &output, &directReverted); err != nil {
 			return nil, fmt.Errorf("scan ABI trace: %w", err)
 		}
 		if len(targetBytes) == 0 {
@@ -457,9 +484,10 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 			result = append(result, abiObservation{
 				objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
 				objectIndex: tracePath, target: target, input: append([]byte(nil), input...),
+				output: append([]byte(nil), output...), directReverted: directReverted,
 			})
 		}
-		if reverted && len(output) > 0 {
+		if directReverted && len(output) > 0 {
 			result = append(result, abiObservation{
 				objectKind: abiObjectTraceRevert, transactionHash: transactionHash,
 				objectIndex: tracePath, target: target, input: append([]byte(nil), output...),
@@ -573,6 +601,13 @@ func loadABIBindings(
 	if found {
 		result = append(result, direct)
 	}
+	sameCode, found, err := loadSameCodeABIBinding(ctx, tx, identity, codeRange)
+	if err != nil {
+		return nil, 0, err
+	}
+	if found {
+		result = append(result, sameCode)
+	}
 	proxy, found, err := loadProxyABIBinding(ctx, tx, identity, codeRange)
 	if err != nil {
 		return nil, 0, err
@@ -588,6 +623,41 @@ func loadABIBindings(
 		result = append(result, guesses)
 	}
 	return result, invalid, nil
+}
+
+func loadSameCodeABIBinding(
+	ctx context.Context,
+	tx *sql.Tx,
+	target ABIIdentity,
+	codeRange abiBlockRange,
+) (persistedABIBinding, bool, error) {
+	var sourceAddressBytes, abi []byte
+	err := tx.QueryRowContext(ctx, `
+		SELECT address, abi
+		FROM verified_contracts
+		WHERE chain_id = $1::numeric
+		  AND code_hash = $2
+		  AND address <> $3
+		  AND abi IS NOT NULL
+		ORDER BY (match_type = 'full') DESC, created_at DESC,
+		         request_digest ASC, verification_job_id ASC, address
+		LIMIT 1`, target.ChainID, target.CodeHash[:], target.Address[:]).Scan(&sourceAddressBytes, &abi)
+	if errors.Is(err, sql.ErrNoRows) {
+		return persistedABIBinding{}, false, nil
+	}
+	if err != nil {
+		return persistedABIBinding{}, false, fmt.Errorf("query same-code verified ABI: %w", err)
+	}
+	if len(sourceAddressBytes) != common.AddressLength {
+		return persistedABIBinding{}, false, Permanent(errors.New("same-code ABI source address is invalid"))
+	}
+	sourceAddress := common.BytesToAddress(sourceAddressBytes)
+	binding := ABIBinding{
+		Identity: target, Source: ABISourceCodeHash,
+		SourceAddress: sourceAddress, SourceCodeHash: target.CodeHash,
+		ValidFromBlock: codeRange.from, ValidToBlock: codeRange.to,
+	}
+	return persistedABIBinding{binding: binding, abi: append([]byte(nil), abi...)}, true, nil
 }
 
 func loadVerifiedABIBinding(
@@ -1037,16 +1107,37 @@ func persistABIBinding(ctx context.Context, tx *sql.Tx, candidate persistedABIBi
 	return nil
 }
 
-func decodeABIObservation(registry *ABIRegistry, identity ABIIdentity, observation abiObservation) DecodeResult {
+type decodedABIObservation struct {
+	result       DecodeResult
+	returnStatus ReturnStatus
+	returns      []DecodedArgument
+}
+
+func decodeABIObservation(registry *ABIRegistry, identity ABIIdentity, observation abiObservation) decodedABIObservation {
 	switch observation.objectKind {
-	case abiObjectTransactionCalldata, abiObjectTraceCalldata:
-		return registry.DecodeCalldata(identity, observation.input)
+	case abiObjectTransactionCalldata:
+		return decodedABIObservation{
+			result: registry.DecodeCalldata(identity, observation.input), returnStatus: ReturnNotApplicable,
+		}
+	case abiObjectTraceCalldata:
+		decoded := registry.DecodeCall(identity, observation.input, observation.output, observation.directReverted)
+		if decoded.Warning != "" {
+			if decoded.Input.Warning == "" {
+				decoded.Input.Warning = decoded.Warning
+			} else {
+				decoded.Input.Warning += "; " + decoded.Warning
+			}
+		}
+		return decodedABIObservation{result: decoded.Input, returnStatus: decoded.ReturnStatus, returns: decoded.Returns}
 	case abiObjectTraceRevert:
-		return registry.DecodeRevert(identity, observation.input)
+		return decodedABIObservation{result: registry.DecodeRevert(identity, observation.input), returnStatus: ReturnNotApplicable}
 	case abiObjectLog:
-		return registry.DecodeLog(identity, observation.topics, observation.data)
+		return decodedABIObservation{result: registry.DecodeLog(identity, observation.topics, observation.data), returnStatus: ReturnNotApplicable}
 	default:
-		return DecodeResult{Status: DecodeUnknown, Warning: "unsupported ABI observation kind"}
+		return decodedABIObservation{
+			result:       DecodeResult{Status: DecodeUnknown, Warning: "unsupported ABI observation kind"},
+			returnStatus: ReturnNotApplicable,
+		}
 	}
 }
 
@@ -1056,8 +1147,9 @@ func persistABIDecoding(
 	job Job,
 	identity ABIIdentity,
 	observation abiObservation,
-	result DecodeResult,
+	decoded decodedABIObservation,
 ) error {
+	result := decoded.result
 	arguments, err := json.Marshal(result.Arguments)
 	if err != nil {
 		return Permanent(fmt.Errorf("encode decoded ABI arguments: %w", err))
@@ -1065,6 +1157,14 @@ func persistABIDecoding(
 	candidates, err := json.Marshal(result.Candidates)
 	if err != nil {
 		return Permanent(fmt.Errorf("encode decoded ABI candidates: %w", err))
+	}
+	returnValues := decoded.returns
+	if returnValues == nil {
+		returnValues = []DecodedArgument{}
+	}
+	returnArguments, err := json.Marshal(returnValues)
+	if err != nil {
+		return Permanent(fmt.Errorf("encode decoded ABI return arguments: %w", err))
 	}
 	var signature, source, confidence any
 	if result.Signature != "" {
@@ -1074,19 +1174,27 @@ func persistABIDecoding(
 		source = result.Source
 		confidence = result.Confidence
 	}
+	var sourceAddress, sourceCodeHash any
+	if result.SourceAddress != (common.Address{}) && result.SourceCodeHash != (common.Hash{}) {
+		sourceAddress = result.SourceAddress[:]
+		sourceCodeHash = result.SourceCodeHash[:]
+	}
 	result.Warning = truncateUTF8Bytes(result.Warning, 4096)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO abi_decodings (
 			chain_id, block_number, block_hash, object_kind, transaction_hash,
 			object_index, target_address, target_code_hash, abi_kind, status,
-			signature, source, confidence, arguments, candidates, warning, canonical
+			signature, source, confidence, source_address, source_code_hash,
+			arguments, candidates, warning, return_status, return_arguments, canonical
 		) VALUES (
 			$1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14::jsonb, $15::jsonb, $16, TRUE
+			$11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18,
+			$19, $20::jsonb, TRUE
 		)`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		observation.objectKind, observation.transactionHash[:], observation.objectIndex,
 		identity.Address[:], identity.CodeHash[:], result.Kind, result.Status,
-		signature, source, confidence, arguments, candidates, result.Warning,
+		signature, source, confidence, sourceAddress, sourceCodeHash,
+		arguments, candidates, result.Warning, decoded.returnStatus, returnArguments,
 	); err != nil {
 		return fmt.Errorf("persist ABI decoding: %w", err)
 	}

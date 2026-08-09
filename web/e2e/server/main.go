@@ -165,10 +165,52 @@ func main() {
 			writeNotFound(response)
 			return
 		}
+		if request.PathValue("hash") == secondTransactionHash {
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+				"state": "unavailable", "frames": []any{},
+			})
+			return
+		}
 		writeEnvelope(response, map[string]any{
 			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
 			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
-			"state": "unavailable", "frames": []any{},
+			"state": "complete", "frames": []any{
+				map[string]any{
+					"path": []any{}, "parent_path": []any{}, "depth": 0, "call_type": "CALL",
+					"from": testEOA, "to": uupsProxyAddress, "value": "0", "gas": "100000", "gas_used": "50000",
+					"input": "0x2e64cec1", "output": "0x000000000000000000000000000000000000000000000000000000000000002a",
+					"direct_reverted": false, "reverted": false,
+					"decoding": map[string]any{
+						"status": "decoded", "function_name": "retrieve", "signature": "retrieve()",
+						"inputs": []any{}, "output_status": "decoded",
+						"outputs":    []any{map[string]any{"name": "value", "type": "uint256", "value": "42"}},
+						"candidates": []any{"retrieve()"},
+						"abi_source": map[string]any{"kind": "proxy_implementation", "address": uupsImplementation, "code_hash": testHash},
+						"confidence": "high",
+					},
+				},
+				map[string]any{
+					"path": []any{0}, "parent_path": []any{}, "depth": 1, "call_type": "DELEGATECALL",
+					"from": uupsProxyAddress, "to": uupsImplementation, "value": "0", "gas": "40000", "gas_used": "12000",
+					"input":  "0x8e4a23d60000000000000000000000002222222222222222222222222222222222222222",
+					"output": "0x4e487b710000000000000000000000000000000000000000000000000000000000000011",
+					"error":  "execution reverted", "direct_reverted": true, "reverted": true,
+					"decoding": map[string]any{
+						"status": "decoded", "function_name": "setOwner", "signature": "setOwner(address)",
+						"inputs":        []any{map[string]any{"name": "owner", "type": "address", "value": testEOA}},
+						"output_status": "not_applicable", "outputs": []any{}, "candidates": []any{"setOwner(address)"},
+						"revert": map[string]any{
+							"status": "decoded", "error_name": "Panic", "signature": "Panic(uint256)",
+							"arguments":  []any{map[string]any{"name": "code", "type": "uint256", "value": "17"}},
+							"candidates": []any{"Panic(uint256)"}, "abi_source": map[string]any{"kind": "builtin"}, "confidence": "high",
+						},
+						"abi_source": map[string]any{"kind": "exact_address", "address": uupsImplementation, "code_hash": testHash},
+						"confidence": "verified",
+					},
+				},
+			},
 		})
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/token-transfers", func(response http.ResponseWriter, request *http.Request) {
@@ -187,10 +229,26 @@ func main() {
 			writeNotFound(response)
 			return
 		}
+		items := []any{}
+		if request.PathValue("hash") == testTransactionHash {
+			items = append(items, map[string]any{
+				"address": uupsProxyAddress, "log_index": "7",
+				"topics": []any{"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"},
+				"data":   "0x000000000000000000000000000000000000000000000000000000000000002a",
+				"decoding": map[string]any{
+					"status": "decoded", "event_name": "ValueChanged", "signature": "ValueChanged(uint256)",
+					"arguments":   []any{map[string]any{"name": "value", "type": "uint256", "indexed": false, "hashed": false, "value": "42"}},
+					"candidates":  []any{"ValueChanged(uint256)"},
+					"abi_source":  map[string]any{"kind": "exact_address", "address": uupsImplementation, "code_hash": testHash},
+					"confidence":  "verified",
+					"attribution": map[string]any{"mode": "exact_trace", "trace_path": []any{0}, "execution_address": uupsImplementation},
+				},
+			})
+		}
 		writeEnvelope(response, map[string]any{
 			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
 			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
-			"state": "complete", "items": []any{},
+			"state": "complete", "items": items,
 		})
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/state-changes", func(response http.ResponseWriter, request *http.Request) {

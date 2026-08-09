@@ -11,12 +11,13 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 var (
-	TraceStage             = StageID{Name: "trace", Version: 1}
+	TraceStage             = StageID{Name: "trace", Version: 2}
 	errTraceRPCUnavailable = errors.New("trace RPC capability unavailable")
 )
 
@@ -68,6 +69,8 @@ type traceBlockBudget struct {
 	frames  int
 	data    int
 	text    int
+	logs    int
+	logData int
 }
 
 func newTraceBlockBudget(limits TraceLimits) *traceBlockBudget {
@@ -94,6 +97,14 @@ func (budget *traceBlockBudget) addTrace(trace NormalizedTrace) error {
 		}
 		if err := budget.add(&budget.text, len(frame.RevertReason), budget.limits.MaxBlockTextBytes, "block error text bytes"); err != nil {
 			return err
+		}
+		if err := budget.add(&budget.logs, len(frame.Logs), budget.limits.MaxBlockLogs, "block log count"); err != nil {
+			return err
+		}
+		for _, log := range frame.Logs {
+			if err := budget.add(&budget.logData, len(log.Data), budget.limits.MaxBlockLogDataBytes, "block log data bytes"); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -233,12 +244,19 @@ func (processor *TraceRPCProcessor) fetchCallTracer(
 	transactions []traceTransaction,
 	budget *traceBlockBudget,
 ) error {
+	withLog := true
 	for index := range transactions {
 		var raw json.RawMessage
 		err := caller.CallContext(ctx, &raw, "debug_traceTransaction",
-			transactions[index].hash.String(),
-			map[string]any{"tracer": "callTracer", "tracerConfig": map[string]any{"onlyTopCall": false, "withLog": false}},
+			transactions[index].hash.String(), callTracerOptions(withLog),
 		)
+		if err != nil && withLog && traceLogConfigUnsupported(err) {
+			withLog = false
+			raw = nil
+			err = caller.CallContext(ctx, &raw, "debug_traceTransaction",
+				transactions[index].hash.String(), callTracerOptions(false),
+			)
+		}
 		if err != nil {
 			return sanitizeTraceRPCError(err)
 		}
@@ -258,6 +276,18 @@ func (processor *TraceRPCProcessor) fetchCallTracer(
 		transactions[index].trace = trace
 	}
 	return nil
+}
+
+func callTracerOptions(withLog bool) map[string]any {
+	return map[string]any{
+		"tracer":       "callTracer",
+		"tracerConfig": map[string]any{"onlyTopCall": false, "withLog": withLog},
+	}
+}
+
+func traceLogConfigUnsupported(err error) bool {
+	var rpcError rpc.Error
+	return errors.As(err, &rpcError) && rpcError.ErrorCode() == -32602
 }
 
 func (processor *TraceRPCProcessor) fetchTraceAPI(
@@ -355,6 +385,11 @@ func (processor *TraceRPCProcessor) persistTx(
 		transactions = nil
 	}
 	if canonical {
+		if _, err := tx.ExecContext(ctx, deleteTraceLogAttributionsSQL,
+			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		); err != nil {
+			return StageResult{}, fmt.Errorf("clear previous trace log attribution: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, deleteTraceBlockSQL,
 			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		); err != nil {
@@ -362,6 +397,7 @@ func (processor *TraceRPCProcessor) persistTx(
 		}
 	}
 	frames := 0
+	attributedLogs, fallbackLogs := 0, 0
 	for _, transaction := range transactions {
 		for _, frame := range transaction.trace.Frames {
 			if err := persistTraceFrame(ctx, tx, job, transaction, frame); err != nil {
@@ -369,10 +405,22 @@ func (processor *TraceRPCProcessor) persistTx(
 			}
 			frames++
 		}
+		attributions, fallback, err := loadTraceLogAttributions(ctx, tx, job, transaction)
+		if err != nil {
+			return StageResult{}, err
+		}
+		for _, attribution := range attributions {
+			if err := persistTraceLogAttribution(ctx, tx, job, transaction, attribution); err != nil {
+				return StageResult{}, err
+			}
+			attributedLogs++
+		}
+		fallbackLogs += fallback
 	}
 	details := map[string]string{
 		"outcome": outcome, "source": source,
 		"transactions": strconv.Itoa(len(transactions)), "frames": strconv.Itoa(frames),
+		"attributed_logs": strconv.Itoa(attributedLogs), "fallback_logs": strconv.Itoa(fallbackLogs),
 	}
 	creationTargets := successfulCreationTargets(transactions)
 	details["creation_targets"] = strconv.Itoa(creationTargets)
@@ -451,10 +499,113 @@ func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction tra
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], transaction.index, tracePath, parentPath, len(frame.TraceAddress),
 		frame.Type, from, to, created, value, gas, gasUsed, nullableBytes(frame.Input),
-		nullableBytes(frame.Output), traceError, frame.Reverted,
+		nullableBytes(frame.Output), traceError, frame.DirectReverted, frame.Reverted,
 	)
 	if err != nil {
 		return fmt.Errorf("persist normalized trace frame: %w", err)
+	}
+	return nil
+}
+
+type traceLogAttribution struct {
+	logIndex         uint64
+	tracePath        string
+	callType         string
+	executionAddress common.Address
+}
+
+func loadTraceLogAttributions(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	transaction traceTransaction,
+) ([]traceLogAttribution, int, error) {
+	rows, err := tx.QueryContext(ctx, traceReceiptLogsSQL,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transaction.hash[:],
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query receipt logs for trace attribution: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+	expected := make(map[uint64]types.Log)
+	for rows.Next() {
+		var index int64
+		var raw []byte
+		if err := rows.Scan(&index, &raw); err != nil {
+			return nil, 0, fmt.Errorf("scan receipt log for trace attribution: %w", err)
+		}
+		if index < 0 {
+			return nil, 0, Permanent(errors.New("stored receipt log index is negative"))
+		}
+		var decoded types.Log
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			return nil, 0, Permanent(errors.New("stored receipt log is malformed"))
+		}
+		if uint64(decoded.Index) != uint64(index) || decoded.TxHash != transaction.hash ||
+			decoded.BlockHash != job.BlockHash || decoded.BlockNumber != job.BlockNumber {
+			return nil, 0, Permanent(errors.New("stored receipt log identity is inconsistent"))
+		}
+		expected[uint64(index)] = decoded
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate receipt logs for trace attribution: %w", err)
+	}
+	captured := 0
+	for _, frame := range transaction.trace.Frames {
+		captured += len(frame.Logs)
+	}
+	if captured == 0 {
+		return nil, len(expected), nil
+	}
+	if captured != len(expected) {
+		return nil, 0, Permanent(errors.New("callTracer returned a partial receipt-log set"))
+	}
+	result := make([]traceLogAttribution, 0, captured)
+	seen := make(map[uint64]struct{}, captured)
+	for _, frame := range transaction.trace.Frames {
+		if len(frame.Logs) == 0 {
+			continue
+		}
+		if frame.Type == "STATICCALL" || frame.Type == "SELFDESTRUCT" || frame.To == nil {
+			return nil, 0, Permanent(errors.New("callTracer attached a log to an invalid execution frame"))
+		}
+		for _, traced := range frame.Logs {
+			if _, duplicate := seen[traced.Index]; duplicate {
+				return nil, 0, Permanent(errors.New("callTracer returned a duplicate log index"))
+			}
+			seen[traced.Index] = struct{}{}
+			stored, exists := expected[traced.Index]
+			if !exists || stored.Address != traced.Address || !bytes.Equal(stored.Data, traced.Data) ||
+				len(stored.Topics) != len(traced.Topics) {
+				return nil, 0, Permanent(errors.New("callTracer log does not match the canonical receipt"))
+			}
+			for index := range stored.Topics {
+				if stored.Topics[index] != traced.Topics[index] {
+					return nil, 0, Permanent(errors.New("callTracer log topics do not match the canonical receipt"))
+				}
+			}
+			result = append(result, traceLogAttribution{
+				logIndex: traced.Index, tracePath: tracePathKey(frame.TraceAddress),
+				callType: frame.Type, executionAddress: *frame.To,
+			})
+		}
+	}
+	return result, 0, nil
+}
+
+func persistTraceLogAttribution(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	transaction traceTransaction,
+	attribution traceLogAttribution,
+) error {
+	if _, err := tx.ExecContext(ctx, insertTraceLogAttributionSQL,
+		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		transaction.hash[:], attribution.logIndex, attribution.tracePath,
+		attribution.callType, attribution.executionAddress[:],
+	); err != nil {
+		return fmt.Errorf("persist trace log attribution: %w", err)
 	}
 	return nil
 }
@@ -518,12 +669,34 @@ const deleteTraceBlockSQL = `
 DELETE FROM normalized_traces
 WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
 
+const deleteTraceLogAttributionsSQL = `
+DELETE FROM trace_log_attributions
+WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
+
 const insertTraceFrameSQL = `
 INSERT INTO normalized_traces (
     chain_id, block_number, block_hash, transaction_hash, transaction_index,
     trace_path, parent_path, depth, call_type, from_address, to_address,
-    created_address, value, gas, gas_used, input, output, error, reverted, canonical
+    created_address, value, gas, gas_used, input, output, error,
+    direct_reverted, reverted, canonical
 ) VALUES (
     $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, true
+    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, $20, true
+)`
+
+const traceReceiptLogsSQL = `
+SELECT log_index, raw
+FROM logs
+WHERE chain_id = $1::numeric
+  AND block_number = $2::numeric
+  AND block_hash = $3
+  AND tx_hash = $4
+ORDER BY log_index`
+
+const insertTraceLogAttributionSQL = `
+INSERT INTO trace_log_attributions (
+    chain_id, block_number, block_hash, transaction_hash, log_index,
+    trace_path, call_type, execution_address, canonical
+) VALUES (
+    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, TRUE
 )`

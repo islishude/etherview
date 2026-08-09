@@ -11,6 +11,33 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ABISourceKind.
+const (
+	ABISourceKindBuiltin             ABISourceKind = "builtin"
+	ABISourceKindCodeHash            ABISourceKind = "code_hash"
+	ABISourceKindExactAddress        ABISourceKind = "exact_address"
+	ABISourceKindProxyImplementation ABISourceKind = "proxy_implementation"
+	ABISourceKindSignatureDatabase   ABISourceKind = "signature_database"
+)
+
+// Valid indicates whether the value is a known member of the ABISourceKind enum.
+func (e ABISourceKind) Valid() bool {
+	switch e {
+	case ABISourceKindBuiltin:
+		return true
+	case ABISourceKindCodeHash:
+		return true
+	case ABISourceKindExactAddress:
+		return true
+	case ABISourceKindProxyImplementation:
+		return true
+	case ABISourceKindSignatureDatabase:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddressOriginKind.
 const (
 	ContractCreation AddressOriginKind = "contract_creation"
@@ -1022,6 +1049,132 @@ func (e TokenContractStandard) Valid() bool {
 	}
 }
 
+// Defines values for TraceCallDecodingConfidence.
+const (
+	TraceCallDecodingConfidenceGuess    TraceCallDecodingConfidence = "guess"
+	TraceCallDecodingConfidenceHigh     TraceCallDecodingConfidence = "high"
+	TraceCallDecodingConfidenceVerified TraceCallDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TraceCallDecodingConfidence enum.
+func (e TraceCallDecodingConfidence) Valid() bool {
+	switch e {
+	case TraceCallDecodingConfidenceGuess:
+		return true
+	case TraceCallDecodingConfidenceHigh:
+		return true
+	case TraceCallDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TraceCallDecodingOutputStatus.
+const (
+	TraceCallDecodingOutputStatusDecoded       TraceCallDecodingOutputStatus = "decoded"
+	TraceCallDecodingOutputStatusEmpty         TraceCallDecodingOutputStatus = "empty"
+	TraceCallDecodingOutputStatusMalformed     TraceCallDecodingOutputStatus = "malformed"
+	TraceCallDecodingOutputStatusNotApplicable TraceCallDecodingOutputStatus = "not_applicable"
+	TraceCallDecodingOutputStatusUnavailable   TraceCallDecodingOutputStatus = "unavailable"
+	TraceCallDecodingOutputStatusUnknown       TraceCallDecodingOutputStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TraceCallDecodingOutputStatus enum.
+func (e TraceCallDecodingOutputStatus) Valid() bool {
+	switch e {
+	case TraceCallDecodingOutputStatusDecoded:
+		return true
+	case TraceCallDecodingOutputStatusEmpty:
+		return true
+	case TraceCallDecodingOutputStatusMalformed:
+		return true
+	case TraceCallDecodingOutputStatusNotApplicable:
+		return true
+	case TraceCallDecodingOutputStatusUnavailable:
+		return true
+	case TraceCallDecodingOutputStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TraceCallDecodingStatus.
+const (
+	TraceCallDecodingStatusAmbiguous   TraceCallDecodingStatus = "ambiguous"
+	TraceCallDecodingStatusDecoded     TraceCallDecodingStatus = "decoded"
+	TraceCallDecodingStatusMalformed   TraceCallDecodingStatus = "malformed"
+	TraceCallDecodingStatusUnavailable TraceCallDecodingStatus = "unavailable"
+	TraceCallDecodingStatusUnknown     TraceCallDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TraceCallDecodingStatus enum.
+func (e TraceCallDecodingStatus) Valid() bool {
+	switch e {
+	case TraceCallDecodingStatusAmbiguous:
+		return true
+	case TraceCallDecodingStatusDecoded:
+		return true
+	case TraceCallDecodingStatusMalformed:
+		return true
+	case TraceCallDecodingStatusUnavailable:
+		return true
+	case TraceCallDecodingStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TraceRevertDecodingConfidence.
+const (
+	TraceRevertDecodingConfidenceGuess    TraceRevertDecodingConfidence = "guess"
+	TraceRevertDecodingConfidenceHigh     TraceRevertDecodingConfidence = "high"
+	TraceRevertDecodingConfidenceVerified TraceRevertDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TraceRevertDecodingConfidence enum.
+func (e TraceRevertDecodingConfidence) Valid() bool {
+	switch e {
+	case TraceRevertDecodingConfidenceGuess:
+		return true
+	case TraceRevertDecodingConfidenceHigh:
+		return true
+	case TraceRevertDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TraceRevertDecodingStatus.
+const (
+	TraceRevertDecodingStatusAmbiguous   TraceRevertDecodingStatus = "ambiguous"
+	TraceRevertDecodingStatusDecoded     TraceRevertDecodingStatus = "decoded"
+	TraceRevertDecodingStatusMalformed   TraceRevertDecodingStatus = "malformed"
+	TraceRevertDecodingStatusUnavailable TraceRevertDecodingStatus = "unavailable"
+	TraceRevertDecodingStatusUnknown     TraceRevertDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TraceRevertDecodingStatus enum.
+func (e TraceRevertDecodingStatus) Valid() bool {
+	switch e {
+	case TraceRevertDecodingStatusAmbiguous:
+		return true
+	case TraceRevertDecodingStatusDecoded:
+		return true
+	case TraceRevertDecodingStatusMalformed:
+		return true
+	case TraceRevertDecodingStatusUnavailable:
+		return true
+	case TraceRevertDecodingStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionStatus.
 const (
 	TransactionStatusFailed  TransactionStatus = "failed"
@@ -1046,24 +1199,18 @@ func (e TransactionStatus) Valid() bool {
 	}
 }
 
-// Defines values for TransactionLogABISourceKind.
+// Defines values for TransactionLogAttributionMode.
 const (
-	TransactionLogABISourceKindCodeHash            TransactionLogABISourceKind = "code_hash"
-	TransactionLogABISourceKindExactAddress        TransactionLogABISourceKind = "exact_address"
-	TransactionLogABISourceKindProxyImplementation TransactionLogABISourceKind = "proxy_implementation"
-	TransactionLogABISourceKindSignatureDatabase   TransactionLogABISourceKind = "signature_database"
+	AddressFallback TransactionLogAttributionMode = "address_fallback"
+	ExactTrace      TransactionLogAttributionMode = "exact_trace"
 )
 
-// Valid indicates whether the value is a known member of the TransactionLogABISourceKind enum.
-func (e TransactionLogABISourceKind) Valid() bool {
+// Valid indicates whether the value is a known member of the TransactionLogAttributionMode enum.
+func (e TransactionLogAttributionMode) Valid() bool {
 	switch e {
-	case TransactionLogABISourceKindCodeHash:
+	case AddressFallback:
 		return true
-	case TransactionLogABISourceKindExactAddress:
-		return true
-	case TransactionLogABISourceKindProxyImplementation:
-		return true
-	case TransactionLogABISourceKindSignatureDatabase:
+	case ExactTrace:
 		return true
 	default:
 		return false
@@ -1524,6 +1671,26 @@ func (e GetChartMetricParamsInterval) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// ABISource defines model for ABISource.
+type ABISource struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash         `json:"code_hash,omitempty"`
+	Kind     ABISourceKind `json:"kind"`
+}
+
+// ABISourceKind defines model for ABISource.Kind.
+type ABISourceKind string
+
+// ABIValue defines model for ABIValue.
+type ABIValue struct {
+	Name  string      `json:"name"`
+	Type  string      `json:"type"`
+	Value interface{} `json:"value"`
 }
 
 // APIError defines model for APIError.
@@ -2990,14 +3157,40 @@ type TokenResponse struct {
 	Meta Meta          `json:"meta"`
 }
 
+// TraceCallDecoding defines model for TraceCallDecoding.
+type TraceCallDecoding struct {
+	AbiSource    *ABISource                    `json:"abi_source,omitempty"`
+	Candidates   []string                      `json:"candidates"`
+	Confidence   *TraceCallDecodingConfidence  `json:"confidence,omitempty"`
+	FunctionName *string                       `json:"function_name,omitempty"`
+	Inputs       []ABIValue                    `json:"inputs"`
+	OutputStatus TraceCallDecodingOutputStatus `json:"output_status"`
+	Outputs      []ABIValue                    `json:"outputs"`
+	Revert       *TraceRevertDecoding          `json:"revert,omitempty"`
+	Signature    *string                       `json:"signature,omitempty"`
+	Status       TraceCallDecodingStatus       `json:"status"`
+	Warning      *string                       `json:"warning,omitempty"`
+}
+
+// TraceCallDecodingConfidence defines model for TraceCallDecoding.Confidence.
+type TraceCallDecodingConfidence string
+
+// TraceCallDecodingOutputStatus defines model for TraceCallDecoding.OutputStatus.
+type TraceCallDecodingOutputStatus string
+
+// TraceCallDecodingStatus defines model for TraceCallDecoding.Status.
+type TraceCallDecodingStatus string
+
 // TraceFrame defines model for TraceFrame.
 type TraceFrame struct {
 	CallType string `json:"call_type"`
 
 	// CreatedAddress A 20-byte address; responses use the EIP-55 checksum form.
-	CreatedAddress *Address `json:"created_address,omitempty"`
-	Depth          int      `json:"depth"`
-	Error          *string  `json:"error,omitempty"`
+	CreatedAddress *Address           `json:"created_address,omitempty"`
+	Decoding       *TraceCallDecoding `json:"decoding,omitempty"`
+	Depth          int                `json:"depth"`
+	DirectReverted bool               `json:"direct_reverted"`
+	Error          *string            `json:"error,omitempty"`
 
 	// From A 20-byte address; responses use the EIP-55 checksum form.
 	From *Address `json:"from,omitempty"`
@@ -3019,6 +3212,24 @@ type TraceFrame struct {
 	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Value *Quantity `json:"value,omitempty"`
 }
+
+// TraceRevertDecoding defines model for TraceRevertDecoding.
+type TraceRevertDecoding struct {
+	AbiSource  *ABISource                     `json:"abi_source,omitempty"`
+	Arguments  []ABIValue                     `json:"arguments"`
+	Candidates []string                       `json:"candidates"`
+	Confidence *TraceRevertDecodingConfidence `json:"confidence,omitempty"`
+	ErrorName  *string                        `json:"error_name,omitempty"`
+	Signature  *string                        `json:"signature,omitempty"`
+	Status     TraceRevertDecodingStatus      `json:"status"`
+	Warning    *string                        `json:"warning,omitempty"`
+}
+
+// TraceRevertDecodingConfidence defines model for TraceRevertDecoding.Confidence.
+type TraceRevertDecodingConfidence string
+
+// TraceRevertDecodingStatus defines model for TraceRevertDecoding.Status.
+type TraceRevertDecodingStatus string
 
 // Transaction defines model for Transaction.
 type Transaction struct {
@@ -3103,19 +3314,6 @@ type TransactionLog struct {
 	Topics   []Hash   `json:"topics"`
 }
 
-// TransactionLogABISource defines model for TransactionLogABISource.
-type TransactionLogABISource struct {
-	// Address A 20-byte address; responses use the EIP-55 checksum form.
-	Address *Address `json:"address,omitempty"`
-
-	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	CodeHash *Hash                       `json:"code_hash,omitempty"`
-	Kind     TransactionLogABISourceKind `json:"kind"`
-}
-
-// TransactionLogABISourceKind defines model for TransactionLogABISource.Kind.
-type TransactionLogABISourceKind string
-
 // TransactionLogArgument defines model for TransactionLogArgument.
 type TransactionLogArgument struct {
 	Hashed  bool        `json:"hashed"`
@@ -3125,16 +3323,28 @@ type TransactionLogArgument struct {
 	Value   interface{} `json:"value"`
 }
 
+// TransactionLogAttribution defines model for TransactionLogAttribution.
+type TransactionLogAttribution struct {
+	// ExecutionAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ExecutionAddress *Address                      `json:"execution_address,omitempty"`
+	Mode             TransactionLogAttributionMode `json:"mode"`
+	TracePath        []int                         `json:"trace_path"`
+}
+
+// TransactionLogAttributionMode defines model for TransactionLogAttribution.Mode.
+type TransactionLogAttributionMode string
+
 // TransactionLogDecoding defines model for TransactionLogDecoding.
 type TransactionLogDecoding struct {
-	AbiSource  *TransactionLogABISource          `json:"abi_source,omitempty"`
-	Arguments  []TransactionLogArgument          `json:"arguments"`
-	Candidates []string                          `json:"candidates"`
-	Confidence *TransactionLogDecodingConfidence `json:"confidence,omitempty"`
-	EventName  *string                           `json:"event_name,omitempty"`
-	Signature  *string                           `json:"signature,omitempty"`
-	Status     TransactionLogDecodingStatus      `json:"status"`
-	Warning    *string                           `json:"warning,omitempty"`
+	AbiSource   *ABISource                        `json:"abi_source,omitempty"`
+	Arguments   []TransactionLogArgument          `json:"arguments"`
+	Attribution TransactionLogAttribution         `json:"attribution"`
+	Candidates  []string                          `json:"candidates"`
+	Confidence  *TransactionLogDecodingConfidence `json:"confidence,omitempty"`
+	EventName   *string                           `json:"event_name,omitempty"`
+	Signature   *string                           `json:"signature,omitempty"`
+	Status      TransactionLogDecodingStatus      `json:"status"`
+	Warning     *string                           `json:"warning,omitempty"`
 }
 
 // TransactionLogDecodingConfidence defines model for TransactionLogDecoding.Confidence.

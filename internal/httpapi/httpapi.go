@@ -1650,6 +1650,10 @@ func transactionLogDecodingModel(value catalog.TransactionLogDecoding) gen.Trans
 		Status:     gen.TransactionLogDecodingStatus(value.Status),
 		Arguments:  make([]gen.TransactionLogArgument, len(value.Arguments)),
 		Candidates: make([]string, len(value.Candidates)),
+		Attribution: gen.TransactionLogAttribution{
+			Mode:      gen.TransactionLogAttributionMode(value.Attribution.Mode),
+			TracePath: uint32PathModel(value.Attribution.TracePath),
+		},
 	}
 	copy(model.Candidates, value.Candidates)
 	for index, argument := range value.Arguments {
@@ -1672,18 +1676,37 @@ func transactionLogDecodingModel(value catalog.TransactionLogDecoding) gen.Trans
 		model.Warning = &value.Warning
 	}
 	if value.ABISource != nil {
-		source := gen.TransactionLogABISource{Kind: gen.TransactionLogABISourceKind(value.ABISource.Kind)}
-		if value.ABISource.Address != "" {
-			address := gen.Address(value.ABISource.Address)
-			source.Address = &address
-		}
-		if value.ABISource.CodeHash != "" {
-			codeHash := gen.Hash(value.ABISource.CodeHash)
-			source.CodeHash = &codeHash
-		}
-		model.AbiSource = &source
+		model.AbiSource = abiSourceModel(value.ABISource)
+	}
+	if value.Attribution.ExecutionAddress != "" {
+		address := gen.Address(value.Attribution.ExecutionAddress)
+		model.Attribution.ExecutionAddress = &address
 	}
 	return model
+}
+
+func abiSourceModel(value *catalog.ABISource) *gen.ABISource {
+	if value == nil {
+		return nil
+	}
+	result := &gen.ABISource{Kind: gen.ABISourceKind(value.Kind)}
+	if value.Address != "" {
+		address := gen.Address(value.Address)
+		result.Address = &address
+	}
+	if value.CodeHash != "" {
+		codeHash := gen.Hash(value.CodeHash)
+		result.CodeHash = &codeHash
+	}
+	return result
+}
+
+func uint32PathModel(path []uint32) []int {
+	result := make([]int, len(path))
+	for index, component := range path {
+		result[index] = int(component)
+	}
+	return result
 }
 
 func (h *Handler) transactionStateChanges(w http.ResponseWriter, r *http.Request) {
@@ -2521,18 +2544,16 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 	frames := make([]gen.TraceFrame, len(item.Frames))
 	for index := range item.Frames {
 		frame := item.Frames[index]
-		path, parentPath := make([]int, len(frame.Path)), make([]int, len(frame.ParentPath))
-		for component := range frame.Path {
-			path[component] = int(frame.Path[component])
-		}
-		for component := range frame.ParentPath {
-			parentPath[component] = int(frame.ParentPath[component])
-		}
+		path, parentPath := uint32PathModel(frame.Path), uint32PathModel(frame.ParentPath)
 		frames[index] = gen.TraceFrame{
 			Path: path, ParentPath: parentPath, Depth: int(frame.Depth), CallType: frame.CallType,
 			From: frame.From, To: frame.To, CreatedAddress: frame.CreatedAddress,
 			Value: frame.Value, Gas: frame.Gas, GasUsed: frame.GasUsed,
-			Input: frame.Input, Output: frame.Output, Error: frame.Error, Reverted: frame.Reverted,
+			Input: frame.Input, Output: frame.Output, Error: frame.Error,
+			DirectReverted: frame.DirectReverted, Reverted: frame.Reverted,
+		}
+		if frame.Decoding != nil {
+			frames[index].Decoding = traceCallDecodingModel(frame.Decoding)
 		}
 	}
 	return gen.TransactionTrace{
@@ -2540,6 +2561,66 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 		TransactionHash: item.TransactionHash, TransactionIndex: item.TransactionIndex,
 		State: gen.TransactionTraceState(item.State), Frames: frames,
 	}
+}
+
+func traceCallDecodingModel(value *catalog.TraceCallDecoding) *gen.TraceCallDecoding {
+	if value == nil {
+		return nil
+	}
+	result := &gen.TraceCallDecoding{
+		Status: gen.TraceCallDecodingStatus(value.Status), Inputs: abiValuesModel(value.Inputs),
+		OutputStatus: gen.TraceCallDecodingOutputStatus(value.OutputStatus), Outputs: abiValuesModel(value.Outputs),
+		Candidates: append([]string(nil), value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
+	}
+	if value.FunctionName != "" {
+		result.FunctionName = &value.FunctionName
+	}
+	if value.Signature != "" {
+		result.Signature = &value.Signature
+	}
+	if value.Confidence != "" {
+		confidence := gen.TraceCallDecodingConfidence(value.Confidence)
+		result.Confidence = &confidence
+	}
+	if value.Warning != "" {
+		result.Warning = &value.Warning
+	}
+	if value.Revert != nil {
+		result.Revert = traceRevertDecodingModel(value.Revert)
+	}
+	return result
+}
+
+func traceRevertDecodingModel(value *catalog.TraceRevertDecoding) *gen.TraceRevertDecoding {
+	if value == nil {
+		return nil
+	}
+	result := &gen.TraceRevertDecoding{
+		Status: gen.TraceRevertDecodingStatus(value.Status), Arguments: abiValuesModel(value.Arguments),
+		Candidates: append([]string(nil), value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
+	}
+	if value.ErrorName != "" {
+		result.ErrorName = &value.ErrorName
+	}
+	if value.Signature != "" {
+		result.Signature = &value.Signature
+	}
+	if value.Confidence != "" {
+		confidence := gen.TraceRevertDecodingConfidence(value.Confidence)
+		result.Confidence = &confidence
+	}
+	if value.Warning != "" {
+		result.Warning = &value.Warning
+	}
+	return result
+}
+
+func abiValuesModel(values []catalog.ABIValue) []gen.ABIValue {
+	result := make([]gen.ABIValue, len(values))
+	for index, value := range values {
+		result[index] = gen.ABIValue{Name: value.Name, Type: value.Type, Value: value.Value}
+	}
+	return result
 }
 
 func transactionTokenTransfersModel(

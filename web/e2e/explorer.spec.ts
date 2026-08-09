@@ -13,6 +13,7 @@ const proxyAdminAddress = "0x9000000000000000000000000000000000000009";
 const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
 const oldImplementation = "0x4000000000000000000000000000000000000040";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+const decodedTransactionHash = `0x${"a".repeat(64)}`;
 const readAPIKey = "ev_e2e_read";
 const verificationJobID = "123e4567-e89b-42d3-a456-426614174000";
 const transactionCursor = "transactions/snapshot?generation=7 + page=2&exact=true/#";
@@ -102,6 +103,44 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(skipLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
+});
+
+test("trace and log disclosures retain raw data and exact execution provenance", async ({ page }) => {
+  await page.goto(`/tx/${decodedTransactionHash}?tab=trace`);
+  await expect(page.getByText("retrieve()", { exact: true })).toBeVisible();
+  await expect(page.getByText("Succeeded", { exact: true })).toBeVisible();
+  await expect(page.getByText("setOwner(address)", { exact: true })).toBeVisible();
+  await expect(page.getByText("execution reverted", { exact: true })).toBeVisible();
+
+  const rootFrame = page.locator(".transaction-trace-frame").first();
+  const rootDisclosure = rootFrame.locator("summary");
+  await rootDisclosure.focus();
+  await expect(rootDisclosure).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(rootFrame.getByText("Declared empty return", { exact: true })).toHaveCount(0);
+  await expect(rootFrame.getByText("Decoded", { exact: true })).toBeVisible();
+  await expect(rootFrame.getByText("42", { exact: true })).toBeVisible();
+  await expect(rootFrame.getByText("0x2e64cec1", { exact: true })).toBeVisible();
+
+  const revertedFrame = page.locator(".transaction-trace-frame").nth(1);
+  await activateInView(revertedFrame.locator("summary"));
+  await expect(revertedFrame.getByText("Not applicable to a reverted call", { exact: true })).toBeVisible();
+  await expect(revertedFrame.getByText("Panic(uint256)", { exact: true })).toBeVisible();
+  await expect(revertedFrame.getByText("17", { exact: true })).toBeVisible();
+
+  await activateInView(page.getByRole("tab", { name: "Logs" }));
+  await expect(page.getByText("ValueChanged(uint256)", { exact: true })).toBeVisible();
+  const provenance = page.getByText(/Executed by .*exact Trace frame.*ABI exact_address/);
+  await expect(provenance).toContainText(`Executed by ${uupsImplementation} (exact Trace frame)`);
+  await expect(provenance).toContainText(`ABI exact_address from ${uupsImplementation}`);
+  await expect(page.getByRole("link", { name: uupsProxyAddress })).toBeVisible();
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const localizedProvenance = page.getByText(/执行代码 .*精确 Trace 调用帧.*ABI exact_address/);
+  await expect(localizedProvenance).toContainText(`执行代码 ${uupsImplementation}（精确 Trace 调用帧）`);
+  await expect(localizedProvenance).toContainText(`ABI exact_address，来自 ${uupsImplementation}`);
+  await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}?tab=trace`);
 });
 
 test("home uses one atomic snapshot stream without REST polling", async ({

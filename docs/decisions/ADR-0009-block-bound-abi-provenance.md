@@ -23,6 +23,10 @@ independently of source would let guessed material be published as verified.
 - Direct ABI material comes only from a verified artifact for the same target
   address and code hash whose range covers the context block. It has source
   `verified` and confidence `verified`.
+- A same-chain verified artifact for a different address with the identical
+  runtime code hash may be bound to the target as source `code_hash` and
+  confidence `high`. The binding persists the artifact's address and code hash
+  separately from the target identity.
 - A historical proxy binding consumes an already persisted canonical proxy
   observation; the ABI comes from a verified artifact for that observation's
   implementation address and code hash. Its valid range is the intersection of
@@ -38,8 +42,8 @@ independently of source would let guessed material be published as verified.
   must also repeat the target source address and code hash. Built-in Solidity
   `Error(string)` and `Panic(uint256)` entries are decoder-local and can appear
   in decoding output, but are never durable contract ABI bindings.
-- Candidate preference is direct verified ABI, historical proxy implementation
-  ABI, then signature guess. Equal-confidence selector collisions remain
+- Candidate preference is direct verified ABI, same-code or historical proxy
+  implementation ABI, then signature guess. Equal-confidence selector collisions remain
   `ambiguous` and retain all candidate signatures rather than selecting a
   pretend winner.
 - Transaction-log reads treat durable `abi@2` decoding as the fast path. When
@@ -56,11 +60,16 @@ independently of source would let guessed material be published as verified.
   explicit hashed marker. Parsing and decoding share the same limits for ABI
   document bytes, entries, candidates, tuple depth, array elements, dynamic
   bytes, nodes, and total work across enrichment and read projection.
-- `abi@1` writes bindings, decoded transaction/log/available normalized-trace
+- Function entries preserve whether `outputs` was explicitly declared. Input,
+  successful output, and direct-revert decoding use the same selected
+  candidate. A signature-only candidate without outputs reports output
+  `unavailable`; explicit empty outputs, malformed payloads, ambiguity, and
+  bounded-work exhaustion remain distinct stable states.
+- `abi@2` writes bindings, decoded transaction/log/available normalized-trace
   observations, its stage result, and its canonicality journal in one
   transaction. Trace absence never delays or fails ABI processing; explicit
   ABI reindex after Trace may add those optional decodings.
-- Production `abi@1` is claim- and processor-gated on `proxy@1` for the exact
+- Production `abi@2` is claim- and processor-gated on `proxy@2` for the exact
   block hash. Complete proxy facts permit decoding; explicit proxy
   unavailability makes ABI unavailable rather than persisting `unbound` or a
   lower-priority guess. Late proxy or Trace facts safely reset only terminal

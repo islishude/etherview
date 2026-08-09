@@ -30,7 +30,7 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 		{stage: ABIStage, relations: []string{"contract_abis", "abi_decodings"}},
 		{stage: TokenStage, relations: []string{"token_events", "token_balance_deltas"}},
 		{stage: StatsStage, relations: []string{"block_statistics"}},
-		{stage: TraceStage, relations: []string{"normalized_traces"}},
+		{stage: TraceStage, relations: []string{"normalized_traces", "trace_log_attributions"}},
 		{stage: StateDiffStage, relations: []string{"transaction_state_changes"}},
 	}
 	for _, test := range tests {

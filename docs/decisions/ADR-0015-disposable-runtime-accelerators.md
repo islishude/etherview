@@ -39,14 +39,17 @@ correctness implementation and break the PostgreSQL-only deployment.
   PostgreSQL, making a write that races invalidation unreachable. Redis loss
   disables cache reads and writes before invalidation reports success; a later
   durable event may safely re-enable them.
-- S3-compatible storage caches normalized transaction-trace JSON only. An
+- S3-compatible storage caches schema-v2 normalized transaction call frames
+  only. ABI input/output/revert projections are never stored in the object. An
   object key binds chain ID, exact block hash, durable job ID, exact completed
   generation, and transaction hash. Reads are length- and SHA-256-bounded,
   decoded through the same trace shape limits, and followed by a PostgreSQL
-  canonical/publication identity check. Misses, corruption, timeouts, reorgs,
-  and replay generations fall back to normalized PostgreSQL rows. Cache writes
-  occur only after the read transaction commits and never affect job or stage
-  completion.
+  canonical/publication identity check. Each hit is decorated from persisted
+  ABI output or a bounded PostgreSQL-only fallback in a repeatable-read
+  snapshot, so late verification is immediately visible. Misses, corruption,
+  timeouts, reorgs, and replay generations fall back to normalized PostgreSQL
+  rows. Cache writes occur only after the read transaction commits and never
+  affect job or stage completion.
 - Accelerator clients are not constructed when their URL/endpoint is empty.
   Static configuration errors fail validation, while endpoint reachability is
   not a startup or `doctor` requirement. Credential-bearing URLs and S3 keys

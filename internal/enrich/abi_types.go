@@ -115,23 +115,29 @@ type abiParameter struct {
 }
 
 type abiEntryJSON struct {
-	Type      string         `json:"type"`
-	Name      string         `json:"name"`
-	Inputs    []abiParameter `json:"inputs"`
-	Anonymous bool           `json:"anonymous,omitempty"`
+	Type      string          `json:"type"`
+	Name      string          `json:"name"`
+	Inputs    []abiParameter  `json:"inputs"`
+	Outputs   json.RawMessage `json:"outputs"`
+	Anonymous bool            `json:"anonymous,omitempty"`
 }
 
 type abiEntry struct {
-	kind      ABIKind
-	name      string
-	signature string
-	inputs    []abiParameter
-	types     []*abiType
-	indexed   []bool
-	anonymous bool
-	source    ABISource
-	selector  [4]byte
-	topic     common.Hash
+	kind           ABIKind
+	name           string
+	signature      string
+	inputs         []abiParameter
+	types          []*abiType
+	outputs        []abiParameter
+	outputTypes    []*abiType
+	outputsKnown   bool
+	indexed        []bool
+	anonymous      bool
+	source         ABISource
+	sourceAddress  common.Address
+	sourceCodeHash common.Hash
+	selector       [4]byte
+	topic          common.Hash
 }
 
 func (entry abiEntry) confidence() Confidence { return entry.source.confidence() }
@@ -162,15 +168,35 @@ type DecodedArgument struct {
 }
 
 type DecodeResult struct {
-	Status     DecodeStatus
-	Kind       ABIKind
-	Name       string
-	Signature  string
-	Source     ABISource
-	Confidence Confidence
-	Arguments  []DecodedArgument
-	Candidates []string
-	Warning    string
+	Status         DecodeStatus
+	Kind           ABIKind
+	Name           string
+	Signature      string
+	Source         ABISource
+	SourceAddress  common.Address
+	SourceCodeHash common.Hash
+	Confidence     Confidence
+	Arguments      []DecodedArgument
+	Candidates     []string
+	Warning        string
+}
+
+type ReturnStatus string
+
+const (
+	ReturnDecoded       ReturnStatus = "decoded"
+	ReturnEmpty         ReturnStatus = "empty"
+	ReturnUnknown       ReturnStatus = "unknown"
+	ReturnMalformed     ReturnStatus = "malformed"
+	ReturnUnavailable   ReturnStatus = "unavailable"
+	ReturnNotApplicable ReturnStatus = "not_applicable"
+)
+
+type CallDecodeResult struct {
+	Input        DecodeResult
+	ReturnStatus ReturnStatus
+	Returns      []DecodedArgument
+	Warning      string
 }
 
 // DecodeLimits bound attacker-controlled dynamic values and candidate ABI
@@ -462,6 +488,26 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 			indexed:   make([]bool, len(item.Inputs)),
 			source:    source,
 			anonymous: item.Anonymous,
+		}
+		if kind == ABIKindFunction && len(item.Outputs) > 0 && string(item.Outputs) != "null" {
+			if err := json.Unmarshal(item.Outputs, &entry.outputs); err != nil {
+				return nil, fmt.Errorf("ABI entry %s outputs: %w", item.Name, err)
+			}
+			if len(entry.outputs) > limits.MaxArguments {
+				return nil, fmt.Errorf("ABI entry %s has too many outputs", item.Name)
+			}
+			entry.outputsKnown = true
+			entry.outputTypes = make([]*abiType, len(entry.outputs))
+			for outputIndex, output := range entry.outputs {
+				if _, err := canonicalParameter(output); err != nil {
+					return nil, fmt.Errorf("ABI entry %s output %d: %w", item.Name, outputIndex, err)
+				}
+				parsedType, err := parseABIType(output, 1, limits.MaxDepth)
+				if err != nil {
+					return nil, fmt.Errorf("ABI entry %s output %d: %w", item.Name, outputIndex, err)
+				}
+				entry.outputTypes[outputIndex] = parsedType
+			}
 		}
 		canonicalInputs := make([]string, len(item.Inputs))
 		for inputIndex, input := range item.Inputs {

@@ -265,11 +265,11 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 		} else if found {
 			var envelope cachedTransactionTrace
 			if decodeErr := json.Unmarshal(cached, &envelope); decodeErr == nil &&
-				envelope.Schema == 1 && envelope.JobID == identity.JobID && envelope.JobGeneration == identity.JobGeneration &&
+				envelope.Schema == 2 && envelope.JobID == identity.JobID && envelope.JobGeneration == identity.JobGeneration &&
 				catalog.validateCachedTrace(identity, envelope.Trace) == nil {
-				current, identityErr := catalog.readTraceIdentity(ctx, chainID, transactionHash)
-				if identityErr == nil && current == identity {
-					return envelope.Trace, nil
+				decorated, decorateErr := catalog.decorateCachedTrace(ctx, identity, envelope.Trace)
+				if decorateErr == nil {
+					return decorated, nil
 				}
 			} else {
 				catalog.logTraceCacheBypass(ctx, "optional S3 trace cache object invalid; using PostgreSQL", errors.New("invalid trace cache object"))
@@ -281,8 +281,13 @@ func (catalog *Postgres) TransactionTrace(ctx context.Context, chainID, transact
 		return TransactionTrace{}, err
 	}
 	if catalog.traceCache != nil {
+		cacheTrace := result
+		cacheTrace.Frames = append([]TraceFrame(nil), result.Frames...)
+		for index := range cacheTrace.Frames {
+			cacheTrace.Frames[index].Decoding = nil
+		}
 		encoded, encodeErr := json.Marshal(cachedTransactionTrace{
-			Schema: 1, JobID: identity.JobID, JobGeneration: identity.JobGeneration, Trace: result,
+			Schema: 2, JobID: identity.JobID, JobGeneration: identity.JobGeneration, Trace: cacheTrace,
 		})
 		if encodeErr != nil {
 			catalog.logTraceCacheBypass(ctx, "optional S3 trace cache encode failed", encodeErr)
@@ -304,7 +309,7 @@ type traceIdentity struct {
 }
 
 func (identity traceIdentity) cacheKey() string {
-	return fmt.Sprintf("trace/v1/%s/%s/%d-%d/%s.json",
+	return fmt.Sprintf("trace/v2/%s/%s/%d-%d/%s.json",
 		identity.ChainID, strings.TrimPrefix(identity.BlockHash, "0x"), identity.JobID,
 		identity.JobGeneration, strings.TrimPrefix(identity.TransactionHash, "0x"))
 }
@@ -453,6 +458,9 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
 		State: StageComplete, Frames: frames,
 	}
+	if err := catalog.decorateTraceFrames(ctx, tx, identity, &result); err != nil {
+		return TransactionTrace{}, traceIdentity{}, err
+	}
 	if err := commitRead(tx); err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
@@ -469,7 +477,8 @@ func (catalog *Postgres) validateCachedTrace(identity traceIdentity, trace Trans
 	dataBytes := 0
 	rootCount := 0
 	for index, frame := range trace.Frames {
-		if frame.CallType == "" || len(frame.CallType) > 128 || int(frame.Depth) != len(frame.Path) || len(frame.Path) > 128 {
+		if frame.Decoding != nil || frame.CallType == "" || len(frame.CallType) > 128 ||
+			int(frame.Depth) != len(frame.Path) || len(frame.Path) > 128 || frame.DirectReverted && !frame.Reverted {
 			return ErrCorruptData
 		}
 		if index > 0 && compareTracePaths(trace.Frames[index-1].Path, frame.Path) >= 0 {
@@ -554,11 +563,12 @@ func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, erro
 		depth                            int64
 		from, to, created, input, output []byte
 		value, gas, gasUsed, traceError  sql.NullString
+		directReverted                   bool
 	)
 	if err := row.Scan(
 		&result.pathText, &result.parentText, &depth, &result.frame.CallType,
 		&from, &to, &created, &value, &gas, &gasUsed, &input, &output,
-		&traceError, &result.frame.Reverted,
+		&traceError, &directReverted, &result.frame.Reverted,
 	); err != nil {
 		return scannedTraceFrame{}, err
 	}
@@ -581,6 +591,10 @@ func (catalog *Postgres) scanTraceFrame(row rowScanner) (scannedTraceFrame, erro
 		}
 	}
 	result.frame.Path, result.frame.ParentPath, result.frame.Depth = path, parentPath, uint32(depth)
+	result.frame.DirectReverted = directReverted
+	if directReverted && !result.frame.Reverted {
+		return scannedTraceFrame{}, ErrCorruptData
+	}
 	if result.frame.From, err = optionalChecksumAddress(from); err != nil {
 		return scannedTraceFrame{}, err
 	}
@@ -767,7 +781,7 @@ const transactionTraceSQL = `
 SELECT trace_path, parent_path, depth, call_type,
        from_address, to_address, created_address,
        value::text, gas::text, gas_used::text,
-       input, output, error, reverted
+       input, output, error, direct_reverted, reverted
 FROM normalized_traces
 WHERE chain_id = $1::numeric
   AND block_number = $2::numeric

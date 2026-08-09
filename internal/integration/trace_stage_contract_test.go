@@ -180,7 +180,7 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 					WHERE chain_id = 1 AND block_hash = $1`, 0, mustBytes(t, reference.Hash))
 				assertRowCount(t, ctx, db, `
 					SELECT count(*) FROM block_journals
-					WHERE chain_id = 1 AND block_hash = $1 AND stage = 'trace@1'`, 0, mustBytes(t, reference.Hash))
+					WHERE chain_id = 1 AND block_hash = $1 AND stage = 'trace@2'`, 0, mustBytes(t, reference.Hash))
 			}
 		})
 	}

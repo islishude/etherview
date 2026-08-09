@@ -26,6 +26,7 @@ batch semantics are not core v1 scope.
 | P56 | [Contract Artifact Reuse and ABI UX](docs/plans/P56-contract-artifact-reuse-and-abi-ux.md) | done | P20, P30, P40, P50 | Same-code artifacts, standard proxy interaction, and decoded transaction logs |
 | P57 | [Web Contract Artifact Nullability](docs/plans/P57-web-contract-artifact-nullability.md) | done | P56 | Preview contract pages tolerate nullable verification artifact fields |
 | P58 | [Evidence-based Proxy Detection](docs/plans/P58-evidence-based-proxy-detection.md) | in_progress | P20, P30, P40, P50, P60 | Stable OZ 5.x detection, composable detectors, and block-pinned Safe Proxy recognition |
+| P59 | [Trace-bound ABI Decoding](docs/plans/P59-trace-bound-abi-decoding.md) | done | P20, P40, P50, P56 | Exact trace-frame log attribution and decoded calls, returns, and reverts |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, and administration |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
@@ -111,6 +112,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   multi-file CodeMirror workspace, explicit compiler-setting summaries, and
   copyable disclosure-first ABI, transformation, and artifact details across
   bilingual themes and responsive embedded-browser flows.
+- P59 is complete: `trace@2` binds validated callTracer logs to exact execution
+  frames while retaining emitter identity, decodes call inputs, successful
+  outputs, and direct reverts with candidate-bound provenance, and keeps
+  trace-cache payloads free of ABI projections. Migration `0039`, bounded
+  trace reindex and dependent proxy/ABI replay, generated API clients, and the
+  bilingual disclosure UI pass PostgreSQL, browser, monolith/split runtime,
+  real Hardhat proxy, and common-gate evidence. Reviewable commands and results
+  remain in [P59 evidence](docs/plans/P59-trace-bound-abi-decoding.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
