@@ -64,6 +64,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T34 | done | P60-T01, P60-T03, P70-T13, P70-T33 | Make Docker Compose `--wait` the sole Preview health owner through an application-native healthcheck command and remove the redundant custom Preview checker | CLI, Compose-render, repository-surface, and live Preview lifecycle regressions |
 | P70-T35 | done | P60, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
 | P70-T36 | done | P70-T08, P40-T10, P50-T12 | Mark authenticated genesis allocation addresses as the explicit address-origin source | OpenAPI, generated contracts, query, API, frontend, and common gates |
+| P70-T37 | done | P60, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
 
 ## Acceptance
 
@@ -98,6 +99,10 @@ and user/operator evidence sufficient for a production public release.
       report a completed durable transition; API request logging remains the
       existing per-request boundary and catalog success is logged only after an
       executed sweep.
+- [x] P70-T37: routine completion logs are suppressed for exactly
+      `/health/live` and `/health/ready`; their HTTP metrics and traces remain
+      recorded, ordinary API completion logs remain enabled, and panic logs are
+      unaffected.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -1049,3 +1054,8 @@ those gates.
   and omission of fabricated genesis identifiers; query regressions cover EOA,
   delegated EOA, predeploy, incomplete/non-genesis fallback, and Trace-gap
   behavior.
+- P70-T37 implementation and verification: `internal/observability.HTTPMiddleware`
+  skips only routine completion logs for `/health/live` and `/health/ready`.
+  `env GOCACHE=/tmp/etherview-codex-go-build go test ./internal/observability
+  -count=1` passes regressions for both health routes, a non-OK readiness
+  response, preserved health metrics, and retained ordinary API access logs.

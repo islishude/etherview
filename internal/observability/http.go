@@ -93,15 +93,17 @@ func HTTPMiddleware(next http.Handler, options HTTPOptions) http.Handler {
 				spanValues["error.type"] = "http_handler_panic"
 			}
 			finish(status, spanValues)
-			options.Logger.InfoContext(ctx, "HTTP request completed",
-				"method", method,
-				"route", route,
-				"status", writer.status,
-				"result", requestResult(writer.panicked),
-				"duration_ms", duration.Milliseconds(),
-				"trace_id", trace.TraceID,
-				"span_id", trace.SpanID,
-			)
+			if shouldLogHTTPCompletion(route) {
+				options.Logger.InfoContext(ctx, "HTTP request completed",
+					"method", method,
+					"route", route,
+					"status", writer.status,
+					"result", requestResult(writer.panicked),
+					"duration_ms", duration.Milliseconds(),
+					"trace_id", trace.TraceID,
+					"span_id", trace.SpanID,
+				)
+			}
 			if abort {
 				panic(http.ErrAbortHandler)
 			}
@@ -116,6 +118,15 @@ func HTTPMiddleware(next http.Handler, options HTTPOptions) http.Handler {
 		response.Header().Set("traceparent", trace.Traceparent())
 		next.ServeHTTP(writer, request.WithContext(ctx))
 	})
+}
+
+func shouldLogHTTPCompletion(route string) bool {
+	switch route {
+	case "/health/live", "/health/ready":
+		return false
+	default:
+		return true
+	}
 }
 
 // IsHTTPAbortHandlerPanic recognizes net/http's exact private abort sentinel

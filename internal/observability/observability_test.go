@@ -330,6 +330,48 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 	}
 }
 
+func TestHTTPMiddlewareSuppressesRoutineHealthAccessLogs(t *testing.T) {
+	registry := NewRegistry("test", "api")
+	sink := &recordingSink{}
+	var logs bytes.Buffer
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health/live", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /health/ready", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusServiceUnavailable)
+	})
+	mux.HandleFunc("GET /api/v1/status", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+	handler := HTTPMiddleware(mux, HTTPOptions{
+		Registry: registry,
+		Logger:   NewLogger(LoggerOptions{Writer: &logs}),
+		SpanSink: sink,
+		Route:    func(request *http.Request) string { return MuxRoutePattern(mux, request) },
+	})
+
+	for _, path := range []string{"/health/live", "/health/ready", "/api/v1/status"} {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+
+	output := logs.String()
+	if strings.Contains(output, "/health/live") || strings.Contains(output, "/health/ready") {
+		t.Fatalf("health access log was not suppressed: %s", output)
+	}
+	if !strings.Contains(output, `"route":"/api/v1/status"`) {
+		t.Fatalf("ordinary request completion log is missing: %s", output)
+	}
+	if len(sink.spans) != 3 {
+		t.Fatalf("health and ordinary request traces were not retained: %#v", sink.spans)
+	}
+	for _, route := range []string{"/health/live", "/health/ready"} {
+		if !strings.Contains(registry.Gather(), `route="`+route+`"`) {
+			t.Fatalf("health metrics missing for %s:\n%s", route, registry.Gather())
+		}
+	}
+}
+
 func TestHTTPMiddlewarePanicBoundariesPreserveWireStatusAndEndSpanOnce(t *testing.T) {
 	t.Run("operational response", func(t *testing.T) {
 		registry := NewRegistry("test", "api")
@@ -460,14 +502,14 @@ func TestHTTPMiddlewareBoundsUnknownMethodEverywhere(t *testing.T) {
 		response.WriteHeader(http.StatusNoContent)
 	}), HTTPOptions{
 		Registry: registry, Logger: NewLogger(LoggerOptions{Writer: &logs}), SpanSink: sink,
-		Route: func(*http.Request) string { return "/health/live" },
+		Route: func(*http.Request) string { return "/api/v1/status" },
 	})
-	request := httptest.NewRequest("SUPER-SECRET-METHOD-123", "/health/live", nil)
+	request := httptest.NewRequest("SUPER-SECRET-METHOD-123", "/api/v1/status", nil)
 	handler.ServeHTTP(httptest.NewRecorder(), request)
-	if len(sink.spans) != 1 || sink.spans[0].Name != "OTHER /health/live" || sink.spans[0].Attributes["http.request.method"] != "OTHER" {
+	if len(sink.spans) != 1 || sink.spans[0].Name != "OTHER /api/v1/status" || sink.spans[0].Attributes["http.request.method"] != "OTHER" {
 		t.Fatalf("bounded method span = %#v", sink.spans)
 	}
-	if !strings.Contains(registry.Gather(), `method="OTHER",route="/health/live",status="204"`) {
+	if !strings.Contains(registry.Gather(), `method="OTHER",route="/api/v1/status",status="204"`) {
 		t.Fatalf("bounded method metric missing:\n%s", registry.Gather())
 	}
 	if strings.Contains(logs.String(), "SUPER-SECRET") || !strings.Contains(logs.String(), `"method":"OTHER"`) {
