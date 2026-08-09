@@ -2,6 +2,8 @@ import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
+const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const delegatedDelegate = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const transparentImplementation = "0x3000000000000000000000000000000000000030";
 const uupsProxyAddress = "0x3000000000000000000000000000000000000003";
 const uupsImplementation = "0x4000000000000000000000000000000000000004";
@@ -310,6 +312,49 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByRole("heading", { name: "已保留孤块" })).toBeVisible();
   await expect(page.getByText("孤链", { exact: true })).toBeVisible();
+});
+
+test("delegated-account panels keep shared layout and accessibility on narrow Preview pages", async ({ page }) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto(`/address/${delegatedAddress}?tab=delegation`);
+  await expect(page.getByRole("heading", { name: "EIP-7702 delegation binding" })).toBeVisible();
+  await expect(page.getByText("disperseToken(address,(address,uint256)[])", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
+
+  const bindingPanel = page.locator("section[aria-labelledby='delegation-binding-title']");
+  await expect(bindingPanel).toHaveClass(/detail-card/);
+  const layout = await bindingPanel.evaluate((element) => {
+    const detailGrid = element.querySelector(".detail-grid");
+    const detailItem = element.querySelector(".detail-item");
+    const panelStyle = getComputedStyle(element);
+    return {
+      padding: panelStyle.padding,
+      gridDisplay: detailGrid ? getComputedStyle(detailGrid).display : "",
+      itemDisplay: detailItem ? getComputedStyle(detailItem).display : "",
+    };
+  });
+  expect(layout.padding).not.toBe("0px");
+  expect(layout.gridDisplay).toBe("grid");
+  expect(layout.itemDisplay).toBe("grid");
+
+  const historyNavigation = page.getByRole("navigation", { name: "Delegation history" });
+  await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await historyNavigation.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "delegated account in English narrow mode");
+  await page.getByRole("button", { name: "切换到中文" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await assertA11yAndNoOverflow(page, "delegated account in Chinese narrow mode");
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
 });
 
 test("capability pages survive the embedded binary boundary in both accessible themes and languages", async ({

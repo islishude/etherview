@@ -271,6 +271,7 @@ function AbiFunctionCard({
           getCurrentWallet: wallet.getActiveWallet,
           loadFreshProxy: getContractProxyResponse,
           loadFreshDelegation: getAddressDelegation,
+          requireExactDelegationSnapshot: write,
         });
         assertInteractionFunctionAllowed(freshTarget, entry.signature, write);
         const output = await wallet.readContract(

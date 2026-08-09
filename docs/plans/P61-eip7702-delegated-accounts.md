@@ -37,6 +37,8 @@ this plan.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P61-T01 | done | P20, P30, P40, P50, P59, P60 | `state_diff@2`, `trace@3`, and `abi@3`; exact EIP-7702 and constructor persistence/projection; generated APIs; delegated-account Web interaction; migration, rollout, ADR, and regression closure | codec, state diff, trace, PostgreSQL, generation, browser, integration, runtime, Hardhat, and common gates |
+| P61-T02 | done | P61-T01 | Repair delegated-account Web layout, add delegated-address browser regressions, and close Preview production verification | focused Web tests, production browser, Preview, and common gates |
+| P61-T03 | done | P61-T02 | Fix Preview delegation-history SQL and allow delegated reads across canonical-tip advancement while retaining exact write fences | focused Go and Web tests; Preview API/browser verification |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -56,6 +58,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       delegated-account interaction use writer-authoritative freshness fences.
 - [x] Bounded rollback and rollout rebuild `state_diff@2`, then `trace@3`,
       `proxy@2`, and `abi@3` without migration-time historical enqueue.
+- [x] Delegated-account binding, interaction, and history panels reuse the
+      responsive Web layout and pagination contracts without changing API or
+      EIP-7702 data semantics.
 
 ## Current Blockers
 
@@ -84,3 +89,22 @@ None.
 - `make check`: pass, including generated-contract consistency, Go/Web lint,
   253 Web tests, ordinary and race tests, vulnerability/secret/license gates,
   Buildx checks, Compose contracts, and Helm lint/render.
+- P61-T02 repairs the delegated-account panels by reusing the shared detail
+  card/grid, disclosure, pagination, and button styles; adds Vitest and
+  production-browser coverage for binding, delegate ABI interaction, history
+  paging, bilingual narrow layouts, A11y, overflow, and runtime errors.
+- `npm --prefix web test -- --run src/pages/CorePages.test.tsx`: pass, 20/20;
+  `make test-e2e`: pass, 12/12 Chromium tests; `make check`: pass.
+- `make recreate-preview` rebuilt `etherview:local` while retaining the
+  PostgreSQL/Geth volumes. Live Preview verification at
+  `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` reports the delegated binding,
+  delegate `0x5FbDB2315678afecb367f032d93F642f64180aa3`, 24px panel padding,
+  grid detail layout, zero horizontal overflow, and no browser warnings/errors.
+- P61-T03 fixes the reserved PostgreSQL `authorization` alias and supplies
+  numeric zero cursor boundaries for first-page delegation history queries.
+  Delegated reads now accept a newer canonical tip when authority, chain,
+  delegate, and code hash remain unchanged; writes retain exact block-number
+  and block-hash fencing. Focused Go/Web tests, `go test ./...`, Web 255/255,
+  `make lint`, `make plan-check`, and host-authorized `make test-e2e` (12/12)
+  pass. Rebuilt Preview returns HTTP 200 for the reported `delegations?limit=20`
+  request with two canonical history items.

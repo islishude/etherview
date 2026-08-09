@@ -123,9 +123,16 @@ func (catalog *Postgres) AddressDelegations(
 		}
 		hasBoundary = true
 	}
+	blockBoundary, transactionBoundary, authorizationBoundary :=
+		boundary.BlockNumber, boundary.TransactionIndex, boundary.AuthorizationIndex
+	if !hasBoundary {
+		// PostgreSQL casts all tuple parameters even when the preceding NOT
+		// $4 branch makes the comparison logically unnecessary.
+		blockBoundary, transactionBoundary, authorizationBoundary = "0", "0", "0"
+	}
 	rows, err := tx.QueryContext(ctx, addressDelegationsSQL,
 		request.ChainID, authority, snapshot.BlockNumber, hasBoundary,
-		boundary.BlockNumber, boundary.TransactionIndex, boundary.AuthorizationIndex, limit+1,
+		blockBoundary, transactionBoundary, authorizationBoundary, limit+1,
 	)
 	if err != nil {
 		return DelegationHistoryPage{}, fmt.Errorf("list address delegations: %w", err)
@@ -196,23 +203,23 @@ LIMIT $4 OFFSET $5`
 
 const addressDelegationsSQL = `
 WITH ordered AS (
-    SELECT authorization.block_number, authorization.block_hash,
-           authorization.transaction_hash, authorization.transaction_index,
-           authorization.authorization_index, authorization.delegate_address,
-           lag(authorization.delegate_address) OVER (
-               ORDER BY authorization.block_number, authorization.transaction_index,
-                        authorization.authorization_index
+    SELECT authz.block_number, authz.block_hash,
+           authz.transaction_hash, authz.transaction_index,
+           authz.authorization_index, authz.delegate_address,
+           lag(authz.delegate_address) OVER (
+               ORDER BY authz.block_number, authz.transaction_index,
+                        authz.authorization_index
            ) AS previous_delegate
-    FROM eip7702_authorizations AS authorization
+    FROM eip7702_authorizations AS authz
     JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = authorization.chain_id
-     AND canonical.number = authorization.block_number
-     AND canonical.block_hash = authorization.block_hash
-    WHERE authorization.chain_id = $1::numeric
-      AND authorization.authority = $2
-      AND authorization.application_status = 'applied'
-      AND authorization.canonical
-      AND authorization.block_number <= $3::numeric
+      ON canonical.chain_id = authz.chain_id
+     AND canonical.number = authz.block_number
+     AND canonical.block_hash = authz.block_hash
+    WHERE authz.chain_id = $1::numeric
+      AND authz.authority = $2
+      AND authz.application_status = 'applied'
+      AND authz.canonical
+      AND authz.block_number <= $3::numeric
 )
 SELECT block_number::text, block_hash, transaction_hash,
        transaction_index::text, authorization_index::text,

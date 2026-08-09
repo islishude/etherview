@@ -40,22 +40,22 @@ export function DelegatedAccountPanel({ authority }: { authority: string }) {
 
   return (
     <div className="contract-detail-stack">
-      <section className="panel" aria-labelledby="delegation-binding-title">
+      <section className="panel detail-card" aria-labelledby="delegation-binding-title">
         <h2 id="delegation-binding-title">{t("delegation.currentBinding")}</h2>
         <QueryNotice loading={binding.isPending} error={binding.error} />
         {binding.data ? (
           <>
-            <p className="capability-panel" role="note">{t("delegation.securityWarning")}</p>
-            <dl className="detail-list">
-              <div><dt>{t("delegation.authority")}</dt><dd><code>{binding.data.authority}</code></dd></div>
-              <div><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.data.status}`)}</dd></div>
-              <div><dt>{t("delegation.delegate")}</dt><dd>{binding.data.delegate ? (
+            <p className="capability-panel context-note" role="note">{t("delegation.securityWarning")}</p>
+            <dl className="detail-grid">
+              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><code>{binding.data.authority}</code></dd></div>
+              <div className="detail-item"><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.data.status}`)}</dd></div>
+              <div className="detail-item"><dt>{t("delegation.delegate")}</dt><dd>{binding.data.delegate ? (
                 <Link to="/address/$address" params={{ address: binding.data.delegate }} search={{ tab: "transactions" }}>
                   <code>{binding.data.delegate}</code>
                 </Link>
               ) : "—"}</dd></div>
-              <div><dt>{t("delegation.codeHash")}</dt><dd><code>{binding.data.delegate_code_hash ?? "—"}</code></dd></div>
-              <div><dt>{t("delegation.snapshot")}</dt><dd>
+              <div className="detail-item"><dt>{t("delegation.codeHash")}</dt><dd><code>{binding.data.delegate_code_hash ?? "—"}</code></dd></div>
+              <div className="detail-item wide"><dt>{t("delegation.snapshot")}</dt><dd>
                 <Link to="/blocks/$blockID" params={{ blockID: binding.data.block_hash }}><code>{binding.data.block_number}</code></Link>
               </dd></div>
             </dl>
@@ -64,7 +64,7 @@ export function DelegatedAccountPanel({ authority }: { authority: string }) {
       </section>
 
       {binding.data?.status === "delegated" ? (
-        <section className="panel" aria-labelledby="delegation-interaction-title">
+        <section className="panel detail-card" aria-labelledby="delegation-interaction-title">
           <h2 id="delegation-interaction-title">{t("delegation.interaction")}</h2>
           <p className="quiet">{t("delegation.interactionTarget")}</p>
           <QueryNotice loading={artifact.isPending} error={artifact.error} />
@@ -76,7 +76,7 @@ export function DelegatedAccountPanel({ authority }: { authority: string }) {
         </section>
       ) : null}
 
-      <section className="panel" aria-labelledby="delegation-history-title">
+      <section className="panel detail-card" aria-labelledby="delegation-history-title">
         <h2 id="delegation-history-title">{t("delegation.history")}</h2>
         <QueryNotice loading={history.isPending} error={history.error} />
         {history.data?.items.length === 0 ? <p className="empty-result">{t("delegation.noHistory")}</p> : null}
@@ -96,10 +96,24 @@ export function DelegatedAccountPanel({ authority }: { authority: string }) {
           </div>
         ) : null}
         {history.data ? (
-          <div className="pagination-actions">
-            <button disabled={cursors.length <= 1 || history.isFetching} onClick={() => setCursors((value) => value.slice(0, -1))} type="button">{t("pagination.previous")}</button>
-            <button disabled={!history.data.nextCursor || history.isFetching} onClick={() => history.data?.nextCursor && setCursors((value) => [...value, history.data!.nextCursor!])} type="button">{t("pagination.next")}</button>
-          </div>
+          <nav className="cursor-pagination" aria-label={t("delegation.history")}>
+            <button
+              className="button secondary"
+              disabled={cursors.length <= 1 || history.isFetching}
+              onClick={() => setCursors((value) => value.slice(0, -1))}
+              type="button"
+            >
+              {t("pagination.previous")}
+            </button>
+            <button
+              className="button secondary"
+              disabled={!history.data.nextCursor || history.isFetching}
+              onClick={() => history.data?.nextCursor && setCursors((value) => [...value, history.data!.nextCursor!])}
+              type="button"
+            >
+              {t("pagination.next")}
+            </button>
+          </nav>
         ) : null}
       </section>
     </div>

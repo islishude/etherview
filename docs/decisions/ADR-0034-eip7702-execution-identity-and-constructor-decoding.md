@@ -44,8 +44,10 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   delegation, constructor, and ABI projections are attached from a PostgreSQL
   repeatable-read snapshot. The current delegation endpoint is served through
   the writer and exact canonical-tip RPC state; every delegated-account wallet
-  operation re-fetches and compares chain, block, authority, delegate, and code
-  hash before submission.
+  operation re-fetches and compares chain, authority, delegate, and code hash.
+  Reads may observe a newer canonical tip when that identity is unchanged;
+  writes additionally require the exact block number and hash captured by the
+  interaction fence before submission.
 
 ## Consequences
 

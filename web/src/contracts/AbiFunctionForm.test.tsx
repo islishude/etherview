@@ -13,9 +13,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePublicConfig } from "@/api/hooks";
 import i18n from "@/i18n";
+import { getAddressDelegation } from "@/contracts/delegation";
 import { getContractProxyResponse } from "@/contracts/proxy";
 import {
   buildContractInteractionTargets,
+  buildDelegatedEOAInteractionTarget,
   type ContractInteractionTarget,
   type ProxyDetails,
   type ProxyDetailsResponse,
@@ -31,6 +33,10 @@ vi.mock("@/api/hooks", () => ({
 
 vi.mock("@/contracts/proxy", () => ({
   getContractProxyResponse: vi.fn(),
+}));
+
+vi.mock("@/contracts/delegation", () => ({
+  getAddressDelegation: vi.fn(),
 }));
 
 vi.mock("@/wallet/WalletProvider", () => ({
@@ -669,6 +675,45 @@ describe("AbiFunctionExplorer", () => {
       .toBeLessThan(sendTransaction.mock.invocationCallOrder[1]!);
     expect(sendTransaction.mock.calls.map(([transaction]) => transaction.to))
       .toEqual([PROXY, PROXY]);
+  });
+
+  it("allows delegated reads across canonical-tip advancement while retaining the authority target", async () => {
+    const binding = {
+      authority: PROXY,
+      status: "delegated" as const,
+      delegate: IMPLEMENTATION,
+      delegate_code_hash: IMPLEMENTATION_HASH,
+      chain_id: "31337",
+      block_number: "12",
+      block_hash: BLOCK_HASH,
+    };
+    vi.mocked(getAddressDelegation).mockResolvedValue({
+      ...binding,
+      block_number: "13",
+      block_hash: `0x${"77".repeat(32)}`,
+    });
+    const readContract = vi.fn(async () => encodeFunctionResult({
+      abi: [uupsABI[1]],
+      functionName: "value",
+      result: 42n,
+    }));
+    mockWallet({ readContract });
+    renderExplorer(
+      [uupsABI[1]],
+      "read",
+      [buildDelegatedEOAInteractionTarget(PROXY, binding)],
+    );
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "value()");
+
+    await user.click(card.getByRole("button", { name: "Read contract" }));
+
+    expect(await card.findByText("42")).toBeVisible();
+    expect(getAddressDelegation).toHaveBeenCalledWith(PROXY);
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({ to: PROXY }),
+      "31337",
+    );
   });
 
   it("blocks a changed binding before send and requests a visible refresh", async () => {

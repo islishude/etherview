@@ -17,6 +17,11 @@ const orphanHash = `0x${"33".repeat(32)}`;
 const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
+const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const delegateAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const delegateCodeHash = `0x${"55".repeat(32)}`;
+const delegationBlockHash = `0x${"66".repeat(32)}`;
+const delegationTransactionHash = `0x${"bb".repeat(32)}`;
 
 describe("core explorer pages", () => {
   beforeEach(async () => {
@@ -989,6 +994,119 @@ describe("core explorer pages", () => {
     expect(screen.getByText("123.45 AST")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
+  });
+
+  it("renders delegated-account panels with the shared detail and pagination contracts", async () => {
+    const nextCursor = "delegation-next";
+    const delegation = {
+      authority: delegatedAddress,
+      status: "delegated" as const,
+      chain_id: "1",
+      block_number: "100",
+      block_hash: delegationBlockHash,
+      delegate: delegateAddress,
+      delegate_code_hash: delegateCodeHash,
+    };
+    const artifact = {
+      kind: "verification_success" as const,
+      resolution: "exact_address" as const,
+      target: {
+        chain_id: "1",
+        address: delegateAddress,
+        code_hash: delegateCodeHash,
+        block_number: "100",
+        block_hash: delegationBlockHash,
+      },
+      source: {
+        address: delegateAddress,
+        code_hash: delegateCodeHash,
+        valid_from_block: "1",
+        created_at: "2026-08-01T00:00:00Z",
+      },
+      language: "solidity" as const,
+      compiler_version: "0.8.30",
+      file_name: "Delegate.sol",
+      contract_name: "Delegate",
+      settings: {},
+      sources: {},
+      compilation_artifacts: {},
+      creation_code_artifacts: {},
+      runtime_code_artifacts: {},
+      libraries: {},
+      is_blueprint: false,
+      abi: [{
+        type: "function",
+        name: "setValue",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "value", type: "uint256" }],
+        outputs: [],
+      }],
+    };
+    const firstHistoryItem = {
+      authority: delegatedAddress,
+      kind: "delegated" as const,
+      delegate: delegateAddress,
+      block_number: "100",
+      block_hash: delegationBlockHash,
+      transaction_hash: delegationTransactionHash,
+      transaction_index: "0",
+      authorization_index: "0",
+    };
+    const secondHistoryItem = {
+      ...firstHistoryItem,
+      kind: "redelegated" as const,
+      block_number: "101",
+      block_hash: canonicalHash,
+      transaction_hash: transactionHash,
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
+        return envelope({
+          address: delegatedAddress,
+          type: "delegated_eoa",
+          balance: "1000000000000000000",
+          nonce: "4",
+          at_block: delegationBlockHash,
+          code_hash: delegateCodeHash,
+          completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
+        return envelope(delegation);
+      }
+      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegations`) {
+        return url.searchParams.get("cursor") === nextCursor
+          ? envelope([secondHistoryItem])
+          : envelope([firstHistoryItem], { next_cursor: nextCursor });
+      }
+      if (url.pathname === `/api/v1/contracts/${delegateAddress}/verification`) {
+        return envelope(artifact);
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${delegatedAddress}?tab=delegation`);
+
+    const bindingHeading = await screen.findByRole("heading", { name: "EIP-7702 delegation binding" });
+    const delegateLink = await screen.findByRole("link", { name: delegateAddress });
+    const bindingPanel = bindingHeading.closest("section");
+    if (!bindingPanel) throw new Error("delegation binding panel is missing");
+    expect(bindingPanel).toHaveClass("panel", "detail-card");
+    expect(bindingPanel.querySelector(".detail-grid")).not.toBeNull();
+    expect(bindingPanel.querySelectorAll(".detail-item")).toHaveLength(5);
+    expect(delegateLink).toHaveAttribute(
+      "href",
+      `/address/${delegateAddress}?tab=transactions`,
+    );
+
+    expect(await screen.findByText("setValue(uint256)")).toBeVisible();
+    const historyNavigation = screen.getByRole("navigation", { name: "Delegation history" });
+    expect(within(historyNavigation).getByRole("button", { name: "Previous page" })).toBeDisabled();
+    await userEvent.setup().click(within(historyNavigation).getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("Re-delegated")).toBeVisible();
   });
 
   it("renders ETH-formatted values on transactions list", async () => {

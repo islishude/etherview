@@ -160,6 +160,8 @@ export interface RefreshInteractionOptions {
   readonly loadFreshDelegation?: (
     authorityAddress: Address,
   ) => Promise<DelegationBinding>;
+  /** Reads may observe a newer canonical tip; writes require the exact fenced tip. */
+  readonly requireExactDelegationSnapshot?: boolean;
 }
 
 export interface SubmitFencedTransactionOptions extends RefreshInteractionOptions {
@@ -437,6 +439,7 @@ export function assertFreshDelegationFence(
   fence: InteractionFence,
   currentWallet: WalletInteractionSession | undefined,
   fresh?: DelegationBinding,
+  requireExactSnapshot = true,
 ): DelegatedEOAInteractionTarget {
   assertWalletFence(fence, currentWallet);
   if (fence.target.kind !== "delegated_eoa" || !fresh) {
@@ -450,11 +453,11 @@ export function assertFreshDelegationFence(
   }
   if (
     freshTarget.delegationChainID !== fence.chainID ||
-    freshTarget.delegationBlockNumber !== fence.target.delegationBlockNumber ||
-    freshTarget.delegationBlockHash !== fence.target.delegationBlockHash ||
-    !targetsMatch(fence.target, freshTarget)
+    !delegatedTargetsMatch(fence.target, freshTarget, requireExactSnapshot)
   ) {
-    throw new InteractionFenceError("BINDING_CHANGED");
+    throw new InteractionFenceError(
+      freshTarget.delegationChainID !== fence.chainID ? "CHAIN_CHANGED" : "BINDING_CHANGED",
+    );
   }
   return freshTarget;
 }
@@ -468,13 +471,19 @@ export async function refreshInteractionTarget({
   getCurrentWallet,
   loadFreshProxy,
   loadFreshDelegation,
+  requireExactDelegationSnapshot,
 }: RefreshInteractionOptions): Promise<ContractInteractionTarget> {
   assertWalletFence(fence, getCurrentWallet());
   if (!fence.target.requiresFreshBinding) return fence.target;
   if (fence.target.kind === "delegated_eoa") {
     if (!loadFreshDelegation) throw new InteractionFenceError("FRESH_BINDING_REQUIRED");
     const fresh = await loadFreshDelegation(fence.target.authorityAddress);
-    return assertFreshDelegationFence(fence, getCurrentWallet(), fresh);
+    return assertFreshDelegationFence(
+      fence,
+      getCurrentWallet(),
+      fresh,
+      requireExactDelegationSnapshot ?? true,
+    );
   }
   if (!loadFreshProxy) throw new InteractionFenceError("FRESH_PROXY_REQUIRED");
 
@@ -830,6 +839,26 @@ function boundTargetFieldsMatch(
 		loaded.beaconCodeHash === fresh.beaconCodeHash &&
     loaded.standardVersion === fresh.standardVersion &&
     managementImpact(loaded) === managementImpact(fresh)
+  );
+}
+
+function delegatedTargetsMatch(
+  loaded: DelegatedEOAInteractionTarget,
+  fresh: DelegatedEOAInteractionTarget,
+  requireExactSnapshot: boolean,
+): boolean {
+  return (
+    targetsMatch(loaded, fresh) ||
+    (!requireExactSnapshot &&
+      loaded.kind === "delegated_eoa" &&
+      fresh.kind === "delegated_eoa" &&
+      loaded.transactionTarget === fresh.transactionTarget &&
+      loaded.abiAddress === fresh.abiAddress &&
+      loaded.abiCodeHash === fresh.abiCodeHash &&
+      loaded.supportsWrites === fresh.supportsWrites &&
+      loaded.requiresFreshBinding === fresh.requiresFreshBinding &&
+      loaded.authorityAddress === fresh.authorityAddress &&
+      loaded.delegationChainID === fresh.delegationChainID)
   );
 }
 

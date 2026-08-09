@@ -45,7 +45,7 @@ const wallet: WalletInteractionSession = Object.freeze({
 });
 
 describe("contract interaction targets", () => {
-  it("keeps delegated EOA transactions on the authority and fences the full tip binding", async () => {
+  it("keeps delegated EOA transactions on the authority and fences the full tip binding for writes", async () => {
     const binding = {
       authority: PROXY,
       status: "delegated" as const,
@@ -69,6 +69,23 @@ describe("contract interaction targets", () => {
       fence,
       getCurrentWallet: () => wallet,
       loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
+    })).rejects.toMatchObject({ code: "BINDING_CHANGED" });
+
+    await expect(refreshInteractionTarget({
+      fence,
+      getCurrentWallet: () => wallet,
+      loadFreshDelegation: async () => ({ ...binding, block_number: "13" }),
+      requireExactDelegationSnapshot: false,
+    })).resolves.toMatchObject({
+      kind: "delegated_eoa",
+      delegationBlockNumber: "13",
+    });
+
+    await expect(refreshInteractionTarget({
+      fence,
+      getCurrentWallet: () => wallet,
+      loadFreshDelegation: async () => ({ ...binding, delegate_code_hash: PROXY_HASH }),
+      requireExactDelegationSnapshot: false,
     })).rejects.toMatchObject({ code: "BINDING_CHANGED" });
   });
 

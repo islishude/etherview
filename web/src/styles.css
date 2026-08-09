@@ -647,6 +647,7 @@ code {
 }
 
 .table-scroll {
+  min-width: 0;
   overflow-x: auto;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -983,6 +984,7 @@ tbody tr:hover {
 
 .detail-card,
 .completeness-card {
+  min-width: 0;
   padding: clamp(1rem, 3vw, 1.5rem);
 }
 
@@ -3324,6 +3326,7 @@ tbody tr:hover {
 .abi-function-explorer,
 .abi-function-section,
 .abi-function-list {
+  min-width: 0;
   display: grid;
   gap: 0.9rem;
 }

@@ -16,6 +16,8 @@ import (
 const (
 	testAddress               = "0x1111111111111111111111111111111111111111"
 	testEOA                   = "0x2222222222222222222222222222222222222222"
+	delegatedAddress          = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+	delegatedDelegate         = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 	uupsProxyAddress          = "0x3000000000000000000000000000000000000003"
 	uupsImplementation        = "0x4000000000000000000000000000000000000004"
 	beaconProxyAddress        = "0x5000000000000000000000000000000000000005"
@@ -286,6 +288,11 @@ func main() {
 				"address": testEOA, "type": "eoa", "balance": "0", "nonce": "0",
 				"at_block": secondHash, "completeness": completeness(),
 			})
+		case delegatedAddress:
+			writeEnvelope(response, map[string]any{
+				"address": delegatedAddress, "type": "delegated_eoa", "balance": "1000000000000000000", "nonce": "4",
+				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+			})
 		default:
 			if _, ok := contractArtifact(request.PathValue("address")); !ok {
 				writeNotFound(response)
@@ -296,6 +303,37 @@ func main() {
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
 			})
 		}
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/delegation", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != delegatedAddress {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"authority": delegatedAddress, "status": "delegated", "chain_id": "1",
+			"block_number": "2", "block_hash": secondHash,
+			"delegate": delegatedDelegate, "delegate_code_hash": testHash,
+		})
+	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/delegations", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != delegatedAddress {
+			writeNotFound(response)
+			return
+		}
+		item := map[string]any{
+			"authority": delegatedAddress, "kind": "delegated", "delegate": delegatedDelegate,
+			"block_number": "2", "block_hash": secondHash,
+			"transaction_hash": testTransactionHash, "transaction_index": "0", "authorization_index": "0",
+		}
+		if request.URL.Query().Get("cursor") == "delegation-next" {
+			item["kind"] = "redelegated"
+			item["block_number"] = "3"
+			item["block_hash"] = testHash
+			item["transaction_hash"] = secondTransactionHash
+			writeEnvelope(response, []any{item})
+			return
+		}
+		writeEnvelopeMeta(response, []any{item}, map[string]any{"next_cursor": "delegation-next"})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/transactions", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress && request.PathValue("address") != testEOA {
@@ -815,6 +853,21 @@ func contractArtifact(address string) (map[string]any, bool) {
 	case cloneAddress:
 		contractName = "MinimalClone"
 		abi = proxyContractABI()
+	case delegatedDelegate:
+		contractName = "DelegatedDisperser"
+		abi = []any{
+			map[string]any{
+				"type": "function", "name": "disperseToken", "stateMutability": "nonpayable",
+				"inputs": []any{
+					map[string]any{"name": "token", "type": "address"},
+					map[string]any{"name": "requests", "type": "tuple[]", "components": []any{
+						map[string]any{"name": "to", "type": "address"},
+						map[string]any{"name": "value", "type": "uint256"},
+					}},
+				},
+				"outputs": []any{},
+			},
+		}
 	case transparentImplementation:
 		contractName = "TransparentImplementationV2"
 		abi = implementationABI(false)
