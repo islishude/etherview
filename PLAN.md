@@ -112,7 +112,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   multi-file CodeMirror workspace, explicit compiler-setting summaries, and
   copyable disclosure-first ABI, transformation, and artifact details across
   bilingual themes and responsive embedded-browser flows.
-- P59 is complete: `trace@2` binds validated callTracer logs to exact execution
+- P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps
   trace-cache payloads free of ABI projections. Migration `0039`, bounded
@@ -120,6 +120,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   bilingual disclosure UI pass PostgreSQL, browser, monolith/split runtime,
   real Hardhat proxy, and common-gate evidence. Reviewable commands and results
   remain in [P59 evidence](docs/plans/P59-trace-bound-abi-decoding.md#evidence).
+  P59-T02 additionally lets creation-block logs consume a later same-address,
+  exact-runtime artifact as `code_hash`/`high` without backdating verified
+  address provenance; the reported Preview transaction now decodes all four
+  exact-trace-attributed logs.
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

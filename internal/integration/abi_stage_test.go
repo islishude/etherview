@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -166,6 +167,84 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 			map[string]int{"contract_abis": 4, "abi_decodings": 6}[table], mustBytes(t, reference.Hash),
 		)
 	}
+}
+
+func TestABILateSameAddressVerificationDecodesEarlierSameCodeLog(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(82_000), testHash(0), testHash(82_001), "abi-late-verification-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	target, transactionTarget := testAddress(820), testAddress(821)
+	recipient, caller := testAddress(822), testAddress(823)
+	blockOne := abiFixtureBundleAt(
+		t, 1, genesis.Block.Hash(), transactionTarget, target, recipient, caller,
+		"abi-late-verification-one",
+	)
+	commitCanonical(t, ctx, repository, blockOne)
+	blockTwo := abiFixtureBundleAt(
+		t, 2, blockOne.Block.Hash(), transactionTarget, target, testAddress(824), testAddress(825),
+		"abi-late-verification-two",
+	)
+	commitCanonical(t, ctx, repository, blockTwo)
+	refOne, refTwo := mustBlockRef(t, blockOne), mustBlockRef(t, blockTwo)
+	targetCode := testHash(82_002)
+	insertABICodeObservation(t, ctx, db, refOne, target, targetCode)
+	insertABICodeObservation(t, ctx, db, refTwo, target, targetCode)
+	insertVerifiedContractFixture(
+		t, ctx, db, mustBytes(t, target), mustBytes(t, targetCode), refTwo.Number, nil,
+		"0.8.30", "Token", integrationTokenABI, `{}`, `{}`,
+	)
+
+	result, err := processor.Process(ctx, abiIntegrationJob(t, refOne))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != enrich.ResultComplete || result.Details["bindings"] != "1" || result.Details["decoded"] != "1" {
+		t.Fatalf("late-verification ABI stage result = %+v", result)
+	}
+	assertABIBinding(t, ctx, db, refOne, target, targetCode, "code_hash", "high", target, targetCode)
+
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionHash := blockOne.Block.Transactions()[0].Hash().String()
+	assertDecoded := func(label string) {
+		t.Helper()
+		page, readErr := catalogReader.TransactionLogs(ctx, catalog.TransactionResourceRequest{
+			ChainID: "1", TransactionHash: transactionHash, Limit: 10,
+		})
+		if readErr != nil {
+			t.Fatalf("%s transaction logs: %v", label, readErr)
+		}
+		if len(page.Items) != 1 || page.Items[0].Decoding.Status != "decoded" ||
+			page.Items[0].Decoding.Signature != "Transfer(address,address,uint256)" ||
+			page.Items[0].Decoding.Confidence != "high" ||
+			page.Items[0].Decoding.ABISource == nil ||
+			page.Items[0].Decoding.ABISource.Kind != "code_hash" ||
+			!strings.EqualFold(page.Items[0].Decoding.ABISource.Address, target.String()) {
+			t.Fatalf("%s projected log=%+v", label, page)
+		}
+	}
+	assertDecoded("persisted same-code projection")
+	execFixture(t, ctx, db, `
+		DELETE FROM abi_decodings
+		WHERE chain_id = 1 AND block_hash = $1 AND object_kind = 'log'`, mustBytes(t, refOne.Hash))
+	execFixture(t, ctx, db, `
+		DELETE FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2`,
+		mustBytes(t, refOne.Hash), mustBytes(t, target))
+	assertDecoded("read-time same-code projection")
 }
 
 func TestABIStageSelectsNumericCodeAndProxyObservationHeights(t *testing.T) {

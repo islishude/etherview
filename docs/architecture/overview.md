@@ -297,8 +297,11 @@ of the callback. The routing and lag contract is specified in
   context. Direct verified artifacts outrank verified historical proxy
   implementation artifacts, which outrank re-hashed signature candidates.
   Same-chain verified artifacts with the same runtime code hash retain their
-  distinct source address and have `high` confidence. PostgreSQL fixes source
-  and confidence mappings. Candidate decoding and recursive dynamic-offset traversal
+  source address and have `high` confidence when exact-address validity does
+  not cover the context, including later verification of an earlier
+  same-address same-code observation. This code-hash reuse never extends the
+  address's verified range. PostgreSQL fixes source and confidence mappings.
+  Candidate decoding and recursive dynamic-offset traversal
   share one node, work, and byte budget for the complete decode, so aliased
   offsets cannot multiply work outside the configured bound. Array cardinality
   is independent of the top-level argument limit, and Solidity `Error(string)`

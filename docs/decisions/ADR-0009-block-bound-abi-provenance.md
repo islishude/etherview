@@ -23,10 +23,14 @@ independently of source would let guessed material be published as verified.
 - Direct ABI material comes only from a verified artifact for the same target
   address and code hash whose range covers the context block. It has source
   `verified` and confidence `verified`.
-- A same-chain verified artifact for a different address with the identical
-  runtime code hash may be bound to the target as source `code_hash` and
-  confidence `high`. The binding persists the artifact's address and code hash
-  separately from the target identity.
+- A same-chain verified artifact with the identical runtime code hash may be
+  bound to the target as source `code_hash` and confidence `high` when it is
+  not an exact-address artifact whose validity range covers the context. This
+  includes a different source address and a later verification of the same
+  address whose address-bound validity starts after an earlier same-code
+  observation. The binding persists the artifact's address and code hash
+  separately from the target identity and never extends the source artifact's
+  `verified` address range backward.
 - A historical proxy binding consumes an already persisted canonical proxy
   observation; the ABI comes from a verified artifact for that observation's
   implementation address and code hash. Its valid range is the intersection of
@@ -51,7 +55,8 @@ independently of source would let guessed material be published as verified.
   bounded pure decoding inside the transaction's repeatable-read snapshot. It
   resolves the target code identity at the transaction block and may use a
   range-valid exact-address ABI (`verified`), a same-chain same-code verified
-  artifact (`high`), or the implementation from the high-confidence historical
+  artifact (`high`) including later same-address verification, or the
+  implementation from the high-confidence historical
   proxy observation valid at that block (`high`). This projection performs no
   RPC and no write, does not change the historical stage generation, and is
   isolated by the exact canonical block hash.
@@ -91,4 +96,6 @@ independently of source would let guessed material be published as verified.
   enrichment stages never wait for it.
 - Verification published after an old transaction can improve that
   transaction's read projection immediately without rewriting the old
-  `abi@2` result. Raw log bytes remain available for every status.
+  `abi@2` result. When only exact runtime equality reaches back before the
+  artifact's address validity, the result is `code_hash`/`high`, not
+  `verified`. Raw log bytes remain available for every status.

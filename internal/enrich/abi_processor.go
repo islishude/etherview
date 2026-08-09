@@ -637,11 +637,13 @@ func loadSameCodeABIBinding(
 		FROM verified_contracts
 		WHERE chain_id = $1::numeric
 		  AND code_hash = $2
-		  AND address <> $3
 		  AND abi IS NOT NULL
-		ORDER BY (match_type = 'full') DESC, created_at DESC,
+		  AND (address <> $3 OR valid_from_block > $4::numeric OR
+		       (valid_to_block IS NOT NULL AND valid_to_block < $4::numeric))
+		ORDER BY (match_type = 'full') DESC, (address = $3) DESC, created_at DESC,
 		         request_digest ASC, verification_job_id ASC, address
-		LIMIT 1`, target.ChainID, target.CodeHash[:], target.Address[:]).Scan(&sourceAddressBytes, &abi)
+		LIMIT 1`, target.ChainID, target.CodeHash[:], target.Address[:],
+		strconv.FormatUint(target.BlockNumber, 10)).Scan(&sourceAddressBytes, &abi)
 	if errors.Is(err, sql.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
 	}

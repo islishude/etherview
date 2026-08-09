@@ -23,6 +23,7 @@ the raw bytes or weakening operation on trace providers without embedded logs.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P59-T01 | done | P20, P40, P50, P56 | `trace@2` log attribution, complete call ABI projection, generated API, compact Web disclosure, migration, rollout, and regression closure | codec, trace, PostgreSQL, generation, browser, runtime, Hardhat, and common gates |
+| P59-T02 | done | P59-T01 | Decode creation-block logs after later same-address verification by exact runtime-code reuse without extending address verification provenance | codec, PostgreSQL, Preview transaction, plan, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -33,6 +34,8 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Log emitter identity remains distinct from execution identity, and trace evidence never becomes proxy-detection or management authorization.
 - [x] Reorg, replay, partition, cache, monolith, and split-role semantics remain generation- and block-hash-fenced.
 - [x] Generated API clients and bilingual responsive Web views retain all raw log and trace bytes.
+- [x] Creation-block logs reuse later same-address verification only through
+      exact runtime-code equality with `code_hash`/`high` provenance.
 
 ## Current Blockers
 
@@ -62,3 +65,12 @@ None.
 - The in-app browser also confirmed English and Chinese responsive views,
   successful output and direct-revert decoding, exact log execution identity,
   retained raw bytes, and an empty console warning/error set.
+- P59-T02 closes the late-verification creation-block gap in both `abi@2`
+  materialization and persisted-first read projection. Exact runtime equality
+  can reuse a later same-address artifact only as `code_hash`/`high`; it never
+  extends the artifact's address-bound `verified` range. `go test ./...`,
+  `make test-integration`, `make check`, and `make plan-check` pass. The rebuilt
+  split-role Preview API decodes all four logs of transaction
+  `0xd9f0ab26aaca5eb1d3ab989ac40a263cc914ef2a8250ac0f34ad26185492938b`
+  as `Upgraded`, `Initialized`, `OwnershipTransferred`, and `AdminChanged`
+  while retaining exact trace attribution and source provenance.

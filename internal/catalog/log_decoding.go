@@ -343,20 +343,25 @@ WITH target_code AS (
       AND binding.canonical
     UNION ALL
     SELECT target_code.code_hash, verified.abi,
-           CASE WHEN verified.address = $2 THEN 'verified' ELSE 'code_hash' END,
-           CASE WHEN verified.address = $2 THEN 'exact_address' ELSE 'code_hash' END,
+           CASE WHEN verified.address = $2
+                     AND verified.valid_from_block <= $3::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+                THEN 'verified' ELSE 'code_hash' END,
+           CASE WHEN verified.address = $2
+                     AND verified.valid_from_block <= $3::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+                THEN 'exact_address' ELSE 'code_hash' END,
            verified.address, verified.code_hash,
            0::numeric, NULL::numeric,
-           CASE WHEN verified.address = $2 THEN 1 ELSE 3 END,
+           CASE WHEN verified.address = $2
+                     AND verified.valid_from_block <= $3::numeric
+                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+                THEN 1 ELSE 3 END,
            verified.created_at, verified.request_digest, verified.verification_job_id
     FROM verified_contracts AS verified, target_code
     WHERE verified.chain_id = $1::numeric
       AND verified.code_hash = target_code.code_hash
       AND verified.abi IS NOT NULL
-      AND (verified.address <> $2 OR (
-        verified.valid_from_block <= $3::numeric AND
-        (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-      ))
     UNION ALL
     SELECT target_code.code_hash, verified.abi, 'proxy_implementation',
            'proxy_implementation', verified.address, verified.code_hash,
