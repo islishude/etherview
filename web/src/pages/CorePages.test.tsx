@@ -302,6 +302,78 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
+  it("activates the Authorizations tab and loads transaction authorization tuples", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash,
+          block_hash: canonicalHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: delegatedAddress,
+          nonce: "1",
+          value: "0",
+          gas: "21000",
+          input: "0x",
+          status: "success",
+          canonical: true,
+          finality: "safe",
+          completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/token-transfers`) {
+        return envelope({
+          state: "complete",
+          chain_id: "1",
+          block_number: "12",
+          block_hash: canonicalHash,
+          transaction_hash: transactionHash,
+          transaction_index: 0,
+          items: [],
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/authorizations`) {
+        return envelope({
+          state: "complete",
+          chain_id: "1",
+          block_number: "12",
+          block_hash: canonicalHash,
+          transaction_hash: transactionHash,
+          transaction_index: 0,
+          items: [{
+            application_status: "applied",
+            authority: address,
+            chain_id: "1",
+            delegate: delegateAddress,
+            index: "0",
+            nonce: "1",
+            r: canonicalHash,
+            s: canonicalHash,
+            signature_status: "valid",
+            y_parity: 0,
+          }],
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+
+    const user = userEvent.setup();
+    const authorizationsTab = await screen.findByRole("tab", { name: "Authorizations" });
+    await user.click(authorizationsTab);
+
+    expect(authorizationsTab).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Authorization #0")).toBeVisible();
+    expect(screen.getByText("applied", { exact: true })).toBeVisible();
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/authorizations`);
+  });
+
   it("renders decoded log arguments first and keeps raw topics and data disclosed", async () => {
     const eventTopic = `0x${"77".repeat(32)}`;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

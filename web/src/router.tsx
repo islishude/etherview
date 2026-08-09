@@ -61,7 +61,7 @@ const transactionRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => {
     const tab = typeof search.tab === "string" ? search.tab : "overview";
     return {
-      tab: ["overview", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
+      tab: ["overview", "authorizations", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
         ? tab
         : "overview",
     };

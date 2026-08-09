@@ -40,6 +40,7 @@ this plan.
 | P61-T02 | done | P61-T01 | Repair delegated-account Web layout, add delegated-address browser regressions, and close Preview production verification | focused Web tests, production browser, Preview, and common gates |
 | P61-T03 | done | P61-T02 | Fix Preview delegation-history SQL and allow delegated reads across canonical-tip advancement while retaining exact write fences | focused Go and Web tests; Preview API/browser verification |
 | P61-T04 | done | P61-T03 | Rebuild the delegated-account page as a contract-style hash-tab workbench with lazy history and delegated deep-link regressions | focused Web tests, production browser, and common gates |
+| P61-T05 | done | P61-T04 | Restore transaction Authorizations tab query-parameter routing and add a click regression | focused CorePages frontend tests, lint, build, generation, and plan checks |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -118,3 +119,8 @@ None.
   Vitest passes 28 files/255 tests; bundled production browser E2E passes
   12/12 with delegated tab, paging, bilingual narrow layout, and accessibility
   coverage; host-authorized `GOCACHE=/tmp/etherview-go-cache make check` passes.
+- P61-T05 adds `authorizations` to the transaction route's validated tab
+  values. Its CorePages regression proves that clicking Authorizations selects
+  the tab, requests the generated authorization subresource, and renders an
+  applied EIP-7702 tuple. The focused CorePages suite passes 23/23; frontend
+  lint and production build pass; `make generate-check` passes.
