@@ -998,6 +998,7 @@ describe("core explorer pages", () => {
 
   it("renders delegated-account panels with the shared detail and pagination contracts", async () => {
     const nextCursor = "delegation-next";
+    const requestedPaths: string[] = [];
     const delegation = {
       authority: delegatedAddress,
       status: "delegated" as const,
@@ -1062,6 +1063,7 @@ describe("core explorer pages", () => {
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
+      requestedPaths.push(url.pathname);
       if (url.pathname === "/api/v1/config") return configResponse();
       if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
         return envelope({
@@ -1088,7 +1090,7 @@ describe("core explorer pages", () => {
       return notFound();
     }));
 
-    renderExplorer(`/address/${delegatedAddress}?tab=delegation`);
+    renderExplorer(`/address/${delegatedAddress}?tab=delegation#code`);
 
     const bindingHeading = await screen.findByRole("heading", { name: "EIP-7702 delegation binding" });
     const delegateLink = await screen.findByRole("link", { name: delegateAddress });
@@ -1102,10 +1104,35 @@ describe("core explorer pages", () => {
       `/address/${delegateAddress}?tab=transactions`,
     );
 
+    const tabs = screen.getByRole("tablist", { name: "Delegated account sections" });
+    expect(within(tabs).getByRole("tab", { name: "Code" })).toHaveAttribute("aria-selected", "true");
+    expect(await within(tabs).findByRole("tab", { name: "Read contract" })).toBeVisible();
+    expect(within(tabs).getByRole("tab", { name: "Write contract" })).toBeVisible();
+    expect(within(tabs).getByRole("tab", { name: "Delegation history" })).toBeVisible();
+    for (const tab of within(tabs).getAllByRole("tab")) {
+      const panelID = tab.getAttribute("aria-controls");
+      expect(panelID).toBeTruthy();
+      const panel = document.getElementById(panelID!);
+      expect(panel).toHaveAttribute("role", "tabpanel");
+      expect(panel).toHaveAttribute("aria-labelledby", tab.id);
+      if (tab.getAttribute("aria-selected") === "true") {
+        expect(panel).not.toHaveAttribute("hidden");
+      } else {
+        expect(panel).toHaveAttribute("hidden");
+      }
+    }
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
+
+    const user = userEvent.setup();
+    await user.click(within(tabs).getByRole("tab", { name: "Write contract" }));
     expect(await screen.findByText("setValue(uint256)")).toBeVisible();
-    const historyNavigation = screen.getByRole("navigation", { name: "Delegation history" });
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
+
+    await user.click(within(tabs).getByRole("tab", { name: "Delegation history" }));
+    const historyNavigation = await screen.findByRole("navigation", { name: "Delegation history" });
+    expect(requestedPaths).toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
     expect(within(historyNavigation).getByRole("button", { name: "Previous page" })).toBeDisabled();
-    await userEvent.setup().click(within(historyNavigation).getByRole("button", { name: "Next page" }));
+    await user.click(within(historyNavigation).getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Re-delegated")).toBeVisible();
   });
 

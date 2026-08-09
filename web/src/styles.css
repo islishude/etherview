@@ -3130,7 +3130,9 @@ tbody tr:hover {
 }
 
 .contract-detail-stack,
-.verified-artifacts {
+.verified-artifacts,
+.delegated-code-stack,
+.delegated-interaction-stack {
   display: grid;
   gap: 1rem;
 }

@@ -79,6 +79,7 @@ const addressRoute = createRoute({
       "erc20-transfers",
       "nft-transfers",
       "assets",
+      "delegation",
     ].includes(tab)
       ? { tab }
       : {};

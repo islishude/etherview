@@ -130,6 +130,7 @@ const resources = {
         transaction: "Transaction",
         transactionDetails: "Transaction details",
         address: "Address",
+        delegatedAccount: "Delegated account",
         token: "Token",
         nft: "NFT instance",
         contract: "Contract",
@@ -208,6 +209,10 @@ const resources = {
         contract: "Contract",
       },
       delegation: {
+        sections: "Delegated account sections",
+        tabs: {
+          history: "Delegation history",
+        },
         currentBinding: "EIP-7702 delegation binding",
         authority: "Authority / transaction target",
         status: "Binding status",
@@ -1305,6 +1310,7 @@ const resources = {
         transaction: "交易",
         transactionDetails: "交易详情",
         address: "地址",
+        delegatedAccount: "委托账户",
         token: "代币",
         nft: "NFT 实例",
         contract: "合约",
@@ -1383,6 +1389,10 @@ const resources = {
         contract: "合约",
       },
       delegation: {
+        sections: "委托账户分区",
+        tabs: {
+          history: "委托历史",
+        },
         currentBinding: "EIP-7702 委托绑定",
         authority: "Authority / 交易目标",
         status: "绑定状态",

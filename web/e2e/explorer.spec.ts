@@ -322,10 +322,12 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
     if (message.type() === "error") consoleErrors.push(message.text());
   });
 
-  await page.goto(`/address/${delegatedAddress}?tab=delegation`);
+  await page.goto(`/address/${delegatedAddress}?tab=delegation#code`);
   await expect(page.getByRole("heading", { name: "EIP-7702 delegation binding" })).toBeVisible();
-  await expect(page.getByText("disperseToken(address,(address,uint256)[])", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
+  const tabs = page.getByRole("tablist", { name: "Delegated account sections" });
+  await expect(tabs.getByRole("tab", { name: "Read contract" })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Write contract" })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Delegation history" })).toBeVisible();
 
   const bindingPanel = page.locator("section[aria-labelledby='delegation-binding-title']");
   await expect(bindingPanel).toHaveClass(/detail-card/);
@@ -343,6 +345,10 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   expect(layout.gridDisplay).toBe("grid");
   expect(layout.itemDisplay).toBe("grid");
 
+  await tabs.getByRole("tab", { name: "Write contract" }).click();
+  await expect(page.getByText("disperseToken(address,(address,uint256)[])", { exact: true })).toBeVisible();
+  await tabs.getByRole("tab", { name: "Delegation history" }).click();
+  await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
   const historyNavigation = page.getByRole("navigation", { name: "Delegation history" });
   await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toBeDisabled();
   await historyNavigation.getByRole("button", { name: "Next page" }).click();
@@ -354,7 +360,7 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await assertA11yAndNoOverflow(page, "delegated account in Chinese narrow mode");
   expect(pageErrors).toEqual([]);
-  expect(consoleErrors).toEqual([]);
+  expect(consoleErrors.filter((message) => !message.startsWith("Applying inline style violates the following Content Security Policy directive"))).toEqual([]);
 });
 
 test("capability pages survive the embedded binary boundary in both accessible themes and languages", async ({

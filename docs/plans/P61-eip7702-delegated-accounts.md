@@ -39,6 +39,7 @@ this plan.
 | P61-T01 | done | P20, P30, P40, P50, P59, P60 | `state_diff@2`, `trace@3`, and `abi@3`; exact EIP-7702 and constructor persistence/projection; generated APIs; delegated-account Web interaction; migration, rollout, ADR, and regression closure | codec, state diff, trace, PostgreSQL, generation, browser, integration, runtime, Hardhat, and common gates |
 | P61-T02 | done | P61-T01 | Repair delegated-account Web layout, add delegated-address browser regressions, and close Preview production verification | focused Web tests, production browser, Preview, and common gates |
 | P61-T03 | done | P61-T02 | Fix Preview delegation-history SQL and allow delegated reads across canonical-tip advancement while retaining exact write fences | focused Go and Web tests; Preview API/browser verification |
+| P61-T04 | done | P61-T03 | Rebuild the delegated-account page as a contract-style hash-tab workbench with lazy history and delegated deep-link regressions | focused Web tests, production browser, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -108,3 +109,12 @@ None.
   `make lint`, `make plan-check`, and host-authorized `make test-e2e` (12/12)
   pass. Rebuilt Preview returns HTTP 200 for the reported `delegations?limit=20`
   request with two canonical history items.
+- P61-T04 rebuilds delegated EOA interaction as a contract-style `#code`,
+  `#read-contract`, `#write-contract`, and `#history` workbench. Binding and
+  verified artifact details stay on Code, read/write forms use the matching
+  ABI mode and existing writer fence, and delegation history loads only when
+  active. Address routing now accepts `tab=delegation`, separates delegated
+  hashes from contract hashes, and preserves the canonical `#code` entry.
+  Vitest passes 28 files/255 tests; bundled production browser E2E passes
+  12/12 with delegated tab, paging, bilingual narrow layout, and accessibility
+  coverage; host-authorized `GOCACHE=/tmp/etherview-go-cache make check` passes.

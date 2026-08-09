@@ -42,7 +42,10 @@ import {
 } from "@/api/hooks";
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import { ContractPage, isContractTabHash } from "./ContractPage";
-import { DelegatedAccountPanel } from "@/contracts/DelegatedAccountPanel";
+import {
+  DelegatedAccountPanel,
+  isDelegatedAccountTabHash,
+} from "@/contracts/DelegatedAccountPanel";
 import type {
   AddressInternalTransaction,
   AddressSummary,
@@ -1251,10 +1254,9 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const { i18n, t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const contractHash = isContractTabHash(location.hash.replace(/^#/u, ""));
-  const activeTab: AddressTab = contractHash
-    ? "contract"
-    : isAddressTab(tab) ? tab : "transactions";
+  const requestedHash = location.hash.replace(/^#/u, "");
+  const contractHash = isContractTabHash(requestedHash);
+  const delegationHash = isDelegatedAccountTabHash(requestedHash);
   const transactionPager = useCursorHistory(`address-transactions:${address}`);
   const internalPager = useCursorHistory(`address-internal-transactions:${address}`);
   const erc20Pager = useCursorHistory(`address-erc20-transfers:${address}`);
@@ -1262,6 +1264,13 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const erc20BalancePager = useCursorHistory(`address-erc20-balances:${address}`);
   const nftPager = useCursorHistory(`address-nfts:${address}`);
   const account = useAddress(address);
+  const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
+  const delegationAvailable = account.data?.type === "delegated_eoa";
+  const activeTab: AddressTab = account.data?.type === "contract" && contractHash
+    ? "contract"
+    : account.data?.type === "delegated_eoa" && delegationHash
+      ? "delegation"
+      : isAddressTab(tab) ? tab : "transactions";
   const transactions = useAddressTransactions(
     address,
     transactionPager.cursor,
@@ -1309,15 +1318,16 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
   const displayAddress = account.data?.address ?? address;
-  const title = account.data?.type === "contract" ? t("page.contract") : t("page.address");
+  const title = account.data?.type === "contract"
+    ? t("page.contract")
+    : account.data?.type === "delegated_eoa"
+      ? t("page.delegatedAccount")
+      : t("page.address");
   const qrPayload = publicConfig.data
     ? `ethereum:${displayAddress}@${publicConfig.data.chain_id}`
     : undefined;
-  const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
-  const delegationAvailable = account.data?.type === "delegated_eoa";
-
   useEffect(() => {
-    if (!contractHash || account.isPending || account.error || contractAvailable) return;
+    if (!contractHash || delegationHash || account.isPending || account.error || contractAvailable) return;
     void navigate({
       to: "/address/$address",
       params: { address },
@@ -1325,7 +1335,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
       hash: "",
       replace: true,
     });
-  }, [account.error, account.isPending, address, contractAvailable, contractHash, navigate]);
+  }, [account.error, account.isPending, address, contractAvailable, contractHash, delegationHash, navigate]);
 
   return (
     <Page
@@ -1386,7 +1396,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
           <Link
             aria-current={activeTab === "delegation" ? "page" : undefined}
             className={activeTab === "delegation" ? "transaction-tab contract-entry active" : "transaction-tab contract-entry"}
-            hash=""
+            hash="code"
             params={{ address }}
             search={{ tab: "delegation" }}
             to="/address/$address"
