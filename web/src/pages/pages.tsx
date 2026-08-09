@@ -1370,11 +1370,13 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         ] as const).map(([tabID, label]) => (
           <Link
             key={tabID}
+            activeOptions={{ exact: true, includeHash: true }}
+            activeProps={{ className: "" }}
             className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
             to="/address/$address"
             params={{ address }}
             search={{ tab: tabID }}
-            hash=""
+            hash={() => ""}
             aria-current={activeTab === tabID ? "page" : undefined}
           >
             {label}
@@ -1382,8 +1384,10 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         ))}
         {contractAvailable ? (
           <Link
+            activeOptions={{ exact: true, includeHash: true }}
+            activeProps={{ className: "" }}
             aria-current={activeTab === "contract" ? "page" : undefined}
-            className={activeTab === "contract" ? "transaction-tab contract-entry active" : "transaction-tab contract-entry"}
+            className={activeTab === "contract" ? "transaction-tab active" : "transaction-tab"}
             hash="code"
             params={{ address: account.data?.address ?? address }}
             search={{}}
@@ -1394,8 +1398,10 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         ) : null}
         {delegationAvailable ? (
           <Link
+            activeOptions={{ exact: true, includeHash: true }}
+            activeProps={{ className: "" }}
             aria-current={activeTab === "delegation" ? "page" : undefined}
-            className={activeTab === "delegation" ? "transaction-tab contract-entry active" : "transaction-tab contract-entry"}
+            className={activeTab === "delegation" ? "transaction-tab active" : "transaction-tab"}
             hash="code"
             params={{ address }}
             search={{ tab: "delegation" }}

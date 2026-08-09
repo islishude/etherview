@@ -995,10 +995,13 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/address/${address}`);
 
-    expect(await screen.findByRole("link", { name: "Contract" })).toHaveAttribute(
+    const contractLink = await screen.findByRole("link", { name: "Contract" });
+    expect(contractLink).toHaveAttribute(
       "href",
       `/address/${address}#code`,
     );
+    expect(contractLink).toHaveClass("transaction-tab");
+    expect(contractLink).not.toHaveClass("active", "contract-entry");
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
     const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");
     if (!summary) throw new Error("address summary is missing");
@@ -1061,6 +1064,7 @@ describe("core explorer pages", () => {
     expect(screen.getByText("123.45 AST")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
+
   });
 
   it("renders delegated-account panels with the shared detail and pagination contracts", async () => {
@@ -1157,7 +1161,17 @@ describe("core explorer pages", () => {
       return notFound();
     }));
 
-    renderExplorer(`/address/${delegatedAddress}?tab=delegation#code`);
+    renderExplorer(`/address/${delegatedAddress}`);
+
+    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const delegationEntry = await within(addressTabs).findByRole("link", { name: "Delegation" });
+    expect(delegationEntry).toHaveClass("transaction-tab");
+    expect(delegationEntry).not.toHaveClass("active", "contract-entry");
+    const user = userEvent.setup();
+    await user.click(delegationEntry);
+    const activeDelegationEntry = within(addressTabs).getByRole("link", { name: "Delegation" });
+    expect(activeDelegationEntry).toHaveClass("transaction-tab", "active");
+    expect(activeDelegationEntry).not.toHaveClass("contract-entry");
 
     const bindingHeading = await screen.findByRole("heading", { name: "EIP-7702 delegation binding" });
     const delegateLink = await screen.findByRole("link", { name: delegateAddress });
@@ -1190,7 +1204,6 @@ describe("core explorer pages", () => {
     }
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
 
-    const user = userEvent.setup();
     await user.click(within(tabs).getByRole("tab", { name: "Write contract" }));
     expect(await screen.findByText("setValue(uint256)")).toBeVisible();
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);

@@ -1206,6 +1206,7 @@ tbody tr:hover {
   flex: 0 0 auto;
   padding: 0.62rem 0.9rem;
   color: var(--text-soft);
+  background: transparent;
   border-radius: calc(var(--radius-sm) - 2px);
   font-size: 0.82rem;
   font-weight: 750;
@@ -1223,15 +1224,23 @@ tbody tr:hover {
   box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
 }
 
-.transaction-tab.contract-entry {
-  margin-inline-start: auto;
-  color: var(--brand-strong);
-  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line));
+/* Address entries must keep the shared tab state even with stale markup. */
+.transaction-tabs > .transaction-tab {
+  margin-inline-start: 0;
+  color: var(--text-soft);
+  background: transparent;
+  border: 0;
 }
 
-.transaction-tab.contract-entry.active {
+.transaction-tabs > .transaction-tab:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.transaction-tabs > .transaction-tab.active {
   color: var(--on-brand);
   background: var(--brand);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 22%, transparent);
 }
 
 .address-activity {

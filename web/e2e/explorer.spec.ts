@@ -281,8 +281,37 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     `/address/${address}#code`,
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  await page.goto(`/address/${address}#read-contract`);
+  await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(
+    /\bactive\b/,
+  );
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
+  await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
+  const contractTab = page.getByRole("link", { name: "Contract", exact: true });
+  await expect(contractTab).not.toHaveClass(/\bactive\b/);
+  const [contractStyle, ordinaryTabStyle] = await Promise.all([
+    contractTab.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        marginInlineStart: style.marginInlineStart,
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        border: style.border,
+      };
+    }),
+    page.getByRole("link", { name: "ERC-20 Transfers" }).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        marginInlineStart: style.marginInlineStart,
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        border: style.border,
+      };
+    }),
+  ]);
+  expect(contractStyle).toEqual(ordinaryTabStyle);
   await activateInView(page.getByRole("link", { name: "ERC-20 Transfers" }));
   await expect(page.locator("tbody").getByText("ERC-20", { exact: true })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "NFT Transfers" }));

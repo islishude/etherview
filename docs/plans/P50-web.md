@@ -58,6 +58,10 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T32 | done        | P50-T30       | Embed Contract beside address activity tabs and support hash-driven contract subpage deep links | focused frontend, embedded browser, accessibility, and generation regressions |
 | P50-T33 | done        | P50-T32       | Replace the verified-source flat file list with an accessible expandable directory tree on desktop and narrow layouts | focused tree-model, component, accessibility, responsive, and common frontend gates |
 | P50-T34 | done        | P50-T33       | Compact consecutive single-child source directories into one tree node while preserving exact source paths | focused tree-model, component, frontend, and browser regressions |
+| P50-T35 | done        | P50-T34       | Align the address Contract tab with ordinary activity tabs and explain unverified contracts clearly | focused frontend, build, and embedded browser regressions |
+| P50-T36 | done        | P50-T35       | Apply ordinary activity-tab styling to the Delegation entry and keep its active state distinct | focused frontend, build, and embedded browser regressions |
+| P50-T37 | done        | P50-T36       | Make inactive address tabs explicitly transparent and reserve the green background for the active state | focused frontend and stylesheet regressions |
+| P50-T38 | done        | P50-T37       | Enforce the shared address-tab visual states against legacy Contract styling overrides | focused frontend, production build, and embedded browser regressions |
 
 ## Acceptance
 
@@ -629,3 +633,29 @@ None.
   pass. The host-authorized `make test-e2e` passes all 12 embedded Chromium
   flows, including verified-source, narrow viewport, keyboard, and WCAG
   scenarios.
+- P50-T35 removes the address Contract link's special entry styling so it stays
+  left-aligned and uses the ordinary activity-tab states while preserving its
+  `#code` deep link. A verification 404 now renders explicit bilingual
+  unverified-contract guidance instead of the generic not-found notice. The
+  focused address/contract suites pass 45 tests; the complete frontend suite
+  passes 28 files with 261 tests; frontend lint, production build, and
+  `GOCACHE=/tmp/etherview-contract-tab-go-cache make generate-check` pass. The
+  host-authorized `make test-e2e` passes all 12 embedded Chromium flows.
+- P50-T36 applies the same ordinary activity-tab styling to Delegation, removes
+  the unused special entry CSS, and verifies that inactive entries stay neutral
+  while the active entry uses the shared green tab background. The focused
+  CorePages suite passes 22 tests; the complete frontend suite passes 28 files
+  with 261 tests; `make generate-check`, `make plan-check`, `make test-e2e`
+  (12 flows), and `make check` pass.
+- P50-T37 makes ordinary address tabs explicitly transparent and reserves the
+  shared green background for the active state. The focused CorePages/styles
+  suite passes 24 tests; the complete frontend suite passes 28 files with 262
+  tests; frontend lint/build, `make generate-check`, `make plan-check`, and
+  `make check` pass.
+- P50-T38 makes all address tab classes JS-controlled from the route-derived
+  `activeTab`, disables Router class injection, and keeps the outer Contract
+  tab active for nested hashes such as `#read-contract`; the embedded E2E
+  regression also verifies inactive Contract styling matches ordinary tabs.
+  The focused CorePages/styles suite passes 25 tests; the complete frontend
+  suite passes 28 files with 263 tests; frontend lint/build, `make check`,
+  `make plan-check`, and `make test-e2e` (12 flows) pass.

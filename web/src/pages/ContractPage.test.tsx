@@ -49,6 +49,21 @@ afterEach(() => {
 });
 
 describe("contract proxy route", () => {
+  it("explains when the contract has no verified artifact", async () => {
+    installContractAPI({ pattern: "none", verificationStatus: 404 });
+    renderContractRoute();
+
+    expect(await screen.findByText(
+      "This contract has not been verified yet. Its source code and ABI-based read/write forms are unavailable until verification is complete.",
+    )).toBeVisible();
+    expect(screen.queryByText("Indexed entity not found")).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await screen.findByText(
+      "该合约尚未完成验证。完成验证后才能查看源码并使用基于 ABI 的合约读写功能。",
+    )).toBeVisible();
+  });
+
   it("restores contract subpages from hashes and navigates between them", async () => {
     installContractAPI({ pattern: "uups" });
     renderContractRoute("read-contract");
@@ -432,6 +447,7 @@ function installContractAPI({
   managementArtifactCodeHash,
   safeDetection,
   proxyStatus,
+  verificationStatus,
 }: {
   pattern: ContractPattern;
   staleHistory?: HistoryKind;
@@ -439,6 +455,7 @@ function installContractAPI({
   managementArtifactCodeHash?: string;
   safeDetection?: boolean;
   proxyStatus?: number;
+  verificationStatus?: number;
 }) {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
     const url = new URL(String(input), "http://localhost");
@@ -477,6 +494,18 @@ function installContractAPI({
       } : detail);
     }
     if (url.pathname.endsWith("/verification")) {
+      if (verificationStatus !== undefined) {
+        return Response.json(
+          {
+            error: {
+              code: "not_found",
+              message: "no verified artifact",
+              request_id: "contract-page-test",
+            },
+          },
+          { status: verificationStatus },
+        );
+      }
       const address = url.pathname.split("/").at(-2) ?? "";
       const codeHash = address === implementationAddress
         ? implementationArtifactCodeHash

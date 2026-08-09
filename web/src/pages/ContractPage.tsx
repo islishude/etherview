@@ -505,16 +505,24 @@ function ArtifactPanel({
   error: unknown;
 }) {
   const { t } = useTranslation();
+  const unverified = !loading && !artifact && isUnverifiedArtifactError(error);
   return (
     <div className="verified-artifacts">
       <div>
         <h2>{t("contracts.verifiedArtifact")}</h2>
         <p className="quiet">{t("contracts.readIndependent")}</p>
       </div>
-      <QueryNotice loading={loading} error={error} />
+      <QueryNotice loading={loading} error={unverified ? undefined : error} />
+      {unverified ? (
+        <p className="chain-warning" role="status">{t("contracts.unverifiedArtifact")}</p>
+      ) : null}
       {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
     </div>
   );
+}
+
+function isUnverifiedArtifactError(error: unknown): boolean {
+  return error instanceof ApiError && (error.code === "not_found" || error.status === 404);
 }
 
 function UpgradeHistory({
