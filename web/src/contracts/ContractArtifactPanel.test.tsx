@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "@/i18n";
 
 import {
+  buildSourceTree,
   ContractArtifactPanel,
   parseArtifactSources,
   summarizeABI,
@@ -39,6 +40,92 @@ describe("contract artifact view models", () => {
       ],
       invalidEntries: 1,
     });
+  });
+
+  it("builds nested directories before files while preserving source paths", () => {
+    expect(buildSourceTree([
+      { name: "src/z/Last.sol", content: "" },
+      { name: "README.md", content: "" },
+      { name: "src/Main.sol", content: "" },
+      { name: "src/a/First.sol", content: "" },
+    ])).toEqual([
+      {
+        id: "directory:src",
+        kind: "directory",
+        name: "src",
+        path: "src",
+        children: [
+          {
+            id: "directory:src/a",
+            kind: "directory",
+            name: "a",
+            path: "src/a",
+            children: [
+              {
+                id: "file:src/a/First.sol",
+                kind: "file",
+                name: "First.sol",
+                file: { name: "src/a/First.sol", content: "" },
+              },
+            ],
+          },
+          {
+            id: "directory:src/z",
+            kind: "directory",
+            name: "z",
+            path: "src/z",
+            children: [
+              {
+                id: "file:src/z/Last.sol",
+                kind: "file",
+                name: "Last.sol",
+                file: { name: "src/z/Last.sol", content: "" },
+              },
+            ],
+          },
+          {
+            id: "file:src/Main.sol",
+            kind: "file",
+            name: "Main.sol",
+            file: { name: "src/Main.sol", content: "" },
+          },
+        ],
+      },
+      {
+        id: "file:README.md",
+        kind: "file",
+        name: "README.md",
+        file: { name: "README.md", content: "" },
+      },
+    ]);
+  });
+
+  it("compacts consecutive directories with one directory child", () => {
+    expect(buildSourceTree([
+      { name: "src/contracts/interfaces/IFoo.sol", content: "interface IFoo {}" },
+      { name: "src/contracts/interfaces/IBar.sol", content: "interface IBar {}" },
+    ])).toEqual([
+      {
+        id: "directory:src/contracts/interfaces",
+        kind: "directory",
+        name: "src/contracts/interfaces",
+        path: "src/contracts/interfaces",
+        children: [
+          {
+            id: "file:src/contracts/interfaces/IBar.sol",
+            kind: "file",
+            name: "IBar.sol",
+            file: { name: "src/contracts/interfaces/IBar.sol", content: "interface IBar {}" },
+          },
+          {
+            id: "file:src/contracts/interfaces/IFoo.sol",
+            kind: "file",
+            name: "IFoo.sol",
+            file: { name: "src/contracts/interfaces/IFoo.sol", content: "interface IFoo {}" },
+          },
+        ],
+      },
+    ]);
   });
 
   it("summarizes bounded ABI and explicit compiler settings", () => {
@@ -145,7 +232,10 @@ describe("ContractArtifactPanel", () => {
     expect(mainEditor.querySelector(".tok-keyword")).toHaveTextContent("contract");
 
     const fileNavigation = screen.getByRole("complementary", { name: "Source files" });
-    await user.click(within(fileNavigation).getByRole("button", { name: /Library\.sol/u }));
+    expect(within(fileNavigation).getByRole("tree")).toBeVisible();
+    const sourceFolder = within(fileNavigation).getByRole("treeitem", { name: "Collapse folder: src" });
+    expect(sourceFolder).toHaveAttribute("aria-expanded", "true");
+    await user.click(within(fileNavigation).getByRole("treeitem", { name: "Library.sol" }));
     const libraryEditor = screen.getByRole("textbox", {
       name: "Read-only source editor for src/Library.sol",
     });
@@ -161,6 +251,31 @@ describe("ContractArtifactPanel", () => {
     expect(editorShell).not.toBeNull();
     await user.click(within(editorShell as HTMLElement).getByRole("button", { name: "Copy" }));
     expect(writeText).toHaveBeenCalledWith("library Library { function value() internal pure returns (uint256) { return 1; } }");
+  });
+
+  it("supports directory toggling and keyboard tree navigation", async () => {
+    const user = userEvent.setup();
+    render(<ContractArtifactPanel artifact={fixtureArtifact({
+      sources: {
+        "src/Example.sol": { content: "contract Example {}" },
+        "src/lib/Library.sol": { content: "library Library {}" },
+      },
+    })} />);
+
+    const fileNavigation = screen.getByRole("complementary", { name: "Source files" });
+    const sourceFolder = within(fileNavigation).getByRole("treeitem", { name: "Collapse folder: src" });
+    await user.click(sourceFolder);
+    expect(sourceFolder).toHaveAttribute("aria-expanded", "false");
+    expect(within(fileNavigation).queryByRole("button", { name: "Example.sol" })).toBeNull();
+
+    await user.keyboard(" ");
+    expect(sourceFolder).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("textbox", { name: "Read-only source editor for src/Example.sol" })).toHaveTextContent("contract Example");
+    expect(within(fileNavigation).getByRole("treeitem", { name: "Example.sol" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("fails closed for malformed sources while retaining raw diagnostics", async () => {

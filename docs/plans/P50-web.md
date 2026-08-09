@@ -56,6 +56,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T30 | done        | P50-T29       | Keep unavailable-wallet action guidance complete and remove duplicate inline wallet messaging | focused ABI form and stylesheet regression tests |
 | P50-T31 | done        | P50-T30       | Decode verified constructor arguments into readable ABI parameter rows while retaining raw hex | focused ABI, component, and embedded browser regressions |
 | P50-T32 | done        | P50-T30       | Embed Contract beside address activity tabs and support hash-driven contract subpage deep links | focused frontend, embedded browser, accessibility, and generation regressions |
+| P50-T33 | done        | P50-T32       | Replace the verified-source flat file list with an accessible expandable directory tree on desktop and narrow layouts | focused tree-model, component, accessibility, responsive, and common frontend gates |
+| P50-T34 | done        | P50-T33       | Compact consecutive single-child source directories into one tree node while preserving exact source paths | focused tree-model, component, frontend, and browser regressions |
 
 ## Acceptance
 
@@ -607,3 +609,23 @@ None.
   pass. The embedded Playwright suite passes all 10 flows with the bundled
   single-process browser configuration, including deep links, keyboard/history,
   responsive, bilingual, and WCAG coverage.
+- P50-T33 replaces the flat verified-source file list and narrow-layout select
+  with one bilingual, keyboard-accessible expandable directory tree. The pure
+  tree model preserves complete source paths, places directories before files,
+  and keeps malformed entries fail-closed with the existing raw manifest
+  disclosure. Focused artifact tests pass all 10 tests; the complete frontend
+  suite passes 28 files with 259 tests; frontend lint and production build
+  pass. The host-authorized `make test-e2e` passes all 12 embedded Chromium
+  flows, including the verified-source, narrow viewport, and WCAG scenarios.
+  `GOCACHE=/tmp/etherview-tree-go-cache make generate-check`, `make plan-check`,
+  and `git diff --check` pass; the initial generate-check attempt was retried
+  with the documented writable cache after the default macOS Go cache denied
+  access.
+- P50-T34 compacts consecutive directory-only chains into one tree label such
+  as `src/contracts/interfaces`, while retaining the exact final directory ID,
+  source path, file selection, and editor behavior. The focused artifact suite
+  passes 11 tests; the complete frontend suite passes 28 files with 260 tests;
+  frontend lint, production build, `make plan-check`, and `git diff --check`
+  pass. The host-authorized `make test-e2e` passes all 12 embedded Chromium
+  flows, including verified-source, narrow viewport, keyboard, and WCAG
+  scenarios.

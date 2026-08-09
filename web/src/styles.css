@@ -3765,10 +3765,6 @@ tbody tr:hover {
   border-radius: 0;
 }
 
-.source-file-select-label {
-  display: none;
-}
-
 .source-file-list {
   min-width: 0;
   display: grid;
@@ -3790,13 +3786,19 @@ tbody tr:hover {
   text-transform: uppercase;
 }
 
-.source-file-list nav {
+.source-file-tree {
   min-height: 0;
   padding: 0.35rem;
   overflow: auto;
 }
 
-.source-file-list button {
+.source-tree-children {
+  margin-left: 0.85rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--line);
+}
+
+.source-tree-item {
   width: 100%;
   min-width: 0;
   display: grid;
@@ -3811,7 +3813,7 @@ tbody tr:hover {
   cursor: pointer;
 }
 
-.source-file-list button span:last-child {
+.source-tree-item > span:last-child {
   overflow: hidden;
   font-family: var(--font-mono);
   font-size: 0.7rem;
@@ -3819,11 +3821,30 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
-.source-file-list button:hover,
-.source-file-list button:focus-visible,
-.source-file-list button.active {
+.source-tree-item:hover,
+.source-tree-item:focus-visible,
+.source-tree-item.active {
   color: var(--text);
   background: var(--surface-strong);
+}
+
+.source-tree-item.active {
+  color: var(--brand-strong);
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.source-tree-chevron,
+.source-tree-file-icon {
+  width: 1rem;
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.source-tree-item.active .source-tree-file-icon {
+  color: var(--brand);
 }
 
 .source-editor-shell {
@@ -4580,29 +4601,17 @@ tbody tr:hover {
 
   .source-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(32rem, 1fr);
-  }
-
-  .source-file-select-label {
-    display: grid;
-    gap: 0.35rem;
-    padding: 0.65rem;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .source-file-select-label span {
-    color: var(--text-soft);
-    font-size: 0.69rem;
-    font-weight: 800;
-  }
-
-  .source-file-select-label select {
-    min-width: 0;
-    width: 100%;
+    grid-template-rows: minmax(9rem, auto) minmax(32rem, 1fr);
   }
 
   .source-file-list {
-    display: none;
+    max-height: 15rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .source-file-tree {
+    max-height: 11rem;
   }
 
   .source-editor-toolbar {

@@ -430,7 +430,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
     .first()
     .evaluate((lineNumber) => lineNumber.getBoundingClientRect().top);
   expect(Math.abs(sourceLineTop - firstLineNumberTop)).toBeLessThan(1);
-  await page.getByRole("button", { name: "lib/ProxyBase.sol" }).click();
+  await page.getByRole("treeitem", { name: "ProxyBase.sol", exact: true }).click();
   const libraryEditor = page.getByRole("textbox", {
     name: "Read-only source editor for lib/ProxyBase.sol",
   });

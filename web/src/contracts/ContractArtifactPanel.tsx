@@ -16,6 +16,7 @@ import { classHighlighter } from "@lezer/highlight";
 import { solidity } from "@replit/codemirror-lang-solidity";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CopyButton } from "@/components/CopyButton";
@@ -33,6 +34,23 @@ export interface SourceManifest {
   files: ContractSourceFile[];
   invalidEntries: number;
 }
+
+export interface SourceTreeFileNode {
+  id: string;
+  kind: "file";
+  name: string;
+  file: ContractSourceFile;
+}
+
+export interface SourceTreeDirectoryNode {
+  id: string;
+  kind: "directory";
+  name: string;
+  path: string;
+  children: SourceTreeNode[];
+}
+
+export type SourceTreeNode = SourceTreeFileNode | SourceTreeDirectoryNode;
 
 export interface ABISummary {
   constructors: number;
@@ -131,6 +149,76 @@ export function parseArtifactSources(
     return left.name.localeCompare(right.name);
   });
   return { files, invalidEntries };
+}
+
+export function buildSourceTree(files: readonly ContractSourceFile[]): SourceTreeNode[] {
+  const root: SourceTreeNode[] = [];
+
+  for (const file of files) {
+    const segments = file.name.split("/").filter(Boolean);
+    const pathSegments = segments.length > 0 ? segments : [file.name];
+    let children = root;
+    let directoryPath = "";
+
+    pathSegments.forEach((segment, index) => {
+      const isFile = index === pathSegments.length - 1;
+      if (isFile) {
+        children.push({
+          id: `file:${file.name}`,
+          kind: "file",
+          name: segment,
+          file,
+        });
+        return;
+      }
+
+      directoryPath = directoryPath ? `${directoryPath}/${segment}` : segment;
+      let directory = children.find(
+        (node): node is SourceTreeDirectoryNode => node.kind === "directory" && node.path === directoryPath,
+      );
+      if (!directory) {
+        directory = {
+          id: `directory:${directoryPath}`,
+          kind: "directory",
+          name: segment,
+          path: directoryPath,
+          children: [],
+        };
+        children.push(directory);
+      }
+      children = directory.children;
+    });
+  }
+
+  const sortNodes = (nodes: SourceTreeNode[]) => {
+    nodes.sort((left, right) => {
+      if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+      return left.name.localeCompare(right.name);
+    });
+    for (const node of nodes) {
+      if (node.kind === "directory") sortNodes(node.children);
+    }
+  };
+  sortNodes(root);
+  return compactSourceTree(root);
+}
+
+function compactSourceTree(nodes: readonly SourceTreeNode[]): SourceTreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind === "file") return node;
+
+    let finalDirectory = node;
+    const names = [node.name];
+    while (finalDirectory.children.length === 1 && finalDirectory.children[0]?.kind === "directory") {
+      finalDirectory = finalDirectory.children[0];
+      names.push(finalDirectory.name);
+    }
+    return {
+      ...finalDirectory,
+      name: names.join("/"),
+      children: compactSourceTree(finalDirectory.children),
+    };
+  });
 }
 
 export function summarizeABI(abi: readonly unknown[]): ABISummary {
@@ -342,12 +430,75 @@ function SourceWorkspace({
   selected: ContractSourceFile;
 }) {
   const { t } = useTranslation();
+  const tree = useMemo(() => buildSourceTree(files), [files]);
   const [wrap, setWrap] = useState(false);
   const editorRef = useRef<EditorView | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const treeItemRefs = useRef(new Map<string, HTMLButtonElement>());
   const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(() => collectDirectoryIDs(tree));
+  const [focusedID, setFocusedID] = useState(`file:${selected.name}`);
   const fullscreenAvailable = typeof document !== "undefined" && document.fullscreenEnabled === true;
+
+  const visibleNodes = useMemo(() => flattenVisibleTree(tree, expanded), [expanded, tree]);
+
+  useEffect(() => {
+    setExpanded(collectDirectoryIDs(tree));
+    setFocusedID(`file:${selected.name}`);
+  }, [selected.name, tree]);
+
+  const focusTreeItem = (id: string) => {
+    setFocusedID(id);
+    treeItemRefs.current.get(id)?.focus();
+  };
+
+  const toggleDirectory = (id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleTreeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, node: SourceTreeNode) => {
+    const currentIndex = visibleNodes.findIndex((item) => item.node.id === node.id);
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (node.kind === "directory") toggleDirectory(node.id);
+      else onSelect(node.file.name);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const nextIndex = event.key === "ArrowDown" ? currentIndex + 1 : currentIndex - 1;
+      const next = visibleNodes[nextIndex];
+      if (next) focusTreeItem(next.node.id);
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const next = event.key === "Home" ? visibleNodes[0] : visibleNodes.at(-1);
+      if (next) focusTreeItem(next.node.id);
+      return;
+    }
+    if (event.key === "ArrowRight" && node.kind === "directory") {
+      event.preventDefault();
+      if (!expanded.has(node.id)) toggleDirectory(node.id);
+      else if (node.children[0]) focusTreeItem(node.children[0].id);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (node.kind === "directory" && expanded.has(node.id)) {
+        toggleDirectory(node.id);
+        return;
+      }
+      const parent = visibleNodes[currentIndex]?.parent;
+      if (parent) focusTreeItem(parent.id);
+    }
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -402,32 +553,36 @@ function SourceWorkspace({
 
   return (
     <div className="source-workspace" ref={workspaceRef}>
-      <label className="source-file-select-label">
-        <span>{t("contracts.artifact.files")}</span>
-        <select value={selected.name} onChange={(event) => onSelect(event.target.value)}>
-          {files.map((file) => <option key={file.name} value={file.name}>{file.name}</option>)}
-        </select>
-      </label>
       <aside className="source-file-list" aria-label={t("contracts.artifact.files")}>
         <div className="source-file-list-title">
           <span>{t("contracts.artifact.files")}</span>
           <strong>{files.length}</strong>
         </div>
-        <nav>
-          {files.map((file) => (
-            <button
-              aria-current={file.name === selected.name ? "page" : undefined}
-              className={file.name === selected.name ? "active" : undefined}
-              key={file.name}
-              onClick={() => onSelect(file.name)}
-              title={file.name}
-              type="button"
-            >
-              <span aria-hidden="true">◇</span>
-              <span>{file.name}</span>
-            </button>
-          ))}
-        </nav>
+        <div aria-label={t("contracts.artifact.files")} className="source-file-tree" role="tree">
+          {tree.map((node, index) => renderSourceTreeNode({
+            depth: 1,
+            focusedID,
+            index,
+            node,
+            onSelect: (name) => {
+              setFocusedID(`file:${name}`);
+              onSelect(name);
+            },
+            onToggle: (id) => {
+              setFocusedID(id);
+              toggleDirectory(id);
+            },
+            selectedName: selected.name,
+            setRef: (id, element) => {
+              if (element) treeItemRefs.current.set(id, element);
+              else treeItemRefs.current.delete(id);
+            },
+            siblingCount: tree.length,
+            expanded,
+            handleKeyDown: handleTreeKeyDown,
+            t,
+          }))}
+        </div>
       </aside>
       <div className="source-editor-shell">
         <div className="source-editor-toolbar">
@@ -454,6 +609,115 @@ function SourceWorkspace({
           <span>{t("contracts.artifact.readOnly")}</span>
         </footer>
       </div>
+    </div>
+  );
+}
+
+interface VisibleTreeNode {
+  node: SourceTreeNode;
+  parent?: SourceTreeDirectoryNode;
+}
+
+function collectDirectoryIDs(nodes: readonly SourceTreeNode[]): Set<string> {
+  const expanded = new Set<string>();
+  const visit = (items: readonly SourceTreeNode[]) => {
+    for (const node of items) {
+      if (node.kind !== "directory") continue;
+      expanded.add(node.id);
+      visit(node.children);
+    }
+  };
+  visit(nodes);
+  return expanded;
+}
+
+function flattenVisibleTree(
+  nodes: readonly SourceTreeNode[],
+  expanded: ReadonlySet<string>,
+  parent?: SourceTreeDirectoryNode,
+): VisibleTreeNode[] {
+  const visible: VisibleTreeNode[] = [];
+  for (const node of nodes) {
+    visible.push({ node, parent });
+    if (node.kind === "directory" && expanded.has(node.id)) {
+      visible.push(...flattenVisibleTree(node.children, expanded, node));
+    }
+  }
+  return visible;
+}
+
+function renderSourceTreeNode({
+  depth,
+  expanded,
+  focusedID,
+  handleKeyDown,
+  index,
+  node,
+  onSelect,
+  onToggle,
+  selectedName,
+  setRef,
+  siblingCount,
+  t,
+}: {
+  depth: number;
+  expanded: ReadonlySet<string>;
+  focusedID: string;
+  handleKeyDown: (event: KeyboardEvent<HTMLButtonElement>, node: SourceTreeNode) => void;
+  index: number;
+  node: SourceTreeNode;
+  onSelect: (name: string) => void;
+  onToggle: (id: string) => void;
+  selectedName: string;
+  setRef: (id: string, element: HTMLButtonElement | null) => void;
+  siblingCount: number;
+  t: ReturnType<typeof useTranslation>["t"];
+}): ReactNode {
+  const isDirectory = node.kind === "directory";
+  const isExpanded = isDirectory && expanded.has(node.id);
+  const selected = !isDirectory && node.file.name === selectedName;
+  return (
+    <div className="source-tree-branch" key={node.id} role="none">
+      <button
+        aria-expanded={isDirectory ? isExpanded : undefined}
+        aria-level={depth}
+        aria-posinset={index + 1}
+        aria-selected={selected}
+        aria-setsize={siblingCount}
+        className={selected ? "source-tree-item active" : "source-tree-item"}
+        onClick={() => isDirectory ? onToggle(node.id) : onSelect(node.file.name)}
+        onKeyDown={(event) => handleKeyDown(event, node)}
+        ref={(element) => setRef(node.id, element)}
+        role="treeitem"
+        tabIndex={focusedID === node.id ? 0 : -1}
+        title={isDirectory ? node.path : node.file.name}
+        {...(isDirectory
+          ? { "aria-label": `${isExpanded ? t("contracts.artifact.collapseFolder") : t("contracts.artifact.expandFolder")}: ${node.name}` }
+          : {})}
+      >
+        <span aria-hidden="true" className={isDirectory ? "source-tree-chevron" : "source-tree-file-icon"}>
+          {isDirectory ? (isExpanded ? "⌄" : "›") : "◇"}
+        </span>
+        <span>{node.name}</span>
+      </button>
+      {isDirectory && isExpanded ? (
+        <div className="source-tree-children" role="group">
+          {node.children.map((child, childIndex) => renderSourceTreeNode({
+            depth: depth + 1,
+            expanded,
+            focusedID,
+            handleKeyDown,
+            index: childIndex,
+            node: child,
+            onSelect,
+            onToggle,
+            selectedName,
+            setRef,
+            siblingCount: node.children.length,
+            t,
+          }))}
+        </div>
+      ) : null}
     </div>
   );
 }
