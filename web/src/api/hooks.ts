@@ -147,6 +147,31 @@ export function useBlock(identifier: string, enabled = true) {
   });
 }
 
+export function useBlockTransactions(
+  identifier: string,
+  cursor?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["block", identifier, "transactions", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/blocks/{id}/transactions", {
+          params: { path: { id: identifier }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && identifier.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useTransaction(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash],

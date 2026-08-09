@@ -105,6 +105,7 @@ type Reader interface {
 	Status(context.Context) (StatusSnapshot, error)
 	Blocks(context.Context, string, int) ([]gen.Block, string, error)
 	Block(context.Context, string) (gen.Block, error)
+	BlockTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error)
 	Transactions(context.Context, string, int) ([]gen.Transaction, string, error)
 	Transaction(context.Context, string) (gen.Transaction, error)
 	Address(context.Context, string) (gen.AddressSummary, error)
@@ -339,6 +340,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/admin/billing/summary", h.adminBillingSummary)
 	h.handleBillable("listBlocks", h.blocks)
 	h.handleBillable("getBlock", h.block)
+	h.handleBillable("listBlockTransactions", h.blockTransactions)
 	h.handleBillable("listTransactions", h.transactions)
 	h.handleBillable("getTransaction", h.transaction)
 	h.handleBillable("listPendingTransactions", h.pendingTransactions)
@@ -864,6 +866,33 @@ func (h *Handler) block(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.BlockResponse{Data: item, Meta: h.meta(r)})
+}
+
+func (h *Handler) blockTransactions(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !validBlockID(id) {
+		writeError(w, r, http.StatusBadRequest, "invalid_block_id", "block id must be a decimal/hex number or block hash", nil)
+		return
+	}
+	limit, ok := parseLimit(w, r, 25)
+	if !ok {
+		return
+	}
+	cursor := r.URL.Query().Get("cursor")
+	if len(cursor) > maximumOpaqueCursorLength {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is too long", nil)
+		return
+	}
+	items, next, err := h.reader.BlockTransactions(r.Context(), id, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	meta := h.meta(r)
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionListResponse{Data: items, Meta: meta})
 }
 
 func (h *Handler) genesisAccounts(w http.ResponseWriter, r *http.Request) {

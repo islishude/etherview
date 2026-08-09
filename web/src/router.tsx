@@ -43,6 +43,11 @@ const blocksRoute = createRoute({
 const blockRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/blocks/$blockID",
+  validateSearch: (search: Record<string, unknown>): { tab?: "overview" | "transactions" | "withdrawals" } => ({
+    tab: typeof search.tab === "string" && ["overview", "transactions", "withdrawals"].includes(search.tab)
+      ? search.tab as "overview" | "transactions" | "withdrawals"
+      : undefined,
+  }),
   component: BlockRoutePage,
 });
 const genesisRoute = createRoute({
@@ -61,7 +66,7 @@ const transactionRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => {
     const tab = typeof search.tab === "string" ? search.tab : "overview";
     return {
-      tab: ["overview", "authorizations", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
+      tab: ["overview", "access-list", "blob", "authorizations", "token-transfers", "logs", "trace", "state-changes"].includes(tab)
         ? tab
         : "overview",
     };
@@ -196,7 +201,8 @@ const routeTree = rootRoute.addChildren([
 
 function BlockRoutePage() {
   const { blockID } = blockRoute.useParams();
-  return <EntityPage kind="block" identifier={blockID} />;
+  const { tab } = blockRoute.useSearch();
+  return <EntityPage kind="block" identifier={blockID} blockTab={tab} />;
 }
 
 function TransactionRoutePage() {

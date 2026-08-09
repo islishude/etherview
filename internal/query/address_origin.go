@@ -77,10 +77,19 @@ func (r *PostgresReader) AddressOrigin(
 
 	coverageEnd := referenceNumber
 	var candidateBlock string
-	var sourceBytes, transactionHashBytes []byte
-	err = tx.QueryRowContext(ctx, query,
-		r.chainID, fmt.Sprint(referenceNumber), address.Bytes(),
-	).Scan(&candidateBlock, &sourceBytes, &transactionHashBytes)
+	var sourceBytes, transactionHashBytes, blockHashBytes []byte
+	var originKind string
+	var withdrawalIndex sql.NullString
+	if accountType == gen.AddressSummaryTypeContract {
+		err = tx.QueryRowContext(ctx, query,
+			r.chainID, fmt.Sprint(referenceNumber), address.Bytes(),
+		).Scan(&candidateBlock, &sourceBytes, &transactionHashBytes)
+		originKind = string(gen.ContractCreation)
+	} else {
+		err = tx.QueryRowContext(ctx, query,
+			r.chainID, fmt.Sprint(referenceNumber), address.Bytes(),
+		).Scan(&candidateBlock, &sourceBytes, &transactionHashBytes, &originKind, &blockHashBytes, &withdrawalIndex)
+	}
 	notFound := errors.Is(err, sql.ErrNoRows)
 	if !notFound && err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("query address origin: %w", err)
@@ -112,14 +121,38 @@ func (r *PostgresReader) AddressOrigin(
 		}
 		return result, nil
 	}
-	if len(sourceBytes) != common.AddressLength || len(transactionHashBytes) != common.HashLength {
-		return gen.AddressOrigin{}, errors.New("stored address origin identity is malformed")
-	}
-	source := common.BytesToAddress(sourceBytes).Hex()
-	transactionHash := common.BytesToHash(transactionHashBytes).Hex()
 	result.State = gen.AddressOriginStateFound
-	result.SourceAddress = &source
-	result.TransactionHash = &transactionHash
+	switch gen.AddressOriginKind(originKind) {
+	case gen.Funding, gen.ContractCreation:
+		if len(sourceBytes) != common.AddressLength || len(transactionHashBytes) != common.HashLength {
+			return gen.AddressOrigin{}, errors.New("stored funding origin identity is malformed")
+		}
+		source := common.BytesToAddress(sourceBytes).Hex()
+		transactionHash := common.BytesToHash(transactionHashBytes).Hex()
+		result.SourceAddress = &source
+		result.TransactionHash = &transactionHash
+	case gen.Withdrawal, gen.BlockFeeRecipient:
+		if len(blockHashBytes) != common.HashLength {
+			return gen.AddressOrigin{}, errors.New("stored block origin identity is malformed")
+		}
+		blockHash := common.BytesToHash(blockHashBytes).Hex()
+		result.Kind = gen.AddressOriginKind(originKind)
+		result.BlockHash = &blockHash
+		if withdrawalIndex.Valid {
+			index, parseErr := parseDecimalUint64(withdrawalIndex.String)
+			if parseErr != nil || strconv.FormatUint(index, 10) != withdrawalIndex.String {
+				return gen.AddressOrigin{}, errors.New("stored withdrawal origin index is malformed")
+			}
+			quantity := gen.Quantity(withdrawalIndex.String)
+			result.WithdrawalIndex = &quantity
+		}
+	default:
+		return gen.AddressOrigin{}, errors.New("stored address origin kind is invalid")
+	}
+	blockNumber := gen.Quantity(candidateBlock)
+	if originKind == string(gen.Withdrawal) || originKind == string(gen.BlockFeeRecipient) {
+		result.BlockNumber = &blockNumber
+	}
 	if err := tx.Commit(); err != nil {
 		return gen.AddressOrigin{}, fmt.Errorf("commit address origin snapshot: %w", err)
 	}
@@ -237,7 +270,10 @@ WITH candidates AS (
     SELECT inclusion.block_number, inclusion.tx_index,
            ARRAY[]::bigint[] AS trace_order, 0 AS source_rank,
            decode(substr(inclusion.raw->>'from', 3), 'hex') AS source_address,
-           inclusion.tx_hash AS transaction_hash
+           inclusion.tx_hash AS transaction_hash,
+           inclusion.block_hash AS block_hash,
+           'funding'::text AS origin_kind,
+           NULL::text AS withdrawal_index
     FROM transaction_inclusions AS inclusion
     JOIN canonical_blocks AS canonical
       ON canonical.chain_id = inclusion.chain_id
@@ -260,6 +296,7 @@ WITH candidates AS (
     SELECT trace.block_number, trace.transaction_index,
            string_to_array(trace.trace_path, '.')::bigint[] AS trace_order,
            1 AS source_rank, trace.from_address, trace.transaction_hash
+           , trace.block_hash, 'funding'::text AS origin_kind, NULL::text AS withdrawal_index
     FROM normalized_traces AS trace
     JOIN canonical_blocks AS canonical
       ON canonical.chain_id = trace.chain_id
@@ -273,8 +310,40 @@ WITH candidates AS (
       AND trace.depth > 0
       AND trace.value > 0
       AND trace.from_address IS NOT NULL
+
+    UNION ALL
+
+    SELECT withdrawal.block_number, 0::bigint,
+           ARRAY[]::bigint[] AS trace_order, 2 AS source_rank,
+           NULL::bytea AS source_address, NULL::bytea AS transaction_hash,
+           withdrawal.block_hash, 'withdrawal'::text AS origin_kind,
+           withdrawal.withdrawal_index::text AS withdrawal_index
+    FROM withdrawals AS withdrawal
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = withdrawal.chain_id
+     AND canonical.number = withdrawal.block_number
+     AND canonical.block_hash = withdrawal.block_hash
+    WHERE withdrawal.chain_id = $1::numeric
+      AND withdrawal.block_number <= $2::numeric
+      AND withdrawal.address = $3
+
+    UNION ALL
+
+    SELECT block.number, 0::bigint,
+           ARRAY[]::bigint[] AS trace_order, 3 AS source_rank,
+           NULL::bytea AS source_address, NULL::bytea AS transaction_hash,
+           block.hash, 'block_fee_recipient'::text AS origin_kind,
+           NULL::text AS withdrawal_index
+    FROM blocks AS block
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = block.chain_id
+     AND canonical.number = block.number
+     AND canonical.block_hash = block.hash
+    WHERE block.chain_id = $1::numeric
+      AND block.number <= $2::numeric
+      AND lower(block.raw->>'miner') = lower('0x' || encode($3, 'hex'))
 )
-SELECT block_number::text, source_address, transaction_hash
+SELECT block_number::text, source_address, transaction_hash, origin_kind, block_hash, withdrawal_index
 FROM candidates
 ORDER BY block_number, tx_index, source_rank, trace_order
 LIMIT 1`

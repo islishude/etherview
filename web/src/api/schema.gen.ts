@@ -356,6 +356,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/blocks/{id}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBlockTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/config": {
         parameters: {
             query?: never;
@@ -998,12 +1014,15 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         AddressOrigin: {
+            block_hash?: components["schemas"]["Hash"];
+            block_number?: components["schemas"]["Quantity"];
             /** @enum {string} */
-            kind: "contract_creation" | "funding";
+            kind: "contract_creation" | "funding" | "withdrawal" | "block_fee_recipient";
             source_address?: components["schemas"]["Address"];
             /** @enum {string} */
             state: "found" | "genesis" | "not_found" | "unavailable";
             transaction_hash?: components["schemas"]["Hash"];
+            withdrawal_index?: components["schemas"]["Quantity"];
         };
         AddressResponse: {
             data: components["schemas"]["AddressSummary"];
@@ -1228,6 +1247,7 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
             transaction_count: number;
+            withdrawals?: components["schemas"]["BlockWithdrawal"][];
         };
         BlockListResponse: {
             data: components["schemas"]["Block"][];
@@ -1262,6 +1282,12 @@ export interface components {
         BlockStatListResponse: {
             data: components["schemas"]["BlockStat"][];
             meta: components["schemas"]["Meta"];
+        };
+        BlockWithdrawal: {
+            address: components["schemas"]["Address"];
+            amount: components["schemas"]["Quantity"];
+            index: components["schemas"]["Quantity"];
+            validator_index: components["schemas"]["Quantity"];
         };
         CatalogSnapshot: {
             block_hash: components["schemas"]["Hash"];
@@ -1945,6 +1971,8 @@ export interface components {
             warning?: string;
         };
         Transaction: {
+            access_list?: components["schemas"]["TransactionAccessListEntry"][];
+            blob_versioned_hashes?: components["schemas"]["Hash"][];
             block_hash?: components["schemas"]["Hash"];
             block_number?: components["schemas"]["Quantity"];
             /** Format: date-time */
@@ -1965,6 +1993,7 @@ export interface components {
             gas_used?: components["schemas"]["Quantity"];
             hash: components["schemas"]["Hash"];
             input: string;
+            max_fee_per_blob_gas?: components["schemas"]["Quantity"];
             max_fee_per_gas?: components["schemas"]["Quantity"];
             max_priority_fee_per_gas?: components["schemas"]["Quantity"];
             nonce: components["schemas"]["Quantity"];
@@ -1976,6 +2005,10 @@ export interface components {
             tx_fee_wei?: components["schemas"]["Quantity"];
             type?: string;
             value: components["schemas"]["Quantity"];
+        };
+        TransactionAccessListEntry: {
+            address: components["schemas"]["Address"];
+            storage_keys: components["schemas"]["Hash"][];
         };
         TransactionAuthorizationResponse: {
             data: components["schemas"]["TransactionAuthorizations"];
@@ -2938,6 +2971,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BlockResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listBlockTransactions: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                /** @description Decimal/hex block number or 32-byte block hash. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transactions included by the selected exact block identity. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionListResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

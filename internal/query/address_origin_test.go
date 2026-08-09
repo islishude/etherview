@@ -29,7 +29,7 @@ func TestAddressOriginFoundAndKind(t *testing.T) {
 			db := testDatabase(t,
 				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
 				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
-				queryExpectation{contains: test.query, columns: columns(3), rows: [][]driver.Value{{"4", source.Bytes(), hash.Bytes()}}},
+				queryExpectation{contains: test.query, columns: columns(originColumns(test.accountType)), rows: originRows(test.accountType, source.Bytes(), hash.Bytes())},
 				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
 			)
 			reader, err := NewPostgresReader(db, Options{ChainID: 1})
@@ -50,6 +50,68 @@ func TestAddressOriginFoundAndKind(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAddressOriginSupportsBlockWithdrawalAndFeeRecipient(t *testing.T) {
+	t.Parallel()
+	blockHash := common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+	for _, test := range []struct {
+		name      string
+		query     string
+		kind      gen.AddressOriginKind
+		index     any
+		wantIndex string
+	}{
+		{name: "withdrawal", query: "FROM withdrawals AS withdrawal", kind: gen.Withdrawal, index: "7", wantIndex: "7"},
+		{name: "fee recipient", query: "FROM blocks AS block", kind: gen.BlockFeeRecipient},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := testDatabase(t,
+				queryExpectation{contains: "FROM canonical_blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+				queryExpectation{contains: "FROM genesis_account_observations", columns: columns(1), rows: [][]driver.Value{{false}}},
+				queryExpectation{contains: test.query, columns: columns(6), rows: [][]driver.Value{{"9", nil, nil, string(test.kind), blockHash.Bytes(), test.index}}},
+				queryExpectation{contains: "core_complete.complete AND trace_complete.complete", columns: columns(1), rows: [][]driver.Value{{true}}},
+			)
+			reader, err := NewPostgresReader(db, Options{ChainID: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			origin, err := reader.AddressOrigin(t.Context(),
+				"0x2222222222222222222222222222222222222222",
+				gen.AddressSummaryTypeEoa, 12, common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if origin.State != gen.AddressOriginStateFound || origin.Kind != test.kind ||
+				origin.BlockHash == nil || *origin.BlockHash != blockHash.Hex() ||
+				origin.BlockNumber == nil || *origin.BlockNumber != "9" ||
+				origin.SourceAddress != nil || origin.TransactionHash != nil {
+				t.Fatalf("origin=%+v", origin)
+			}
+			if test.wantIndex == "" {
+				if origin.WithdrawalIndex != nil {
+					t.Fatalf("fee recipient unexpectedly has withdrawal index: %+v", origin)
+				}
+			} else if origin.WithdrawalIndex == nil || *origin.WithdrawalIndex != test.wantIndex {
+				t.Fatalf("withdrawal index=%v, want %v", origin.WithdrawalIndex, test.wantIndex)
+			}
+		})
+	}
+}
+
+func originColumns(accountType gen.AddressSummaryType) int {
+	if accountType == gen.AddressSummaryTypeContract {
+		return 3
+	}
+	return 6
+}
+
+func originRows(accountType gen.AddressSummaryType, source, transaction []byte) [][]driver.Value {
+	if accountType == gen.AddressSummaryTypeContract {
+		return [][]driver.Value{{"4", source, transaction}}
+	}
+	return [][]driver.Value{{"4", source, transaction, "funding", common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc").Bytes(), nil}}
 }
 
 func TestAddressOriginGenesisAllocation(t *testing.T) {

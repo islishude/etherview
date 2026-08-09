@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -42,6 +43,7 @@ type storedBlockProjection struct {
 	GasUsed       *hexutil.Uint64   `json:"gasUsed"`
 	GasLimit      *hexutil.Uint64   `json:"gasLimit"`
 	BaseFeePerGas *hexutil.Big      `json:"baseFeePerGas"`
+	Withdrawals   json.RawMessage   `json:"withdrawals"`
 }
 
 func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blockRecord, error) {
@@ -112,6 +114,26 @@ func (r *PostgresReader) scanBlock(scanner rowScanner, forceCanonical bool) (blo
 	if wire.BaseFeePerGas != nil {
 		value := wire.BaseFeePerGas.ToInt().String()
 		model.BaseFeePerGas = &value
+	}
+	if len(wire.Withdrawals) > 0 && !bytes.Equal(bytes.TrimSpace(wire.Withdrawals), []byte("null")) {
+		bundle, err := chainbundle.DecodeStoredBlock(raw)
+		if err != nil {
+			return blockRecord{}, fmt.Errorf("decode block withdrawals: %w", err)
+		}
+		withdrawals := make([]gen.BlockWithdrawal, len(bundle.Block.Withdrawals()))
+		for index, withdrawal := range bundle.Block.Withdrawals() {
+			address, err := ChecksumAddress(withdrawal.Address.Hex())
+			if err != nil {
+				return blockRecord{}, fmt.Errorf("checksum block withdrawal address: %w", err)
+			}
+			withdrawals[index] = gen.BlockWithdrawal{
+				Index:          strconv.FormatUint(withdrawal.Index, 10),
+				ValidatorIndex: strconv.FormatUint(withdrawal.Validator, 10),
+				Address:        address,
+				Amount:         strconv.FormatUint(withdrawal.Amount, 10),
+			}
+		}
+		model.Withdrawals = &withdrawals
 	}
 	return blockRecord{Model: model, Number: number, Hash: hash}, nil
 }
@@ -208,6 +230,34 @@ func (r *PostgresReader) transactionModel(
 	if transactionTypePresent(transactionJSON) {
 		value := strconv.FormatUint(uint64(wire.Type()), 10)
 		model.Type = &value
+	}
+	if wire.Type() >= types.AccessListTxType && wire.Type() <= types.SetCodeTxType {
+		accessList := wire.AccessList()
+		entries := make([]gen.TransactionAccessListEntry, len(accessList))
+		for index, entry := range accessList {
+			address, err := ChecksumAddress(entry.Address.Hex())
+			if err != nil {
+				return gen.Transaction{}, fmt.Errorf("checksum transaction access-list address: %w", err)
+			}
+			storageKeys := make([]gen.Hash, len(entry.StorageKeys))
+			for keyIndex, key := range entry.StorageKeys {
+				storageKeys[keyIndex] = gen.Hash(strings.ToLower(key.Hex()))
+			}
+			entries[index] = gen.TransactionAccessListEntry{Address: address, StorageKeys: storageKeys}
+		}
+		model.AccessList = &entries
+	}
+	if wire.Type() == types.BlobTxType {
+		blobHashes := wire.BlobHashes()
+		hashes := make([]gen.Hash, len(blobHashes))
+		for index, hash := range blobHashes {
+			hashes[index] = gen.Hash(strings.ToLower(hash.Hex()))
+		}
+		model.BlobVersionedHashes = &hashes
+		if feeCap := wire.BlobGasFeeCap(); feeCap != nil {
+			value := feeCap.String()
+			model.MaxFeePerBlobGas = &value
+		}
 	}
 
 	firstLogIndex, err := receiptFirstLogIndex(receiptJSON)

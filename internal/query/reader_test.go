@@ -368,6 +368,40 @@ func TestTransactionsRejectCursorAfterCanonicalChange(t *testing.T) {
 	}
 }
 
+func TestBlockTransactionsUseExactBlockIdentityAndStableIndexCursor(t *testing.T) {
+	t.Parallel()
+	blockHash := testHash(3)
+	db := testDatabase(t,
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
+		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(10), rows: [][]driver.Value{
+			{testTransactionRawAt(2, 3, 7, 0), testReceiptRawAt(2, 3, 7, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(7), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
+			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
+		}},
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"9", testHashBytes(10)}}},
+		queryExpectation{contains: "FROM blocks WHERE chain_id", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "SELECT EXISTS ( SELECT 1 FROM blocks", columns: columns(1), rows: [][]driver.Value{{true}}},
+		queryExpectation{contains: "inclusion.block_hash = $3", columns: columns(10), rows: [][]driver.Value{
+			{testTransactionRawAt(2, 3, 8, 1), testReceiptRawAt(2, 3, 8, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(8), false, "8", "7", testBlockRaw(2, 3, 2, 2)},
+		}},
+	)
+	reader := testReader(t, db, Options{ChainID: 1})
+	first, cursor, err := reader.BlockTransactions(context.Background(), blockHash, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || cursor == "" || first[0].TransactionIndex == nil || *first[0].TransactionIndex != 0 || first[0].Canonical {
+		t.Fatalf("first=%+v cursor=%q", first, cursor)
+	}
+	second, next, err := reader.BlockTransactions(context.Background(), blockHash, cursor, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second) != 1 || next != "" || second[0].TransactionIndex == nil || *second[0].TransactionIndex != 1 || second[0].Canonical {
+		t.Fatalf("second=%+v next=%q", second, next)
+	}
+}
+
 func TestBlockHashLookupCanReturnRetainedOrphan(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{

@@ -1435,6 +1435,274 @@ tbody tr:hover {
   word-break: break-all;
 }
 
+.transaction-calldata,
+.transaction-calldata-raw,
+.transaction-calldata-decoded {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.transaction-calldata-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.transaction-calldata-toolbar .button[aria-pressed="true"] {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.calldata-value-tree {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.45rem 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-raised) 70%, var(--surface));
+}
+
+.calldata-function-heading {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  min-width: 0;
+  padding: 0 0.8rem;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.calldata-function-heading > span {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+}
+
+.calldata-function-heading strong {
+  min-width: max-content;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.calldata-table-scroll {
+  max-width: 100%;
+  max-height: min(44rem, 70vh);
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  scrollbar-color: var(--line-strong) var(--surface-raised);
+  scrollbar-width: thin;
+}
+
+.calldata-table {
+  min-width: 46rem;
+  font-family: var(--font-mono);
+}
+
+.calldata-table-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(18rem, 1fr) minmax(9rem, 0.45fr) minmax(24rem, 1.6fr);
+  align-items: center;
+  min-width: 46rem;
+  min-height: 2.7rem;
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  direction: ltr;
+}
+
+.calldata-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 2.5rem;
+  background: var(--surface-raised);
+  box-shadow: 0 1px 0 var(--line);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.calldata-table-row:last-child,
+.calldata-composite:last-child,
+.calldata-tree-children .calldata-table-row:last-child {
+  border-bottom: 0;
+}
+
+.calldata-table-row > * {
+  min-width: 0;
+  padding: 0 0.2rem;
+  line-height: 1.45;
+}
+
+.calldata-row-index {
+  color: var(--text-soft);
+  text-align: center;
+  user-select: none;
+}
+
+.calldata-row-name {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-weight: 650;
+  user-select: text;
+}
+
+.calldata-row-type {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 500;
+  opacity: 0.82;
+  user-select: none;
+}
+
+.calldata-row-data {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.calldata-scalar {
+  background: color-mix(in srgb, var(--surface-raised) 55%, var(--surface));
+}
+
+.calldata-scalar:hover,
+.calldata-composite > .calldata-node-summary:hover,
+.calldata-composite[open] > .calldata-node-summary {
+  background: color-mix(in srgb, var(--brand-soft) 25%, var(--surface));
+}
+
+.calldata-composite {
+  display: block;
+  min-width: 46rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.calldata-node-summary {
+  cursor: pointer;
+  list-style-position: outside;
+  background: var(--surface);
+}
+
+.calldata-node-summary::marker,
+.calldata-composite > summary::-webkit-details-marker {
+  color: var(--brand);
+}
+
+.calldata-item-count {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.calldata-tree-children {
+  display: grid;
+  min-width: 46rem;
+  overflow: visible;
+  padding-left: 1.1rem;
+  border-left: 2px solid color-mix(in srgb, var(--brand) 28%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 10%, var(--surface));
+}
+
+.calldata-tree-children .calldata-table-row {
+  min-width: 44.9rem;
+  border-bottom-color: color-mix(in srgb, var(--line) 58%, transparent);
+}
+
+.calldata-value-tree .calldata-row-data:empty::after,
+.calldata-value-tree .calldata-row-index:empty::after {
+  content: "\00a0";
+}
+
+.calldata-value-tree .calldata-row-data:empty,
+.calldata-value-tree .calldata-row-index:empty {
+  color: transparent;
+}
+
+.calldata-node-summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.transaction-calldata-raw .copyable-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 100%;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  scrollbar-color: var(--line-strong) var(--surface-raised);
+  scrollbar-width: thin;
+}
+
+.transaction-calldata-raw .copyable-content {
+  display: block;
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
+.transaction-calldata-raw .copyable-copy-button {
+  position: sticky;
+  right: 0;
+  flex: 0 0 auto;
+}
+
+.transaction-calldata-raw .transaction-data {
+  display: block;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.transaction-calldata-raw .copyable-field:focus-within {
+  border-color: var(--brand);
+}
+
+.calldata-table-scroll::-webkit-scrollbar,
+.transaction-calldata-raw .copyable-field::-webkit-scrollbar {
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.calldata-table-scroll::-webkit-scrollbar-thumb,
+.transaction-calldata-raw .copyable-field::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.calldata-table-scroll::-webkit-scrollbar-track,
+.transaction-calldata-raw .copyable-field::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+@media (max-width: 700px) {
+  .calldata-table,
+  .calldata-table-row,
+  .calldata-composite,
+  .calldata-tree-children {
+    min-width: 38rem;
+  }
+
+  .calldata-table-row,
+  .calldata-tree-children .calldata-table-row {
+    grid-template-columns: 2.5rem minmax(12rem, 1fr) minmax(7rem, 0.45fr) minmax(18rem, 1.6fr);
+  }
+}
+
 .transaction-tab-panel {
   display: grid;
   gap: 1rem;

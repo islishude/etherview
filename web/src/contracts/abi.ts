@@ -1,9 +1,12 @@
 import {
   decodeAbiParameters,
   decodeErrorResult,
+  decodeFunctionData,
   encodeAbiParameters,
+  encodeFunctionData,
   getAddress,
   isAddress,
+  toFunctionSelector,
   type Abi,
   type AbiFunction,
   type AbiParameter,
@@ -74,22 +77,26 @@ export type FormattedAbiValue =
       kind: "scalar";
       type: string;
       text: string;
+      internalType?: string;
     }>
   | Readonly<{
       kind: "tuple";
       type: string;
       fields: readonly FormattedAbiField[];
+      internalType?: string;
     }>
   | Readonly<{
       kind: "array";
       type: string;
       items: readonly FormattedAbiValue[];
+      internalType?: string;
     }>;
 
 export interface FormattedAbiField {
   readonly index: number;
   readonly name: string;
   readonly type: string;
+  readonly internalType?: string;
   readonly value: FormattedAbiValue;
 }
 
@@ -103,6 +110,37 @@ export interface DecodedAbiRevert {
   readonly args: readonly FormattedAbiOutput[];
   readonly display: string;
 }
+
+export type CalldataDecodeStatus =
+  | "decoded"
+  | "unknown_selector"
+  | "malformed_calldata"
+  | "abi_unavailable"
+  | "ambiguous_abi_match";
+
+export type CalldataDecodeResult =
+  | Readonly<{
+      status: "decoded";
+      selector: Hex;
+      signature: string;
+      args: readonly FormattedAbiOutput[];
+    }>
+  | Readonly<{
+      status: "unknown_selector";
+      selector: Hex;
+    }>
+  | Readonly<{
+      status: "malformed_calldata";
+      selector?: Hex;
+    }>
+  | Readonly<{
+      status: "abi_unavailable";
+    }>
+  | Readonly<{
+      status: "ambiguous_abi_match";
+      selector: Hex;
+      signatures: readonly string[];
+    }>;
 
 type ArrayDimension = Readonly<{
   length: number | null;
@@ -195,6 +233,93 @@ export function decodeConstructorArguments(
     throw new AbiFormError("INVALID_ABI_VALUE", "constructorArguments");
   }
   return formatParameterValues(constructor.inputs, values, "$constructor");
+}
+
+/**
+ * Decodes one verified ABI against complete calldata. The selector and
+ * arguments are round-tripped through Viem so trailing or non-canonical bytes
+ * never become a displayed function call.
+ */
+export function decodeCalldata(
+  abi: unknown,
+  encoded: unknown,
+): CalldataDecodeResult {
+  if (typeof encoded !== "string" || !validHex(encoded, 4, ABI_LIMITS.bytesLength)) {
+    return Object.freeze({ status: "malformed_calldata" });
+  }
+  const selector = encoded.slice(0, 10).toLowerCase() as Hex;
+  let parsedABI: Abi;
+  try {
+    parsedABI = parseVerifiedABI(abi);
+  } catch {
+    return Object.freeze({ status: "abi_unavailable" });
+  }
+
+  const matches = parsedABI.filter((item): item is AbiFunction =>
+    item.type === "function" && toFunctionSelector(canonicalFunctionSignature(item)) === selector,
+  );
+  if (matches.length === 0) {
+    return Object.freeze({ status: "unknown_selector", selector });
+  }
+
+  const decoded: Array<Extract<CalldataDecodeResult, { status: "decoded" }>> = [];
+  for (const fn of matches) {
+    try {
+      const singleABI = singleFunctionAbi(fn);
+      const result = decodeFunctionData({ abi: singleABI, data: encoded.toLowerCase() as Hex });
+      const canonical = encodeFunctionData({
+        abi: singleABI,
+        functionName: fn.name,
+        args: result.args,
+      });
+      if (canonical.toLowerCase() !== encoded.toLowerCase()) continue;
+      decoded.push(Object.freeze({
+        status: "decoded",
+        selector,
+        signature: canonicalFunctionSignature(fn),
+        args: formatParameterValues(fn.inputs, result.args, "$calldata"),
+      }));
+    } catch {
+      // A selector match with invalid or non-canonical arguments is malformed.
+    }
+  }
+  if (decoded.length === 0) {
+    return Object.freeze({ status: "malformed_calldata", selector });
+  }
+  const signatures = [...new Set(decoded.map((candidate) => candidate.signature))].sort();
+  if (signatures.length > 1) {
+    return Object.freeze({ status: "ambiguous_abi_match", selector, signatures });
+  }
+  return decoded[0]!;
+}
+
+/** Merges independently verified ABI candidates without choosing conflicts. */
+export function mergeCalldataResults(
+  results: readonly CalldataDecodeResult[],
+): CalldataDecodeResult {
+  const decoded = results.filter((result): result is Extract<CalldataDecodeResult, { status: "decoded" }> =>
+    result.status === "decoded",
+  );
+  const distinct = new Map<string, Extract<CalldataDecodeResult, { status: "decoded" }>>();
+  for (const result of decoded) {
+    const key = `${result.signature}\u0000${result.args.map((arg) => arg.display).join("\u0001")}`;
+    if (!distinct.has(key)) distinct.set(key, result);
+  }
+  if (distinct.size === 1) return [...distinct.values()][0]!;
+  if (distinct.size > 1) {
+    return Object.freeze({
+      status: "ambiguous_abi_match",
+      selector: decoded[0]!.selector,
+      signatures: [...new Set(decoded.map((result) => result.signature))].sort(),
+    });
+  }
+  const ambiguous = results.find((result) => result.status === "ambiguous_abi_match");
+  if (ambiguous) return ambiguous;
+  const malformed = results.find((result) => result.status === "malformed_calldata");
+  if (malformed) return malformed;
+  const unknown = results.find((result) => result.status === "unknown_selector");
+  if (unknown) return unknown;
+  return Object.freeze({ status: "abi_unavailable" });
 }
 
 export function canonicalFunctionSignature(fn: AbiFunction): string {
@@ -581,7 +706,7 @@ function createInputNode(
       }
     }
     return Object.freeze({
-      kind: "array",
+      kind: "array" as const,
       type: parameter.type,
       fixedLength: array.length,
       items: Object.freeze(items),
@@ -754,13 +879,16 @@ function formatParameterValues(
   const budget = new ValueBudget(ABI_LIMITS.outputNodes);
   const outputs = parameters.map((parameter, index) => {
     const value = formatValue(parameter, values[index], `${path}[${index}]`, 0, budget);
-    return Object.freeze({
+    const output = {
       index,
       name: parameter.name ?? "",
       type: parameter.type,
       value,
       display: formattedValueText(value),
-    });
+    };
+    return Object.freeze(parameter.internalType === undefined
+      ? output
+      : { ...output, internalType: parameter.internalType });
   });
   return Object.freeze(outputs);
 }
@@ -787,24 +915,48 @@ function formatValue(
     const items = values.map((item, index) =>
       formatValue(element, item, `${path}[${index}]`, depth + 1, budget),
     );
-    return Object.freeze({ kind: "array", type: parameter.type, items: Object.freeze(items) });
+    const result = {
+      kind: "array" as const,
+      type: parameter.type,
+      items: Object.freeze(items),
+    };
+    return Object.freeze(parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType });
   }
   const parsed = parseType(parameter.type, path);
   if (parsed.base === "tuple") {
     const components = "components" in parameter ? parameter.components : undefined;
     if (!components) throw new AbiFormError("INVALID_ABI", path);
     const values = tupleValues(components, value, path);
-    const fields = components.map((component, index) =>
-      Object.freeze({
+    const fields = components.map((component, index) => {
+      const field = {
         index,
         name: component.name ?? "",
         type: component.type,
         value: formatValue(component, values[index], `${path}.${index}`, depth + 1, budget),
-      }),
-    );
-    return Object.freeze({ kind: "tuple", type: parameter.type, fields: Object.freeze(fields) });
+      };
+      return Object.freeze(component.internalType === undefined
+        ? field
+        : { ...field, internalType: component.internalType });
+    });
+    const result = {
+      kind: "tuple" as const,
+      type: parameter.type,
+      fields: Object.freeze(fields),
+    };
+    return Object.freeze(parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType });
   }
-  return Object.freeze({ kind: "scalar", type: parameter.type, text: formatScalar(parsed.base, value, path) });
+  const result = {
+    kind: "scalar" as const,
+    type: parameter.type,
+    text: formatScalar(parsed.base, value, path),
+  };
+  return Object.freeze(parameter.internalType === undefined
+    ? result
+    : { ...result, internalType: parameter.internalType });
 }
 
 function formatScalar(type: string, value: unknown, path: string): string {

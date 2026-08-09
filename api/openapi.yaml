@@ -310,6 +310,35 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /blocks/{id}/transactions:
+    get:
+      operationId: listBlockTransactions
+      tags: [blocks, transactions]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - name: id
+          in: path
+          required: true
+          description: Decimal/hex block number or 32-byte block hash.
+          schema:
+            type: string
+            format: block-identifier
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Transactions included by the selected exact block identity.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /genesis/accounts:
     get:
       operationId: listGenesisAccounts
@@ -1723,7 +1752,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 29
+          maxItems: 30
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -1986,6 +2015,10 @@ components:
           $ref: "#/components/schemas/Quantity"
         base_fee_per_gas:
           $ref: "#/components/schemas/Quantity"
+        withdrawals:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockWithdrawal"
         canonical:
           type: boolean
         finality:
@@ -2038,6 +2071,16 @@ components:
           $ref: "#/components/schemas/Quantity"
         max_priority_fee_per_gas:
           $ref: "#/components/schemas/Quantity"
+        max_fee_per_blob_gas:
+          $ref: "#/components/schemas/Quantity"
+        access_list:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionAccessListEntry"
+        blob_versioned_hashes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hash"
         burned_wei:
           $ref: "#/components/schemas/Quantity"
           description: "Gas burned by protocol in wei, computed as gas_used * block.base_fee_per_gas. For pre-London blocks this is 0."
@@ -2237,7 +2280,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [contract_creation, funding]
+          enum: [contract_creation, funding, withdrawal, block_fee_recipient]
         state:
           type: string
           enum: [found, genesis, not_found, unavailable]
@@ -2245,6 +2288,36 @@ components:
           $ref: "#/components/schemas/Address"
         transaction_hash:
           $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        withdrawal_index:
+          $ref: "#/components/schemas/Quantity"
+    BlockWithdrawal:
+      type: object
+      additionalProperties: false
+      required: [index, validator_index, address, amount]
+      properties:
+        index:
+          $ref: "#/components/schemas/Quantity"
+        validator_index:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+    TransactionAccessListEntry:
+      type: object
+      additionalProperties: false
+      required: [address, storage_keys]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        storage_keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hash"
     GenesisAccount:
       type: object
       required:

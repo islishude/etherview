@@ -113,6 +113,10 @@ func (r *Reader) Block(ctx context.Context, id string) (gen.Block, error) {
 	return r.Base.Block(ctx, id)
 }
 
+func (r *Reader) BlockTransactions(ctx context.Context, id, cursor string, limit int) ([]gen.Transaction, string, error) {
+	return r.Base.BlockTransactions(ctx, id, cursor, limit)
+}
+
 func (r *Reader) Transactions(ctx context.Context, cursor string, limit int) ([]gen.Transaction, string, error) {
 	return r.Base.Transactions(ctx, cursor, limit)
 }

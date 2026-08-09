@@ -31,6 +31,7 @@ the agreed Etherscan V2 subset.
 | P40-T09 | done | P40-T02, P40-T05 | Writer-authoritative home snapshot and centralized SSE fanout | contract, replay, concurrency, and integration tests |
 | P40-T10 | done | P20, P40-T08 | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration | contract, state, cursor, reorg, and configuration tests |
 | P40-T11 | done | P30-T15, P40-T10 | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests |
+| P40-T12 | done | P40-T10 | Protocol detail fields, block-scoped transactions, withdrawals, and block-origin address evidence | OpenAPI, generated contract, query, cursor, reorg, and handler tests |
 
 ## Acceptance
 
@@ -52,6 +53,16 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T12: OpenAPI, generated Go/TypeScript contracts, x402 operation inventory,
+  Helm billing route schema, block-scoped transaction handler/query, typed
+  access-list/blob fields, block withdrawals, and withdrawal/fee-recipient
+  address origins are implemented. Height lookups resolve the canonical hash;
+  exact hashes retain orphan transactions and opaque cursors bind chain,
+  number, hash, and transaction index.
+- P40-T12 verification: focused API/query/state tests, typed model and origin
+  regressions, `make test-go`, `make generate-check`, `make plan-check`, and
+  the related race tests pass.
 
 - P40-T11: the native API exposes current proxy identity plus separately
   paginated upgrade and initialization histories from writer-authoritative,

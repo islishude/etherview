@@ -40,16 +40,22 @@ func (e ABISourceKind) Valid() bool {
 
 // Defines values for AddressOriginKind.
 const (
-	ContractCreation AddressOriginKind = "contract_creation"
-	Funding          AddressOriginKind = "funding"
+	BlockFeeRecipient AddressOriginKind = "block_fee_recipient"
+	ContractCreation  AddressOriginKind = "contract_creation"
+	Funding           AddressOriginKind = "funding"
+	Withdrawal        AddressOriginKind = "withdrawal"
 )
 
 // Valid indicates whether the value is a known member of the AddressOriginKind enum.
 func (e AddressOriginKind) Valid() bool {
 	switch e {
+	case BlockFeeRecipient:
+		return true
 	case ContractCreation:
 		return true
 	case Funding:
+		return true
+	case Withdrawal:
 		return true
 	default:
 		return false
@@ -1955,7 +1961,12 @@ type AddressInternalTransactionListResponse struct {
 
 // AddressOrigin defines model for AddressOrigin.
 type AddressOrigin struct {
-	Kind AddressOriginKind `json:"kind"`
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash *Hash `json:"block_hash,omitempty"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber *Quantity         `json:"block_number,omitempty"`
+	Kind        AddressOriginKind `json:"kind"`
 
 	// SourceAddress A 20-byte address; responses use the EIP-55 checksum form.
 	SourceAddress *Address           `json:"source_address,omitempty"`
@@ -1963,6 +1974,9 @@ type AddressOrigin struct {
 
 	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	TransactionHash *Hash `json:"transaction_hash,omitempty"`
+
+	// WithdrawalIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	WithdrawalIndex *Quantity `json:"withdrawal_index,omitempty"`
 }
 
 // AddressOriginKind defines model for AddressOrigin.Kind.
@@ -2318,9 +2332,10 @@ type Block struct {
 	Number Quantity `json:"number"`
 
 	// ParentHash A 32-byte hash; responses use normalized lowercase hexadecimal.
-	ParentHash       Hash      `json:"parent_hash"`
-	Timestamp        time.Time `json:"timestamp"`
-	TransactionCount int       `json:"transaction_count"`
+	ParentHash       Hash               `json:"parent_hash"`
+	Timestamp        time.Time          `json:"timestamp"`
+	TransactionCount int                `json:"transaction_count"`
+	Withdrawals      *[]BlockWithdrawal `json:"withdrawals,omitempty"`
 }
 
 // BlockListResponse defines model for BlockListResponse.
@@ -2397,6 +2412,21 @@ type BlockStat struct {
 type BlockStatListResponse struct {
 	Data []BlockStat `json:"data"`
 	Meta Meta        `json:"meta"`
+}
+
+// BlockWithdrawal defines model for BlockWithdrawal.
+type BlockWithdrawal struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount Quantity `json:"amount"`
+
+	// Index A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Index Quantity `json:"index"`
+
+	// ValidatorIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidatorIndex Quantity `json:"validator_index"`
 }
 
 // CatalogSnapshot defines model for CatalogSnapshot.
@@ -3566,6 +3596,9 @@ type TraceRevertDecodingStatus string
 
 // Transaction defines model for Transaction.
 type Transaction struct {
+	AccessList          *[]TransactionAccessListEntry `json:"access_list,omitempty"`
+	BlobVersionedHashes *[]Hash                       `json:"blob_versioned_hashes,omitempty"`
+
 	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	BlockHash *Hash `json:"block_hash,omitempty"`
 
@@ -3604,6 +3637,9 @@ type Transaction struct {
 	Hash  Hash   `json:"hash"`
 	Input string `json:"input"`
 
+	// MaxFeePerBlobGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MaxFeePerBlobGas *Quantity `json:"max_fee_per_blob_gas,omitempty"`
+
 	// MaxFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	MaxFeePerGas *Quantity `json:"max_fee_per_gas,omitempty"`
 
@@ -3628,6 +3664,13 @@ type Transaction struct {
 
 // TransactionStatus defines model for Transaction.Status.
 type TransactionStatus string
+
+// TransactionAccessListEntry defines model for TransactionAccessListEntry.
+type TransactionAccessListEntry struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address     Address `json:"address"`
+	StorageKeys []Hash  `json:"storage_keys"`
+}
 
 // TransactionAuthorizationResponse defines model for TransactionAuthorizationResponse.
 type TransactionAuthorizationResponse struct {
@@ -4312,6 +4355,15 @@ type ListBlocksParams struct {
 
 // GetBlockParams defines parameters for GetBlock.
 type GetBlockParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListBlockTransactionsParams defines parameters for ListBlockTransactions.
+type ListBlockTransactionsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

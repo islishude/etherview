@@ -79,6 +79,9 @@ func (f fakeReader) Blocks(context.Context, string, int) ([]gen.Block, string, e
 func (f fakeReader) Block(context.Context, string) (gen.Block, error) {
 	return gen.Block{}, f.err
 }
+func (f fakeReader) BlockTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error) {
+	return []gen.Transaction{}, "next", f.err
+}
 func (f fakeReader) Transactions(context.Context, string, int) ([]gen.Transaction, string, error) {
 	return []gen.Transaction{}, "next", f.err
 }
@@ -563,6 +566,7 @@ func TestRoutePatternUsesRegisteredMuxPatternsAndBoundsCatchAll(t *testing.T) {
 		{http.MethodGet, "/api/v1/config", "", "/api/v1/config"},
 		{http.MethodGet, "/api/v1/blocks", "", "/api/v1/blocks"},
 		{http.MethodGet, "/api/v1/blocks/123456", "", "/api/v1/blocks/{id}"},
+		{http.MethodGet, "/api/v1/blocks/123456/transactions", "", "/api/v1/blocks/{id}/transactions"},
 		{http.MethodGet, "/api/v1/transactions", "", "/api/v1/transactions"},
 		{http.MethodGet, "/api/v1/transactions/0xsecret", "", "/api/v1/transactions/{hash}"},
 		{http.MethodGet, "/api/v1/pending", "", "/api/v1/pending"},

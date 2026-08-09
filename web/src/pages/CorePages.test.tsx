@@ -136,6 +136,65 @@ describe("core explorer pages", () => {
     expect(screen.getByText("孤链", { exact: true })).toBeVisible();
   });
 
+  it("deep-links block tabs, renders withdrawals, and loads block transactions lazily", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/blocks/${canonicalHash}`) {
+        return envelope({
+          ...block("12", canonicalHash),
+          withdrawals: [{
+            index: "7",
+            validator_index: "42",
+            address,
+            amount: "3200000000",
+          }],
+        });
+      }
+      if (url.pathname === `/api/v1/blocks/${canonicalHash}/transactions`) {
+        return envelope([{
+          hash: transactionHash,
+          block_hash: canonicalHash,
+          block_number: "12",
+          transaction_index: 0,
+          from: address,
+          to: delegatedAddress,
+          value: "1000000000000000000",
+          gas: "21000",
+          gas_used: "21000",
+          status: "success",
+          canonical: true,
+          finality: "safe",
+          completeness: completeness(),
+        }], { next_cursor: "block-next" });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/blocks/${canonicalHash}?tab=transactions`);
+
+    const tabs = await screen.findByRole("tablist", { name: "Block detail sections" });
+    expect(within(tabs).getByRole("tab", { name: "Transactions" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("link", { name: shorten(transactionHash) })).toHaveAttribute(
+      "href", `/tx/${transactionHash}?tab=overview`,
+    );
+    expect(requested).toContain(`/api/v1/blocks/${canonicalHash}/transactions`);
+    const withdrawalsTab = within(tabs).getByRole("tab", { name: "Withdrawals" });
+    expect(withdrawalsTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.queryByRole("heading", { name: "Withdrawals" })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(withdrawalsTab);
+    expect(await screen.findByRole("heading", { name: "Withdrawals" })).toBeVisible();
+    expect(screen.getByText("3,200,000,000 Gwei")).toBeVisible();
+    expect(withdrawalsTab).toHaveAttribute("aria-selected", "true");
+    await user.click(within(tabs).getByRole("tab", { name: "Overview" }));
+    expect(screen.queryByText("Data completeness")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Withdrawals" })).not.toBeInTheDocument();
+  });
+
   it("renders exact-state capability loss instead of a fabricated zero address", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
@@ -302,6 +361,102 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
+  it("decodes verified target calldata and keeps raw hex copyable", async () => {
+    const calldata = `0xa9059cbb${"0".repeat(24)}${"44".repeat(20)}${"0".repeat(63)}c`;
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/contracts/${address}/verification`) {
+        return envelope({
+          kind: "verification_success",
+          abi: [{
+            type: "function", name: "transfer", stateMutability: "nonpayable",
+            inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
+            outputs: [],
+          }],
+          target: { address, code_hash: canonicalHash },
+        });
+      }
+      if (url.pathname === `/api/v1/contracts/${address}/proxy`) {
+        return envelope({ address, status: "not_detected", evidence: [] });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("More details"));
+
+    expect((await screen.findAllByText("transfer(address,uint256)")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("columnheader", { name: "Params" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Type" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Data" })).toBeVisible();
+    expect(screen.getAllByText(address).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("12", { exact: true }).length).toBeGreaterThan(0);
+    expect(requested).toContain(`/api/v1/contracts/${address}/verification`);
+    expect(requested).toContain(`/api/v1/contracts/${address}/proxy`);
+
+    await user.click(screen.getByRole("button", { name: "Hex" }));
+    expect(screen.getByRole("button", { name: "Hex" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(calldata)).toBeVisible();
+  });
+
+  it("switches raw calldata to UTF-8 and reports invalid UTF-8 without replacing hex", async () => {
+    const calldata = "0xffff";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+    renderExplorer(`/tx/${transactionHash}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("More details"));
+    await user.click(screen.getByRole("button", { name: "UTF-8" }));
+    expect(screen.getByText("UTF-8 is unavailable for these bytes")).toBeVisible();
+    expect(screen.getByText(calldata)).toBeVisible();
+    expect(screen.getByRole("button", { name: "UTF-8" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("renders the complete calldata bytes as UTF-8 when they are valid", async () => {
+    const calldata = "0x74657374";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+    renderExplorer(`/tx/${transactionHash}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("More details"));
+    await user.click(screen.getByRole("button", { name: "UTF-8" }));
+    expect(screen.getByText("test")).toBeVisible();
+  });
+
   it("activates the Authorizations tab and loads transaction authorization tuples", async () => {
     const requested: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -317,6 +472,7 @@ describe("core explorer pages", () => {
           from: address,
           to: delegatedAddress,
           nonce: "1",
+          type: "4",
           value: "0",
           gas: "21000",
           input: "0x",
@@ -366,6 +522,8 @@ describe("core explorer pages", () => {
 
     const user = userEvent.setup();
     const authorizationsTab = await screen.findByRole("tab", { name: "Authorizations" });
+    expect(screen.getByRole("tab", { name: "Access list" })).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "Blob" })).not.toBeInTheDocument();
     await user.click(authorizationsTab);
 
     expect(authorizationsTab).toHaveAttribute("aria-selected", "true");
@@ -545,6 +703,9 @@ describe("core explorer pages", () => {
     expect(contractLink).toHaveAttribute("href", `/address/${contractAddress}`);
     expect(within(toRow).getByText("Contract creation")).toBeVisible();
     expect(within(toRow).getByRole("button", { name: "Copy" })).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "Access list" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Blob" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Authorizations" })).not.toBeInTheDocument();
 
     await user.click(screen.getByText("More details"));
     expect(screen.queryByRole("heading", { name: "Data completeness" })).not.toBeInTheDocument();
@@ -960,6 +1121,7 @@ describe("core explorer pages", () => {
       if (path === `/api/v1/addresses/${address}`) {
         return envelope({
           address,
+          name: "Activity contract",
           type: "contract",
           balance: "0",
           nonce: "0",
@@ -1077,6 +1239,7 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Contract" })).toBeVisible();
     const summary = screen.getByRole("heading", { name: "Address summary" }).closest("section");
     if (!summary) throw new Error("address summary is missing");
+    expect(within(summary).queryByText("Activity contract")).not.toBeInTheDocument();
     expect(within(summary).queryByText("Type")).not.toBeInTheDocument();
     expect(within(summary).queryByText(address)).not.toBeInTheDocument();
     expect(within(summary).getByRole("link", { name: createdAddress })).toHaveAttribute(

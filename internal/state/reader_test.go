@@ -24,6 +24,9 @@ func (testBaseReader) Blocks(context.Context, string, int) ([]gen.Block, string,
 	return nil, "", nil
 }
 func (testBaseReader) Block(context.Context, string) (gen.Block, error) { return gen.Block{}, nil }
+func (testBaseReader) BlockTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error) {
+	return nil, "", nil
+}
 func (testBaseReader) Transactions(context.Context, string, int) ([]gen.Transaction, string, error) {
 	return nil, "", nil
 }

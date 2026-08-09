@@ -9,7 +9,7 @@ import {
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
-import { getAddress, isAddress } from "viem";
+import { getAddress, hexToBytes, isAddress, type Hex } from "viem";
 
 import {
   useAddressERC20Balances,
@@ -20,6 +20,7 @@ import {
   useAddressTransactions,
   useAddress,
   useBlock,
+  useBlockTransactions,
   useBlocks,
   useChainStatus,
   useGenesisAccounts,
@@ -43,16 +44,27 @@ import {
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import { ContractPage, isContractTabHash } from "./ContractPage";
 import {
+  decodeCalldata,
+  mergeCalldataResults,
+  type CalldataDecodeResult,
+  type FormattedAbiField,
+  type FormattedAbiOutput,
+  type FormattedAbiValue,
+} from "@/contracts/abi";
+import {
   DelegatedAccountPanel,
   isDelegatedAccountTabHash,
 } from "@/contracts/DelegatedAccountPanel";
+import {
+  useContractProxy,
+  useVerifiedContractArtifact,
+} from "@/contracts/proxy";
 import type {
   AddressInternalTransaction,
   AddressSummary,
   AddressTokenTransfer,
   BlockSummary,
   ChainStatus,
-  Completeness,
   ERC20Balance,
   NFTBalance,
   SearchResult,
@@ -561,16 +573,18 @@ export function EntityPage({
   secondary,
   transactionTab,
   addressTab,
+  blockTab,
 }: {
   kind: EntityKind;
   identifier: string;
   secondary?: string;
   transactionTab?: string;
   addressTab?: string;
+  blockTab?: string;
 }) {
   switch (kind) {
     case "block":
-      return <BlockDetailPage identifier={identifier} />;
+      return <BlockDetailPage identifier={identifier} tab={blockTab ?? "overview"} />;
     case "transaction":
       return <TransactionDetailPage hash={identifier} tab={transactionTab ?? "overview"} />;
     case "address":
@@ -582,10 +596,155 @@ export function EntityPage({
   }
 }
 
-function BlockDetailPage({ identifier }: { identifier: string }) {
+const BLOCK_TABS = ["overview", "transactions", "withdrawals"] as const;
+type BlockTab = typeof BLOCK_TABS[number];
+
+function blockTabsForBlock(block?: BlockSummary): BlockTab[] {
+  return BLOCK_TABS.filter((tab) => tab !== "withdrawals" || Boolean(block?.withdrawals));
+}
+
+function BlockWithdrawalsPanel({
+  withdrawals,
+  locale,
+}: {
+  withdrawals: NonNullable<BlockSummary["withdrawals"]>;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="panel transaction-tab-panel" aria-labelledby="block-withdrawals-title">
+      <h2 id="block-withdrawals-title">{t("detail.withdrawals")}</h2>
+      {withdrawals.length === 0 ? (
+        <p className="empty-result">{t("state.noWithdrawals")}</p>
+      ) : (
+        <div className="table-scroll" tabIndex={0}>
+          <table>
+            <caption className="sr-only">{t("detail.withdrawals")}</caption>
+            <thead><tr>
+              <th>{t("detail.withdrawalIndex")}</th>
+              <th>{t("detail.validatorIndex")}</th>
+              <th>{t("table.address")}</th>
+              <th>{t("detail.withdrawalAmount")}</th>
+            </tr></thead>
+            <tbody>{withdrawals.map((withdrawal) => (
+              <tr key={withdrawal.index}>
+                <td><code>{formatInteger(withdrawal.index, locale)}</code></td>
+                <td><code>{formatInteger(withdrawal.validator_index, locale)}</code></td>
+                <td>
+                  <Link to="/address/$address" params={{ address: withdrawal.address }}>
+                    <code>{withdrawal.address}</code>
+                  </Link>
+                </td>
+                <td><code>{formatInteger(withdrawal.amount, locale)} Gwei</code></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BlockTransactionsPanel({
+  blockHash,
+  busy,
+  error,
+  hasNext,
+  hasPrevious,
+  items,
+  loading,
+  locale,
+  nativeDecimals,
+  nativeSymbol,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+}: {
+  blockHash: string;
+  busy: boolean;
+  error: unknown;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  items?: TransactionSummary[];
+  loading: boolean;
+  locale: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
+  onNext: () => void;
+  onPrevious: () => void;
+  onReset: () => void;
+  page: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="panel transaction-tab-panel" role="tabpanel" aria-label={t("blockTabs.transactions")}>
+      <QueryNotice loading={loading} error={error} onReset={onReset} />
+      {items?.length === 0 ? <p className="empty-result">{t("state.noTransactions")}</p> : null}
+      {items && items.length > 0 ? (
+        <div className="table-scroll" tabIndex={0} aria-label={t("blockTabs.transactions")}>
+          <table>
+            <caption className="sr-only">{t("blockTabs.transactions")}</caption>
+            <thead><tr>
+              <th>{t("table.hash")}</th>
+              <th>{t("detail.transactionIndex")}</th>
+              <th>{t("table.status")}</th>
+              <th>{t("table.from")}</th>
+              <th>{t("table.to")}</th>
+              <th>{t("table.value", { symbol: nativeSymbol })}</th>
+              <th>{t("detail.gasUsed")}</th>
+              <th>{t("table.finality")}</th>
+            </tr></thead>
+            <tbody>{items.map((transaction) => (
+              <tr key={`${blockHash}:${transaction.transaction_index ?? transaction.hash}:${transaction.hash}`}>
+                <td>
+                  <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
+                    <code>{shorten(transaction.hash)}</code>
+                  </Link>
+                </td>
+                <td><code>{transaction.transaction_index == null ? "—" : formatInteger(String(transaction.transaction_index), locale)}</code></td>
+                <td><TransactionStatusBadge transaction={transaction} /></td>
+                <td><Link to="/address/$address" params={{ address: transaction.from }}><code>{shorten(transaction.from)}</code></Link></td>
+                <td>{transaction.to ? <Link to="/address/$address" params={{ address: transaction.to }}><code>{shorten(transaction.to)}</code></Link> : t("common.contractCreation")}</td>
+                <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
+                <td><code>{transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}</code></td>
+                <td><FinalityBadge finality={transaction.finality} /></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      ) : null}
+      {items ? (
+        <CursorPagination
+          busy={busy}
+          hasNext={hasNext}
+          hasPrevious={hasPrevious}
+          label={t("pagination.blockTransactions")}
+          onNext={onNext}
+          onPrevious={onPrevious}
+          page={page}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function BlockDetailPage({ identifier, tab }: { identifier: string; tab: string }) {
   const { i18n, t } = useTranslation();
+  const navigate = useNavigate();
   const block = useBlock(identifier);
+  const pager = useCursorHistory(`block-transactions:${block.data?.hash ?? identifier}`);
+  const blockTabs = blockTabsForBlock(block.data);
+  const activeTab: BlockTab = blockTabs.includes(tab as BlockTab) ? tab as BlockTab : "overview";
+  const transactions = useBlockTransactions(
+    identifier,
+    pager.cursor,
+    activeTab === "transactions" && Boolean(block.data),
+  );
   const locale = i18n.resolvedLanguage ?? "en";
+  const publicConfig = usePublicConfig();
+  const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
+  const nativeSymbol = publicConfig.data?.native_symbol ?? "";
 
   return (
     <Page title={t("page.block")} description={identifier} mono>
@@ -595,61 +754,439 @@ function BlockDetailPage({ identifier }: { identifier: string }) {
           {!block.data.canonical && (
             <ReorgContext kind="block" hash={block.data.hash} />
           )}
-          <DetailList label={t("detail.blockSummary")}>
-            <Detail label={t("table.block")} value={formatInteger(block.data.number, locale)} />
-            <Detail label={t("table.hash")} value={block.data.hash} mono />
-            <Detail
-              label={t("detail.parentHash")}
-              mono
-              value={block.data.number === "0" ? block.data.parent_hash : (
-                <Link to="/blocks/$blockID" params={{ blockID: block.data.parent_hash }}>
-                  {block.data.parent_hash}
-                </Link>
+          <nav className="transaction-tabs" role="tablist" aria-label={t("detail.blockSections")}>
+            {blockTabs.map((tabID) => (
+              <Link
+                aria-selected={activeTab === tabID}
+                className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+                key={tabID}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const currentIndex = blockTabs.indexOf(tabID);
+                  const nextIndex = event.key === "Home" ? 0
+                    : event.key === "End" ? blockTabs.length - 1
+                    : event.key === "ArrowLeft"
+                      ? (currentIndex - 1 + blockTabs.length) % blockTabs.length
+                      : (currentIndex + 1) % blockTabs.length;
+                  const nextTab = blockTabs[nextIndex]!;
+                  void navigate({
+                    to: "/blocks/$blockID",
+                    params: { blockID: identifier },
+                    search: { tab: nextTab },
+                  }).then(() => {
+                    const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]');
+                    tabs?.[nextIndex]?.focus();
+                  });
+                }}
+                params={{ blockID: identifier }}
+                role="tab"
+                search={{ tab: tabID }}
+                tabIndex={activeTab === tabID ? 0 : -1}
+                to="/blocks/$blockID"
+              >
+                {t(`blockTabs.${tabID}`)}
+              </Link>
+            ))}
+          </nav>
+          {activeTab === "overview" && (
+            <>
+              <DetailList label={t("detail.blockSummary")}>
+                <Detail label={t("table.block")} value={formatInteger(block.data.number, locale)} />
+                <Detail label={t("table.hash")} value={block.data.hash} mono />
+                <Detail
+                  label={t("detail.parentHash")}
+                  mono
+                  value={block.data.number === "0" ? block.data.parent_hash : (
+                    <Link to="/blocks/$blockID" params={{ blockID: block.data.parent_hash }}>
+                      {block.data.parent_hash}
+                    </Link>
+                  )}
+                />
+                <Detail label={t("table.age")} value={formatTimestamp(block.data.timestamp, locale)} />
+                <Detail label={t("table.transactions")} value={formatInteger(block.data.transaction_count, locale)} />
+                <Detail label={t("table.gas")} value={formatInteger(block.data.gas_used, locale)} />
+                <Detail label={t("detail.gasLimit")} value={formatInteger(block.data.gas_limit, locale)} />
+                <Detail label={t("detail.baseFee")} value={formatInteger(block.data.base_fee_per_gas, locale)} />
+                <Detail
+                  label={t("detail.miner")}
+                  mono
+                  value={block.data.miner ? (
+                    <Link to="/address/$address" params={{ address: block.data.miner }}>
+                      {block.data.miner}
+                    </Link>
+                  ) : undefined}
+                />
+                <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
+                <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />
+              </DetailList>
+              {block.data.number === "0" && block.data.canonical && (
+                <p className="context-note">
+                  <Link to="/genesis">{t("actions.viewGenesisAccounts")}</Link>
+                </p>
               )}
-            />
-            <Detail label={t("table.age")} value={formatTimestamp(block.data.timestamp, locale)} />
-            <Detail label={t("table.transactions")} value={formatInteger(block.data.transaction_count, locale)} />
-            <Detail label={t("table.gas")} value={formatInteger(block.data.gas_used, locale)} />
-            <Detail label={t("detail.gasLimit")} value={formatInteger(block.data.gas_limit, locale)} />
-            <Detail label={t("detail.baseFee")} value={formatInteger(block.data.base_fee_per_gas, locale)} />
-            <Detail
-              label={t("detail.miner")}
-              mono
-              value={block.data.miner ? (
-                <Link to="/address/$address" params={{ address: block.data.miner }}>
-                  {block.data.miner}
-                </Link>
-              ) : undefined}
-            />
-            <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
-            <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />
-          </DetailList>
-          {block.data.number === "0" && block.data.canonical && (
-            <p className="context-note">
-              <Link to="/genesis">{t("actions.viewGenesisAccounts")}</Link>
-            </p>
+            </>
           )}
-          <CompletenessPanel completeness={block.data.completeness} />
+          {activeTab === "transactions" && (
+            <BlockTransactionsPanel
+              blockHash={block.data.hash}
+              busy={transactions.isFetching}
+              error={transactions.error}
+              hasNext={Boolean(transactions.data?.next_cursor)}
+              hasPrevious={pager.hasPrevious}
+              items={transactions.data?.items}
+              loading={transactions.isPending}
+              locale={locale}
+              nativeDecimals={nativeDecimals}
+              nativeSymbol={nativeSymbol}
+              onNext={() => pager.next(transactions.data?.next_cursor)}
+              onPrevious={pager.previous}
+              onReset={pager.reset}
+              page={pager.page}
+            />
+          )}
+          {activeTab === "withdrawals" && block.data.withdrawals && (
+            <BlockWithdrawalsPanel withdrawals={block.data.withdrawals} locale={locale} />
+          )}
         </>
       )}
     </Page>
   );
 }
 
-const TRANSACTION_TABS = ["overview", "authorizations", "token-transfers", "logs", "trace", "state-changes"] as const;
+const TRANSACTION_TABS = ["overview", "access-list", "blob", "authorizations", "token-transfers", "logs", "trace", "state-changes"] as const;
 type TransactionTab = typeof TRANSACTION_TABS[number];
+
+function transactionTabsForType(type?: string): TransactionTab[] {
+  const tabs: TransactionTab[] = ["overview"];
+  if (type === "1" || type === "2" || type === "3" || type === "4") tabs.push("access-list");
+  if (type === "3") tabs.push("blob");
+  if (type === "4") tabs.push("authorizations");
+  tabs.push("token-transfers", "logs", "trace", "state-changes");
+  return tabs;
+}
+
+type CalldataCandidate = Readonly<{
+  address: string;
+  kind: "target" | "implementation";
+  result: CalldataDecodeResult;
+}>;
+
+function mergeCalldataCandidates(
+  candidates: readonly CalldataCandidate[],
+): { result: CalldataDecodeResult; sources: readonly CalldataCandidate[] } {
+  const result = mergeCalldataResults(candidates.map((candidate) => candidate.result));
+  const sources = result.status === "decoded"
+    ? candidates.filter((candidate) => candidate.result.status === "decoded"
+      && candidate.result.signature === result.signature
+      && candidate.result.args.map((arg) => arg.display).join("\u0001")
+        === result.args.map((arg) => arg.display).join("\u0001"))
+    : [];
+  return { result, sources };
+}
+
+function calldataStructName(internalType: string | undefined): string | undefined {
+  if (!internalType?.startsWith("struct ")) return undefined;
+  const name = internalType.slice("struct ".length).replace(/\[[0-9]*\]/gu, "");
+  return name.split(".").at(-1) || undefined;
+}
+
+function calldataDisplayType(
+  type: string,
+  internalType: string | undefined,
+  kind: FormattedAbiValue["kind"],
+): string {
+  const structName = calldataStructName(internalType);
+  if (kind === "tuple" && structName) return structName;
+  if (kind === "array" && structName) {
+    return `${structName}${type.slice("tuple".length)}`;
+  }
+  return type;
+}
+
+function calldataScalarValue(value: string, type: string, locale: string): string {
+  const baseType = type.replace(/\[[0-9]*\]/gu, "");
+  if (baseType === "address") return value;
+  if (/^(?:u?int)(?:[0-9]*)$/u.test(baseType)) return formatInteger(value, locale);
+  return value;
+}
+
+function CalldataValueTree({
+  signature,
+  args,
+  locale,
+  functionLabel,
+  columnLabels,
+}: {
+  signature: string;
+  args: readonly FormattedAbiOutput[];
+  locale: string;
+  functionLabel: string;
+  columnLabels: Readonly<{ index: string; params: string; type: string; data: string }>;
+}) {
+  return (
+    <div className="calldata-value-tree">
+      <div className="calldata-function-heading">
+        <span>{functionLabel}:</span>
+        <strong>{signature}</strong>
+      </div>
+      <div className="calldata-table-scroll">
+        <div className="calldata-table" role="table" aria-label={signature}>
+          <div className="calldata-table-row calldata-table-header" role="row">
+            <span role="columnheader">{columnLabels.index}</span>
+            <span role="columnheader">{columnLabels.params}</span>
+            <span role="columnheader">{columnLabels.type}</span>
+            <span role="columnheader">{columnLabels.data}</span>
+          </div>
+        {args.map((argument) => (
+          <CalldataField
+            field={argument}
+            key={`${argument.index}:${argument.name}:${argument.type}`}
+            locale={locale}
+            depth={0}
+            rowIndex={String(argument.index + 1)}
+          />
+        ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalldataField({
+  field,
+  locale,
+  depth,
+  label,
+  prefix,
+  rowIndex,
+}: {
+  field: FormattedAbiField;
+  locale: string;
+  depth: number;
+  label?: string;
+  prefix?: string;
+  rowIndex?: string;
+}) {
+  return (
+    <CalldataValueNode
+      label={label ?? (prefix ? `${prefix}.${field.name || `#${field.index}`}` : field.name || `#${field.index}`)}
+      locale={locale}
+      depth={depth}
+      type={field.type}
+      internalType={field.internalType}
+      value={field.value}
+      rowIndex={rowIndex}
+    />
+  );
+}
+
+function CalldataValueNode({
+  label,
+  locale,
+  depth,
+  type,
+  internalType,
+  value,
+  rowIndex,
+}: {
+  label: string;
+  locale: string;
+  depth: number;
+  type: string;
+  internalType?: string;
+  value: FormattedAbiValue;
+  rowIndex?: string;
+}) {
+  if (value.kind === "scalar") {
+    return (
+      <div className={`calldata-table-row calldata-scalar calldata-depth-${Math.min(depth, 6)}`} role="row">
+        <span className="calldata-row-index" role="cell">{rowIndex}</span>
+        <span className="calldata-row-name" role="cell">{label}</span>
+        <small className="calldata-row-type" role="cell">{type}</small>
+        <code className="calldata-row-data" role="cell">{calldataScalarValue(value.text, type, locale)}</code>
+      </div>
+    );
+  }
+
+  const displayType = calldataDisplayType(value.type, value.internalType ?? internalType, value.kind);
+  const itemCount = value.kind === "array" ? value.items.length : value.fields.length;
+  return (
+    <details
+      className={`calldata-composite calldata-${value.kind} calldata-depth-${Math.min(depth, 6)}`}
+      open={depth < 3}
+    >
+      <summary className="calldata-table-row calldata-node-summary">
+        <span className="calldata-row-index">{rowIndex}</span>
+        <span className="calldata-row-name">{label}</span>
+        <small className="calldata-row-type">{displayType}</small>
+        <span className="calldata-row-data calldata-item-count">
+          {value.kind === "array" ? `${itemCount} items` : ""}
+        </span>
+      </summary>
+      <div className="calldata-tree-children">
+        {value.kind === "array"
+          ? value.items.map((item, index) => (
+              <CalldataValueNode
+                key={`${label}:${index}`}
+                label={`#${index}`}
+                locale={locale}
+                depth={depth + 1}
+                type={item.type}
+                internalType={item.internalType}
+                value={item}
+                rowIndex=""
+              />
+            ))
+          : value.fields.map((child) => (
+              <CalldataField
+                field={child}
+                key={`${label}:${child.index}:${child.name}:${child.type}`}
+                locale={locale}
+                depth={depth + 1}
+                prefix={depth === 0 ? label : undefined}
+                rowIndex=""
+              />
+            ))}
+      </div>
+    </details>
+  );
+}
+
+function TransactionCalldata({ transaction }: { transaction: TransactionSummary }) {
+  const { i18n, t } = useTranslation();
+  const input = transaction.input;
+  const targetAddress = transaction.to ?? "";
+  const hasCalldata = input.length > 2;
+  const enabled = hasCalldata && targetAddress.length > 0;
+  const targetArtifact = useVerifiedContractArtifact(targetAddress, enabled);
+  const proxy = useContractProxy(targetAddress, enabled);
+  const implementationAddress = proxy.data?.implementationArtifactAddress ?? "";
+  const implementationCodeHash = proxy.data?.detail.implementation?.code_hash;
+  const implementationArtifactEnabled = enabled
+    && implementationAddress.length > 0
+    && implementationCodeHash !== undefined;
+  const implementationArtifact = useVerifiedContractArtifact(
+    implementationAddress,
+    implementationArtifactEnabled,
+    implementationCodeHash,
+  );
+  const [rawMode, setRawMode] = useState<"hex" | "utf8">("hex");
+  useEffect(() => setRawMode("hex"), [input]);
+  const utf8 = useMemo(() => {
+    if (!/^0x(?:[0-9a-f]{2})*$/iu.test(input)) return undefined;
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(hexToBytes(input as Hex));
+    } catch {
+      return undefined;
+    }
+  }, [input]);
+  const candidates = useMemo(() => {
+    const next: CalldataCandidate[] = [];
+    if (targetArtifact.data?.abi) {
+      next.push({
+        address: targetArtifact.data.target.address,
+        kind: "target",
+        result: decodeCalldata(targetArtifact.data.abi, input),
+      });
+    }
+    if (implementationArtifact.data?.abi) {
+      next.push({
+        address: implementationArtifact.data.target.address,
+        kind: "implementation",
+        result: decodeCalldata(implementationArtifact.data.abi, input),
+      });
+    }
+    return next;
+  }, [implementationArtifact.data, input, targetArtifact.data]);
+  const merged = useMemo(() => mergeCalldataCandidates(candidates), [candidates]);
+  const loadingABI = enabled && (
+    targetArtifact.isPending || proxy.isPending
+    || (implementationArtifactEnabled && implementationArtifact.isPending)
+  );
+  const displayValue = rawMode === "utf8" && utf8 !== undefined ? utf8 : input;
+
+  return (
+    <div className="transaction-calldata">
+      {enabled && loadingABI && <p className="quiet" role="status">{t("detail.calldataDecodeLoading")}</p>}
+      {enabled && !loadingABI && merged.result.status === "decoded" && (
+        <section className="transaction-calldata-decoded" aria-label={t("detail.calldataDecoded")}>
+          <p className="quiet">
+            <strong>{t("detail.calldataDecoded")}</strong> · <code>{merged.result.signature}</code>
+          </p>
+          {merged.sources.length > 0 && (
+            <p className="quiet">
+              {merged.sources.map((source) => t("detail.abiSource", {
+                kind: t(source.kind === "target" ? "detail.calldataTargetAbi" : "detail.calldataImplementationAbi"),
+                address: source.address,
+              })).join(" · ")}
+            </p>
+          )}
+          {merged.result.args.length > 0 ? (
+            <CalldataValueTree
+              args={merged.result.args}
+              columnLabels={{
+                index: t("detail.calldataIndex"),
+                params: t("detail.calldataParams"),
+                type: t("detail.calldataType"),
+                data: t("detail.calldataData"),
+              }}
+              functionLabel={t("detail.calldataFunction")}
+              locale={i18n.resolvedLanguage ?? "en"}
+              signature={merged.result.signature}
+            />
+          ) : <p className="quiet">{t("detail.calldataNoParameters")}</p>}
+        </section>
+      )}
+      {enabled && !loadingABI && merged.result.status !== "decoded" && (
+        <p className="capability-panel" role="status">
+          {t(`detail.calldata${merged.result.status === "unknown_selector" ? "UnknownSelector"
+            : merged.result.status === "malformed_calldata" ? "Malformed"
+            : merged.result.status === "ambiguous_abi_match" ? "Ambiguous"
+            : "Unavailable"}`)}
+          {merged.result.status === "ambiguous_abi_match" && merged.result.signatures.length > 0
+            ? <> · <code>{merged.result.signatures.join(" · ")}</code></>
+            : null}
+        </p>
+      )}
+      <div className="transaction-calldata-raw">
+        <div className="transaction-calldata-toolbar" role="group" aria-label={t("detail.rawCalldataMode")}>
+          <button
+            aria-pressed={rawMode === "hex"}
+            className="button secondary"
+            onClick={() => setRawMode("hex")}
+            type="button"
+          >{t("detail.rawHex")}</button>
+          <button
+            aria-pressed={rawMode === "utf8"}
+            className="button secondary"
+            onClick={() => setRawMode("utf8")}
+            type="button"
+          >{t("detail.rawUtf8")}</button>
+        </div>
+        {rawMode === "utf8" && utf8 === undefined && (
+          <p className="quiet" role="status">{t("detail.rawUtf8Unavailable")}</p>
+        )}
+        <CopyableField value={input}>
+          <code className="transaction-data">{displayValue}</code>
+        </CopyableField>
+      </div>
+    </div>
+  );
+}
 
 function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const activeTab: TransactionTab = TRANSACTION_TABS.includes(tab as TransactionTab)
+  const transaction = useTransaction(hash);
+  const transactionTabs = transactionTabsForType(transaction.data?.type);
+  const activeTab: TransactionTab = transactionTabs.includes(tab as TransactionTab)
     ? tab as TransactionTab
     : "overview";
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
   const logPager = useCursorHistory(`transaction-logs:${hash}`);
   const statePager = useCursorHistory(`transaction-state-changes:${hash}`);
   const authorizationPager = useCursorHistory(`transaction-authorizations:${hash}`);
-  const transaction = useTransaction(hash);
   const tokenTransfers = useTransactionTokenTransfers(
     hash,
     tokenPager.cursor,
@@ -680,6 +1217,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
   const authorizationIdentityCurrent = identityMatches(authorizations.data?.block_hash);
   useEffect(() => {
+    if (activeTab === "access-list" || activeTab === "blob") return;
     const resource = activeTab === "token-transfers" || activeTab === "overview"
       ? tokenTransfers
       : activeTab === "logs" ? logs
@@ -721,7 +1259,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
             <ReorgContext kind="transaction" hash={transaction.data.hash} />
           )}
           <nav className="transaction-tabs" role="tablist" aria-label={t("detail.transactionSections")}>
-            {TRANSACTION_TABS.map((tabID) => (
+            {transactionTabs.map((tabID) => (
               <Link
                 aria-selected={activeTab === tabID}
                 className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
@@ -729,13 +1267,13 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                 onKeyDown={(event) => {
                   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                   event.preventDefault();
-                  const currentIndex = TRANSACTION_TABS.indexOf(tabID);
+                  const currentIndex = transactionTabs.indexOf(tabID);
                   const nextIndex = event.key === "Home" ? 0
-                    : event.key === "End" ? TRANSACTION_TABS.length - 1
+                    : event.key === "End" ? transactionTabs.length - 1
                     : event.key === "ArrowLeft"
-                      ? (currentIndex - 1 + TRANSACTION_TABS.length) % TRANSACTION_TABS.length
-                      : (currentIndex + 1) % TRANSACTION_TABS.length;
-                  const nextTab = TRANSACTION_TABS[nextIndex];
+                      ? (currentIndex - 1 + transactionTabs.length) % transactionTabs.length
+                      : (currentIndex + 1) % transactionTabs.length;
+                  const nextTab = transactionTabs[nextIndex];
                   if (!nextTab) return;
                   const tabList = event.currentTarget.parentElement;
                   void navigate({
@@ -882,14 +1420,54 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       {finalityLabel(transaction.data.finality, t)}
                     </TransactionDetailRow>
                     <TransactionDetailRow label={t("detail.input")} wide>
-                      <CopyableField value={transaction.data.input}>
-                        <code className="transaction-data">{transaction.data.input}</code>
-                      </CopyableField>
+                      <TransactionCalldata transaction={transaction.data} />
                     </TransactionDetailRow>
                   </dl>
                 </details>
               </section>
             </div>
+          )}
+
+          {activeTab === "access-list" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <h2>{t("detail.accessList")}</h2>
+              {transaction.data.access_list?.length ? (
+                <div className="transaction-log-list">
+                  {transaction.data.access_list.map((entry) => (
+                    <article className="transaction-log" key={entry.address}>
+                      <header><strong><Link to="/address/$address" params={{ address: entry.address }}><code>{entry.address}</code></Link></strong></header>
+                      {entry.storage_keys.length > 0 ? (
+                        <dl>
+                          {entry.storage_keys.map((key) => (
+                            <div key={key}><dt>{t("detail.storageKey")}</dt><dd><code>{key}</code></dd></div>
+                          ))}
+                        </dl>
+                      ) : <p className="quiet">{t("state.noStorageKeys")}</p>}
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="empty-result">{t("state.emptyAccessList")}</p>}
+            </section>
+          )}
+
+          {activeTab === "blob" && (
+            <section className="panel transaction-tab-panel" role="tabpanel">
+              <h2>{t("detail.blobData")}</h2>
+              <DetailList label={t("detail.blobData")}>
+                <Detail label={t("detail.maxFeePerBlobGas")} value={transaction.data.max_fee_per_blob_gas ? formatGweiFromWei(transaction.data.max_fee_per_blob_gas, locale) : undefined} />
+                <Detail label={t("detail.blobCount")} value={formatInteger(transaction.data.blob_versioned_hashes?.length ?? 0, locale)} />
+              </DetailList>
+              {transaction.data.blob_versioned_hashes?.length ? (
+                <div className="transaction-log-list">
+                  {transaction.data.blob_versioned_hashes.map((hash, index) => (
+                    <article className="transaction-log" key={hash}>
+                      <header><strong>{t("detail.blobIndex", { index })}</strong></header>
+                      <code className="mono-wrap">{hash}</code>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className="empty-result">{t("state.noBlobHashes")}</p>}
+            </section>
           )}
 
           {activeTab === "authorizations" && (
@@ -1349,7 +1927,6 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
       {account.data && (
         <>
           <DetailList label={t("detail.addressSummary")}>
-            <Detail label={t("detail.name")} value={account.data.name} />
             <Detail
               label={t("detail.nativeBalance", { symbol: nativeSymbol })}
               value={`${formatNativeAmount(account.data.balance, locale, nativeDecimals)} ${nativeSymbol}`.trim()}
@@ -1631,9 +2208,14 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
   if (!origin) {
     return <Detail label={t("detail.origin")} value={t("state.originUnavailable")} wide />;
   }
+  const blockOrigin = origin.kind === "withdrawal" || origin.kind === "block_fee_recipient";
   const sourceLabel = origin.kind === "contract_creation"
     ? t("detail.contractCreator")
-    : t("detail.fundedBy");
+    : origin.kind === "withdrawal"
+      ? t("detail.blockWithdrawal")
+      : origin.kind === "block_fee_recipient"
+        ? t("detail.blockFeeRecipient")
+        : t("detail.fundedBy");
   const transactionLabel = origin.kind === "contract_creation"
     ? t("detail.creationTransaction")
     : t("detail.fundingTransaction");
@@ -1650,6 +2232,24 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
   }
   if (origin.state === "not_found") {
     return <Detail label={sourceLabel} value="—" />;
+  }
+  if (blockOrigin) {
+    return (
+      <>
+        <Detail
+          label={sourceLabel}
+          mono
+          value={origin.block_hash ? (
+            <Link to="/blocks/$blockID" params={{ blockID: origin.block_hash }} search={{ tab: "overview" }}>
+              {origin.block_hash}
+            </Link>
+          ) : undefined}
+        />
+        {origin.kind === "withdrawal" ? (
+          <Detail label={t("detail.withdrawalIndex")} value={origin.withdrawal_index} mono />
+        ) : null}
+      </>
+    );
   }
   return (
     <>
@@ -2641,25 +3241,6 @@ function Detail({ label, value, mono, wide }: { label: string; value?: React.Rea
       <dt>{label}</dt>
       <dd className={mono ? "mono-wrap" : undefined}>{value ?? "—"}</dd>
     </div>
-  );
-}
-
-function CompletenessPanel({ completeness }: { completeness: Completeness }) {
-  const { t } = useTranslation();
-  return (
-    <section className="panel completeness-card" aria-labelledby="entity-completeness-title">
-      <h2 id="entity-completeness-title">{t("detail.completeness")}</h2>
-      <ul>
-        {Object.entries(completeness).map(([stage, state]) => (
-          <li key={stage}>
-            <code>{stageLabel(stage, t)}</code>
-            <span className={state === "complete" ? "availability yes" : "availability no"}>
-              {stageStateLabel(state, t)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 

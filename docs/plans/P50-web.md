@@ -62,6 +62,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T36 | done        | P50-T35       | Apply ordinary activity-tab styling to the Delegation entry and keep its active state distinct | focused frontend, build, and embedded browser regressions |
 | P50-T37 | done        | P50-T36       | Make inactive address tabs explicitly transparent and reserve the green background for the active state | focused frontend and stylesheet regressions |
 | P50-T38 | done        | P50-T37       | Enforce the shared address-tab visual states against legacy Contract styling overrides | focused frontend, production build, and embedded browser regressions |
+| P50-T39 | done        | P40-T12, P50-T38 | Protocol detail tabs for transactions and blocks, withdrawals, typed transaction fields, and address origin evidence | focused frontend, generated-client, responsive, accessibility, and embedded browser regressions |
 
 ## Acceptance
 
@@ -89,6 +90,17 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T39: Transaction tabs now derive visibility from typed transaction type,
+  with access-list/blob/authorization panels and lazy unrelated-resource
+  loading. Block detail is an extensible URL-driven Overview/Transactions/
+  Withdrawals tab page, with the withdrawal tab shown only when the block
+  exposes the capability, plus keyboard navigation, cursor pagination, and
+  orphan-hash support. Address summaries hide Name while block-origin
+  funded-by evidence links only to the exact block.
+- P50-T39 verification: generated-client check, TypeScript lint, production
+  build, 28-file/265-test Vitest suite, and the 12-flow embedded Playwright
+  suite pass.
 
 - The verified OpenZeppelin proxy browser regression now follows the compact
   ABI form contract: target addresses and removed management-scope copy are

@@ -25,6 +25,7 @@ export interface CursorPage<T> {
 export type ChainStatus = components["schemas"]["Status"];
 export type PublicConfig = components["schemas"]["PublicConfig"];
 export type BlockSummary = components["schemas"]["Block"];
+export type BlockWithdrawal = components["schemas"]["BlockWithdrawal"];
 export type TransactionSummary = components["schemas"]["Transaction"];
 export type HomeSnapshotResponse = components["schemas"]["HomeSnapshotResponse"];
 export type PendingTransaction = components["schemas"]["PendingTransaction"];

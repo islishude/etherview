@@ -16,8 +16,10 @@ import {
   createAbiArrayItem,
   createAbiInputTree,
   decodeConstructorArguments,
+  decodeCalldata,
   decodeRevert,
   formatAbiResult,
+  mergeCalldataResults,
   parseAbiArguments,
   parseVerifiedABI,
   partitionAbiFunctions,
@@ -168,6 +170,90 @@ describe("constructor argument decoding", () => {
       .toThrowError(expect.objectContaining({ path: "constructorArguments" }));
     expect(() => decodeConstructorArguments([constructor], "0x0"))
       .toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
+  });
+});
+
+describe("calldata decoding", () => {
+  const transferABI = parseVerifiedABI([{
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  }]);
+
+  it("decodes a selector and named arguments", () => {
+    const encoded = encodeFunctionData({
+      abi: transferABI,
+      functionName: "transfer",
+      args: [addressA, 12n],
+    });
+    expect(decodeCalldata(transferABI, encoded)).toEqual({
+      status: "decoded",
+      selector: encoded.slice(0, 10),
+      signature: "transfer(address,uint256)",
+      args: [
+        expect.objectContaining({ name: "recipient", type: "address", display: getAddress(addressA) }),
+        expect.objectContaining({ name: "amount", type: "uint256", display: "12" }),
+      ],
+    });
+  });
+
+  it("fails closed for unknown, malformed, unavailable, and oversized calldata", () => {
+    expect(decodeCalldata(transferABI, "0xdeadbeef")).toEqual({
+      status: "unknown_selector",
+      selector: "0xdeadbeef",
+    });
+    expect(decodeCalldata(transferABI, "0x123").status).toBe("malformed_calldata");
+    const valid = encodeFunctionData({
+      abi: transferABI,
+      functionName: "transfer",
+      args: [addressA, 12n],
+    });
+    expect(decodeCalldata(transferABI, `${valid}00`).status).toBe("malformed_calldata");
+    expect(decodeCalldata([{ type: "not-an-abi-item" }], "0xdeadbeef").status)
+      .toBe("abi_unavailable");
+    const encoded = encodeFunctionData({
+      abi: parseVerifiedABI([{
+        type: "function",
+        name: "many",
+        stateMutability: "view",
+        inputs: [{ name: "values", type: "uint256[]" }],
+        outputs: [],
+      }]),
+      functionName: "many",
+      args: [Array.from({ length: ABI_LIMITS.dynamicArrayLength + 1 }, (_, index) => BigInt(index))],
+    });
+    expect(decodeCalldata(transferABI, `${encoded}00`).status).toBe("unknown_selector");
+    expect(decodeCalldata(parseVerifiedABI([{
+      type: "function",
+      name: "many",
+      stateMutability: "view",
+      inputs: [{ name: "values", type: "uint256[]" }],
+      outputs: [],
+    }]), encoded).status).toBe("malformed_calldata");
+  });
+
+  it("deduplicates identical candidate results and reports conflicts", () => {
+    const first = {
+      status: "decoded" as const,
+      selector: "0x12345678" as const,
+      signature: "f(uint256)",
+      args: [],
+    };
+    const second = { ...first };
+    expect(mergeCalldataResults([first, second])).toBe(first);
+    expect(mergeCalldataResults([
+      first,
+      { ...first, signature: "g(uint256)" },
+    ])).toEqual({
+      status: "ambiguous_abi_match",
+      selector: "0x12345678",
+      signatures: ["f(uint256)", "g(uint256)"],
+    });
   });
 });
 
