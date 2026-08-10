@@ -680,12 +680,14 @@ func loadTraceLogAttributions(
 				return nil, 0, Permanent(errors.New("callTracer log emitter does not match the execution context"))
 			}
 			executionAddress := frame.ExecutionAddress
-			if (frame.Type == "CREATE" || frame.Type == "CREATE2") && frame.To != nil {
+			creation := frame.Type == "CREATE" || frame.Type == "CREATE2"
+			if creation && frame.To != nil {
 				executionAddress = frame.To
 			}
-			if executionAddress == nil || (frame.Type != "CREATE" && frame.Type != "CREATE2" &&
-				(frame.ExecutionCodeHash == nil ||
-					(frame.ExecutionResolution != "direct" && frame.ExecutionResolution != "eip7702_delegate"))) {
+			addressExact := frame.ExecutionResolution == "unavailable" && executionAddress != nil
+			codeExact := frame.ExecutionCodeHash != nil &&
+				(frame.ExecutionResolution == "direct" || frame.ExecutionResolution == "eip7702_delegate")
+			if executionAddress == nil || !creation && !addressExact && !codeExact {
 				fallback++
 				continue
 			}

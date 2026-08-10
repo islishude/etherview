@@ -748,6 +748,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/calldata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTransactionCalldata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{hash}/logs": {
         parameters: {
             query?: never;
@@ -1929,7 +1945,7 @@ export interface components {
             revert?: components["schemas"]["TraceRevertDecoding"];
             signature?: string;
             /** @enum {string} */
-            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable";
+            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable" | "not_applicable";
             warning?: string;
         };
         TraceExecution: {
@@ -2016,6 +2032,27 @@ export interface components {
         };
         TransactionAuthorizations: components["schemas"]["TransactionSubresourceIdentity"] & {
             items: components["schemas"]["EIP7702Authorization"][];
+        };
+        TransactionCalldata: components["schemas"]["TransactionSubresourceIdentity"] & {
+            decoding: components["schemas"]["TransactionCalldataDecoding"];
+            execution: components["schemas"]["TraceExecution"];
+            input: string;
+        };
+        TransactionCalldataDecoding: {
+            abi_source?: components["schemas"]["ABISource"];
+            candidates: string[];
+            /** @enum {string} */
+            confidence?: "verified" | "high" | "guess";
+            function_name?: string;
+            inputs: components["schemas"]["ABIValue"][];
+            signature?: string;
+            /** @enum {string} */
+            status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable" | "not_applicable";
+            warning?: string;
+        };
+        TransactionCalldataResponse: {
+            data: components["schemas"]["TransactionCalldata"];
+            meta: components["schemas"]["Meta"];
         };
         TransactionListResponse: {
             data: components["schemas"]["Transaction"][];
@@ -3669,6 +3706,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionAuthorizationResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getTransactionCalldata: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact transaction-time execution identity and calldata decoding. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionCalldataResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

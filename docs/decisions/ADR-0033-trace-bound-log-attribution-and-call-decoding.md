@@ -38,6 +38,15 @@ projected reliably.
   declarations, explicit empty output lists, malformed output, ambiguity,
   budget exhaustion, and non-applicability are distinct states. No constructor
   argument inference or proxy identity/authority inference is added.
+- ABI `receive` and `fallback` entries are selectorless callable identities,
+  not unknown function selectors. Empty calldata selects a declared `receive`
+  entry first and otherwise a declared `fallback`; incomplete or unmatched
+  selectors select `fallback` only when the exact historical ABI declares it.
+  The same exact address/code-hash provenance and bounded candidate rules apply.
+- A call-like frame whose exact execution resolution is `empty` has no ABI
+  function identity. Its decoding status is `not_applicable`, including an
+  ordinary native transfer to an EOA, and it does not trigger ABI lookup or an
+  unknown-selector warning.
 - Public Trace reads attach persisted-first, bounded PostgreSQL-only ABI
   projection inside one repeatable-read snapshot. The schema-v2 S3 object
   contains only normalized raw call frames; it never contains ABI projection.

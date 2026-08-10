@@ -144,6 +144,14 @@ authoritative empty result.
   structured decoding status. The public projection distinguishes decoded,
   ambiguous, unknown, malformed, and unavailable results; an ambiguous result
   exposes candidates without selecting one signature or argument set.
+- `GET /api/v1/transactions/{hash}/calldata` is the native transaction-input
+  projection. One read-only repeatable-read snapshot binds the canonical
+  inclusion and raw input to a published `state_diff@2` execution-code
+  resolution, then exposes that exact context, execution address/code hash,
+  ABI source, confidence, warning, and one of `decoded`, `ambiguous`, `unknown`,
+  `malformed`, `unavailable`, or `not_applicable`. A missing exact historical
+  identity is unavailable; the endpoint never substitutes a height, `latest`,
+  the authority's current delegation, or a prior delegate ABI.
 - Public source-verification submission is exposed only when
   `security.public_verification` is enabled and requires an API key. The
   native and compatibility submission boundaries bind every job to the latest

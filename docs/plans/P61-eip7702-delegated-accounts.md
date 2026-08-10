@@ -41,6 +41,10 @@ this plan.
 | P61-T03 | done | P61-T02 | Fix Preview delegation-history SQL and allow delegated reads across canonical-tip advancement while retaining exact write fences | focused Go and Web tests; Preview API/browser verification |
 | P61-T04 | done | P61-T03 | Rebuild the delegated-account page as a contract-style hash-tab workbench with lazy history and delegated deep-link regressions | focused Web tests, production browser, and common gates |
 | P61-T05 | done | P61-T04 | Restore transaction Authorizations tab query-parameter routing and add a click regression | focused CorePages frontend tests, lint, build, generation, and plan checks |
+| P61-T06 | done | P61-T05 | Expose exact transaction-time calldata decoding and render EIP-7702 delegation, redelegation, and clearing semantics in the transaction Overview | catalog, API, generation, Web, integration, browser, runtime, and common gates |
+| P61-T07 | done | P61-T06 | Preserve EIP-7702 log execution-address attribution when the delegate code hash is unavailable from prestateTracer, then resolve ABI only through the exact historical code identity | trace/ABI/catalog regressions, live Preview replay, and common gates |
+| P61-T08 | done | P61-T07 | Decode ABI `receive` and `fallback` entry points for trace and transaction calldata instead of reporting empty or selectorless calls as unknown functions | ABI/Catalog/API/Web regressions, live Preview verification, and common gates |
+| P61-T09 | done | P61-T08 | Report calls with exact empty execution code, including ordinary native transfers to EOAs, as ABI decoding not applicable instead of an unknown function selector | Catalog/API/Web regressions, live Preview verification, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -63,6 +67,16 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Delegated-account binding, interaction, and history panels reuse the
       responsive Web layout and pagination contracts without changing API or
       EIP-7702 data semantics.
+- [x] Transaction calldata binds canonical inclusion and raw input to the
+      published transaction-time execution identity, including redelegation,
+      clearing, ordinary delegated calls, and fail-closed unavailable evidence.
+- [x] Trace-bound EIP-7702 logs retain an exact authorization-applied delegate
+      address when prestate evidence omits delegate code, while ABI decoding
+      still requires an independently resolved historical code identity.
+- [x] Empty and selectorless calls use exact historical ABI `receive` and
+      `fallback` entries rather than reporting an unknown function selector.
+- [x] Trace frames with exact empty execution code report ABI decoding as not
+      applicable, including ordinary native transfers to EOAs.
 
 ## Current Blockers
 
@@ -124,3 +138,84 @@ None.
   the tab, requests the generated authorization subresource, and renders an
   applied EIP-7702 tuple. The focused CorePages suite passes 23/23; frontend
   lint and production build pass; `make generate-check` passes.
+- P61-T06 adds the billable generated
+  `GET /api/v1/transactions/{hash}/calldata` contract. Its repeatable-read
+  Catalog projection binds canonical inclusion and raw input to published
+  `state_diff@2` execution-code rows, reuses exact published `abi@3` calldata
+  facts, and performs only block/address/code-hash-bounded ABI fallback reads.
+  Empty execution returns `not_applicable`; absent or unavailable exact
+  execution evidence returns `unavailable` without consulting current
+  delegation, height, `latest`, an old delegate, or a full trace.
+- P61-T06 Catalog/API regressions cover type-4 final redelegation, clearing,
+  later type-2 delegated calls, direct execution, published and read-time ABI
+  decoding, decoded/ambiguous/unknown/malformed/unavailable states, corrupt
+  identity handling, and missing `state_diff@2`. CorePages passes 30/30 and
+  the full Web suite passes 29 files/291 tests, including exact provenance,
+  clearing, raw calldata, no current verification/proxy/delegation requests,
+  and one-retry identity fencing.
+- `make generate-check` and `make plan-check` pass. `make test-integration`
+  passes against a runner-owned fresh PostgreSQL 18 database; the integration
+  package completes in 131.524s and the project/volume are removed.
+- `make test-e2e` passes 13/13 Chromium tests. `make test-runtime-e2e` passes
+  monolith (36.80s) and the complete six-role distributed topology (45.93s),
+  including exact calldata unavailable semantics after a reverted call and
+  durable/public parity. The final writable-cache `make check` passes Go/Web
+  generation, vet, lint, ordinary and race tests, security/license checks,
+  Buildx/Compose validation, and Helm lint/render.
+- P61-T07 retains an exact trace path and EIP-7702 delegate execution address
+  when `prestateTracer` omits the delegate account and therefore cannot supply
+  its code hash. `abi@3` and the read-time Catalog path still require a
+  canonical block-scoped code observation and range-valid ABI for that exact
+  delegate; ordinary direct frames without a code identity remain on the
+  conservative address fallback.
+- Focused `go test ./internal/enrich ./internal/catalog ./internal/httpapi
+  ./internal/apiops`, writable-cache `make generate-check`, `make plan-check`,
+  and `git diff --check` pass. The final writable-cache `make check` passes all
+  Go ordinary/race and Web 291/291 tests plus generation, vet, lint,
+  vulnerability, secret, license, Buildx, Compose, and Helm gates.
+  `make test-integration` passes against a runner-owned PostgreSQL 18 database;
+  `internal/integration` completes in 134.086s and the project and volume are
+  removed.
+- Preview transaction
+  `0xe077f2f1688b96206ed609cb589508001134abf02187c7ca8d3789f38d7d722c`
+  was replayed from an exact archive reconstruction of the retained chain
+  after the live path-state node could no longer serve block 33. Its public log
+  now reports `exact_trace`, execution address
+  `0x610178dA211FEF7D417bC0e6FeD39F05609AD788`, verified historical code hash
+  `0x0fc2f604e56003f124b958dda95b91ed9e54c8a6ef454639deab54506e0f76c2`,
+  and decoded `Received(address,uint256)` arguments. The recovery containers
+  were removed and the regular Preview `sync` and `trace` roles are healthy.
+- P61-T08 recognizes ABI `receive` and `fallback` entries as selectorless call
+  identities. Empty calldata selects `receive` before `fallback`; incomplete or
+  unmatched selectors select only a declared `fallback`. Trace ingestion now
+  persists empty-call observations, and Catalog transaction/trace projection
+  keeps the exact historical address, code hash, ABI source, and confidence.
+- Focused `go test ./internal/enrich ./internal/catalog ./internal/httpapi
+  ./internal/apiops` and the focused `CorePages` Web suite (30/30) pass.
+  Writable-cache `make check` passes all ordinary/race, Web 291/291,
+  generation, vet, lint, security/license, Buildx/Compose, and Helm gates.
+  `make test-integration` passes against runner-owned PostgreSQL 18;
+  `internal/integration` completes in 131.605s and the disposable project and
+  volume are removed.
+- After rebuilding the already-running Preview, transaction
+  `0xe077f2f1688b96206ed609cb589508001134abf02187c7ca8d3789f38d7d722c`
+  returns trace decoding status `decoded`, signature `receive()`, empty inputs
+  and outputs, verified confidence, delegate execution address
+  `0x610178dA211FEF7D417bC0e6FeD39F05609AD788`, and historical code hash
+  `0x0fc2f604e56003f124b958dda95b91ed9e54c8a6ef454639deab54506e0f76c2`.
+- P61-T09 maps exact `empty` call execution to ABI decoding
+  `not_applicable`, so ordinary EOA transfers and other calls with no
+  executable code never report an unknown selector or query ABI material.
+  The generated Trace contract includes the new status, Web renders
+  “No executable code” / “无可执行代码”, and required empty candidate arrays
+  serialize as `[]` rather than `null`.
+- Focused Catalog/HTTP/API/ABI Go tests pass, and the focused CorePages suite
+  passes 31/31. Writable-cache `make generate-check`, `make plan-check`, and
+  the final `make check` pass; the full Web suite is 292/292 and all ordinary,
+  race, static-analysis, security/license, Buildx/Compose, and Helm gates pass.
+- Rebuilt Preview transaction
+  `0x1d2099298b948843f9149fd7c410a879656e0cfc78cdc6cd3678ac2b9a2ce847`
+  is a successful type-2 value transfer with `input=0x`. Its public Trace root
+  reports `execution.resolution=empty`, `decoding.status=not_applicable`,
+  `output_status=not_applicable`, and `candidates=[]`; every Preview service is
+  healthy.

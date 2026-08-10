@@ -31,6 +31,7 @@ import {
   useTokenTransfers,
   useTokens,
   useTransaction,
+  useTransactionCalldata,
   useTransactionAuthorizations,
   useTransactionLogs,
   useTransactionStateChanges,
@@ -44,21 +45,9 @@ import {
 import { useHomeSnapshotStream } from "@/api/homeStream";
 import { ContractPage, isContractTabHash } from "./ContractPage";
 import {
-  decodeCalldata,
-  mergeCalldataResults,
-  type CalldataDecodeResult,
-  type FormattedAbiField,
-  type FormattedAbiOutput,
-  type FormattedAbiValue,
-} from "@/contracts/abi";
-import {
   DelegatedAccountPanel,
   isDelegatedAccountTabHash,
 } from "@/contracts/DelegatedAccountPanel";
-import {
-  useContractProxy,
-  useVerifiedContractArtifact,
-} from "@/contracts/proxy";
 import type {
   AddressInternalTransaction,
   AddressSummary,
@@ -70,6 +59,7 @@ import type {
   SearchResult,
   TokenEvent,
   TransactionLog,
+  TransactionCalldata as TransactionCalldataResource,
   TransactionSummary,
   VerificationJob,
   VerificationMatchDetails,
@@ -874,59 +864,22 @@ function transactionTabsForType(type?: string): TransactionTab[] {
   return tabs;
 }
 
-type CalldataCandidate = Readonly<{
-  address: string;
-  kind: "target" | "implementation";
-  result: CalldataDecodeResult;
-}>;
-
-function mergeCalldataCandidates(
-  candidates: readonly CalldataCandidate[],
-): { result: CalldataDecodeResult; sources: readonly CalldataCandidate[] } {
-  const result = mergeCalldataResults(candidates.map((candidate) => candidate.result));
-  const sources = result.status === "decoded"
-    ? candidates.filter((candidate) => candidate.result.status === "decoded"
-      && candidate.result.signature === result.signature
-      && candidate.result.args.map((arg) => arg.display).join("\u0001")
-        === result.args.map((arg) => arg.display).join("\u0001"))
-    : [];
-  return { result, sources };
-}
-
-function calldataStructName(internalType: string | undefined): string | undefined {
-  if (!internalType?.startsWith("struct ")) return undefined;
-  const name = internalType.slice("struct ".length).replace(/\[[0-9]*\]/gu, "");
-  return name.split(".").at(-1) || undefined;
-}
-
-function calldataDisplayType(
-  type: string,
-  internalType: string | undefined,
-  kind: FormattedAbiValue["kind"],
-): string {
-  const structName = calldataStructName(internalType);
-  if (kind === "tuple" && structName) return structName;
-  if (kind === "array" && structName) {
-    return `${structName}${type.slice("tuple".length)}`;
-  }
-  return type;
-}
-
-function calldataScalarValue(value: string, type: string, locale: string): string {
+function calldataDecodedValue(value: unknown, type: string, locale: string): string {
   const baseType = type.replace(/\[[0-9]*\]/gu, "");
-  if (baseType === "address") return value;
-  if (/^(?:u?int)(?:[0-9]*)$/u.test(baseType)) return formatInteger(value, locale);
-  return value;
+  if (typeof value === "string" && /^(?:u?int)(?:[0-9]*)$/u.test(baseType)) {
+    return formatInteger(value, locale);
+  }
+  return formatLogArgument(value);
 }
 
-function CalldataValueTree({
+function TransactionCalldataValues({
   signature,
-  args,
+  values,
   locale,
   columnLabels,
 }: {
   signature: string;
-  args: readonly FormattedAbiOutput[];
+  values: TransactionCalldataResource["decoding"]["inputs"];
   locale: string;
   columnLabels: Readonly<{ index: string; params: string; type: string; data: string }>;
 }) {
@@ -940,14 +893,13 @@ function CalldataValueTree({
             <span role="columnheader">{columnLabels.type}</span>
             <span role="columnheader">{columnLabels.data}</span>
           </div>
-        {args.map((argument) => (
-          <CalldataField
-            field={argument}
-            key={`${argument.index}:${argument.name}:${argument.type}`}
-            locale={locale}
-            depth={0}
-            rowIndex={String(argument.index + 1)}
-          />
+        {values.map((value, index) => (
+          <div className="calldata-table-row calldata-scalar calldata-depth-0" role="row" key={`${value.name}:${value.type}:${index}`}>
+            <span className="calldata-row-index" role="cell">{index + 1}</span>
+            <span className="calldata-row-name" role="cell">{value.name || `#${index}`}</span>
+            <small className="calldata-row-type" role="cell">{value.type}</small>
+            <code className="calldata-row-data" role="cell">{calldataDecodedValue(value.value, value.type, locale)}</code>
+          </div>
         ))}
         </div>
       </div>
@@ -955,107 +907,17 @@ function CalldataValueTree({
   );
 }
 
-function CalldataField({
-  field,
-  locale,
-  depth,
-  label,
-  prefix,
-  rowIndex,
+function TransactionCalldata({
+  transaction,
+  resource,
+  loading,
+  identityCurrent,
 }: {
-  field: FormattedAbiField;
-  locale: string;
-  depth: number;
-  label?: string;
-  prefix?: string;
-  rowIndex?: string;
+  transaction: TransactionSummary;
+  resource?: TransactionCalldataResource;
+  loading: boolean;
+  identityCurrent: boolean;
 }) {
-  return (
-    <CalldataValueNode
-      label={label ?? (prefix ? `${prefix}.${field.name || `#${field.index}`}` : field.name || `#${field.index}`)}
-      locale={locale}
-      depth={depth}
-      type={field.type}
-      internalType={field.internalType}
-      value={field.value}
-      rowIndex={rowIndex}
-    />
-  );
-}
-
-function CalldataValueNode({
-  label,
-  locale,
-  depth,
-  type,
-  internalType,
-  value,
-  rowIndex,
-}: {
-  label: string;
-  locale: string;
-  depth: number;
-  type: string;
-  internalType?: string;
-  value: FormattedAbiValue;
-  rowIndex?: string;
-}) {
-  if (value.kind === "scalar") {
-    return (
-      <div className={`calldata-table-row calldata-scalar calldata-depth-${Math.min(depth, 6)}`} role="row">
-        <span className="calldata-row-index" role="cell">{rowIndex}</span>
-        <span className="calldata-row-name" role="cell">{label}</span>
-        <small className="calldata-row-type" role="cell">{type}</small>
-        <code className="calldata-row-data" role="cell">{calldataScalarValue(value.text, type, locale)}</code>
-      </div>
-    );
-  }
-
-  const displayType = calldataDisplayType(value.type, value.internalType ?? internalType, value.kind);
-  const itemCount = value.kind === "array" ? value.items.length : value.fields.length;
-  return (
-    <details
-      className={`calldata-composite calldata-${value.kind} calldata-depth-${Math.min(depth, 6)}`}
-      open={depth < 3}
-    >
-      <summary className="calldata-table-row calldata-node-summary">
-        <span className="calldata-row-index">{rowIndex}</span>
-        <span className="calldata-row-name">{label}</span>
-        <small className="calldata-row-type">{displayType}</small>
-        <span className="calldata-row-data calldata-item-count">
-          {value.kind === "array" ? `${itemCount} items` : ""}
-        </span>
-      </summary>
-      <div className="calldata-tree-children">
-        {value.kind === "array"
-          ? value.items.map((item, index) => (
-              <CalldataValueNode
-                key={`${label}:${index}`}
-                label={`#${index}`}
-                locale={locale}
-                depth={depth + 1}
-                type={item.type}
-                internalType={item.internalType}
-                value={item}
-                rowIndex=""
-              />
-            ))
-          : value.fields.map((child) => (
-              <CalldataField
-                field={child}
-                key={`${label}:${child.index}:${child.name}:${child.type}`}
-                locale={locale}
-                depth={depth + 1}
-                prefix={depth === 0 ? label : undefined}
-                rowIndex=""
-              />
-            ))}
-      </div>
-    </details>
-  );
-}
-
-function TransactionCalldata({ transaction }: { transaction: TransactionSummary }) {
   const { i18n, t } = useTranslation();
   const decodedHeadingID = useId();
   const rawHeadingID = useId();
@@ -1063,18 +925,10 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
   const targetAddress = transaction.to ?? "";
   const hasCalldata = input.length > 2;
   const enabled = hasCalldata && targetAddress.length > 0;
-  const targetArtifact = useVerifiedContractArtifact(targetAddress, enabled);
-  const proxy = useContractProxy(targetAddress, enabled);
-  const implementationAddress = proxy.data?.implementationArtifactAddress ?? "";
-  const implementationCodeHash = proxy.data?.detail.implementation?.code_hash;
-  const implementationArtifactEnabled = enabled
-    && implementationAddress.length > 0
-    && implementationCodeHash !== undefined;
-  const implementationArtifact = useVerifiedContractArtifact(
-    implementationAddress,
-    implementationArtifactEnabled,
-    implementationCodeHash,
-  );
+  const resourceCurrent = identityCurrent && resource !== undefined
+    && resource.input.toLowerCase() === input.toLowerCase()
+    && resource.execution.context_address.toLowerCase() === targetAddress.toLowerCase();
+  const decoding = resourceCurrent ? resource.decoding : undefined;
   const [rawMode, setRawMode] = useState<"hex" | "utf8">("hex");
   const [utf8Unavailable, setUtf8Unavailable] = useState(false);
   useEffect(() => {
@@ -1089,29 +943,7 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
       return undefined;
     }
   }, [input]);
-  const candidates = useMemo(() => {
-    const next: CalldataCandidate[] = [];
-    if (targetArtifact.data?.abi) {
-      next.push({
-        address: targetArtifact.data.target.address,
-        kind: "target",
-        result: decodeCalldata(targetArtifact.data.abi, input),
-      });
-    }
-    if (implementationArtifact.data?.abi) {
-      next.push({
-        address: implementationArtifact.data.target.address,
-        kind: "implementation",
-        result: decodeCalldata(implementationArtifact.data.abi, input),
-      });
-    }
-    return next;
-  }, [implementationArtifact.data, input, targetArtifact.data]);
-  const merged = useMemo(() => mergeCalldataCandidates(candidates), [candidates]);
-  const loadingABI = enabled && (
-    targetArtifact.isPending || proxy.isPending
-    || (implementationArtifactEnabled && implementationArtifact.isPending)
-  );
+  const loadingABI = enabled && loading;
   const displayValue = rawMode === "utf8" && utf8 !== undefined ? utf8 : input;
   const toggleRawMode = () => {
     if (rawMode === "utf8") {
@@ -1132,31 +964,38 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
       {enabled && <section className="transaction-calldata-decoded" aria-labelledby={decodedHeadingID}>
         <h3 className="transaction-calldata-heading" id={decodedHeadingID}>
           {t("detail.calldataDecoded")}
-          {enabled && !loadingABI && merged.result.status === "decoded" && (
-            <> · <code>{merged.result.signature}</code></>
+          {enabled && !loadingABI && decoding?.status === "decoded" && decoding.signature && (
+            <> · <code>{decoding.signature}</code></>
           )}
         </h3>
         {enabled && loadingABI && <p className="quiet" role="status">{t("detail.calldataDecodeLoading")}</p>}
-        {enabled && !loadingABI && merged.result.status === "decoded" && (
+        {enabled && !loadingABI && decoding?.status === "decoded" && decoding.signature && resource && (
           <>
-            {merged.sources.length > 0 && (
-              <div className="calldata-abi-sources" aria-label={t("detail.calldataAbiEvidence")}>
-                {merged.sources.map((source) => (
-                  <div className="calldata-abi-source" key={`${source.kind}:${source.address}`}>
-                    <span>{t("detail.calldataVerifiedAbi")}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{t(source.kind === "target" ? "detail.calldataTargetAbi" : "detail.calldataImplementationAbi")}</span>
-                    <span aria-hidden="true">·</span>
-                    <CopyableField value={source.address}>
-                      <Link to="/address/$address" params={{ address: source.address }}><code>{source.address}</code></Link>
-                    </CopyableField>
-                  </div>
-                ))}
+            <div className="calldata-abi-sources" aria-label={t("detail.calldataAbiEvidence")}>
+              <div className="calldata-abi-source">
+                <span>{t("detail.calldataExecutionEvidence")}</span>
+                <span aria-hidden="true">·</span>
+                <span>{t(`detail.executionResolution.${resource.execution.resolution}`)}</span>
+                {resource.execution.address && <>
+                  <span aria-hidden="true">·</span>
+                  <CopyableField value={resource.execution.address}>
+                    <Link to="/address/$address" params={{ address: resource.execution.address }}><code>{resource.execution.address}</code></Link>
+                  </CopyableField>
+                </>}
               </div>
-            )}
-            {merged.result.args.length > 0 ? (
-              <CalldataValueTree
-                args={merged.result.args}
+              {decoding.abi_source?.address && (
+                <div className="calldata-abi-source">
+                  <span>{t("detail.calldataAbiSource", { kind: decoding.abi_source.kind })}</span>
+                  <span aria-hidden="true">·</span>
+                  <CopyableField value={decoding.abi_source.address}>
+                    <Link to="/address/$address" params={{ address: decoding.abi_source.address }}><code>{decoding.abi_source.address}</code></Link>
+                  </CopyableField>
+                </div>
+              )}
+            </div>
+            {decoding.inputs.length > 0 ? (
+              <TransactionCalldataValues
+                values={decoding.inputs}
                 columnLabels={{
                   index: t("detail.calldataIndex"),
                   params: t("detail.calldataParams"),
@@ -1164,19 +1003,26 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
                   data: t("detail.calldataData"),
                 }}
                 locale={i18n.resolvedLanguage ?? "en"}
-                signature={merged.result.signature}
+                signature={decoding.signature}
               />
             ) : <p className="quiet">{t("detail.calldataNoParameters")}</p>}
           </>
         )}
-        {enabled && !loadingABI && merged.result.status !== "decoded" && (
+        {enabled && !loadingABI && decoding?.status !== "decoded" && (
           <p className="capability-panel" role="status">
-            {t(`detail.calldata${merged.result.status === "unknown_selector" ? "UnknownSelector"
-              : merged.result.status === "malformed_calldata" ? "Malformed"
-              : merged.result.status === "ambiguous_abi_match" ? "Ambiguous"
-              : "Unavailable"}`)}
-            {merged.result.status === "ambiguous_abi_match" && merged.result.signatures.length > 0
-              ? <> · <code>{merged.result.signatures.join(" · ")}</code></>
+            {t(!identityCurrent || resource !== undefined && !resourceCurrent
+              ? "state.transactionIdentityChanged"
+              : decoding?.status === "not_applicable"
+                ? "detail.calldataNoExecutionCode"
+                : decoding?.status === "unknown"
+                  ? "detail.calldataUnknownSelector"
+                  : decoding?.status === "malformed"
+                    ? "detail.calldataMalformed"
+                    : decoding?.status === "ambiguous"
+                      ? "detail.calldataAmbiguous"
+                      : "detail.calldataUnavailable")}
+            {decoding?.status === "ambiguous" && decoding.candidates.length > 0
+              ? <> · <code>{decoding.candidates.join(" · ")}</code></>
               : null}
           </p>
         )}
@@ -1218,6 +1064,10 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const activeTab: TransactionTab = transactionTabs.includes(tab as TransactionTab)
     ? tab as TransactionTab
     : "overview";
+  const calldataEnabled = activeTab === "overview"
+    && Boolean(transaction.data?.to)
+    && (transaction.data?.input.length ?? 0) > 2;
+  const calldata = useTransactionCalldata(hash, calldataEnabled);
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
   const logPager = useCursorHistory(`transaction-logs:${hash}`);
   const statePager = useCursorHistory(`transaction-state-changes:${hash}`);
@@ -1247,6 +1097,14 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const identityMatches = (blockHash?: string) =>
     !blockHash || !transaction.data?.block_hash || blockHash === transaction.data.block_hash;
   const tokenIdentityCurrent = identityMatches(tokenTransfers.data?.block_hash);
+  const calldataIdentityCurrent = calldata.data === undefined || transaction.data === undefined || (
+    calldata.data.transaction_hash.toLowerCase() === transaction.data.hash.toLowerCase()
+    && calldata.data.block_hash.toLowerCase() === transaction.data.block_hash?.toLowerCase()
+    && calldata.data.block_number === transaction.data.block_number
+    && calldata.data.transaction_index === String(transaction.data.transaction_index)
+    && calldata.data.input.toLowerCase() === transaction.data.input.toLowerCase()
+    && calldata.data.execution.context_address.toLowerCase() === transaction.data.to?.toLowerCase()
+  );
   const logIdentityCurrent = identityMatches(logs.data?.block_hash);
   const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
   const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
@@ -1275,6 +1133,20 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     trace,
     transaction,
   ]);
+  useEffect(() => {
+    if (!calldataEnabled || calldataIdentityCurrent) return;
+    const resourceBlockHash = calldata.data?.block_hash;
+    const overviewBlockHash = transaction.data?.block_hash;
+    if (!resourceBlockHash || !overviewBlockHash) return;
+    const retryKey = [
+      "calldata", overviewBlockHash, resourceBlockHash, transaction.data?.input,
+      calldata.data?.input, calldata.data?.transaction_hash,
+      calldata.data?.transaction_index, calldata.data?.execution.context_address,
+    ].join(":");
+    if (lastIdentityRetry.current === retryKey) return;
+    lastIdentityRetry.current = retryKey;
+    void Promise.all([transaction.refetch(), calldata.refetch()]);
+  }, [calldata, calldataEnabled, calldataIdentityCurrent, transaction]);
   const stateGroups = useMemo(() => {
     const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
     for (const change of stateChanges.data?.items ?? []) {
@@ -1455,7 +1327,12 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       {finalityLabel(transaction.data.finality, t)}
                     </TransactionDetailRow>
                     <TransactionDetailRow label={t("detail.input")} wide>
-                      <TransactionCalldata transaction={transaction.data} />
+                      <TransactionCalldata
+                        identityCurrent={calldataIdentityCurrent}
+                        loading={calldata.isPending}
+                        resource={calldata.data}
+                        transaction={transaction.data}
+                      />
                     </TransactionDetailRow>
                   </dl>
                 </details>
@@ -4328,6 +4205,7 @@ function traceDecodingKey(status: string) {
     case "ambiguous": return "detail.traceAmbiguous" as const;
     case "unknown": return "detail.traceUnknown" as const;
     case "malformed": return "detail.traceMalformed" as const;
+    case "not_applicable": return "detail.traceNotApplicable" as const;
     default: return "detail.traceUnavailable" as const;
   }
 }

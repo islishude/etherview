@@ -185,6 +185,19 @@ export function useTransaction(hash: string, enabled = true) {
   });
 }
 
+export function useTransactionCalldata(hash: string, enabled = true) {
+  return useQuery({
+    queryKey: ["transaction", hash, "calldata"],
+    queryFn: async () =>
+      requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/calldata", { params: { path: { hash } } }),
+      ).data,
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useTransactionTrace(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "trace"],

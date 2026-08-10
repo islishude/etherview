@@ -653,6 +653,7 @@
                   "listTransactions",
                   "getTransaction",
                   "listPendingTransactions",
+                  "getTransactionCalldata",
                   "getTransactionTrace",
                   "listTransactionAuthorizations",
                   "listTransactionTokenTransfers",

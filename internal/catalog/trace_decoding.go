@@ -83,8 +83,7 @@ func (catalog *Postgres) decorateTraceFrames(
 	needsABI := false
 	for index := range trace.Frames {
 		frame := &trace.Frames[index]
-		if callLikeTraceType(frame.CallType) && frame.Execution != nil && frame.Execution.Address != "" && frame.Input != nil &&
-			(len(*frame.Input) >= 10 || frame.DirectReverted && frame.Output != nil && len(*frame.Output) >= 10) {
+		if callLikeTraceType(frame.CallType) && frame.Execution != nil && frame.Execution.Address != "" && frame.Input != nil {
 			needsABI = true
 			break
 		}
@@ -112,15 +111,14 @@ func (catalog *Postgres) decorateTraceFrames(
 		if !callLikeTraceType(frame.CallType) {
 			continue
 		}
+		if frame.Execution != nil && (frame.Execution.Resolution == "empty" || frame.Execution.Resolution == "not_applicable") {
+			frame.Decoding = notApplicableTraceCallDecoding("call execution code is empty")
+			continue
+		}
 		frame.Decoding = unavailableTraceCallDecoding(frame.DirectReverted, "no ABI is available for the call target at this block")
 		if frame.Execution == nil || frame.Execution.Address == "" || frame.Input == nil {
 			frame.Decoding.Status = "unknown"
 			frame.Decoding.Warning = "call frame has no exact execution code identity or calldata"
-			continue
-		}
-		if len(*frame.Input) < 10 && (!frame.DirectReverted || frame.Output == nil || len(*frame.Output) < 10) {
-			frame.Decoding.Status = "unknown"
-			frame.Decoding.Warning = "calldata has no function selector"
 			continue
 		}
 		targetBytes, err := decodeFixedHex(frame.Execution.Address, common.AddressLength)
@@ -748,6 +746,14 @@ func unavailableTraceCallDecoding(directReverted bool, warning string) *TraceCal
 		}
 	}
 	return result
+}
+
+func notApplicableTraceCallDecoding(warning string) *TraceCallDecoding {
+	return &TraceCallDecoding{
+		Kind: "function", Status: "not_applicable", Inputs: []ABIValue{},
+		OutputStatus: string(enrich.ReturnNotApplicable), Outputs: []ABIValue{},
+		Candidates: []string{}, Warning: warning,
+	}
 }
 
 func signatureName(signature string) string {

@@ -521,17 +521,26 @@ func traceRow(path string, parent driver.Value, depth int64, callType string) []
 	}
 }
 
+func emptyTraceABISteps() []catalogQueryStep {
+	return []catalogQueryStep{
+		{contains: "FROM abi_decodings AS decoding", rows: catalogRows(15)},
+		{contains: "WITH target_code AS", rows: catalogRows(8)},
+	}
+}
+
 func TestTransactionTraceSortsAndValidatesNormalizedTree(t *testing.T) {
 	txHash, blockHash := bytesOf(0xbb, 32), bytesOf(0xaa, 32)
-	catalog, backend := openCatalog(t,
-		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", blockHash, "9007199254740993"})},
+	steps := []catalogQueryStep{
+		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", blockHash, "9007199254740993"})},
 		traceStageStep("complete"),
-		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18,
+		{contains: "FROM normalized_traces", rows: catalogRows(18,
 			traceRow("", nil, 0, "CALL"),
 			traceRow("10", "", 1, "CREATE2"),
 			traceRow("2", "", 1, "DELEGATECALL"),
 		)},
-	)
+	}
+	steps = append(steps, emptyTraceABISteps()...)
+	catalog, backend := openCatalog(t, steps...)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if err != nil || len(trace.Frames) != 3 || trace.Frames[1].Path[0] != 2 || trace.Frames[2].Path[0] != 10 {
 		t.Fatalf("trace=%+v err=%v", trace, err)
@@ -581,14 +590,66 @@ func TestTransactionTraceCompletedEmptyTreeIsCorrupt(t *testing.T) {
 }
 
 func TestTransactionTraceRootOnlyIsACompleteEmptyInternalCallTree(t *testing.T) {
-	catalog, backend := openCatalog(t,
-		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+	steps := []catalogQueryStep{
+		{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
 		traceStageStep("complete"),
-		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))},
-	)
+		{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))},
+	}
+	steps = append(steps, emptyTraceABISteps()...)
+	catalog, backend := openCatalog(t, steps...)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
 	if err != nil || trace.State != StageComplete || len(trace.Frames) != 1 || trace.Frames[0].Depth != 0 {
 		t.Fatalf("trace=%+v err=%v", trace, err)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionTraceEmptyExecutionIsNotApplicable(t *testing.T) {
+	row := traceRow("", nil, 0, "CALL")
+	row[10] = []byte{}
+	row[15], row[16], row[17] = nil, nil, "empty"
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		traceStageStep("complete"),
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
+	)
+	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
+	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
+		t.Fatalf("trace=%+v err=%v", trace, err)
+	}
+	frame := trace.Frames[0]
+	if frame.Execution == nil || frame.Execution.Resolution != "empty" ||
+		frame.Decoding.Status != "not_applicable" || frame.Decoding.OutputStatus != "not_applicable" ||
+		frame.Decoding.Warning != "call execution code is empty" || len(frame.Decoding.Candidates) != 0 {
+		t.Fatalf("empty execution frame=%+v", frame)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *testing.T) {
+	row := traceRow("", nil, 0, "CALL")
+	row[10] = []byte{}
+	target, codeHash := bytesOf(0x22, 20), bytesOf(0x33, 32)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3, []driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		traceStageStep("complete"),
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
+		catalogQueryStep{contains: "FROM abi_decodings AS decoding", rows: catalogRows(15)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(8, []driver.Value{
+			codeHash, []byte(`[{"type":"receive","stateMutability":"payable"}]`),
+			"verified", "exact_address", target, codeHash, "0", nil,
+		})},
+	)
+	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
+	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
+		t.Fatalf("trace=%+v err=%v", trace, err)
+	}
+	decoded := trace.Frames[0].Decoding
+	if decoded.Status != "decoded" || decoded.FunctionName != "receive" || decoded.Signature != "receive()" ||
+		decoded.OutputStatus != "empty" || decoded.Confidence != "verified" || decoded.ABISource == nil ||
+		decoded.ABISource.Address != "0x2222222222222222222222222222222222222222" ||
+		decoded.ABISource.CodeHash != "0x"+strings.Repeat("33", 32) {
+		t.Fatalf("receive decoding=%+v", decoded)
 	}
 	assertCatalogConsumed(t, backend)
 }

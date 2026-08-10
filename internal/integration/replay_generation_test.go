@@ -482,7 +482,7 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	if err != nil || abiResult.State != enrich.ResultComplete {
 		t.Fatalf("persist crash fixture ABI generation one: result=%+v err=%v", abiResult, err)
 	}
-	for table, count := range map[string]int{"contract_abis": 3, "abi_decodings": 6} {
+	for table, count := range map[string]int{"contract_abis": 3, "abi_decodings": 7} {
 		assertRowCount(t, ctx, db,
 			"SELECT count(*) FROM "+table+" WHERE chain_id = 1 AND block_hash = $1",
 			count, mustBytes(t, reference.Hash),

@@ -23,6 +23,8 @@ type ABIRegistry struct {
 type abiCandidateSet struct {
 	constructors    []abiEntry
 	functions       map[[4]byte][]abiEntry
+	receive         []abiEntry
+	fallback        []abiEntry
 	errors          map[[4]byte][]abiEntry
 	events          map[common.Hash][]abiEntry
 	anonymousEvents []abiEntry
@@ -44,10 +46,9 @@ func NewABIRegistryWithLimits(limits DecodeLimits) (*ABIRegistry, error) {
 	return registry, nil
 }
 
-// RegisterJSON adds only functions, non-anonymous events, and custom errors for
-// an exact durable binding.
-// Constructors, fallback functions, and receive functions have no selector and
-// are intentionally ignored.
+// RegisterJSON adds callable entries, constructors, events, and custom errors
+// for an exact durable binding. Selectorless receive and fallback entries are
+// kept separately so they can never collide with a four-byte selector.
 func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error {
 	if registry == nil {
 		return errors.New("register ABI on nil registry")
@@ -77,7 +78,14 @@ func (registry *ABIRegistry) RegisterJSON(binding ABIBinding, data []byte) error
 		case ABIKindConstructor:
 			candidates.constructors = appendUniqueABIEntry(candidates.constructors, entry)
 		case ABIKindFunction:
-			candidates.functions[entry.selector] = appendUniqueABIEntry(candidates.functions[entry.selector], entry)
+			switch entry.selectorless {
+			case "receive":
+				candidates.receive = appendUniqueABIEntry(candidates.receive, entry)
+			case "fallback":
+				candidates.fallback = appendUniqueABIEntry(candidates.fallback, entry)
+			default:
+				candidates.functions[entry.selector] = appendUniqueABIEntry(candidates.functions[entry.selector], entry)
+			}
 		case ABIKindError:
 			candidates.errors[entry.selector] = appendUniqueABIEntry(candidates.errors[entry.selector], entry)
 		case ABIKindEvent:
@@ -141,7 +149,7 @@ func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
 	for index, existing := range entries {
 		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source &&
 			existing.sourceAddress == candidate.sourceAddress && existing.sourceCodeHash == candidate.sourceCodeHash &&
-			existing.anonymous == candidate.anonymous {
+			existing.anonymous == candidate.anonymous && existing.selectorless == candidate.selectorless {
 			entries[index] = candidate
 			return entries
 		}
@@ -150,37 +158,50 @@ func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
 }
 
 func (registry *ABIRegistry) DecodeCalldata(identity ABIIdentity, input []byte) DecodeResult {
+	result, _ := registry.decodeCalldataWithEntry(identity, input)
+	return result
+}
+
+func (registry *ABIRegistry) decodeCalldataWithEntry(identity ABIIdentity, input []byte) (DecodeResult, *abiEntry) {
 	if registry == nil {
-		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindFunction, Warning: "no ABI registry"}
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindFunction, Warning: "no ABI registry"}, nil
 	}
 	if err := identity.validate(); err != nil {
-		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindFunction, Warning: err.Error()}
+		return DecodeResult{Status: DecodeUnknown, Kind: ABIKindFunction, Warning: err.Error()}, nil
+	}
+	if len(input) == 0 {
+		entries := registry.selectorlessEntries(identity, true)
+		if len(entries) == 0 {
+			return DecodeResult{Status: DecodeUnknown, Kind: ABIKindFunction, Warning: "empty calldata has no receive or fallback ABI entry"}, nil
+		}
+		return chooseSelectorlessABICandidate(entries)
 	}
 	if len(input) < 4 {
-		status := DecodeMalformed
-		if len(input) == 0 {
-			status = DecodeUnknown
+		entries := registry.selectorlessEntries(identity, false)
+		if len(entries) != 0 {
+			return chooseSelectorlessABICandidate(entries)
 		}
-		return DecodeResult{Status: status, Kind: ABIKindFunction, Warning: "calldata has no complete selector"}
+		return DecodeResult{Status: DecodeMalformed, Kind: ABIKindFunction, Warning: "calldata has no complete selector and ABI declares no fallback entry"}, nil
 	}
 	var selector [4]byte
 	copy(selector[:], input[:4])
 	entries := registry.callableEntries(identity, ABIKindFunction, selector)
-	result, _ := registry.decodeCallablesWithEntry(ABIKindFunction, selector, entries, input[4:])
-	return result
+	result, selected := registry.decodeCallablesWithEntry(ABIKindFunction, selector, entries, input[4:])
+	if result.Status != DecodeUnknown {
+		return result, selected
+	}
+	fallback := registry.selectorlessEntries(identity, false)
+	if len(fallback) != 0 {
+		return chooseSelectorlessABICandidate(fallback)
+	}
+	return result, nil
 }
 
 func (registry *ABIRegistry) DecodeCall(identity ABIIdentity, input, output []byte, directReverted bool) CallDecodeResult {
 	if directReverted {
 		return CallDecodeResult{Input: registry.DecodeCalldata(identity, input), ReturnStatus: ReturnNotApplicable}
 	}
-	if registry == nil || len(input) < 4 {
-		return CallDecodeResult{Input: registry.DecodeCalldata(identity, input), ReturnStatus: ReturnUnknown}
-	}
-	var selector [4]byte
-	copy(selector[:], input[:4])
-	entries := registry.callableEntries(identity, ABIKindFunction, selector)
-	decoded, selected := registry.decodeCallablesWithEntry(ABIKindFunction, selector, entries, input[4:])
+	decoded, selected := registry.decodeCalldataWithEntry(identity, input)
 	result := CallDecodeResult{Input: decoded, ReturnStatus: ReturnUnknown}
 	if decoded.Status != DecodeDecoded || selected == nil {
 		return result
@@ -214,6 +235,30 @@ func (registry *ABIRegistry) DecodeCall(identity ABIIdentity, input, output []by
 		}
 	}
 	return result
+}
+
+func (registry *ABIRegistry) selectorlessEntries(identity ABIIdentity, preferReceive bool) []abiEntry {
+	if registry == nil {
+		return nil
+	}
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	candidates := registry.bindings[identity]
+	if candidates == nil {
+		return nil
+	}
+	if preferReceive && len(candidates.receive) != 0 {
+		return append([]abiEntry(nil), candidates.receive...)
+	}
+	return append([]abiEntry(nil), candidates.fallback...)
+}
+
+func chooseSelectorlessABICandidate(entries []abiEntry) (DecodeResult, *abiEntry) {
+	decoded := make([]decodedABICandidate, len(entries))
+	for index := range entries {
+		decoded[index] = decodedABICandidate{entry: entries[index], arguments: []DecodedArgument{}}
+	}
+	return chooseDecodedABICandidate(ABIKindFunction, decoded)
 }
 
 func (registry *ABIRegistry) DecodeRevert(identity ABIIdentity, data []byte) DecodeResult {

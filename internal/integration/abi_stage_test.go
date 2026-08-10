@@ -97,12 +97,13 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	assertABIBinding(t, ctx, db, reference, proxy, proxyCode, "proxy_implementation", "high", implementation, implementationCode)
 	assertABIBinding(t, ctx, db, reference, proxy, proxyCode, "signature_database", "guess", proxy, proxyCode)
 	assertABIDecodingSources(t, ctx, db, reference, map[string]string{
-		"transaction_calldata:": "verified:verified",
-		"log:0":                 "proxy_implementation:high",
-		"trace_calldata:":       "verified:verified",
-		"trace_calldata:0":      "proxy_implementation:high",
-		"trace_revert:0":        "proxy_implementation:high",
-		"trace_revert:1":        "builtin:high",
+		"transaction_calldata:": "decoded:verified:verified",
+		"log:0":                 "decoded:proxy_implementation:high",
+		"trace_calldata:":       "decoded:verified:verified",
+		"trace_calldata:0":      "decoded:proxy_implementation:high",
+		"trace_calldata:1":      "unknown::",
+		"trace_revert:0":        "decoded:proxy_implementation:high",
+		"trace_revert:1":        "decoded:builtin:high",
 	})
 	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
 	if err != nil {
@@ -168,7 +169,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		)
 		assertRowCount(t, ctx, db,
 			fmt.Sprintf(`SELECT count(*) FROM %s WHERE chain_id = 1 AND block_hash = $1 AND NOT canonical`, table),
-			map[string]int{"contract_abis": 4, "abi_decodings": 6}[table], mustBytes(t, reference.Hash),
+			map[string]int{"contract_abis": 4, "abi_decodings": 7}[table], mustBytes(t, reference.Hash),
 		)
 	}
 }
@@ -876,14 +877,12 @@ func assertABIDecodingSources(t *testing.T, ctx context.Context, db *sql.DB, blo
 	defer rows.Close() //nolint:errcheck
 	got := make(map[string]string)
 	for rows.Next() {
-		var kind, index, source, confidence, status string
+		var kind, index, status string
+		var source, confidence sql.NullString
 		if err := rows.Scan(&kind, &index, &source, &confidence, &status); err != nil {
 			t.Fatal(err)
 		}
-		if status != "decoded" {
-			t.Fatalf("ABI decoding %s:%s status=%s", kind, index, status)
-		}
-		got[kind+":"+index] = source + ":" + confidence
+		got[kind+":"+index] = status + ":" + source.String + ":" + confidence.String
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)

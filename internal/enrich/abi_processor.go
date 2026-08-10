@@ -564,7 +564,8 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 		  AND trace.block_number = $2::numeric
 		  AND trace.block_hash = $3
 		  AND trace.canonical
-		  AND trace.execution_resolution IN ('direct', 'eip7702_delegate')
+		  AND trace.execution_address IS NOT NULL
+		  AND trace.execution_resolution IN ('direct', 'eip7702_delegate', 'unavailable')
 		  AND EXISTS (
 		      SELECT 1
 		      FROM published_block_stage_results AS published
@@ -603,13 +604,11 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 			return nil, Permanent(fmt.Errorf("stored ABI trace transaction hash: %w", err))
 		}
 		target := common.BytesToAddress(targetBytes)
-		if len(input) > 0 {
-			result = append(result, abiObservation{
-				objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
-				objectIndex: tracePath, target: target, input: append([]byte(nil), input...),
-				output: append([]byte(nil), output...), directReverted: directReverted,
-			})
-		}
+		result = append(result, abiObservation{
+			objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
+			objectIndex: tracePath, target: target, input: append([]byte(nil), input...),
+			output: append([]byte(nil), output...), directReverted: directReverted,
+		})
 		if directReverted && len(output) > 0 {
 			result = append(result, abiObservation{
 				objectKind: abiObjectTraceRevert, transactionHash: transactionHash,

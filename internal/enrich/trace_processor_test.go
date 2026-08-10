@@ -3,6 +3,7 @@ package enrich
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -260,14 +261,22 @@ func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testin
 		ExecutionAddress: &implementation, ExecutionCodeHash: &topic, ExecutionResolution: "direct",
 		Logs: []TraceLog{{Address: emitter, Topics: []common.Hash{topic}, Data: []byte{1, 2, 3}, Index: 9}},
 	}
+	addressExactFrame := baseFrame
+	addressExactFrame.ExecutionCodeHash = nil
+	addressExactFrame.ExecutionResolution = "unavailable"
+	missingCodeFrame := baseFrame
+	missingCodeFrame.ExecutionCodeHash = nil
 	for _, test := range []struct {
-		name      string
-		frame     CallFrame
-		expected  int
-		wantError bool
-		fallback  int
+		name       string
+		frame      CallFrame
+		expected   int
+		attributed bool
+		wantError  bool
+		fallback   int
 	}{
-		{name: "exact delegate execution", frame: baseFrame, expected: 1},
+		{name: "exact delegate execution", frame: baseFrame, expected: 1, attributed: true},
+		{name: "exact delegate address with unavailable code hash", frame: addressExactFrame, expected: 1, attributed: true},
+		{name: "direct execution missing code hash falls back", frame: missingCodeFrame, expected: 1, fallback: 1},
 		{name: "missing withLog falls back", frame: CallFrame{Type: "DELEGATECALL", To: &implementation}, expected: 1, fallback: 1},
 		{name: "partial response", frame: baseFrame, expected: 2, wantError: true},
 		{name: "duplicate index", frame: func() CallFrame {
@@ -312,15 +321,54 @@ func TestTraceLogAttributionUsesExecutionFrameAndRejectsContradictions(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(test.frame.Logs) > 0 {
+			if test.attributed {
 				if fallback != 0 || len(attributions) != 1 || attributions[0].tracePath != "2.1" ||
 					attributions[0].callType != "DELEGATECALL" || attributions[0].executionAddress != implementation {
 					t.Fatalf("attributions=%+v fallback=%d", attributions, fallback)
 				}
 			} else if len(attributions) != 0 || fallback != test.fallback {
-				t.Fatalf("empty receipt attributions=%+v fallback=%d", attributions, fallback)
+				t.Fatalf("fallback attributions=%+v fallback=%d", attributions, fallback)
 			}
 		})
+	}
+}
+
+func TestABILogsUseAttributedEIP7702ExecutionAddressWithoutStoredCodeHash(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "abi-7702-log", Stage: ABIStage, ChainID: "1", BlockHash: uintWord(78), BlockNumber: 78}
+	transactionHash := uintWord(780)
+	emitter, delegate := testAddress(0xa1), testAddress(0xb2)
+	stored := types.Log{
+		Address: emitter, Topics: []common.Hash{uintWord(123)}, Data: []byte{1, 2, 3},
+		BlockNumber: job.BlockNumber, TxHash: transactionHash, TxIndex: 0,
+		BlockHash: job.BlockHash, Index: 9,
+	}
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeSQLBackend{query: func(query string, _ []driver.NamedValue) (driver.Rows, error) {
+		if !strings.Contains(query, "FROM logs AS log") {
+			return nil, fmt.Errorf("unexpected query: %s", query)
+		}
+		return &fakeSQLRows{
+			columns: []string{"log_index", "tx_hash", "address", "raw", "execution_address"},
+			values:  [][]driver.Value{{int64(9), transactionHash[:], emitter[:], raw, delegate[:]}},
+		}, nil
+	}}
+	db := openFakeSQLDB(t, backend)
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	observations, err := loadABILogs(context.Background(), tx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 1 || observations[0].target != delegate ||
+		observations[0].transactionHash != transactionHash || observations[0].objectIndex != "9" {
+		t.Fatalf("observations=%+v", observations)
 	}
 }
 

@@ -116,8 +116,9 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   await expect(decoded.getByText("value()", { exact: true })).toHaveCount(1);
   await expect(decoded.getByText("No parameters", { exact: true })).toBeVisible();
   const evidence = decoded.getByLabel("ABI evidence");
-  await expect(evidence.getByText("Verified ABI", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Proxy implementation", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Transaction-time execution", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Direct code", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("ABI source · proxy_implementation", { exact: true })).toBeVisible();
   await expect(evidence.getByRole("link", { name: transparentImplementation })).toBeVisible();
 
   const rawValue = raw.getByRole("textbox", { name: "Raw calldata (Hex)" });

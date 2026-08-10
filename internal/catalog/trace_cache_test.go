@@ -71,6 +71,7 @@ func TestTransactionTraceUsesGenerationBoundS3CacheAfterPostcheck(t *testing.T) 
 	cache := &fakeTraceBlobStore{value: encoded, found: true}
 	steps := append(traceIdentitySteps(3), traceIdentitySteps(3)...)
 	steps = append(steps, traceExecutionProjectionStep())
+	steps = append(steps, emptyTraceABISteps()...)
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)
@@ -90,6 +91,7 @@ func TestTransactionTraceS3OutageFallsBackToPostgreSQL(t *testing.T) {
 	steps := traceIdentitySteps(3)
 	steps = append(steps, traceIdentitySteps(3)...)
 	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))})
+	steps = append(steps, emptyTraceABISteps()...)
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)
@@ -112,6 +114,7 @@ func TestTransactionTraceReplayGenerationNeverServesStaleS3Object(t *testing.T) 
 	steps = append(steps, traceIdentitySteps(4)...)
 	steps = append(steps, traceIdentitySteps(4)...)
 	steps = append(steps, catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, traceRow("", nil, 0, "CALL"))})
+	steps = append(steps, emptyTraceABISteps()...)
 	catalog, backend := openCatalogWithOptions(t, Options{
 		TraceCache: cache, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, steps...)

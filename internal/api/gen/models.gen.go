@@ -1258,11 +1258,12 @@ func (e TraceCallDecodingOutputStatus) Valid() bool {
 
 // Defines values for TraceCallDecodingStatus.
 const (
-	TraceCallDecodingStatusAmbiguous   TraceCallDecodingStatus = "ambiguous"
-	TraceCallDecodingStatusDecoded     TraceCallDecodingStatus = "decoded"
-	TraceCallDecodingStatusMalformed   TraceCallDecodingStatus = "malformed"
-	TraceCallDecodingStatusUnavailable TraceCallDecodingStatus = "unavailable"
-	TraceCallDecodingStatusUnknown     TraceCallDecodingStatus = "unknown"
+	TraceCallDecodingStatusAmbiguous     TraceCallDecodingStatus = "ambiguous"
+	TraceCallDecodingStatusDecoded       TraceCallDecodingStatus = "decoded"
+	TraceCallDecodingStatusMalformed     TraceCallDecodingStatus = "malformed"
+	TraceCallDecodingStatusNotApplicable TraceCallDecodingStatus = "not_applicable"
+	TraceCallDecodingStatusUnavailable   TraceCallDecodingStatus = "unavailable"
+	TraceCallDecodingStatusUnknown       TraceCallDecodingStatus = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the TraceCallDecodingStatus enum.
@@ -1273,6 +1274,8 @@ func (e TraceCallDecodingStatus) Valid() bool {
 	case TraceCallDecodingStatusDecoded:
 		return true
 	case TraceCallDecodingStatusMalformed:
+		return true
+	case TraceCallDecodingStatusNotApplicable:
 		return true
 	case TraceCallDecodingStatusUnavailable:
 		return true
@@ -1400,6 +1403,81 @@ func (e TransactionAuthorizationsState) Valid() bool {
 	case TransactionAuthorizationsStateMissing:
 		return true
 	case TransactionAuthorizationsStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionCalldataState.
+const (
+	TransactionCalldataStateComplete    TransactionCalldataState = "complete"
+	TransactionCalldataStateFailed      TransactionCalldataState = "failed"
+	TransactionCalldataStateMissing     TransactionCalldataState = "missing"
+	TransactionCalldataStateUnavailable TransactionCalldataState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionCalldataState enum.
+func (e TransactionCalldataState) Valid() bool {
+	switch e {
+	case TransactionCalldataStateComplete:
+		return true
+	case TransactionCalldataStateFailed:
+		return true
+	case TransactionCalldataStateMissing:
+		return true
+	case TransactionCalldataStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionCalldataDecodingConfidence.
+const (
+	TransactionCalldataDecodingConfidenceGuess    TransactionCalldataDecodingConfidence = "guess"
+	TransactionCalldataDecodingConfidenceHigh     TransactionCalldataDecodingConfidence = "high"
+	TransactionCalldataDecodingConfidenceVerified TransactionCalldataDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TransactionCalldataDecodingConfidence enum.
+func (e TransactionCalldataDecodingConfidence) Valid() bool {
+	switch e {
+	case TransactionCalldataDecodingConfidenceGuess:
+		return true
+	case TransactionCalldataDecodingConfidenceHigh:
+		return true
+	case TransactionCalldataDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionCalldataDecodingStatus.
+const (
+	TransactionCalldataDecodingStatusAmbiguous     TransactionCalldataDecodingStatus = "ambiguous"
+	TransactionCalldataDecodingStatusDecoded       TransactionCalldataDecodingStatus = "decoded"
+	TransactionCalldataDecodingStatusMalformed     TransactionCalldataDecodingStatus = "malformed"
+	TransactionCalldataDecodingStatusNotApplicable TransactionCalldataDecodingStatus = "not_applicable"
+	TransactionCalldataDecodingStatusUnavailable   TransactionCalldataDecodingStatus = "unavailable"
+	TransactionCalldataDecodingStatusUnknown       TransactionCalldataDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TransactionCalldataDecodingStatus enum.
+func (e TransactionCalldataDecodingStatus) Valid() bool {
+	switch e {
+	case TransactionCalldataDecodingStatusAmbiguous:
+		return true
+	case TransactionCalldataDecodingStatusDecoded:
+		return true
+	case TransactionCalldataDecodingStatusMalformed:
+		return true
+	case TransactionCalldataDecodingStatusNotApplicable:
+		return true
+	case TransactionCalldataDecodingStatusUnavailable:
+		return true
+	case TransactionCalldataDecodingStatusUnknown:
 		return true
 	default:
 		return false
@@ -3701,6 +3779,55 @@ type TransactionAuthorizations struct {
 // TransactionAuthorizationsState defines model for TransactionAuthorizations.State.
 type TransactionAuthorizationsState string
 
+// TransactionCalldata defines model for TransactionCalldata.
+type TransactionCalldata struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId   Quantity                    `json:"chain_id"`
+	Decoding  TransactionCalldataDecoding `json:"decoding"`
+	Execution TraceExecution              `json:"execution"`
+	Input     string                      `json:"input"`
+	State     TransactionCalldataState    `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionCalldataState defines model for TransactionCalldata.State.
+type TransactionCalldataState string
+
+// TransactionCalldataDecoding defines model for TransactionCalldataDecoding.
+type TransactionCalldataDecoding struct {
+	AbiSource    *ABISource                             `json:"abi_source,omitempty"`
+	Candidates   []string                               `json:"candidates"`
+	Confidence   *TransactionCalldataDecodingConfidence `json:"confidence,omitempty"`
+	FunctionName *string                                `json:"function_name,omitempty"`
+	Inputs       []ABIValue                             `json:"inputs"`
+	Signature    *string                                `json:"signature,omitempty"`
+	Status       TransactionCalldataDecodingStatus      `json:"status"`
+	Warning      *string                                `json:"warning,omitempty"`
+}
+
+// TransactionCalldataDecodingConfidence defines model for TransactionCalldataDecoding.Confidence.
+type TransactionCalldataDecodingConfidence string
+
+// TransactionCalldataDecodingStatus defines model for TransactionCalldataDecoding.Status.
+type TransactionCalldataDecodingStatus string
+
+// TransactionCalldataResponse defines model for TransactionCalldataResponse.
+type TransactionCalldataResponse struct {
+	Data TransactionCalldata `json:"data"`
+	Meta Meta                `json:"meta"`
+}
+
 // TransactionListResponse defines model for TransactionListResponse.
 type TransactionListResponse struct {
 	Data []Transaction `json:"data"`
@@ -4497,6 +4624,12 @@ type ListTransactionAuthorizationsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetTransactionCalldataParams defines parameters for GetTransactionCalldata.
+type GetTransactionCalldataParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

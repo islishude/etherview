@@ -80,6 +80,46 @@ func TestABIRegistryDecodesCalldataLogAndRevertWithConfidence(t *testing.T) {
 	}
 }
 
+func TestABIRegistryDecodesReceiveAndFallbackEntries(t *testing.T) {
+	t.Parallel()
+	identity := testABIIdentity(14, 104, 1004)
+	registry := NewABIRegistry()
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(`[
+		{"type":"receive","stateMutability":"payable"},
+		{"type":"fallback","stateMutability":"payable"}
+	]`)); err != nil {
+		t.Fatal(err)
+	}
+
+	receive := registry.DecodeCall(identity, nil, nil, false)
+	if receive.Input.Status != DecodeDecoded || receive.Input.Kind != ABIKindFunction ||
+		receive.Input.Name != "receive" || receive.Input.Signature != "receive()" ||
+		receive.Input.Source != ABISourceVerified || receive.ReturnStatus != ReturnEmpty ||
+		len(receive.Input.Arguments) != 0 || len(receive.Returns) != 0 {
+		t.Fatalf("receive decoding=%+v", receive)
+	}
+
+	for _, input := range [][]byte{{0x01}, selectorBytes("missing()")} {
+		fallback := registry.DecodeCall(identity, input, nil, false)
+		if fallback.Input.Status != DecodeDecoded || fallback.Input.Name != "fallback" ||
+			fallback.Input.Signature != "fallback()" || fallback.Input.Source != ABISourceVerified ||
+			fallback.ReturnStatus != ReturnUnavailable || len(fallback.Input.Arguments) != 0 {
+			t.Fatalf("fallback input=%x decoding=%+v", input, fallback)
+		}
+	}
+
+	fallbackOnly := NewABIRegistry()
+	if err := fallbackOnly.RegisterJSON(testABIBinding(identity, ABISourceCodeHash), []byte(`[
+		{"type":"fallback","stateMutability":"payable"}
+	]`)); err != nil {
+		t.Fatal(err)
+	}
+	decoded := fallbackOnly.DecodeCalldata(identity, nil)
+	if decoded.Status != DecodeDecoded || decoded.Name != "fallback" || decoded.Signature != "fallback()" {
+		t.Fatalf("fallback-only empty calldata=%+v", decoded)
+	}
+}
+
 func TestABIRegistryDynamicBuiltInAndMalformed(t *testing.T) {
 	t.Parallel()
 	registry := NewABIRegistry()

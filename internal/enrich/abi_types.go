@@ -138,6 +138,7 @@ type abiEntry struct {
 	sourceCodeHash common.Hash
 	selector       [4]byte
 	topic          common.Hash
+	selectorless   string
 }
 
 func (entry abiEntry) confidence() Confidence { return entry.source.confidence() }
@@ -471,11 +472,17 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 	}
 	entries := make([]abiEntry, 0, len(raw))
 	for index, item := range raw {
-		kind := ABIKind(item.Type)
+		rawKind := item.Type
+		kind := ABIKind(rawKind)
+		selectorless := ""
+		if rawKind == "receive" || rawKind == "fallback" {
+			kind = ABIKindFunction
+			selectorless = rawKind
+		}
 		if kind != ABIKindFunction && kind != ABIKindConstructor && kind != ABIKindEvent && kind != ABIKindError {
 			continue
 		}
-		if item.Name == "" && kind != ABIKindConstructor {
+		if item.Name == "" && kind != ABIKindConstructor && selectorless == "" {
 			return nil, fmt.Errorf("ABI entry %d has no name", index)
 		}
 		if len(item.Inputs) > limits.MaxArguments {
@@ -484,15 +491,18 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 		name := item.Name
 		if kind == ABIKindConstructor {
 			name = "constructor"
+		} else if selectorless != "" {
+			name = selectorless
 		}
 		entry := abiEntry{
-			kind:      kind,
-			name:      name,
-			inputs:    item.Inputs,
-			types:     make([]*abiType, len(item.Inputs)),
-			indexed:   make([]bool, len(item.Inputs)),
-			source:    source,
-			anonymous: item.Anonymous,
+			kind:         kind,
+			name:         name,
+			inputs:       item.Inputs,
+			types:        make([]*abiType, len(item.Inputs)),
+			indexed:      make([]bool, len(item.Inputs)),
+			source:       source,
+			anonymous:    item.Anonymous,
+			selectorless: selectorless,
 		}
 		if kind == ABIKindFunction && len(item.Outputs) > 0 && string(item.Outputs) != "null" {
 			if err := json.Unmarshal(item.Outputs, &entry.outputs); err != nil {
@@ -540,8 +550,11 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 		}
 		if kind == ABIKindEvent {
 			entry.topic = signatureHash(entry.signature)
-		} else {
+		} else if selectorless == "" {
 			entry.selector = SignatureSelector(entry.signature)
+		}
+		if selectorless == "receive" {
+			entry.outputsKnown = true
 		}
 		entries = append(entries, entry)
 	}

@@ -85,22 +85,25 @@ type durableSnapshot struct {
 }
 
 type apiSnapshot struct {
-	ChainID           string
-	IndexedBlock      string
-	LatestBlock       string
-	CoreReady         bool
-	BackfillComplete  bool
-	Features          map[string]bool
-	BlockHashes       []string
-	TransactionHashes []string
-	FromType          string
-	ContractType      string
-	CreationAddress   string
-	FailedStatus      string
-	TraceState        string
-	ChartAvailable    bool
-	SPA               bool
-	SSE               bool
+	ChainID            string
+	IndexedBlock       string
+	LatestBlock        string
+	CoreReady          bool
+	BackfillComplete   bool
+	Features           map[string]bool
+	BlockHashes        []string
+	TransactionHashes  []string
+	FromType           string
+	ContractType       string
+	CreationAddress    string
+	FailedStatus       string
+	TraceState         string
+	CalldataInput      string
+	CalldataResolution string
+	CalldataStatus     string
+	ChartAvailable     bool
+	SPA                bool
+	SSE                bool
 }
 
 type modeResult struct {
@@ -935,6 +938,13 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash, &failed)
 	var trace gen.TransactionTraceResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/trace", &trace)
+	var calldata gen.TransactionCalldataResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash+"/calldata", &calldata)
+	if string(calldata.Data.Execution.Resolution) != "unavailable" ||
+		!strings.EqualFold(calldata.Data.Execution.ContextAddress, h.fixture.contractAddress) ||
+		string(calldata.Data.Decoding.Status) != "unavailable" {
+		h.t.Fatalf("transaction calldata execution = %#v", calldata.Data.Execution)
+	}
 	chart := h.requireHTTPStatus(ctx, "/api/v1/stats/charts/overview", http.StatusOK)
 	_ = chart.Body.Close()
 	spa := h.requireHTTPStatus(ctx, "/", http.StatusOK)
@@ -966,7 +976,9 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		BlockHashes: blockHashes, TransactionHashes: transactionHashes,
 		FromType: string(from.Data.Type), ContractType: string(contract.Data.Type),
 		CreationAddress: creationAddress, FailedStatus: failedStatus,
-		TraceState: string(trace.Data.State), ChartAvailable: true,
+		TraceState: string(trace.Data.State), CalldataInput: calldata.Data.Input,
+		CalldataResolution: string(calldata.Data.Execution.Resolution),
+		CalldataStatus:     string(calldata.Data.Decoding.Status), ChartAvailable: true,
 		SPA: bytes.Contains(body, []byte("<div id=\"root\">")), SSE: true,
 	}
 }

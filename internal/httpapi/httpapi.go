@@ -345,6 +345,7 @@ func (h *Handler) routes() {
 	h.handleBillable("getTransaction", h.transaction)
 	h.handleBillable("listPendingTransactions", h.pendingTransactions)
 	if h.catalog != nil {
+		h.handleBillable("getTransactionCalldata", h.transactionCalldata)
 		h.handleBillable("getTransactionTrace", h.transactionTrace)
 		h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
 		h.handleBillable("listTransactionLogs", h.transactionLogs)
@@ -1631,6 +1632,20 @@ func (h *Handler) transactionTrace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TransactionTraceResponse{Data: transactionTraceModel(item), Meta: h.meta(r)})
 }
 
+func (h *Handler) transactionCalldata(w http.ResponseWriter, r *http.Request) {
+	hash := strings.ToLower(r.PathValue("hash"))
+	if !hashPattern.MatchString(hash) {
+		writeError(w, r, http.StatusBadRequest, "invalid_transaction_hash", "transaction hash must be 32 bytes", nil)
+		return
+	}
+	item, err := h.catalog.TransactionCalldata(r.Context(), h.chainID(), hash)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionCalldataResponse{Data: transactionCalldataModel(item), Meta: h.meta(r)})
+}
+
 func (h *Handler) transactionTokenTransfers(w http.ResponseWriter, r *http.Request) {
 	request, ok := h.transactionResourceRequest(w, r)
 	if !ok {
@@ -2490,6 +2505,8 @@ func (h *Handler) handleCatalogError(w http.ResponseWriter, r *http.Request, err
 		writeError(w, r, http.StatusBadRequest, "invalid_query", "catalog query is invalid", nil)
 	case errors.Is(err, catalog.ErrLimitExceeded):
 		writeError(w, r, http.StatusUnprocessableEntity, "result_limit_exceeded", "catalog result exceeds the configured safety limit", nil)
+	case errors.Is(err, catalog.ErrNotApplicable):
+		writeError(w, r, http.StatusUnprocessableEntity, "calldata_not_applicable", "transaction calldata decoding is not applicable", nil)
 	default:
 		h.logger.ErrorContext(r.Context(), "catalog query failed", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
 		writeError(w, r, http.StatusInternalServerError, "query_failed", "query failed", nil)
@@ -2719,6 +2736,43 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 	}
 }
 
+func transactionCalldataModel(item catalog.TransactionCalldata) gen.TransactionCalldata {
+	execution := gen.TraceExecution{
+		ContextAddress: item.Execution.ContextAddress,
+		Resolution:     gen.TraceExecutionResolution(item.Execution.Resolution),
+	}
+	if item.Execution.Address != "" {
+		execution.Address = &item.Execution.Address
+	}
+	if item.Execution.CodeHash != "" {
+		execution.CodeHash = &item.Execution.CodeHash
+	}
+	decoding := gen.TransactionCalldataDecoding{
+		Status: gen.TransactionCalldataDecodingStatus(item.Decoding.Status),
+		Inputs: abiValuesModel(item.Decoding.Inputs), Candidates: append([]string{}, item.Decoding.Candidates...),
+		AbiSource: abiSourceModel(item.Decoding.ABISource),
+	}
+	if item.Decoding.FunctionName != "" {
+		decoding.FunctionName = &item.Decoding.FunctionName
+	}
+	if item.Decoding.Signature != "" {
+		decoding.Signature = &item.Decoding.Signature
+	}
+	if item.Decoding.Confidence != "" {
+		confidence := gen.TransactionCalldataDecodingConfidence(item.Decoding.Confidence)
+		decoding.Confidence = &confidence
+	}
+	if item.Decoding.Warning != "" {
+		decoding.Warning = &item.Decoding.Warning
+	}
+	return gen.TransactionCalldata{
+		ChainId: item.Identity.ChainID, BlockNumber: item.Identity.BlockNumber,
+		BlockHash: item.Identity.BlockHash, TransactionHash: item.Identity.TransactionHash,
+		TransactionIndex: item.Identity.TransactionIndex, State: gen.TransactionCalldataState(item.Identity.State),
+		Input: item.Input, Execution: execution, Decoding: decoding,
+	}
+}
+
 func traceCallDecodingModel(value *catalog.TraceCallDecoding) *gen.TraceCallDecoding {
 	if value == nil {
 		return nil
@@ -2727,7 +2781,7 @@ func traceCallDecodingModel(value *catalog.TraceCallDecoding) *gen.TraceCallDeco
 		Kind:   gen.TraceCallDecodingKind(value.Kind),
 		Status: gen.TraceCallDecodingStatus(value.Status), Inputs: abiValuesModel(value.Inputs),
 		OutputStatus: gen.TraceCallDecodingOutputStatus(value.OutputStatus), Outputs: abiValuesModel(value.Outputs),
-		Candidates: append([]string(nil), value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
+		Candidates: append([]string{}, value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
 	}
 	if value.FunctionName != "" {
 		result.FunctionName = &value.FunctionName
@@ -2754,7 +2808,7 @@ func traceRevertDecodingModel(value *catalog.TraceRevertDecoding) *gen.TraceReve
 	}
 	result := &gen.TraceRevertDecoding{
 		Status: gen.TraceRevertDecodingStatus(value.Status), Arguments: abiValuesModel(value.Arguments),
-		Candidates: append([]string(nil), value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
+		Candidates: append([]string{}, value.Candidates...), AbiSource: abiSourceModel(value.ABISource),
 	}
 	if value.ErrorName != "" {
 		result.ErrorName = &value.ErrorName

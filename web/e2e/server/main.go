@@ -162,6 +162,29 @@ func main() {
 			writeNotFound(response)
 		}
 	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/calldata", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != testTransactionHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+			"transaction_hash": request.PathValue("hash"), "transaction_index": "0", "state": "complete",
+			"input": "0x3fa4f245",
+			"execution": map[string]any{
+				"context_address": testAddress, "address": testAddress,
+				"code_hash": testHash, "resolution": "direct",
+			},
+			"decoding": map[string]any{
+				"status": "decoded", "function_name": "value", "signature": "value()",
+				"inputs": []any{}, "candidates": []any{"value()"},
+				"abi_source": map[string]any{
+					"kind": "proxy_implementation", "address": transparentImplementation, "code_hash": testHash,
+				},
+				"confidence": "high",
+			},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/trace", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
 			writeNotFound(response)

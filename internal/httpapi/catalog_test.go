@@ -24,6 +24,8 @@ type fakeCatalog struct {
 	nftErr       error
 	trace        catalog.TransactionTrace
 	traceErr     error
+	calldata     catalog.TransactionCalldata
+	calldataErr  error
 	txTokens     catalog.TransactionTokenEventPage
 	txLogs       catalog.TransactionLogPage
 	txState      catalog.TransactionStateChangePage
@@ -71,6 +73,10 @@ func (fake *fakeCatalog) AggregateStats(context.Context, catalog.AggregateStatsR
 
 func (fake *fakeCatalog) TransactionTrace(context.Context, string, string) (catalog.TransactionTrace, error) {
 	return fake.trace, fake.traceErr
+}
+
+func (fake *fakeCatalog) TransactionCalldata(context.Context, string, string) (catalog.TransactionCalldata, error) {
+	return fake.calldata, fake.calldataErr
 }
 
 func (fake *fakeCatalog) TransactionTokenEvents(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionTokenEventPage, error) {
@@ -389,6 +395,94 @@ func TestTransactionTraceDistinguishesStageAbsenceFromNoInternalCalls(t *testing
 	}
 	if response.Data.State != "complete" || len(response.Data.Frames) != 1 || response.Data.Frames[0].Depth != 0 {
 		t.Fatalf("data=%+v", response.Data)
+	}
+}
+
+func TestTransactionTraceEmptyExecutionUsesNotApplicableArrayContract(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("55", 32)
+	blockHash := "0x" + strings.Repeat("66", 32)
+	address := "0x" + strings.Repeat("77", 20)
+	fake := &fakeCatalog{trace: catalog.TransactionTrace{
+		ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
+		TransactionHash: hash, TransactionIndex: "0", State: catalog.StageComplete,
+		Frames: []catalog.TraceFrame{{
+			Path: []uint32{}, ParentPath: []uint32{}, Depth: 0, CallType: "CALL",
+			Execution: &catalog.TraceExecution{ContextAddress: address, Resolution: "empty"},
+			Decoding: &catalog.TraceCallDecoding{
+				Kind: "function", Status: "not_applicable", Inputs: []catalog.ABIValue{},
+				OutputStatus: "not_applicable", Outputs: []catalog.ABIValue{}, Candidates: []string{},
+				Warning: "call execution code is empty",
+			},
+		}},
+	}}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/transactions/"+hash+"/trace", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"not_applicable"`) ||
+		!strings.Contains(recorder.Body.String(), `"candidates":[]`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.TransactionTraceResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	decoding := response.Data.Frames[0].Decoding
+	if decoding == nil || decoding.Status != gen.TraceCallDecodingStatusNotApplicable || decoding.Candidates == nil {
+		t.Fatalf("decoding=%+v", decoding)
+	}
+}
+
+func TestTransactionCalldataExposesExactDelegatedExecution(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("55", 32)
+	blockHash := "0x" + strings.Repeat("66", 32)
+	authority := "0x" + strings.Repeat("77", 20)
+	delegate := "0x" + strings.Repeat("88", 20)
+	codeHash := "0x" + strings.Repeat("99", 32)
+	fake := &fakeCatalog{calldata: catalog.TransactionCalldata{
+		Identity: catalog.TransactionResourceIdentity{
+			ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
+			TransactionHash: hash, TransactionIndex: "3", State: catalog.StageComplete,
+		},
+		Input: "0x55241077",
+		Execution: catalog.TraceExecution{
+			ContextAddress: authority, Address: delegate, CodeHash: codeHash, Resolution: "eip7702_delegate",
+		},
+		Decoding: catalog.TransactionCalldataDecoding{
+			Status: "decoded", FunctionName: "setValue", Signature: "setValue(uint256)",
+			Inputs: []catalog.ABIValue{{Name: "value", Type: "uint256", Value: "42"}}, Candidates: []string{},
+			ABISource:  &catalog.ABISource{Kind: "exact_address", Address: delegate, CodeHash: codeHash},
+			Confidence: "verified",
+		},
+	}}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodGet, "/api/v1/transactions/"+hash+"/calldata", nil,
+	))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.TransactionCalldataResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Data.Execution.Resolution != "eip7702_delegate" || response.Data.Execution.Address == nil ||
+		*response.Data.Execution.Address != delegate || response.Data.Decoding.Signature == nil ||
+		*response.Data.Decoding.Signature != "setValue(uint256)" || len(response.Data.Decoding.Inputs) != 1 {
+		t.Fatalf("data=%+v", response.Data)
+	}
+}
+
+func TestTransactionCalldataRejectsContractCreation(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("55", 32)
+	fake := &fakeCatalog{calldataErr: catalog.ErrNotApplicable}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodGet, "/api/v1/transactions/"+hash+"/calldata", nil,
+	))
+	if recorder.Code != http.StatusUnprocessableEntity || !strings.Contains(recorder.Body.String(), `"code":"calldata_not_applicable"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

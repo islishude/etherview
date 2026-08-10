@@ -14,6 +14,7 @@ var (
 	ErrUnavailable   = errors.New("catalog stage unavailable")
 	ErrInvalidCursor = errors.New("catalog cursor is invalid or stale")
 	ErrInvalidInput  = errors.New("catalog input is invalid")
+	ErrNotApplicable = errors.New("catalog resource is not applicable")
 	ErrCorruptData   = errors.New("catalog data is inconsistent")
 	ErrLimitExceeded = errors.New("catalog result exceeds configured limit")
 )
@@ -411,6 +412,24 @@ type TransactionTrace struct {
 	Frames           []TraceFrame
 }
 
+type TransactionCalldata struct {
+	Identity  TransactionResourceIdentity
+	Input     string
+	Execution TraceExecution
+	Decoding  TransactionCalldataDecoding
+}
+
+type TransactionCalldataDecoding struct {
+	Status       string
+	FunctionName string
+	Signature    string
+	Inputs       []ABIValue
+	Candidates   []string
+	ABISource    *ABISource
+	Confidence   string
+	Warning      string
+}
+
 type TransactionResourceRequest struct {
 	ChainID         string
 	TransactionHash string
@@ -542,6 +561,7 @@ type Reader interface {
 	BlockStats(context.Context, BlockStatsRequest) ([]BlockStat, error)
 	AggregateStats(context.Context, AggregateStatsRequest) (AggregateStats, error)
 	TransactionTrace(context.Context, string, string) (TransactionTrace, error)
+	TransactionCalldata(context.Context, string, string) (TransactionCalldata, error)
 	TransactionTokenEvents(context.Context, TransactionResourceRequest) (TransactionTokenEventPage, error)
 	TransactionLogs(context.Context, TransactionResourceRequest) (TransactionLogPage, error)
 	TransactionStateChanges(context.Context, TransactionResourceRequest) (TransactionStateChangePage, error)

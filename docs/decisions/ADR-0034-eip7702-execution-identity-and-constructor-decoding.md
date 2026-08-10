@@ -33,6 +33,14 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   and `CALLCODE`. Exact log attribution uses that code identity while the
   receipt emitter must equal the frame context. No arbitrary delegatecall is
   interpreted as a durable proxy or management relationship.
+- Geth's `prestateTracer` may expose the authorization-applied first-hop
+  EIP-7702 delegate address without returning that delegate account's code. In
+  this case `trace@3` may retain the exact trace path and execution address for
+  a receipt log while the frame resolution remains `unavailable`. `abi@3`
+  decodes that log only if the ordinary block-scoped code-identity resolver
+  independently finds a canonical historical code hash and range-valid ABI for
+  the attributed address; otherwise it remains unavailable. The emitter's ABI,
+  current delegation, block height, and `latest` are never substitutes.
 - `abi@3` decodes functions and logs only from an exact execution identity (or
   the existing explicit conservative log fallback). `CREATE` and `CREATE2`
   constructor inputs require the created address's canonical code observation,
@@ -40,6 +48,21 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   argument suffix. The ABI arguments must unpack and re-encode byte-for-byte.
   Constructors have no successful outputs; direct failure retains independent
   custom-error or builtin `Error`/`Panic` decoding when the required ABI exists.
+- Transaction calldata uses the final execution-code row produced after all
+  authorization tuples for that transaction have been applied in order. Thus a
+  successful re-delegation of the transaction's `to` authority uses the new
+  delegate, a successful zero-address authorization yields `empty` and
+  `not_applicable`, and authorizations for other authorities do not affect the
+  call. Skipped tuples do not change the identity. The same rule applies to
+  later ordinary transactions that call a delegated EOA, and an outer call
+  failure or revert does not undo the authorization identity used for decoding.
+  A delegated target is followed once; an empty first-hop result does not fall
+  back to an older delegate or another delegation designator.
+- Once the transaction-time execution identity is fixed, selectorless calldata
+  is decoded against that exact code's ABI: empty calldata selects `receive`
+  before `fallback`, while incomplete or unmatched selectors may select only a
+  declared `fallback`. Current delegation and emitter ABI remain prohibited
+  substitutes.
 - Trace object storage schema v3 contains only normalized raw frames. Current
   delegation, constructor, and ABI projections are attached from a PostgreSQL
   repeatable-read snapshot. The current delegation endpoint is served through

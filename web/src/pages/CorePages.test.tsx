@@ -363,7 +363,6 @@ describe("core explorer pages", () => {
 
   it("separates decoded and raw calldata with compact copyable ABI evidence", async () => {
     const calldata = `0xa9059cbb${"0".repeat(24)}${"44".repeat(20)}${"0".repeat(63)}c`;
-    const implementationAddress = `0x${"55".repeat(20)}`;
     const requested: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
@@ -377,42 +376,23 @@ describe("core explorer pages", () => {
           finality: "safe", completeness: completeness(),
         });
       }
-      if (url.pathname === `/api/v1/contracts/${address}/verification`
-        || url.pathname === `/api/v1/contracts/${implementationAddress}/verification`) {
-        const artifactAddress = url.pathname.includes(implementationAddress) ? implementationAddress : address;
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
         return envelope({
-          kind: "verification_success",
-          abi: [{
-            type: "function", name: "transfer", stateMutability: "nonpayable",
-            inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
-            outputs: [],
-          }],
-          target: { address: artifactAddress, code_hash: canonicalHash },
-        });
-      }
-      if (url.pathname === `/api/v1/contracts/${address}/proxy`) {
-        return envelope({
-          address,
-          status: "verified",
-          snapshot: { chain_id: "1", block_number: "12", block_hash: canonicalHash },
-          mechanism: "eip1967",
-          pattern: "uups",
-          standard_version: "5.6.1",
-          evidence_state: "exact",
-          confidence: "verified",
-          binding_id: "018f3b52-0b3d-7bf1-b65f-6f214827cb45",
-          proxy: {
-            address, code_hash: canonicalHash, verification_state: "verified",
-            artifact_kind: "erc1967_proxy", standard_version: "5.6.1",
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          input: calldata,
+          execution: {
+            context_address: address, address, code_hash: canonicalHash, resolution: "direct",
           },
-          implementation: {
-            address: implementationAddress,
-            code_hash: canonicalHash,
-            verification_state: "verified",
-            artifact_kind: "uups_implementation",
-            standard_version: "5.6.1",
+          decoding: {
+            status: "decoded", function_name: "transfer", signature: "transfer(address,uint256)",
+            inputs: [
+              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}` },
+              { name: "amount", type: "uint256", value: "12" },
+            ],
+            candidates: [], confidence: "verified",
+            abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
           },
-          evidence: [],
         });
       }
       return notFound();
@@ -431,11 +411,10 @@ describe("core explorer pages", () => {
       expect(within(decoded).getByRole("columnheader", { name: "Type" })).toBeVisible();
       expect(within(decoded).getByRole("columnheader", { name: "Data" })).toBeVisible();
       const evidence = within(decoded).getByLabelText("ABI evidence");
-      expect(within(evidence).getAllByText("Verified ABI")).toHaveLength(2);
-      expect(within(evidence).getByText("Target contract")).toBeVisible();
-      expect(within(evidence).getByText("Proxy implementation")).toBeVisible();
-      expect(within(evidence).getByRole("link", { name: address })).toBeVisible();
-      expect(within(evidence).getByRole("link", { name: implementationAddress })).toBeVisible();
+      expect(within(evidence).getByText("Transaction-time execution")).toBeVisible();
+      expect(within(evidence).getByText("Direct code")).toBeVisible();
+      expect(within(evidence).getByText("ABI source · exact_address")).toBeVisible();
+      expect(within(evidence).getAllByRole("link", { name: address })).toHaveLength(2);
       expect(within(evidence).getAllByRole("button", { name: "Copy" })).toHaveLength(2);
       expect(within(decoded).getAllByText("12", { exact: true }).length).toBeGreaterThan(0);
 
@@ -446,12 +425,130 @@ describe("core explorer pages", () => {
       expect(within(raw).getByRole("button", { name: "View as UTF-8" })).toBeVisible();
       await user.click(within(raw).getByRole("button", { name: "Copy" }));
       expect(writeText).toHaveBeenCalledWith(calldata);
-      expect(requested).toContain(`/api/v1/contracts/${address}/verification`);
-      expect(requested).toContain(`/api/v1/contracts/${address}/proxy`);
-      expect(requested).toContain(`/api/v1/contracts/${implementationAddress}/verification`);
+      expect(requested).toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+      expect(requested).not.toContain(`/api/v1/contracts/${address}/verification`);
+      expect(requested).not.toContain(`/api/v1/contracts/${address}/proxy`);
     } finally {
       writeText.mockRestore();
     }
+  });
+
+  it("decodes an ordinary call from its transaction-time EIP-7702 delegate", async () => {
+    const delegatedAddress = `0x${"66".repeat(20)}`;
+    const delegateAddress = `0x${"77".repeat(20)}`;
+    const calldata = `0x55241077${"0".repeat(63)}2a`;
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "21000", type: "2", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete", input: calldata,
+          execution: {
+            context_address: delegatedAddress, address: delegateAddress,
+            code_hash: canonicalHash, resolution: "eip7702_delegate",
+          },
+          decoding: {
+            status: "decoded", function_name: "setValue", signature: "setValue(uint256)",
+            inputs: [{ name: "value", type: "uint256", value: "42" }], candidates: [],
+            confidence: "verified",
+            abi_source: { kind: "exact_address", address: delegateAddress, code_hash: canonicalHash },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByText("More details"));
+    const decoded = await screen.findByRole("region", { name: "Decoded calldata · setValue(uint256)" });
+    expect(within(decoded).getByText("EIP-7702 delegate code")).toBeVisible();
+    expect(within(decoded).getAllByRole("link", { name: delegateAddress })).toHaveLength(2);
+    expect(within(decoded).getByText("42", { exact: true })).toBeVisible();
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+    expect(requested).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegation`);
+    expect(requested).not.toContain(`/api/v1/contracts/${delegatedAddress}/verification`);
+  });
+
+  it("keeps raw calldata and reports no executable code after a type-4 clearing authorization", async () => {
+    const delegatedAddress = `0x${"66".repeat(20)}`;
+    const calldata = "0x55241077";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "21000", type: "4", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete", input: calldata,
+          execution: { context_address: delegatedAddress, resolution: "empty" },
+          decoding: { status: "not_applicable", inputs: [], candidates: [] },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByText("More details"));
+    expect(await screen.findByText(/No executable code at transaction execution time/u)).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
+    expect(screen.getByRole("tab", { name: "Authorizations" })).toBeVisible();
+  });
+
+  it("refetches a mismatched calldata identity once and then fails closed", async () => {
+    const calldata = "0x55241077";
+    let transactionFetches = 0;
+    let calldataFetches = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        transactionFetches += 1;
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        calldataFetches += 1;
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          input: "0xdeadbeef",
+          execution: { context_address: address, address, code_hash: canonicalHash, resolution: "direct" },
+          decoding: { status: "unknown", inputs: [], candidates: [] },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByText("More details"));
+    await waitFor(() => {
+      expect(transactionFetches).toBe(2);
+      expect(calldataFetches).toBe(2);
+    });
+    expect(screen.getByText("The canonical transaction inclusion changed. Refreshing this tab will load the new block identity.")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
   });
 
   it("keeps raw calldata in Hex when UTF-8 conversion is unavailable", async () => {
@@ -1080,6 +1177,18 @@ describe("core explorer pages", () => {
                 code_hash: `0x${"11".repeat(32)}`,
                 resolution: "direct",
               },
+              decoding: {
+                kind: "function",
+                status: "decoded",
+                function_name: "receive",
+                signature: "receive()",
+                inputs: [],
+                output_status: "empty",
+                outputs: [],
+                candidates: ["receive()"],
+                confidence: "verified",
+                abi_source: { kind: "exact_address", address, code_hash: `0x${"11".repeat(32)}` },
+              },
             }],
           },
           meta,
@@ -1118,6 +1227,80 @@ describe("core explorer pages", () => {
 
     await userEvent.setup().click(screen.getByRole("tab", { name: "Trace" }));
     expect(await screen.findByText("1 ETH")).toBeVisible();
+    expect(screen.getByText("receive()", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Unknown function selector")).not.toBeInTheDocument();
+  });
+
+  it("reports an ordinary EOA transfer trace as having no executable code", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      const meta = { request_id: "tx-transfer-trace-web-test", chain_id: "1" };
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/transactions/${transactionHash}`) {
+        return Response.json({
+          data: {
+            hash: transactionHash,
+            block_hash: canonicalHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            to: delegatedAddress,
+            nonce: "1",
+            value: "1000000000000000000",
+            gas: "21000",
+            gas_price: "1000000000",
+            type: "2",
+            input: "0x",
+            status: "success",
+            canonical: true,
+            finality: "safe",
+            completeness: completeness(),
+          },
+          meta,
+        });
+      }
+      if (path === `/api/v1/transactions/${transactionHash}/trace`) {
+        return Response.json({
+          data: {
+            state: "complete",
+            frames: [{
+              call_type: "CALL",
+              value: "1000000000000000000",
+              path: [],
+              parent_path: [],
+              depth: 0,
+              from: address,
+              to: delegatedAddress,
+              input: "0x",
+              output: "0x",
+              direct_reverted: false,
+              reverted: false,
+              execution: { context_address: delegatedAddress, resolution: "empty" },
+              decoding: {
+                kind: "function",
+                status: "not_applicable",
+                inputs: [],
+                output_status: "not_applicable",
+                outputs: [],
+                candidates: [],
+                warning: "call execution code is empty",
+              },
+            }],
+          },
+          meta,
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByRole("tab", { name: "Trace" }));
+    expect((await screen.findAllByText("No executable code"))[0]).toBeVisible();
+    expect(screen.queryByText("Unknown function selector")).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect((await screen.findAllByText("无可执行代码"))[0]).toBeVisible();
+    expect(screen.queryByText("未知函数选择器")).not.toBeInTheDocument();
   });
 
   it("renders transaction confirmations and block timestamp in /tx detail", async () => {
