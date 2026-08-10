@@ -204,7 +204,6 @@ export function DelegatedAccountPanel({
                   bindingError={binding.error}
                   bindingLoading={binding.isPending}
                   delegatedView={delegatedView}
-                  onViewHistory={() => selectTab("history")}
                 />
               ) : null}
               {(activeTab === "read-contract" || activeTab === "write-contract") ? (
@@ -247,7 +246,6 @@ function DelegatedCodePanel({
   bindingError,
   bindingLoading,
   delegatedView,
-  onViewHistory,
 }: {
   artifact?: Parameters<typeof ContractArtifactPanel>[0]["artifact"];
   artifactError: unknown;
@@ -256,7 +254,6 @@ function DelegatedCodePanel({
   bindingError: unknown;
   bindingLoading: boolean;
   delegatedView: boolean;
-  onViewHistory: () => void;
 }) {
   const { t } = useTranslation();
   const delegated = binding?.status === "delegated";
@@ -300,9 +297,6 @@ function DelegatedCodePanel({
                 <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}><code>{binding.block_number}</code></Link>
               </dd></div>
             </dl>
-            <button className="button secondary" onClick={onViewHistory} type="button">
-              {t("delegation.viewHistory")}
-            </button>
           </>
         ) : null}
       </section>

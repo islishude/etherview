@@ -1956,14 +1956,9 @@ describe("core explorer pages", () => {
     expect(screen.getByText(/currently has no active EIP-7702 delegation/)).toBeVisible();
     expect(screen.getByRole("link", { name: "102" })).toHaveAttribute("href", `/blocks/${canonicalHash}`);
     expect(screen.queryByRole("heading", { name: "Verified artifact" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View delegation history" })).not.toBeInTheDocument();
     expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
     expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
-
-    await user.click(screen.getByRole("button", { name: "View delegation history" }));
-    expect(within(delegatedTabs).getByRole("tab", { name: "Delegation history" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
     await user.click(screen.getByRole("button", { name: "切换到中文" }));
     expect(within(delegatedTabs).getByRole("tab", { name: "状态" })).toBeVisible();
   });

@@ -508,6 +508,7 @@ test("cleared delegated accounts open canonical history without loading current 
   expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "View delegation history" })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await assertA11yAndNoOverflow(page, "cleared delegated account status in narrow mode");
   await page.getByRole("button", { name: "切换到中文" }).click();

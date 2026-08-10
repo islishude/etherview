@@ -47,6 +47,7 @@ this plan.
 | P61-T09 | done | P61-T08 | Report calls with exact empty execution code, including ordinary native transfers to EOAs, as ABI decoding not applicable instead of an unknown function selector | Catalog/API/Web regressions, live Preview verification, and common gates |
 | P61-T10 | done | P61-T09 | Keep canonical delegation history discoverable from an address after its current EIP-7702 delegation is cleared | state/query, generated API, Web, browser, integration, and common gates |
 | P61-T11 | done | P61-T10 | Order canonical delegation history by its numeric chain position and replace cleared-address Code content with a lazy current-status surface | Catalog, PostgreSQL, generated API, Web, browser, Preview, and common gates |
+| P61-T12 | done | P61-T11 | Remove the redundant History action from the cleared-address Status surface while retaining the dedicated History tab | Web, browser, generation, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -263,3 +264,9 @@ None.
   The rebuilt six-role Preview is healthy, and both its generated API and
   embedded page return the reported address history in numeric order `2112,
   1664, 851, 675, 664, 33`.
+- P61-T12 removes the redundant View delegation history / 查看委托历史 button
+  and its unused component and translation surface. The dedicated History tab,
+  cleared-address History default, and lazy binding/artifact boundaries remain
+  unchanged. CorePages 35/35, the full Web suite 298/298, `make generate-check`,
+  host-authorized `make test-e2e` 14/14, and the final writable-cache `make
+  check` pass. The six-role Preview was rebuilt and all services are healthy.
