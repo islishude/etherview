@@ -15,6 +15,7 @@ import (
 
 const (
 	testAddress               = "0x1111111111111111111111111111111111111111"
+	unverifiedAddress         = "0x1212121212121212121212121212121212121212"
 	testEOA                   = "0x2222222222222222222222222222222222222222"
 	delegatedAddress          = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 	clearedDelegationAddress  = "0x7777777777777777777777777777777777777777"
@@ -338,6 +339,12 @@ func main() {
 					"kind": "contract_creation", "state": "found",
 					"source_address": testEOA, "transaction_hash": testTransactionHash,
 				},
+			})
+		case unverifiedAddress:
+			writeEnvelope(response, map[string]any{
+				"address": unverifiedAddress, "type": "contract", "balance": "0", "nonce": "1",
+				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"has_delegation_history": false,
 			})
 		case testEOA:
 			writeEnvelope(response, map[string]any{

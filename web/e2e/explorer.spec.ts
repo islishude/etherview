@@ -2,6 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
+const unverifiedAddress = "0x1212121212121212121212121212121212121212";
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const clearedDelegationAddress = "0x7777777777777777777777777777777777777777";
 const delegatedDelegate = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
@@ -106,6 +107,10 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(skipLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
+
+  await page.goto("/contracts");
+  await expect(page.getByRole("heading", { name: /404 ·/ })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "合约" })).toHaveCount(0);
 });
 
 test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
@@ -550,7 +555,26 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("Externally owned account", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveCount(0);
 
-  await page.goto("/verify");
+  await page.goto(`/address/${unverifiedAddress}#code`);
+  const verificationEntry = page.getByRole("link", { name: "Submit a verification request" });
+  await expect(page.getByText(/This contract has not been verified yet/)).toBeVisible();
+  await expect(verificationEntry).toHaveAttribute(
+    "href",
+    `/verify?address=${unverifiedAddress}`,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "unverified contract verification entry in English narrow mode");
+  await page.getByRole("button", { name: "切换到中文" }).click();
+  const localizedVerificationEntry = page.getByRole("link", { name: "提交合约验证请求" });
+  await expect(localizedVerificationEntry).toHaveAttribute(
+    "href",
+    `/verify?address=${unverifiedAddress}`,
+  );
+  await assertA11yAndNoOverflow(page, "unverified contract verification entry in Chinese narrow mode");
+  await page.getByRole("button", { name: "Switch to English" }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await activateInView(verificationEntry);
+  await expect(page).toHaveURL(new RegExp(`/verify\\?address=${unverifiedAddress}$`));
   await expect(page.getByRole("heading", { name: "Public verification is unavailable" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Open a durable verification job" })).toBeVisible();
   await page.getByLabel("Job ID", { exact: true }).fill(verificationJobID);
@@ -631,7 +655,6 @@ test("capability pages survive the embedded binary boundary in both accessible t
     `/nft/${address}/1`,
     `/address/${address}`,
     `/address/${walletAccount}`,
-    "/contracts",
     `/address/${address}#code`,
     "/verify",
     "/charts",
@@ -1681,9 +1704,7 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
     },
   );
 
-  await page.goto("/contracts");
-  await page.getByLabel("Address", { exact: true }).fill(address);
-  await activateInView(page.getByRole("button", { name: "Open contract" }));
+  await page.goto(`/address/${address}#code`);
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),

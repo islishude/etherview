@@ -360,40 +360,6 @@ describe("P50 capability pages", () => {
     expect(screen.queryByRole("heading", { name: "Public verification is unavailable" })).toBeNull();
   });
 
-  it("opens automatic contract discovery without code hash or manual calldata", async () => {
-    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/v1/config") return configResponse({});
-      if (String(input) === `/api/v1/addresses/${address}`) {
-        return Response.json({
-          data: {
-            address,
-            type: "contract",
-            balance: "0",
-            nonce: "0",
-            code_hash: codeHash,
-            at_block: blockHash,
-            completeness: {},
-          },
-          meta,
-        });
-      }
-      return apiError("not_found", 404);
-    });
-    vi.stubGlobal("fetch", fetcher);
-    renderExplorer("/contracts");
-
-    fireEvent.change(await screen.findByLabelText("Address"), {
-      target: { value: address },
-    });
-    expect(screen.queryByLabelText("Code hash (optional)")).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Open contract" }));
-
-    expect(await screen.findByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "Code" })).toBeVisible();
-    expect(screen.queryByLabelText("Calldata")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
-  });
-
   it("rejects nested duplicate Standard JSON keys before submission", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/v1/config") {

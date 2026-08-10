@@ -9,7 +9,7 @@ import {
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
-import { getAddress, hexToBytes, isAddress, type Hex } from "viem";
+import { hexToBytes, isAddress, type Hex } from "viem";
 
 import {
   useAddressERC20Balances,
@@ -3652,12 +3652,12 @@ const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const QUANTITY_PATTERN = /^(0|[1-9][0-9]*)$/;
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-export function VerifyPage() {
+export function VerifyPage({ initialAddress = "" }: { initialAddress?: string }) {
   const { t } = useTranslation();
   const publicConfig = usePublicConfig();
   const [apiKey, setAPIKey] = useState("");
   const [submittedAPIKey, setSubmittedAPIKey] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(initialAddress);
   const [language, setLanguage] = useState<VerificationSubmission["language"]>("solidity");
   const [inputKind, setInputKind] = useState<VerificationSubmission["input_kind"]>("standard_json");
   const [compilerVersion, setCompilerVersion] = useState("");
@@ -3675,6 +3675,10 @@ export function VerifyPage() {
     Boolean(submission.data),
   );
   const currentJob = job.data ?? submission.data;
+
+  useEffect(() => {
+    setAddress(initialAddress);
+  }, [initialAddress]);
 
   useEffect(() => {
     const versions = compilerCatalog.data?.versions ?? [];
@@ -3957,41 +3961,6 @@ function VerificationMatchView({ title, match }: { title: string; match: Verific
         values: match.values,
       }, null, 2)}</pre>
     </section>
-  );
-}
-
-export function ContractsPage() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [address, setAddress] = useState("");
-  const [error, setError] = useState<string>();
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(undefined);
-    if (!isAddress(address)) {
-      setError(t("contracts.invalidIdentity"));
-      return;
-    }
-    void navigate({
-      to: "/address/$address",
-      params: { address: getAddress(address) },
-      search: {},
-      hash: "code",
-    });
-  };
-
-  return (
-    <Page title={t("page.contracts")} description={t("page.contractsDescription")}>
-      <form className="panel contract-lookup" onSubmit={submit}>
-        <h2>{t("contracts.lookup")}</h2>
-        <p className="quiet">{t("contracts.addressFirst")}</p>
-        <FormField id="contract-address-lookup" label={t("page.address")} value={address} onChange={setAddress} />
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="button primary" type="submit">{t("contracts.open")}</button>
-      </form>
-      <Link className="button secondary inline-button" to="/verify">{t("contracts.submitVerification")}</Link>
-    </Page>
   );
 }
 

@@ -81,6 +81,16 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByRole("heading", { name: "404 ·" })).toBeVisible();
   });
 
+  it("removes the standalone Contracts navigation and lookup route", async () => {
+    renderExplorer("/contracts");
+
+    expect(await screen.findByRole("heading", { name: "404 ·" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Contracts" })).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(screen.queryByRole("link", { name: "合约" })).toBeNull();
+  });
+
   it("renders a deep-linked route and switches language and theme", async () => {
     renderExplorer("/tokens");
 
@@ -654,9 +664,9 @@ describe("embedded explorer shell", () => {
       return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer("/verify");
+    renderExplorer(`/verify?address=${address}`);
 
-    fireEvent.change(await screen.findByLabelText("Address"), { target: { value: address } });
+    expect(await screen.findByLabelText("Address")).toHaveValue(address);
     expect(await screen.findByLabelText("Compiler version")).toHaveValue("0.8.30");
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));

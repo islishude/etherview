@@ -57,11 +57,24 @@ describe("contract proxy route", () => {
       "This contract has not been verified yet. Its source code and ABI-based read/write forms are unavailable until verification is complete.",
     )).toBeVisible();
     expect(screen.queryByText("Indexed entity not found")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Submit a verification request" })).toHaveAttribute(
+      "href",
+      `/verify?address=${proxyAddress}`,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
     expect(await screen.findByText(
       "该合约尚未完成验证。完成验证后才能查看源码并使用基于 ABI 的合约读写功能。",
     )).toBeVisible();
+    expect(screen.getByRole("link", { name: "提交合约验证请求" })).toBeVisible();
+  });
+
+  it("does not offer verification while the artifact request is temporarily unavailable", async () => {
+    installContractAPI({ pattern: "none", verificationStatus: 503 });
+    renderContractRoute();
+
+    expect(await screen.findByText("Explorer API is not available yet")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
   });
 
   it("restores contract subpages from hashes and navigates between them", async () => {
@@ -150,6 +163,7 @@ describe("contract proxy route", () => {
       expect(
         await screen.findByRole("heading", { name: "Verified artifact" }),
       ).toBeVisible();
+      expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
       const codePanel = document.getElementById("contract-panel-code");
       expect(codePanel).not.toBeNull();
       await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
@@ -498,7 +512,7 @@ function installContractAPI({
         return Response.json(
           {
             error: {
-              code: "not_found",
+              code: verificationStatus === 404 ? "not_found" : "temporary_failure",
               message: "no verified artifact",
               request_id: "contract-page-test",
             },

@@ -280,6 +280,7 @@ export function ContractPage({ address }: { address: string }) {
                         <ProxySummary detail={proxyDetail} loading={proxy.isPending} error={proxy.error} />
                       ) : null}
                       <ArtifactPanel
+                        address={address}
                         artifact={artifact.data}
                         error={artifact.error}
                         loading={artifact.isPending}
@@ -496,10 +497,12 @@ function IdentityFact({
 }
 
 function ArtifactPanel({
+  address,
   artifact,
   loading,
   error,
 }: {
+  address: string;
   artifact?: VerifiedContractArtifact;
   loading: boolean;
   error: unknown;
@@ -514,7 +517,16 @@ function ArtifactPanel({
       </div>
       <QueryNotice loading={loading} error={unverified ? undefined : error} />
       {unverified ? (
-        <p className="chain-warning" role="status">{t("contracts.unverifiedArtifact")}</p>
+        <div className="chain-warning unverified-contract">
+          <p role="status">{t("contracts.unverifiedArtifact")}</p>
+          <Link
+            className="button secondary inline-button"
+            search={{ address }}
+            to="/verify"
+          >
+            {t("contracts.submitVerification")}
+          </Link>
+        </div>
       ) : null}
       {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
     </div>

@@ -4,11 +4,11 @@ import {
   createRouter,
   type RouterHistory,
 } from "@tanstack/react-router";
+import { getAddress, isAddress } from "viem";
 
 import { AppShell } from "@/components/AppShell";
 import {
   BlocksPage,
-  ContractsPage,
   EntityPage,
   GenesisPage,
   HomePage,
@@ -106,15 +106,15 @@ const nftRoute = createRoute({
   path: "/nft/$address/$tokenID",
   component: NFTRoutePage,
 });
-const contractsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/contracts",
-  component: ContractsPage,
-});
 const verifyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/verify",
-  component: VerifyPage,
+  validateSearch: (search: Record<string, unknown>): { address?: string } => ({
+    address: typeof search.address === "string" && isAddress(search.address)
+      ? getAddress(search.address)
+      : undefined,
+  }),
+  component: VerifyRoutePage,
 });
 const chartsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -187,7 +187,6 @@ const routeTree = rootRoute.addChildren([
   tokensRoute,
   tokenRoute,
   nftRoute,
-  contractsRoute,
   verifyRoute,
   chartsRoute,
   chartMetricRoute,
@@ -225,6 +224,11 @@ function TokenRoutePage() {
 function NFTRoutePage() {
   const { address, tokenID } = nftRoute.useParams();
   return <EntityPage kind="nft" identifier={address} secondary={tokenID} />;
+}
+
+function VerifyRoutePage() {
+  const { address } = verifyRoute.useSearch();
+  return <VerifyPage initialAddress={address} />;
 }
 
 function SearchRoutePage() {

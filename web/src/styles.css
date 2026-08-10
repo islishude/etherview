@@ -2585,6 +2585,19 @@ tbody tr:hover {
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
+.unverified-contract {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.unverified-contract > p {
+  flex: 1 1 28rem;
+  margin: 0;
+}
+
 .form-error {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
@@ -3195,7 +3208,6 @@ tbody tr:hover {
 .verification-form > h2,
 .verification-job-lookup > h2,
 .job-panel > h2,
-.contract-lookup > h2,
 .verified-contract-card > h2 {
   margin: 0 0 0.8rem;
   font-size: 1.1rem;
@@ -3671,7 +3683,6 @@ tbody tr:hover {
 .verification-form,
 .verification-job-lookup,
 .job-panel,
-.contract-lookup,
 .verified-contract-card {
   padding: clamp(1rem, 3vw, 1.4rem);
 }
@@ -3778,20 +3789,6 @@ tbody tr:hover {
 .job-status.cancelled {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
-}
-
-.contract-lookup {
-  max-width: 820px;
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 0.85rem;
-  align-items: end;
-}
-
-.contract-lookup > h2,
-.contract-lookup > p,
-.contract-lookup > .form-error {
-  grid-column: 1 / -1;
 }
 
 .contract-detail-stack,
@@ -5256,7 +5253,6 @@ tbody tr:hover {
   }
 
   .range-form,
-  .contract-lookup,
   .contract-query-form,
   .form-grid {
     grid-template-columns: 1fr;
@@ -5380,9 +5376,6 @@ tbody tr:hover {
 
   .range-form label,
   .range-form .button,
-  .contract-lookup > h2,
-  .contract-lookup > p,
-  .contract-lookup > .form-error,
   .field-control.wide {
     grid-column: auto;
   }

@@ -87,9 +87,6 @@ export function AppShell() {
           <Link activeProps={{ className: "active" }} to="/tokens">
             {t("nav.tokens")}
           </Link>
-          <Link activeProps={{ className: "active" }} to="/contracts">
-            {t("nav.contracts")}
-          </Link>
           <Link activeProps={{ className: "active" }} to="/charts">
             {t("nav.charts")}
           </Link>

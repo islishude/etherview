@@ -74,6 +74,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T48 | done        | P50-T47 | Link trustworthy contract-write transaction hashes to the transaction overview | focused ABI form, embedded browser, build, generation, and plan regressions |
 | P50-T49 | done        | P40-T13, P50-T48 | Transaction-overview internal ETH transfers and exact-decimal ERC-20 transfer quantities | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T50 | done        | P50-T49 | Move transaction internal ETH transfers from Overview into a dedicated tab immediately before Token transfers | focused frontend, tab order, lazy loading, bilingual, embedded browser, and common gates |
+| P50-T51 | done        | P50-T50 | Remove the standalone Contracts navigation and route, and link definitively unverified contracts to address-prefilled Web verification | focused frontend, bilingual, embedded browser, accessibility, and common gates |
 
 ## Acceptance
 
@@ -792,3 +793,14 @@ None.
   Both the documented bundled single-process browser diagnostic and the
   host-authorized canonical `make test-e2e` pass all 14 flows, covering exact
   tab order, deep linking, lazy loading, and Trace isolation.
+- P50-T51 removes the primary Contracts navigation and standalone `/contracts`
+  route, makes that path render the SPA 404, and adds a bilingual verification
+  action only for definitively unverified contract artifacts. The action passes
+  the validated current address through `/verify` without placing API keys in
+  the URL; disabled deployments retain their existing unavailable explanation.
+- P50-T51 verification passes the focused frontend suite (3 files, 50 tests),
+  the complete frontend suite (29 files, 299 tests), TypeScript lint,
+  production build, `make generate-check`, `make plan-check`, and `git diff
+  --check`. The host-authorized canonical `make test-e2e` passes all 14 flows,
+  including the removed route, address-prefilled action, disabled capability,
+  bilingual 390px layout, automated accessibility, and overflow checks.
