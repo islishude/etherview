@@ -1051,6 +1051,8 @@ export interface components {
             code_hash?: components["schemas"]["Hash"];
             completeness: components["schemas"]["Completeness"];
             delegation?: components["schemas"]["DelegationBinding"];
+            /** @description Whether canonical applied EIP-7702 delegation history exists at this address snapshot. */
+            has_delegation_history: boolean;
             name?: string;
             nonce: components["schemas"]["Quantity"];
             origin?: components["schemas"]["AddressOrigin"];

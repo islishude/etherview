@@ -33,13 +33,22 @@ function delegatedAccountTabFromHash(hash: string): DelegatedAccountTab | undefi
   return isDelegatedAccountTabHash(normalized) ? normalized : undefined;
 }
 
-export function DelegatedAccountPanel({ authority }: { authority: string }) {
+export function DelegatedAccountPanel({
+  authority,
+  currentlyDelegated,
+}: {
+  authority: string;
+  currentlyDelegated: boolean;
+}) {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = delegatedAccountTabFromHash(location.hash);
   const activeTab = requestedTab ?? "code";
-  const binding = useAddressDelegation(authority);
+  const binding = useAddressDelegation(
+    authority,
+    currentlyDelegated || activeTab !== "history",
+  );
   const delegate = binding.data?.status === "delegated" ? binding.data.delegate ?? "" : "";
   const codeHash = binding.data?.status === "delegated"
     ? binding.data.delegate_code_hash

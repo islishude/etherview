@@ -71,6 +71,12 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   Reads may observe a newer canonical tip when that identity is unchanged;
   writes additionally require the exact block number and hash captured by the
   interaction fence before submission.
+- Address summaries expose whether canonical applied delegation history exists
+  at their exact state reference. This writer-authoritative projection includes
+  clearing, excludes skipped, orphan, and later authorizations, and fails closed
+  if the reference or history cannot be validated. The Web history entry remains
+  discoverable after clearing while current binding and artifact reads stay
+  lazy unless their panels are opened.
 
 ## Consequences
 

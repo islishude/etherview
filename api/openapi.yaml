@@ -2202,7 +2202,7 @@ components:
           $ref: "#/components/schemas/Quantity"
     AddressSummary:
       type: object
-      required: [address, type, balance, nonce, at_block, completeness]
+      required: [address, type, balance, nonce, at_block, completeness, has_delegation_history]
       properties:
         address:
           $ref: "#/components/schemas/Address"
@@ -2225,6 +2225,9 @@ components:
           $ref: "#/components/schemas/Completeness"
         delegation:
           $ref: "#/components/schemas/DelegationBinding"
+        has_delegation_history:
+          type: boolean
+          description: Whether canonical applied EIP-7702 delegation history exists at this address snapshot.
     DelegationBinding:
       type: object
       additionalProperties: false

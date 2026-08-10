@@ -45,6 +45,21 @@ type testCanonical struct {
 	canonical bool
 }
 
+type testDelegationHistoryReader struct {
+	hasHistory bool
+	err        error
+	address    string
+	number     uint64
+	hash       common.Hash
+}
+
+func (r *testDelegationHistoryReader) HasAddressDelegationHistory(
+	_ context.Context, address string, number uint64, hash common.Hash,
+) (bool, error) {
+	r.address, r.number, r.hash = address, number, hash
+	return r.hasHistory, r.err
+}
+
 func (c testCanonical) Tip(context.Context) (CanonicalRef, error) { return c.reference, nil }
 func (c testCanonical) IsCanonical(context.Context, CanonicalRef) (bool, error) {
 	return c.canonical, nil
@@ -163,6 +178,54 @@ func TestReaderQueriesFixedCanonicalState(t *testing.T) {
 	}
 	if model.CodeHash == nil || model.Completeness.State != gen.StageStateComplete {
 		t.Fatalf("missing code/completeness: %+v", model)
+	}
+}
+
+func TestReaderExposesCanonicalDelegationHistoryForClearedEOA(t *testing.T) {
+	t.Parallel()
+	hash := testStateHash(10)
+	history := &testDelegationHistoryReader{hasHistory: true}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state", Client: newTestStateClient(t, &testStateRPC{code: []byte{}}),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &Reader{
+		Base: testBaseReader{}, Pool: pool,
+		Canonical:         testCanonical{reference: CanonicalRef{Number: 10, Hash: hash}, canonical: true},
+		DelegationHistory: history,
+	}
+	model, err := reader.Address(t.Context(), "0x000000000000000000000000000000000000dead")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.Type != gen.AddressSummaryTypeEoa || !model.HasDelegationHistory {
+		t.Fatalf("unexpected cleared EOA summary: %+v", model)
+	}
+	if history.address != model.Address || history.number != 10 || history.hash != hash {
+		t.Fatalf("unexpected history reference: %+v", history)
+	}
+}
+
+func TestReaderFailsClosedWhenDelegationHistoryIsUnavailable(t *testing.T) {
+	t.Parallel()
+	historyErr := errors.New("history database unavailable")
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state", Client: newTestStateClient(t, &testStateRPC{code: []byte{}}),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &Reader{
+		Base: testBaseReader{}, Pool: pool,
+		Canonical:         testCanonical{reference: CanonicalRef{Number: 10, Hash: testStateHash(10)}, canonical: true},
+		DelegationHistory: &testDelegationHistoryReader{err: historyErr},
+	}
+	if _, err := reader.Address(t.Context(), "0x000000000000000000000000000000000000dead"); !errors.Is(err, historyErr) {
+		t.Fatalf("address error=%v, want history failure", err)
 	}
 }
 

@@ -17,6 +17,7 @@ const (
 	testAddress               = "0x1111111111111111111111111111111111111111"
 	testEOA                   = "0x2222222222222222222222222222222222222222"
 	delegatedAddress          = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+	clearedDelegationAddress  = "0x7777777777777777777777777777777777777777"
 	delegatedDelegate         = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 	uupsProxyAddress          = "0x3000000000000000000000000000000000000003"
 	uupsImplementation        = "0x4000000000000000000000000000000000000004"
@@ -301,6 +302,7 @@ func main() {
 			writeEnvelope(response, map[string]any{
 				"address": testAddress, "type": "contract", "balance": "900719925474099312345", "nonce": "1",
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"has_delegation_history": false,
 				"origin": map[string]any{
 					"kind": "contract_creation", "state": "found",
 					"source_address": testEOA, "transaction_hash": testTransactionHash,
@@ -309,12 +311,18 @@ func main() {
 		case testEOA:
 			writeEnvelope(response, map[string]any{
 				"address": testEOA, "type": "eoa", "balance": "0", "nonce": "0",
-				"at_block": secondHash, "completeness": completeness(),
+				"at_block": secondHash, "completeness": completeness(), "has_delegation_history": false,
 			})
 		case delegatedAddress:
 			writeEnvelope(response, map[string]any{
 				"address": delegatedAddress, "type": "delegated_eoa", "balance": "1000000000000000000", "nonce": "4",
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"has_delegation_history": true,
+			})
+		case clearedDelegationAddress:
+			writeEnvelope(response, map[string]any{
+				"address": clearedDelegationAddress, "type": "eoa", "balance": "0", "nonce": "5",
+				"at_block": secondHash, "completeness": completeness(), "has_delegation_history": true,
 			})
 		default:
 			if _, ok := contractArtifact(request.PathValue("address")); !ok {
@@ -324,6 +332,7 @@ func main() {
 			writeEnvelope(response, map[string]any{
 				"address": request.PathValue("address"), "type": "contract", "balance": "0", "nonce": "0",
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"has_delegation_history": false,
 			})
 		}
 	})
@@ -339,8 +348,17 @@ func main() {
 		})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/delegations", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("address") != delegatedAddress {
+		if request.PathValue("address") != delegatedAddress && request.PathValue("address") != clearedDelegationAddress {
 			writeNotFound(response)
+			return
+		}
+		if request.PathValue("address") == clearedDelegationAddress {
+			writeEnvelope(response, []any{map[string]any{
+				"authority": clearedDelegationAddress, "kind": "cleared",
+				"delegate":          "0x0000000000000000000000000000000000000000",
+				"previous_delegate": delegatedDelegate, "block_number": "3", "block_hash": testHash,
+				"transaction_hash": secondTransactionHash, "transaction_index": "0", "authorization_index": "0",
+			}})
 			return
 		}
 		item := map[string]any{
@@ -359,7 +377,8 @@ func main() {
 		writeEnvelopeMeta(response, []any{item}, map[string]any{"next_cursor": "delegation-next"})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/transactions", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("address") != testAddress && request.PathValue("address") != testEOA {
+		if request.PathValue("address") != testAddress && request.PathValue("address") != testEOA &&
+			request.PathValue("address") != clearedDelegationAddress {
 			writeNotFound(response)
 			return
 		}

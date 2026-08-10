@@ -18,6 +18,7 @@ const parentHash = `0x${"00".repeat(32)}`;
 const address = `0x${"44".repeat(20)}`;
 const transactionHash = `0x${"aa".repeat(32)}`;
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const clearedDelegationAddress = `0x${"77".repeat(20)}`;
 const delegateAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const delegateCodeHash = `0x${"55".repeat(32)}`;
 const delegationBlockHash = `0x${"66".repeat(32)}`;
@@ -269,6 +270,7 @@ describe("core explorer pages", () => {
           code_hash: canonicalHash,
           at_block: canonicalHash,
           completeness: completeness(),
+          has_delegation_history: true,
         });
       }
       return notFound();
@@ -1378,6 +1380,7 @@ describe("core explorer pages", () => {
           at_block: canonicalHash,
           completeness: completeness(),
           code_hash: canonicalHash,
+          has_delegation_history: false,
         });
       }
       if (path === `/api/v1/addresses/${address}/nfts`) {
@@ -1406,6 +1409,7 @@ describe("core explorer pages", () => {
           nonce: "0",
           at_block: canonicalHash,
           completeness: completeness(),
+          has_delegation_history: false,
           origin: { kind: "funding", state: "genesis" },
         });
       }
@@ -1441,6 +1445,7 @@ describe("core explorer pages", () => {
           at_block: canonicalHash,
           completeness: completeness(),
           code_hash: canonicalHash,
+          has_delegation_history: false,
           origin: { kind: "contract_creation", state: "genesis" },
         });
       }
@@ -1479,6 +1484,7 @@ describe("core explorer pages", () => {
           at_block: canonicalHash,
           completeness: completeness(),
           code_hash: olderHash,
+          has_delegation_history: false,
           origin: {
             kind: "contract_creation",
             state: "found",
@@ -1693,6 +1699,7 @@ describe("core explorer pages", () => {
           at_block: delegationBlockHash,
           code_hash: delegateCodeHash,
           completeness: completeness(),
+          has_delegation_history: true,
         });
       }
       if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
@@ -1713,6 +1720,10 @@ describe("core explorer pages", () => {
 
     const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
     const delegationEntry = await within(addressTabs).findByRole("link", { name: "Delegation" });
+    expect(delegationEntry).toHaveAttribute(
+      "href",
+      `/address/${delegatedAddress}?tab=delegation#code`,
+    );
     expect(delegationEntry).toHaveClass("transaction-tab");
     expect(delegationEntry).not.toHaveClass("active", "contract-entry");
     const user = userEvent.setup();
@@ -1764,6 +1775,67 @@ describe("core explorer pages", () => {
     expect(await screen.findByText("Re-delegated")).toBeVisible();
   });
 
+  it("keeps cleared delegation history discoverable without eagerly loading current binding", async () => {
+    const requestedPaths: string[] = [];
+    const clearedHistoryItem = {
+      authority: clearedDelegationAddress,
+      kind: "cleared" as const,
+      delegate: "0x0000000000000000000000000000000000000000",
+      previous_delegate: delegateAddress,
+      block_number: "102",
+      block_hash: canonicalHash,
+      transaction_hash: transactionHash,
+      transaction_index: "0",
+      authorization_index: "0",
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
+        return envelope({
+          address: clearedDelegationAddress,
+          type: "eoa",
+          balance: "0",
+          nonce: "5",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          has_delegation_history: true,
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/transactions`) {
+        return envelope([]);
+      }
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegations`) {
+        return envelope([clearedHistoryItem]);
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${clearedDelegationAddress}`);
+
+    const addressTabs = await screen.findByRole("navigation", { name: "Address activity sections" });
+    const delegationEntry = await within(addressTabs).findByRole("link", { name: "Delegation" });
+    expect(delegationEntry).toHaveAttribute(
+      "href",
+      `/address/${clearedDelegationAddress}?tab=delegation#history`,
+    );
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
+
+    await userEvent.setup().click(delegationEntry);
+
+    expect(await screen.findByRole("heading", { name: "Delegation history" })).toBeVisible();
+    expect(await screen.findByText("Cleared")).toBeVisible();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
+    expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
+    const delegatedTabs = screen.getByRole("tablist", { name: "Delegated account sections" });
+    expect(within(delegatedTabs).getByRole("tab", { name: "Delegation history" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("renders ETH-formatted values on transactions list", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestURL(input).pathname;
@@ -1811,8 +1883,10 @@ describe("core explorer pages", () => {
   });
 
   it("clears a contract hash for an EOA and returns to transactions", async () => {
+    const requestedPaths: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
+      requestedPaths.push(url.pathname);
       if (url.pathname === "/api/v1/config") return configResponse();
       if (url.pathname === `/api/v1/addresses/${address}`) {
         return envelope({
@@ -1822,6 +1896,7 @@ describe("core explorer pages", () => {
           nonce: "0",
           at_block: canonicalHash,
           completeness: completeness(),
+          has_delegation_history: false,
         });
       }
       if (url.pathname === `/api/v1/addresses/${address}/transactions`) return envelope([]);
@@ -1834,6 +1909,8 @@ describe("core explorer pages", () => {
     const transactions = within(addressTabs).getByRole("link", { name: "Transactions" });
     await waitFor(() => expect(transactions).toHaveAttribute("aria-current", "page"));
     expect(screen.queryByRole("link", { name: "Contract" })).not.toBeInTheDocument();
+    expect(within(addressTabs).queryByRole("link", { name: "Delegation" })).not.toBeInTheDocument();
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/delegations`);
     expect(await screen.findByText("No matching address activity is available in this snapshot.")).toBeVisible();
   });
 

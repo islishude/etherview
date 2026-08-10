@@ -1954,12 +1954,13 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const nftPager = useCursorHistory(`address-nfts:${address}`);
   const account = useAddress(address);
   const contractAvailable = account.data?.type === "contract" && Boolean(account.data.code_hash);
-  const delegationAvailable = account.data?.type === "delegated_eoa";
+  const currentlyDelegated = account.data?.type === "delegated_eoa";
+  const delegationAvailable = currentlyDelegated || Boolean(account.data?.has_delegation_history);
   const activeTab: AddressTab = account.data?.type === "contract" && contractHash
     ? "contract"
-    : account.data?.type === "delegated_eoa" && delegationHash
+    : (account.isPending || delegationAvailable) && delegationHash
       ? "delegation"
-      : isAddressTab(tab) ? tab : "transactions";
+      : isAddressTab(tab) && (tab !== "delegation" || account.isPending || delegationAvailable) ? tab : "transactions";
   const transactions = useAddressTransactions(
     address,
     transactionPager.cursor,
@@ -2090,7 +2091,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
             activeProps={{ className: "" }}
             aria-current={activeTab === "delegation" ? "page" : undefined}
             className={activeTab === "delegation" ? "transaction-tab active" : "transaction-tab"}
-            hash="code"
+            hash={currentlyDelegated ? "code" : "history"}
             params={{ address }}
             search={{ tab: "delegation" }}
             to="/address/$address"
@@ -2202,7 +2203,9 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         </div>
       )}
       {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
-      {activeTab === "delegation" && delegationAvailable ? <DelegatedAccountPanel authority={displayAddress} /> : null}
+      {activeTab === "delegation" && delegationAvailable ? (
+        <DelegatedAccountPanel authority={displayAddress} currentlyDelegated={currentlyDelegated} />
+      ) : null}
     </Page>
   );
 }

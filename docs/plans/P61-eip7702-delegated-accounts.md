@@ -45,6 +45,7 @@ this plan.
 | P61-T07 | done | P61-T06 | Preserve EIP-7702 log execution-address attribution when the delegate code hash is unavailable from prestateTracer, then resolve ABI only through the exact historical code identity | trace/ABI/catalog regressions, live Preview replay, and common gates |
 | P61-T08 | done | P61-T07 | Decode ABI `receive` and `fallback` entry points for trace and transaction calldata instead of reporting empty or selectorless calls as unknown functions | ABI/Catalog/API/Web regressions, live Preview verification, and common gates |
 | P61-T09 | done | P61-T08 | Report calls with exact empty execution code, including ordinary native transfers to EOAs, as ABI decoding not applicable instead of an unknown function selector | Catalog/API/Web regressions, live Preview verification, and common gates |
+| P61-T10 | done | P61-T09 | Keep canonical delegation history discoverable from an address after its current EIP-7702 delegation is cleared | state/query, generated API, Web, browser, integration, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -77,6 +78,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       `fallback` entries rather than reporting an unknown function selector.
 - [x] Trace frames with exact empty execution code report ABI decoding as not
       applicable, including ordinary native transfers to EOAs.
+- [x] Clearing the current delegation preserves a writer-authoritative,
+      canonical-history address entry that opens History directly without
+      eagerly loading current binding or artifact data.
 
 ## Current Blockers
 
@@ -219,3 +223,19 @@ None.
   reports `execution.resolution=empty`, `decoding.status=not_applicable`,
   `output_status=not_applicable`, and `candidates=[]`; every Preview service is
   healthy.
+- P61-T10 adds required `AddressSummary.has_delegation_history` from a
+  writer-authoritative repeatable-read query at the exact canonical state
+  reference. Applied clearing remains discoverable; skipped, orphan, later,
+  detached, and unavailable evidence cannot silently produce a visible false
+  result. Cleared addresses open `#history` directly and keep current binding
+  and verified-artifact reads lazy; current delegated and ordinary EOA routing
+  remain unchanged.
+- Focused query/state/app tests and CorePages 32/32 pass. `make test` passes all
+  ordinary Go packages and Web 293/293; `make test-race`, `make generate-check`,
+  `make lint`, and `make plan-check` pass. `make test-integration` passes against
+  a runner-owned PostgreSQL 18 database (`internal/integration` 135.631s) and
+  removes the disposable project and volume. Host-authorized `make test-e2e`
+  passes 14/14 Chromium tests, including cleared-history lazy loading and narrow
+  accessibility. The final host-authorized writable-cache `make check` passes
+  generation, vet/lint, ordinary/race, security/license, Buildx/Compose, and
+  Helm gates.

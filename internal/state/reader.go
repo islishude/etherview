@@ -47,6 +47,10 @@ type AddressOriginReader interface {
 	) (gen.AddressOrigin, error)
 }
 
+type AddressDelegationHistoryReader interface {
+	HasAddressDelegationHistory(context.Context, string, uint64, common.Hash) (bool, error)
+}
+
 type PostgresCanonicalSource struct {
 	DB      *sql.DB
 	ChainID string
@@ -92,11 +96,12 @@ func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference Cano
 }
 
 type Reader struct {
-	Base         httpapi.Reader
-	Origin       AddressOriginReader
-	Canonical    CanonicalSource
-	Pool         *ethrpc.Pool
-	Completeness gen.Completeness
+	Base              httpapi.Reader
+	Origin            AddressOriginReader
+	DelegationHistory AddressDelegationHistoryReader
+	Canonical         CanonicalSource
+	Pool              *ethrpc.Pool
+	Completeness      gen.Completeness
 }
 
 var _ httpapi.Reader = (*Reader)(nil)
@@ -178,6 +183,25 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		return gen.AddressSummary{}, err
 	}
 	accountType, codeHash := classifyCode(code)
+	hasDelegationHistory := false
+	if accountType == gen.AddressSummaryTypeEoa || accountType == gen.AddressSummaryTypeDelegatedEoa {
+		if r.DelegationHistory == nil {
+			return gen.AddressSummary{}, CapabilityError{Code: "delegation_history_not_configured"}
+		}
+		hasDelegationHistory, err = r.DelegationHistory.HasAddressDelegationHistory(
+			ctx, checksummed, reference.Number, reference.Hash,
+		)
+		if err != nil {
+			return gen.AddressSummary{}, err
+		}
+		canonical, err = r.Canonical.IsCanonical(ctx, reference)
+		if err != nil {
+			return gen.AddressSummary{}, fmt.Errorf("recheck delegation history block: %w", err)
+		}
+		if !canonical {
+			return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during delegation history query", httpapi.ErrNotReady)
+		}
+	}
 	var delegation *gen.DelegationBinding
 	if accountType == gen.AddressSummaryTypeDelegatedEoa {
 		binding, bindingErr := r.delegationBinding(ctx, address, reference, endpoint, code)
@@ -223,7 +247,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		Address: checksummed, AtBlock: strings.ToLower(reference.Hash.Hex()),
 		Balance: balanceDecimal, Nonce: nonceDecimal, Type: accountType,
 		CodeHash: codeHash, Origin: &origin, Completeness: completeness,
-		Delegation: delegation,
+		Delegation: delegation, HasDelegationHistory: hasDelegationHistory,
 	}, nil
 }
 

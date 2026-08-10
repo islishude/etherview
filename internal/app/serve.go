@@ -541,7 +541,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if canonicalState != nil {
 			stateReader := &state.Reader{
 				Base: baseReader, Pool: rpcBuild.Pool, Completeness: completeness,
-				Canonical: canonicalState, Origin: reader,
+				Canonical: canonicalState, Origin: reader, DelegationHistory: writerReader,
 			}
 			publicReader = stateReader
 			compatibilityState = stateReader

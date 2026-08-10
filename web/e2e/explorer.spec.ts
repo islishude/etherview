@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 const address = "0x1111111111111111111111111111111111111111";
 const delegatedAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const clearedDelegationAddress = "0x7777777777777777777777777777777777777777";
 const delegatedDelegate = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const transparentImplementation = "0x3000000000000000000000000000000000000030";
 const uupsProxyAddress = "0x3000000000000000000000000000000000000003";
@@ -157,7 +158,7 @@ test("trace and log disclosures retain raw data and exact execution provenance",
 
   const revertedFrame = page.locator(".transaction-trace-frame").nth(1);
   await activateInView(revertedFrame.locator("summary"));
-  await expect(revertedFrame.getByText("Not applicable to a reverted call", { exact: true })).toBeVisible();
+  await expect(revertedFrame.getByText("Not applicable", { exact: true })).toBeVisible();
   await expect(revertedFrame.getByText("Panic(uint256)", { exact: true })).toBeVisible();
   await expect(revertedFrame.getByText("17", { exact: true })).toBeVisible();
 
@@ -444,6 +445,29 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await assertA11yAndNoOverflow(page, "delegated account in Chinese narrow mode");
   expect(pageErrors).toEqual([]);
   expect(consoleErrors.filter((message) => !message.startsWith("Applying inline style violates the following Content Security Policy directive"))).toEqual([]);
+});
+
+test("cleared delegated accounts open canonical history without loading current binding", async ({ page }) => {
+  const requestedPaths: string[] = [];
+  page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
+
+  await page.goto(`/address/${clearedDelegationAddress}`);
+  const addressTabs = page.getByRole("navigation", { name: "Address activity sections" });
+  const delegationEntry = addressTabs.getByRole("link", { name: "Delegation" });
+  await expect(delegationEntry).toHaveAttribute(
+    "href",
+    `/address/${clearedDelegationAddress}?tab=delegation#history`,
+  );
+  expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
+
+  await delegationEntry.click();
+  await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
+  await expect(page.getByText("Cleared", { exact: true })).toBeVisible();
+  expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
+  expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
+  expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "cleared delegated account history in narrow mode");
 });
 
 test("capability pages survive the embedded binary boundary in both accessible themes and languages", async ({

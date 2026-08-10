@@ -2084,7 +2084,10 @@ type AddressSummary struct {
 	CodeHash     *Hash              `json:"code_hash,omitempty"`
 	Completeness Completeness       `json:"completeness"`
 	Delegation   *DelegationBinding `json:"delegation,omitempty"`
-	Name         *string            `json:"name,omitempty"`
+
+	// HasDelegationHistory Whether canonical applied EIP-7702 delegation history exists at this address snapshot.
+	HasDelegationHistory bool    `json:"has_delegation_history"`
+	Name                 *string `json:"name,omitempty"`
 
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Nonce  Quantity           `json:"nonce"`
