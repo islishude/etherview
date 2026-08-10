@@ -1671,7 +1671,12 @@ test("EIP-6963 contract reads and writes stay inside the selected wallet boundar
   await activateInView(page.getByRole("tab", { name: "Write contract" }));
   await page.getByLabel("newValue").fill("15");
   await activateInView(page.getByRole("button", { name: "Send transaction" }));
-  await expect(page.getByText(walletTransactionHash, { exact: true })).toBeVisible();
+  const transactionLink = page.getByRole("link", { name: walletTransactionHash });
+  await expect(transactionLink).toBeVisible();
+  await expect(transactionLink).toHaveAttribute(
+    "href",
+    `/tx/${walletTransactionHash}?tab=overview`,
+  );
   expect(backendRequests).toEqual([]);
 
   const requests = await page.evaluate(

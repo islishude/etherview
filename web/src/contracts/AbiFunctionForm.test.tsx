@@ -1,6 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
+import {
   encodeErrorResult,
   encodeFunctionData,
   encodeFunctionResult,
@@ -416,7 +423,7 @@ describe("AbiFunctionExplorer", () => {
   it("edits tuple and nested dynamic-array values into real viem calldata", async () => {
     const sendTransaction = vi.fn(async () => TRANSACTION_HASH);
     mockWallet({ sendTransaction });
-    renderExplorer(configureABI, "write", directTargets());
+    const { history } = renderExplorer(configureABI, "write", directTargets());
     const user = userEvent.setup();
     const writeText = mockClipboard();
     const card = await openFunctionCard(
@@ -456,6 +463,17 @@ describe("AbiFunctionExplorer", () => {
       },
       "31337",
     );
+    const transactionLink = await card.findByRole("link", { name: TRANSACTION_HASH });
+    expect(transactionLink).toHaveAttribute(
+      "href",
+      `/tx/${TRANSACTION_HASH}?tab=overview`,
+    );
+
+    await user.click(transactionLink);
+
+    await waitFor(() => {
+      expect(history.location.href).toBe(`/tx/${TRANSACTION_HASH}?tab=overview`);
+    });
   });
 
   it("decodes and renders multiple viem return values without numeric loss", async () => {
@@ -802,15 +820,32 @@ function renderExplorer(
   mode: "read" | "write" | "all",
   targets: readonly ContractInteractionTarget[],
   onBindingChanged?: () => void,
-): void {
+) {
+  const rootRoute = createRootRoute();
+  const transactionRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tx/$hash",
+    validateSearch: (search: Record<string, unknown>) => ({
+      tab: search.tab === "overview" ? "overview" as const : undefined,
+    }),
+    component: () => null,
+  });
+  const history = createMemoryHistory({ initialEntries: ["/"] });
+  const router = createRouter({
+    history,
+    routeTree: rootRoute.addChildren([transactionRoute]),
+  });
   render(
-    <AbiFunctionExplorer
-      abi={abi}
-      mode={mode}
-      onBindingChanged={onBindingChanged}
-      targets={targets}
-    />,
+    <RouterContextProvider router={router}>
+      <AbiFunctionExplorer
+        abi={abi}
+        mode={mode}
+        onBindingChanged={onBindingChanged}
+        targets={targets}
+      />
+    </RouterContextProvider>,
   );
+  return { history };
 }
 
 async function openFunctionCard(

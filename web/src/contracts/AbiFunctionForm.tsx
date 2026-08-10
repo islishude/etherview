@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   decodeFunctionResult,
@@ -476,7 +477,13 @@ function AbiFunctionCard({
       {visibleResult?.kind === "write" ? (
         <output className="call-result" role="status">
           <span>{t("wallet.transactionHash")}</span>
-          <code>{visibleResult.hash}</code>
+          <Link
+            params={{ hash: visibleResult.hash }}
+            search={{ tab: "overview" }}
+            to="/tx/$hash"
+          >
+            <code>{visibleResult.hash}</code>
+          </Link>
         </output>
       ) : null}
       {visibleResult?.kind === "read" ? (

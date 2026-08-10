@@ -71,6 +71,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T45 | done        | P50-T44 | Separate decoded and raw transaction calldata with compact ABI evidence and read-only raw conversion | focused frontend, bilingual, responsive, accessibility, and embedded browser gates |
 | P50-T46 | done        | P50-T39 | Accept protocol withdrawal and typed-transaction fields in atomic home snapshots | focused home-stream, frontend build, and live Preview browser regression |
 | P50-T47 | done        | P50-T45 | Soft-wrap read-only raw transaction calldata within its textarea | focused frontend, responsive, and embedded browser regressions |
+| P50-T48 | done        | P50-T47 | Link trustworthy contract-write transaction hashes to the transaction overview | focused ABI form, embedded browser, build, generation, and plan regressions |
 
 ## Acceptance
 
@@ -757,3 +758,10 @@ None.
   build pass, `git diff --check` passes, and host-authorized `make test-e2e`
   passes all 13 flows with the real browser asserting the wrap attribute and
   computed white-space behavior.
+- P50-T48 renders only trustworthy submitted contract-write transaction hashes
+  as internal links to the transaction Overview route. Unknown outcomes retain
+  the existing fail-closed error state without a hash link. The focused ABI
+  form suite passes all 21 tests, the complete frontend suite passes all 29
+  files and 288 tests, frontend lint and production build pass, `make
+  generate-check` passes, and host-authorized `make test-e2e` passes all 13
+  flows with the exact transaction-link target and stale-wallet suppression.
