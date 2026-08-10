@@ -68,6 +68,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T42 | done        | P50-T41 | Consolidate topic display into the expanded More details disclosure | focused frontend, topic conversion, responsive, and accessibility gates |
 | P50-T43 | done        | P50-T42 | Expose convertible topics and data directly in More details, including anonymous-event topic zero | focused frontend, topic conversion, responsive, accessibility, and embedded browser gates |
 | P50-T44 | done        | P50-T43 | Align transaction-log data presentation with the Topics heading and value column | focused frontend, responsive, accessibility, and embedded browser gates |
+| P50-T45 | done        | P50-T44 | Separate decoded and raw transaction calldata with compact ABI evidence and read-only raw conversion | focused frontend, bilingual, responsive, accessibility, and embedded browser gates |
+| P50-T46 | done        | P50-T39 | Accept protocol withdrawal and typed-transaction fields in atomic home snapshots | focused home-stream, frontend build, and live Preview browser regression |
+| P50-T47 | done        | P50-T45 | Soft-wrap read-only raw transaction calldata within its textarea | focused frontend, responsive, and embedded browser regressions |
 
 ## Acceptance
 
@@ -95,6 +98,15 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T46 aligns the fail-closed home snapshot parser with the generated Block
+  and Transaction contracts for withdrawals, blob fee/hash fields, and access
+  lists while retaining strict nested validation. The focused five-test suite,
+  all 29 frontend test files (287 tests), TypeScript lint, production build,
+  and `make plan-check` pass. `make recreate-preview` rebuilt the production
+  image while retaining PostgreSQL and Geth; a fresh HTTPS browser load showed
+  indexed/head block 90, finalized block 64, caught-up state, and six recent
+  blocks without console warnings or errors.
 
 - P50-T39: Transaction tabs now derive visibility from typed transaction type,
   with access-list/blob/authorization panels and lazy unrelated-resource
@@ -726,3 +738,22 @@ None.
   --check`, and host-authorized `make test-e2e` (12/12 flows). The embedded
   browser asserts the Data and topic-zero value starts differ by at most one
   pixel at both desktop and 390px viewport widths.
+- P50-T45 separates decoded and raw transaction calldata into distinct
+  sections, keeps the decoded function signature in one heading, and presents
+  every matching target or implementation ABI as compact, linked, copyable
+  evidence. Raw bytes remain independently copyable from a read-only textarea;
+  a low-emphasis text action switches valid UTF-8 in place and leaves invalid
+  input in Hex with an explicit status.
+- P50-T45 verification passes the focused CorePages suite (27 tests), the
+  complete frontend suite (29 files, 285 tests), frontend lint and production
+  build, `make generate-check`, `make plan-check`, and `git diff --check`.
+  Host-authorized `make test-e2e` passes all 13 flows, including the new
+  no-parameter implementation-ABI transaction in English, Chinese, desktop,
+  390px, and automated accessibility coverage.
+- P50-T47 changes the read-only raw calldata textarea from no-wrap to native
+  soft wrapping, backed by `pre-wrap` and long-token breaking so continuous
+  Hex stays within the available width without changing its copied value.
+  Focused CorePages/styles tests pass (31 tests), frontend lint and production
+  build pass, `git diff --check` passes, and host-authorized `make test-e2e`
+  passes all 13 flows with the real browser asserting the wrap attribute and
+  computed white-space behavior.

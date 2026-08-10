@@ -107,6 +107,36 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(page.locator("#main-content")).toBeFocused();
 });
 
+test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
+  await page.goto(`/tx/${decodedTransactionHash}`);
+  await activateInView(page.getByText("More details", { exact: true }));
+
+  const decoded = page.getByRole("region", { name: "Decoded calldata · value()" });
+  const raw = page.getByRole("region", { name: "Raw calldata" });
+  await expect(decoded.getByText("value()", { exact: true })).toHaveCount(1);
+  await expect(decoded.getByText("No parameters", { exact: true })).toBeVisible();
+  const evidence = decoded.getByLabel("ABI evidence");
+  await expect(evidence.getByText("Verified ABI", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Proxy implementation", { exact: true })).toBeVisible();
+  await expect(evidence.getByRole("link", { name: transparentImplementation })).toBeVisible();
+
+  const rawValue = raw.getByRole("textbox", { name: "Raw calldata (Hex)" });
+  await expect(rawValue).toHaveAttribute("readonly", "");
+  await expect(rawValue).toHaveAttribute("wrap", "soft");
+  await expect(rawValue).toHaveValue("0x3fa4f245");
+  expect(await rawValue.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-wrap");
+  await expect(raw.getByRole("button", { name: "View as UTF-8" })).toBeVisible();
+  await expect(raw.getByRole("button", { name: "Copy" })).toBeVisible();
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("region", { name: "已解码 calldata · value()" })).toBeVisible();
+  const rawChinese = page.getByRole("region", { name: "原始 calldata" });
+  await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue("0x3fa4f245");
+  await expect(rawChinese.getByRole("button", { name: "按 UTF-8 查看" })).toBeVisible();
+  await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}`);
+});
+
 test("trace and log disclosures retain raw data and exact execution provenance", async ({ page }) => {
   await page.goto(`/tx/${decodedTransactionHash}?tab=trace`);
   await expect(page.getByText("retrieve()", { exact: true })).toBeVisible();

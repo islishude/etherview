@@ -361,8 +361,9 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
-  it("decodes verified target calldata and keeps raw hex copyable", async () => {
+  it("separates decoded and raw calldata with compact copyable ABI evidence", async () => {
     const calldata = `0xa9059cbb${"0".repeat(24)}${"44".repeat(20)}${"0".repeat(63)}c`;
+    const implementationAddress = `0x${"55".repeat(20)}`;
     const requested: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
@@ -376,7 +377,9 @@ describe("core explorer pages", () => {
           finality: "safe", completeness: completeness(),
         });
       }
-      if (url.pathname === `/api/v1/contracts/${address}/verification`) {
+      if (url.pathname === `/api/v1/contracts/${address}/verification`
+        || url.pathname === `/api/v1/contracts/${implementationAddress}/verification`) {
+        const artifactAddress = url.pathname.includes(implementationAddress) ? implementationAddress : address;
         return envelope({
           kind: "verification_success",
           abi: [{
@@ -384,34 +387,74 @@ describe("core explorer pages", () => {
             inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
             outputs: [],
           }],
-          target: { address, code_hash: canonicalHash },
+          target: { address: artifactAddress, code_hash: canonicalHash },
         });
       }
       if (url.pathname === `/api/v1/contracts/${address}/proxy`) {
-        return envelope({ address, status: "not_detected", evidence: [] });
+        return envelope({
+          address,
+          status: "verified",
+          snapshot: { chain_id: "1", block_number: "12", block_hash: canonicalHash },
+          mechanism: "eip1967",
+          pattern: "uups",
+          standard_version: "5.6.1",
+          evidence_state: "exact",
+          confidence: "verified",
+          binding_id: "018f3b52-0b3d-7bf1-b65f-6f214827cb45",
+          proxy: {
+            address, code_hash: canonicalHash, verification_state: "verified",
+            artifact_kind: "erc1967_proxy", standard_version: "5.6.1",
+          },
+          implementation: {
+            address: implementationAddress,
+            code_hash: canonicalHash,
+            verification_state: "verified",
+            artifact_kind: "uups_implementation",
+            standard_version: "5.6.1",
+          },
+          evidence: [],
+        });
       }
       return notFound();
     }));
 
     renderExplorer(`/tx/${transactionHash}`);
     const user = userEvent.setup();
-    await user.click(await screen.findByText("More details"));
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    try {
+      await user.click(await screen.findByText("More details"));
 
-    expect((await screen.findAllByText("transfer(address,uint256)")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("columnheader", { name: "Params" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Type" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Data" })).toBeVisible();
-    expect(screen.getAllByText(address).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("12", { exact: true }).length).toBeGreaterThan(0);
-    expect(requested).toContain(`/api/v1/contracts/${address}/verification`);
-    expect(requested).toContain(`/api/v1/contracts/${address}/proxy`);
+      const decoded = await screen.findByRole("region", { name: "Decoded calldata · transfer(address,uint256)" });
+      const raw = screen.getByRole("region", { name: "Raw calldata" });
+      expect(within(decoded).getAllByText("transfer(address,uint256)")).toHaveLength(1);
+      expect(within(decoded).getByRole("columnheader", { name: "Params" })).toBeVisible();
+      expect(within(decoded).getByRole("columnheader", { name: "Type" })).toBeVisible();
+      expect(within(decoded).getByRole("columnheader", { name: "Data" })).toBeVisible();
+      const evidence = within(decoded).getByLabelText("ABI evidence");
+      expect(within(evidence).getAllByText("Verified ABI")).toHaveLength(2);
+      expect(within(evidence).getByText("Target contract")).toBeVisible();
+      expect(within(evidence).getByText("Proxy implementation")).toBeVisible();
+      expect(within(evidence).getByRole("link", { name: address })).toBeVisible();
+      expect(within(evidence).getByRole("link", { name: implementationAddress })).toBeVisible();
+      expect(within(evidence).getAllByRole("button", { name: "Copy" })).toHaveLength(2);
+      expect(within(decoded).getAllByText("12", { exact: true }).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: "Hex" }));
-    expect(screen.getByRole("button", { name: "Hex" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(calldata)).toBeVisible();
+      const rawValue = within(raw).getByRole("textbox", { name: "Raw calldata (Hex)" });
+      expect(rawValue).toHaveAttribute("readonly");
+      expect(rawValue).toHaveAttribute("wrap", "soft");
+      expect(rawValue).toHaveValue(calldata);
+      expect(within(raw).getByRole("button", { name: "View as UTF-8" })).toBeVisible();
+      await user.click(within(raw).getByRole("button", { name: "Copy" }));
+      expect(writeText).toHaveBeenCalledWith(calldata);
+      expect(requested).toContain(`/api/v1/contracts/${address}/verification`);
+      expect(requested).toContain(`/api/v1/contracts/${address}/proxy`);
+      expect(requested).toContain(`/api/v1/contracts/${implementationAddress}/verification`);
+    } finally {
+      writeText.mockRestore();
+    }
   });
 
-  it("switches raw calldata to UTF-8 and reports invalid UTF-8 without replacing hex", async () => {
+  it("keeps raw calldata in Hex when UTF-8 conversion is unavailable", async () => {
     const calldata = "0xffff";
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
@@ -429,13 +472,15 @@ describe("core explorer pages", () => {
     renderExplorer(`/tx/${transactionHash}`);
     const user = userEvent.setup();
     await user.click(await screen.findByText("More details"));
-    await user.click(screen.getByRole("button", { name: "UTF-8" }));
+    const raw = screen.getByRole("region", { name: "Raw calldata" });
+    await user.click(within(raw).getByRole("button", { name: "View as UTF-8" }));
     expect(screen.getByText("UTF-8 is unavailable for these bytes")).toBeVisible();
-    expect(screen.getByText(calldata)).toBeVisible();
-    expect(screen.getByRole("button", { name: "UTF-8" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(raw).getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
+    expect(within(raw).getByRole("button", { name: "View as UTF-8" })).toBeVisible();
+    expect(within(raw).queryByRole("button", { name: "View as Hex" })).not.toBeInTheDocument();
   });
 
-  it("renders the complete calldata bytes as UTF-8 when they are valid", async () => {
+  it("switches valid raw calldata between complete UTF-8 and Hex values", async () => {
     const calldata = "0x74657374";
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestURL(input);
@@ -453,8 +498,11 @@ describe("core explorer pages", () => {
     renderExplorer(`/tx/${transactionHash}`);
     const user = userEvent.setup();
     await user.click(await screen.findByText("More details"));
-    await user.click(screen.getByRole("button", { name: "UTF-8" }));
-    expect(screen.getByText("test")).toBeVisible();
+    const raw = screen.getByRole("region", { name: "Raw calldata" });
+    await user.click(within(raw).getByRole("button", { name: "View as UTF-8" }));
+    expect(within(raw).getByRole("textbox", { name: "Raw calldata (UTF-8)" })).toHaveValue("test");
+    await user.click(within(raw).getByRole("button", { name: "View as Hex" }));
+    expect(within(raw).getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
   });
 
   it("activates the Authorizations tab and loads transaction authorization tuples", async () => {

@@ -1435,23 +1435,57 @@ tbody tr:hover {
   word-break: break-all;
 }
 
-.transaction-calldata,
-.transaction-calldata-raw,
-.transaction-calldata-decoded {
+.transaction-calldata {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.85rem;
   min-width: 0;
 }
 
-.transaction-calldata-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.transaction-calldata-raw,
+.transaction-calldata-decoded {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
-.transaction-calldata-toolbar .button[aria-pressed="true"] {
-  border-color: var(--brand);
-  color: var(--brand);
+.transaction-calldata-heading {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.transaction-calldata-heading code {
+  font-size: 0.82rem;
+}
+
+.calldata-abi-sources {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calldata-abi-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.calldata-abi-source .copyable-field,
+.calldata-abi-source code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .calldata-value-tree {
@@ -1459,44 +1493,16 @@ tbody tr:hover {
   gap: 0.55rem;
   min-width: 0;
   overflow: hidden;
-  padding: 0.45rem 0;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface-raised) 70%, var(--surface));
-}
-
-.calldata-function-heading {
-  display: flex;
-  gap: 0.35rem;
-  align-items: baseline;
-  min-width: 0;
-  padding: 0 0.8rem;
-  overflow-x: auto;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.84rem;
-  white-space: nowrap;
-}
-
-.calldata-function-heading > span {
-  flex: 0 0 auto;
-  color: var(--text-soft);
-  font-family: var(--font-sans);
-}
-
-.calldata-function-heading strong {
-  min-width: max-content;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-weight: 700;
 }
 
 .calldata-table-scroll {
   max-width: 100%;
   max-height: min(44rem, 70vh);
   overflow: auto;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
   scrollbar-color: var(--line-strong) var(--surface-raised);
   scrollbar-width: thin;
 }
@@ -1635,57 +1641,87 @@ tbody tr:hover {
   outline-offset: -2px;
 }
 
-.transaction-calldata-raw .copyable-field {
+.transaction-calldata-raw-header {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.transaction-calldata-raw-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.transaction-calldata-mode-link {
+  min-height: 1.75rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.transaction-calldata-mode-link:hover {
+  color: var(--brand);
+}
+
+.transaction-calldata-raw-status {
+  margin: 0;
+}
+
+.transaction-calldata-raw-value {
+  display: block;
+  width: 100%;
+  min-height: 6.5rem;
+  max-height: min(24rem, 55vh);
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  resize: vertical;
   overflow: auto;
-  padding: 0.75rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
+  outline: 0;
   background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
   scrollbar-color: var(--line-strong) var(--surface-raised);
   scrollbar-width: thin;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.transaction-calldata-raw .copyable-content {
-  display: block;
-  flex: 0 0 auto;
-  min-width: max-content;
-}
-
-.transaction-calldata-raw .copyable-copy-button {
-  position: sticky;
-  right: 0;
-  flex: 0 0 auto;
-}
-
-.transaction-calldata-raw .transaction-data {
-  display: block;
-  white-space: pre;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.transaction-calldata-raw .copyable-field:focus-within {
+.transaction-calldata-raw-value:focus {
   border-color: var(--brand);
+  outline: 2px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  outline-offset: 1px;
 }
 
 .calldata-table-scroll::-webkit-scrollbar,
-.transaction-calldata-raw .copyable-field::-webkit-scrollbar {
+.transaction-calldata-raw-value::-webkit-scrollbar {
   height: 0.55rem;
   width: 0.55rem;
 }
 
 .calldata-table-scroll::-webkit-scrollbar-thumb,
-.transaction-calldata-raw .copyable-field::-webkit-scrollbar-thumb {
+.transaction-calldata-raw-value::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--line-strong);
 }
 
 .calldata-table-scroll::-webkit-scrollbar-track,
-.transaction-calldata-raw .copyable-field::-webkit-scrollbar-track {
+.transaction-calldata-raw-value::-webkit-scrollbar-track {
   background: var(--surface-raised);
 }
 

@@ -679,7 +679,7 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 		"hash": hash, "block_hash": blockHash, "block_number": blockNumber, "transaction_index": 0,
 		"block_timestamp": "2026-01-01T00:00:00Z",
 		"from":            testAddress, "to": testAddress, "nonce": "1", "value": "900719925474099312345",
-		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x",
+		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x3fa4f245",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
 	}
 }

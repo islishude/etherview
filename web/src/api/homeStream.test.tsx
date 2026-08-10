@@ -115,6 +115,67 @@ describe("home snapshot EventSource", () => {
     }))).toThrow();
     expect(() => parseHomeSnapshot(" ".repeat(2 * 1024 * 1024 + 1))).toThrow();
   });
+
+  it("accepts protocol block and typed-transaction fields", () => {
+    const valid = snapshot("10", ["10"]);
+    const completeness = valid.data.status.completeness;
+    const parsed = parseHomeSnapshot(JSON.stringify({
+      ...valid,
+      data: {
+        ...valid.data,
+        blocks: [{
+          ...valid.data.blocks[0],
+          withdrawals: [{
+            index: "1",
+            validator_index: "2",
+            address: `0x${"11".repeat(20)}`,
+            amount: "3",
+          }],
+        }],
+        transactions: [{
+          hash: `0x${"22".repeat(32)}`,
+          from: `0x${"33".repeat(20)}`,
+          to: `0x${"44".repeat(20)}`,
+          nonce: "1",
+          value: "0",
+          gas: "21000",
+          max_fee_per_blob_gas: "7",
+          access_list: [{
+            address: `0x${"55".repeat(20)}`,
+            storage_keys: [`0x${"66".repeat(32)}`],
+          }],
+          blob_versioned_hashes: [`0x${"77".repeat(32)}`],
+          input: "0x",
+          canonical: true,
+          finality: "safe",
+          completeness,
+        }],
+      },
+    }));
+
+    expect(parsed.data.blocks[0]?.withdrawals).toHaveLength(1);
+    expect(parsed.data.transactions[0]?.access_list).toHaveLength(1);
+  });
+
+  it("rejects malformed protocol fields", () => {
+    const valid = snapshot("10", ["10"]);
+    expect(() => parseHomeSnapshot(JSON.stringify({
+      ...valid,
+      data: {
+        ...valid.data,
+        blocks: [{
+          ...valid.data.blocks[0],
+          withdrawals: [{
+            index: "1",
+            validator_index: "2",
+            address: `0x${"11".repeat(20)}`,
+            amount: "3",
+            unknown: true,
+          }],
+        }],
+      },
+    }))).toThrow();
+  });
 });
 
 function snapshot(latest: string, blockNumbers: string[]) {

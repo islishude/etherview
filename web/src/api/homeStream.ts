@@ -138,7 +138,7 @@ function validateBlock(value: unknown): void {
     [
       "hash", "number", "parent_hash", "timestamp", "miner",
       "transaction_count", "gas_used", "gas_limit", "base_fee_per_gas",
-      "canonical", "finality", "completeness",
+      "withdrawals", "canonical", "finality", "completeness",
     ],
     [
       "hash", "number", "parent_hash", "timestamp", "transaction_count",
@@ -154,6 +154,7 @@ function validateBlock(value: unknown): void {
   optional(record, "gas_used", quantity);
   optional(record, "gas_limit", quantity);
   optional(record, "base_fee_per_gas", quantity);
+  optional(record, "withdrawals", validateWithdrawals);
   boolean(record.canonical, "block.canonical");
   enumeration(record.finality, finalityStates, "block.finality");
   validateCompleteness(record.completeness);
@@ -166,8 +167,9 @@ function validateTransaction(value: unknown): void {
       "hash", "block_timestamp", "confirmations", "block_hash", "block_number",
       "transaction_index", "from", "to", "contract_address", "nonce", "value",
       "gas", "gas_used", "effective_gas_price", "tx_fee_wei", "gas_price",
-      "max_fee_per_gas", "max_priority_fee_per_gas", "burned_wei", "type",
-      "input", "status", "canonical", "finality", "completeness",
+      "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
+      "access_list", "blob_versioned_hashes", "burned_wei", "type", "input",
+      "status", "canonical", "finality", "completeness",
     ],
     ["hash", "from", "nonce", "value", "gas", "input", "canonical", "finality", "completeness"],
   );
@@ -187,10 +189,13 @@ function validateTransaction(value: unknown): void {
   quantity(record.gas, "transaction.gas");
   for (const key of [
     "gas_used", "effective_gas_price", "tx_fee_wei", "gas_price",
-    "max_fee_per_gas", "max_priority_fee_per_gas", "burned_wei",
+    "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
+    "burned_wei",
   ] as const) {
     optional(record, key, quantity);
   }
+  optional(record, "access_list", validateAccessList);
+  optional(record, "blob_versioned_hashes", validateHashes);
   optional(record, "type", stringValue);
   stringPattern(record.input, inputPattern, "transaction.input");
   if (record.status !== undefined) {
@@ -199,6 +204,36 @@ function validateTransaction(value: unknown): void {
   boolean(record.canonical, "transaction.canonical");
   enumeration(record.finality, finalityStates, "transaction.finality");
   validateCompleteness(record.completeness);
+}
+
+function validateWithdrawals(value: unknown, label: string): void {
+  validateList(value, (item) => {
+    const record = objectWithKeys(
+      item,
+      ["index", "validator_index", "address", "amount"],
+      ["index", "validator_index", "address", "amount"],
+    );
+    quantity(record.index, `${label}.index`);
+    quantity(record.validator_index, `${label}.validator_index`);
+    address(record.address, `${label}.address`);
+    quantity(record.amount, `${label}.amount`);
+  }, label);
+}
+
+function validateAccessList(value: unknown, label: string): void {
+  validateList(value, (item) => {
+    const record = objectWithKeys(
+      item,
+      ["address", "storage_keys"],
+      ["address", "storage_keys"],
+    );
+    address(record.address, `${label}.address`);
+    validateHashes(record.storage_keys, `${label}.storage_keys`);
+  }, label);
+}
+
+function validateHashes(value: unknown, label: string): void {
+  validateList(value, (item) => hash(item, label), label);
 }
 
 function validateCompleteness(value: unknown): void {
@@ -231,6 +266,17 @@ function validateArray(
   label: string,
 ): void {
   if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(`Invalid ${label}`);
+  }
+  value.forEach(validate);
+}
+
+function validateList(
+  value: unknown,
+  validate: (item: unknown) => void,
+  label: string,
+): void {
+  if (!Array.isArray(value)) {
     throw new Error(`Invalid ${label}`);
   }
   value.forEach(validate);

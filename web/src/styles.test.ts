@@ -39,4 +39,16 @@ describe("shared button layout", () => {
     expect(addressRule?.groups?.body).toMatch(/\bbackground:\s*transparent;/u);
     expect(addressActiveRule?.groups?.body).toMatch(/\bbackground:\s*var\(--brand\);/u);
   });
+
+  it("soft-wraps read-only raw calldata inside its textarea", () => {
+    const stylesheet = readFileSync(
+      join(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+    const rawCalldataRule = stylesheet.match(/\.transaction-calldata-raw-value\s*\{(?<body>[^}]*)\}/u);
+
+    expect(rawCalldataRule?.groups?.body).toMatch(/\boverflow-wrap:\s*anywhere;/u);
+    expect(rawCalldataRule?.groups?.body).toMatch(/\bwhite-space:\s*pre-wrap;/u);
+    expect(rawCalldataRule?.groups?.body).toMatch(/\bword-break:\s*break-word;/u);
+  });
 });

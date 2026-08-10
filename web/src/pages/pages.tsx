@@ -84,7 +84,7 @@ import {
   formatTimestamp,
   shorten,
 } from "@/components/format";
-import { CopyableField } from "@/components/CopyButton";
+import { CopyButton, CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
   flattenLogArgument,
@@ -923,21 +923,15 @@ function CalldataValueTree({
   signature,
   args,
   locale,
-  functionLabel,
   columnLabels,
 }: {
   signature: string;
   args: readonly FormattedAbiOutput[];
   locale: string;
-  functionLabel: string;
   columnLabels: Readonly<{ index: string; params: string; type: string; data: string }>;
 }) {
   return (
     <div className="calldata-value-tree">
-      <div className="calldata-function-heading">
-        <span>{functionLabel}:</span>
-        <strong>{signature}</strong>
-      </div>
       <div className="calldata-table-scroll">
         <div className="calldata-table" role="table" aria-label={signature}>
           <div className="calldata-table-row calldata-table-header" role="row">
@@ -1063,6 +1057,8 @@ function CalldataValueNode({
 
 function TransactionCalldata({ transaction }: { transaction: TransactionSummary }) {
   const { i18n, t } = useTranslation();
+  const decodedHeadingID = useId();
+  const rawHeadingID = useId();
   const input = transaction.input;
   const targetAddress = transaction.to ?? "";
   const hasCalldata = input.length > 2;
@@ -1080,7 +1076,11 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
     implementationCodeHash,
   );
   const [rawMode, setRawMode] = useState<"hex" | "utf8">("hex");
-  useEffect(() => setRawMode("hex"), [input]);
+  const [utf8Unavailable, setUtf8Unavailable] = useState(false);
+  useEffect(() => {
+    setRawMode("hex");
+    setUtf8Unavailable(false);
+  }, [input]);
   const utf8 = useMemo(() => {
     if (!/^0x(?:[0-9a-f]{2})*$/iu.test(input)) return undefined;
     try {
@@ -1113,72 +1113,99 @@ function TransactionCalldata({ transaction }: { transaction: TransactionSummary 
     || (implementationArtifactEnabled && implementationArtifact.isPending)
   );
   const displayValue = rawMode === "utf8" && utf8 !== undefined ? utf8 : input;
+  const toggleRawMode = () => {
+    if (rawMode === "utf8") {
+      setRawMode("hex");
+      setUtf8Unavailable(false);
+      return;
+    }
+    if (utf8 === undefined) {
+      setUtf8Unavailable(true);
+      return;
+    }
+    setRawMode("utf8");
+    setUtf8Unavailable(false);
+  };
 
   return (
     <div className="transaction-calldata">
-      {enabled && loadingABI && <p className="quiet" role="status">{t("detail.calldataDecodeLoading")}</p>}
-      {enabled && !loadingABI && merged.result.status === "decoded" && (
-        <section className="transaction-calldata-decoded" aria-label={t("detail.calldataDecoded")}>
-          <p className="quiet">
-            <strong>{t("detail.calldataDecoded")}</strong> · <code>{merged.result.signature}</code>
-          </p>
-          {merged.sources.length > 0 && (
-            <p className="quiet">
-              {merged.sources.map((source) => t("detail.abiSource", {
-                kind: t(source.kind === "target" ? "detail.calldataTargetAbi" : "detail.calldataImplementationAbi"),
-                address: source.address,
-              })).join(" · ")}
-            </p>
+      {enabled && <section className="transaction-calldata-decoded" aria-labelledby={decodedHeadingID}>
+        <h3 className="transaction-calldata-heading" id={decodedHeadingID}>
+          {t("detail.calldataDecoded")}
+          {enabled && !loadingABI && merged.result.status === "decoded" && (
+            <> · <code>{merged.result.signature}</code></>
           )}
-          {merged.result.args.length > 0 ? (
-            <CalldataValueTree
-              args={merged.result.args}
-              columnLabels={{
-                index: t("detail.calldataIndex"),
-                params: t("detail.calldataParams"),
-                type: t("detail.calldataType"),
-                data: t("detail.calldataData"),
-              }}
-              functionLabel={t("detail.calldataFunction")}
-              locale={i18n.resolvedLanguage ?? "en"}
-              signature={merged.result.signature}
-            />
-          ) : <p className="quiet">{t("detail.calldataNoParameters")}</p>}
-        </section>
-      )}
-      {enabled && !loadingABI && merged.result.status !== "decoded" && (
-        <p className="capability-panel" role="status">
-          {t(`detail.calldata${merged.result.status === "unknown_selector" ? "UnknownSelector"
-            : merged.result.status === "malformed_calldata" ? "Malformed"
-            : merged.result.status === "ambiguous_abi_match" ? "Ambiguous"
-            : "Unavailable"}`)}
-          {merged.result.status === "ambiguous_abi_match" && merged.result.signatures.length > 0
-            ? <> · <code>{merged.result.signatures.join(" · ")}</code></>
-            : null}
-        </p>
-      )}
-      <div className="transaction-calldata-raw">
-        <div className="transaction-calldata-toolbar" role="group" aria-label={t("detail.rawCalldataMode")}>
-          <button
-            aria-pressed={rawMode === "hex"}
-            className="button secondary"
-            onClick={() => setRawMode("hex")}
-            type="button"
-          >{t("detail.rawHex")}</button>
-          <button
-            aria-pressed={rawMode === "utf8"}
-            className="button secondary"
-            onClick={() => setRawMode("utf8")}
-            type="button"
-          >{t("detail.rawUtf8")}</button>
-        </div>
-        {rawMode === "utf8" && utf8 === undefined && (
-          <p className="quiet" role="status">{t("detail.rawUtf8Unavailable")}</p>
+        </h3>
+        {enabled && loadingABI && <p className="quiet" role="status">{t("detail.calldataDecodeLoading")}</p>}
+        {enabled && !loadingABI && merged.result.status === "decoded" && (
+          <>
+            {merged.sources.length > 0 && (
+              <div className="calldata-abi-sources" aria-label={t("detail.calldataAbiEvidence")}>
+                {merged.sources.map((source) => (
+                  <div className="calldata-abi-source" key={`${source.kind}:${source.address}`}>
+                    <span>{t("detail.calldataVerifiedAbi")}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{t(source.kind === "target" ? "detail.calldataTargetAbi" : "detail.calldataImplementationAbi")}</span>
+                    <span aria-hidden="true">·</span>
+                    <CopyableField value={source.address}>
+                      <Link to="/address/$address" params={{ address: source.address }}><code>{source.address}</code></Link>
+                    </CopyableField>
+                  </div>
+                ))}
+              </div>
+            )}
+            {merged.result.args.length > 0 ? (
+              <CalldataValueTree
+                args={merged.result.args}
+                columnLabels={{
+                  index: t("detail.calldataIndex"),
+                  params: t("detail.calldataParams"),
+                  type: t("detail.calldataType"),
+                  data: t("detail.calldataData"),
+                }}
+                locale={i18n.resolvedLanguage ?? "en"}
+                signature={merged.result.signature}
+              />
+            ) : <p className="quiet">{t("detail.calldataNoParameters")}</p>}
+          </>
         )}
-        <CopyableField value={input}>
-          <code className="transaction-data">{displayValue}</code>
-        </CopyableField>
-      </div>
+        {enabled && !loadingABI && merged.result.status !== "decoded" && (
+          <p className="capability-panel" role="status">
+            {t(`detail.calldata${merged.result.status === "unknown_selector" ? "UnknownSelector"
+              : merged.result.status === "malformed_calldata" ? "Malformed"
+              : merged.result.status === "ambiguous_abi_match" ? "Ambiguous"
+              : "Unavailable"}`)}
+            {merged.result.status === "ambiguous_abi_match" && merged.result.signatures.length > 0
+              ? <> · <code>{merged.result.signatures.join(" · ")}</code></>
+              : null}
+          </p>
+        )}
+      </section>}
+      <section className="transaction-calldata-raw" aria-labelledby={rawHeadingID}>
+        <header className="transaction-calldata-raw-header">
+          <h3 className="transaction-calldata-heading" id={rawHeadingID}>{t("detail.rawCalldata")}</h3>
+          <div className="transaction-calldata-raw-actions">
+            <button
+              className="transaction-calldata-mode-link"
+              onClick={toggleRawMode}
+              type="button"
+            >{t(rawMode === "hex" ? "detail.rawViewAsUtf8" : "detail.rawViewAsHex")}</button>
+            <CopyButton value={input} />
+          </div>
+        </header>
+        {utf8Unavailable && (
+          <p className="quiet transaction-calldata-raw-status" role="status">{t("detail.rawUtf8Unavailable")}</p>
+        )}
+        <textarea
+          aria-label={t("detail.rawCalldataValue", { mode: t(rawMode === "hex" ? "detail.rawHex" : "detail.rawUtf8") })}
+          className="transaction-calldata-raw-value transaction-data"
+          readOnly
+          rows={4}
+          spellCheck={false}
+          value={displayValue}
+          wrap="soft"
+        />
+      </section>
     </div>
   );
 }
