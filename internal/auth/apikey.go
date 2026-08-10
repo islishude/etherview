@@ -18,25 +18,41 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	ErrInvalidAPIKey = errors.New("invalid API key")
-	ErrRevokedAPIKey = errors.New("revoked API key")
-	ErrMissingAPIKey = errors.New("API key is required")
+	ErrInvalidAPIKey      = errors.New("invalid API key")
+	ErrRevokedAPIKey      = errors.New("revoked API key")
+	ErrMissingAPIKey      = errors.New("API key is required")
+	ErrAPIKeyLimitReached = errors.New("active API key limit reached")
+	ErrAPIKeyNotFound     = errors.New("API key not found")
+	ErrAPIKeyNotActive    = errors.New("API key is not active")
 )
 
+type Scope string
+
+const (
+	ScopeRead         Scope = "api:read"
+	ScopeVerification Scope = "contract:verify"
+)
+
+var allScopes = []Scope{ScopeRead, ScopeVerification}
+
 type APIKey struct {
-	Prefix    string
-	Digest    []byte
-	Name      string
-	Rate      int
-	Burst     int
-	CreatedAt time.Time
-	RevokedAt *time.Time
+	Prefix      string
+	Digest      []byte
+	Name        string
+	Rate        int
+	Burst       int
+	CreatedAt   time.Time
+	RevokedAt   *time.Time
+	OwnerUserID *string
+	Scopes      []Scope
+	ownerActive bool
 }
 
 type IssuedAPIKey struct {
@@ -67,14 +83,44 @@ type Manager struct {
 }
 
 func (m Manager) Create(ctx context.Context, name string, rate, burst int) (IssuedAPIKey, error) {
+	return m.CreateScoped(ctx, name, rate, burst, allScopes)
+}
+
+func (m Manager) CreateScoped(
+	ctx context.Context,
+	name string,
+	rate, burst int,
+	scopes []Scope,
+) (IssuedAPIKey, error) {
 	if m.Repository == nil {
 		return IssuedAPIKey{}, errors.New("API key repository is required")
 	}
-	issued, err := m.issue(name, rate, burst)
+	issued, err := m.issue(name, rate, burst, scopes)
 	if err != nil {
 		return IssuedAPIKey{}, err
 	}
 	if err := m.Repository.Put(ctx, issued.Record); err != nil {
+		return IssuedAPIKey{}, err
+	}
+	return issued, nil
+}
+
+func (m Manager) CreateForUser(
+	ctx context.Context,
+	userID, name string,
+	scopes []Scope,
+	rate, burst, maximumActive int,
+) (IssuedAPIKey, error) {
+	repository, ok := m.Repository.(UserRepository)
+	if !ok {
+		return IssuedAPIKey{}, errors.New("API key repository does not support user keys")
+	}
+	issued, err := m.issue(name, rate, burst, scopes)
+	if err != nil {
+		return IssuedAPIKey{}, err
+	}
+	issued.Record.OwnerUserID = &userID
+	if err := repository.PutForUser(ctx, userID, issued.Record, maximumActive); err != nil {
 		return IssuedAPIKey{}, err
 	}
 	return issued, nil
@@ -102,10 +148,14 @@ func (m Manager) Rotate(ctx context.Context, prefix string) (IssuedAPIKey, error
 	if current.RevokedAt != nil {
 		return IssuedAPIKey{}, ErrRevokedAPIKey
 	}
-	issued, err := m.issue(current.Name, current.Rate, current.Burst)
+	if current.OwnerUserID != nil && !current.ownerActive {
+		return IssuedAPIKey{}, ErrRevokedAPIKey
+	}
+	issued, err := m.issue(current.Name, current.Rate, current.Burst, current.Scopes)
 	if err != nil {
 		return IssuedAPIKey{}, err
 	}
+	issued.Record.OwnerUserID = current.OwnerUserID
 	if issued.Record.Prefix == prefix {
 		return IssuedAPIKey{}, errors.New("replacement API key prefix collided with the active key")
 	}
@@ -115,7 +165,34 @@ func (m Manager) Rotate(ctx context.Context, prefix string) (IssuedAPIKey, error
 	return issued, nil
 }
 
-func (m Manager) issue(name string, rate, burst int) (IssuedAPIKey, error) {
+func (m Manager) RotateForUser(ctx context.Context, userID, prefix string) (IssuedAPIKey, error) {
+	repository, ok := m.Repository.(UserRepository)
+	if !ok {
+		return IssuedAPIKey{}, errors.New("API key repository does not support user keys")
+	}
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if !validPrefix(prefix) {
+		return IssuedAPIKey{}, ErrAPIKeyNotFound
+	}
+	current, err := repository.UserKey(ctx, userID, prefix)
+	if err != nil {
+		return IssuedAPIKey{}, err
+	}
+	if current.RevokedAt != nil {
+		return IssuedAPIKey{}, ErrAPIKeyNotActive
+	}
+	issued, err := m.issue(current.Name, current.Rate, current.Burst, current.Scopes)
+	if err != nil {
+		return IssuedAPIKey{}, err
+	}
+	issued.Record.OwnerUserID = &userID
+	if err := repository.RotateForUser(ctx, userID, prefix, issued.Record); err != nil {
+		return IssuedAPIKey{}, err
+	}
+	return issued, nil
+}
+
+func (m Manager) issue(name string, rate, burst int, scopes []Scope) (IssuedAPIKey, error) {
 	if len(m.Pepper) < 32 {
 		return IssuedAPIKey{}, errors.New("API key pepper must contain at least 32 bytes")
 	}
@@ -125,6 +202,10 @@ func (m Manager) issue(name string, rate, burst int) (IssuedAPIKey, error) {
 	}
 	if rate <= 0 || burst < rate {
 		return IssuedAPIKey{}, errors.New("API key rate must be positive and burst must be at least rate")
+	}
+	normalizedScopes, err := NormalizeScopes(scopes)
+	if err != nil {
+		return IssuedAPIKey{}, err
 	}
 	random := m.Random
 	if random == nil {
@@ -143,7 +224,11 @@ func (m Manager) issue(name string, rate, burst int) (IssuedAPIKey, error) {
 	if m.Now != nil {
 		now = m.Now().UTC()
 	}
-	record := APIKey{Prefix: prefix, Digest: digest(m.Pepper, token), Name: name, Rate: rate, Burst: burst, CreatedAt: now}
+	record := APIKey{
+		Prefix: prefix, Digest: digest(m.Pepper, token), Name: name,
+		Rate: rate, Burst: burst, CreatedAt: now, Scopes: normalizedScopes,
+		ownerActive: true,
+	}
 	return IssuedAPIKey{Token: token, Record: record}, nil
 }
 
@@ -166,7 +251,36 @@ func (m Manager) Authenticate(ctx context.Context, token string) (APIKey, error)
 	if record.RevokedAt != nil {
 		return APIKey{}, ErrRevokedAPIKey
 	}
+	if record.OwnerUserID != nil && !record.ownerActive {
+		return APIKey{}, ErrRevokedAPIKey
+	}
 	return record, nil
+}
+
+func NormalizeScopes(scopes []Scope) ([]Scope, error) {
+	seen := make(map[Scope]bool, len(scopes))
+	for _, scope := range scopes {
+		switch scope {
+		case ScopeRead, ScopeVerification:
+			seen[scope] = true
+		default:
+			return nil, errors.New("API key scope is invalid")
+		}
+	}
+	if len(seen) == 0 {
+		return nil, errors.New("at least one API key scope is required")
+	}
+	result := make([]Scope, 0, len(seen))
+	for _, scope := range allScopes {
+		if seen[scope] {
+			result = append(result, scope)
+		}
+	}
+	return result, nil
+}
+
+func HasScope(scopes []Scope, expected Scope) bool {
+	return slices.Contains(scopes, expected)
 }
 
 func parseToken(token string) (string, bool) {
@@ -205,6 +319,11 @@ type Identity struct {
 	Name          string
 	Rate          int
 	Burst         int
+	Scopes        []Scope
+}
+
+func (identity Identity) HasScope(scope Scope) bool {
+	return identity.Authenticated && HasScope(identity.Scopes, scope)
 }
 
 type identityKey struct{}
@@ -282,7 +401,10 @@ func (m Manager) Middleware(require bool, next http.Handler) http.Handler {
 			writeAuthError(w, r, http.StatusUnauthorized, "invalid_api_key")
 			return
 		}
-		identity := Identity{Authenticated: true, Prefix: record.Prefix, Name: record.Name, Rate: record.Rate, Burst: record.Burst}
+		identity := Identity{
+			Authenticated: true, Prefix: record.Prefix, Name: record.Name,
+			Rate: record.Rate, Burst: record.Burst, Scopes: slices.Clone(record.Scopes),
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, identity)))
 	})
 }
@@ -442,7 +564,13 @@ func (r *MemoryRepository) Rotate(_ context.Context, prefix string, replacement 
 	if _, exists := r.records[replacement.Prefix]; exists {
 		return errors.New("replacement API key prefix already exists")
 	}
-	if replacement.Name != current.Name || replacement.Rate != current.Rate || replacement.Burst != current.Burst {
+	ownerMatches := (replacement.OwnerUserID == nil) == (current.OwnerUserID == nil)
+	if ownerMatches && replacement.OwnerUserID != nil {
+		ownerMatches = *replacement.OwnerUserID == *current.OwnerUserID
+	}
+	if replacement.Name != current.Name || replacement.Rate != current.Rate ||
+		replacement.Burst != current.Burst || !ownerMatches ||
+		!slices.Equal(replacement.Scopes, current.Scopes) {
 		return errors.New("replacement API key policy differs from active key")
 	}
 	revokedAt := replacement.CreatedAt.UTC()

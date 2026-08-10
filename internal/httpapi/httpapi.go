@@ -170,6 +170,14 @@ type ProxyReader interface {
 	ProxyInitializations(context.Context, string, string, int) (gen.ProxyInitializationHistory, string, error)
 }
 
+type UserAPIKeyAdministration interface {
+	Policy() auth.UserKeyPolicy
+	Create(context.Context, string, string, []auth.Scope) (auth.IssuedAPIKey, error)
+	Rotate(context.Context, string, string) (auth.IssuedAPIKey, error)
+	Revoke(context.Context, string, string, time.Time) error
+	List(context.Context, string, *auth.UserKeyPageAfter, int) (auth.UserKeyPage, error)
+}
+
 type Options struct {
 	Config                config.Config
 	Reader                Reader
@@ -192,6 +200,7 @@ type Options struct {
 	ProxyReader           ProxyReader
 	UserAuth              UserAuthenticator
 	UserAdministration    UserAdministration
+	UserAPIKeys           UserAPIKeyAdministration
 	Billing               *billing.HTTPDispatcher
 	BillingReader         BillingReader
 	Quota                 func(http.Handler) http.Handler
@@ -225,6 +234,7 @@ type Handler struct {
 	proxyReader           ProxyReader
 	userAuth              UserAuthenticator
 	userAdministration    UserAdministration
+	userAPIKeys           UserAPIKeyAdministration
 	billing               *billing.HTTPDispatcher
 	billingReader         BillingReader
 	authOrigin            string
@@ -276,6 +286,7 @@ func New(options Options) (*Handler, error) {
 		proxyReader:           options.ProxyReader,
 		userAuth:              options.UserAuth,
 		userAdministration:    options.UserAdministration,
+		userAPIKeys:           options.UserAPIKeys,
 		billing:               options.Billing,
 		billingReader:         options.BillingReader,
 		logger:                options.Logger,
@@ -291,6 +302,9 @@ func New(options Options) (*Handler, error) {
 	}
 	if h.cfg.Features.UserAuth && (h.userAuth == nil || h.userAdministration == nil) {
 		return nil, errors.New("enabled user authentication requires writer services")
+	}
+	if h.cfg.Features.UserAPIKeys && h.userAPIKeys == nil {
+		return nil, errors.New("enabled user API keys require writer services")
 	}
 	if h.cfg.Features.UserAuth && h.billingReader == nil {
 		return nil, errors.New("enabled user authentication requires a writer-backed billing reader")
@@ -331,6 +345,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/auth/session", h.authSession)
 	h.mux.HandleFunc("POST /api/v1/auth/logout", h.logoutAuthSession)
 	h.mux.HandleFunc("PATCH /api/v1/users/me", h.updateCurrentUser)
+	h.mux.HandleFunc("GET /api/v1/users/me/api-keys", h.listCurrentUserAPIKeys)
+	h.mux.HandleFunc("POST /api/v1/users/me/api-keys", h.createCurrentUserAPIKey)
+	h.mux.HandleFunc("POST /api/v1/users/me/api-keys/{prefix}/rotate", h.rotateCurrentUserAPIKey)
+	h.mux.HandleFunc("DELETE /api/v1/users/me/api-keys/{prefix}", h.revokeCurrentUserAPIKey)
 	h.mux.HandleFunc("GET /api/v1/admin/users", h.listAdminUsers)
 	h.mux.HandleFunc("PATCH /api/v1/admin/users/{id}", h.updateAdminUser)
 	h.mux.HandleFunc("POST /api/v1/admin/users/{id}/sessions/revoke", h.revokeAdminUserSessions)
@@ -413,7 +431,7 @@ func (h *Handler) handleBillable(operation string, handler http.HandlerFunc) {
 	h.mux.Handle(spec.MuxPattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		identity := auth.IdentityFrom(r.Context())
 		billingIdentity := billing.APIKeyIdentity{
-			Authenticated: identity.Authenticated,
+			Authenticated: identity.HasScope(requiredAPIScope(operation)),
 			Prefix:        identity.Prefix,
 		}
 		if r.Method != spec.Method || h.billing == nil ||
@@ -666,8 +684,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	spec, catalogMatch := h.matchedOperation(request)
 	identity := auth.IdentityFrom(request.Context())
+	if catalogMatch && operationUsesAPIKeyScope(string(spec.ID)) && identity.Authenticated &&
+		!identity.HasScope(requiredAPIScope(string(spec.ID))) {
+		writeError(w, request, http.StatusForbidden, "api_key_scope_required", "API key scope does not authorize this operation", nil)
+		return
+	}
 	billingIdentity := billing.APIKeyIdentity{
-		Authenticated: identity.Authenticated,
+		Authenticated: identity.HasScope(requiredAPIScope(string(spec.ID))),
 		Prefix:        identity.Prefix,
 	}
 	access := billing.AccessFree
@@ -801,6 +824,7 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
 		"user_auth":        h.cfg.Features.UserAuth,
+		"user_api_keys":    h.cfg.Features.UserAPIKeys,
 		"x402_billing":     h.cfg.Features.X402Billing,
 	}
 	data := gen.PublicConfig{
@@ -1285,7 +1309,7 @@ func (h *Handler) nftOwner(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) nftMedia(w http.ResponseWriter, r *http.Request) {
 	setNFTMediaHeaders(w)
 	w.Header().Set("X-Etherview-Media-State", "unauthorized")
-	if !h.requireAPIKey(w, r) {
+	if !h.requireAPIKey(w, r, auth.ScopeRead) {
 		return
 	}
 	if h.nftMediaSource == nil || h.nftMediaProxy == nil {
@@ -1966,7 +1990,7 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
 		return
 	}
-	if !h.requireAPIKey(w, r) {
+	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
 	address := strings.ToLower(r.PathValue("address"))
@@ -2011,7 +2035,7 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
 		return
 	}
-	if !h.requireAPIKey(w, r) {
+	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
 	if r.Pattern == "POST /api/v1/verifier/sourcify" {
@@ -2150,7 +2174,7 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 	if !h.verificationReadAvailable(w, r) {
 		return
 	}
-	if !h.requireAPIKey(w, r) {
+	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
 	job, found, err := h.verificationReader.Job(r.Context(), r.PathValue("id"))
@@ -2344,9 +2368,14 @@ func (h *Handler) handleVerificationTargetError(w http.ResponseWriter, r *http.R
 	writeError(w, r, http.StatusServiceUnavailable, "verification_target_unavailable", "canonical contract code or creation facts are unavailable", nil)
 }
 
-func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
-	if auth.IdentityFrom(r.Context()).Authenticated {
-		return true
+func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request, scope auth.Scope) bool {
+	identity := auth.IdentityFrom(r.Context())
+	if identity.Authenticated {
+		if identity.HasScope(scope) {
+			return true
+		}
+		writeError(w, r, http.StatusForbidden, "api_key_scope_required", "API key scope does not authorize this operation", nil)
+		return false
 	}
 	if operation, ok := billing.PaidOperationFrom(r.Context()); ok {
 		spec, exists := apiops.Lookup(operation)
@@ -2356,6 +2385,34 @@ func (h *Handler) requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeError(w, r, http.StatusUnauthorized, "api_key_required", "an API key is required", nil)
 	return false
+}
+
+func requiredAPIScope(operation string) auth.Scope {
+	switch operation {
+	case "getVerifierJob", "getVerifiedContract", "submitAddressVerification",
+		"verifySolidityMultipart", "verifySolidityStandardJson",
+		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
+		"listVerifierCompilers", "lookupVerifierMethods",
+		"submitSourcifyVerification", "submitSourcifyFromEtherscan":
+		return auth.ScopeVerification
+	default:
+		return auth.ScopeRead
+	}
+}
+
+func operationUsesAPIKeyScope(operation string) bool {
+	switch operation {
+	case "createAuthChallenge", "verifyAuthChallenge", "getAuthSession",
+		"logoutAuthSession", "updateCurrentUser", "listCurrentUserAPIKeys",
+		"createCurrentUserAPIKey", "rotateCurrentUserAPIKey",
+		"revokeCurrentUserAPIKey", "listAdminUsers", "updateAdminUser",
+		"revokeAdminUserSessions", "getBillingConfig",
+		"listCurrentUserBillingPayments", "listAdminBillingPayments",
+		"getAdminBillingSummary":
+		return false
+	default:
+		return true
+	}
 }
 
 func (h *Handler) handleVerificationError(w http.ResponseWriter, r *http.Request, err error) {

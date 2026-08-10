@@ -38,6 +38,24 @@ func (e ABISourceKind) Valid() bool {
 	}
 }
 
+// Defines values for APIKeyScope.
+const (
+	ApiRead        APIKeyScope = "api:read"
+	ContractVerify APIKeyScope = "contract:verify"
+)
+
+// Valid indicates whether the value is a known member of the APIKeyScope enum.
+func (e APIKeyScope) Valid() bool {
+	switch e {
+	case ApiRead:
+		return true
+	case ContractVerify:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddressOriginKind.
 const (
 	BlockFeeRecipient AddressOriginKind = "block_fee_recipient"
@@ -1718,6 +1736,24 @@ func (e TransactionTraceState) Valid() bool {
 	}
 }
 
+// Defines values for UserAPIKeyStatus.
+const (
+	UserAPIKeyStatusActive  UserAPIKeyStatus = "active"
+	UserAPIKeyStatusRevoked UserAPIKeyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the UserAPIKeyStatus enum.
+func (e UserAPIKeyStatus) Valid() bool {
+	switch e {
+	case UserAPIKeyStatusActive:
+		return true
+	case UserAPIKeyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -1738,16 +1774,16 @@ func (e UserRole) Valid() bool {
 
 // Defines values for UserStatus.
 const (
-	Active   UserStatus = "active"
-	Disabled UserStatus = "disabled"
+	UserStatusActive   UserStatus = "active"
+	UserStatusDisabled UserStatus = "disabled"
 )
 
 // Valid indicates whether the value is a known member of the UserStatus enum.
 func (e UserStatus) Valid() bool {
 	switch e {
-	case Active:
+	case UserStatusActive:
 		return true
-	case Disabled:
+	case UserStatusDisabled:
 		return true
 	default:
 		return false
@@ -2011,6 +2047,9 @@ type APIError struct {
 	Message   string                  `json:"message"`
 	RequestId string                  `json:"request_id"`
 }
+
+// APIKeyScope defines model for APIKeyScope.
+type APIKeyScope string
 
 // Address A 20-byte address; responses use the EIP-55 checksum form.
 type Address = string
@@ -4141,6 +4180,60 @@ type User struct {
 	UpdatedAt   time.Time          `json:"updated_at"`
 }
 
+// UserAPIKey defines model for UserAPIKey.
+type UserAPIKey struct {
+	Burst         int              `json:"burst"`
+	CreatedAt     time.Time        `json:"created_at"`
+	Name          string           `json:"name"`
+	Prefix        string           `json:"prefix"`
+	RatePerSecond int              `json:"rate_per_second"`
+	RevokedAt     *time.Time       `json:"revoked_at,omitempty"`
+	Scopes        []APIKeyScope    `json:"scopes"`
+	Status        UserAPIKeyStatus `json:"status"`
+}
+
+// UserAPIKeyStatus defines model for UserAPIKey.Status.
+type UserAPIKeyStatus string
+
+// UserAPIKeyCreateRequest defines model for UserAPIKeyCreateRequest.
+type UserAPIKeyCreateRequest struct {
+	Name   string        `json:"name"`
+	Scopes []APIKeyScope `json:"scopes"`
+}
+
+// UserAPIKeyIssued defines model for UserAPIKeyIssued.
+type UserAPIKeyIssued struct {
+	Key   UserAPIKey `json:"key"`
+	Token string     `json:"token"`
+}
+
+// UserAPIKeyIssuedResponse defines model for UserAPIKeyIssuedResponse.
+type UserAPIKeyIssuedResponse struct {
+	Data UserAPIKeyIssued `json:"data"`
+	Meta Meta             `json:"meta"`
+}
+
+// UserAPIKeyPage defines model for UserAPIKeyPage.
+type UserAPIKeyPage struct {
+	Items  []UserAPIKey     `json:"items"`
+	Policy UserAPIKeyPolicy `json:"policy"`
+}
+
+// UserAPIKeyPageResponse defines model for UserAPIKeyPageResponse.
+type UserAPIKeyPageResponse struct {
+	Data UserAPIKeyPage `json:"data"`
+	Meta Meta           `json:"meta"`
+}
+
+// UserAPIKeyPolicy defines model for UserAPIKeyPolicy.
+type UserAPIKeyPolicy struct {
+	ActiveCount   int           `json:"active_count"`
+	AllowedScopes []APIKeyScope `json:"allowed_scopes"`
+	Burst         int           `json:"burst"`
+	MaximumActive int           `json:"maximum_active"`
+	RatePerSecond int           `json:"rate_per_second"`
+}
+
 // UserListResponse defines model for UserListResponse.
 type UserListResponse struct {
 	Data []User `json:"data"`
@@ -4368,6 +4461,9 @@ type WalletNativeCurrency struct {
 	Name     string `json:"name"`
 	Symbol   string `json:"symbol"`
 }
+
+// APIKeyPrefix defines model for APIKeyPrefix.
+type APIKeyPrefix = string
 
 // BillingAssetFilter A 20-byte address; responses use the EIP-55 checksum form.
 type BillingAssetFilter = Address
@@ -4762,6 +4858,27 @@ type UpdateCurrentUserParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// ListCurrentUserAPIKeysParams defines parameters for ListCurrentUserAPIKeys.
+type ListCurrentUserAPIKeysParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateCurrentUserAPIKeyParams defines parameters for CreateCurrentUserAPIKey.
+type CreateCurrentUserAPIKeyParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// RevokeCurrentUserAPIKeyParams defines parameters for RevokeCurrentUserAPIKey.
+type RevokeCurrentUserAPIKeyParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// RotateCurrentUserAPIKeyParams defines parameters for RotateCurrentUserAPIKey.
+type RotateCurrentUserAPIKeyParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // ListVerifierCompilersParams defines parameters for ListVerifierCompilers.
 type ListVerifierCompilersParams struct {
 	Language VerifierLanguage `form:"language" json:"language"`
@@ -4787,6 +4904,9 @@ type SubmitAddressVerificationJSONRequestBody = AddressVerificationSubmission
 
 // UpdateCurrentUserJSONRequestBody defines body for UpdateCurrentUser for application/json ContentType.
 type UpdateCurrentUserJSONRequestBody = UserProfileUpdate
+
+// CreateCurrentUserAPIKeyJSONRequestBody defines body for CreateCurrentUserAPIKey for application/json ContentType.
+type CreateCurrentUserAPIKeyJSONRequestBody = UserAPIKeyCreateRequest
 
 // LookupVerifierMethodsJSONRequestBody defines body for LookupVerifierMethods for application/json ContentType.
 type LookupVerifierMethodsJSONRequestBody = LookupMethodsRequest

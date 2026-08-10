@@ -155,7 +155,10 @@ const statusRoute = createRoute({
 const accountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/account",
-  component: AccountPage,
+  validateSearch: (search: Record<string, unknown>): { tab?: "overview" | "api-keys" | "billing" } => ({
+    tab: search.tab === "api-keys" || search.tab === "billing" ? search.tab : undefined,
+  }),
+  component: AccountRoutePage,
 });
 const adminUsersRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -224,6 +227,11 @@ function TokenRoutePage() {
 function NFTRoutePage() {
   const { address, tokenID } = nftRoute.useParams();
   return <EntityPage kind="nft" identifier={address} secondary={tokenID} />;
+}
+
+function AccountRoutePage() {
+  const { tab } = accountRoute.useSearch();
+  return <AccountPage tab={tab ?? "overview"} />;
 }
 
 function VerifyRoutePage() {

@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+	apiauth "github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -143,6 +144,81 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 			replicaAuthentication.Session.User.Role, err,
 		)
 	}
+	apiKeyRepository, err := apiauth.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userKeys, err := apiauth.NewUserService(apiauth.Manager{
+		Repository: apiKeyRepository,
+		Pepper:     bytes.Repeat([]byte{8}, 32),
+	}, apiauth.UserKeyPolicy{Rate: 20, Burst: 40, MaximumActive: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startKeys := make(chan struct{})
+	keyResults := make(chan struct {
+		issued apiauth.IssuedAPIKey
+		err    error
+	}, 2)
+	var keyCreates sync.WaitGroup
+	for range 2 {
+		keyCreates.Go(func() {
+			<-startKeys
+			issued, createErr := userKeys.Create(
+				context.Background(), authentication.Session.User.ID, "personal",
+				[]apiauth.Scope{apiauth.ScopeRead},
+			)
+			keyResults <- struct {
+				issued apiauth.IssuedAPIKey
+				err    error
+			}{issued: issued, err: createErr}
+		})
+	}
+	close(startKeys)
+	keyCreates.Wait()
+	close(keyResults)
+	var activeKey apiauth.IssuedAPIKey
+	created, limited := 0, 0
+	for result := range keyResults {
+		switch {
+		case result.err == nil:
+			created++
+			activeKey = result.issued
+		case errors.Is(result.err, apiauth.ErrAPIKeyLimitReached):
+			limited++
+		default:
+			t.Fatalf("concurrent personal API key create: %v", result.err)
+		}
+	}
+	if created != 1 || limited != 1 {
+		t.Fatalf("personal API key cap outcomes created=%d limited=%d", created, limited)
+	}
+	replacement, err := userKeys.Rotate(
+		t.Context(), authentication.Session.User.ID, activeKey.Record.Prefix,
+	)
+	if err != nil {
+		t.Fatalf("rotate at active-key cap: %v", err)
+	}
+	if _, err := apiKeyRepository.ByPrefix(
+		t.Context(), activeKey.Record.Prefix,
+	); err != nil {
+		t.Fatal(err)
+	}
+	apiKeyManager := apiauth.Manager{
+		Repository: apiKeyRepository, Pepper: bytes.Repeat([]byte{8}, 32),
+	}
+	if _, err := apiKeyManager.Authenticate(t.Context(), activeKey.Token); !errors.Is(err, apiauth.ErrRevokedAPIKey) {
+		t.Fatalf("rotated token authentication error = %v", err)
+	}
+	if _, err := apiKeyManager.Authenticate(t.Context(), replacement.Token); err != nil {
+		t.Fatalf("replacement token authentication: %v", err)
+	}
+	if err := userKeys.Revoke(
+		t.Context(), "7ac05a11-b7b2-4c2c-b786-a614cc1e3670",
+		replacement.Record.Prefix, time.Now().UTC(),
+	); !errors.Is(err, apiauth.ErrAPIKeyNotFound) {
+		t.Fatalf("cross-user revoke error = %v", err)
+	}
 	disabled := StatusDisabled
 	update, err := replicaRepository.UpdateUser(t.Context(), authentication.Session.User.ID, AdminUserUpdate{
 		Status: &disabled,
@@ -158,6 +234,9 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 	}
 	if _, err := replicaService.Authenticate(t.Context(), login.Credentials.Token); !errors.Is(err, ErrSessionInvalid) {
 		t.Fatalf("second replica authentication after disable error = %v", err)
+	}
+	if _, err := apiKeyManager.Authenticate(t.Context(), replacement.Token); !errors.Is(err, apiauth.ErrRevokedAPIKey) {
+		t.Fatalf("personal API key authentication after disable error = %v", err)
 	}
 }
 

@@ -17,9 +17,10 @@ which rules out self-contained client-side session state.
 
 ## Decision
 
-`internal/userauth` is independent of `internal/auth`. API keys continue to
-authenticate native and compatibility API clients and never grant a user or
-administrator role.
+`internal/userauth` remains the only browser user and administrator authority.
+API keys authenticate native and compatibility API clients and never grant a
+user or administrator role. ADR-0035 adds optional user ownership and scoped
+self-service issuance without allowing API keys to cross this session boundary.
 
 The server constructs one canonical EIP-4361 message for a checksummed EOA
 address. It binds the normalized `server.public_url` authority and root URI,

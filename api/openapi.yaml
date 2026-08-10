@@ -124,6 +124,78 @@ paths:
                 $ref: "#/components/schemas/UserResponse"
         default:
           $ref: "#/components/responses/Error"
+  /users/me/api-keys:
+    get:
+      operationId: listCurrentUserAPIKeys
+      tags: [users, api-keys]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Current user's API keys and deployment-owned issuance policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAPIKeyPageResponse"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createCurrentUserAPIKey
+      tags: [users, api-keys]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserAPIKeyCreateRequest"
+      responses:
+        "201":
+          description: Newly issued API key. The plaintext token is returned once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAPIKeyIssuedResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /users/me/api-keys/{prefix}/rotate:
+    post:
+      operationId: rotateCurrentUserAPIKey
+      tags: [users, api-keys]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/APIKeyPrefix"
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "201":
+          description: Atomically rotated API key. The replacement token is returned once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAPIKeyIssuedResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /users/me/api-keys/{prefix}:
+    delete:
+      operationId: revokeCurrentUserAPIKey
+      tags: [users, api-keys]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/APIKeyPrefix"
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: API key revoked, or already revoked.
+        default:
+          $ref: "#/components/responses/Error"
   /admin/users:
     get:
       operationId: listAdminUsers
@@ -1501,6 +1573,13 @@ components:
       schema:
         type: string
         format: uuid
+    APIKeyPrefix:
+      name: prefix
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-z2-7]{10}$'
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -1726,6 +1805,104 @@ components:
           nullable: true
           minLength: 1
           maxLength: 64
+    APIKeyScope:
+      type: string
+      enum: [api:read, contract:verify]
+    UserAPIKey:
+      type: object
+      additionalProperties: false
+      required: [prefix, name, scopes, rate_per_second, burst, status, created_at]
+      properties:
+        prefix:
+          type: string
+          pattern: '^[a-z2-7]{10}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/APIKeyScope"
+        rate_per_second:
+          type: integer
+          minimum: 1
+        burst:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    UserAPIKeyPolicy:
+      type: object
+      additionalProperties: false
+      required: [rate_per_second, burst, maximum_active, active_count, allowed_scopes]
+      properties:
+        rate_per_second:
+          type: integer
+          minimum: 1
+        burst:
+          type: integer
+          minimum: 1
+        maximum_active:
+          type: integer
+          minimum: 1
+        active_count:
+          type: integer
+          minimum: 0
+        allowed_scopes:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/APIKeyScope"
+    UserAPIKeyPage:
+      type: object
+      additionalProperties: false
+      required: [items, policy]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAPIKey"
+        policy:
+          $ref: "#/components/schemas/UserAPIKeyPolicy"
+    UserAPIKeyCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/APIKeyScope"
+    UserAPIKeyIssued:
+      type: object
+      additionalProperties: false
+      required: [token, key]
+      properties:
+        token:
+          type: string
+          pattern: '^evk_[a-z2-7]{10}_[A-Za-z0-9_-]{43}$'
+        key:
+          $ref: "#/components/schemas/UserAPIKey"
     AdminUserUpdate:
       type: object
       additionalProperties: false
@@ -4447,6 +4624,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/User"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserAPIKeyPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/UserAPIKeyPage"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    UserAPIKeyIssuedResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/UserAPIKeyIssued"
         meta:
           $ref: "#/components/schemas/Meta"
     SessionRevocationResponse:

@@ -184,6 +184,7 @@ type FeatureConfig struct {
 	NFTMetadata            bool `yaml:"nft_metadata"`
 	Pricing                bool `yaml:"pricing"`
 	UserAuth               bool `yaml:"user_auth"`
+	UserAPIKeys            bool `yaml:"user_api_keys"`
 	X402Billing            bool `yaml:"x402_billing"`
 	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
 	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
@@ -242,6 +243,9 @@ type UserAuthConfig struct {
 	LastUsedInterval  time.Duration `yaml:"last_used_interval"`
 	MaxMessageBytes   int           `yaml:"max_message_bytes"`
 	MaxSignatureBytes int           `yaml:"max_signature_bytes"`
+	APIKeyRate        int           `yaml:"api_key_rate"`
+	APIKeyBurst       int           `yaml:"api_key_burst"`
+	MaxActiveAPIKeys  int           `yaml:"max_active_api_keys"`
 	SessionPepper     string        `yaml:"-"`
 }
 
@@ -409,6 +413,9 @@ func Default() Config {
 			LastUsedInterval:  5 * time.Minute,
 			MaxMessageBytes:   4096,
 			MaxSignatureBytes: 65,
+			APIKeyRate:        20,
+			APIKeyBurst:       40,
+			MaxActiveAPIKeys:  5,
 		},
 		Billing: BillingConfig{
 			FacilitatorTimeout:          10 * time.Second,
@@ -1066,6 +1073,15 @@ func validateUserAuthConfig(cfg Config) error {
 	if cfg.UserAuth.MaxSignatureBytes != 65 {
 		errs = append(errs, errors.New("user_auth.max_signature_bytes must be exactly 65"))
 	}
+	if cfg.UserAuth.APIKeyRate < 1 || cfg.UserAuth.APIKeyRate > 10_000 {
+		errs = append(errs, errors.New("user_auth.api_key_rate must be between 1 and 10000"))
+	}
+	if cfg.UserAuth.APIKeyBurst < cfg.UserAuth.APIKeyRate || cfg.UserAuth.APIKeyBurst > 100_000 {
+		errs = append(errs, errors.New("user_auth.api_key_burst must be at least api_key_rate and at most 100000"))
+	}
+	if cfg.UserAuth.MaxActiveAPIKeys < 1 || cfg.UserAuth.MaxActiveAPIKeys > 100 {
+		errs = append(errs, errors.New("user_auth.max_active_api_keys must be between 1 and 100"))
+	}
 	if cfg.UserAuth.SessionPepper != "" && len(cfg.UserAuth.SessionPepper) < 32 {
 		errs = append(errs, errors.New("user_auth session pepper must contain at least 32 bytes"))
 	}
@@ -1075,6 +1091,14 @@ func validateUserAuthConfig(cfg Config) error {
 		}
 		if cfg.Chain.ID > uint64(math.MaxInt) {
 			errs = append(errs, errors.New("features.user_auth requires chain.id to fit in int"))
+		}
+	}
+	if cfg.Features.UserAPIKeys {
+		if !cfg.Features.UserAuth {
+			errs = append(errs, errors.New("features.user_api_keys requires features.user_auth"))
+		}
+		if len(cfg.Security.APIKeyPepper) < 32 {
+			errs = append(errs, errors.New("features.user_api_keys requires API key authentication"))
 		}
 	}
 	return errors.Join(errs...)
@@ -1410,6 +1434,9 @@ func applyEnvironmentForRoles(
 	if err := setBool(lookup, "FEATURE_USER_AUTH", &cfg.Features.UserAuth); err != nil {
 		return err
 	}
+	if err := setBool(lookup, "FEATURE_USER_API_KEYS", &cfg.Features.UserAPIKeys); err != nil {
+		return err
+	}
 	if err := setBool(lookup, "FEATURE_X402_BILLING", &cfg.Features.X402Billing); err != nil {
 		return err
 	}
@@ -1613,6 +1640,15 @@ func applyEnvironmentForRoles(
 	if err := setInt(lookup, "ANONYMOUS_BURST", &cfg.Security.AnonymousBurst); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "USER_AUTH_API_KEY_RATE", &cfg.UserAuth.APIKeyRate); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "USER_AUTH_API_KEY_BURST", &cfg.UserAuth.APIKeyBurst); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "USER_AUTH_MAX_ACTIVE_API_KEYS", &cfg.UserAuth.MaxActiveAPIKeys); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "VERIFICATION_MAX_INPUT_BYTES", &cfg.Verification.MaxInputBytes); err != nil {
 		return err
 	}
@@ -1708,6 +1744,7 @@ func applyEnvironmentForRoles(
 		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":                                     &cfg.Features.Pricing,
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
+		"FEATURE_USER_API_KEYS":                               &cfg.Features.UserAPIKeys,
 		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
 		"FEATURE_PROXY_DETECTION_V2":                          &cfg.Features.ProxyDetectionV2,
 		"FEATURE_SAFE_PROXY_DETECTION":                        &cfg.Features.SafeProxyDetection,

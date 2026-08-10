@@ -60,6 +60,13 @@ services never receive it. The split services also set `ETHERVIEW_ROLES`
 explicitly so role-scoped Secret loading does not depend on the mounted YAML.
 Do not put the pepper in YAML, browser assets, or an image layer.
 
+User-owned API keys are independently disabled by default. Enable
+`features.user_api_keys` only with user authentication enabled and an
+independent `ETHERVIEW_API_KEY_PEPPER`. The deployment policy under `user_auth`
+sets `api_key_rate`, `api_key_burst`, and `max_active_api_keys`; users cannot
+raise those values. The safe public configuration exposes only whether the
+capability is enabled, never either pepper.
+
 x402 billing is also disabled by default. Configure its non-secret facilitator
 origin/CIDRs, network, asset, recipient, and per-operation prices under
 `billing`, then set `features.x402_billing: true` and provide

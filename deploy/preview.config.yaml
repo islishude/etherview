@@ -86,6 +86,7 @@ features:
   nft_metadata: true
   pricing: false
   user_auth: true
+  user_api_keys: true
   x402_billing: false
   proxy_detection_v2: true
   safe_proxy_detection: true
@@ -105,6 +106,9 @@ user_auth:
   last_used_interval: 5m
   max_message_bytes: 4096
   max_signature_bytes: 65
+  api_key_rate: 20
+  api_key_burst: 40
+  max_active_api_keys: 5
 
 billing:
   facilitator_url: ""

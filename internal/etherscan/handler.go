@@ -169,7 +169,19 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, "action requires "+spec.method)
 		return
 	}
-	if spec.keyed && !auth.IdentityFrom(r.Context()).Authenticated {
+	identity := auth.IdentityFrom(r.Context())
+	verificationOperation := spec.keyed ||
+		(module == "contract" && (action == "getabi" || action == "getsourcecode"))
+	if identity.Authenticated && !identity.HasScope(auth.ScopeRead) &&
+		(!verificationOperation || !identity.HasScope(auth.ScopeVerification)) {
+		h.writeErrorStatus(w, http.StatusForbidden, "API key scope does not authorize this action")
+		return
+	}
+	if spec.keyed && !identity.HasScope(auth.ScopeVerification) {
+		if identity.Authenticated {
+			h.writeErrorStatus(w, http.StatusForbidden, "API key scope does not authorize this action")
+			return
+		}
 		h.writeError(w, "API Key required")
 		return
 	}

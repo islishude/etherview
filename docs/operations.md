@@ -501,11 +501,19 @@ into the intended secret manager and do not copy it into tickets or logs.
 
 ```sh
 etherview admin api-key create --config /etc/etherview/config.yaml \
-  --name incident-reader --rate 20 --burst 40
+  --name incident-reader --rate 20 --burst 40 \
+  --scope api:read --scope contract:verify
 etherview admin api-key rotate OLD_PREFIX --config /etc/etherview/config.yaml
 etherview admin api-key revoke PREFIX --config /etc/etherview/config.yaml
 etherview admin api-key list --config /etc/etherview/config.yaml
 ```
+
+Omitting `--scope` grants both maintained scopes. `api:read` covers keyed read
+quota, NFT media, and configured API-key billing bypass;
+`contract:verify` covers the native and Etherscan verification workflow.
+Self-service keys are separately controlled by `features.user_api_keys` and
+the fixed policy under `user_auth`; the CLI remains able to inspect and revoke
+all operator and user-owned keys.
 
 Label administration is chain-scoped and accepts only canonical address,
 transaction hash, block hash/height, token, or contract identities. Use

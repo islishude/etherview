@@ -13,8 +13,10 @@ import (
 type Querier interface {
 	AppendBillingPaymentEvent(ctx context.Context, arg AppendBillingPaymentEventParams) error
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
+	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error)
 	CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) (AuthChallenge, error)
+	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) error
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
@@ -56,8 +58,11 @@ type Querier interface {
 	ListProxyInitializationHistory(ctx context.Context, arg ListProxyInitializationHistoryParams) ([]ListProxyInitializationHistoryRow, error)
 	ListProxyUpgradeHistory(ctx context.Context, arg ListProxyUpgradeHistoryParams) ([]ListProxyUpgradeHistoryRow, error)
 	ListRepairRequests(ctx context.Context, chainID pgtype.Numeric, rowLimit int32) ([]ListRepairRequestsRow, error)
+	ListUserAPIKeysPage(ctx context.Context, arg ListUserAPIKeysPageParams) ([]ListUserAPIKeysPageRow, error)
 	ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]BillingPayment, error)
 	ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error)
+	LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error)
+	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
 	MarkBillingPaymentFailed(ctx context.Context, arg MarkBillingPaymentFailedParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettled(ctx context.Context, arg MarkBillingPaymentSettledParams) (pgtype.UUID, error)
 	MarkBillingPaymentSettlementUnknown(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
@@ -71,7 +76,9 @@ type Querier interface {
 	RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAdapterSuccessParams) (RecordNameAdapterSuccessRow, error)
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
+	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
+	RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) (ApiKey, error)
 	RevokeUserSessionByDigest(ctx context.Context, revokedAt pgtype.Timestamptz, tokenDigest []byte) (int64, error)
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)

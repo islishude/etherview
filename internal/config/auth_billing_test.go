@@ -14,7 +14,7 @@ import (
 func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Features.UserAuth || cfg.Features.X402Billing {
+	if cfg.Features.UserAuth || cfg.Features.UserAPIKeys || cfg.Features.X402Billing {
 		t.Fatalf("auth and billing must default off: %#v", cfg.Features)
 	}
 	if cfg.UserAuth.ChallengeTTL.String() != "5m0s" ||
@@ -22,11 +22,50 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 		cfg.Billing.FacilitatorTimeout.String() != "10s" ||
 		cfg.Billing.RequirementMaxTimeout.String() != "1m0s" ||
 		cfg.Billing.ReservationTTL.String() != "2m0s" ||
-		len(cfg.Billing.Routes) != 0 {
+		cfg.UserAuth.APIKeyRate != 20 || cfg.UserAuth.APIKeyBurst != 40 ||
+		cfg.UserAuth.MaxActiveAPIKeys != 5 || len(cfg.Billing.Routes) != 0 {
 		t.Fatalf("unexpected auth or billing defaults: auth=%#v billing=%#v", cfg.UserAuth, cfg.Billing)
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUserAPIKeysRequireAuthAndAPIKeyPepper(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Features.UserAPIKeys = true
+	if err := cfg.Validate(); err == nil ||
+		!strings.Contains(err.Error(), "requires features.user_auth") ||
+		!strings.Contains(err.Error(), "requires API key authentication") {
+		t.Fatalf("missing dependencies error = %v", err)
+	}
+	cfg.Features.UserAuth = true
+	cfg.Server.PublicURL = "https://explorer.example"
+	cfg.Security.APIKeyPepper = strings.Repeat("k", 32)
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUserAPIKeyPolicyEnvironmentOverrides(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	overrides := map[string]string{
+		"ETHERVIEW_FEATURE_USER_API_KEYS":         "true",
+		"ETHERVIEW_USER_AUTH_API_KEY_RATE":        "25",
+		"ETHERVIEW_USER_AUTH_API_KEY_BURST":       "50",
+		"ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS": "7",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := overrides[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Features.UserAPIKeys || cfg.UserAuth.APIKeyRate != 25 ||
+		cfg.UserAuth.APIKeyBurst != 50 || cfg.UserAuth.MaxActiveAPIKeys != 7 {
+		t.Fatalf("user API key environment overrides = features:%#v auth:%#v", cfg.Features, cfg.UserAuth)
 	}
 }
 

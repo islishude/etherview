@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,37 @@ func TestCreateAuthenticateAndRevoke(t *testing.T) {
 	}
 	if _, err := manager.Authenticate(context.Background(), issued.Token); err != ErrRevokedAPIKey {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestScopesAreCanonicalAndPreservedAcrossRotation(t *testing.T) {
+	t.Parallel()
+	manager, _ := testManager(t)
+	issued, err := manager.CreateScoped(
+		context.Background(), "verifier", 10, 20,
+		[]Scope{ScopeVerification, ScopeVerification},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(issued.Record.Scopes, []Scope{ScopeVerification}) {
+		t.Fatalf("created scopes = %v", issued.Record.Scopes)
+	}
+	replacement, err := manager.Rotate(context.Background(), issued.Record.Prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(replacement.Record.Scopes, issued.Record.Scopes) {
+		t.Fatalf("rotation changed scopes: old=%v new=%v", issued.Record.Scopes, replacement.Record.Scopes)
+	}
+	if HasScope(replacement.Record.Scopes, ScopeRead) ||
+		!HasScope(replacement.Record.Scopes, ScopeVerification) {
+		t.Fatalf("unexpected scope authorization: %v", replacement.Record.Scopes)
+	}
+	for _, invalid := range [][]Scope{nil, {}, {"unknown"}} {
+		if _, err := manager.CreateScoped(context.Background(), "invalid", 10, 20, invalid); err == nil {
+			t.Fatalf("invalid scopes passed: %v", invalid)
+		}
 	}
 }
 

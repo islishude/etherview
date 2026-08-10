@@ -44,6 +44,7 @@ assert.deepEqual(
   [
     "--dev",
     "--dev.period=5",
+    "--gcmode=archive",
     "--http",
     "--http.addr=0.0.0.0",
     "--http.port=8545",

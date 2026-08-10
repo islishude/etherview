@@ -2697,6 +2697,212 @@ tbody tr:hover {
   align-items: start;
 }
 
+.account-tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.account-tabs a {
+  flex: 1 1 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: calc(var(--radius) - 0.25rem);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.account-tabs a[aria-current="page"] {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.08);
+}
+
+.api-key-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.api-key-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.api-key-policy-card,
+.api-key-create-form,
+.api-key-card,
+.api-key-issued-dialog {
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.api-key-policy-card h2,
+.api-key-policy-card p,
+.api-key-create-form h2,
+.api-key-card h3,
+.api-key-issued-dialog p {
+  margin: 0;
+}
+
+.api-key-policy-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.api-key-policy-card p {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.api-key-policy-card dl,
+.api-key-card dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.api-key-policy-card dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.api-key-policy-card dl > div,
+.api-key-card dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.api-key-policy-card dt,
+.api-key-card dt {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.api-key-policy-card dd,
+.api-key-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.api-key-create-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.api-key-create-form .button {
+  justify-self: start;
+}
+
+.api-key-scopes {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0;
+  border: 0;
+}
+
+.api-key-scopes legend {
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.api-key-scopes label {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.api-key-scopes input {
+  margin-top: 0.18rem;
+}
+
+.api-key-scopes span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.api-key-scopes small {
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.api-key-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.api-key-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.api-key-card-heading,
+.api-key-actions,
+.api-key-token {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.api-key-card-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.api-key-card code {
+  color: var(--text-soft);
+}
+
+.api-key-card dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.api-key-actions {
+  justify-content: flex-end;
+}
+
+.api-key-issued-dialog {
+  width: min(38rem, 100%);
+  display: grid;
+  gap: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+}
+
+.api-key-issued-dialog .button {
+  justify-self: end;
+}
+
+.api-key-token {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.api-key-token code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--brand-strong);
+}
+
 .profile-panel,
 .session-panel,
 .auth-gate {
@@ -5071,6 +5277,10 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  .api-key-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .billing-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -5335,6 +5545,28 @@ tbody tr:hover {
   .billing-filter-grid,
   .billing-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .api-key-policy-card dl,
+  .api-key-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .account-tabs {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-card-heading,
+  .api-key-actions,
+  .api-key-token {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-actions .button,
+  .api-key-issued-dialog .button {
+    width: 100%;
   }
 
   .auth-action-panel {

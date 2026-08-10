@@ -1,6 +1,6 @@
 # P65 — User Authentication & Management
 
-Status: `done`
+Status: `blocked`
 
 ## Outcome
 
@@ -14,6 +14,7 @@ quota policy.
 - [Architecture](../architecture/overview.md)
 - [ADR-0003](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0020](../decisions/ADR-0020-siwe-user-sessions.md)
+- [ADR-0035](../decisions/ADR-0035-user-owned-scoped-api-keys.md)
 - [EIP-4361](https://eips.ethereum.org/EIPS/eip-4361)
 - [EIP-1193](https://eips.ethereum.org/EIPS/eip-1193)
 - [Testing](../testing.md)
@@ -30,6 +31,7 @@ quota policy.
 | P65-T06 | done | P65-T03, P65-T04, P65-T05 | Config, Secret/Helm/Compose, operations docs, E2E, and security closure | race, E2E, security, Helm, and role-parity gates |
 | P65-T07 | done | P65-T05 | Direct SIWE login with inline injected-wallet selection and no separate preconnection step | Vitest, boundary, a11y, and embedded browser tests |
 | P65-T08 | done | P65-T03, P65-T05 | Preserve a valid writer-backed SIWE session across an SPA reload while retaining wallet-identity revocation after an observed connection | Vitest, embedded browser reload regression, and live Preview verification |
+| P65-T09 | blocked | P40, P50, P65-T08 | Scoped, user-owned API keys and a tabbed `/account` management workspace | Implementation and sandbox-safe gates pass; host PostgreSQL, browser, Docker compatibility, and role-parity gates await available host execution approval |
 
 ## Acceptance
 
@@ -54,12 +56,24 @@ quota policy.
       contract-call behavior remains compatible.
 - [x] `serve --roles=all` and the split API role use the same implementation and
       PostgreSQL session semantics.
+- [x] The browser exposes only `/account` with deep-linked Overview, API Keys,
+      and Billing tabs; `/users/me/api-keys` remains an API-only namespace.
+- [x] Personal API keys are writer-owned, canonically scoped, bounded by an
+      atomic per-user limit, one-time revealed, and permanently revoked when
+      their owner is disabled.
+- [x] Native, Etherscan, NFT-media, quota, and x402 authorization use the same
+      scope identity; a wrong scope fails forbidden without anonymous or paid
+      fallback, while API keys never authorize account management.
 
 ## Current Blockers
 
-None. P70 retains the repository-wide legal, dependency supply-chain,
-conformance, release-CI, artifact, and long-soak review; P65 completion does
-not promote those release gates.
+P65-T09's implementation and sandbox-safe gates are complete, but the required
+host PostgreSQL, Playwright, Docker schema/runtime, Hardhat, and Foundry E2E
+targets remain blocked because the host-execution approval was rejected after
+the Codex usage limit was reached. The item clears when host execution is
+available and those unchanged repository targets pass. P70 retains the
+repository-wide legal, dependency supply-chain, conformance, release-CI,
+artifact, and long-soak review.
 
 ## Evidence
 
@@ -205,3 +219,25 @@ not promote those release gates.
   window. Live Preview recorded `verify` 201 followed by repeated restored
   `auth/session` 200 requests without `auth/logout`; PostgreSQL retained one
   active, unrevoked session.
+- P65-T09 persistence and authorization: migration `0041` adds nullable user
+  ownership, canonical non-empty scopes, and owner pagination/active indexes;
+  sqlc-backed writer transactions serialize the active-key limit, rotation,
+  idempotent revocation, and disable-time permanent revocation. Operator keys
+  retain full scope, and CLI create accepts repeatable `--scope` while rotate
+  preserves owner, scope, name, and quota.
+- P65-T09 API and browser: OpenAPI and generated clients expose only the four
+  `/users/me/api-keys` resources. Cookie/Origin/CSRF management responses are
+  `no-store`, while central native/Etherscan scope checks reject wrong-scope
+  credentials before billing fallback. The bilingual `/account` workspace
+  deep-links Overview, API Keys, and Billing, holds one-time plaintext only in
+  dialog component state, and includes create, rotate, revoke, pagination,
+  keyboard, dark-theme, and narrow-layout coverage.
+- P65-T09 sandbox-safe verification: `make test` passes all Go packages and 300
+  Vitest cases; `make test-race`, `make lint`, `make generate-check`, `make
+  plan-check`, `make helm-check`, `make security-check`, `git diff --check`, and
+  `make test-hardhat3-provider-compat` pass. Integration-tagged PostgreSQL tests
+  compile and skip without the disposable database URL. The unchanged host
+  `make test-e2e` request was rejected by the Codex usage limit before process
+  launch, so `make test-integration`, browser E2E, schema/runtime E2E, Docker
+  Hardhat/Foundry, deployment-check, and the aggregate `make check` remain
+  pending rather than being reported as passing.

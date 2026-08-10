@@ -30,6 +30,15 @@ type Backend struct {
 	Version string
 }
 
+type repeatedStringFlag []string
+
+func (values *repeatedStringFlag) String() string { return strings.Join(*values, ",") }
+
+func (values *repeatedStringFlag) Set(value string) error {
+	*values = append(*values, value)
+	return nil
+}
+
 func (b *Backend) output() io.Writer {
 	if b.Stdout == nil {
 		return io.Discard
@@ -172,19 +181,29 @@ func (b *Backend) adminAPIKey(ctx context.Context, db *sql.DB, cfg config.Config
 		name := fs.String("name", "", "operator-visible key name")
 		rate := fs.Int("rate", 20, "requests per second")
 		burst := fs.Int("burst", 40, "burst requests")
+		var requestedScopes repeatedStringFlag
+		fs.Var(&requestedScopes, "scope", "API key scope; repeat for multiple scopes")
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
 		if fs.NArg() != 0 {
 			return fmt.Errorf("api-key create: unexpected arguments %s", strings.Join(fs.Args(), " "))
 		}
-		issued, err := manager.Create(ctx, *name, *rate, *burst)
+		scopes := []auth.Scope{auth.ScopeRead, auth.ScopeVerification}
+		if len(requestedScopes) > 0 {
+			scopes = make([]auth.Scope, len(requestedScopes))
+			for index, scope := range requestedScopes {
+				scopes[index] = auth.Scope(scope)
+			}
+		}
+		issued, err := manager.CreateScoped(ctx, *name, *rate, *burst, scopes)
 		if err != nil {
 			return err
 		}
 		return writeIndentedJSON(b.output(), map[string]any{
 			"token": issued.Token, "prefix": issued.Record.Prefix, "name": issued.Record.Name,
 			"rate": issued.Record.Rate, "burst": issued.Record.Burst,
+			"scopes":     issued.Record.Scopes,
 			"created_at": issued.Record.CreatedAt,
 			"warning":    "this token is shown once and cannot be recovered",
 		})
@@ -209,6 +228,7 @@ func (b *Backend) adminAPIKey(ctx context.Context, db *sql.DB, cfg config.Config
 			"token": issued.Token, "prefix": issued.Record.Prefix,
 			"rotated_from": oldPrefix, "name": issued.Record.Name,
 			"rate": issued.Record.Rate, "burst": issued.Record.Burst,
+			"scopes":     issued.Record.Scopes,
 			"created_at": issued.Record.CreatedAt,
 			"warning":    "this replacement token is shown once and cannot be recovered",
 		})

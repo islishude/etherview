@@ -601,6 +601,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		var (
 			userAuthenticator  httpapi.UserAuthenticator
 			userAdministration httpapi.UserAdministration
+			userAPIKeys        httpapi.UserAPIKeyAdministration
 			userRepository     *userauth.PostgresRepository
 		)
 		if cfg.Features.UserAuth {
@@ -620,6 +621,22 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}
 			userAuthenticator = httpapi.UserAuthAdapter{Service: userService}
 			userAdministration = userRepository
+		}
+		if cfg.Features.UserAPIKeys {
+			apiKeyRepository, err := auth.NewPostgresRepository(db)
+			if err != nil {
+				return err
+			}
+			userAPIKeys, err = auth.NewUserService(auth.Manager{
+				Repository: apiKeyRepository,
+				Pepper:     []byte(cfg.Security.APIKeyPepper),
+			}, auth.UserKeyPolicy{
+				Rate: cfg.UserAuth.APIKeyRate, Burst: cfg.UserAuth.APIKeyBurst,
+				MaximumActive: cfg.UserAuth.MaxActiveAPIKeys,
+			})
+			if err != nil {
+				return err
+			}
 		}
 		billingDispatcher, billingReader, err := newBillingServices(
 			cfg, db, userRepository, registry, logger,
@@ -659,7 +676,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			VerificationTargets: verificationTargets,
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
-			Billing: billingDispatcher, BillingReader: billingReader, Quota: quota,
+			UserAPIKeys: userAPIKeys,
+			Billing:     billingDispatcher, BillingReader: billingReader, Quota: quota,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
 		})

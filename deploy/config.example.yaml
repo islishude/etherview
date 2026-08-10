@@ -114,6 +114,7 @@ features:
   nft_metadata: false
   pricing: false
   user_auth: false
+  user_api_keys: false
   x402_billing: false
   # Shadow collection is independent from public API/UI exposure.
   proxy_detection_v2: false
@@ -139,6 +140,9 @@ user_auth:
   last_used_interval: 5m
   max_message_bytes: 4096
   max_signature_bytes: 65
+  api_key_rate: 20
+  api_key_burst: 40
+  max_active_api_keys: 5
 
 # x402 v2 exact-EVM billing is disabled until explicitly enabled and at least
 # one eligible operation is listed below. The facilitator is a fixed HTTPS

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,17 @@ import {
   type AdminUserUpdate,
   type User,
 } from "@/api/auth";
+import {
+  createCurrentUserAPIKey,
+  listCurrentUserAPIKeys,
+  revokeCurrentUserAPIKey,
+  rotateCurrentUserAPIKey,
+  type APIKeyScope,
+  type UserAPIKey,
+  type UserAPIKeyIssued,
+} from "@/api/userApiKeys";
 import { usePublicConfig } from "@/api/hooks";
+import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp, shorten } from "@/components/format";
 import { SIWELoginControl } from "@/components/SIWELoginControl";
 import {
@@ -23,7 +33,11 @@ import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
 
-export function AccountPage() {
+export function AccountPage({
+  tab,
+}: {
+  tab: "overview" | "api-keys" | "billing";
+}) {
   const { i18n, t } = useTranslation();
   const auth = useAuth();
   const wallet = useWallet();
@@ -36,6 +50,9 @@ export function AccountPage() {
   const expectedChainID = publicConfig.data?.chain_id;
   const billingEnabled =
     publicConfig.data?.features.x402_billing === true;
+  const apiKeysEnabled =
+    publicConfig.data?.features.user_api_keys === true;
+  const activeTab = tab === "billing" && !billingEnabled ? "overview" : tab;
   const walletOnChain =
     Boolean(wallet.active) &&
     chainsMatch(wallet.active?.chainID, expectedChainID);
@@ -169,7 +186,35 @@ export function AccountPage() {
           )}
 
           {auth.session.authenticated && sessionUser && (
-            <div className="account-layout">
+            <nav className="account-tabs" aria-label={t("auth.account.sections")}>
+              <Link
+                aria-current={activeTab === "overview" ? "page" : undefined}
+                search={{ tab: "overview" }}
+                to="/account"
+              >
+                {t("auth.account.tabs.overview")}
+              </Link>
+              <Link
+                aria-current={activeTab === "api-keys" ? "page" : undefined}
+                search={{ tab: "api-keys" }}
+                to="/account"
+              >
+                {t("auth.account.tabs.apiKeys")}
+              </Link>
+              {billingEnabled && (
+                <Link
+                  aria-current={activeTab === "billing" ? "page" : undefined}
+                  search={{ tab: "billing" }}
+                  to="/account"
+                >
+                  {t("auth.account.tabs.billing")}
+                </Link>
+              )}
+            </nav>
+          )}
+
+          {auth.session.authenticated && sessionUser && activeTab === "overview" && (
+            <div className="account-layout" data-account-tab="overview">
               <section
                 className="panel profile-panel"
                 aria-labelledby="profile-title"
@@ -284,14 +329,317 @@ export function AccountPage() {
               </aside>
             </div>
           )}
-          {billingEnabled &&
-            auth.session.authenticated &&
-            sessionUser && (
+          {auth.session.authenticated && sessionUser && activeTab === "api-keys" && (
+            apiKeysEnabled ? (
+              <UserAPIKeysPanel locale={locale} />
+            ) : (
+              <section className="panel auth-gate" aria-labelledby="api-keys-unavailable-title">
+                <h2 id="api-keys-unavailable-title">{t("auth.apiKeys.unavailableTitle")}</h2>
+                <p>{t("auth.apiKeys.unavailableDescription")}</p>
+              </section>
+            )
+          )}
+          {billingEnabled && auth.session.authenticated && sessionUser && activeTab === "billing" && (
             <PersonalBillingHistory />
           )}
         </>
       )}
     </Page>
+  );
+}
+
+function UserAPIKeysPanel({ locale }: { locale: string }) {
+  const { t } = useTranslation();
+  const auth = useAuth();
+  const [cursors, setCursors] = useState([""]);
+  const [name, setName] = useState("");
+  const [scopes, setScopes] = useState<APIKeyScope[]>(["api:read"]);
+  const [issued, setIssued] = useState<UserAPIKeyIssued>();
+  const [pendingPrefix, setPendingPrefix] = useState<string>();
+  const [formError, setFormError] = useState<string>();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cursor = cursors.at(-1) || undefined;
+  const csrfToken = auth.session.csrf_token;
+  const keys = useQuery({
+    queryKey: ["current-user-api-keys", cursor ?? null],
+    queryFn: () => listCurrentUserAPIKeys(25, cursor),
+    enabled: auth.session.authenticated,
+    retry: false,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!issued) return;
+    dialogRef.current?.focus();
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIssued(undefined);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [issued]);
+
+  const toggleScope = (scope: APIKeyScope) => {
+    setScopes((current) =>
+      current.includes(scope)
+        ? current.filter((candidate) => candidate !== scope)
+        : [...current, scope],
+    );
+    setFormError(undefined);
+  };
+
+  const createKey = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedName = name.trim();
+    if (!csrfToken || !normalizedName || scopes.length === 0) {
+      setFormError(t("auth.apiKeys.invalidRequest"));
+      return;
+    }
+    setPendingPrefix("create");
+    setFormError(undefined);
+    try {
+      const next = await createCurrentUserAPIKey(csrfToken, normalizedName, scopes);
+      setIssued(next);
+      setName("");
+      setScopes(["api:read"]);
+      await keys.refetch();
+    } catch {
+      setFormError(t("auth.apiKeys.mutationFailed"));
+    } finally {
+      setPendingPrefix(undefined);
+    }
+  };
+
+  const rotateKey = async (key: UserAPIKey) => {
+    if (!csrfToken || !window.confirm(t("auth.apiKeys.confirmRotate", { name: key.name }))) return;
+    setPendingPrefix(key.prefix);
+    setFormError(undefined);
+    try {
+      const next = await rotateCurrentUserAPIKey(csrfToken, key.prefix);
+      setIssued(next);
+      await keys.refetch();
+    } catch {
+      setFormError(t("auth.apiKeys.mutationFailed"));
+    } finally {
+      setPendingPrefix(undefined);
+    }
+  };
+
+  const revokeKey = async (key: UserAPIKey) => {
+    if (!csrfToken || !window.confirm(t("auth.apiKeys.confirmRevoke", { name: key.name }))) return;
+    setPendingPrefix(key.prefix);
+    setFormError(undefined);
+    try {
+      await revokeCurrentUserAPIKey(csrfToken, key.prefix);
+      await keys.refetch();
+    } catch {
+      setFormError(t("auth.apiKeys.mutationFailed"));
+    } finally {
+      setPendingPrefix(undefined);
+    }
+  };
+
+  const policy = keys.data?.data.policy;
+
+  return (
+    <section className="api-key-workspace" aria-labelledby="api-key-workspace-title">
+      <div className="api-key-summary-grid">
+        <article className="panel api-key-policy-card">
+          <span className="eyebrow">{t("auth.apiKeys.eyebrow")}</span>
+          <h2 id="api-key-workspace-title">{t("auth.apiKeys.title")}</h2>
+          <p>{t("auth.apiKeys.description")}</p>
+          {policy && (
+            <dl>
+              <div>
+                <dt>{t("auth.apiKeys.active")}</dt>
+                <dd>{policy.active_count} / {policy.maximum_active}</dd>
+              </div>
+              <div>
+                <dt>{t("auth.apiKeys.rate")}</dt>
+                <dd>{policy.rate_per_second} /s</dd>
+              </div>
+              <div>
+                <dt>{t("auth.apiKeys.burst")}</dt>
+                <dd>{policy.burst}</dd>
+              </div>
+            </dl>
+          )}
+        </article>
+
+        <form className="panel api-key-create-form" onSubmit={createKey}>
+          <h2>{t("auth.apiKeys.createTitle")}</h2>
+          <label className="field-control" htmlFor="api-key-name">
+            <span>{t("auth.apiKeys.name")}</span>
+            <input
+              id="api-key-name"
+              maxLength={128}
+              onChange={(event) => {
+                setName(event.target.value);
+                setFormError(undefined);
+              }}
+              placeholder={t("auth.apiKeys.namePlaceholder")}
+              value={name}
+            />
+          </label>
+          <fieldset className="api-key-scopes">
+            <legend>{t("auth.apiKeys.scopes")}</legend>
+            {(["api:read", "contract:verify"] as APIKeyScope[]).map((scope) => (
+              <label key={scope}>
+                <input
+                  checked={scopes.includes(scope)}
+                  onChange={() => toggleScope(scope)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>{t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}</strong>
+                  <small>{t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <button
+            className="button primary"
+            disabled={Boolean(pendingPrefix) || !name.trim() || scopes.length === 0}
+            type="submit"
+          >
+            {t("auth.apiKeys.create")}
+          </button>
+        </form>
+      </div>
+
+      {formError && <p className="form-error" role="alert">{formError}</p>}
+      {keys.isPending && <p className="query-notice" role="status">{t("auth.apiKeys.loading")}</p>}
+      {keys.error && (
+        <div className="query-notice degraded" role="alert">
+          <span>
+            <strong>{t("auth.apiKeys.loadFailed")}</strong>
+            <small>{t("auth.apiKeys.loadFailedDescription")}</small>
+          </span>
+        </div>
+      )}
+      {keys.data?.data.items.length === 0 && (
+        <p className="empty-result" role="status">{t("auth.apiKeys.empty")}</p>
+      )}
+      {keys.data && keys.data.data.items.length > 0 && (
+        <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
+          {keys.data.data.items.map((key) => (
+            <article className="panel api-key-card" key={key.prefix}>
+              <div className="api-key-card-heading">
+                <div>
+                  <h3>{key.name}</h3>
+                  <code>{key.prefix}</code>
+                </div>
+                <span className={`user-state ${key.status}`}>{t(`auth.apiKeys.status.${key.status}`)}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>{t("auth.apiKeys.scopes")}</dt>
+                  <dd>
+                    {key.scopes
+                      .map((scope) => t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`))
+                      .join(", ")}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("auth.apiKeys.quota")}</dt>
+                  <dd>{key.rate_per_second}/s · {key.burst}</dd>
+                </div>
+                <div>
+                  <dt>{t("auth.apiKeys.created")}</dt>
+                  <dd><time dateTime={key.created_at}>{formatTimestamp(key.created_at, locale)}</time></dd>
+                </div>
+                {key.revoked_at && (
+                  <div>
+                    <dt>{t("auth.apiKeys.revoked")}</dt>
+                    <dd><time dateTime={key.revoked_at}>{formatTimestamp(key.revoked_at, locale)}</time></dd>
+                  </div>
+                )}
+              </dl>
+              {key.status === "active" && (
+                <div className="api-key-actions">
+                  <button
+                    className="button secondary"
+                    disabled={Boolean(pendingPrefix)}
+                    onClick={() => void rotateKey(key)}
+                    type="button"
+                  >
+                    {t("auth.apiKeys.rotate")}
+                  </button>
+                  <button
+                    className="button danger"
+                    disabled={Boolean(pendingPrefix)}
+                    onClick={() => void revokeKey(key)}
+                    type="button"
+                  >
+                    {t("auth.apiKeys.revoke")}
+                  </button>
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+      {keys.data && (
+        <nav className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
+          <button
+            className="button secondary"
+            disabled={keys.isFetching || cursors.length === 1}
+            onClick={() => setCursors((current) => current.length > 1 ? current.slice(0, -1) : current)}
+            type="button"
+          >
+            {t("pagination.previous")}
+          </button>
+          <span>{t("pagination.page", { page: cursors.length })}</span>
+          <button
+            className="button secondary"
+            disabled={keys.isFetching || !keys.data.meta.next_cursor}
+            onClick={() => {
+              const next = keys.data?.meta.next_cursor;
+              if (next) setCursors((current) => [...current, next]);
+            }}
+            type="button"
+          >
+            {t("pagination.next")}
+          </button>
+        </nav>
+      )}
+
+      {issued && (
+        <div className="dialog-backdrop" onMouseDown={() => setIssued(undefined)}>
+          <div
+            aria-labelledby="api-key-issued-title"
+            aria-modal="true"
+            className="api-key-issued-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            ref={dialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="qr-dialog-heading">
+              <div>
+                <span className="eyebrow">{t("auth.apiKeys.issuedEyebrow")}</span>
+                <h2 id="api-key-issued-title">{t("auth.apiKeys.issuedTitle")}</h2>
+              </div>
+              <button
+                aria-label={t("auth.apiKeys.closeIssued")}
+                className="dialog-close"
+                onClick={() => setIssued(undefined)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <p>{t("auth.apiKeys.issuedWarning")}</p>
+            <div className="api-key-token">
+              <code>{issued.token}</code>
+              <CopyButton value={issued.token} />
+            </div>
+            <button className="button primary" onClick={() => setIssued(undefined)} type="button">
+              {t("auth.apiKeys.savedToken")}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -592,6 +940,10 @@ function AuthGate({ detail, title }: { detail: string; title: string }) {
       </Link>
     </section>
   );
+}
+
+function apiKeyScopeTranslationKey(scope: APIKeyScope): "read" | "verify" {
+  return scope === "api:read" ? "read" : "verify";
 }
 
 function UnavailablePanel() {

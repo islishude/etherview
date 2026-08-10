@@ -54,6 +54,8 @@ const billingPayer = "0x5555555555555555555555555555555555555555";
 const billingAPIKeyPrefix = "ev_browser-prefix";
 const billingAmount = "340282366920938463463374607431768211455";
 const billingCount = "900719925474099312345";
+const userAPIKeyToken = `evk_abcdefghij_${"a".repeat(43)}`;
+const rotatedUserAPIKeyToken = `evk_bcdefghij2_${"b".repeat(43)}`;
 
 type WalletMode = "normal" | "reject-connect" | "invalid-call" | "delayed-write";
 
@@ -966,6 +968,12 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   let currentDisplayName: string | null = "Browser Admin";
   let targetRole: "user" | "admin" = "user";
   let targetStatus: "active" | "disabled" = "active";
+  let personalKey = {
+    prefix: "abcdefghij",
+    name: "Browser indexer",
+    scopes: ["api:read"] as Array<"api:read" | "contract:verify">,
+    status: "active" as "active" | "revoked",
+  };
 
   const currentUser = () => ({
     id: authCurrentUserID,
@@ -1032,6 +1040,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
           pricing: false,
           sourcify: false,
           user_auth: true,
+          user_api_keys: true,
           x402_billing: true,
         },
       }),
@@ -1086,6 +1095,69 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
       contentType: "application/json",
       json: envelope(currentUser()),
     });
+  });
+  await page.route("**/api/v1/users/me/api-keys**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    record(request);
+    const key = () => ({
+      ...personalKey,
+      rate_per_second: 20,
+      burst: 40,
+      created_at: "2026-08-10T00:00:00Z",
+      ...(personalKey.status === "revoked"
+        ? { revoked_at: "2026-08-10T01:00:00Z" }
+        : {}),
+    });
+    if (request.method() === "GET" && url.pathname === "/api/v1/users/me/api-keys") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope({
+          items: [key()],
+          policy: {
+            rate_per_second: 20,
+            burst: 40,
+            maximum_active: 5,
+            active_count: personalKey.status === "active" ? 1 : 0,
+            allowed_scopes: ["api:read", "contract:verify"],
+          },
+        }),
+      });
+      return;
+    }
+    if (request.method() === "POST" && url.pathname === "/api/v1/users/me/api-keys") {
+      const body = request.postDataJSON() as {
+        name: string;
+        scopes: Array<"api:read" | "contract:verify">;
+      };
+      personalKey = {
+        prefix: "abcdefghij",
+        name: body.name,
+        scopes: body.scopes,
+        status: "active",
+      };
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope({ token: userAPIKeyToken, key: key() }),
+        status: 201,
+      });
+      return;
+    }
+    if (request.method() === "POST" && url.pathname.endsWith("/rotate")) {
+      personalKey = { ...personalKey, prefix: "bcdefghij2" };
+      await route.fulfill({
+        contentType: "application/json",
+        json: envelope({ token: rotatedUserAPIKeyToken, key: key() }),
+        status: 201,
+      });
+      return;
+    }
+    if (request.method() === "DELETE") {
+      personalKey = { ...personalKey, status: "revoked" };
+      await route.fulfill({ body: "", status: 204 });
+      return;
+    }
+    await route.fulfill({ status: 404 });
   });
   await page.route("**/api/v1/admin/users**", async (route) => {
     const request = route.request();
@@ -1382,6 +1454,50 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     ),
   ).toHaveLength(0);
 
+  page.on("dialog", async (dialog) => dialog.accept());
+  await activateInView(page.getByRole("link", { name: "API Keys", exact: true }));
+  await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByText(/最小权限凭据/)).toBeVisible();
+  await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
+  await activateInView(page.getByRole("button", { name: "切换到英文" }));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("textbox", { name: "Key name" }).fill("Production verifier");
+  await page.getByRole("checkbox", { name: /Contract verification/ }).check();
+  await activateInView(page.getByRole("button", { name: "Create key" }));
+  await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
+    userAPIKeyToken,
+  );
+  expect(page.url()).not.toContain(userAPIKeyToken);
+  expect(
+    await page.evaluate(
+      (token) => Object.values(localStorage).every((value) => value !== token) &&
+        Object.values(sessionStorage).every((value) => value !== token),
+      userAPIKeyToken,
+    ),
+  ).toBe(true);
+  await activateInView(page.getByRole("button", { name: "I saved the token" }));
+  await activateInView(page.getByRole("button", { name: "Rotate" }));
+  await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
+    rotatedUserAPIKeyToken,
+  );
+  await activateInView(page.getByRole("button", { name: "I saved the token" }));
+  await activateInView(page.getByRole("button", { name: "Revoke" }));
+  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
+  const personalKeyWrites = authRequests.filter(
+    ({ method, pathname }) =>
+      pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
+  );
+  expect(personalKeyWrites).toHaveLength(3);
+  for (const request of personalKeyWrites) {
+    expect(request.headers["x-csrf-token"]).toBe(authCSRFToken);
+    expect(request.headers.origin).toBe("http://127.0.0.1:4173");
+  }
+
+  await activateInView(page.getByRole("link", { name: "Billing", exact: true }));
+
   const personalHistory = page.locator(".billing-history-section");
   await expect(
     personalHistory.getByRole("heading", { name: "Payment history" }),
@@ -1413,6 +1529,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     new URLSearchParams(personalCursorRequest?.search).has("user_id"),
   ).toBe(false);
 
+  await activateInView(page.getByRole("link", { name: "Overview", exact: true }));
   await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
   await activateInView(
     page.getByRole("button", { name: "Save profile" }),
