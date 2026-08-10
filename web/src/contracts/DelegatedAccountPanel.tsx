@@ -53,12 +53,20 @@ export function DelegatedAccountPanel({
   const codeHash = binding.data?.status === "delegated"
     ? binding.data.delegate_code_hash
     : undefined;
-  const artifact = useVerifiedContractArtifact(delegate, delegate.length > 0, codeHash);
+  const artifactRelevant = delegate.length > 0;
+  const artifact = useVerifiedContractArtifact(delegate, artifactRelevant, codeHash);
+  const artifactPending = artifactRelevant && artifact.isPending;
   const artifactMatches = verifiedArtifactMatchesIdentity(
     artifact.data,
     delegate,
     codeHash,
   );
+  const delegatedView = binding.data
+    ? binding.data.status === "delegated"
+    : currentlyDelegated;
+  const codeTabLabel = delegatedView
+    ? t("contracts.tabs.code")
+    : t("delegation.tabs.status");
   const targets = useMemo(() => {
     if (!binding.data) return [];
     try {
@@ -85,10 +93,10 @@ export function DelegatedAccountPanel({
   }, [authority, historyState.identity]);
 
   const bindingTemporarilyUnavailable = binding.error !== undefined && isTemporaryError(binding.error);
-  const artifactTemporarilyUnavailable = artifact.error !== undefined && isTemporaryError(artifact.error);
+  const artifactTemporarilyUnavailable = artifactRelevant && artifact.error !== undefined && isTemporaryError(artifact.error);
   const tabs = useMemo(() => {
     const next: Array<{ id: DelegatedAccountTab; label: string }> = [
-      { id: "code", label: t("contracts.tabs.code") },
+      { id: "code", label: codeTabLabel },
     ];
     if (binding.data?.status === "delegated" && artifactMatches && artifact.data?.abi) {
       next.push(
@@ -99,7 +107,7 @@ export function DelegatedAccountPanel({
     next.push({ id: "history", label: t("delegation.tabs.history") });
     if (
       requestedTab &&
-      (binding.isPending || artifact.isPending || bindingTemporarilyUnavailable || artifactTemporarilyUnavailable) &&
+      (binding.isPending || artifactPending || bindingTemporarilyUnavailable || artifactTemporarilyUnavailable) &&
       !next.some((tab) => tab.id === requestedTab)
     ) {
       next.push({
@@ -110,14 +118,14 @@ export function DelegatedAccountPanel({
             ? t("contracts.tabs.writeContract")
             : requestedTab === "history"
               ? t("delegation.tabs.history")
-              : t("contracts.tabs.code"),
+              : codeTabLabel,
       });
     }
     return next;
-  }, [artifact.data?.abi, artifact.isPending, artifactMatches, artifactTemporarilyUnavailable, binding.data?.status, binding.isPending, bindingTemporarilyUnavailable, requestedTab, t]);
+  }, [artifact.data?.abi, artifactMatches, artifactPending, artifactTemporarilyUnavailable, binding.data?.status, binding.isPending, bindingTemporarilyUnavailable, codeTabLabel, requestedTab, t]);
 
   useEffect(() => {
-    if (!requestedTab || binding.isPending || artifact.isPending || tabs.some((tab) => tab.id === requestedTab)) return;
+    if (!requestedTab || binding.isPending || artifactPending || tabs.some((tab) => tab.id === requestedTab)) return;
     void navigate({
       to: "/address/$address",
       params: { address: authority },
@@ -125,7 +133,7 @@ export function DelegatedAccountPanel({
       hash: "code",
       replace: true,
     });
-  }, [artifact.isPending, authority, binding.isPending, navigate, requestedTab, tabs]);
+  }, [artifactPending, authority, binding.isPending, navigate, requestedTab, tabs]);
 
   const selectTab = (tabID: DelegatedAccountTab) => {
     void navigate({
@@ -191,17 +199,19 @@ export function DelegatedAccountPanel({
                 <DelegatedCodePanel
                   artifact={artifact.data}
                   artifactError={artifact.error}
-                  artifactLoading={artifact.isPending}
+                  artifactLoading={artifactPending}
                   binding={binding.data}
                   bindingError={binding.error}
                   bindingLoading={binding.isPending}
+                  delegatedView={delegatedView}
+                  onViewHistory={() => selectTab("history")}
                 />
               ) : null}
               {(activeTab === "read-contract" || activeTab === "write-contract") ? (
                 <DelegatedInteractionPanel
                   abi={artifact.data?.abi}
                   artifactError={artifact.error}
-                  artifactLoading={artifact.isPending}
+                  artifactLoading={artifactPending}
                   artifactMatches={artifactMatches}
                   bindingError={binding.error}
                   bindingLoading={binding.isPending}
@@ -236,6 +246,8 @@ function DelegatedCodePanel({
   binding,
   bindingError,
   bindingLoading,
+  delegatedView,
+  onViewHistory,
 }: {
   artifact?: Parameters<typeof ContractArtifactPanel>[0]["artifact"];
   artifactError: unknown;
@@ -243,14 +255,20 @@ function DelegatedCodePanel({
   binding?: ReturnType<typeof useAddressDelegation>["data"];
   bindingError: unknown;
   bindingLoading: boolean;
+  delegatedView: boolean;
+  onViewHistory: () => void;
 }) {
   const { t } = useTranslation();
+  const delegated = binding?.status === "delegated";
+  const statusOnly = binding !== undefined && !delegated;
   return (
     <div className="delegated-code-stack">
       <section className="panel detail-card" aria-labelledby="delegation-binding-title">
-        <h2 id="delegation-binding-title">{t("delegation.currentBinding")}</h2>
+        <h2 id="delegation-binding-title">
+          {delegatedView ? t("delegation.currentBinding") : t("delegation.statusTitle")}
+        </h2>
         <QueryNotice loading={bindingLoading} error={bindingError} />
-        {binding ? (
+        {delegated ? (
           <>
             <p className="capability-panel context-note" role="note">{t("delegation.securityWarning")}</p>
             <dl className="detail-grid">
@@ -268,13 +286,34 @@ function DelegatedCodePanel({
             </dl>
           </>
         ) : null}
+        {statusOnly ? (
+          <>
+            <p className="capability-panel context-note" role="note">
+              {binding.status === "not_delegated"
+                ? t("delegation.clearedDescription")
+                : t("delegation.unavailableDescription")}
+            </p>
+            <dl className="detail-grid">
+              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><code>{binding.authority}</code></dd></div>
+              <div className="detail-item"><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.status}`)}</dd></div>
+              <div className="detail-item wide"><dt>{t("delegation.snapshot")}</dt><dd>
+                <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}><code>{binding.block_number}</code></Link>
+              </dd></div>
+            </dl>
+            <button className="button secondary" onClick={onViewHistory} type="button">
+              {t("delegation.viewHistory")}
+            </button>
+          </>
+        ) : null}
       </section>
-      <section className="panel detail-card" aria-labelledby="delegation-artifact-title">
-        <h2 id="delegation-artifact-title">{t("contracts.verifiedArtifact")}</h2>
-        <p className="quiet">{t("contracts.readIndependent")}</p>
-        <QueryNotice loading={artifactLoading} error={artifactError} />
-        {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
-      </section>
+      {delegated ? (
+        <section className="panel detail-card" aria-labelledby="delegation-artifact-title">
+          <h2 id="delegation-artifact-title">{t("contracts.verifiedArtifact")}</h2>
+          <p className="quiet">{t("contracts.readIndependent")}</p>
+          <QueryNotice loading={artifactLoading} error={artifactError} />
+          {artifact ? <ContractArtifactPanel artifact={artifact} /> : null}
+        </section>
+      ) : null}
     </div>
   );
 }

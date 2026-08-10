@@ -368,15 +368,21 @@ func main() {
 		}
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/delegation", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("address") != delegatedAddress {
+		switch request.PathValue("address") {
+		case delegatedAddress:
+			writeEnvelope(response, map[string]any{
+				"authority": delegatedAddress, "status": "delegated", "chain_id": "1",
+				"block_number": "3", "block_hash": testHash,
+				"delegate": delegatedDelegate, "delegate_code_hash": testHash,
+			})
+		case clearedDelegationAddress:
+			writeEnvelope(response, map[string]any{
+				"authority": clearedDelegationAddress, "status": "not_delegated", "chain_id": "1",
+				"block_number": "3", "block_hash": testHash,
+			})
+		default:
 			writeNotFound(response)
-			return
 		}
-		writeEnvelope(response, map[string]any{
-			"authority": delegatedAddress, "status": "delegated", "chain_id": "1",
-			"block_number": "2", "block_hash": secondHash,
-			"delegate": delegatedDelegate, "delegate_code_hash": testHash,
-		})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/delegations", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != delegatedAddress && request.PathValue("address") != clearedDelegationAddress {
@@ -393,15 +399,16 @@ func main() {
 			return
 		}
 		item := map[string]any{
-			"authority": delegatedAddress, "kind": "delegated", "delegate": delegatedDelegate,
-			"block_number": "2", "block_hash": secondHash,
-			"transaction_hash": testTransactionHash, "transaction_index": "0", "authorization_index": "0",
+			"authority": delegatedAddress, "kind": "redelegated", "delegate": delegatedDelegate,
+			"previous_delegate": delegatedDelegate, "block_number": "3", "block_hash": testHash,
+			"transaction_hash": secondTransactionHash, "transaction_index": "0", "authorization_index": "0",
 		}
 		if request.URL.Query().Get("cursor") == "delegation-next" {
-			item["kind"] = "redelegated"
-			item["block_number"] = "3"
-			item["block_hash"] = testHash
-			item["transaction_hash"] = secondTransactionHash
+			item["kind"] = "delegated"
+			delete(item, "previous_delegate")
+			item["block_number"] = "2"
+			item["block_hash"] = secondHash
+			item["transaction_hash"] = testTransactionHash
 			writeEnvelope(response, []any{item})
 			return
 		}

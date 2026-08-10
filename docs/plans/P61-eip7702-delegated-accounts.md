@@ -46,6 +46,7 @@ this plan.
 | P61-T08 | done | P61-T07 | Decode ABI `receive` and `fallback` entry points for trace and transaction calldata instead of reporting empty or selectorless calls as unknown functions | ABI/Catalog/API/Web regressions, live Preview verification, and common gates |
 | P61-T09 | done | P61-T08 | Report calls with exact empty execution code, including ordinary native transfers to EOAs, as ABI decoding not applicable instead of an unknown function selector | Catalog/API/Web regressions, live Preview verification, and common gates |
 | P61-T10 | done | P61-T09 | Keep canonical delegation history discoverable from an address after its current EIP-7702 delegation is cleared | state/query, generated API, Web, browser, integration, and common gates |
+| P61-T11 | done | P61-T10 | Order canonical delegation history by its numeric chain position and replace cleared-address Code content with a lazy current-status surface | Catalog, PostgreSQL, generated API, Web, browser, Preview, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -81,6 +82,11 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Clearing the current delegation preserves a writer-authoritative,
       canonical-history address entry that opens History directly without
       eagerly loading current binding or artifact data.
+- [x] Delegation history is stable newest-first by numeric block, transaction,
+      and authorization position across cursor pages.
+- [x] A cleared address retains the `#code` deep link as a lazy Status surface
+      without stale code, interaction, or artifact capabilities; unavailable
+      binding evidence remains distinct from clearing.
 
 ## Current Blockers
 
@@ -239,3 +245,21 @@ None.
   accessibility. The final host-authorized writable-cache `make check` passes
   generation, vet/lint, ordinary/race, security/license, Buildx/Compose, and
   Helm gates.
+- P61-T11 fixes PostgreSQL output-alias shadowing by ordering delegation history
+  on the CTE's numeric block, transaction, and authorization columns. A real
+  PostgreSQL 18 regression proves stable newest-first cursor pages with values
+  above nine while excluding skipped and orphan rows. The OpenAPI contract now
+  states that ordering explicitly without changing paths, cursors, or payloads.
+- Cleared addresses retain the `#code` route as bilingual Status/状态, fetch the
+  current writer-authoritative binding only when opened, and omit stale delegate
+  code, interaction tabs, and verified-artifact reads. Unavailable evidence is
+  distinct from clearing, and a newer binding replaces stale summary tabs,
+  including a pending Read/Write deep link.
+- Focused Catalog/HTTP tests, CorePages 35/35, and the full Web suite 298/298
+  pass. `make test-integration` passes against runner-owned PostgreSQL 18
+  (`internal/integration` 135.523s) and removes its disposable volume.
+  `make generate-check`, `make plan-check`, and the final writable-cache `make
+  check` pass; host-authorized production-browser `make test-e2e` passes 14/14.
+  The rebuilt six-role Preview is healthy, and both its generated API and
+  embedded page return the reported address history in numeric order `2112,
+  1664, 851, 675, 664, 33`.

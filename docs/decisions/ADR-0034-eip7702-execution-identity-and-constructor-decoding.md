@@ -76,7 +76,14 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   clearing, excludes skipped, orphan, and later authorizations, and fails closed
   if the reference or history cannot be validated. The Web history entry remains
   discoverable after clearing while current binding and artifact reads stay
-  lazy unless their panels are opened.
+  lazy unless their panels are opened. Public history is ordered newest first by
+  the numeric `(block_number, transaction_index, authorization_index)` tuple;
+  text serialization of public quantities never changes that ordering or its
+  cursor boundary. When the current binding is not delegated, the retained
+  `#code` route is labeled Status and exposes only the current writer-authoritative
+  status and canonical snapshot plus a History entry. It does not expose stale
+  delegate code or an empty verified-artifact surface, and unavailable state is
+  never presented as cleared.
 
 ## Consequences
 

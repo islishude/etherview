@@ -464,10 +464,11 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await expect(page.getByText("disperseToken(address,(address,uint256)[])", { exact: true })).toBeVisible();
   await tabs.getByRole("tab", { name: "Delegation history" }).click();
   await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
+  await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
   const historyNavigation = page.getByRole("navigation", { name: "Delegation history" });
   await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toBeDisabled();
   await historyNavigation.getByRole("button", { name: "Next page" }).click();
-  await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Delegated", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await assertA11yAndNoOverflow(page, "delegated account in English narrow mode");
@@ -497,8 +498,22 @@ test("cleared delegated accounts open canonical history without loading current 
   expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
   expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
+
+  const delegatedTabs = page.getByRole("tablist", { name: "Delegated account sections" });
+  await delegatedTabs.getByRole("tab", { name: "Status" }).click();
+  await expect(page).toHaveURL(new RegExp(`/address/${clearedDelegationAddress}\\?tab=delegation#code$`));
+  await expect(page.getByRole("heading", { name: "Delegation status" })).toBeVisible();
+  await expect(page.getByText("Not delegated", { exact: true })).toBeVisible();
+  await expect(page.getByText(/currently has no active EIP-7702 delegation/)).toBeVisible();
+  expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
+  expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
-  await assertA11yAndNoOverflow(page, "cleared delegated account history in narrow mode");
+  await assertA11yAndNoOverflow(page, "cleared delegated account status in narrow mode");
+  await page.getByRole("button", { name: "切换到中文" }).click();
+  const localizedTabs = page.getByRole("tablist", { name: "委托账户分区" });
+  await expect(localizedTabs.getByRole("tab", { name: "状态" })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "cleared delegated account status in Chinese narrow mode");
 });
 
 test("capability pages survive the embedded binary boundary in both accessible themes and languages", async ({

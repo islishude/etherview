@@ -1771,7 +1771,7 @@ describe("core explorer pages", () => {
         outputs: [],
       }],
     };
-    const firstHistoryItem = {
+    const olderHistoryItem = {
       authority: delegatedAddress,
       kind: "delegated" as const,
       delegate: delegateAddress,
@@ -1781,9 +1781,10 @@ describe("core explorer pages", () => {
       transaction_index: "0",
       authorization_index: "0",
     };
-    const secondHistoryItem = {
-      ...firstHistoryItem,
+    const newestHistoryItem = {
+      ...olderHistoryItem,
       kind: "redelegated" as const,
+      previous_delegate: delegateAddress,
       block_number: "101",
       block_hash: canonicalHash,
       transaction_hash: transactionHash,
@@ -1810,8 +1811,8 @@ describe("core explorer pages", () => {
       }
       if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegations`) {
         return url.searchParams.get("cursor") === nextCursor
-          ? envelope([secondHistoryItem])
-          : envelope([firstHistoryItem], { next_cursor: nextCursor });
+          ? envelope([olderHistoryItem])
+          : envelope([newestHistoryItem], { next_cursor: nextCursor });
       }
       if (url.pathname === `/api/v1/contracts/${delegateAddress}/verification`) {
         return envelope(artifact);
@@ -1873,9 +1874,10 @@ describe("core explorer pages", () => {
     await user.click(within(tabs).getByRole("tab", { name: "Delegation history" }));
     const historyNavigation = await screen.findByRole("navigation", { name: "Delegation history" });
     expect(requestedPaths).toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
+    expect(await screen.findByText("Re-delegated")).toBeVisible();
     expect(within(historyNavigation).getByRole("button", { name: "Previous page" })).toBeDisabled();
     await user.click(within(historyNavigation).getByRole("button", { name: "Next page" }));
-    expect(await screen.findByText("Re-delegated")).toBeVisible();
+    expect(await screen.findByText("Delegated", { exact: true })).toBeVisible();
   });
 
   it("keeps cleared delegation history discoverable without eagerly loading current binding", async () => {
@@ -1912,6 +1914,15 @@ describe("core explorer pages", () => {
       if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegations`) {
         return envelope([clearedHistoryItem]);
       }
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
+        return envelope({
+          authority: clearedDelegationAddress,
+          status: "not_delegated",
+          chain_id: "1",
+          block_number: "102",
+          block_hash: canonicalHash,
+        });
+      }
       return notFound();
     }));
 
@@ -1925,7 +1936,8 @@ describe("core explorer pages", () => {
     );
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegations`);
 
-    await userEvent.setup().click(delegationEntry);
+    const user = userEvent.setup();
+    await user.click(delegationEntry);
 
     expect(await screen.findByRole("heading", { name: "Delegation history" })).toBeVisible();
     expect(await screen.findByText("Cleared")).toBeVisible();
@@ -1937,6 +1949,110 @@ describe("core explorer pages", () => {
       "aria-selected",
       "true",
     );
+    const statusTab = within(delegatedTabs).getByRole("tab", { name: "Status" });
+    await user.click(statusTab);
+    expect(await screen.findByRole("heading", { name: "Delegation status" })).toBeVisible();
+    expect(await screen.findByText("Not delegated", { exact: true })).toBeVisible();
+    expect(screen.getByText(/currently has no active EIP-7702 delegation/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "102" })).toHaveAttribute("href", `/blocks/${canonicalHash}`);
+    expect(screen.queryByRole("heading", { name: "Verified artifact" })).not.toBeInTheDocument();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${clearedDelegationAddress}/delegation`);
+    expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
+
+    await user.click(screen.getByRole("button", { name: "View delegation history" }));
+    expect(within(delegatedTabs).getByRole("tab", { name: "Delegation history" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(within(delegatedTabs).getByRole("tab", { name: "状态" })).toBeVisible();
+  });
+
+  it("does not report an unavailable delegation binding as cleared", async () => {
+    const requestedPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}`) {
+        return envelope({
+          address: clearedDelegationAddress,
+          type: "eoa",
+          balance: "0",
+          nonce: "5",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          has_delegation_history: true,
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${clearedDelegationAddress}/delegation`) {
+        return envelope({
+          authority: clearedDelegationAddress,
+          status: "unavailable",
+          reason: "state_unavailable",
+          chain_id: "1",
+          block_number: "103",
+          block_hash: canonicalHash,
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${clearedDelegationAddress}?tab=delegation#code`);
+
+    const tabs = await screen.findByRole("tablist", { name: "Delegated account sections" });
+    expect(await within(tabs).findByRole("tab", { name: "Status" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByText("Unavailable", { exact: true })).toBeVisible();
+    expect(screen.getByText(/It is not treated as cleared/)).toBeVisible();
+    expect(screen.queryByText(/currently has no active EIP-7702 delegation/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Verified artifact" })).not.toBeInTheDocument();
+    expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
+  });
+
+  it("uses the latest binding to replace stale delegated tabs with Status", async () => {
+    const requestedPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${delegatedAddress}`) {
+        return envelope({
+          address: delegatedAddress,
+          type: "delegated_eoa",
+          balance: "0",
+          nonce: "5",
+          at_block: delegationBlockHash,
+          code_hash: delegateCodeHash,
+          completeness: completeness(),
+          has_delegation_history: true,
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${delegatedAddress}/delegation`) {
+        return envelope({
+          authority: delegatedAddress,
+          status: "not_delegated",
+          chain_id: "1",
+          block_number: "104",
+          block_hash: canonicalHash,
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${delegatedAddress}?tab=delegation#read-contract`);
+
+    const tabs = await screen.findByRole("tablist", { name: "Delegated account sections" });
+    expect(await within(tabs).findByRole("tab", { name: "Status" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(tabs).queryByRole("tab", { name: "Read contract" })).not.toBeInTheDocument();
+    expect(within(tabs).queryByRole("tab", { name: "Write contract" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Not delegated", { exact: true })).toBeVisible();
+    expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegateAddress}/verification`);
   });
 
   it("renders ETH-formatted values on transactions list", async () => {

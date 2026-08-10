@@ -2516,7 +2516,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Canonical EIP-7702 delegation, redelegation, and clearing history. */
+            /** @description Canonical EIP-7702 delegation, redelegation, and clearing history, newest first by numeric block, transaction, and authorization position. */
             200: {
                 headers: {
                     "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];

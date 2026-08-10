@@ -143,7 +143,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   delegation APIs plus the bilingual delegated-EOA interaction surface use a
   writer-authoritative binding fence before every write. Cleared delegations
   remain discoverable through an exact canonical-history address signal that
-  opens History without eager binding or artifact reads. PostgreSQL, browser,
+  opens History without eager binding or artifact reads. P61-T11 restores
+  newest-first numeric delegation-history ordering and replaces cleared Code
+  content with a lazy writer-authoritative Status surface. PostgreSQL, browser,
   monolith/six-role runtime, real Hardhat verification, and common-gate results
   remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and

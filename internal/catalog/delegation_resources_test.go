@@ -47,5 +47,9 @@ func TestAddressDelegationsUsesSafeAuthorizationAliasAndReturnsHistory(t *testin
 	if strings.Contains(query, "authorization.") {
 		t.Fatalf("delegation query still uses reserved alias: %s", query)
 	}
+	if !strings.Contains(query, "ORDER BY ordered.block_number DESC, ordered.transaction_index DESC") ||
+		!strings.Contains(query, "ordered.authorization_index DESC") {
+		t.Fatalf("delegation query does not order by the numeric source columns: %s", query)
+	}
 	assertCatalogConsumed(t, backend)
 }

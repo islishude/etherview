@@ -611,7 +611,7 @@ paths:
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
-          description: Canonical EIP-7702 delegation, redelegation, and clearing history.
+          description: Canonical EIP-7702 delegation, redelegation, and clearing history, newest first by numeric block, transaction, and authorization position.
           headers:
             PAYMENT-RESPONSE:
               $ref: "#/components/headers/PaymentResponse"

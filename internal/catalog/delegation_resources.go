@@ -227,5 +227,6 @@ SELECT block_number::text, block_hash, transaction_hash,
 FROM ordered
 WHERE NOT $4 OR (block_number, transaction_index, authorization_index)
     < ($5::numeric, $6::numeric, $7::numeric)
-ORDER BY block_number DESC, transaction_index DESC, authorization_index DESC
+ORDER BY ordered.block_number DESC, ordered.transaction_index DESC,
+         ordered.authorization_index DESC
 LIMIT $8`
