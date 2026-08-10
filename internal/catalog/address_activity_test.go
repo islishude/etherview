@@ -74,7 +74,7 @@ func TestAddressNFTTransfersMergeERC721AndERC1155(t *testing.T) {
 		stageStep("complete"),
 		catalogQueryStep{
 			contains: "FROM candidates",
-			rows: catalogRows(15,
+			rows: catalogRows(16,
 				tokenActivityRow("100", "2", "9", "0", "erc721", "transfer", "42", nil, 0x41),
 				tokenActivityRow("100", "2", "8", "1", "erc1155", "mint", "7", "340282366920938463463374607431768211455", 0x42),
 			),
@@ -104,6 +104,22 @@ func TestAddressNFTTransfersMergeERC721AndERC1155(t *testing.T) {
 	if !strings.Contains(query, "standard IN ('erc721', 'erc1155')") ||
 		!strings.Contains(query, "ORDER BY event.block_number DESC") {
 		t.Fatalf("NFT query does not merge/sort standards: %s", query)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestAddressERC20TransfersExposeExactBlockDecimals(t *testing.T) {
+	row := tokenActivityRow("100", "2", "9", "0", "erc20", "transfer", "", "1234500", 0x41)
+	row[12], row[15] = nil, int64(6)
+	catalog, backend := openCatalog(t,
+		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
+	)
+	page, err := catalog.AddressERC20Transfers(context.Background(), AddressActivityRequest{
+		ChainID: "1", Address: "0x" + strings.Repeat("11", 20), Limit: 10,
+	})
+	if err != nil || len(page.Items) != 1 || page.Items[0].Decimals == nil || *page.Items[0].Decimals != 6 {
+		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	assertCatalogConsumed(t, backend)
 }
@@ -155,6 +171,6 @@ func tokenActivityRow(
 		blockNumber, bytesOf(hashByte, 32), "1700000000",
 		bytesOf(hashByte+1, 32), transactionIndex, logIndex, subIndex,
 		bytesOf(0x44, 20), standard, kind,
-		bytesOf(0x11, 20), bytesOf(0x22, 20), tokenID, amount, "high",
+		bytesOf(0x11, 20), bytesOf(0x22, 20), tokenID, amount, "high", nil,
 	}
 }

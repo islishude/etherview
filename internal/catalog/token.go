@@ -304,11 +304,12 @@ func scanTokenEvent(row rowScanner) (TokenEvent, error) {
 		blockHash, txHash, tokenAddress []byte
 		operator, from, to              []byte
 		tokenID, amount                 sql.NullString
+		decimals                        sql.NullInt64
 	)
 	if err := row.Scan(
 		&event.ChainID, &event.BlockNumber, &blockHash, &event.LogIndex, &event.SubIndex,
 		&txHash, &tokenAddress, &event.Standard, &event.Kind, &operator, &from, &to,
-		&tokenID, &amount, &event.Confidence,
+		&tokenID, &amount, &event.Confidence, &decimals,
 	); err != nil {
 		return TokenEvent{}, err
 	}
@@ -362,6 +363,13 @@ func scanTokenEvent(row rowScanner) (TokenEvent, error) {
 		}
 		event.Amount = &amount.String
 	}
+	if decimals.Valid {
+		if event.Standard != "erc20" || decimals.Int64 < 0 || decimals.Int64 > 255 {
+			return TokenEvent{}, ErrCorruptData
+		}
+		value := uint8(decimals.Int64)
+		event.Decimals = &value
+	}
 	return event, nil
 }
 
@@ -408,12 +416,28 @@ SELECT e.chain_id::text, e.block_number::text, e.block_hash,
        e.log_index::text, e.sub_index::text, e.transaction_hash,
        e.token_address, e.standard, e.event_kind, e.operator,
        e.from_address, e.to_address, e.token_id::text, e.amount::text,
-       e.confidence
+       e.confidence, metadata.decimals
 FROM token_events AS e
 JOIN canonical_blocks AS cb
   ON cb.chain_id = e.chain_id
  AND cb.number = e.block_number
  AND cb.block_hash = e.block_hash
+LEFT JOIN LATERAL (
+    SELECT CASE
+               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
+               THEN contract.decimals
+           END AS decimals
+    FROM token_contracts AS contract
+    JOIN canonical_blocks AS observation
+      ON observation.chain_id = contract.chain_id
+     AND observation.number = contract.observed_block_number
+     AND observation.block_hash = contract.observed_block_hash
+    WHERE contract.chain_id = e.chain_id
+      AND contract.address = e.token_address
+      AND contract.observed_block_number <= e.block_number
+    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
+    LIMIT 1
+) AS metadata ON e.standard = 'erc20'
 WHERE e.chain_id = $1::numeric
   AND e.block_number <= $2::numeric
   AND e.token_address = $3

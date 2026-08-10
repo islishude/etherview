@@ -253,6 +253,27 @@ export function useTransactionTokenTransfers(
   });
 }
 
+export function useTransactionInternalTransactions(
+  hash: string,
+  cursor?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["transaction", hash, "internal-transactions", cursor ?? null],
+    queryFn: async () => {
+      const response = requireEnvelope(
+        await apiClient.GET("/transactions/{hash}/internal-transactions", {
+          params: { path: { hash }, query: { cursor, limit: 25 } },
+        }),
+      );
+      return { ...response.data, next_cursor: response.meta.next_cursor };
+    },
+    enabled: enabled && hash.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useTransactionLogs(hash: string, cursor?: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash, "logs", cursor ?? null],

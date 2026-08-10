@@ -72,6 +72,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T46 | done        | P50-T39 | Accept protocol withdrawal and typed-transaction fields in atomic home snapshots | focused home-stream, frontend build, and live Preview browser regression |
 | P50-T47 | done        | P50-T45 | Soft-wrap read-only raw transaction calldata within its textarea | focused frontend, responsive, and embedded browser regressions |
 | P50-T48 | done        | P50-T47 | Link trustworthy contract-write transaction hashes to the transaction overview | focused ABI form, embedded browser, build, generation, and plan regressions |
+| P50-T49 | done        | P40-T13, P50-T48 | Transaction-overview internal ETH transfers and exact-decimal ERC-20 transfer quantities | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
+| P50-T50 | done        | P50-T49 | Move transaction internal ETH transfers from Overview into a dedicated tab immediately before Token transfers | focused frontend, tab order, lazy loading, bilingual, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -84,9 +86,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] RPC credentials and server-only settings do not exist in built assets.
 - [x] `web/dist` is treated as a build-only artifact and must be generated
       during build/test pipelines, not checked into git.
-- [x] Transaction detail provides deep-linkable lazy tabs for overview, token
-      transfers, logs, trace, and exact state changes in both languages and
-      themes.
+- [x] Transaction detail provides deep-linkable lazy tabs for overview,
+      internal transactions, token transfers, logs, trace, and exact state
+      changes in both languages and themes.
 - [x] Verified contract pages generate bounded typed ABI forms without manual
       API keys, ABI JSON, or calldata; every as-proxy or management write is
       fenced by the latest binding, chain, and account identity.
@@ -765,3 +767,28 @@ None.
   files and 288 tests, frontend lint and production build pass, `make
   generate-check` passes, and host-authorized `make test-e2e` passes all 13
   flows with the exact transaction-link target and stale-wallet suppression.
+- P50-T49 adds an independently paginated Internal Transactions/内部交易 panel
+  to the transaction Overview. It shows only successful non-root positive-value
+  Trace frames, preserves exact transaction identity fencing and complete-empty
+  versus degraded states, and leaves the full Trace tab lazy. ERC-20 quantities
+  in transaction, address, and token event tables use exact string-based
+  decimal expansion from block-correct metadata; NFTs remain integer-valued and
+  missing decimals fall back to the raw integer.
+- P50-T49 verification passes the focused frontend suite (4 files, 59 tests),
+  the complete frontend suite (29 files, 296 tests), TypeScript lint,
+  production build, `make generate-check`, `make test-integration`, and
+  `make test-race`. Host-authorized `make test-e2e` passes all 14 browser flows,
+  including bilingual/responsive/accessibility coverage and a no-eager-Trace
+  assertion; the full host-authorized `make check` gate and `git diff --check`
+  pass.
+- P50-T50 removes internal ETH transfers from Overview and exposes them only
+  through the deep-linkable `internal-transactions` tab immediately before
+  Token transfers. The resource request remains lazy, cursor pagination and
+  identity fencing are unchanged, and the tab name is localized as Internal
+  Transactions/内部交易.
+- P50-T50 verification passes the focused frontend suite (3 files, 57 tests),
+  the complete frontend suite (29 files, 296 tests), TypeScript lint,
+  production build, `make generate-check`, `make test`, and `git diff --check`.
+  Both the documented bundled single-process browser diagnostic and the
+  host-authorized canonical `make test-e2e` pass all 14 flows, covering exact
+  tab order, deep linking, lazy loading, and Trace isolation.

@@ -109,7 +109,37 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
 });
 
 test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
+  const traceRequests: string[] = [];
+  const internalTransactionRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === `/api/v1/transactions/${decodedTransactionHash}/trace`) {
+      traceRequests.push(pathname);
+    }
+    if (pathname === `/api/v1/transactions/${decodedTransactionHash}/internal-transactions`) {
+      internalTransactionRequests.push(pathname);
+    }
+  });
   await page.goto(`/tx/${decodedTransactionHash}`);
+  await expect(page.getByRole("heading", { name: "Internal Transactions" })).toHaveCount(0);
+  expect(internalTransactionRequests).toEqual([]);
+
+  const internalTab = page.getByRole("tab", { name: "Internal Transactions" });
+  const tokenTab = page.getByRole("tab", { name: "Token transfers" });
+  await expect(internalTab).toBeVisible();
+  expect(await internalTab.evaluate((element) => element.nextElementSibling?.textContent))
+    .toBe(await tokenTab.textContent());
+  await activateInView(internalTab);
+  await expect(page).toHaveURL(new RegExp(`\\?tab=internal-transactions$`));
+  const internalTransactions = page.getByRole("tabpanel", { name: "Internal Transactions" });
+  await expect(internalTransactions.getByText("CALL", { exact: true })).toBeVisible();
+  await expect(internalTransactions.getByText("1.25", { exact: true })).toBeVisible();
+  expect(internalTransactionRequests).toHaveLength(1);
+  expect(traceRequests).toEqual([]);
+
+  await activateInView(tokenTab);
+  await expect(page.getByText("1.2345", { exact: true })).toBeVisible();
+  await activateInView(page.getByRole("tab", { name: "Overview" }));
   await activateInView(page.getByText("More details", { exact: true }));
 
   const decoded = page.getByRole("region", { name: "Decoded calldata · value()" });
@@ -369,6 +399,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(contractStyle).toEqual(ordinaryTabStyle);
   await activateInView(page.getByRole("link", { name: "ERC-20 Transfers" }));
   await expect(page.locator("tbody").getByText("ERC-20", { exact: true })).toBeVisible();
+  await expect(page.locator("tbody").getByText("1.2345", { exact: true })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "NFT Transfers" }));
   await expect(page.locator("tbody").getByText("ERC-1155", { exact: true })).toBeVisible();
   await page.goBack();

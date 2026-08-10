@@ -80,6 +80,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   proxy detail, canonical upgrade and initialization histories, stale-cursor
   fencing, exact verified interaction bindings, and anonymous free verified
   artifact reads, including real OpenZeppelin 5.6.1 monolith/split coverage.
+  P40-T13 adds exact-inclusion successful internal ETH transfers plus
+  block-correct nullable ERC-20 decimals to transaction and address transfer
+  resources.
 - P50 is complete: its core and capability explorer pages, exact
   verification-job and published-artifact reads, EIP-6963 wallet discovery,
   session-fenced
@@ -109,6 +112,13 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   rejects types that the selected codec cannot encode or decode. Its focused,
   ordinary, generation, production-build, live Preview, and security checks
   pass after the locked transitive `nanoid` update clears the web audit.
+  P50-T49 surfaces successful internal ETH transfers directly in the
+  transaction Overview without eagerly loading Trace, and renders ERC-20
+  transfer quantities with exact integer decimal expansion across transaction,
+  address, and token event tables.
+  P50-T50 moves that internal-transfer surface into its own deep-linkable,
+  lazy-loaded tab immediately before Token transfers and removes it from the
+  Overview.
   P50-T16 completes the verified-code surface with a strictly read-only
   multi-file CodeMirror workspace, explicit compiler-setting summaries, and
   copyable disclosure-first ABI, transformation, and artifact details across

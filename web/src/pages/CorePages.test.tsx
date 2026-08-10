@@ -1305,6 +1305,86 @@ describe("core explorer pages", () => {
     expect(screen.queryByText("未知函数选择器")).not.toBeInTheDocument();
   });
 
+  it("shows successful internal ETH transfers in a lazy tab before token transfers", async () => {
+    const createdAddress = `0x${"55".repeat(20)}`;
+    const requestedPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1",
+          value: "0", gas: "21000", input: "0x", status: "success",
+          canonical: true, finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/internal-transactions`) {
+        const cursor = url.searchParams.get("cursor");
+        return envelope({
+          state: "complete", chain_id: "1", block_number: "12",
+          block_hash: canonicalHash, transaction_hash: transactionHash,
+          transaction_index: "0",
+          items: cursor === "internal-next" ? [{
+            path: [1], depth: 1, call_type: "CREATE2", from: address,
+            created_address: createdAddress, value: "2000000000000000000",
+          }] : [{
+            path: [0], depth: 1, call_type: "CALL", from: address,
+            to: delegatedAddress, value: "1250000000000000000",
+          }],
+        }, cursor ? {} : { next_cursor: "internal-next" });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/token-transfers`) {
+        return envelope({
+          state: "complete", chain_id: "1", block_number: "12",
+          block_hash: canonicalHash, transaction_hash: transactionHash,
+          transaction_index: "0", items: [{
+            chain_id: "1", block_number: "12", block_hash: canonicalHash,
+            log_index: "0", sub_index: "0", transaction_hash: transactionHash,
+            token_address: createdAddress, standard: "erc20", kind: "transfer",
+            from: address, to: delegatedAddress, amount: "1234500", decimals: 6,
+            confidence: "high",
+          }],
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+
+    expect(screen.queryByRole("heading", { name: "Internal Transactions" }))
+      .not.toBeInTheDocument();
+    expect(requestedPaths).not.toContain(
+      `/api/v1/transactions/${transactionHash}/internal-transactions`,
+    );
+    const internalTab = await screen.findByRole("tab", { name: "Internal Transactions" });
+    const tokenTab = screen.getByRole("tab", { name: "Token transfers" });
+    expect(internalTab.nextElementSibling).toBe(tokenTab);
+
+    const user = userEvent.setup();
+    await user.click(internalTab);
+    const section = (await screen.findByRole("heading", { name: "Internal Transactions" }))
+      .closest("section");
+    if (!section) throw new Error("internal-transactions section is missing");
+    expect(within(section).getByText("CALL", { exact: true })).toBeVisible();
+    expect(within(section).getByText("1.25", { exact: true })).toBeVisible();
+    expect(within(section).getByRole("link", { name: shorten(delegatedAddress) }))
+      .toHaveAttribute("href", `/address/${delegatedAddress}`);
+    expect(requestedPaths).not.toContain(`/api/v1/transactions/${transactionHash}/trace`);
+
+    await user.click(within(section).getByRole("button", { name: "Next page" }));
+    expect(await within(section).findByText("CREATE2", { exact: true })).toBeVisible();
+    expect(within(section).getByText("2", { exact: true })).toBeVisible();
+    expect(within(section).getByText("Created address", { exact: true })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await screen.findByRole("heading", { name: "内部交易" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Switch to English" }));
+    await user.click(tokenTab);
+    expect(await screen.findByText("1.2345", { exact: true })).toBeVisible();
+  });
+
   it("renders transaction confirmations and block timestamp in /tx detail", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestURL(input).pathname;
@@ -1528,6 +1608,25 @@ describe("core explorer pages", () => {
           reverted: false,
         }]);
       }
+      if (url.pathname === `/api/v1/addresses/${address}/erc20-transfers`) {
+        return envelope([{
+          block_hash: canonicalHash,
+          block_number: "12",
+          block_timestamp: "2026-07-28T08:00:00Z",
+          transaction_hash: transactionHash,
+          transaction_index: "0",
+          log_index: "1",
+          sub_index: "0",
+          token_address: createdAddress,
+          standard: "erc20",
+          kind: "transfer",
+          from: address,
+          to: createdAddress,
+          amount: "1234500",
+          decimals: 6,
+          confidence: "high",
+        }]);
+      }
       if (url.pathname === `/api/v1/addresses/${address}/nfts`) {
         return envelope([]);
       }
@@ -1611,6 +1710,10 @@ describe("core explorer pages", () => {
     expect(within(internalRow).getByText("OUT")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
+
+    await user.click(screen.getByRole("link", { name: "ERC-20 Transfers" }));
+    expect(await screen.findByText("1.2345", { exact: true })).toBeVisible();
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-transfers`);
 
     await user.click(screen.getByRole("link", { name: "Assets" }));
     expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();

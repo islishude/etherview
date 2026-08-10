@@ -4,6 +4,7 @@ import {
   formatGweiFromWei,
   formatNativeAmount,
   formatRelativeTimestamp,
+  formatTokenAmount,
 } from "./format";
 
 describe("formatRelativeTimestamp", () => {
@@ -63,5 +64,18 @@ describe("formatGweiFromWei", () => {
 
   it("renders wei as decimal gwei", () => {
     expect(formatGweiFromWei("2500000001", "en")).toBe("2.500000001");
+  });
+});
+
+describe("formatTokenAmount", () => {
+  it("scales ERC-20 atomic values without number conversion", () => {
+    expect(formatTokenAmount("1234500", 6, "en")).toBe("1.2345");
+    expect(formatTokenAmount("2100", 0, "en")).toBe("2,100");
+    expect(formatTokenAmount("1", 20, "en")).toBe("0.00000000000000000001");
+    expect(formatTokenAmount("1", 255, "en")).toBe(`0.${"0".repeat(254)}1`);
+  });
+
+  it("falls back to the raw integer when decimals are unavailable", () => {
+    expect(formatTokenAmount("1234500", undefined, "en")).toBe("1,234,500");
   });
 });

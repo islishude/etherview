@@ -32,6 +32,7 @@ the agreed Etherscan V2 subset.
 | P40-T10 | done | P20, P40-T08 | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration | contract, state, cursor, reorg, and configuration tests |
 | P40-T11 | done | P30-T15, P40-T10 | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests |
 | P40-T12 | done | P40-T10 | Protocol detail fields, block-scoped transactions, withdrawals, and block-origin address evidence | OpenAPI, generated contract, query, cursor, reorg, and handler tests |
+| P40-T13 | done | P40-T07, P40-T08 | Transaction-scoped successful internal ETH transfers and exact-block token decimals | OpenAPI, query, cursor, reorg, handler, billing-inventory, and generation tests |
 
 ## Acceptance
 
@@ -53,6 +54,20 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T13 adds the paginated, exact-inclusion
+  `/transactions/{hash}/internal-transactions` resource for successful non-root
+  positive-value Trace frames. Generation-bound cursors preserve replay and
+  reorg fencing, while unavailable and failed Trace states remain distinct
+  from a complete empty result. ERC-20 token and address transfer models now
+  expose nullable decimals selected from the newest canonical token observation
+  at or before each event block, but only when that exact observation is a
+  complete ERC-20 result; NFT events and missing metadata never receive guessed
+  precision.
+- P40-T13 verification: focused API, catalog, handler, operation-inventory,
+  billing, and configuration Go tests pass; `make generate-check`, the focused
+  billing-page suite, `make helm-check`, `make plan-check`, and `git diff
+  --check` pass.
 
 - P40-T12: OpenAPI, generated Go/TypeScript contracts, x402 operation inventory,
   Helm billing route schema, block-scoped transaction handler/query, typed

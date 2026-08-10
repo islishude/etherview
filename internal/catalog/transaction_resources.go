@@ -76,6 +76,94 @@ func (catalog *Postgres) TransactionTokenEvents(
 	return page, nil
 }
 
+func (catalog *Postgres) TransactionInternalTransactions(
+	ctx context.Context,
+	request TransactionResourceRequest,
+) (TransactionInternalTransactionPage, error) {
+	tx, resolution, err := catalog.beginTransactionResource(ctx, request, "internal_transactions", StageTrace)
+	if err != nil {
+		return TransactionInternalTransactionPage{}, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	page := TransactionInternalTransactionPage{
+		Identity: resolution.identity,
+		Items:    []TransactionInternalTransaction{},
+	}
+	if resolution.identity.State == StageComplete {
+		rows, queryErr := tx.QueryContext(ctx, transactionInternalTransactionsSQL,
+			request.ChainID, resolution.blockHash, resolution.txHash,
+			resolution.limit+1, resolution.offset,
+		)
+		if queryErr != nil {
+			return TransactionInternalTransactionPage{}, fmt.Errorf("list transaction internal transactions: %w", queryErr)
+		}
+		defer rows.Close() //nolint:errcheck
+		for rows.Next() {
+			item, scanErr := catalog.scanTransactionInternalTransaction(rows)
+			if scanErr != nil {
+				return TransactionInternalTransactionPage{}, fmt.Errorf("scan transaction internal transaction: %w", scanErr)
+			}
+			page.Items = append(page.Items, item)
+		}
+		if err := rows.Err(); err != nil {
+			return TransactionInternalTransactionPage{}, fmt.Errorf("iterate transaction internal transactions: %w", err)
+		}
+		if len(page.Items) > resolution.limit {
+			page.Items = page.Items[:resolution.limit]
+			page.NextCursor, err = resolution.nextCursor("internal_transactions", resolution.offset+resolution.limit)
+			if err != nil {
+				return TransactionInternalTransactionPage{}, err
+			}
+		}
+	}
+	if err := commitRead(tx); err != nil {
+		return TransactionInternalTransactionPage{}, err
+	}
+	return page, nil
+}
+
+func (catalog *Postgres) scanTransactionInternalTransaction(
+	row rowScanner,
+) (TransactionInternalTransaction, error) {
+	var (
+		item              TransactionInternalTransaction
+		path              string
+		depth             int64
+		from, to, created []byte
+	)
+	if err := row.Scan(&path, &depth, &item.CallType, &from, &to, &created, &item.Value); err != nil {
+		return TransactionInternalTransaction{}, err
+	}
+	if depth <= 0 || depth > 128 || item.CallType == "" || len(item.CallType) > 128 ||
+		!canonicalUint256(item.Value) || item.Value == "0" {
+		return TransactionInternalTransaction{}, ErrCorruptData
+	}
+	var err error
+	item.Path, err = parseTracePath(path)
+	if err != nil || len(item.Path) != int(depth) {
+		return TransactionInternalTransaction{}, ErrCorruptData
+	}
+	item.Depth = uint32(depth)
+	fromAddress, err := checksumAddressBytes(from)
+	if err != nil {
+		return TransactionInternalTransaction{}, err
+	}
+	item.From = fromAddress
+	if item.To, err = optionalChecksumAddress(to); err != nil {
+		return TransactionInternalTransaction{}, err
+	}
+	if item.CreatedAddress, err = optionalChecksumAddress(created); err != nil {
+		return TransactionInternalTransaction{}, err
+	}
+	if (item.CallType == "CREATE" || item.CallType == "CREATE2") != (item.CreatedAddress != nil) {
+		return TransactionInternalTransaction{}, ErrCorruptData
+	}
+	if item.CreatedAddress == nil && item.To == nil {
+		return TransactionInternalTransaction{}, ErrCorruptData
+	}
+	return item, nil
+}
+
 func (catalog *Postgres) TransactionLogs(
 	ctx context.Context,
 	request TransactionResourceRequest,
@@ -395,13 +483,44 @@ SELECT event.chain_id::text, event.block_number::text, event.block_hash,
        event.log_index::text, event.sub_index::text, event.transaction_hash,
        event.token_address, event.standard, event.event_kind, event.operator,
        event.from_address, event.to_address, event.token_id::text, event.amount::text,
-       event.confidence
+       event.confidence, metadata.decimals
 FROM token_events AS event
+LEFT JOIN LATERAL (
+    SELECT CASE
+               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
+               THEN contract.decimals
+           END AS decimals
+    FROM token_contracts AS contract
+    JOIN canonical_blocks AS observation
+      ON observation.chain_id = contract.chain_id
+     AND observation.number = contract.observed_block_number
+     AND observation.block_hash = contract.observed_block_hash
+    WHERE contract.chain_id = event.chain_id
+      AND contract.address = event.token_address
+      AND contract.observed_block_number <= event.block_number
+    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
+    LIMIT 1
+) AS metadata ON event.standard = 'erc20'
 WHERE event.chain_id = $1::numeric
   AND event.block_hash = $2
   AND event.transaction_hash = $3
   AND event.canonical = true
 ORDER BY event.log_index, event.sub_index
+LIMIT $4 OFFSET $5`
+
+const transactionInternalTransactionsSQL = `
+SELECT trace.trace_path, trace.depth, trace.call_type,
+       trace.from_address, trace.to_address, trace.created_address,
+       trace.value::text
+FROM normalized_traces AS trace
+WHERE trace.chain_id = $1::numeric
+  AND trace.block_hash = $2
+  AND trace.transaction_hash = $3
+  AND trace.canonical = true
+  AND trace.depth > 0
+  AND trace.value > 0
+  AND trace.reverted = false
+ORDER BY string_to_array(trace.trace_path, '.')::bigint[]
 LIMIT $4 OFFSET $5`
 
 const transactionLogsSQL = `

@@ -347,6 +347,7 @@ func (h *Handler) routes() {
 	if h.catalog != nil {
 		h.handleBillable("getTransactionCalldata", h.transactionCalldata)
 		h.handleBillable("getTransactionTrace", h.transactionTrace)
+		h.handleBillable("listTransactionInternalTransactions", h.transactionInternalTransactions)
 		h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
 		h.handleBillable("listTransactionLogs", h.transactionLogs)
 		h.handleBillable("listTransactionStateChanges", h.transactionStateChanges)
@@ -1154,6 +1155,10 @@ func (h *Handler) addressTokenTransfers(w http.ResponseWriter, r *http.Request, 
 			From:     item.From, To: item.To, TokenId: item.TokenID,
 			Amount: item.Amount, Confidence: item.Confidence,
 		}
+		if item.Decimals != nil {
+			value := int(*item.Decimals)
+			items[index].Decimals = &value
+		}
 	}
 	writeJSON(w, http.StatusOK, gen.AddressTokenTransferListResponse{
 		Data: items, Meta: h.catalogPageMeta(r, page.NextCursor, page.Snapshot),
@@ -1666,6 +1671,36 @@ func (h *Handler) transactionTokenTransfers(w http.ResponseWriter, r *http.Reque
 	}
 	writeJSON(w, http.StatusOK, gen.TransactionTokenTransferResponse{
 		Data: transactionTokenTransfersModel(page.Identity, items), Meta: meta,
+	})
+}
+
+func (h *Handler) transactionInternalTransactions(w http.ResponseWriter, r *http.Request) {
+	request, ok := h.transactionResourceRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.catalog.TransactionInternalTransactions(r.Context(), request)
+	if err != nil {
+		h.handleCatalogError(w, r, err)
+		return
+	}
+	items := make([]gen.TransactionInternalTransaction, len(page.Items))
+	for index, item := range page.Items {
+		path := make([]int, len(item.Path))
+		for pathIndex, value := range item.Path {
+			path[pathIndex] = int(value)
+		}
+		items[index] = gen.TransactionInternalTransaction{
+			Path: path, Depth: int(item.Depth), CallType: item.CallType,
+			From: item.From, To: item.To, CreatedAddress: item.CreatedAddress, Value: item.Value,
+		}
+	}
+	meta := h.meta(r)
+	if page.NextCursor != "" {
+		meta.NextCursor = &page.NextCursor
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionInternalTransactionResponse{
+		Data: transactionInternalTransactionsModel(page.Identity, items), Meta: meta,
 	})
 }
 
@@ -2577,13 +2612,18 @@ func tokenContractModel(item catalog.TokenContract) gen.TokenContract {
 }
 
 func tokenEventModel(item catalog.TokenEvent) gen.TokenEvent {
-	return gen.TokenEvent{
+	model := gen.TokenEvent{
 		ChainId: item.ChainID, BlockNumber: item.BlockNumber, BlockHash: item.BlockHash,
 		LogIndex: item.LogIndex, SubIndex: item.SubIndex, TransactionHash: item.TransactionHash,
 		TokenAddress: item.TokenAddress, Standard: item.Standard, Kind: item.Kind,
 		Operator: item.Operator, From: item.From, To: item.To, TokenId: item.TokenID,
 		Amount: item.Amount, Confidence: item.Confidence,
 	}
+	if item.Decimals != nil {
+		value := int(*item.Decimals)
+		model.Decimals = &value
+	}
+	return model
 }
 
 func catalogSnapshotModel(snapshot catalog.Snapshot) gen.CatalogSnapshot {
@@ -2842,6 +2882,17 @@ func transactionTokenTransfersModel(
 		ChainId: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
 		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
 		State: gen.TransactionTokenTransfersState(identity.State), Items: items,
+	}
+}
+
+func transactionInternalTransactionsModel(
+	identity catalog.TransactionResourceIdentity,
+	items []gen.TransactionInternalTransaction,
+) gen.TransactionInternalTransactions {
+	return gen.TransactionInternalTransactions{
+		ChainId: identity.ChainID, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash,
+		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
+		State: gen.TransactionInternalTransactionsState(identity.State), Items: items,
 	}
 }
 

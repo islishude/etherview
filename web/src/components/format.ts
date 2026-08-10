@@ -86,6 +86,29 @@ export function formatNativeAmount(
   }
 }
 
+export function formatTokenAmount(
+  value: string | number | bigint | undefined,
+  decimals: number | undefined,
+  locale?: string,
+): string {
+  if (value === undefined || value === null || value === "") return "—";
+  if (!Number.isInteger(decimals) || decimals === undefined || decimals < 0 || decimals > 255) {
+    return formatInteger(value, locale);
+  }
+
+  try {
+    const rawValue = BigInt(value);
+    const scale = 10n ** BigInt(decimals);
+    const integerPart = rawValue / scale;
+    const fractionalRaw = (rawValue % scale).toString().padStart(decimals, "0");
+    const fractional = fractionalRaw.replace(/0+$/u, "");
+    const groupedInteger = new Intl.NumberFormat(locale).format(integerPart);
+    return fractional ? `${groupedInteger}.${fractional}` : groupedInteger;
+  } catch {
+    return "—";
+  }
+}
+
 export function formatGweiFromWei(value?: string | number | bigint, locale?: string): string {
   return formatNativeAmount(value, locale, 9);
 }

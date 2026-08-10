@@ -464,6 +464,29 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /transactions/{hash}/internal-transactions:
+    get:
+      operationId: listTransactionInternalTransactions
+      tags: [transactions, traces]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/TransactionHash"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Successful non-root value-bearing trace frames for the exact transaction inclusion.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionInternalTransactionResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /transactions/{hash}/token-transfers:
     get:
       operationId: listTransactionTokenTransfers
@@ -1773,7 +1796,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 31
+          maxItems: 32
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -2464,6 +2487,11 @@ components:
           $ref: "#/components/schemas/Quantity"
         amount:
           $ref: "#/components/schemas/Quantity"
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata.
         confidence:
           type: string
     StateConfidence:
@@ -3041,6 +3069,11 @@ components:
           $ref: "#/components/schemas/Quantity"
         amount:
           $ref: "#/components/schemas/Quantity"
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata.
         confidence:
           type: string
     TransactionTrace:
@@ -3094,6 +3127,45 @@ components:
         state:
           type: string
           enum: [complete, missing, unavailable, failed]
+    TransactionInternalTransaction:
+      type: object
+      additionalProperties: false
+      required: [path, depth, call_type, from, value]
+      properties:
+        path:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 0
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 128
+        call_type:
+          type: string
+          minLength: 1
+          maxLength: 128
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          $ref: "#/components/schemas/Address"
+        created_address:
+          $ref: "#/components/schemas/Address"
+        value:
+          allOf:
+            - $ref: "#/components/schemas/Quantity"
+          description: Positive native value carried by this successful internal frame.
+    TransactionInternalTransactions:
+      allOf:
+        - $ref: "#/components/schemas/TransactionSubresourceIdentity"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TransactionInternalTransaction"
     TransactionCalldata:
       allOf:
         - $ref: "#/components/schemas/TransactionSubresourceIdentity"
@@ -4591,6 +4663,14 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/TransactionTrace"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    TransactionInternalTransactionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TransactionInternalTransactions"
         meta:
           $ref: "#/components/schemas/Meta"
     TransactionCalldataResponse:

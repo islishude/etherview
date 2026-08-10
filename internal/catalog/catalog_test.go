@@ -303,7 +303,7 @@ func tokenEventRow(blockNumber, logIndex, subIndex string, tokenAddress []byte) 
 	return []driver.Value{
 		"1", blockNumber, bytesOf(byte(blockNumber[0]), 32), logIndex, subIndex,
 		bytesOf(0xbb, 32), tokenAddress, "erc721", "transfer", nil,
-		bytesOf(0x11, 20), bytesOf(0x22, 20), "99", "1", "high",
+		bytesOf(0x11, 20), bytesOf(0x22, 20), "99", "1", "high", nil,
 	}
 }
 
@@ -313,7 +313,7 @@ func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
 		catalogQueryStep{
 			contains: "FROM token_events AS e",
-			rows: catalogRows(15,
+			rows: catalogRows(16,
 				tokenEventRow("100", "7", "1", token),
 				tokenEventRow("99", "6", "0", token),
 				tokenEventRow("98", "5", "0", token),
@@ -353,6 +353,36 @@ func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 		t.Fatalf("reorg cursor error=%v", err)
 	}
 	assertCatalogConsumed(t, reorgBackend)
+}
+
+func TestTokenEventsExposeExactBlockERC20Decimals(t *testing.T) {
+	token := bytesOf(0xcc, 20)
+	row := tokenEventRow("100", "7", "0", token)
+	row[7], row[12], row[15] = "erc20", nil, int64(6)
+	catalog, backend := openCatalog(t,
+		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
+	)
+	page, err := catalog.TokenEvents(context.Background(), TokenEventRequest{
+		ChainID: "1", TokenAddress: "0x" + strings.Repeat("cc", 20), Limit: 10,
+	})
+	if err != nil || len(page.Items) != 1 || page.Items[0].Decimals == nil || *page.Items[0].Decimals != 6 {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	backend.mu.Lock()
+	query := backend.queries[len(backend.queries)-1]
+	backend.mu.Unlock()
+	for _, fragment := range []string{
+		"contract.observed_block_number <= e.block_number",
+		"observation.block_hash = contract.observed_block_hash",
+		"contract.standard = 'erc20' AND contract.metadata_state = 'complete'",
+		"metadata ON e.standard = 'erc20'",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("token event query lacks %q: %s", fragment, query)
+		}
+	}
+	assertCatalogConsumed(t, backend)
 }
 
 func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {

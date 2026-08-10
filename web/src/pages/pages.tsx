@@ -32,6 +32,7 @@ import {
   useTokens,
   useTransaction,
   useTransactionCalldata,
+  useTransactionInternalTransactions,
   useTransactionAuthorizations,
   useTransactionLogs,
   useTransactionStateChanges,
@@ -71,6 +72,7 @@ import {
   formatInteger,
   formatNativeAmount,
   formatRelativeTimestamp,
+  formatTokenAmount,
   formatTimestamp,
   shorten,
 } from "@/components/format";
@@ -86,6 +88,16 @@ import {
 
 const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
+
+function formatTokenEventAmount(
+  event: { amount?: string; decimals?: number; standard: string },
+  locale: string,
+): string {
+  if (event.amount === undefined) return "—";
+  return event.standard === "erc20"
+    ? formatTokenAmount(event.amount, event.decimals, locale)
+    : formatInteger(event.amount, locale);
+}
 
 function useCursorHistory(identity: string) {
   const [state, setState] = useState<{
@@ -852,7 +864,7 @@ function BlockDetailPage({ identifier, tab }: { identifier: string; tab: string 
   );
 }
 
-const TRANSACTION_TABS = ["overview", "access-list", "blob", "authorizations", "token-transfers", "logs", "trace", "state-changes"] as const;
+const TRANSACTION_TABS = ["overview", "access-list", "blob", "authorizations", "internal-transactions", "token-transfers", "logs", "trace", "state-changes"] as const;
 type TransactionTab = typeof TRANSACTION_TABS[number];
 
 function transactionTabsForType(type?: string): TransactionTab[] {
@@ -860,7 +872,7 @@ function transactionTabsForType(type?: string): TransactionTab[] {
   if (type === "1" || type === "2" || type === "3" || type === "4") tabs.push("access-list");
   if (type === "3") tabs.push("blob");
   if (type === "4") tabs.push("authorizations");
-  tabs.push("token-transfers", "logs", "trace", "state-changes");
+  tabs.push("internal-transactions", "token-transfers", "logs", "trace", "state-changes");
   return tabs;
 }
 
@@ -1068,6 +1080,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     && Boolean(transaction.data?.to)
     && (transaction.data?.input.length ?? 0) > 2;
   const calldata = useTransactionCalldata(hash, calldataEnabled);
+  const internalPager = useCursorHistory(`transaction-internal-transactions:${hash}`);
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
   const logPager = useCursorHistory(`transaction-logs:${hash}`);
   const statePager = useCursorHistory(`transaction-state-changes:${hash}`);
@@ -1076,6 +1089,11 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     hash,
     tokenPager.cursor,
     activeTab === "overview" || activeTab === "token-transfers",
+  );
+  const internalTransactions = useTransactionInternalTransactions(
+    hash,
+    internalPager.cursor,
+    activeTab === "internal-transactions",
   );
   const logs = useTransactionLogs(hash, logPager.cursor, activeTab === "logs");
   const trace = useTransactionTrace(hash, activeTab === "trace");
@@ -1097,6 +1115,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const identityMatches = (blockHash?: string) =>
     !blockHash || !transaction.data?.block_hash || blockHash === transaction.data.block_hash;
   const tokenIdentityCurrent = identityMatches(tokenTransfers.data?.block_hash);
+  const internalIdentityCurrent = identityMatches(internalTransactions.data?.block_hash);
   const calldataIdentityCurrent = calldata.data === undefined || transaction.data === undefined || (
     calldata.data.transaction_hash.toLowerCase() === transaction.data.hash.toLowerCase()
     && calldata.data.block_hash.toLowerCase() === transaction.data.block_hash?.toLowerCase()
@@ -1113,6 +1132,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     if (activeTab === "access-list" || activeTab === "blob") return;
     const resource = activeTab === "token-transfers" || activeTab === "overview"
       ? tokenTransfers
+      : activeTab === "internal-transactions" ? internalTransactions
       : activeTab === "logs" ? logs
       : activeTab === "trace" ? trace
       : activeTab === "authorizations" ? authorizations
@@ -1127,6 +1147,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   }, [
     activeTab,
     authorizations,
+    internalTransactions,
     logs,
     stateChanges,
     tokenTransfers,
@@ -1337,7 +1358,99 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                   </dl>
                 </details>
               </section>
+
             </div>
+          )}
+
+          {activeTab === "internal-transactions" && (
+            <section
+              className="panel transaction-tab-panel"
+              role="tabpanel"
+              aria-labelledby="transaction-internal-transactions-title"
+            >
+                <h2 id="transaction-internal-transactions-title">
+                  {t("addressTab.internalTransactions")}
+                </h2>
+                <QueryNotice
+                  loading={internalTransactions.isPending}
+                  error={internalTransactions.error}
+                />
+                {internalTransactions.data && !internalIdentityCurrent ? (
+                  <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+                ) : null}
+                {internalIdentityCurrent && internalTransactions.data?.state !== "complete"
+                  && internalTransactions.data ? (
+                    <CapabilityDegraded stage="trace" state={internalTransactions.data.state} />
+                  ) : null}
+                {internalIdentityCurrent && internalTransactions.data?.state === "complete"
+                  && internalTransactions.data.items.length === 0 ? (
+                    <p className="empty-result">{t("state.noTransactionInternalTransactions")}</p>
+                  ) : null}
+                {internalIdentityCurrent && internalTransactions.data?.state === "complete"
+                  && internalTransactions.data.items.length > 0 ? (
+                    <div
+                      className="table-scroll"
+                      tabIndex={0}
+                      aria-label={t("addressTab.internalTransactions")}
+                    >
+                      <table>
+                        <caption className="sr-only">{t("addressTab.internalTransactions")}</caption>
+                        <thead>
+                          <tr>
+                            <th>{t("detail.callType")}</th>
+                            <th>{t("table.from")}</th>
+                            <th>{t("table.to")}</th>
+                            <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {internalTransactions.data.items.map((item) => {
+                            const destination = item.created_address ?? item.to;
+                            return (
+                              <tr key={item.path.join(".")}>
+                                <td><span className="transaction-trace-kind">{item.call_type}</span></td>
+                                <td>
+                                  <CopyableField value={item.from}>
+                                    <Link to="/address/$address" params={{ address: item.from }}>
+                                      <code>{shorten(item.from)}</code>
+                                    </Link>
+                                  </CopyableField>
+                                </td>
+                                <td>
+                                  {destination ? (
+                                    <span className="table-primary">
+                                      <CopyableField value={destination}>
+                                        <Link to="/address/$address" params={{ address: destination }}>
+                                          <code>{shorten(destination)}</code>
+                                        </Link>
+                                      </CopyableField>
+                                      {item.created_address ? <small>{t("activity.created")}</small> : null}
+                                    </span>
+                                  ) : "—"}
+                                </td>
+                                <td>
+                                  <code>{formatNativeAmount(item.value, locale, nativeDecimals)}</code>
+                                  {nativeSymbol ? ` ${nativeSymbol}` : ""}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                {internalIdentityCurrent && internalTransactions.data ? (
+                  <CursorPagination
+                    busy={internalTransactions.isFetching}
+                    hasNext={Boolean(internalTransactions.data.next_cursor)}
+                    hasPrevious={internalPager.hasPrevious}
+                    label={t("addressTab.internalTransactions")}
+                    onNext={() => internalPager.next(internalTransactions.data?.next_cursor)}
+                    onPrevious={internalPager.previous}
+                    page={internalPager.page}
+                  />
+                ) : null}
+            </section>
           )}
 
           {activeTab === "access-list" && (
@@ -1464,7 +1577,9 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                         <td>{event.kind}</td>
                         <td><code>{event.from ? shorten(event.from) : "—"}</code></td>
                         <td><code>{event.to ? shorten(event.to) : "—"}</code></td>
-                        <td><code>{formatInteger(event.amount ?? event.token_id, locale)}</code></td>
+                        <td><code>{event.amount !== undefined
+                          ? formatTokenEventAmount(event, locale)
+                          : formatInteger(event.token_id, locale)}</code></td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -2629,7 +2744,7 @@ function AddressTokenTransfers({
                 <span className="table-primary">
                   <code>
                     {transfer.amount !== undefined
-                      ? formatInteger(transfer.amount, locale)
+                      ? formatTokenEventAmount(transfer, locale)
                       : transfer.token_id !== undefined ? `#${transfer.token_id}` : "—"}
                   </code>
                   {transfer.amount !== undefined && transfer.token_id !== undefined
@@ -3151,7 +3266,7 @@ function TokenTransfers({
                       </Link>
                     ) : <code>{event.token_id ?? "—"}</code>}
                   </td>
-                  <td><code>{event.amount ?? "—"}</code></td>
+                  <td><code>{formatTokenEventAmount(event, locale)}</code></td>
                   <td>{tokenStandardLabel(event.standard, t)}</td>
                   <td>{confidenceLabel(event.confidence, t)}</td>
                 </tr>

@@ -48,6 +48,10 @@ export type NFTBalance = components["schemas"]["NFTBalance"];
 export type ERC20Balance = components["schemas"]["ERC20Balance"];
 export type TraceFrame = components["schemas"]["TraceFrame"];
 export type TransactionTrace = components["schemas"]["TransactionTrace"];
+export type TransactionInternalTransaction =
+  components["schemas"]["TransactionInternalTransaction"];
+export type TransactionInternalTransactions =
+  components["schemas"]["TransactionInternalTransactions"];
 export type TransactionTokenTransfers = components["schemas"]["TransactionTokenTransfers"];
 export type TransactionLogs = components["schemas"]["TransactionLogs"];
 export type TransactionLog = components["schemas"]["TransactionLog"];

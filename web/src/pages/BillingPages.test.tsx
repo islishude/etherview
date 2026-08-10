@@ -213,6 +213,7 @@ describe("billing pages", () => {
     ).not.toBeInTheDocument();
     for (const operation of [
       "listTransactionTokenTransfers",
+      "listTransactionInternalTransactions",
       "listTransactionLogs",
       "listTransactionStateChanges",
       "listAddressTransactions",

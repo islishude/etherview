@@ -247,15 +247,46 @@ func main() {
 			},
 		})
 	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/internal-transactions", func(response http.ResponseWriter, request *http.Request) {
+		switch request.PathValue("hash") {
+		case testTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+				"state": "complete", "items": []any{map[string]any{
+					"path": []any{1}, "depth": 1, "call_type": "CALL",
+					"from": testEOA, "to": uupsProxyAddress, "value": "1250000000000000000",
+				}},
+			})
+		case secondTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "1", "block_hash": testHash,
+				"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
+				"state": "complete", "items": []any{},
+			})
+		default:
+			writeNotFound(response)
+		}
+	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/token-transfers", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
 			writeNotFound(response)
 			return
 		}
+		items := []any{}
+		if request.PathValue("hash") == testTransactionHash {
+			items = append(items, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"log_index": "0", "sub_index": "0", "transaction_hash": testTransactionHash,
+				"token_address": testAddress, "standard": "erc20", "kind": "transfer",
+				"from": testEOA, "to": uupsProxyAddress, "amount": "1234500", "decimals": 6,
+				"confidence": "verified",
+			})
+		}
 		writeEnvelope(response, map[string]any{
 			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
 			"transaction_hash": request.PathValue("hash"), "transaction_index": "0",
-			"state": "complete", "items": []any{},
+			"state": "complete", "items": items,
 		})
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/logs", func(response http.ResponseWriter, request *http.Request) {
@@ -727,13 +758,18 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 }
 
 func addressTokenTransfer(standard, kind string) map[string]any {
-	return map[string]any{
+	transfer := map[string]any{
 		"block_number": "2", "block_hash": secondHash, "block_timestamp": "2026-01-01T00:00:00Z",
 		"transaction_hash": testTransactionHash, "transaction_index": "0",
 		"log_index": "0", "sub_index": "0", "token_address": testAddress,
 		"standard": standard, "kind": kind, "from": testAddress, "to": testAddress,
 		"amount": "1", "confidence": "verified",
 	}
+	if standard == "erc20" {
+		transfer["amount"] = "1234500"
+		transfer["decimals"] = 6
+	}
+	return transfer
 }
 
 func contractCreationTransaction(hash, blockHash, blockNumber, finality string) map[string]any {

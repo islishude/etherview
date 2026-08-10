@@ -1484,6 +1484,30 @@ func (e TransactionCalldataDecodingStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransactionInternalTransactionsState.
+const (
+	TransactionInternalTransactionsStateComplete    TransactionInternalTransactionsState = "complete"
+	TransactionInternalTransactionsStateFailed      TransactionInternalTransactionsState = "failed"
+	TransactionInternalTransactionsStateMissing     TransactionInternalTransactionsState = "missing"
+	TransactionInternalTransactionsStateUnavailable TransactionInternalTransactionsState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionInternalTransactionsState enum.
+func (e TransactionInternalTransactionsState) Valid() bool {
+	switch e {
+	case TransactionInternalTransactionsStateComplete:
+		return true
+	case TransactionInternalTransactionsStateFailed:
+		return true
+	case TransactionInternalTransactionsStateMissing:
+		return true
+	case TransactionInternalTransactionsStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionLogAttributionMode.
 const (
 	AddressFallback TransactionLogAttributionMode = "address_fallback"
@@ -2110,6 +2134,9 @@ type AddressTokenTransfer struct {
 	BlockNumber    Quantity  `json:"block_number"`
 	BlockTimestamp time.Time `json:"block_timestamp"`
 	Confidence     string    `json:"confidence"`
+
+	// Decimals Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata.
+	Decimals *int `json:"decimals,omitempty"`
 
 	// From A 20-byte address; responses use the EIP-55 checksum form.
 	From *Address                 `json:"from,omitempty"`
@@ -3535,6 +3562,9 @@ type TokenEvent struct {
 	ChainId    Quantity `json:"chain_id"`
 	Confidence string   `json:"confidence"`
 
+	// Decimals Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata.
+	Decimals *int `json:"decimals,omitempty"`
+
 	// From A 20-byte address; responses use the EIP-55 checksum form.
 	From *Address `json:"from,omitempty"`
 	Kind string   `json:"kind"`
@@ -3830,6 +3860,54 @@ type TransactionCalldataResponse struct {
 	Data TransactionCalldata `json:"data"`
 	Meta Meta                `json:"meta"`
 }
+
+// TransactionInternalTransaction defines model for TransactionInternalTransaction.
+type TransactionInternalTransaction struct {
+	CallType string `json:"call_type"`
+
+	// CreatedAddress A 20-byte address; responses use the EIP-55 checksum form.
+	CreatedAddress *Address `json:"created_address,omitempty"`
+	Depth          int      `json:"depth"`
+
+	// From A 20-byte address; responses use the EIP-55 checksum form.
+	From Address `json:"from"`
+	Path []int   `json:"path"`
+
+	// To A 20-byte address; responses use the EIP-55 checksum form.
+	To *Address `json:"to,omitempty"`
+
+	// Value Positive native value carried by this successful internal frame.
+	Value Quantity `json:"value"`
+}
+
+// TransactionInternalTransactionResponse defines model for TransactionInternalTransactionResponse.
+type TransactionInternalTransactionResponse struct {
+	Data TransactionInternalTransactions `json:"data"`
+	Meta Meta                            `json:"meta"`
+}
+
+// TransactionInternalTransactions defines model for TransactionInternalTransactions.
+type TransactionInternalTransactions struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId Quantity                             `json:"chain_id"`
+	Items   []TransactionInternalTransaction     `json:"items"`
+	State   TransactionInternalTransactionsState `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionInternalTransactionsState defines model for TransactionInternalTransactions.State.
+type TransactionInternalTransactionsState string
 
 // TransactionListResponse defines model for TransactionListResponse.
 type TransactionListResponse struct {
@@ -4633,6 +4711,15 @@ type ListTransactionAuthorizationsParams struct {
 
 // GetTransactionCalldataParams defines parameters for GetTransactionCalldata.
 type GetTransactionCalldataParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListTransactionInternalTransactionsParams defines parameters for ListTransactionInternalTransactions.
+type ListTransactionInternalTransactionsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

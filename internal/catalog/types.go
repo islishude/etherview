@@ -114,6 +114,7 @@ type TokenEvent struct {
 	To              *string
 	TokenID         *string
 	Amount          *string
+	Decimals        *uint8
 	Confidence      string
 }
 
@@ -178,6 +179,7 @@ type AddressTokenTransfer struct {
 	To               *string
 	TokenID          *string
 	Amount           *string
+	Decimals         *uint8
 	Confidence       string
 }
 
@@ -492,6 +494,22 @@ type TransactionTokenEventPage struct {
 	NextCursor string
 }
 
+type TransactionInternalTransaction struct {
+	Path           []uint32
+	Depth          uint32
+	CallType       string
+	From           string
+	To             *string
+	CreatedAddress *string
+	Value          string
+}
+
+type TransactionInternalTransactionPage struct {
+	Identity   TransactionResourceIdentity
+	Items      []TransactionInternalTransaction
+	NextCursor string
+}
+
 type TransactionStateChange struct {
 	Address    string
 	Kind       string
@@ -562,6 +580,7 @@ type Reader interface {
 	AggregateStats(context.Context, AggregateStatsRequest) (AggregateStats, error)
 	TransactionTrace(context.Context, string, string) (TransactionTrace, error)
 	TransactionCalldata(context.Context, string, string) (TransactionCalldata, error)
+	TransactionInternalTransactions(context.Context, TransactionResourceRequest) (TransactionInternalTransactionPage, error)
 	TransactionTokenEvents(context.Context, TransactionResourceRequest) (TransactionTokenEventPage, error)
 	TransactionLogs(context.Context, TransactionResourceRequest) (TransactionLogPage, error)
 	TransactionStateChanges(context.Context, TransactionResourceRequest) (TransactionStateChangePage, error)

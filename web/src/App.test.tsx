@@ -308,6 +308,7 @@ describe("embedded explorer shell", () => {
             from: peer,
             to: address,
             amount: "1000000",
+            decimals: 6,
             confidence: "verified",
           }],
           meta,
@@ -350,6 +351,7 @@ describe("embedded explorer shell", () => {
       "href",
       `/tx/${transactionHash}?tab=overview`,
     );
+    expect(screen.getByText("1", { exact: true })).toBeVisible();
     expect(fetcher).toHaveBeenCalledWith(`/api/v1/tokens/${address}`, expect.anything());
     expect(fetcher).toHaveBeenCalledWith(
       `/api/v1/tokens/${address}/transfers?limit=25`,

@@ -378,11 +378,12 @@ func (catalog *Postgres) scanAddressTokenTransfer(row rowScanner) (AddressTokenT
 		blockHash, txHash, token, from, to []byte
 		timestamp                          string
 		tokenID, amount                    sql.NullString
+		decimals                           sql.NullInt64
 	)
 	if err := row.Scan(
 		&item.BlockNumber, &blockHash, &timestamp, &txHash, &item.TransactionIndex,
 		&item.LogIndex, &item.SubIndex, &token, &item.Standard, &item.Kind,
-		&from, &to, &tokenID, &amount, &item.Confidence,
+		&from, &to, &tokenID, &amount, &item.Confidence, &decimals,
 	); err != nil {
 		return AddressTokenTransfer{}, err
 	}
@@ -439,6 +440,13 @@ func (catalog *Postgres) scanAddressTokenTransfer(row rowScanner) (AddressTokenT
 			return AddressTokenTransfer{}, ErrCorruptData
 		}
 		item.Amount = &amount.String
+	}
+	if decimals.Valid {
+		if item.Standard != "erc20" || decimals.Int64 < 0 || decimals.Int64 > 255 {
+			return AddressTokenTransfer{}, ErrCorruptData
+		}
+		value := uint8(decimals.Int64)
+		item.Decimals = &value
 	}
 	if item.Standard == "erc20" && (item.Amount == nil || item.TokenID != nil) {
 		return AddressTokenTransfer{}, ErrCorruptData
@@ -529,7 +537,7 @@ SELECT event.block_number::text, event.block_hash, block.timestamp::text,
        event.log_index::text, event.sub_index::text,
        event.token_address, event.standard, event.event_kind,
        event.from_address, event.to_address, event.token_id::text,
-       event.amount::text, event.confidence
+       event.amount::text, event.confidence, metadata.decimals
 FROM candidates
 JOIN token_events AS event
   ON event.chain_id = candidates.chain_id
@@ -550,6 +558,22 @@ JOIN transaction_inclusions AS inclusion
  AND inclusion.block_number = event.block_number
  AND inclusion.block_hash = event.block_hash
  AND inclusion.tx_hash = event.transaction_hash
+LEFT JOIN LATERAL (
+    SELECT CASE
+               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
+               THEN contract.decimals
+           END AS decimals
+    FROM token_contracts AS contract
+    JOIN canonical_blocks AS observation
+      ON observation.chain_id = contract.chain_id
+     AND observation.number = contract.observed_block_number
+     AND observation.block_hash = contract.observed_block_hash
+    WHERE contract.chain_id = event.chain_id
+      AND contract.address = event.token_address
+      AND contract.observed_block_number <= event.block_number
+    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
+    LIMIT 1
+) AS metadata ON event.standard = 'erc20'
 WHERE NOT $5::boolean OR (
     event.block_number,
     inclusion.tx_index,

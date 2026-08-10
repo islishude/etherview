@@ -764,6 +764,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transactions/{hash}/internal-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTransactionInternalTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/transactions/{hash}/logs": {
         parameters: {
             query?: never;
@@ -1066,6 +1082,8 @@ export interface components {
             /** Format: date-time */
             block_timestamp: string;
             confidence: string;
+            /** @description Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata. */
+            decimals?: number;
             from?: components["schemas"]["Address"];
             /** @enum {string} */
             kind: "transfer" | "mint" | "burn";
@@ -1909,6 +1927,8 @@ export interface components {
             block_number: components["schemas"]["Quantity"];
             chain_id: components["schemas"]["Quantity"];
             confidence: string;
+            /** @description Exact-block ERC-20 decimals. Absent for NFTs or unavailable token metadata. */
+            decimals?: number;
             from?: components["schemas"]["Address"];
             kind: string;
             log_index: components["schemas"]["Quantity"];
@@ -2055,6 +2075,23 @@ export interface components {
         TransactionCalldataResponse: {
             data: components["schemas"]["TransactionCalldata"];
             meta: components["schemas"]["Meta"];
+        };
+        TransactionInternalTransaction: {
+            call_type: string;
+            created_address?: components["schemas"]["Address"];
+            depth: number;
+            from: components["schemas"]["Address"];
+            path: number[];
+            to?: components["schemas"]["Address"];
+            /** @description Positive native value carried by this successful internal frame. */
+            value: components["schemas"]["Quantity"];
+        };
+        TransactionInternalTransactionResponse: {
+            data: components["schemas"]["TransactionInternalTransactions"];
+            meta: components["schemas"]["Meta"];
+        };
+        TransactionInternalTransactions: components["schemas"]["TransactionSubresourceIdentity"] & {
+            items: components["schemas"]["TransactionInternalTransaction"][];
         };
         TransactionListResponse: {
             data: components["schemas"]["Transaction"][];
@@ -3736,6 +3773,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionCalldataResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listTransactionInternalTransactions: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                hash: components["parameters"]["TransactionHash"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful non-root value-bearing trace frames for the exact transaction inclusion. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionInternalTransactionResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

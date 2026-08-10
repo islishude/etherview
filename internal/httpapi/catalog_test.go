@@ -27,6 +27,7 @@ type fakeCatalog struct {
 	calldata     catalog.TransactionCalldata
 	calldataErr  error
 	txTokens     catalog.TransactionTokenEventPage
+	txInternal   catalog.TransactionInternalTransactionPage
 	txLogs       catalog.TransactionLogPage
 	txState      catalog.TransactionStateChangePage
 	txRequest    catalog.TransactionResourceRequest
@@ -82,6 +83,11 @@ func (fake *fakeCatalog) TransactionCalldata(context.Context, string, string) (c
 func (fake *fakeCatalog) TransactionTokenEvents(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionTokenEventPage, error) {
 	fake.txRequest = request
 	return fake.txTokens, nil
+}
+
+func (fake *fakeCatalog) TransactionInternalTransactions(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionInternalTransactionPage, error) {
+	fake.txRequest = request
+	return fake.txInternal, nil
 }
 
 func (fake *fakeCatalog) TransactionLogs(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionLogPage, error) {
@@ -493,6 +499,7 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 	address := "0x" + strings.Repeat("99", 20)
 	storageKey := "0x" + strings.Repeat("aa", 32)
 	before, after := "1", "2"
+	decimals := uint8(6)
 	identity := catalog.TransactionResourceIdentity{
 		ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
 		TransactionHash: hash, TransactionIndex: "3", State: catalog.StageComplete,
@@ -504,6 +511,30 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 		assertBody func(*testing.T, []byte)
 	}{
 		{
+			name: "internal transactions", path: "/internal-transactions?limit=1&cursor=opaque",
+			configure: func(fake *fakeCatalog) {
+				fake.txInternal = catalog.TransactionInternalTransactionPage{
+					Identity: identity, NextCursor: "internal-next",
+					Items: []catalog.TransactionInternalTransaction{{
+						Path: []uint32{0, 1}, Depth: 2, CallType: "CALL",
+						From: address, To: &address, Value: after,
+					}},
+				}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response gen.TransactionInternalTransactionResponse
+				if err := json.Unmarshal(body, &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data.BlockHash != blockHash || len(response.Data.Items) != 1 ||
+					response.Data.Items[0].Value != after || response.Data.Items[0].Depth != 2 ||
+					response.Meta.NextCursor == nil || *response.Meta.NextCursor != "internal-next" {
+					t.Fatalf("response=%+v", response)
+				}
+			},
+		},
+		{
 			name: "token transfers", path: "/token-transfers?limit=1&cursor=opaque",
 			configure: func(fake *fakeCatalog) {
 				fake.txTokens = catalog.TransactionTokenEventPage{
@@ -512,7 +543,7 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 						ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
 						TransactionHash: hash, LogIndex: "4", SubIndex: "0",
 						TokenAddress: address, Standard: "erc20", Kind: "transfer",
-						Amount: &after, Confidence: "event",
+						Amount: &after, Decimals: &decimals, Confidence: "event",
 					}},
 				}
 			},
@@ -523,6 +554,7 @@ func TestTransactionSubresourcesExposeInclusionIdentityAndPagination(t *testing.
 					t.Fatal(err)
 				}
 				if response.Data.BlockHash != blockHash || len(response.Data.Items) != 1 ||
+					response.Data.Items[0].Decimals == nil || *response.Data.Items[0].Decimals != 6 ||
 					response.Meta.NextCursor == nil || *response.Meta.NextCursor != "token-next" {
 					t.Fatalf("response=%+v", response)
 				}
