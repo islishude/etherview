@@ -392,13 +392,16 @@ func insertX402TestnetAPIKey(
 	if _, err := database.ExecContext(
 		t.Context(),
 		`INSERT INTO api_keys (
-		    prefix, digest, name, rate_per_second, burst, created_at
-		) VALUES ($1, $2, 'x402-testnet-integration', 1, 1, $3)`,
+		    prefix, digest, name, rate_per_second, burst, created_at, scopes
+		) VALUES (
+		    $1, $2, 'x402-testnet-integration', 1, 1, $3,
+		    ARRAY['api:read', 'contract:verify']::TEXT[]
+		)`,
 		prefix,
 		digest[:],
 		createdAt,
 	); err != nil {
-		t.Fatal("insert API key fixture")
+		t.Fatalf("insert API key fixture: %v", err)
 	}
 	return prefix
 }

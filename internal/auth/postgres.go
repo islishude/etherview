@@ -22,6 +22,15 @@ type PostgresRepository struct {
 	db *sql.DB
 }
 
+var apiKeyPGTypeMap = newAPIKeyPGTypeMap()
+
+func newAPIKeyPGTypeMap() *pgtype.Map {
+	typeMap := pgtype.NewMap()
+	var scopes []string
+	typeMap.TypeForValue(&scopes) // Prime the map before concurrent repository reads.
+	return typeMap
+}
+
 func NewPostgresRepository(db *sql.DB) (*PostgresRepository, error) {
 	if db == nil {
 		return nil, errors.New("API key repository database is nil")
@@ -57,7 +66,7 @@ func (r *PostgresRepository) ByPrefix(ctx context.Context, prefix string) (APIKe
 		LEFT JOIN users AS owner ON owner.id = key.owner_user_id
 		WHERE key.prefix = $1`, prefix).Scan(
 		&key.Prefix, &key.Digest, &key.Name, &key.Rate, &key.Burst,
-		&key.CreatedAt, &revoked, &owner, &scopes, &ownerActive,
+		&key.CreatedAt, &revoked, &owner, apiKeyPGTypeMap.SQLScanner(&scopes), &ownerActive,
 	)
 	if err == sql.ErrNoRows {
 		return APIKey{}, errors.New("API key not found")
@@ -132,7 +141,10 @@ func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacem
 		SELECT name, rate_per_second, burst, revoked_at, owner_user_id, scopes
 		FROM api_keys
 		WHERE prefix = $1
-		FOR UPDATE`, prefix).Scan(&name, &rate, &burst, &revoked, &owner, &scopes)
+		FOR UPDATE`, prefix).Scan(
+		&name, &rate, &burst, &revoked, &owner,
+		apiKeyPGTypeMap.SQLScanner(&scopes),
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("API key not found")
 	}
@@ -202,7 +214,7 @@ func (r *PostgresRepository) List(ctx context.Context) ([]APIKey, error) {
 		var scopes []string
 		if err := rows.Scan(
 			&key.Prefix, &key.Name, &key.Rate, &key.Burst, &key.CreatedAt,
-			&revoked, &owner, &scopes,
+			&revoked, &owner, apiKeyPGTypeMap.SQLScanner(&scopes),
 		); err != nil {
 			return nil, fmt.Errorf("scan API key: %w", err)
 		}

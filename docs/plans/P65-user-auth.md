@@ -1,6 +1,6 @@
 # P65 — User Authentication & Management
 
-Status: `blocked`
+Status: `done`
 
 ## Outcome
 
@@ -31,7 +31,7 @@ quota policy.
 | P65-T06 | done | P65-T03, P65-T04, P65-T05 | Config, Secret/Helm/Compose, operations docs, E2E, and security closure | race, E2E, security, Helm, and role-parity gates |
 | P65-T07 | done | P65-T05 | Direct SIWE login with inline injected-wallet selection and no separate preconnection step | Vitest, boundary, a11y, and embedded browser tests |
 | P65-T08 | done | P65-T03, P65-T05 | Preserve a valid writer-backed SIWE session across an SPA reload while retaining wallet-identity revocation after an observed connection | Vitest, embedded browser reload regression, and live Preview verification |
-| P65-T09 | blocked | P40, P50, P65-T08 | Scoped, user-owned API keys and a tabbed `/account` management workspace | Implementation and sandbox-safe gates pass; host PostgreSQL, browser, Docker compatibility, and role-parity gates await available host execution approval |
+| P65-T09 | done | P40, P50, P65-T08 | Scoped, user-owned API keys and a tabbed `/account` management workspace | PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race, and aggregate gates pass |
 
 ## Acceptance
 
@@ -67,13 +67,8 @@ quota policy.
 
 ## Current Blockers
 
-P65-T09's implementation and sandbox-safe gates are complete, but the required
-host PostgreSQL, Playwright, Docker schema/runtime, Hardhat, and Foundry E2E
-targets remain blocked because the host-execution approval was rejected after
-the Codex usage limit was reached. The item clears when host execution is
-available and those unchanged repository targets pass. P70 retains the
-repository-wide legal, dependency supply-chain, conformance, release-CI,
-artifact, and long-soak review.
+None for P65. P70 independently retains the repository-wide legal, dependency
+supply-chain, conformance, release-CI, artifact, and long-soak review.
 
 ## Evidence
 
@@ -232,12 +227,19 @@ artifact, and long-soak review.
   deep-links Overview, API Keys, and Billing, holds one-time plaintext only in
   dialog component state, and includes create, rotate, revoke, pagination,
   keyboard, dark-theme, and narrow-layout coverage.
-- P65-T09 sandbox-safe verification: `make test` passes all Go packages and 300
-  Vitest cases; `make test-race`, `make lint`, `make generate-check`, `make
-  plan-check`, `make helm-check`, `make security-check`, `git diff --check`, and
-  `make test-hardhat3-provider-compat` pass. Integration-tagged PostgreSQL tests
-  compile and skip without the disposable database URL. The unchanged host
-  `make test-e2e` request was rejected by the Codex usage limit before process
-  launch, so `make test-integration`, browser E2E, schema/runtime E2E, Docker
-  Hardhat/Foundry, deployment-check, and the aggregate `make check` remain
-  pending rather than being reported as passing.
+- P65-T09 PostgreSQL and browser closure: the first real database run exposed
+  the `database/sql` array codec boundary for `api_keys.scopes`; the pgx type
+  scanner fix then passes the complete owned PostgreSQL 18 `make
+  test-integration` suite. `make test-e2e` passes all 14 embedded-production
+  Chromium cases, including the `/account` deep links, bilingual API-key
+  lifecycle, one-time token handling, WCAG scan, and 390px overflow check.
+- P65-T09 production and compatibility closure: `make test-schema-e2e` passes
+  fresh production-image migration `0041`; `make test-runtime-e2e` passes the
+  monolith and complete six-role topologies. Real `make test-hardhat3-e2e` and
+  `make test-foundry-e2e` pass both topologies, including API-key creation,
+  verification submission/polling, and durable/public provenance. `make
+  deployment-check` and the aggregate `make check` pass.
+- P65-T09 common gates: `make test` passes all Go packages and 300 Vitest cases;
+  `make test-race`, `make lint`, `make generate-check`, `make plan-check`,
+  `make security-check`, `make test-hardhat3-provider-compat`, and `git diff
+  --check` pass.

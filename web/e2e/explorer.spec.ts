@@ -1455,14 +1455,17 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   ).toHaveLength(0);
 
   page.on("dialog", async (dialog) => dialog.accept());
-  await activateInView(page.getByRole("link", { name: "API Keys", exact: true }));
+  const accountSections = page.getByRole("navigation", { name: "Account sections" });
+  await activateInView(
+    accountSections.getByRole("link", { name: "API Keys", exact: true }),
+  );
   await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByText(/最小权限凭据/)).toBeVisible();
   await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
-  await activateInView(page.getByRole("button", { name: "切换到英文" }));
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("textbox", { name: "Key name" }).fill("Production verifier");
   await page.getByRole("checkbox", { name: /Contract verification/ }).check();
@@ -1485,7 +1488,9 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   );
   await activateInView(page.getByRole("button", { name: "I saved the token" }));
   await activateInView(page.getByRole("button", { name: "Revoke" }));
-  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
+  ).toBeVisible();
   const personalKeyWrites = authRequests.filter(
     ({ method, pathname }) =>
       pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
@@ -1496,7 +1501,9 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     expect(request.headers.origin).toBe("http://127.0.0.1:4173");
   }
 
-  await activateInView(page.getByRole("link", { name: "Billing", exact: true }));
+  await activateInView(
+    accountSections.getByRole("link", { name: "Billing", exact: true }),
+  );
 
   const personalHistory = page.locator(".billing-history-section");
   await expect(
@@ -1529,7 +1536,9 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     new URLSearchParams(personalCursorRequest?.search).has("user_id"),
   ).toBe(false);
 
-  await activateInView(page.getByRole("link", { name: "Overview", exact: true }));
+  await activateInView(
+    accountSections.getByRole("link", { name: "Overview", exact: true }),
+  );
   await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
   await activateInView(
     page.getByRole("button", { name: "Save profile" }),
