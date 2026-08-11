@@ -66,7 +66,12 @@ replace a required `make test-e2e` pass.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
   run Playwright against that embedded distribution. Local runs use installed
   Chrome; CI sets `PLAYWRIGHT_USE_BUNDLED=1` after installing Playwright
-  Chromium. On a restricted macOS automation host that denies Chromium's Mach
+  Chromium. The embedded Go API fixture includes independent EIP-7702
+  delegation and clearing transactions so the suite proves lazy Authorization
+  loading, deep links and cursor pages, applied/skipped tuples with raw
+  signatures, transaction-time delegate calldata identity, clearing without
+  stale fallback, bilingual keyboard accessibility, and 390px overflow safety.
+  On a restricted macOS automation host that denies Chromium's Mach
   bootstrap rendezvous, first rerun the unchanged target outside the process
   sandbox with approval. If that is unavailable, use
   `PLAYWRIGHT_USE_BUNDLED=1 PLAYWRIGHT_SINGLE_PROCESS=1 make test-e2e` only as
@@ -172,12 +177,22 @@ replace a required `make test-e2e` pass.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-six-application-role layouts. Each layout gets a
-  deterministic Anvil chain and a fresh PostgreSQL volume. The suite verifies
+  deterministic Prague chain from the default Foundry `v1.7.1` image and a
+  fresh PostgreSQL volume. The Go harness derives deterministic temporary
+  keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
+  type-4 transactions with go-ethereum, and deploys two delegate contracts; it
+  never depends on host `cast` or fixture private keys. The suite verifies
   an exact pending hash, contract creation and a failed call, all six deployed
   stage
   publications, a distinct competing-hash reorg with orphan/journal retention
-  and changed hourly analytics, API/SSE/SPA behavior, RPC and PostgreSQL outage
-  recovery, API process restart, bounded load, and final durable/public parity.
+  and changed hourly analytics, an orphaned delegation followed by canonical
+  delegation, redelegation, ordinary delegated execution, and clearing, plus
+  an applied and a signed `nonce_mismatch` tuple in one type-4 transaction.
+  It checks exact authorization signatures/outcomes, transaction-time calldata
+  execution identity, cleared EOA history/current binding, hidden skipped and
+  orphan authorizations, retained orphan PostgreSQL evidence, API/SSE/SPA
+  behavior, RPC and PostgreSQL outage recovery, API process restart, bounded
+  load, and final durable/public parity.
   The distributed scenario additionally proves config-only identity binding
   and continues after one of two sync and enrichment replicas is stopped. It
   then recreates the production API with a Go-generated, test-only temporary
@@ -185,9 +200,13 @@ replace a required `make test-e2e` pass.
   without exposing the key to worker roles or depending on the local mkcert
   trust store.
   A bounded test-only Go RPC adapter removes the orphan `blobGasPrice` field
-  emitted by the pinned Anvil fixture when `blobGasUsed` is absent; complete
-  blob-fee observations pass through unchanged, so production receipt
-  validation remains strict.
+  emitted by the pinned Anvil fixture when `blobGasUsed` is absent. Anvil
+  `v1.7.1` also omits geth-style prestate fields for cleared delegation code,
+  implicit delegated authority code, and the executed delegate account; the
+  adapter restores only the deterministic fixture evidence after verifying the
+  deployed runtime bytecode and exact delegated-call transaction hash.
+  Complete provider observations pass through unchanged, so production receipt
+  and trace validation remain strict.
   Successful Compose lifecycle output is captured rather than streamed, so the
   terminal shows only the current mode and phase. A failure prints the exact Go
   assertion followed by one bounded summary containing the mode, phase,

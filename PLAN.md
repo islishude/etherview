@@ -146,9 +146,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   opens History without eager binding or artifact reads. P61-T11 restores
   newest-first numeric delegation-history ordering and replaces cleared Code
   content with a lazy writer-authoritative Status surface. P61-T12 removes its
-  redundant History action while retaining the dedicated History tab. PostgreSQL, browser,
-  monolith/six-role runtime, real Hardhat verification, and common-gate results
-  remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
+  redundant History action while retaining the dedicated History tab. P61-T13
+  adds embedded-production browser coverage and real signed Prague/Anvil
+  type-4 transaction coverage across authorization outcomes, transaction-time
+  delegate identity, clearing, and canonical reorg retention. PostgreSQL,
+  browser, monolith/six-role runtime, real Hardhat verification, and common-gate
+  results remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

@@ -46,7 +46,7 @@ services:
         protocol: tcp
 
   runtime-fixture:
-    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-ghcr.io/foundry-rs/foundry:stable}
+    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-ghcr.io/foundry-rs/foundry:v1.7.1}
     environment:
       ANVIL_ARGS: ${ANVIL_ARGS:-}
     read_only: true

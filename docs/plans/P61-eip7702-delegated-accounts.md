@@ -48,6 +48,7 @@ this plan.
 | P61-T10 | done | P61-T09 | Keep canonical delegation history discoverable from an address after its current EIP-7702 delegation is cleared | state/query, generated API, Web, browser, integration, and common gates |
 | P61-T11 | done | P61-T10 | Order canonical delegation history by its numeric chain position and replace cleared-address Code content with a lazy current-status surface | Catalog, PostgreSQL, generated API, Web, browser, Preview, and common gates |
 | P61-T12 | done | P61-T11 | Remove the redundant History action from the cleared-address Status surface while retaining the dedicated History tab | Web, browser, generation, and common gates |
+| P61-T13 | done | P61-T12 | Add production-browser and real Prague/Anvil EIP-7702 transaction E2E coverage across authorization outcomes, transaction-time execution identity, clearing, and reorg canonicality | browser, runtime, topology-parity, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -88,6 +89,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] A cleared address retains the `#code` deep link as a lazy Status surface
       without stale code, interaction, or artifact capabilities; unavailable
       binding evidence remains distinct from clearing.
+- [x] Embedded-production browser fixtures and real Prague/Anvil production
+      topologies cover type-4 authorization outcomes, transaction-time
+      execution identity, clearing, and canonical reorg retention without host
+      signing tools or current-state fallback.
 
 ## Current Blockers
 
@@ -270,3 +275,25 @@ None.
   unchanged. CorePages 35/35, the full Web suite 298/298, `make generate-check`,
   host-authorized `make test-e2e` 14/14, and the final writable-cache `make
   check` pass. The six-role Preview was rebuilt and all services are healthy.
+- P61-T13 adds independent embedded-browser type-4 delegation and clearing
+  fixtures with lazy Authorizations pages, applied and `nonce_mismatch`
+  outcomes, raw signatures, transaction-time delegate calldata, clearing raw
+  calldata, bilingual 390px keyboard accessibility, and no current binding or
+  artifact fallback. The focused Playwright selection passes 2/2 and the final
+  host-authorized `make test-e2e` passes 16/16 Chromium tests.
+- The production runtime E2E now pins Foundry `v1.7.1` with Prague, derives and
+  funds deterministic temporary Go/geth keys, deploys and verifies two delegate
+  runtimes, and signs raw type-4 transactions without host `cast` or reusable
+  private keys. Its competing branch retains an orphan authorization; the
+  canonical branch proves applied plus signed skipped tuples, delegation,
+  redelegation, an ordinary delegated call, clearing, exact public outcomes and
+  execution identities, newest-first canonical history, hidden skipped/orphan
+  results, retained PostgreSQL orphan evidence, and durable/public topology
+  parity. A bounded test adapter normalizes documented Anvil trace omissions
+  without weakening production provider validation.
+- Host-authorized `make test-runtime-e2e` passes after rebuilding the production
+  image: monolith 31.72s and complete six-role distributed 41.47s. Writable-cache
+  `make generate-check`, `make plan-check`, and `git diff --check` pass. The final
+  host-authorized writable-cache `make check` passes generation, vet/lint,
+  ordinary and race tests, Web 301/301, vulnerability/secret/license checks,
+  Buildx/Compose validation, and Helm lint/render.

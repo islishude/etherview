@@ -702,9 +702,13 @@ operator intentionally approves another real payment.
 
 ### Runtime smoke verification fixture (development only)
 
-The runtime parity smoke target uses anvil from `ETHERVIEW_RUNTIME_FIXTURE_IMAGE`
-as its deterministic chain fixture source. Do not rely on hardcoded chain or
-block hashes in manual checks; capture identity from `eth_getBlockByNumber('0x0')`
-at runtime and reuse the captured hash.
+The runtime parity smoke target defaults `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to
+Foundry `v1.7.1` and starts anvil on the Prague hard fork as its deterministic
+chain fixture source. Its Go harness generates temporary EIP-7702 keys and raw
+transactions, funds them through `anvil_setBalance`, and does not require host
+`cast` or reusable private keys. Do not rely on hardcoded chain, block, or
+transaction hashes in manual checks; capture identity from
+`eth_getBlockByNumber('0x0')` and transaction submission results at runtime and
+reuse the captured values.
 Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
 defaults) and keep these test-only overrides out of production runbooks.

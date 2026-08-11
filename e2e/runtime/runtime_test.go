@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +36,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/loadtest"
@@ -52,63 +56,103 @@ const (
 	// it exercises receipt-authenticated contract creation without introducing
 	// another compiler or network dependency into this test.
 	noCBORCreationBytecode = "0x6080604052348015600e575f5ffd5b50603e80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
+	noCBORRuntimeBytecode  = "0x6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
 )
 
 type fixture struct {
-	genesisHash     string
-	accounts        []string
-	nativeHash      string
-	pendingHash     string
-	creationHash    string
-	failedHash      string
-	contractAddress string
-	blockOneHash    string
-	orphanHash      string
-	finalHash       string
-	finalHeight     uint64
-	snapshotID      string
+	genesisHash          string
+	accounts             []string
+	authorityKey         *ecdsa.PrivateKey
+	sponsorKey           *ecdsa.PrivateKey
+	skippedKey           *ecdsa.PrivateKey
+	authority            string
+	sponsor              string
+	skippedAuthority     string
+	nativeHash           string
+	pendingHash          string
+	creationHash         string
+	failedHash           string
+	contractAddress      string
+	delegateA            string
+	delegateB            string
+	orphanDelegationHash string
+	delegationHash       string
+	delegationAuths      []types.SetCodeAuthorization
+	redelegationHash     string
+	redelegationAuth     types.SetCodeAuthorization
+	delegatedCallHash    string
+	clearingHash         string
+	clearingAuth         types.SetCodeAuthorization
+	blockOneHash         string
+	orphanHash           string
+	finalHash            string
+	finalHeight          uint64
+	snapshotID           string
 }
 
 type durableSnapshot struct {
-	GenesisHash       string
-	Canonical         string
-	BlockCount        int64
-	TransactionCount  int64
-	ReceiptCount      int64
-	CompleteStages    int64
-	FailedStages      int64
-	UnpublishedOutbox int64
-	Checkpoint        string
-	OrphanCount       int64
-	Rollup            string
-	Statistics        string
+	GenesisHash          string
+	Canonical            string
+	BlockCount           int64
+	TransactionCount     int64
+	ReceiptCount         int64
+	CompleteStages       int64
+	FailedStages         int64
+	UnpublishedOutbox    int64
+	Checkpoint           string
+	OrphanCount          int64
+	Rollup               string
+	Statistics           string
+	Authorizations       int64
+	OrphanAuthorizations int64
 }
 
 type apiSnapshot struct {
-	ChainID            string
-	IndexedBlock       string
-	LatestBlock        string
-	CoreReady          bool
-	BackfillComplete   bool
-	Features           map[string]bool
-	BlockHashes        []string
-	TransactionHashes  []string
-	FromType           string
-	ContractType       string
-	CreationAddress    string
-	FailedStatus       string
-	TraceState         string
-	CalldataInput      string
-	CalldataResolution string
-	CalldataStatus     string
-	ChartAvailable     bool
-	SPA                bool
-	SSE                bool
+	ChainID                   string
+	IndexedBlock              string
+	LatestBlock               string
+	CoreReady                 bool
+	BackfillComplete          bool
+	Features                  map[string]bool
+	BlockHashes               []string
+	TransactionHashes         []string
+	FromType                  string
+	ContractType              string
+	CreationAddress           string
+	FailedStatus              string
+	TraceState                string
+	CalldataInput             string
+	CalldataResolution        string
+	CalldataStatus            string
+	ChartAvailable            bool
+	SPA                       bool
+	SSE                       bool
+	AuthorityType             string
+	HasDelegationHistory      bool
+	DelegationStatus          string
+	DelegationHistory         string
+	AuthorizationOutcomes     string
+	DelegatedResolution       string
+	DelegatedExecutionAddress string
+	ClearingResolution        string
+	ClearingStatus            string
 }
 
 type modeResult struct {
 	durable durableSnapshot
 	api     apiSnapshot
+}
+
+type eip7702APISnapshot struct {
+	authorityType             string
+	hasDelegationHistory      bool
+	delegationStatus          string
+	delegationHistory         string
+	authorizationOutcomes     string
+	delegatedResolution       string
+	delegatedExecutionAddress string
+	clearingResolution        string
+	clearingStatus            string
 }
 
 type harness struct {
@@ -179,6 +223,87 @@ func TestNormalizeAnvilReceipts(t *testing.T) {
 	second := receipts[1].(map[string]any)
 	if second["blobGasPrice"] != "0x2" || second["blobGasUsed"] != "0x3" {
 		t.Fatalf("complete blob fee observation changed: %#v", second)
+	}
+}
+
+func TestNormalizeAnvilClearedDelegations(t *testing.T) {
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"result": map[string]any{
+			"pre": map[string]any{
+				"0x0000000000000000000000000000000000000001": map[string]any{
+					"nonce": "0x2", "code": "0xef01000000000000000000000000000000000000000002",
+				},
+				"0x0000000000000000000000000000000000000003": map[string]any{
+					"nonce": "0x2", "code": "0x6000",
+				},
+			},
+			"post": map[string]any{
+				"0x0000000000000000000000000000000000000001": map[string]any{"nonce": "0x3"},
+				"0x0000000000000000000000000000000000000003": map[string]any{"nonce": "0x3"},
+			},
+		},
+	}
+	if got := normalizeAnvilClearedDelegations(payload); got != 1 {
+		t.Fatalf("normalized cleared delegations = %d, want 1", got)
+	}
+	result := payload["result"].(map[string]any)
+	post := result["post"].(map[string]any)
+	cleared := post["0x0000000000000000000000000000000000000001"].(map[string]any)
+	if cleared["code"] != "0x" {
+		t.Fatalf("cleared delegation post-state = %#v", cleared)
+	}
+	ordinary := post["0x0000000000000000000000000000000000000003"].(map[string]any)
+	if _, present := ordinary["code"]; present {
+		t.Fatalf("ordinary account post-state was changed: %#v", ordinary)
+	}
+}
+
+func TestNormalizeAnvilDelegationCodeEvidence(t *testing.T) {
+	delegate := "0x0000000000000000000000000000000000000002"
+	payload := map[string]any{
+		"result": map[string]any{
+			"pre": map[string]any{},
+			"post": map[string]any{
+				"0x0000000000000000000000000000000000000001": map[string]any{
+					"nonce": "0x1", "code": "0xef01000000000000000000000000000000000000000002",
+				},
+			},
+		},
+	}
+	if got := normalizeAnvilDelegationCodeEvidence(payload); got != 1 {
+		t.Fatalf("normalized delegate accounts = %d, want 1", got)
+	}
+	result := payload["result"].(map[string]any)
+	pre := result["pre"].(map[string]any)
+	account, ok := pre[delegate].(map[string]any)
+	if !ok || account["code"] != noCBORRuntimeBytecode {
+		t.Fatalf("delegate code evidence = %#v", pre[delegate])
+	}
+}
+
+func TestNormalizeAnvilDelegatedAuthorityEvidence(t *testing.T) {
+	authority := "0x0000000000000000000000000000000000000001"
+	delegate := common.HexToAddress("0x0000000000000000000000000000000000000002")
+	payload := map[string]any{
+		"result": map[string]any{
+			"pre":  map[string]any{},
+			"post": map[string]any{},
+		},
+	}
+	if got := normalizeAnvilDelegatedAuthorityEvidence(payload, authority, delegate.Hex()); got != 1 {
+		t.Fatalf("normalized delegated authorities = %d, want 1", got)
+	}
+	result := payload["result"].(map[string]any)
+	pre := result["pre"].(map[string]any)
+	account := pre[authority].(map[string]any)
+	if account["code"] != hexutil.Encode(types.AddressToDelegation(delegate)) {
+		t.Fatalf("delegated authority evidence = %#v", account)
+	}
+	hash := "0x1111111111111111111111111111111111111111111111111111111111111111"
+	request := []byte(`{"jsonrpc":"2.0","method":"debug_traceTransaction","params":["` + hash + `",{}]}`)
+	if got := debugTraceTransactionHash(request); got != hash {
+		t.Fatalf("debug trace transaction hash = %q, want %q", got, hash)
 	}
 }
 
@@ -315,9 +440,11 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
 		h.initializeFixture(ctx)
+		h.rpcProxy = startReceiptProxy(
+			t, "http://"+binding, h.fixture.authority, h.fixture.delegateA,
+		)
+		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
 
@@ -345,9 +472,17 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	var firstRollup string
 	h.enterPhase("first branch publication")
 	{
+		h.fixture.orphanDelegationHash = h.sendSetCodeTransaction(ctx, []types.SetCodeAuthorization{
+			h.signAuthorization(h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateA), 0),
+		}, common.FromHex("0x3fa4f245"))
 		h.mine(ctx, h.baseTimestamp+2)
 		h.fixture.orphanHash = h.latestBlock(ctx).Hash
 		h.waitCanonical(ctx, 2, h.fixture.orphanHash)
+		orphanReceipt := h.waitReceipt(ctx, h.fixture.orphanDelegationHash)
+		if orphanReceipt.Status != "0x1" {
+			t.Fatalf("orphan delegation receipt status = %s, want 0x1", orphanReceipt.Status)
+		}
+		h.assertCurrentDelegation(ctx, h.fixture.delegateA)
 		firstRollup = h.waitRollup(ctx, 2, "")
 	}
 
@@ -362,6 +497,13 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
 			"gas": "0x7a120", "gasPrice": "0x3b9aca00",
 		})
+		h.fixture.delegationAuths = []types.SetCodeAuthorization{
+			h.signAuthorization(h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateB), 0),
+			h.signAuthorization(h.fixture.skippedKey, common.HexToAddress(h.fixture.delegateA), 1),
+		}
+		h.fixture.delegationHash = h.sendSetCodeTransaction(
+			ctx, h.fixture.delegationAuths, common.FromHex("0x3fa4f245"),
+		)
 		h.mine(ctx, h.baseTimestamp+12)
 		replacement := h.latestBlock(ctx)
 		if replacement.Number != "0x2" {
@@ -375,19 +517,74 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			t.Fatalf("creation receipt = %#v", receipt)
 		}
 		h.fixture.contractAddress = receipt.ContractAddress
+		delegationReceipt := h.waitReceipt(ctx, h.fixture.delegationHash)
+		if delegationReceipt.Status != "0x1" {
+			t.Fatalf("canonical delegation receipt status = %s, want 0x1", delegationReceipt.Status)
+		}
+		h.waitCanonical(ctx, 2, replacement.Hash)
+		if h.rpcProxy.delegationCode.Load() == 0 {
+			t.Fatal("RPC fixture adapter did not restore Anvil's omitted delegate code evidence")
+		}
+		h.assertCurrentDelegation(ctx, h.fixture.delegateB)
+		h.assertCanonicalDelegationHistory(ctx, []string{"delegated"}, []string{h.fixture.delegationHash})
 		h.fixture.failedHash = h.sendTransaction(ctx, map[string]any{
 			"from": h.fixture.accounts[0], "to": h.fixture.contractAddress,
 			"data": "0xffffffff", "gas": "0x186a0", "gasPrice": "0x3b9aca00",
 		})
+		h.fixture.redelegationAuth = h.signAuthorization(
+			h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateA), 1,
+		)
+		h.fixture.redelegationHash = h.sendSetCodeTransaction(
+			ctx, []types.SetCodeAuthorization{h.fixture.redelegationAuth}, common.FromHex("0x3fa4f245"),
+		)
+		h.fixture.delegatedCallHash = h.sendDynamicFeeTransaction(
+			ctx,
+			common.HexToAddress(h.fixture.authority),
+			common.FromHex("0x3fa4f245"),
+		)
+		h.rpcProxy.delegatedCallHash.Store(strings.ToLower(h.fixture.delegatedCallHash))
 		h.mine(ctx, h.baseTimestamp+13)
-		finalBlock := h.latestBlock(ctx)
-		h.fixture.finalHash = finalBlock.Hash
-		h.fixture.finalHeight = mustDecodeUint64(t, finalBlock.Number)
-		h.waitCanonical(ctx, h.fixture.finalHeight, h.fixture.finalHash)
+		delegatedBlock := h.latestBlock(ctx)
+		delegatedHeight := mustDecodeUint64(t, delegatedBlock.Number)
+		h.waitCanonical(ctx, delegatedHeight, delegatedBlock.Hash)
 		failedReceipt := h.waitReceipt(ctx, h.fixture.failedHash)
 		if failedReceipt.Status != "0x0" {
 			t.Fatalf("failed call receipt status = %s, want 0x0", failedReceipt.Status)
 		}
+		for name, hash := range map[string]string{
+			"redelegation":   h.fixture.redelegationHash,
+			"delegated call": h.fixture.delegatedCallHash,
+		} {
+			if transactionReceipt := h.waitReceipt(ctx, hash); transactionReceipt.Status != "0x1" {
+				t.Fatalf("%s receipt status = %s, want 0x1", name, transactionReceipt.Status)
+			}
+		}
+		h.assertCurrentDelegation(ctx, h.fixture.delegateA)
+		if h.rpcProxy.delegatedAuthority.Load() == 0 {
+			t.Fatal("RPC fixture adapter did not restore Anvil's omitted delegated authority code")
+		}
+
+		h.fixture.clearingAuth = h.signAuthorization(h.fixture.authorityKey, common.Address{}, 2)
+		h.fixture.clearingHash = h.sendSetCodeTransaction(
+			ctx, []types.SetCodeAuthorization{h.fixture.clearingAuth}, common.FromHex("0x55241077"),
+		)
+		h.mine(ctx, h.baseTimestamp+14)
+		finalBlock := h.latestBlock(ctx)
+		h.fixture.finalHash = finalBlock.Hash
+		h.fixture.finalHeight = mustDecodeUint64(t, finalBlock.Number)
+		h.waitCanonical(ctx, h.fixture.finalHeight, h.fixture.finalHash)
+		if h.rpcProxy.clearedDelegation.Load() == 0 {
+			t.Fatal("RPC fixture adapter did not normalize Anvil's cleared delegation post-state")
+		}
+		if clearingReceipt := h.waitReceipt(ctx, h.fixture.clearingHash); clearingReceipt.Status != "0x1" {
+			t.Fatalf("clearing receipt status = %s, want 0x1", clearingReceipt.Status)
+		}
+		h.assertCurrentDelegation(ctx, "")
+		h.assertCanonicalDelegationHistory(
+			ctx,
+			[]string{"cleared", "redelegated", "delegated"},
+			[]string{h.fixture.clearingHash, h.fixture.redelegationHash, h.fixture.delegationHash},
+		)
 		h.waitReorgClosure(ctx)
 		changed := h.waitRollup(ctx, h.fixture.finalHeight, firstRollup)
 		t.Logf("reorg rollup changed from %s to %s", firstRollup, changed)
@@ -461,11 +658,11 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 func runtimeEnvironment(root string, baseTimestamp uint64) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
-		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:stable"),
+		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.7.1"),
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(
-				"--timestamp %d --hardfork shanghai --mnemonic-seed-unsafe 424242",
+				"--timestamp %d --hardfork prague --mnemonic-seed-unsafe 424242",
 				baseTimestamp,
 			),
 		),
@@ -496,11 +693,49 @@ func (h *harness) initializeFixture(ctx context.Context) {
 	if len(h.fixture.accounts) < 4 {
 		h.t.Fatalf("fixture returned %d accounts, want at least 4", len(h.fixture.accounts))
 	}
+	h.fixture.authorityKey = deterministicRuntimeKey(h.t, "etherview-runtime-eip7702-authority")
+	h.fixture.sponsorKey = deterministicRuntimeKey(h.t, "etherview-runtime-eip7702-sponsor")
+	h.fixture.skippedKey = deterministicRuntimeKey(h.t, "etherview-runtime-eip7702-skipped")
+	h.fixture.authority = crypto.PubkeyToAddress(h.fixture.authorityKey.PublicKey).Hex()
+	h.fixture.sponsor = crypto.PubkeyToAddress(h.fixture.sponsorKey.PublicKey).Hex()
+	h.fixture.skippedAuthority = crypto.PubkeyToAddress(h.fixture.skippedKey.PublicKey).Hex()
+	for _, funded := range []string{h.fixture.authority, h.fixture.sponsor} {
+		var accepted any
+		h.rpcCall(ctx, &accepted, "anvil_setBalance", funded, "0x56bc75e2d63100000")
+		var balance string
+		h.rpcCall(ctx, &balance, "eth_getBalance", funded, "latest")
+		if balance != "0x56bc75e2d63100000" {
+			h.t.Fatalf("EIP-7702 fixture balance for %s = %s", funded, balance)
+		}
+	}
 	h.fixture.nativeHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": h.fixture.accounts[1],
 		"value": "0x5", "gas": "0x5208", "gasPrice": "0x3b9aca00",
 	})
+	delegateAHash := h.sendTransaction(ctx, map[string]any{
+		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
+		"gas": "0x7a120", "gasPrice": "0x3b9aca00",
+	})
+	delegateBHash := h.sendTransaction(ctx, map[string]any{
+		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
+		"gas": "0x7a120", "gasPrice": "0x3b9aca00",
+	})
 	h.mine(ctx, h.baseTimestamp+1)
+	for hash, target := range map[string]*string{
+		delegateAHash: &h.fixture.delegateA,
+		delegateBHash: &h.fixture.delegateB,
+	} {
+		receipt := h.waitReceipt(ctx, hash)
+		if receipt.Status != "0x1" || !common.IsHexAddress(receipt.ContractAddress) {
+			h.t.Fatalf("delegate deployment receipt %s = %#v", hash, receipt)
+		}
+		*target = common.HexToAddress(receipt.ContractAddress).Hex()
+		var code string
+		h.rpcCall(ctx, &code, "eth_getCode", *target, "latest")
+		if !strings.EqualFold(code, noCBORRuntimeBytecode) {
+			h.t.Fatalf("delegate runtime code %s = %s", *target, code)
+		}
+	}
 	h.fixture.blockOneHash = h.latestBlock(ctx).Hash
 	h.fixture.pendingHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": h.fixture.accounts[2],
@@ -514,7 +749,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 
 func (h *harness) startTopology(ctx context.Context) {
 	if h.mode == "distributed" {
-		h.compose(ctx, "up", "-d", "--wait", "--wait-timeout", "90", "api")
+		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api")
 		h.connectDatabase(ctx)
 		waitFor(h.t, ctx, "config-only role identity bind", func() (bool, string, error) {
 			var identity string
@@ -525,11 +760,11 @@ func (h *harness) startTopology(ctx context.Context) {
 			want := "1:" + strings.TrimPrefix(h.fixture.genesisHash, "0x")
 			return err == nil && identity == want, identity, err
 		})
-		h.compose(ctx, "up", "-d", "--wait", "--wait-timeout", "90", "--remove-orphans",
+		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans",
 			"--scale", "sync=2", "--scale", "enrich=2")
 		return
 	}
-	h.compose(ctx, "up", "-d", "--wait", "--wait-timeout", "90", "--remove-orphans")
+	h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans")
 }
 
 func (h *harness) connectDatabase(ctx context.Context) {
@@ -735,6 +970,7 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 		var canonical string
 		var checkpoint int64
 		var complete, active, failed, unpublished int64
+		var failures string
 		err := h.db.QueryRow(ctx, `
 			SELECT
 				COALESCE((SELECT encode(block_hash, 'hex') FROM canonical_blocks
@@ -752,12 +988,19 @@ func (h *harness) waitCanonical(ctx context.Context, height uint64, hash string)
 					  AND state <> 'complete' AND (stage, stage_version) IN (
 					    ('proxy',$3::integer),('abi',$4::integer),('token',1),
 					    ('stats',3),('trace',$5::integer),('state_diff',$6::integer))),
-				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL)
+				(SELECT count(*) FROM transactional_outbox WHERE published_at IS NULL),
+				COALESCE((SELECT string_agg(stage || ':' || left(last_error, 512), ';' ORDER BY stage)
+					FROM published_block_stage_results
+					WHERE chain_id = 1 AND block_number = $1 AND block_hash = decode($2, 'hex')
+					  AND state <> 'complete'), '')
 		`, heightArgument, expected, enrich.ProxyStage.Version, enrich.ABIStage.Version,
 			enrich.TraceStage.Version, enrich.StateDiffStage.Version).
-			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished)
-		state := fmt.Sprintf("hash=%s checkpoint=%d complete=%d active=%d failed=%d outbox=%d",
-			canonical, checkpoint, complete, active, failed, unpublished)
+			Scan(&canonical, &checkpoint, &complete, &active, &failed, &unpublished, &failures)
+		state := fmt.Sprintf("hash=%s checkpoint=%d complete=%d active=%d failed=%d outbox=%d failures=%s",
+			canonical, checkpoint, complete, active, failed, unpublished, failures)
+		if err == nil && failures != "" {
+			err = errors.New(failures)
+		}
 		return err == nil && canonical == expected && checkpoint == int64(height) &&
 			complete == 6 && active == 0 && failed == 0 && unpublished == 0, state, err
 	})
@@ -906,15 +1149,25 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 				FROM chart_hourly_rollups WHERE chain_id = 1 ORDER BY bucket_start DESC LIMIT 1), ''),
 			COALESCE((SELECT count(*)::text || ':' || sum(transaction_count)::text || ':' ||
 				sum(failed_transaction_count)::text || ':' || sum(contract_creation_count)::text
-				FROM block_statistics WHERE chain_id = 1), '')
-	`).Scan(
+				FROM block_statistics WHERE chain_id = 1), ''),
+			(SELECT count(*) FROM eip7702_authorizations WHERE chain_id = 1),
+			(SELECT count(*) FROM eip7702_authorizations
+				WHERE chain_id = 1 AND transaction_hash = decode($1, 'hex'))
+	`, strings.TrimPrefix(h.fixture.orphanDelegationHash, "0x")).Scan(
 		&snapshot.GenesisHash, &snapshot.Canonical, &snapshot.BlockCount,
 		&snapshot.TransactionCount, &snapshot.ReceiptCount, &snapshot.CompleteStages,
 		&snapshot.FailedStages, &snapshot.UnpublishedOutbox, &snapshot.Checkpoint,
 		&snapshot.OrphanCount, &snapshot.Rollup, &snapshot.Statistics,
+		&snapshot.Authorizations, &snapshot.OrphanAuthorizations,
 	)
 	if err != nil {
 		h.t.Fatal(err)
+	}
+	if snapshot.Authorizations != 5 || snapshot.OrphanAuthorizations != 1 {
+		h.t.Fatalf(
+			"EIP-7702 durable authorization counts = total:%d orphan:%d, want total:5 orphan:1",
+			snapshot.Authorizations, snapshot.OrphanAuthorizations,
+		)
 	}
 	return snapshot
 }
@@ -945,6 +1198,7 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		string(calldata.Data.Decoding.Status) != "unavailable" {
 		h.t.Fatalf("transaction calldata execution = %#v", calldata.Data.Execution)
 	}
+	eip7702 := h.captureEIP7702API(ctx)
 	chart := h.requireHTTPStatus(ctx, "/api/v1/stats/charts/overview", http.StatusOK)
 	_ = chart.Body.Close()
 	spa := h.requireHTTPStatus(ctx, "/", http.StatusOK)
@@ -980,6 +1234,178 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		CalldataResolution: string(calldata.Data.Execution.Resolution),
 		CalldataStatus:     string(calldata.Data.Decoding.Status), ChartAvailable: true,
 		SPA: bytes.Contains(body, []byte("<div id=\"root\">")), SSE: true,
+		AuthorityType:             eip7702.authorityType,
+		HasDelegationHistory:      eip7702.hasDelegationHistory,
+		DelegationStatus:          eip7702.delegationStatus,
+		DelegationHistory:         eip7702.delegationHistory,
+		AuthorizationOutcomes:     eip7702.authorizationOutcomes,
+		DelegatedResolution:       eip7702.delegatedResolution,
+		DelegatedExecutionAddress: eip7702.delegatedExecutionAddress,
+		ClearingResolution:        eip7702.clearingResolution,
+		ClearingStatus:            eip7702.clearingStatus,
+	}
+}
+
+func (h *harness) captureEIP7702API(ctx context.Context) eip7702APISnapshot {
+	h.t.Helper()
+	var authority gen.AddressResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.authority, &authority)
+	if string(authority.Data.Type) != "eoa" || !authority.Data.HasDelegationHistory {
+		h.t.Fatalf("cleared EIP-7702 authority = %#v", authority.Data)
+	}
+	var binding gen.DelegationBindingResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.authority+"/delegation", &binding)
+	if binding.Data.Status != gen.DelegationBindingStatusNotDelegated || binding.Data.Delegate != nil {
+		h.t.Fatalf("final EIP-7702 binding = %#v", binding.Data)
+	}
+
+	history := make([]gen.DelegationHistoryItem, 0, 3)
+	cursor := ""
+	for {
+		path := "/api/v1/addresses/" + h.fixture.authority + "/delegations?limit=1"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var page gen.DelegationHistoryResponse
+		h.mustGetJSON(ctx, path, &page)
+		history = append(history, page.Data...)
+		if page.Meta.NextCursor == nil {
+			break
+		}
+		cursor = string(*page.Meta.NextCursor)
+		if len(history) > 3 {
+			h.t.Fatalf("delegation history cursor did not terminate: %#v", history)
+		}
+	}
+	expectedKinds := []string{"cleared", "redelegated", "delegated"}
+	expectedHashes := []string{h.fixture.clearingHash, h.fixture.redelegationHash, h.fixture.delegationHash}
+	if len(history) != len(expectedKinds) {
+		h.t.Fatalf("final delegation history = %#v", history)
+	}
+	historySummary := make([]string, 0, len(history))
+	for index, item := range history {
+		if string(item.Kind) != expectedKinds[index] ||
+			!strings.EqualFold(string(item.TransactionHash), expectedHashes[index]) ||
+			strings.EqualFold(string(item.TransactionHash), h.fixture.orphanDelegationHash) {
+			h.t.Fatalf("final delegation history[%d] = %#v", index, item)
+		}
+		historySummary = append(historySummary, string(item.Kind)+":"+string(item.TransactionHash))
+	}
+	if history[0].PreviousDelegate != nil || history[1].PreviousDelegate == nil ||
+		!strings.EqualFold(string(*history[1].PreviousDelegate), h.fixture.delegateB) ||
+		history[2].PreviousDelegate != nil {
+		h.t.Fatalf("delegation history previous delegates = %#v", history)
+	}
+
+	var delegation gen.TransactionAuthorizationResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.delegationHash+"/authorizations?limit=100", &delegation)
+	if delegation.Data.State != gen.TransactionAuthorizationsStateComplete || len(delegation.Data.Items) != 2 {
+		h.t.Fatalf("initial transaction authorizations = %#v", delegation.Data)
+	}
+	applied := delegation.Data.Items[0]
+	skipped := delegation.Data.Items[1]
+	assertRuntimeAuthorization(
+		h.t, applied, h.fixture.delegationAuths[0], "0",
+		gen.EIP7702AuthorizationApplicationStatusApplied, "",
+	)
+	assertRuntimeAuthorization(
+		h.t, skipped, h.fixture.delegationAuths[1], "1",
+		gen.EIP7702AuthorizationApplicationStatusSkipped, "nonce_mismatch",
+	)
+
+	for _, expected := range []struct {
+		hash          string
+		authorization types.SetCodeAuthorization
+	}{
+		{hash: h.fixture.redelegationHash, authorization: h.fixture.redelegationAuth},
+		{hash: h.fixture.clearingHash, authorization: h.fixture.clearingAuth},
+	} {
+		var response gen.TransactionAuthorizationResponse
+		h.mustGetJSON(ctx, "/api/v1/transactions/"+expected.hash+"/authorizations?limit=100", &response)
+		if response.Data.State != gen.TransactionAuthorizationsStateComplete || len(response.Data.Items) != 1 {
+			h.t.Fatalf("transaction %s authorizations = %#v", expected.hash, response.Data)
+		}
+		assertRuntimeAuthorization(
+			h.t, response.Data.Items[0], expected.authorization, "0",
+			gen.EIP7702AuthorizationApplicationStatusApplied, "",
+		)
+	}
+
+	var setCodeTransaction gen.TransactionResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.delegationHash, &setCodeTransaction)
+	if setCodeTransaction.Data.Type == nil || *setCodeTransaction.Data.Type != "4" {
+		h.t.Fatalf("EIP-7702 transaction type = %#v", setCodeTransaction.Data.Type)
+	}
+
+	delegatedCalls := []struct {
+		hash     string
+		delegate string
+	}{
+		{hash: h.fixture.delegationHash, delegate: h.fixture.delegateB},
+		{hash: h.fixture.redelegationHash, delegate: h.fixture.delegateA},
+		{hash: h.fixture.delegatedCallHash, delegate: h.fixture.delegateA},
+	}
+	for _, call := range delegatedCalls {
+		var response gen.TransactionCalldataResponse
+		h.mustGetJSON(ctx, "/api/v1/transactions/"+call.hash+"/calldata", &response)
+		if response.Data.Execution.Resolution != gen.TraceExecutionResolutionEip7702Delegate ||
+			!strings.EqualFold(string(response.Data.Execution.ContextAddress), h.fixture.authority) ||
+			response.Data.Execution.Address == nil ||
+			!strings.EqualFold(string(*response.Data.Execution.Address), call.delegate) {
+			h.t.Fatalf("delegated calldata %s = %#v", call.hash, response.Data)
+		}
+	}
+	var clearing gen.TransactionCalldataResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.clearingHash+"/calldata", &clearing)
+	if clearing.Data.Input != "0x55241077" || string(clearing.Data.Execution.Resolution) != "empty" ||
+		clearing.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusNotApplicable ||
+		clearing.Data.Execution.Address != nil || clearing.Data.Execution.CodeHash != nil {
+		h.t.Fatalf("clearing calldata = %#v", clearing.Data)
+	}
+
+	return eip7702APISnapshot{
+		authorityType:             string(authority.Data.Type),
+		hasDelegationHistory:      authority.Data.HasDelegationHistory,
+		delegationStatus:          string(binding.Data.Status),
+		delegationHistory:         strings.Join(historySummary, ","),
+		authorizationOutcomes:     string(applied.ApplicationStatus) + "," + string(skipped.ApplicationStatus) + ":" + string(*skipped.SkipReason),
+		delegatedResolution:       string(gen.TraceExecutionResolutionEip7702Delegate),
+		delegatedExecutionAddress: h.fixture.delegateA,
+		clearingResolution:        string(clearing.Data.Execution.Resolution),
+		clearingStatus:            string(clearing.Data.Decoding.Status),
+	}
+}
+
+func assertRuntimeAuthorization(
+	t *testing.T,
+	actual gen.EIP7702Authorization,
+	expected types.SetCodeAuthorization,
+	index string,
+	applicationStatus gen.EIP7702AuthorizationApplicationStatus,
+	skipReason string,
+) {
+	t.Helper()
+	authority, err := expected.Authority()
+	if err != nil {
+		t.Fatalf("recover expected authorization authority: %v", err)
+	}
+	expectedR := common.BytesToHash(expected.R.Bytes()).Hex()
+	expectedS := common.BytesToHash(expected.S.Bytes()).Hex()
+	if string(actual.Index) != index || string(actual.ChainId) != expected.ChainID.ToBig().String() ||
+		string(actual.Nonce) != strconv.FormatUint(expected.Nonce, 10) ||
+		!strings.EqualFold(string(actual.Delegate), expected.Address.Hex()) ||
+		actual.Authority == nil || !strings.EqualFold(string(*actual.Authority), authority.Hex()) ||
+		actual.YParity != int(expected.V) || !strings.EqualFold(string(actual.R), expectedR) ||
+		!strings.EqualFold(string(actual.S), expectedS) ||
+		actual.SignatureStatus != gen.EIP7702AuthorizationSignatureStatusValid ||
+		actual.ApplicationStatus != applicationStatus {
+		t.Fatalf("authorization = %#v, want exact signed tuple %#v", actual, expected)
+	}
+	if skipReason == "" && actual.SkipReason != nil {
+		t.Fatalf("authorization skip reason = %q, want absent", *actual.SkipReason)
+	}
+	if skipReason != "" && (actual.SkipReason == nil || string(*actual.SkipReason) != skipReason) {
+		t.Fatalf("authorization skip reason = %#v, want %q", actual.SkipReason, skipReason)
 	}
 }
 
@@ -994,21 +1420,34 @@ type rpcReceipt struct {
 }
 
 type receiptProxy struct {
-	upstream   string
-	listener   net.Listener
-	server     *http.Server
-	client     *http.Client
-	normalized atomic.Uint64
+	upstream           string
+	authority          string
+	delegate           string
+	listener           net.Listener
+	server             *http.Server
+	client             *http.Client
+	normalized         atomic.Uint64
+	clearedDelegation  atomic.Uint64
+	delegationCode     atomic.Uint64
+	delegatedAuthority atomic.Uint64
+	delegatedCallHash  atomic.Value
 }
 
-func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
+func startReceiptProxy(t *testing.T, upstream string, eip7702Identity ...string) *receiptProxy {
 	t.Helper()
+	if len(eip7702Identity) != 0 && len(eip7702Identity) != 2 {
+		t.Fatalf("EIP-7702 RPC fixture identity has %d fields, want 0 or 2", len(eip7702Identity))
+	}
+	authority, delegate := "", ""
+	if len(eip7702Identity) == 2 {
+		authority, delegate = eip7702Identity[0], eip7702Identity[1]
+	}
 	listener, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := &receiptProxy{
-		upstream: upstream,
+		upstream: upstream, authority: strings.ToLower(authority), delegate: delegate,
 		listener: listener,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
@@ -1017,6 +1456,7 @@ func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
 			},
 		},
 	}
+	proxy.delegatedCallHash.Store("")
 	proxy.server = &http.Server{
 		Handler:           proxy,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -1079,6 +1519,11 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	p.normalized.Add(normalizeAnvilReceipts(payload))
+	if hash := debugTraceTransactionHash(body); hash != "" && hash == p.delegatedCallHash.Load().(string) {
+		p.delegatedAuthority.Add(normalizeAnvilDelegatedAuthorityEvidence(payload, p.authority, p.delegate))
+	}
+	p.delegationCode.Add(normalizeAnvilDelegationCodeEvidence(payload))
+	p.clearedDelegation.Add(normalizeAnvilClearedDelegations(payload))
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		http.Error(writer, "encode normalized JSON-RPC response", http.StatusBadGateway)
@@ -1086,6 +1531,138 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	_, _ = writer.Write(encoded)
+}
+
+func normalizeAnvilDelegatedAuthorityEvidence(value any, authority, delegate string) uint64 {
+	switch typed := value.(type) {
+	case []any:
+		var normalized uint64
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegatedAuthorityEvidence(item, authority, delegate)
+		}
+		return normalized
+	case map[string]any:
+		var normalized uint64
+		pre, hasPre := typed["pre"].(map[string]any)
+		_, hasPost := typed["post"].(map[string]any)
+		if hasPre && hasPost {
+			account, present := pre[authority].(map[string]any)
+			if !present {
+				account = map[string]any{}
+				pre[authority] = account
+			}
+			_, hasCode := account["code"]
+			if !hasCode {
+				account["code"] = hexutil.Encode(types.AddressToDelegation(common.HexToAddress(delegate)))
+				normalized++
+			}
+		}
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegatedAuthorityEvidence(item, authority, delegate)
+		}
+		return normalized
+	default:
+		return 0
+	}
+}
+
+func debugTraceTransactionHash(body []byte) string {
+	var request struct {
+		Method string            `json:"method"`
+		Params []json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(body, &request) != nil || request.Method != "debug_traceTransaction" || len(request.Params) == 0 {
+		return ""
+	}
+	var hash string
+	if json.Unmarshal(request.Params[0], &hash) != nil || !common.IsHexHash(hash) {
+		return ""
+	}
+	return strings.ToLower(hash)
+}
+
+func normalizeAnvilDelegationCodeEvidence(value any) uint64 {
+	switch typed := value.(type) {
+	case []any:
+		var normalized uint64
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegationCodeEvidence(item)
+		}
+		return normalized
+	case map[string]any:
+		var normalized uint64
+		pre, hasPre := typed["pre"].(map[string]any)
+		post, hasPost := typed["post"].(map[string]any)
+		if hasPre && hasPost {
+			delegates := make(map[string]struct{})
+			for _, accounts := range []map[string]any{pre, post} {
+				for _, value := range accounts {
+					account, ok := value.(map[string]any)
+					code, hasCode := account["code"].(string)
+					decoded := common.FromHex(code)
+					if ok && hasCode && len(decoded) == 23 && bytes.Equal(decoded[:3], []byte{0xef, 0x01, 0x00}) {
+						delegates[strings.ToLower(common.BytesToAddress(decoded[3:]).Hex())] = struct{}{}
+					}
+				}
+			}
+			for delegate := range delegates {
+				if delegate == strings.ToLower((common.Address{}).Hex()) {
+					continue
+				}
+				if _, exists := pre[delegate]; !exists {
+					// Anvil v1.7.1 omits the account whose code an EIP-7702
+					// delegation executes. Both delegates in this fixture are
+					// deployed and verified against this exact runtime code.
+					pre[delegate] = map[string]any{"code": noCBORRuntimeBytecode}
+					normalized++
+				}
+			}
+		}
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegationCodeEvidence(item)
+		}
+		return normalized
+	default:
+		return 0
+	}
+}
+
+func normalizeAnvilClearedDelegations(value any) uint64 {
+	switch typed := value.(type) {
+	case []any:
+		var normalized uint64
+		for _, item := range typed {
+			normalized += normalizeAnvilClearedDelegations(item)
+		}
+		return normalized
+	case map[string]any:
+		var normalized uint64
+		pre, hasPre := typed["pre"].(map[string]any)
+		post, hasPost := typed["post"].(map[string]any)
+		if hasPre && hasPost {
+			for address, preValue := range pre {
+				preAccount, preOK := preValue.(map[string]any)
+				postAccount, postOK := post[address].(map[string]any)
+				code, hasCode := preAccount["code"].(string)
+				_, postHasCode := postAccount["code"]
+				_, postHasNonce := postAccount["nonce"]
+				if preOK && postOK && hasCode && strings.HasPrefix(strings.ToLower(code), "0xef0100") &&
+					!postHasCode && postHasNonce {
+					// Anvil v1.7.1 omits code when a Prague authorization clears
+					// delegation. geth's diffMode contract uses an explicit empty
+					// value for a changed scalar, so normalize only this fixture gap.
+					postAccount["code"] = "0x"
+					normalized++
+				}
+			}
+		}
+		for _, item := range typed {
+			normalized += normalizeAnvilClearedDelegations(item)
+		}
+		return normalized
+	default:
+		return 0
+	}
 }
 
 func normalizeAnvilReceipts(value any) uint64 {
@@ -1115,6 +1692,101 @@ func normalizeAnvilReceipts(value any) uint64 {
 	}
 }
 
+func deterministicRuntimeKey(t *testing.T, seed string) *ecdsa.PrivateKey {
+	t.Helper()
+	key, err := crypto.ToECDSA(crypto.Keccak256([]byte(seed)))
+	if err != nil {
+		t.Fatalf("derive deterministic runtime key: %v", err)
+	}
+	return key
+}
+
+func (h *harness) signAuthorization(
+	key *ecdsa.PrivateKey,
+	delegate common.Address,
+	nonce uint64,
+) types.SetCodeAuthorization {
+	h.t.Helper()
+	authorization, err := types.SignSetCode(key, types.SetCodeAuthorization{
+		ChainID: *uint256.NewInt(1),
+		Address: delegate,
+		Nonce:   nonce,
+	})
+	if err != nil {
+		h.t.Fatalf("sign EIP-7702 authorization: %v", err)
+	}
+	return authorization
+}
+
+func (h *harness) sendSetCodeTransaction(
+	ctx context.Context,
+	authorizations []types.SetCodeAuthorization,
+	data []byte,
+) string {
+	h.t.Helper()
+	transaction := types.NewTx(&types.SetCodeTx{
+		ChainID:    uint256.NewInt(1),
+		Nonce:      h.pendingNonce(ctx, h.fixture.sponsor),
+		GasTipCap:  uint256.NewInt(1_000_000_000),
+		GasFeeCap:  uint256.NewInt(10_000_000_000),
+		Gas:        500_000,
+		To:         common.HexToAddress(h.fixture.authority),
+		Value:      uint256.NewInt(0),
+		Data:       data,
+		AccessList: types.AccessList{},
+		AuthList:   authorizations,
+	})
+	return h.sendRawTransaction(ctx, transaction, h.fixture.sponsorKey)
+}
+
+func (h *harness) sendDynamicFeeTransaction(
+	ctx context.Context,
+	to common.Address,
+	data []byte,
+) string {
+	h.t.Helper()
+	transaction := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   big.NewInt(1),
+		Nonce:     h.pendingNonce(ctx, h.fixture.sponsor),
+		GasTipCap: big.NewInt(1_000_000_000),
+		GasFeeCap: big.NewInt(10_000_000_000),
+		Gas:       500_000,
+		To:        &to,
+		Value:     big.NewInt(0),
+		Data:      data,
+	})
+	return h.sendRawTransaction(ctx, transaction, h.fixture.sponsorKey)
+}
+
+func (h *harness) sendRawTransaction(
+	ctx context.Context,
+	transaction *types.Transaction,
+	key *ecdsa.PrivateKey,
+) string {
+	h.t.Helper()
+	signed, err := types.SignTx(transaction, types.LatestSignerForChainID(big.NewInt(1)), key)
+	if err != nil {
+		h.t.Fatalf("sign raw transaction: %v", err)
+	}
+	payload, err := signed.MarshalBinary()
+	if err != nil {
+		h.t.Fatalf("encode raw transaction: %v", err)
+	}
+	var hash string
+	h.rpcCall(ctx, &hash, "eth_sendRawTransaction", hexutil.Encode(payload))
+	if !common.IsHexHash(hash) {
+		h.t.Fatalf("invalid raw transaction hash %q", hash)
+	}
+	return hash
+}
+
+func (h *harness) pendingNonce(ctx context.Context, address string) uint64 {
+	h.t.Helper()
+	var nonce hexutil.Uint64
+	h.rpcCall(ctx, &nonce, "eth_getTransactionCount", address, "pending")
+	return uint64(nonce)
+}
+
 func (h *harness) sendTransaction(ctx context.Context, transaction map[string]any) string {
 	var hash string
 	h.rpcCall(ctx, &hash, "eth_sendTransaction", transaction)
@@ -1122,6 +1794,43 @@ func (h *harness) sendTransaction(ctx context.Context, transaction map[string]an
 		h.t.Fatalf("invalid transaction hash %q", hash)
 	}
 	return hash
+}
+
+func (h *harness) assertCurrentDelegation(ctx context.Context, delegate string) {
+	h.t.Helper()
+	var response gen.DelegationBindingResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.authority+"/delegation", &response)
+	if delegate == "" {
+		if response.Data.Status != gen.DelegationBindingStatusNotDelegated || response.Data.Delegate != nil {
+			h.t.Fatalf("cleared delegation binding = %#v", response.Data)
+		}
+		return
+	}
+	if response.Data.Status != gen.DelegationBindingStatusDelegated || response.Data.Delegate == nil ||
+		!strings.EqualFold(string(*response.Data.Delegate), delegate) {
+		h.t.Fatalf("delegation binding = %#v, want delegate %s", response.Data, delegate)
+	}
+}
+
+func (h *harness) assertCanonicalDelegationHistory(
+	ctx context.Context,
+	kinds []string,
+	hashes []string,
+) {
+	h.t.Helper()
+	var response gen.DelegationHistoryResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.authority+"/delegations?limit=100", &response)
+	if len(response.Data) != len(kinds) || len(kinds) != len(hashes) {
+		h.t.Fatalf("delegation history = %#v, want kinds=%v hashes=%v", response.Data, kinds, hashes)
+	}
+	for index, item := range response.Data {
+		if string(item.Kind) != kinds[index] || !strings.EqualFold(string(item.TransactionHash), hashes[index]) {
+			h.t.Fatalf("delegation history[%d] = %#v, want kind=%s hash=%s", index, item, kinds[index], hashes[index])
+		}
+		if strings.EqualFold(string(item.TransactionHash), h.fixture.orphanDelegationHash) {
+			h.t.Fatalf("orphan authorization leaked into canonical history: %#v", item)
+		}
+	}
 }
 
 func (h *harness) mine(ctx context.Context, timestamp uint64) {

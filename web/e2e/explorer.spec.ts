@@ -18,6 +18,8 @@ const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
 const oldImplementation = "0x4000000000000000000000000000000000000040";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
+const delegationTransactionHash = `0x${"e".repeat(64)}`;
+const clearingTransactionHash = `0x${"f".repeat(64)}`;
 const readAPIKey = "ev_e2e_read";
 const verificationJobID = "123e4567-e89b-42d3-a456-426614174000";
 const transactionCursor = "transactions/snapshot?generation=7 + page=2&exact=true/#";
@@ -174,6 +176,93 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue("0x3fa4f245");
   await expect(rawChinese.getByRole("button", { name: "按 UTF-8 查看" })).toBeVisible();
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}`);
+});
+
+test("EIP-7702 transaction keeps authorization outcomes lazy and uses transaction-time delegate code", async ({ page }) => {
+  const requestedURLs: URL[] = [];
+  page.on("request", (request) => requestedURLs.push(new URL(request.url())));
+
+  await page.goto(`/tx/${delegationTransactionHash}`);
+  const transactionTabs = page.getByRole("tablist", { name: "Transaction detail sections" });
+  await expect(transactionTabs.getByRole("tab", { name: "Authorizations" })).toBeVisible();
+  await expect(transactionTabs.getByRole("tab", { name: "Access list" })).toBeVisible();
+  await expect(transactionTabs.getByRole("tab", { name: "Blob" })).toHaveCount(0);
+  expect(requestedURLs.map((url) => url.pathname)).not.toContain(
+    `/api/v1/transactions/${delegationTransactionHash}/authorizations`,
+  );
+
+  await activateInView(page.getByText("More details", { exact: true }));
+  const typeLabel = page.getByText("Type", { exact: true });
+  const typeRow = typeLabel.locator("..");
+  await expect(typeRow.getByText("EIP-7702", { exact: true })).toBeVisible();
+  const decoded = page.getByRole("region", { name: "Decoded calldata · setValue(uint256)" });
+  await expect(decoded.getByText("EIP-7702 delegate code", { exact: true })).toBeVisible();
+  await expect(decoded.getByRole("link", { name: delegatedDelegate })).toHaveCount(2);
+  await expect(decoded.getByText("42", { exact: true })).toBeVisible();
+  expect(requestedURLs.map((url) => url.pathname)).not.toContain(
+    `/api/v1/addresses/${delegatedAddress}/delegation`,
+  );
+  expect(requestedURLs.map((url) => url.pathname)).not.toContain(
+    `/api/v1/contracts/${delegatedAddress}/verification`,
+  );
+
+  await activateInView(transactionTabs.getByRole("tab", { name: "Authorizations" }));
+  await expect(page).toHaveURL(new RegExp(`\\?tab=authorizations$`));
+  const applied = page.locator("article.transaction-log").filter({ hasText: "Authorization #0" });
+  await expect(applied.getByText("applied", { exact: true })).toBeVisible();
+  await expect(applied.getByText(delegatedAddress, { exact: true })).toBeVisible();
+  await expect(applied.getByText(delegatedDelegate, { exact: true })).toBeVisible();
+  await activateInView(applied.getByText("Raw authorization signature", { exact: true }));
+  await expect(applied.getByText("yParity", { exact: true })).toBeVisible();
+  await expect(applied.getByText(codeHash, { exact: true })).toBeVisible();
+
+  const authorizationPagination = page.getByRole("navigation", { name: "Authorizations" });
+  await expect(authorizationPagination.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await activateInView(authorizationPagination.getByRole("button", { name: "Next page" }));
+  const skipped = page.locator("article.transaction-log").filter({ hasText: "Authorization #1" });
+  await expect(skipped.getByText("skipped", { exact: true })).toBeVisible();
+  await expect(skipped.getByText("valid", { exact: true })).toBeVisible();
+  await expect(skipped.getByText("nonce_mismatch", { exact: true })).toBeVisible();
+  expect(requestedURLs.some((url) =>
+    url.pathname === `/api/v1/transactions/${delegationTransactionHash}/authorizations`
+    && url.searchParams.get("cursor") === "authorization-next")).toBe(true);
+
+  await page.goto(`/tx/${delegationTransactionHash}?tab=authorizations`);
+  const deepLinkedTab = page.getByRole("tablist", { name: "Transaction detail sections" })
+    .getByRole("tab", { name: "Authorizations" });
+  await expect(deepLinkedTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("article.transaction-log").filter({ hasText: "Authorization #0" })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByRole("tablist", { name: "交易详情分区" }).getByRole("tab", { name: "授权" })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "EIP-7702 authorizations in Chinese narrow mode");
+});
+
+test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegate code", async ({ page }) => {
+  const requestedPaths: string[] = [];
+  page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
+
+  await page.goto(`/tx/${clearingTransactionHash}`);
+  expect(requestedPaths).not.toContain(`/api/v1/transactions/${clearingTransactionHash}/authorizations`);
+  await activateInView(page.getByText("More details", { exact: true }));
+  await expect(page.getByText(/No executable code at transaction execution time/u)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue("0x55241077");
+  await expect(page.getByText("EIP-7702 delegate code", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: delegatedDelegate })).toHaveCount(0);
+
+  await activateInView(page.getByRole("tab", { name: "Authorizations" }));
+  const clearing = page.locator("article.transaction-log").filter({ hasText: "Authorization #0" });
+  await expect(clearing.getByText("applied", { exact: true })).toBeVisible();
+  await expect(clearing.getByText("0x0000000000000000000000000000000000000000", { exact: true })).toBeVisible();
+  expect(requestedPaths).toContain(`/api/v1/transactions/${clearingTransactionHash}/authorizations`);
+  expect(requestedPaths).not.toContain(`/api/v1/addresses/${delegatedAddress}/delegation`);
+  expect(requestedPaths).not.toContain(`/api/v1/contracts/${delegatedDelegate}/verification`);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByText("授权 #0", { exact: true })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "EIP-7702 clearing in Chinese narrow mode");
 });
 
 test("trace and log disclosures retain raw data and exact execution provenance", async ({ page }) => {

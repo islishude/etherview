@@ -36,6 +36,8 @@ const (
 	testTransactionHash       = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	secondTransactionHash     = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	pendingTransactionHash    = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	delegationTransactionHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	clearingTransactionHash   = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	parentHash                = "0x0000000000000000000000000000000000000000000000000000000000000000"
 	blockCursor               = "blocks/snapshot + page=2"
 	transactionCursor         = "transactions/snapshot?generation=7 + page=2&exact=true/#"
@@ -160,32 +162,92 @@ func main() {
 			writeEnvelope(response, transaction(testTransactionHash, secondHash, "2", "safe"))
 		case secondTransactionHash:
 			writeEnvelope(response, contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized"))
+		case delegationTransactionHash:
+			writeEnvelope(response, setCodeTransaction(delegationTransactionHash, 1, delegatedCalldata()))
+		case clearingTransactionHash:
+			writeEnvelope(response, setCodeTransaction(clearingTransactionHash, 2, "0x55241077"))
 		default:
 			writeNotFound(response)
 		}
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/calldata", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("hash") != testTransactionHash {
+		switch request.PathValue("hash") {
+		case testTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": request.PathValue("hash"), "transaction_index": "0", "state": "complete",
+				"input": "0x3fa4f245",
+				"execution": map[string]any{
+					"context_address": testAddress, "address": testAddress,
+					"code_hash": testHash, "resolution": "direct",
+				},
+				"decoding": map[string]any{
+					"status": "decoded", "function_name": "value", "signature": "value()",
+					"inputs": []any{}, "candidates": []any{"value()"},
+					"abi_source": map[string]any{
+						"kind": "proxy_implementation", "address": transparentImplementation, "code_hash": testHash,
+					},
+					"confidence": "high",
+				},
+			})
+		case delegationTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": delegationTransactionHash, "transaction_index": "1", "state": "complete",
+				"input": delegatedCalldata(),
+				"execution": map[string]any{
+					"context_address": delegatedAddress, "address": delegatedDelegate,
+					"code_hash": testHash, "resolution": "eip7702_delegate",
+				},
+				"decoding": map[string]any{
+					"status": "decoded", "function_name": "setValue", "signature": "setValue(uint256)",
+					"inputs":     []any{map[string]any{"name": "value", "type": "uint256", "value": "42"}},
+					"candidates": []any{"setValue(uint256)"},
+					"abi_source": map[string]any{
+						"kind": "exact_address", "address": delegatedDelegate, "code_hash": testHash,
+					},
+					"confidence": "verified",
+				},
+			})
+		case clearingTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": clearingTransactionHash, "transaction_index": "2", "state": "complete",
+				"input": "0x55241077",
+				"execution": map[string]any{
+					"context_address": delegatedAddress, "resolution": "empty",
+				},
+				"decoding": map[string]any{
+					"status": "not_applicable", "inputs": []any{}, "candidates": []any{},
+				},
+			})
+		default:
+			writeNotFound(response)
+		}
+	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/authorizations", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") == clearingTransactionHash {
+			writeEnvelope(response, transactionAuthorizations(clearingTransactionHash, "2", []any{
+				authorization("0", delegatedAddress, "0x0000000000000000000000000000000000000000", "2", "applied", ""),
+			}))
+			return
+		}
+		if request.PathValue("hash") != delegationTransactionHash {
 			writeNotFound(response)
 			return
 		}
-		writeEnvelope(response, map[string]any{
-			"chain_id": "1", "block_number": "2", "block_hash": secondHash,
-			"transaction_hash": request.PathValue("hash"), "transaction_index": "0", "state": "complete",
-			"input": "0x3fa4f245",
-			"execution": map[string]any{
-				"context_address": testAddress, "address": testAddress,
-				"code_hash": testHash, "resolution": "direct",
-			},
-			"decoding": map[string]any{
-				"status": "decoded", "function_name": "value", "signature": "value()",
-				"inputs": []any{}, "candidates": []any{"value()"},
-				"abi_source": map[string]any{
-					"kind": "proxy_implementation", "address": transparentImplementation, "code_hash": testHash,
-				},
-				"confidence": "high",
-			},
-		})
+		if request.URL.Query().Get("cursor") == "authorization-next" {
+			writeEnvelope(response, transactionAuthorizations(delegationTransactionHash, "1", []any{
+				authorization("1", testEOA, delegatedDelegate, "9", "skipped", "nonce_mismatch"),
+			}))
+			return
+		}
+		writeEnvelopeMeta(response,
+			transactionAuthorizations(delegationTransactionHash, "1", []any{
+				authorization("0", delegatedAddress, delegatedDelegate, "0", "applied", ""),
+			}),
+			map[string]any{"next_cursor": "authorization-next"},
+		)
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/trace", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
@@ -270,7 +332,8 @@ func main() {
 		}
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/token-transfers", func(response http.ResponseWriter, request *http.Request) {
-		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash {
+		if request.PathValue("hash") != testTransactionHash && request.PathValue("hash") != secondTransactionHash &&
+			request.PathValue("hash") != delegationTransactionHash && request.PathValue("hash") != clearingTransactionHash {
 			writeNotFound(response)
 			return
 		}
@@ -769,6 +832,41 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x3fa4f245",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
 	}
+}
+
+func setCodeTransaction(hash string, transactionIndex int, input string) map[string]any {
+	return map[string]any{
+		"hash": hash, "block_hash": secondHash, "block_number": "2", "transaction_index": transactionIndex,
+		"block_timestamp": "2026-01-01T00:00:00Z",
+		"from":            testEOA, "to": delegatedAddress, "nonce": strconv.Itoa(transactionIndex), "value": "0",
+		"gas": "100000", "gas_price": "1000000000", "type": "4", "input": input,
+		"access_list": []any{}, "status": "success", "canonical": true, "finality": "safe",
+		"completeness": completeness(),
+	}
+}
+
+func delegatedCalldata() string {
+	return "0x55241077000000000000000000000000000000000000000000000000000000000000002a"
+}
+
+func transactionAuthorizations(hash, transactionIndex string, items []any) map[string]any {
+	return map[string]any{
+		"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+		"transaction_hash": hash, "transaction_index": transactionIndex,
+		"state": "complete", "items": items,
+	}
+}
+
+func authorization(index, authority, delegate, nonce, status, skipReason string) map[string]any {
+	item := map[string]any{
+		"index": index, "chain_id": "1", "nonce": nonce, "delegate": delegate,
+		"y_parity": 1, "r": testHash, "s": secondHash, "authority": authority,
+		"signature_status": "valid", "application_status": status,
+	}
+	if skipReason != "" {
+		item["skip_reason"] = skipReason
+	}
+	return item
 }
 
 func addressTokenTransfer(standard, kind string) map[string]any {
