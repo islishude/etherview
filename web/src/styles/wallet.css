@@ -1,0 +1,453 @@
+/* Contract workspace, wallet controls, buttons, notices, and identity cards. */
+
+.status-layout,
+.contract-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.status-capabilities-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.status-card,
+.capability-list,
+.contract-workbench {
+  padding: 1.25rem;
+}
+
+.status-card > span {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-card > strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.45rem;
+}
+
+.status-card dl {
+  margin: 1.3rem 0 0;
+}
+
+.status-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  padding-block: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.status-card dt {
+  color: var(--text-soft);
+}
+
+.status-card dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.capability-list h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.capability-list ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.capability-list li {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-block: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.search-results {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.search-result {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+}
+
+.search-result:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+
+.search-result > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.search-result strong,
+.search-result small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.search-result small,
+.empty-result,
+.quiet {
+  color: var(--text-soft);
+}
+
+.search-result-tail {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.wallet-menu {
+  position: relative;
+}
+
+.wallet-menu summary {
+  list-style: none;
+}
+
+.wallet-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.wallet-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 0.65rem);
+  right: 0;
+  width: min(340px, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  max-height: min(70vh, 32rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.popover-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.wallet-account {
+  padding: 0.7rem;
+  overflow-wrap: anywhere;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.wallet-list,
+.empty-wallet {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.empty-wallet small,
+.wallet-option small {
+  color: var(--text-soft);
+}
+
+.wallet-option {
+  min-width: 0;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.7rem;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.wallet-option:hover {
+  border-color: var(--brand);
+}
+
+.wallet-option > span:last-child {
+  min-width: 0;
+  display: grid;
+}
+
+.wallet-option strong,
+.wallet-option small {
+  overflow-wrap: anywhere;
+}
+
+.siwe-login-control {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.siwe-wallet-picker {
+  max-height: min(18rem, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wallet-network-section,
+.wallet-auth-section {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.wallet-network-section .popover-heading {
+  gap: 0.75rem;
+}
+
+.wallet-network-section .popover-heading .quiet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-auth-section p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.authenticated-user {
+  min-width: 0;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.7rem;
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+}
+
+.authenticated-user > span:last-child {
+  min-width: 0;
+  display: grid;
+}
+
+.authenticated-user strong,
+.authenticated-user small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authenticated-user small {
+  color: var(--text-soft);
+}
+
+.wallet-monogram {
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 50%;
+  font-weight: 900;
+}
+
+.button {
+  min-height: 2.55rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.button.primary {
+  color: var(--on-brand);
+  background: var(--brand-strong);
+}
+
+.button.secondary {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--line);
+}
+
+.button.full {
+  width: 100%;
+}
+
+.inline-button {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  text-decoration: none;
+}
+
+.inline-button.full {
+  width: 100%;
+  justify-content: center;
+}
+
+.contract-workbench .panel-heading {
+  margin: -0.35rem 0 1rem;
+}
+
+.contract-workbench .panel-heading h2 {
+  font-size: 1.15rem;
+}
+
+.contract-workbench .eyebrow {
+  margin-bottom: 0.2rem;
+}
+
+.wallet-notice,
+.chain-warning,
+.form-error {
+  padding: 0.8rem;
+  margin: 0 0 1rem;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.chain-warning {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.unverified-contract {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.unverified-contract > p {
+  flex: 1 1 28rem;
+  margin: 0;
+}
+
+.form-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.form-success {
+  padding: 0.8rem;
+  margin: 0;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.identity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.identity-card {
+  min-width: 0;
+  display: grid;
+  gap: 0.7rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.identity-card-heading {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.identity-card h2,
+.identity-card p,
+.identity-card strong {
+  margin: 0;
+}
+
+.identity-card h2 {
+  font-size: 0.85rem;
+}
+
+.identity-card > strong {
+  font-size: 1.25rem;
+}
+
+.identity-card code {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.identity-card p {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.auth-action-panel {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.auth-action-panel h2,
+.auth-action-panel p {
+  margin: 0;
+}
+
+.auth-action-panel h2 {
+  font-size: 1.25rem;
+}
+
+.auth-action-panel p {
+  max-width: 760px;
+  margin-top: 0.45rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.auth-action-panel .button {
+  flex: 0 0 auto;
+}
+
+.auth-action-panel .siwe-login-control {
+  flex: 0 1 22rem;
+  width: min(100%, 22rem);
+}

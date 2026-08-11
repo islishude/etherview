@@ -1,0 +1,608 @@
+/* Account, API key, profile, administration, and billing surfaces. */
+
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.account-tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.account-tabs a {
+  flex: 1 1 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: calc(var(--radius) - 0.25rem);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.account-tabs a[aria-current="page"] {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.08);
+}
+
+.api-key-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.api-key-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.api-key-policy-card,
+.api-key-create-form,
+.api-key-card,
+.api-key-issued-dialog {
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.api-key-policy-card h2,
+.api-key-policy-card p,
+.api-key-create-form h2,
+.api-key-card h3,
+.api-key-issued-dialog p {
+  margin: 0;
+}
+
+.api-key-policy-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.api-key-policy-card p {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.api-key-policy-card dl,
+.api-key-card dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.api-key-policy-card dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.api-key-policy-card dl > div,
+.api-key-card dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.api-key-policy-card dt,
+.api-key-card dt {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.api-key-policy-card dd,
+.api-key-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.api-key-create-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.api-key-create-form .button {
+  justify-self: start;
+}
+
+.api-key-scopes {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0;
+  border: 0;
+}
+
+.api-key-scopes legend {
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.api-key-scopes label {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.api-key-scopes input {
+  margin-top: 0.18rem;
+}
+
+.api-key-scopes span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.api-key-scopes small {
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.api-key-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.api-key-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.api-key-card-heading,
+.api-key-actions,
+.api-key-token {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.api-key-card-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.api-key-card code {
+  color: var(--text-soft);
+}
+
+.api-key-card dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.api-key-actions {
+  justify-content: flex-end;
+}
+
+.api-key-issued-dialog {
+  width: min(38rem, 100%);
+  display: grid;
+  gap: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+}
+
+.api-key-issued-dialog .button {
+  justify-self: end;
+}
+
+.api-key-token {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.api-key-token code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--brand-strong);
+}
+
+.profile-panel,
+.session-panel,
+.auth-gate {
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.profile-panel .panel-heading {
+  min-height: 0;
+  padding-bottom: 0.9rem;
+}
+
+.user-state,
+.current-user-label {
+  display: inline-flex;
+  width: max-content;
+  padding: 0.24rem 0.5rem;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.user-state.disabled {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.profile-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 1rem;
+}
+
+.profile-details > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-details > div:nth-child(odd) {
+  padding-right: 0.85rem;
+}
+
+.profile-details dt,
+.admin-user-card dt {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.profile-details dd,
+.admin-user-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-details code {
+  overflow-wrap: anywhere;
+}
+
+.profile-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.profile-form .button {
+  justify-self: start;
+}
+
+.session-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.session-panel h2,
+.session-panel p,
+.auth-gate h2,
+.auth-gate p {
+  margin: 0;
+}
+
+.session-panel h2,
+.auth-gate h2 {
+  font-size: 1.1rem;
+}
+
+.session-panel p,
+.auth-gate p {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.session-panel .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-gate {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.admin-toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-toolbar p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.admin-toolbar-actions,
+.admin-surface-links,
+.billing-filter-actions,
+.billing-ledger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.admin-toolbar-actions a,
+.admin-surface-links a {
+  text-decoration: none;
+}
+
+.admin-surface-links {
+  justify-content: flex-end;
+}
+
+.admin-surface-links > span {
+  padding: 0.65rem 1rem;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.billing-history-section,
+.billing-summary-section,
+.billing-ledger-section {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.billing-section-heading {
+  min-height: 0;
+  align-items: flex-start;
+  padding-bottom: 1rem;
+}
+
+.billing-section-heading > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.billing-section-heading h2,
+.billing-section-heading p {
+  margin: 0;
+}
+
+.billing-section-heading h2 {
+  font-size: 1.2rem;
+}
+
+.billing-section-heading p {
+  max-width: 760px;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.billing-boundary-note {
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--brand);
+}
+
+.billing-filter-form {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.4rem);
+}
+
+.billing-filter-form fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.billing-filter-form legend {
+  padding: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.billing-filter-form fieldset > p {
+  margin: 0.4rem 0 1rem;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.billing-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.billing-filter-actions {
+  justify-content: flex-end;
+}
+
+.billing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.billing-summary-grid > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem;
+}
+
+.billing-summary-grid dt {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.billing-summary-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.billing-table {
+  max-width: 100%;
+  box-shadow: none;
+}
+
+.billing-table table {
+  min-width: 1120px;
+}
+
+.billing-table td {
+  max-width: 20rem;
+  vertical-align: top;
+  font-size: 0.78rem;
+}
+
+.billing-address,
+.billing-hash,
+.billing-quantity {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.billing-quantity {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-state {
+  display: inline-flex;
+  width: max-content;
+  padding: 0.24rem 0.5rem;
+  color: var(--text-soft);
+  background: var(--surface-strong);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.billing-state.settled,
+.billing-state.verified {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+}
+
+.billing-state.failed,
+.billing-state.unknown {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.billing-state.settling,
+.billing-state.reserved {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.billing-empty {
+  padding: 1rem;
+  margin: 0;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.billing-ledger-actions {
+  justify-content: flex-end;
+}
+
+.billing-ledger-actions > span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.admin-user-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-user-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.75fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.admin-user-card > header {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.admin-user-card > header > div {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.admin-user-card > header code {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.admin-user-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.admin-user-card dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.admin-user-controls {
+  min-width: 250px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.admin-user-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.current-user-label {
+  color: var(--text);
+  background: var(--surface-strong);
+}

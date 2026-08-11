@@ -75,6 +75,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T49 | done        | P40-T13, P50-T48 | Transaction-overview internal ETH transfers and exact-decimal ERC-20 transfer quantities | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T50 | done        | P50-T49 | Move transaction internal ETH transfers from Overview into a dedicated tab immediately before Token transfers | focused frontend, tab order, lazy loading, bilingual, embedded browser, and common gates |
 | P50-T51 | done        | P50-T50 | Remove the standalone Contracts navigation and route, and link definitively unverified contracts to address-prefilled Web verification | focused frontend, bilingual, embedded browser, accessibility, and common gates |
+| P50-T52 | done        | P50-T51 | Organize the global stylesheet into documented responsibility-based modules without visual or interaction changes | stylesheet regressions, complete frontend tests, lint, build, generation, plan check, and diff check |
 
 ## Acceptance
 
@@ -804,3 +805,12 @@ None.
   --check`. The host-authorized canonical `make test-e2e` passes all 14 flows,
   including the removed route, address-prefilled action, disabled capability,
   bilingual 390px layout, automated accessibility, and overflow checks.
+- P50-T52 replaces the 5,678-line global stylesheet with an ordered import
+  manifest and eight responsibility-based modules for foundations, explorer
+  views, wallet controls, account surfaces, analytics, verification, verified
+  artifacts, and shared responsive behavior. The original rule order and
+  declarations are preserved, module ownership and cascade guidance are
+  documented, and the stylesheet regression now fences the import order.
+- P50-T52 verification passes the focused stylesheet suite (5 tests), the
+  complete frontend suite (29 files, 301 tests), TypeScript lint, production
+  build, `make generate-check`, `make plan-check`, and `git diff --check`.

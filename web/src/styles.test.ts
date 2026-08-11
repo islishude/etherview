@@ -2,12 +2,32 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+function readStylesheet(name: string) {
+  return readFileSync(join(process.cwd(), "src", name), "utf8");
+}
+
 describe("shared button layout", () => {
-  it("centers full-width inline actions", () => {
-    const stylesheet = readFileSync(
-      join(process.cwd(), "src/styles.css"),
-      "utf8",
+  it("loads style modules in documented cascade order", () => {
+    const stylesheet = readStylesheet("styles.css");
+    const imports = Array.from(
+      stylesheet.matchAll(/@import\s+"\.\/styles\/(?<name>[^"]+)";/gu),
+      (match) => match.groups?.name,
     );
+
+    expect(imports).toEqual([
+      "foundation.css",
+      "explorer.css",
+      "wallet.css",
+      "account.css",
+      "analytics.css",
+      "verification.css",
+      "artifacts.css",
+      "responsive.css",
+    ]);
+  });
+
+  it("centers full-width inline actions", () => {
+    const stylesheet = readStylesheet("styles/wallet.css");
     const rule = stylesheet.match(/\.inline-button\.full\s*\{(?<body>[^}]*)\}/u);
 
     expect(rule?.groups?.body).toMatch(/\bwidth:\s*100%;/u);
@@ -15,10 +35,7 @@ describe("shared button layout", () => {
   });
 
   it("keeps inactive tabs transparent and active tabs branded", () => {
-    const stylesheet = readFileSync(
-      join(process.cwd(), "src/styles.css"),
-      "utf8",
-    );
+    const stylesheet = readStylesheet("styles/explorer.css");
     const inactiveRule = stylesheet.match(/\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
     const activeRule = stylesheet.match(/\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
 
@@ -27,10 +44,7 @@ describe("shared button layout", () => {
   });
 
   it("normalizes address tab entries before applying the active state", () => {
-    const stylesheet = readFileSync(
-      join(process.cwd(), "src/styles.css"),
-      "utf8",
-    );
+    const stylesheet = readStylesheet("styles/explorer.css");
     const addressRule = stylesheet.match(/\.transaction-tabs\s*>\s*\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
     const addressActiveRule = stylesheet.match(/\.transaction-tabs\s*>\s*\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
 
@@ -41,10 +55,7 @@ describe("shared button layout", () => {
   });
 
   it("soft-wraps read-only raw calldata inside its textarea", () => {
-    const stylesheet = readFileSync(
-      join(process.cwd(), "src/styles.css"),
-      "utf8",
-    );
+    const stylesheet = readStylesheet("styles/explorer.css");
     const rawCalldataRule = stylesheet.match(/\.transaction-calldata-raw-value\s*\{(?<body>[^}]*)\}/u);
 
     expect(rawCalldataRule?.groups?.body).toMatch(/\boverflow-wrap:\s*anywhere;/u);

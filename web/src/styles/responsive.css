@@ -1,0 +1,520 @@
+/* Footer, network picker, shared animations, and cross-feature responsive rules. */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+}
+
+.footer-inner {
+  min-height: 84px;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.footer-brand {
+  color: var(--text);
+  font-weight: 850;
+}
+
+.add-network-picker {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.1rem;
+}
+
+.add-network-option {
+  min-width: 0;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.add-network-option:hover {
+  border-color: var(--brand);
+}
+
+.add-network-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.add-network-option > span:last-child {
+  min-width: 0;
+  display: grid;
+}
+
+.add-network-option strong,
+.add-network-option small {
+  overflow-wrap: anywhere;
+}
+
+.add-network-option small {
+  color: var(--text-soft);
+}
+
+.add-network-status {
+  min-height: 1.05rem;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.add-network-status.success {
+  color: var(--brand-strong);
+}
+
+.add-network-status.error {
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.82); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 980px) {
+  .header-primary {
+    grid-template-columns: auto 1fr;
+  }
+
+  .global-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    margin-bottom: 0.85rem;
+  }
+
+  .header-controls {
+    grid-column: 2;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pending-snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chain-context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .activity-grid,
+  .status-layout,
+  .contract-layout,
+  .verification-layout,
+  .verification-read-layout,
+  .account-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .api-key-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-card {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.7fr);
+  }
+
+  .admin-user-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aggregate-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .range-form {
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .range-form .button {
+    grid-column: 1 / -1;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-item,
+  .detail-item:nth-child(odd) {
+    grid-column: auto;
+    border-right: 0;
+  }
+
+  .completeness-card ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .shell-width {
+    width: min(100% - 1.1rem, 1240px);
+  }
+
+  .header-primary {
+    min-height: 62px;
+    gap: 0.6rem;
+  }
+
+  .brand small {
+    display: none;
+  }
+
+  .transaction-detail-row,
+  .transaction-log dl > div,
+  .transaction-state-account dl > div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .transaction-topic-convertible {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .transaction-topic-convertible .topic-mode-select,
+  .transaction-topic-convertible > .copyable-field {
+    grid-column: 2;
+  }
+
+  .transaction-topic-convertible .topic-mode-select {
+    width: max-content;
+  }
+
+  .transaction-trace-frame {
+    margin-left: min(calc(var(--trace-depth) * 0.55rem), 2rem);
+  }
+
+  .transaction-trace-summary,
+  .transaction-trace-values dl > div,
+  .transaction-trace-raw > div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .transaction-log-provenance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-log-arguments-scroll {
+    margin-inline: -0.25rem;
+  }
+
+  .transaction-action-card {
+    align-items: start;
+  }
+
+  .header-controls {
+    gap: 0.3rem;
+  }
+
+  .control {
+    padding-inline: 0.6rem;
+  }
+
+  .wallet-summary {
+    max-width: 9.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .site-nav {
+    width: 100%;
+    padding-inline: 0.55rem;
+  }
+
+  .site-main {
+    padding-block: 1rem 3rem;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+  }
+
+  .metric-card {
+    min-height: 98px;
+    padding: 0.9rem;
+  }
+
+  .pending-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pending-pagination {
+    justify-content: space-between;
+  }
+
+  .cursor-pagination {
+    justify-content: space-between;
+  }
+
+  .chain-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .activity-grid {
+    gap: 0.75rem;
+  }
+
+  .activity-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .activity-meta {
+    display: none;
+  }
+
+  .transaction-row .transaction-status {
+    display: none;
+  }
+
+  .search-result {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .search-result-tail {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .page-header {
+    padding-inline: 0.35rem;
+  }
+
+  .write-form {
+    grid-template-columns: 1fr;
+  }
+
+  .range-form,
+  .contract-query-form,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-hero,
+  .artifact-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .artifact-badges {
+    justify-content: flex-start;
+  }
+
+  .artifact-summary-grid,
+  .compiler-settings-grid,
+  .compiler-setting-group dl {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-summary-grid > .wide {
+    grid-column: auto;
+  }
+
+  .source-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(9rem, auto) minmax(32rem, 1fr);
+  }
+
+  .source-file-list {
+    max-height: 15rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .source-file-tree {
+    max-height: 11rem;
+  }
+
+  .source-editor-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-editor-toolbar > div {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .history-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .abi-function-card > summary,
+  .abi-scalar-input {
+    grid-template-columns: 1fr;
+  }
+
+  .abi-function-card > summary .function-index {
+    display: none;
+  }
+
+  .abi-function-form > .button,
+  .abi-array-item > .button,
+  .abi-array-input > .button {
+    width: 100%;
+  }
+
+  .identity-grid,
+  .profile-details,
+  .admin-user-card,
+  .admin-user-card dl,
+  .admin-user-controls,
+  .billing-filter-grid,
+  .billing-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-key-policy-card dl,
+  .api-key-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .account-tabs {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-card-heading,
+  .api-key-actions,
+  .api-key-token {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .api-key-actions .button,
+  .api-key-issued-dialog .button {
+    width: 100%;
+  }
+
+  .auth-action-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-action-panel .button {
+    width: 100%;
+  }
+
+  .auth-action-panel .siwe-login-control {
+    width: 100%;
+  }
+
+  .admin-user-actions {
+    grid-column: auto;
+  }
+
+  .admin-toolbar,
+  .billing-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-toolbar-actions,
+  .billing-filter-actions,
+  .billing-ledger-actions {
+    justify-content: stretch;
+  }
+
+  .admin-toolbar-actions > *,
+  .billing-filter-actions > *,
+  .billing-ledger-actions > .button,
+  .billing-section-heading > .button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .range-form label,
+  .range-form .button,
+  .field-control.wide {
+    grid-column: auto;
+  }
+
+  .stats-chart {
+    min-height: 320px;
+  }
+
+  .aggregate-stats-grid,
+  .aggregate-completeness {
+    grid-template-columns: 1fr;
+  }
+
+  .write-form label {
+    grid-column: auto;
+  }
+
+  .detail-item {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .completeness-card ul {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .header-primary {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0.55rem;
+  }
+
+  .brand,
+  .header-controls,
+  .global-search {
+    grid-column: 1;
+  }
+
+  .brand {
+    grid-row: 1;
+  }
+
+  .header-controls {
+    grid-row: 2;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .global-search {
+    grid-row: 3;
+  }
+
+  .wallet-summary {
+    max-width: 8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
