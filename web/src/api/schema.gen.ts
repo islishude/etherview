@@ -860,6 +860,54 @@ export interface paths {
         patch: operations["updateCurrentUser"];
         trace?: never;
     };
+    "/users/me/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCurrentUserAPIKeys"];
+        put?: never;
+        post: operations["createCurrentUserAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/api-keys/{prefix}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeCurrentUserAPIKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/api-keys/{prefix}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rotateCurrentUserAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/verifier/compilers": {
         parameters: {
             query?: never;
@@ -1158,6 +1206,8 @@ export interface components {
             message: string;
             request_id: string;
         };
+        /** @enum {string} */
+        APIKeyScope: "api:read" | "contract:verify";
         AuthChallenge: {
             /** Format: uuid */
             challenge_id: string;
@@ -2201,6 +2251,46 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        UserAPIKey: {
+            burst: number;
+            /** Format: date-time */
+            created_at: string;
+            name: string;
+            prefix: string;
+            rate_per_second: number;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            scopes: components["schemas"]["APIKeyScope"][];
+            /** @enum {string} */
+            status: "active" | "revoked";
+        };
+        UserAPIKeyCreateRequest: {
+            name: string;
+            scopes: components["schemas"]["APIKeyScope"][];
+        };
+        UserAPIKeyIssued: {
+            key: components["schemas"]["UserAPIKey"];
+            token: string;
+        };
+        UserAPIKeyIssuedResponse: {
+            data: components["schemas"]["UserAPIKeyIssued"];
+            meta: components["schemas"]["Meta"];
+        };
+        UserAPIKeyPage: {
+            items: components["schemas"]["UserAPIKey"][];
+            policy: components["schemas"]["UserAPIKeyPolicy"];
+        };
+        UserAPIKeyPageResponse: {
+            data: components["schemas"]["UserAPIKeyPage"];
+            meta: components["schemas"]["Meta"];
+        };
+        UserAPIKeyPolicy: {
+            active_count: number;
+            allowed_scopes: components["schemas"]["APIKeyScope"][];
+            burst: number;
+            maximum_active: number;
+            rate_per_second: number;
+        };
         UserListResponse: {
             data: components["schemas"]["User"][];
             meta: components["schemas"]["Meta"];
@@ -2414,6 +2504,7 @@ export interface components {
     };
     parameters: {
         Address: components["schemas"]["Address"];
+        APIKeyPrefix: string;
         BillingAssetFilter: components["schemas"]["Address"];
         /** @description Inclusive lower time bound. Summary requests default to 24 hours before to_time. */
         BillingFromTime: string;
@@ -3953,6 +4044,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCurrentUserAPIKeys: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current user's API keys and deployment-owned issuance policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAPIKeyPageResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createCurrentUserAPIKey: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserAPIKeyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Newly issued API key. The plaintext token is returned once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAPIKeyIssuedResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeCurrentUserAPIKey: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                prefix: components["parameters"]["APIKeyPrefix"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API key revoked, or already revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rotateCurrentUserAPIKey: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                prefix: components["parameters"]["APIKeyPrefix"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Atomically rotated API key. The replacement token is returned once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAPIKeyIssuedResponse"];
                 };
             };
             default: components["responses"]["Error"];

@@ -392,9 +392,12 @@ func TestOperationalCommandsParseConfigAndForwardArguments(t *testing.T) {
 			},
 		},
 		{
-			name: "admin api key", args: []string{"admin", "api-key", "create", "--name", "reader", "--config", path, "--rate", "25"},
+			name: "admin api key", args: []string{
+				"admin", "api-key", "create", "--name", "reader", "--config", path,
+				"--rate", "25", "--scope", "api:read", "--scope", "contract:verify",
+			},
 			assert: func(t *testing.T, backend *fakeBackend) {
-				if backend.adminResource != "api-key" || backend.adminAction != "create" || strings.Join(backend.adminArgs, " ") != "--name reader --rate 25" {
+				if backend.adminResource != "api-key" || backend.adminAction != "create" || strings.Join(backend.adminArgs, " ") != "--name reader --rate 25 --scope api:read --scope contract:verify" {
 					t.Fatalf("admin resource=%q action=%q args=%v", backend.adminResource, backend.adminAction, backend.adminArgs)
 				}
 			},

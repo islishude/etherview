@@ -557,10 +557,12 @@ size alone is not sufficient justification to weaken those invariants.
   are repeated across sources; any conflicting sources are rejected. Form
   bytes are restored before compatibility routing, and form/query credentials
   are never recognized on native routes.
-- Operators create, rotate, list, and revoke API keys through the single CLI.
-  Plaintext appears only in create/rotate output. Rotation locks the active
-  PostgreSQL row and commits the replacement digest plus old-key revocation in
-  one transaction, preserving the key name and quota policy.
+- Operators create, rotate, list, and revoke deployment-wide API keys through
+  the single CLI. An explicitly enabled Cookie-authenticated account boundary
+  additionally manages only its own scoped keys. Plaintext appears only in
+  create/rotate output. Rotation locks the active PostgreSQL row and commits
+  the replacement digest plus old-key revocation in one transaction, preserving
+  owner, name, scopes, and quota policy. See ADR-0035.
 - Native balances and ERC-20 `balanceOf`/`totalSupply` observations use an
   EIP-1898 canonical block-hash selector and recheck that hash after the RPC
   response. Token classifications are retained per observed block hash, so a

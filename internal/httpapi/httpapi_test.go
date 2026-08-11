@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/events"
@@ -166,6 +167,53 @@ func TestStatusUsesStringQuantitiesAndCompleteness(t *testing.T) {
 	}
 	if response.Data.ChainId != "11155111" || response.Data.Lag != "2" || response.Meta.RequestId != "request-1" {
 		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+
+func TestNativeAPIScopesRejectWithoutFallback(t *testing.T) {
+	t.Parallel()
+	manager := auth.Manager{
+		Repository: auth.NewMemoryRepository(), Pepper: bytes.Repeat([]byte{9}, 32),
+	}
+	reader, err := manager.CreateScoped(
+		context.Background(), "reader", 100, 100, []auth.Scope{auth.ScopeRead},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := manager.CreateScoped(
+		context.Background(), "verifier", 100, 100,
+		[]auth.Scope{auth.ScopeVerification},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := manager.Middleware(false, testHandler(t, fakeReader{}))
+
+	for _, test := range []struct {
+		name   string
+		path   string
+		token  string
+		status int
+	}{
+		{"read scope reads", "/api/v1/blocks", reader.Token, http.StatusOK},
+		{"verification scope cannot read", "/api/v1/blocks", verifier.Token, http.StatusForbidden},
+		{"read scope cannot probe compilers", "/api/v1/verifier/compilers?language=solidity", reader.Token, http.StatusForbidden},
+		{"verification scope reaches compiler boundary", "/api/v1/verifier/compilers?language=solidity", verifier.Token, http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Header.Set("X-API-Key", test.token)
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if test.status == http.StatusForbidden &&
+				!strings.Contains(recorder.Body.String(), "api_key_scope_required") {
+				t.Fatalf("wrong-scope response = %s", recorder.Body.String())
+			}
+		})
 	}
 }
 

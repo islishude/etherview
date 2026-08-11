@@ -178,6 +178,33 @@ func TestCompatibilityActionGoldenEnvelopesAndMethods(t *testing.T) {
 	}
 }
 
+func TestVerificationActionRejectsReadOnlyAPIKeyWithForbidden(t *testing.T) {
+	t.Parallel()
+	manager := auth.Manager{
+		Repository: auth.NewMemoryRepository(), Pepper: bytes.Repeat([]byte{5}, 32),
+	}
+	issued, err := manager.CreateScoped(
+		context.Background(), "reader", 100, 100, []auth.Scope{auth.ScopeRead},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeBackend{result: "unexpected"}
+	handler := manager.Middleware(false, Handler{ChainID: 1, Backend: backend})
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/v2/api?chainid=1&module=contract&action=checkverifystatus&guid=123e4567-e89b-42d3-a456-426614174000",
+		nil,
+	)
+	request.Header.Set("X-API-Key", issued.Token)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden ||
+		!strings.Contains(recorder.Body.String(), "scope does not authorize") || backend.calls != 0 {
+		t.Fatalf("status=%d calls=%d body=%s", recorder.Code, backend.calls, recorder.Body.String())
+	}
+}
+
 func TestCompatibilityKeyedActionsGoldenRejection(t *testing.T) {
 	t.Parallel()
 	for _, test := range compatibilityActionCases() {

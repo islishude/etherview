@@ -507,9 +507,10 @@
         },
         "features": {
           "type": "object",
-          "required": ["user_auth", "x402_billing"],
+          "required": ["user_auth", "user_api_keys", "x402_billing"],
           "properties": {
             "user_auth": {"type": "boolean"},
+            "user_api_keys": {"type": "boolean"},
             "x402_billing": {"type": "boolean"}
           }
         },
@@ -555,7 +556,10 @@
             "session_ttl",
             "last_used_interval",
             "max_message_bytes",
-            "max_signature_bytes"
+            "max_signature_bytes",
+            "api_key_rate",
+            "api_key_burst",
+            "max_active_api_keys"
           ],
           "properties": {
             "challenge_ttl": {"type": "string", "minLength": 1},
@@ -566,7 +570,10 @@
               "minimum": 512,
               "maximum": 16384
             },
-            "max_signature_bytes": {"const": 65}
+            "max_signature_bytes": {"const": 65},
+            "api_key_rate": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "api_key_burst": {"type": "integer", "minimum": 1, "maximum": 100000},
+            "max_active_api_keys": {"type": "integer", "minimum": 1, "maximum": 100}
           }
         },
         "billing": {
@@ -780,6 +787,34 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"user_api_keys": {"const": true}},
+                "required": ["user_api_keys"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["config"]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {"user_auth": {"const": true}},
+                "required": ["user_auth"]
+              }
+            }
+          }
+        }
+      }
+    },
     {
       "if": {
         "required": ["mode"],

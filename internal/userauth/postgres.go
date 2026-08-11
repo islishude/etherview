@@ -505,6 +505,11 @@ func (repository *PostgresRepository) UpdateUser(
 				return queryErr
 			}
 			result.RevokedSessions = uint64(count)
+			if _, queryErr = queries.RevokeAllUserAPIKeys(
+				ctx, postgresTime(updatedAt), identifier,
+			); queryErr != nil {
+				return queryErr
+			}
 		}
 		return nil
 	})

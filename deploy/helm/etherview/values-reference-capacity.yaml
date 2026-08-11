@@ -94,6 +94,7 @@ config:
   features:
     # Authentication is outside the anonymous explorer capacity profile.
     user_auth: false
+    user_api_keys: false
     # Per-request billing is measured separately from the anonymous profile.
     x402_billing: false
     proxy_detection_v2: false

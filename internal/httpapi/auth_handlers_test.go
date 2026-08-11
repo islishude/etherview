@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/userauth"
 )
@@ -78,6 +79,55 @@ type fakeUserAdministration struct {
 	update       userauth.AdminUserUpdate
 	updateUserID string
 	revokeUserID string
+}
+
+type fakeUserAPIKeys struct {
+	items        []auth.APIKey
+	issued       auth.IssuedAPIKey
+	active       int
+	createdName  string
+	createdScope []auth.Scope
+	rotated      string
+	revoked      string
+}
+
+func (fake *fakeUserAPIKeys) Policy() auth.UserKeyPolicy {
+	return auth.UserKeyPolicy{Rate: 20, Burst: 40, MaximumActive: 5}
+}
+
+func (fake *fakeUserAPIKeys) Create(
+	_ context.Context,
+	_, name string,
+	scopes []auth.Scope,
+) (auth.IssuedAPIKey, error) {
+	fake.createdName, fake.createdScope = name, scopes
+	return fake.issued, nil
+}
+
+func (fake *fakeUserAPIKeys) Rotate(
+	_ context.Context,
+	_, prefix string,
+) (auth.IssuedAPIKey, error) {
+	fake.rotated = prefix
+	return fake.issued, nil
+}
+
+func (fake *fakeUserAPIKeys) Revoke(
+	_ context.Context,
+	_, prefix string,
+	_ time.Time,
+) error {
+	fake.revoked = prefix
+	return nil
+}
+
+func (fake *fakeUserAPIKeys) List(
+	context.Context,
+	string,
+	*auth.UserKeyPageAfter,
+	int,
+) (auth.UserKeyPage, error) {
+	return auth.UserKeyPage{Items: fake.items, ActiveCount: fake.active}, nil
 }
 
 func (fake *fakeUserAdministration) UserByID(context.Context, string) (userauth.User, error) {
@@ -302,6 +352,107 @@ func TestAPIKeyCannotAuthorizeUserOrAdministratorRoutes(t *testing.T) {
 			authenticator.authCalls, administration.pageLimit,
 			administration.displayName,
 		)
+	}
+}
+
+func TestCurrentUserAPIKeyLifecycleRequiresSessionOriginAndCSRF(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 10, 1, 2, 3, 0, time.UTC)
+	prefix := "abcdefghij"
+	user := authTestUser(now, userauth.RoleUser)
+	authenticator := &fakeUserAuthenticator{authentication: SessionAuthentication{
+		Session:   userauth.Session{ID: testChallengeID, User: user, ExpiresAt: now.Add(time.Hour)},
+		CSRFToken: "csrf",
+		validate: func(value string) error {
+			if value == "csrf" {
+				return nil
+			}
+			return userauth.ErrCSRFInvalid
+		},
+	}}
+	key := auth.APIKey{
+		Prefix: prefix, Name: "indexer", Rate: 20, Burst: 40,
+		Scopes: []auth.Scope{auth.ScopeRead}, CreatedAt: now,
+	}
+	keys := &fakeUserAPIKeys{
+		items: []auth.APIKey{key}, active: 1,
+		issued: auth.IssuedAPIKey{Token: "evk_" + prefix + "_" + strings.Repeat("a", 43), Record: key},
+	}
+	cfg := config.Default()
+	cfg.Chain.ID = 11155111
+	cfg.Server.PublicURL = testAuthOrigin
+	cfg.Features.UserAuth = true
+	cfg.Features.UserAPIKeys = true
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{}, UserAuth: authenticator,
+		UserAdministration: &fakeUserAdministration{}, UserAPIKeys: keys,
+		BillingReader: &fakeBillingReader{}, RequestID: func() string { return "key-request" },
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/api-keys", nil)
+	request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), keys.issued.Token) ||
+		recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("list status=%d headers=%v body=%s", recorder.Code, recorder.Header(), recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(
+		http.MethodPost, "/api/v1/users/me/api-keys",
+		strings.NewReader(`{"name":" indexer ","scopes":["api:read"]}`),
+	)
+	request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+	request.Header.Set("Origin", testAuthOrigin)
+	request.Header.Set("X-CSRF-Token", "csrf")
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusCreated || !strings.Contains(recorder.Body.String(), keys.issued.Token) ||
+		keys.createdName != "indexer" || len(keys.createdScope) != 1 || keys.createdScope[0] != auth.ScopeRead {
+		t.Fatalf("create status=%d body=%s name=%q scopes=%v", recorder.Code, recorder.Body.String(), keys.createdName, keys.createdScope)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/api-keys/"+prefix, nil)
+	request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+	request.Header.Set("Origin", testAuthOrigin)
+	request.Header.Set("X-CSRF-Token", "csrf")
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNoContent || keys.revoked != prefix {
+		t.Fatalf("revoke status=%d prefix=%q body=%s", recorder.Code, keys.revoked, recorder.Body.String())
+	}
+}
+
+func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
+	t.Parallel()
+	verification := []string{
+		"getVerifierJob", "getVerifiedContract", "submitAddressVerification",
+		"verifySolidityMultipart", "verifySolidityStandardJson",
+		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
+		"listVerifierCompilers", "lookupVerifierMethods",
+		"submitSourcifyVerification", "submitSourcifyFromEtherscan",
+	}
+	for _, operation := range verification {
+		if scope := requiredAPIScope(operation); scope != auth.ScopeVerification {
+			t.Fatalf("operation %s scope = %q", operation, scope)
+		}
+	}
+	for _, operation := range []string{"listBlocks", "getNFTMedia", "search"} {
+		if scope := requiredAPIScope(operation); scope != auth.ScopeRead {
+			t.Fatalf("operation %s scope = %q", operation, scope)
+		}
+	}
+	for _, operation := range []string{
+		"getAuthSession", "listCurrentUserAPIKeys", "listAdminUsers",
+		"listCurrentUserBillingPayments",
+	} {
+		if operationUsesAPIKeyScope(operation) {
+			t.Fatalf("account operation %s accepts API-key scope authorization", operation)
+		}
 	}
 }
 

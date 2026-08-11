@@ -223,6 +223,94 @@ describe("authentication pages", () => {
     expect(String(verifyRequest?.url)).not.toContain(signature);
   });
 
+  it("manages scoped API keys only from the deep-linked account workspace", async () => {
+    const token = `evk_abcdefghij_${"a".repeat(43)}`;
+    const requests: Array<{ url: string; request?: RequestInit }> = [];
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, request });
+      if (url === "/api/v1/config") {
+        return envelope({
+          chain_id: "1",
+          chain_name: "Auth Testnet",
+          native_symbol: "ETH",
+          native_name: "Ether",
+          native_decimals: 18,
+          features: { user_auth: true, user_api_keys: true },
+        });
+      }
+      if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
+      if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "POST") {
+        return envelope({
+          token,
+          key: {
+            prefix: "abcdefghij",
+            name: "Production indexer",
+            scopes: ["api:read", "contract:verify"],
+            rate_per_second: 20,
+            burst: 40,
+            status: "active",
+            created_at: "2026-08-10T00:00:00Z",
+          },
+        });
+      }
+      if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("/api/v1/users/me/api-keys")) {
+        return envelope({
+          items: [{
+            prefix: "abcdefghij",
+            name: "Existing reader",
+            scopes: ["api:read"],
+            rate_per_second: 20,
+            burst: 40,
+            status: "active",
+            created_at: "2026-08-09T00:00:00Z",
+          }],
+          policy: {
+            rate_per_second: 20,
+            burst: 40,
+            maximum_active: 5,
+            active_count: 1,
+            allowed_scopes: ["api:read", "contract:verify"],
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderRoute("/account?tab=api-keys");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "API Keys" })).toBeVisible();
+    expect(window.location.pathname).not.toBe("/users");
+    await user.type(screen.getByRole("textbox", { name: "Key name" }), "Production indexer");
+    await user.click(screen.getByRole("checkbox", { name: /Contract verification/ }));
+    await user.click(screen.getByRole("button", { name: "Create key" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Save your API key now" });
+    expect(dialog).toHaveFocus();
+    expect(dialog).toHaveTextContent(token);
+    expect([...storageValues()]).not.toContain(token);
+    expect(window.location.href).not.toContain(token);
+    const createRequest = requests.find(
+      ({ url, request }) => url === "/api/v1/users/me/api-keys" && request?.method === "POST",
+    );
+    expect(new Headers(createRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
+    expect(createRequest?.request?.body).toBe(JSON.stringify({
+      name: "Production indexer",
+      scopes: ["api:read", "contract:verify"],
+    }));
+
+    await user.click(screen.getByRole("button", { name: "I saved the token" }));
+    expect(screen.queryByText(token)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(requests.some(
+      ({ url, request }) => url === "/api/v1/users/me/api-keys/abcdefghij" && request?.method === "DELETE",
+    )).toBe(true));
+  });
+
   it("chooses among multiple wallets inline and connects only the selected provider", async () => {
     const alpha = fakeProvider();
     const beta = fakeProvider();

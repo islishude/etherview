@@ -94,7 +94,7 @@ describe("billing pages", () => {
       ),
     );
 
-    renderRoute("/account");
+    renderRoute("/account?tab=billing");
     const user = userEvent.setup();
     await connectTestWallet(user);
     await user.click(
