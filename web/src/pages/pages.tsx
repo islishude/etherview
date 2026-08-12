@@ -1100,8 +1100,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     ? tab as TransactionTab
     : "overview";
   const calldataEnabled = activeTab === "overview"
-    && Boolean(transaction.data?.to)
-    && (transaction.data?.input.length ?? 0) > 2;
+    && Boolean(transaction.data?.to);
   const calldata = useTransactionCalldata(hash, calldataEnabled);
   const internalPager = useCursorHistory(`transaction-internal-transactions:${hash}`);
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
@@ -1139,14 +1138,21 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     !blockHash || !transaction.data?.block_hash || blockHash === transaction.data.block_hash;
   const tokenIdentityCurrent = identityMatches(tokenTransfers.data?.block_hash);
   const internalIdentityCurrent = identityMatches(internalTransactions.data?.block_hash);
-  const calldataIdentityCurrent = calldata.data === undefined || transaction.data === undefined || (
-    calldata.data.transaction_hash.toLowerCase() === transaction.data.hash.toLowerCase()
-    && calldata.data.block_hash.toLowerCase() === transaction.data.block_hash?.toLowerCase()
-    && calldata.data.block_number === transaction.data.block_number
-    && calldata.data.transaction_index === String(transaction.data.transaction_index)
-    && calldata.data.input.toLowerCase() === transaction.data.input.toLowerCase()
-    && calldata.data.execution.context_address.toLowerCase() === transaction.data.to?.toLowerCase()
-  );
+  const calldataIdentityCurrent = calldata.data === undefined || transaction.data === undefined
+    || transactionCalldataIdentityMatches(transaction.data, calldata.data);
+  const calldataIdentityRetryKey = !calldataIdentityCurrent && transaction.data && calldata.data
+    ? transactionCalldataRetryKey(transaction.data, calldata.data)
+    : undefined;
+  const calldataIdentityRetryPending = calldataIdentityRetryKey !== undefined
+    && lastIdentityRetry.current !== calldataIdentityRetryKey;
+  const transactionActionEvidence: TransactionActionEvidence = !transaction.data?.to
+    ? { state: "unavailable" }
+    : calldata.isPending || !calldataIdentityCurrent
+      && (calldata.isFetching || calldataIdentityRetryPending)
+      ? { state: "loading" }
+      : calldata.error !== null || calldata.data === undefined || !calldataIdentityCurrent
+        ? { state: "unavailable" }
+        : { state: "current", resolution: calldata.data.execution.resolution };
   const logIdentityCurrent = identityMatches(logs.data?.block_hash);
   const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
   const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
@@ -1179,18 +1185,17 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   ]);
   useEffect(() => {
     if (!calldataEnabled || calldataIdentityCurrent) return;
-    const resourceBlockHash = calldata.data?.block_hash;
-    const overviewBlockHash = transaction.data?.block_hash;
-    if (!resourceBlockHash || !overviewBlockHash) return;
-    const retryKey = [
-      "calldata", overviewBlockHash, resourceBlockHash, transaction.data?.input,
-      calldata.data?.input, calldata.data?.transaction_hash,
-      calldata.data?.transaction_index, calldata.data?.execution.context_address,
-    ].join(":");
-    if (lastIdentityRetry.current === retryKey) return;
-    lastIdentityRetry.current = retryKey;
+    if (calldataIdentityRetryKey === undefined
+      || lastIdentityRetry.current === calldataIdentityRetryKey) return;
+    lastIdentityRetry.current = calldataIdentityRetryKey;
     void Promise.all([transaction.refetch(), calldata.refetch()]);
-  }, [calldata, calldataEnabled, calldataIdentityCurrent, transaction]);
+  }, [
+    calldata,
+    calldataEnabled,
+    calldataIdentityCurrent,
+    calldataIdentityRetryKey,
+    transaction,
+  ]);
   const stateGroups = useMemo(() => {
     const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
     for (const change of stateChanges.data?.items ?? []) {
@@ -1253,8 +1258,8 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                 <div className="transaction-action-icon" aria-hidden="true">↗</div>
                 <div>
                   <span id="transaction-action-title">{t("detail.transactionAction")}</span>
-                  <strong>
-                    {transactionActionLabel(transaction.data, t)}
+                  <strong aria-live="polite">
+                    {transactionActionLabel(transaction.data, transactionActionEvidence, t)}
                   </strong>
                   <p>
                     {formatNativeAmount(transaction.data.value, locale, nativeDecimals)} {nativeSymbol}
@@ -2079,10 +2084,68 @@ function TransactionStatusBadge({ transaction }: { transaction: TransactionSumma
   </span>;
 }
 
-function transactionActionLabel(transaction: TransactionSummary, t: Translate): string {
+type TransactionActionEvidence =
+  | { state: "loading" }
+  | { state: "unavailable" }
+  | {
+      state: "current";
+      resolution: TransactionCalldataResource["execution"]["resolution"];
+    };
+
+function transactionCalldataIdentityMatches(
+  transaction: TransactionSummary,
+  resource: TransactionCalldataResource,
+): boolean {
+  return resource.state === "complete"
+    && Boolean(transaction.to)
+    && Boolean(transaction.block_hash)
+    && resource.transaction_hash.toLowerCase() === transaction.hash.toLowerCase()
+    && resource.block_hash.toLowerCase() === transaction.block_hash?.toLowerCase()
+    && resource.block_number === transaction.block_number
+    && resource.transaction_index === String(transaction.transaction_index)
+    && resource.input.toLowerCase() === transaction.input.toLowerCase()
+    && resource.execution.context_address.toLowerCase() === transaction.to?.toLowerCase();
+}
+
+function transactionCalldataRetryKey(
+  transaction: TransactionSummary,
+  resource: TransactionCalldataResource,
+): string | undefined {
+  if (!transaction.to || !transaction.block_hash) return undefined;
+  return [
+    "calldata",
+    transaction.hash,
+    resource.transaction_hash,
+    transaction.block_hash,
+    resource.block_hash,
+    transaction.block_number,
+    resource.block_number,
+    String(transaction.transaction_index),
+    resource.transaction_index,
+    transaction.input,
+    resource.input,
+    transaction.to,
+    resource.execution.context_address,
+  ].join(":").toLowerCase();
+}
+
+function transactionActionLabel(
+  transaction: TransactionSummary,
+  evidence: TransactionActionEvidence,
+  t: Translate,
+): string {
   if (!transaction.to) return t("detail.actionContractCreation");
-  if (transaction.input !== "0x") return t("detail.actionContractCall");
-  return t("detail.actionNativeTransfer");
+  if (evidence.state === "loading") return t("detail.actionDetermining");
+  if (evidence.state === "unavailable") return t("detail.actionUnavailable");
+  if (evidence.resolution === "direct" || evidence.resolution === "eip7702_delegate") {
+    return t("detail.actionContractCall");
+  }
+  if (evidence.resolution === "empty") {
+    return transaction.input === "0x"
+      ? t("detail.actionNativeTransfer")
+      : t("detail.actionEOATransaction");
+  }
+  return t("detail.actionUnavailable");
 }
 
 type AddressTab =

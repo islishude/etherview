@@ -77,6 +77,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T51 | done        | P50-T50 | Remove the standalone Contracts navigation and route, and link definitively unverified contracts to address-prefilled Web verification | focused frontend, bilingual, embedded browser, accessibility, and common gates |
 | P50-T52 | done        | P50-T51 | Organize the global stylesheet into documented responsibility-based modules without visual or interaction changes | stylesheet regressions, complete frontend tests, lint, build, generation, plan check, and diff check |
 | P50-T53 | done        | P40-T14, P50-T52 | Merge transaction gas limit and usage and expose execution and blob fee settings | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
+| P50-T54 | done        | P50-T53, P61-T13 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -104,6 +105,17 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T54 classifies contract creation directly and every transaction with a
+  target from exact matching transaction-time execution evidence: direct and
+  EIP-7702 delegate code are contract interactions, while empty execution is a
+  native transfer or EOA transaction according to calldata. Loading, request
+  failure, unavailable resolution, and stale identity remain explicitly
+  fail-closed in both languages. The focused CorePages suite passes 44 tests;
+  the complete frontend suite passes 29 files and 312 tests. `make web-lint`,
+  `make web-build`, `make generate-check`, `make plan-check`, and `git diff
+  --check` pass, as do the host-authorized 16-flow `make test-e2e` and complete
+  host-authorized `make check` gates.
 
 - P50-T53 merges transaction Gas limit and usage with an exact BigInt-based,
   two-decimal percentage; exposes Base, Max, and Max Priority fee settings with

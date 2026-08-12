@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -363,6 +363,184 @@ describe("core explorer pages", () => {
     expect(screen.getByRole("tab", { name: "Trace" })).toHaveFocus();
   });
 
+  it.each([
+    {
+      name: "empty-calldata contract calls",
+      input: "0x",
+      resolution: "direct",
+      english: "Contract interaction",
+      chinese: "调用合约",
+    },
+    {
+      name: "non-empty-calldata EOA transactions",
+      input: "0x1234",
+      resolution: "empty",
+      english: "EOA transaction",
+      chinese: "EOA 交易",
+    },
+    {
+      name: "ordinary native transfers",
+      input: "0x",
+      resolution: "empty",
+      english: "Native asset transfer",
+      chinese: "原生资产转账",
+    },
+  ] as const)("classifies $name from transaction-time execution code", async ({
+    input,
+    resolution,
+    english,
+    chinese,
+  }) => {
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: RequestInfo | URL) => {
+      const url = requestURL(request);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: delegatedAddress, to: address, nonce: "1", value: "1",
+          gas: "21000", input, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete", input,
+          execution: resolution === "direct"
+            ? { context_address: address, address, code_hash: canonicalHash, resolution }
+            : { context_address: address, resolution },
+          decoding: {
+            status: resolution === "empty" ? "not_applicable" : "unavailable",
+            inputs: [], candidates: [],
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText(english, { exact: true })).toBeVisible();
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await screen.findByText(chinese, { exact: true })).toBeVisible();
+  });
+
+  it("classifies contract creation without requesting execution evidence", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (request: RequestInfo | URL) => {
+      const url = requestURL(request);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, nonce: "1", value: "0",
+          gas: "100000", input: "0x6000", status: "success", canonical: true,
+          finality: "safe", completeness: completeness(), contract_address: delegatedAddress,
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    const action = (await screen.findByText("Transaction action", { exact: true }))
+      .closest(".transaction-action-card") as HTMLElement | null;
+    if (!action) throw new Error("transaction action card missing");
+    expect(within(action).getByText("Contract creation", { exact: true })).toBeVisible();
+    expect(requested).not.toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    await waitFor(() => expect(within(action).getByText("创建合约", { exact: true })).toBeVisible());
+  });
+
+  it("shows a fail-closed loading action without briefly inferring a contract call", async () => {
+    const calldata = "0x1234";
+    let resolveCalldata: ((response: Response) => void) | undefined;
+    const pendingCalldata = new Promise<Response>((resolve) => {
+      resolveCalldata = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn(async (request: RequestInfo | URL) => {
+      const url = requestURL(request);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: delegatedAddress, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return pendingCalldata;
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("Determining transaction action", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Contract interaction", { exact: true })).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await screen.findByText("正在判定交易动作", { exact: true })).toBeVisible();
+    await act(async () => {
+      resolveCalldata?.(envelope({
+        chain_id: "1", block_number: "12", block_hash: canonicalHash,
+        transaction_hash: transactionHash, transaction_index: "0", state: "complete", input: calldata,
+        execution: { context_address: address, resolution: "empty" },
+        decoding: { status: "not_applicable", inputs: [], candidates: [] },
+      }));
+    });
+    expect(await screen.findByText("EOA 交易", { exact: true })).toBeVisible();
+  });
+
+  it.each(["request failure", "unavailable execution identity"] as const)(
+    "fails closed when transaction action evidence has a $mode",
+    async (mode) => {
+      const calldata = "0x1234";
+      vi.stubGlobal("fetch", vi.fn(async (request: RequestInfo | URL) => {
+        const url = requestURL(request);
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+          return envelope({
+            hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+            transaction_index: 0, from: delegatedAddress, to: address, nonce: "1", value: "0",
+            gas: "21000", input: calldata, status: "success", canonical: true,
+            finality: "safe", completeness: completeness(),
+          });
+        }
+        if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+          if (mode === "request failure") {
+            return Response.json({
+              error: {
+                code: "temporary_failure",
+                message: "execution evidence is temporarily unavailable",
+                request_id: "core-pages-test",
+              },
+            }, { status: 503 });
+          }
+          return envelope({
+            chain_id: "1", block_number: "12", block_hash: canonicalHash,
+            transaction_hash: transactionHash, transaction_index: "0", state: "complete", input: calldata,
+            execution: { context_address: address, resolution: "unavailable" },
+            decoding: { status: "unavailable", inputs: [], candidates: [] },
+          });
+        }
+        return notFound();
+      }));
+
+      renderExplorer(`/tx/${transactionHash}`);
+      expect(await screen.findByText("Transaction action unavailable", { exact: true })).toBeVisible();
+      expect(screen.queryByText("Contract interaction", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("EOA transaction", { exact: true })).not.toBeInTheDocument();
+
+      await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+      expect(await screen.findByText("无法判断交易动作", { exact: true })).toBeVisible();
+    },
+  );
+
   it("separates decoded and raw calldata with compact copyable ABI evidence", async () => {
     const calldata = `0xa9059cbb${"0".repeat(24)}${"44".repeat(20)}${"0".repeat(63)}c`;
     const requested: string[] = [];
@@ -401,6 +579,7 @@ describe("core explorer pages", () => {
     }));
 
     renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("Contract interaction", { exact: true })).toBeVisible();
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
     try {
@@ -472,6 +651,7 @@ describe("core explorer pages", () => {
     }));
 
     renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("Contract interaction", { exact: true })).toBeVisible();
     await userEvent.setup().click(await screen.findByText("More details"));
     const decoded = await screen.findByRole("region", { name: "Decoded calldata · setValue(uint256)" });
     expect(within(decoded).getByText("EIP-7702 delegate code")).toBeVisible();
@@ -508,6 +688,8 @@ describe("core explorer pages", () => {
     }));
 
     renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("EOA transaction", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Contract interaction", { exact: true })).not.toBeInTheDocument();
     await userEvent.setup().click(await screen.findByText("More details"));
     expect(await screen.findByText(/No executable code at transaction execution time/u)).toBeVisible();
     expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
@@ -549,6 +731,8 @@ describe("core explorer pages", () => {
       expect(transactionFetches).toBe(2);
       expect(calldataFetches).toBe(2);
     });
+    expect(screen.getByText("Transaction action unavailable", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Contract interaction", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText("The canonical transaction inclusion changed. Refreshing this tab will load the new block identity.")).toBeVisible();
     expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
   });

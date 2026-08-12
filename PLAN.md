@@ -125,7 +125,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   copyable disclosure-first ABI, transformation, and artifact details across
   bilingual themes and responsive embedded-browser flows. P50-T53 consolidates
   transaction Gas usage with an exact percentage and exposes execution plus
-  Blob fee settings across Overview and the Blob tab.
+  Blob fee settings across Overview and the Blob tab. P50-T54 classifies
+  transaction actions from exact transaction-time direct, delegated, or empty
+  execution-code evidence and fails closed while that evidence is unavailable.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps

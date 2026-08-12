@@ -184,6 +184,7 @@ test("EIP-7702 transaction keeps authorization outcomes lazy and uses transactio
 
   await page.goto(`/tx/${delegationTransactionHash}`);
   const transactionTabs = page.getByRole("tablist", { name: "Transaction detail sections" });
+  await expect(page.getByText("Contract interaction", { exact: true })).toBeVisible();
   await expect(transactionTabs.getByRole("tab", { name: "Authorizations" })).toBeVisible();
   await expect(transactionTabs.getByRole("tab", { name: "Access list" })).toBeVisible();
   await expect(transactionTabs.getByRole("tab", { name: "Blob" })).toHaveCount(0);
@@ -245,6 +246,8 @@ test("EIP-7702 clearing keeps raw calldata and never falls back to stale delegat
 
   await page.goto(`/tx/${clearingTransactionHash}`);
   expect(requestedPaths).not.toContain(`/api/v1/transactions/${clearingTransactionHash}/authorizations`);
+  await expect(page.getByText("EOA transaction", { exact: true })).toBeVisible();
+  await expect(page.getByText("Contract interaction", { exact: true })).toHaveCount(0);
   await activateInView(page.getByText("More details", { exact: true }));
   await expect(page.getByText(/No executable code at transaction execution time/u)).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue("0x55241077");
