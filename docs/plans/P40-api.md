@@ -33,6 +33,7 @@ the agreed Etherscan V2 subset.
 | P40-T11 | done | P30-T15, P40-T10 | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests |
 | P40-T12 | done | P40-T10 | Protocol detail fields, block-scoped transactions, withdrawals, and block-origin address evidence | OpenAPI, generated contract, query, cursor, reorg, and handler tests |
 | P40-T13 | done | P40-T07, P40-T08 | Transaction-scoped successful internal ETH transfers and exact-block token decimals | OpenAPI, query, cursor, reorg, handler, billing-inventory, and generation tests |
+| P40-T14 | done | P40-T12 | Exact-block execution and blob base-fee facts on transaction resources | OpenAPI, generated contract, query, home-stream, and generation tests |
 
 ## Acceptance
 
@@ -54,6 +55,14 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T14 exposes optional `base_fee_per_gas` and
+  `blob_base_fee_per_gas` transaction quantities from the exact containing
+  block and authenticated receipt without deriving them from aggregate burned
+  fees. Generated Go and TypeScript contracts, strict home-stream validation,
+  pre-London absence, non-blob absence, Blob receipt facts, and orphan block
+  identity are covered. Focused API and query tests, `make generate-check`,
+  and the full `make check` gate pass.
 
 - P40-T13 adds the paginated, exact-inclusion
   `/transactions/{hash}/internal-transactions` resource for successful non-root

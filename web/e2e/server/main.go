@@ -829,7 +829,9 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 		"hash": hash, "block_hash": blockHash, "block_number": blockNumber, "transaction_index": 0,
 		"block_timestamp": "2026-01-01T00:00:00Z",
 		"from":            testAddress, "to": testAddress, "nonce": "1", "value": "900719925474099312345",
-		"gas": "21000", "gas_price": "1000000000", "type": "2", "input": "0x3fa4f245",
+		"gas": "567028", "gas_used": "430551", "base_fee_per_gas": "112489733",
+		"max_fee_per_gas": "151663696", "max_priority_fee_per_gas": "28319880",
+		"type": "2", "input": "0x3fa4f245",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
 	}
 }
@@ -888,6 +890,11 @@ func contractCreationTransaction(hash, blockHash, blockNumber, finality string) 
 	result := transaction(hash, blockHash, blockNumber, finality)
 	result["to"] = nil
 	result["contract_address"] = testAddress
+	result["type"] = "3"
+	result["access_list"] = []any{}
+	result["blob_base_fee_per_gas"] = "1000000"
+	result["max_fee_per_blob_gas"] = "1000000000"
+	result["blob_versioned_hashes"] = []any{testHash}
 	return result
 }
 

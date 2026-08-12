@@ -2,6 +2,7 @@ package query
 
 import (
 	"database/sql"
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -24,9 +25,19 @@ func TestTransactionModelPublishesBlobTypedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	transaction := bundle.Block.Transactions()[0]
+	var receipt map[string]any
+	if err := json.Unmarshal(bundle.RawReceipts[0], &receipt); err != nil {
+		t.Fatal(err)
+	}
+	receipt["blobGasUsed"] = "0x20000"
+	receipt["blobGasPrice"] = "0x5"
+	rawReceipt, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	reader := &PostgresReader{}
 	model, err := reader.transactionModel(
-		bundle.RawTransactions[0], bundle.RawReceipts[0], bundle.RawBlock,
+		bundle.RawTransactions[0], rawReceipt, bundle.RawBlock,
 		"12", bundle.Block.Hash().Bytes(), 0, transaction.Hash().Bytes(), true,
 		sql.NullString{String: "12", Valid: true}, sql.NullString{String: "10", Valid: true}, 12,
 	)
@@ -45,6 +56,12 @@ func TestTransactionModelPublishesBlobTypedFields(t *testing.T) {
 	}
 	if model.MaxFeePerBlobGas == nil || *model.MaxFeePerBlobGas != "3" {
 		t.Fatalf("max fee per blob gas=%v", model.MaxFeePerBlobGas)
+	}
+	if model.BaseFeePerGas == nil || *model.BaseFeePerGas != "1" {
+		t.Fatalf("base fee per gas=%v", model.BaseFeePerGas)
+	}
+	if model.BlobBaseFeePerGas == nil || *model.BlobBaseFeePerGas != "5" {
+		t.Fatalf("blob base fee per gas=%v", model.BlobBaseFeePerGas)
 	}
 }
 

@@ -1031,6 +1031,30 @@ tbody tr:hover {
   align-items: center;
 }
 
+.transaction-fee-values,
+.transaction-fee-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.transaction-fee-values {
+  gap: 0.35rem 0.5rem;
+}
+
+.transaction-fee-value {
+  gap: 0.5rem;
+}
+
+.transaction-fee-label {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.transaction-fee-separator {
+  color: var(--line-strong);
+}
+
 .transaction-confirmations,
 .transaction-creation-label,
 .transaction-status,

@@ -288,6 +288,9 @@ func (r *PostgresReader) transactionModel(
 		model.ContractAddress = &contractAddress
 	}
 	model.GasUsed = ptrQuantity(strconv.FormatUint(receipt.GasUsed, 10))
+	if receipt.BlobGasPrice != nil {
+		model.BlobBaseFeePerGas = ptrQuantity(receipt.BlobGasPrice.String())
+	}
 
 	var blockBaseFee *big.Int
 	var blockTimestamp *time.Time
@@ -298,6 +301,7 @@ func (r *PostgresReader) transactionModel(
 		}
 		if block.BaseFeePerGas != nil {
 			blockBaseFee = new(big.Int).Set(block.BaseFeePerGas.ToInt())
+			model.BaseFeePerGas = ptrQuantity(blockBaseFee.String())
 		}
 		if block.Timestamp != nil {
 			parsed, err := quantityTime(uint64(*block.Timestamp))

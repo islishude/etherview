@@ -76,6 +76,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T50 | done        | P50-T49 | Move transaction internal ETH transfers from Overview into a dedicated tab immediately before Token transfers | focused frontend, tab order, lazy loading, bilingual, embedded browser, and common gates |
 | P50-T51 | done        | P50-T50 | Remove the standalone Contracts navigation and route, and link definitively unverified contracts to address-prefilled Web verification | focused frontend, bilingual, embedded browser, accessibility, and common gates |
 | P50-T52 | done        | P50-T51 | Organize the global stylesheet into documented responsibility-based modules without visual or interaction changes | stylesheet regressions, complete frontend tests, lint, build, generation, plan check, and diff check |
+| P50-T53 | done        | P40-T14, P50-T52 | Merge transaction gas limit and usage and expose execution and blob fee settings | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -103,6 +104,15 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T53 merges transaction Gas limit and usage with an exact BigInt-based,
+  two-decimal percentage; exposes Base, Max, and Max Priority fee settings with
+  the agreed Legacy/Access-list gas-price fallback; and renders Blob Base/Max
+  settings in both Overview and Blob. Focused API/query tests and 55 frontend
+  tests pass, as do the complete 29-file/305-test frontend suite, TypeScript
+  lint, production build, `make generate-check`, `make plan-check`, the
+  host-authorized 16-flow embedded Chromium suite, and the full host-authorized
+  `make check` gate.
 
 - P50-T46 aligns the fail-closed home snapshot parser with the generated Block
   and Transaction contracts for withdrawals, blob fee/hash fields, and access

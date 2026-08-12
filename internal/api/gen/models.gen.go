@@ -3746,8 +3746,14 @@ type TraceRevertDecodingStatus string
 
 // Transaction defines model for Transaction.
 type Transaction struct {
-	AccessList          *[]TransactionAccessListEntry `json:"access_list,omitempty"`
-	BlobVersionedHashes *[]Hash                       `json:"blob_versioned_hashes,omitempty"`
+	AccessList *[]TransactionAccessListEntry `json:"access_list,omitempty"`
+
+	// BaseFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BaseFeePerGas *Quantity `json:"base_fee_per_gas,omitempty"`
+
+	// BlobBaseFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlobBaseFeePerGas   *Quantity `json:"blob_base_fee_per_gas,omitempty"`
+	BlobVersionedHashes *[]Hash   `json:"blob_versioned_hashes,omitempty"`
 
 	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	BlockHash *Hash `json:"block_hash,omitempty"`

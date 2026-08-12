@@ -2280,6 +2280,12 @@ components:
           $ref: "#/components/schemas/Quantity"
         gas_used:
           $ref: "#/components/schemas/Quantity"
+        base_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+          description: "Base fee from the exact block containing this transaction, serialized as wei. Absent before London or when the containing block has no base-fee field."
+        blob_base_fee_per_gas:
+          $ref: "#/components/schemas/Quantity"
+          description: "Blob base fee authenticated by this blob transaction's receipt blobGasPrice, serialized as wei. Absent for non-blob transactions."
         effective_gas_price:
           $ref: "#/components/schemas/Quantity"
           description: "Transaction effective gas price used on-chain (receipt effectiveGasPrice), serialized as wei. For London+ transactions this equals min(baseFeePerGas + tip, gasFeeCap); legacy/access-list transactions use gasPrice."

@@ -2060,6 +2060,10 @@ export interface components {
         };
         Transaction: {
             access_list?: components["schemas"]["TransactionAccessListEntry"][];
+            /** @description Base fee from the exact block containing this transaction, serialized as wei. Absent before London or when the containing block has no base-fee field. */
+            base_fee_per_gas?: components["schemas"]["Quantity"];
+            /** @description Blob base fee authenticated by this blob transaction's receipt blobGasPrice, serialized as wei. Absent for non-blob transactions. */
+            blob_base_fee_per_gas?: components["schemas"]["Quantity"];
             blob_versioned_hashes?: components["schemas"]["Hash"][];
             block_hash?: components["schemas"]["Hash"];
             block_number?: components["schemas"]["Quantity"];

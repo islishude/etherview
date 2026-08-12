@@ -82,7 +82,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   artifact reads, including real OpenZeppelin 5.6.1 monolith/split coverage.
   P40-T13 adds exact-inclusion successful internal ETH transfers plus
   block-correct nullable ERC-20 decimals to transaction and address transfer
-  resources.
+  resources. P40-T14 exposes exact-block execution and authenticated receipt
+  Blob base-fee facts on transaction resources.
 - P50 is complete: its core and capability explorer pages, exact
   verification-job and published-artifact reads, EIP-6963 wallet discovery,
   session-fenced
@@ -122,7 +123,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P50-T16 completes the verified-code surface with a strictly read-only
   multi-file CodeMirror workspace, explicit compiler-setting summaries, and
   copyable disclosure-first ABI, transformation, and artifact details across
-  bilingual themes and responsive embedded-browser flows.
+  bilingual themes and responsive embedded-browser flows. P50-T53 consolidates
+  transaction Gas usage with an exact percentage and exposes execution plus
+  Blob fee settings across Overview and the Blob tab.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps

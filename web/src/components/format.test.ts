@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatGweiFromWei,
   formatNativeAmount,
+  formatPercentageRatio,
   formatRelativeTimestamp,
   formatTokenAmount,
 } from "./format";
@@ -64,6 +65,20 @@ describe("formatGweiFromWei", () => {
 
   it("renders wei as decimal gwei", () => {
     expect(formatGweiFromWei("2500000001", "en")).toBe("2.500000001");
+  });
+});
+
+describe("formatPercentageRatio", () => {
+  it("rounds an exact bigint ratio to two decimal places", () => {
+    expect(formatPercentageRatio("430551", "567028", "en")).toBe("75.93%");
+    expect(formatPercentageRatio("1000000000000000000000001", "1000000000000000000000000", "en"))
+      .toBe("100.00%");
+  });
+
+  it("fails closed for missing, malformed, or zero totals", () => {
+    expect(formatPercentageRatio(undefined, "1", "en")).toBeUndefined();
+    expect(formatPercentageRatio("1", "0", "en")).toBeUndefined();
+    expect(formatPercentageRatio("invalid", "2", "en")).toBeUndefined();
   });
 });
 

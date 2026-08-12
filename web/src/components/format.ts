@@ -112,3 +112,25 @@ export function formatTokenAmount(
 export function formatGweiFromWei(value?: string | number | bigint, locale?: string): string {
   return formatNativeAmount(value, locale, 9);
 }
+
+export function formatPercentageRatio(
+  value?: string | number | bigint,
+  total?: string | number | bigint,
+  locale?: string,
+): string | undefined {
+  if (value === undefined || value === null || value === ""
+    || total === undefined || total === null || total === "") return undefined;
+  try {
+    const numerator = BigInt(value);
+    const denominator = BigInt(total);
+    if (numerator < 0n || denominator <= 0n) return undefined;
+    const roundedHundredths = (numerator * 10_000n + denominator / 2n) / denominator;
+    const integerPart = roundedHundredths / 100n;
+    const fractionalPart = (roundedHundredths % 100n).toString().padStart(2, "0");
+    const decimalSeparator = new Intl.NumberFormat(locale).formatToParts(1.1)
+      .find((part) => part.type === "decimal")?.value ?? ".";
+    return `${new Intl.NumberFormat(locale).format(integerPart)}${decimalSeparator}${fractionalPart}%`;
+  } catch {
+    return undefined;
+  }
+}

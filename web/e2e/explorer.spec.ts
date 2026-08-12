@@ -428,6 +428,12 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(recipientRow.getByRole("link", { name: address })).toBeVisible();
   await expect(recipientRow.getByText("Contract creation")).toBeVisible();
   await activateInView(transactionSummary.getByText("More details"));
+  await expect(transactionSummary.getByText("Gas Limit & Usage by Txn")).toBeVisible();
+  await expect(transactionSummary.getByText("567,028 | 430,551 (75.93%)")).toBeVisible();
+  await expect(transactionSummary).toContainText("Base: 0.112489733 Gwei");
+  await expect(transactionSummary).toContainText("Max: 0.151663696 Gwei");
+  await expect(transactionSummary).toContainText("Max Priority: 0.02831988 Gwei");
+  await expect(transactionSummary).toContainText("Blob Base Fee: 0.001 Gwei");
   const copyButtons = transactionSummary.getByRole("button", { name: "Copy" });
   await expect(copyButtons).toHaveCount(4);
   for (const button of await copyButtons.all()) {
@@ -439,6 +445,11 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(transactionOverflow).toBeLessThanOrEqual(1);
+  await activateInView(page.getByRole("tab", { name: "Blob" }));
+  const blobPanel = page.getByRole("tabpanel");
+  await expect(blobPanel).toContainText("Blob Base Fee: 0.001 Gwei");
+  await expect(blobPanel).toContainText("Max: 1 Gwei");
+  await activateInView(page.getByRole("tab", { name: "Overview" }));
   await activateInView(page.getByRole("link", { name: address, exact: true }).first());
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
   const addressSummary = page.getByRole("heading", { name: "Address summary" }).locator("..");

@@ -139,6 +139,8 @@ describe("home snapshot EventSource", () => {
           nonce: "1",
           value: "0",
           gas: "21000",
+          base_fee_per_gas: "5",
+          blob_base_fee_per_gas: "6",
           max_fee_per_blob_gas: "7",
           access_list: [{
             address: `0x${"55".repeat(20)}`,
@@ -155,6 +157,8 @@ describe("home snapshot EventSource", () => {
 
     expect(parsed.data.blocks[0]?.withdrawals).toHaveLength(1);
     expect(parsed.data.transactions[0]?.access_list).toHaveLength(1);
+    expect(parsed.data.transactions[0]?.base_fee_per_gas).toBe("5");
+    expect(parsed.data.transactions[0]?.blob_base_fee_per_gas).toBe("6");
   });
 
   it("rejects malformed protocol fields", () => {

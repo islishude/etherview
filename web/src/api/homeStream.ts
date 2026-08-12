@@ -166,7 +166,8 @@ function validateTransaction(value: unknown): void {
     [
       "hash", "block_timestamp", "confirmations", "block_hash", "block_number",
       "transaction_index", "from", "to", "contract_address", "nonce", "value",
-      "gas", "gas_used", "effective_gas_price", "tx_fee_wei", "gas_price",
+      "gas", "gas_used", "base_fee_per_gas", "blob_base_fee_per_gas",
+      "effective_gas_price", "tx_fee_wei", "gas_price",
       "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
       "access_list", "blob_versioned_hashes", "burned_wei", "type", "input",
       "status", "canonical", "finality", "completeness",
@@ -188,7 +189,8 @@ function validateTransaction(value: unknown): void {
   quantity(record.value, "transaction.value");
   quantity(record.gas, "transaction.gas");
   for (const key of [
-    "gas_used", "effective_gas_price", "tx_fee_wei", "gas_price",
+    "gas_used", "base_fee_per_gas", "blob_base_fee_per_gas",
+    "effective_gas_price", "tx_fee_wei", "gas_price",
     "max_fee_per_gas", "max_priority_fee_per_gas", "max_fee_per_blob_gas",
     "burned_wei",
   ] as const) {

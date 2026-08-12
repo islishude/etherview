@@ -68,6 +68,10 @@ func TestOpenAPIContractFoundation(t *testing.T) {
 
 	assertRequired(t, mappingValue(t, schemas, "APIError"), "code", "message", "request_id")
 	assertRequired(t, mappingValue(t, schemas, "ErrorResponse"), "error")
+	transactionProperties := mappingValue(t, mappingValue(t, schemas, "Transaction"), "properties")
+	for _, field := range []string{"base_fee_per_gas", "blob_base_fee_per_gas"} {
+		assertScalar(t, mappingValue(t, mappingValue(t, transactionProperties, field), "$ref"), "#/components/schemas/Quantity")
+	}
 	originProperties := mappingValue(t, mappingValue(t, schemas, "AddressOrigin"), "properties")
 	assertEnum(t, mappingValue(t, originProperties, "state"), "found", "genesis", "not_found", "unavailable")
 	assertSuccessEnvelopes(t, schemas)

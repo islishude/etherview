@@ -71,6 +71,7 @@ import {
   formatGweiFromWei,
   formatInteger,
   formatNativeAmount,
+  formatPercentageRatio,
   formatRelativeTimestamp,
   formatTokenAmount,
   formatTimestamp,
@@ -876,6 +877,28 @@ function transactionTabsForType(type?: string): TransactionTab[] {
   return tabs;
 }
 
+function gasUsageValue(gasLimit: string, gasUsed: string | undefined, locale: string): string {
+  const quantities = `${formatInteger(gasLimit, locale)} | ${formatInteger(gasUsed, locale)}`;
+  const percentage = formatPercentageRatio(gasUsed, gasLimit, locale);
+  return percentage ? `${quantities} (${percentage})` : quantities;
+}
+
+function FeeSettings({ entries, locale }: {
+  entries: ReadonlyArray<{ label: string; value?: string }>;
+  locale: string;
+}) {
+  return <span className="transaction-fee-values">
+    {entries.map((entry, index) => (
+      <span className="transaction-fee-value" key={entry.label}>
+        <span><span className="transaction-fee-label">{entry.label}:</span>{" "}
+          {entry.value === undefined ? "—" : `${formatGweiFromWei(entry.value, locale)} Gwei`}
+        </span>
+        {index < entries.length - 1 ? <span className="transaction-fee-separator" aria-hidden="true">|</span> : null}
+      </span>
+    ))}
+  </span>;
+}
+
 function calldataDecodedValue(value: unknown, type: string, locale: string): string {
   const baseType = type.replace(/\[[0-9]*\]/gu, "");
   if (typeof value === "string" && /^(?:u?int)(?:[0-9]*)$/u.test(baseType)) {
@@ -1329,12 +1352,24 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                     <TransactionDetailRow label={t("detail.type")}>
                       {transactionTypeLabel(transaction.data.type, t)}
                     </TransactionDetailRow>
-                    <TransactionDetailRow label={t("detail.gasLimit")}>
-                      {formatInteger(transaction.data.gas, locale)}
+                    <TransactionDetailRow label={t("detail.gasLimitAndUsage")}>
+                      {gasUsageValue(transaction.data.gas, transaction.data.gas_used, locale)}
                     </TransactionDetailRow>
-                    <TransactionDetailRow label={t("detail.gasUsed")}>
-                      {formatInteger(transaction.data.gas_used, locale)}
+                    <TransactionDetailRow label={t("detail.gasFees")}>
+                      <FeeSettings locale={locale} entries={[
+                        { label: t("detail.feeBase"), value: transaction.data.base_fee_per_gas },
+                        { label: t("detail.feeMax"), value: transaction.data.max_fee_per_gas ?? transaction.data.gas_price },
+                        { label: t("detail.feeMaxPriority"), value: transaction.data.max_priority_fee_per_gas ?? transaction.data.gas_price },
+                      ]} />
                     </TransactionDetailRow>
+                    {transaction.data.type === "3" ? (
+                      <TransactionDetailRow label={t("detail.blobGasFees")}>
+                        <FeeSettings locale={locale} entries={[
+                          { label: t("detail.blobBaseFee"), value: transaction.data.blob_base_fee_per_gas },
+                          { label: t("detail.feeMax"), value: transaction.data.max_fee_per_blob_gas },
+                        ]} />
+                      </TransactionDetailRow>
+                    ) : null}
                     <TransactionDetailRow label={t("detail.effectiveGasPrice")}>
                       {formatGweiFromWei(transaction.data.effective_gas_price, locale)}
                     </TransactionDetailRow>
@@ -1479,7 +1514,12 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
             <section className="panel transaction-tab-panel" role="tabpanel">
               <h2>{t("detail.blobData")}</h2>
               <DetailList label={t("detail.blobData")}>
-                <Detail label={t("detail.maxFeePerBlobGas")} value={transaction.data.max_fee_per_blob_gas ? formatGweiFromWei(transaction.data.max_fee_per_blob_gas, locale) : undefined} />
+                <Detail label={t("detail.blobGasFees")} value={(
+                  <FeeSettings locale={locale} entries={[
+                    { label: t("detail.blobBaseFee"), value: transaction.data.blob_base_fee_per_gas },
+                    { label: t("detail.feeMax"), value: transaction.data.max_fee_per_blob_gas },
+                  ]} />
+                )} />
                 <Detail label={t("detail.blobCount")} value={formatInteger(transaction.data.blob_versioned_hashes?.length ?? 0, locale)} />
               </DetailList>
               {transaction.data.blob_versioned_hashes?.length ? (

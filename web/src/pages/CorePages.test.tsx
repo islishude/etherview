@@ -1144,11 +1144,15 @@ describe("core explorer pages", () => {
             to: address,
               nonce: "1",
               value: "2100000000000000000",
-              gas: "21000",
+              gas: "567028",
+              gas_used: "430551",
+              base_fee_per_gas: "112489733",
               effective_gas_price: "2000000000",
               tx_fee_wei: "42000000000000",
               burned_wei: "21000000000000",
               gas_price: "1000000000",
+              max_fee_per_gas: "151663696",
+              max_priority_fee_per_gas: "28319880",
               type: "2",
               input: "0x",
               status: "success",
@@ -1210,6 +1214,18 @@ describe("core explorer pages", () => {
     expect(within(detailValueRow).getByText("2.1 ETH")).toBeVisible();
 
     await userEvent.setup().click(screen.getByText("More details"));
+    const gasUsageLabel = await screen.findByText("Gas Limit & Usage by Txn");
+    const gasUsageRow = gasUsageLabel.closest(".detail-item") as HTMLElement | null;
+    if (!gasUsageRow) throw new Error("gas usage detail row missing");
+    expect(within(gasUsageRow).getByText("567,028 | 430,551 (75.93%)")).toBeVisible();
+
+    const gasFeesLabel = await screen.findByText("Gas Fees");
+    const gasFeesRow = gasFeesLabel.closest(".detail-item") as HTMLElement | null;
+    if (!gasFeesRow) throw new Error("gas fee settings row missing");
+    expect(gasFeesRow).toHaveTextContent("Base: 0.112489733 Gwei");
+    expect(gasFeesRow).toHaveTextContent("Max: 0.151663696 Gwei");
+    expect(gasFeesRow).toHaveTextContent("Max Priority: 0.02831988 Gwei");
+
     const effectiveGasPriceLabel = await screen.findByText("Effective gas price (gwei)");
     const effectiveGasPriceRow = effectiveGasPriceLabel.closest(".detail-item") as HTMLElement | null;
     if (!effectiveGasPriceRow) throw new Error("effective gas price detail row missing");
@@ -1231,6 +1247,64 @@ describe("core explorer pages", () => {
     expect(await screen.findByText("1 ETH")).toBeVisible();
     expect(screen.getByText("receive()", { exact: true })).toBeVisible();
     expect(screen.queryByText("Unknown function selector")).not.toBeInTheDocument();
+  });
+
+  it("uses gas price for legacy max and max-priority fee settings", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", gas_used: "21000", gas_price: "151663696",
+          base_fee_per_gas: "112489733", type: "0", input: "0x", status: "success",
+          canonical: true, finality: "safe", completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByText("More details"));
+    const gasFeesRow = screen.getByText("Gas Fees").closest(".detail-item") as HTMLElement | null;
+    if (!gasFeesRow) throw new Error("legacy gas fee settings row missing");
+    expect(gasFeesRow).toHaveTextContent("Base: 0.112489733 Gwei");
+    expect(gasFeesRow).toHaveTextContent("Max: 0.151663696 Gwei");
+    expect(gasFeesRow).toHaveTextContent("Max Priority: 0.151663696 Gwei");
+  });
+
+  it("shows blob base and max fees in both Overview and Blob", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      if (path === "/api/v1/config") return configResponse();
+      if (path === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", gas_used: "21000", base_fee_per_gas: "112489733",
+          blob_base_fee_per_gas: "1000000", max_fee_per_gas: "151663696",
+          max_priority_fee_per_gas: "28319880", max_fee_per_blob_gas: "1000000000",
+          access_list: [], blob_versioned_hashes: [canonicalHash], type: "3", input: "0x",
+          status: "success", canonical: true, finality: "safe", completeness: completeness(),
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("More details"));
+    const overviewBlobFees = screen.getByText("Blob Gas Fees").closest(".detail-item") as HTMLElement | null;
+    if (!overviewBlobFees) throw new Error("overview blob fee settings row missing");
+    expect(overviewBlobFees).toHaveTextContent("Blob Base Fee: 0.001 Gwei");
+    expect(overviewBlobFees).toHaveTextContent("Max: 1 Gwei");
+
+    await user.click(screen.getByRole("tab", { name: "Blob" }));
+    const blobPanel = await screen.findByRole("tabpanel");
+    expect(blobPanel).toHaveTextContent("Blob Base Fee: 0.001 Gwei");
+    expect(blobPanel).toHaveTextContent("Max: 1 Gwei");
+    expect(within(blobPanel).getByText(canonicalHash)).toBeVisible();
   });
 
   it("reports an ordinary EOA transfer trace as having no executable code", async () => {

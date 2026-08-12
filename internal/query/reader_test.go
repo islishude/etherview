@@ -472,6 +472,12 @@ func TestTransactionDecodesDecimalQuantitiesChecksumAndReceipt(t *testing.T) {
 	if transaction.BurnedWei == nil || *transaction.BurnedWei != "21000000000000" {
 		t.Fatalf("burned_wei = %v, want %s", transaction.BurnedWei, "21000000000000")
 	}
+	if transaction.BaseFeePerGas == nil || *transaction.BaseFeePerGas != "1000000000" {
+		t.Fatalf("base_fee_per_gas = %v, want %s", transaction.BaseFeePerGas, "1000000000")
+	}
+	if transaction.BlobBaseFeePerGas != nil {
+		t.Fatalf("blob_base_fee_per_gas = %v, want nil", transaction.BlobBaseFeePerGas)
+	}
 	if transaction.GasUsed == nil || *transaction.GasUsed != "21000" {
 		t.Fatalf("gas_used = %v, want %s", transaction.GasUsed, "21000")
 	}
@@ -554,6 +560,9 @@ func TestTransactionLegacyTransactionRetainsGasPriceAndClearsBurnedWithoutBaseFe
 	if transaction.BurnedWei == nil || *transaction.BurnedWei != "0" {
 		t.Fatalf("burned_wei = %v, want %s", transaction.BurnedWei, "0")
 	}
+	if transaction.BaseFeePerGas != nil || transaction.BlobBaseFeePerGas != nil {
+		t.Fatalf("pre-London base fees = %v/%v, want nil/nil", transaction.BaseFeePerGas, transaction.BlobBaseFeePerGas)
+	}
 }
 
 func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
@@ -564,7 +573,7 @@ func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
 		contains: "FROM transaction_inclusions AS inclusion", columns: columns(10),
 		rows: [][]driver.Value{{
 			testTransactionRaw(1, 2, 5), testReceiptRawAt(1, 2, 5, 0, "0x1"),
-			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", testBlockRawWithoutBaseFee(1, 2, 1, 0),
+			"1", testHashBytes(2), int64(0), testTransactionHashBytes(5), false, "1", "0", testBlockRaw(1, 2, 1, 0),
 		}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -574,6 +583,9 @@ func TestTransactionDoesNotReturnConfirmationsForOrphan(t *testing.T) {
 	}
 	if transaction.Confirmations != nil {
 		t.Fatalf("confirmations = %v", transaction.Confirmations)
+	}
+	if transaction.BaseFeePerGas == nil || *transaction.BaseFeePerGas != "1000000000" {
+		t.Fatalf("orphan base_fee_per_gas = %v, want %s", transaction.BaseFeePerGas, "1000000000")
 	}
 }
 
