@@ -21,6 +21,7 @@ const diamondWriteFacet = "0xd100000000000000000000000000000000000001";
 const diamondLoupeFacet = "0xd200000000000000000000000000000000000002";
 const diamondInitAddress = "0xd300000000000000000000000000000000000003";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+const secondBlockHash = "0x2222222222222222222222222222222222222222222222222222222222222222";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
 const pendingTransactionHash = `0x${"c".repeat(64)}`;
 const predecessorTransactionHash = `0x${"9".repeat(64)}`;
@@ -529,10 +530,14 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   page,
 }) => {
   const transactionCursors: string[] = [];
+  const addressWithdrawalRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/transactions" && url.searchParams.has("cursor")) {
       transactionCursors.push(url.searchParams.get("cursor") ?? "");
+    }
+    if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) {
+      addressWithdrawalRequests.push(url.pathname);
     }
   });
 
@@ -551,9 +556,14 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("link", { name: "1" })).toBeVisible();
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
 
+  await page.goto("/blocks/2?tab=withdrawals");
+  await expect(page.getByRole("tab", { name: "Withdrawals" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("3.2 Ether", { exact: true })).toBeVisible();
+
   await page.goto("/transactions");
   await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  expect(addressWithdrawalRequests).toEqual([]);
   await activateInView(page.getByRole("button", { name: "Next page" }));
   const secondPageTransaction = page.getByRole("link", { name: /0xbbbbbb…bbbbbb/ });
   await expect(secondPageTransaction).toBeVisible();
@@ -623,6 +633,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
+  expect(addressWithdrawalRequests).toEqual([]);
   const contractTab = page.getByRole("link", { name: "Contract", exact: true });
   await expect(contractTab).not.toHaveClass(/\bactive\b/);
   const [contractStyle, ordinaryTabStyle] = await Promise.all([
@@ -646,6 +657,20 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     }),
   ]);
   expect(contractStyle).toEqual(ordinaryTabStyle);
+  await page.goto(`/address/${address}?tab=withdrawals`);
+  await expect(page.getByRole("link", { name: "Withdrawals" })).toHaveAttribute("aria-current", "page");
+  const withdrawalRows = page.getByRole("table", { name: "Withdrawals" }).getByRole("row");
+  await expect(withdrawalRows).toHaveCount(3);
+  await expect(withdrawalRows.nth(1)).toContainText("10");
+  await expect(withdrawalRows.nth(2)).toContainText("2");
+  await expect(withdrawalRows.nth(1).getByText("3.2 Ether", { exact: true })).toBeVisible();
+  await expect(withdrawalRows.nth(2).getByText("0.000000001 Ether", { exact: true })).toBeVisible();
+  await expect(withdrawalRows.nth(1).getByRole("link", { name: "2" })).toHaveAttribute("href", `/blocks/${secondBlockHash}`);
+  expect(addressWithdrawalRequests).toHaveLength(1);
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByRole("link", { name: "提款" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("columnheader", { name: "数量（Ether）" })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
   await activateInView(page.getByRole("link", { name: "ERC-20 Transfers" }));
   await expect(page.locator("tbody").getByText("ERC-20", { exact: true })).toBeVisible();
   await expect(page.locator("tbody").getByText("1.2345", { exact: true })).toBeVisible();

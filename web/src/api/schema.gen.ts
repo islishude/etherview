@@ -148,6 +148,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/addresses/{address}/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressWithdrawals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/billing/payments": {
         parameters: {
             query?: never;
@@ -1186,6 +1202,21 @@ export interface components {
                 [key: string]: string;
             };
         };
+        AddressWithdrawal: {
+            address: components["schemas"]["Address"];
+            /** @description Withdrawal amount in protocol Gwei units. */
+            amount: components["schemas"]["Quantity"];
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            index: components["schemas"]["Quantity"];
+            validator_index: components["schemas"]["Quantity"];
+        };
+        AddressWithdrawalListResponse: {
+            data: components["schemas"]["AddressWithdrawal"][];
+            meta: components["schemas"]["Meta"];
+        };
         AdminUserUpdate: {
             role?: components["schemas"]["UserRole"];
             status?: components["schemas"]["UserStatus"];
@@ -1390,6 +1421,7 @@ export interface components {
         };
         BlockWithdrawal: {
             address: components["schemas"]["Address"];
+            /** @description Withdrawal amount in protocol Gwei units. */
             amount: components["schemas"]["Quantity"];
             index: components["schemas"]["Quantity"];
             validator_index: components["schemas"]["Quantity"];
@@ -2923,6 +2955,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionListResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listAddressWithdrawals: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical withdrawals credited to the address, newest first by numeric withdrawal index. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressWithdrawalListResponse"];
                 };
             };
             402: components["responses"]["PaymentRequired"];

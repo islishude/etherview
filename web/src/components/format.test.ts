@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatEtherFromGwei,
   formatGweiFromWei,
   formatNativeAmount,
   formatPercentageRatio,
   formatRelativeTimestamp,
   formatTokenAmount,
 } from "./format";
+
+describe("formatEtherFromGwei", () => {
+  it("converts protocol Gwei quantities to exact Ether values", () => {
+    expect(formatEtherFromGwei("3200000000", "en")).toBe("3.2");
+    expect(formatEtherFromGwei("1", "en")).toBe("0.000000001");
+  });
+});
 
 describe("formatRelativeTimestamp", () => {
   const now = new Date("2026-07-28T08:00:00Z").getTime();

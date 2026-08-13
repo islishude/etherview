@@ -116,11 +116,25 @@ func (fake *fakeCatalog) AddressNFTTransfers(_ context.Context, request catalog.
 }
 
 type fakeAddressActivityReader struct {
-	items   []gen.Transaction
-	next    string
-	address string
-	cursor  string
-	limit   int
+	items            []gen.Transaction
+	next             string
+	withdrawals      []gen.AddressWithdrawal
+	withdrawalsNext  string
+	address          string
+	cursor           string
+	limit            int
+	withdrawalCalled bool
+}
+
+func (fake *fakeAddressActivityReader) AddressWithdrawals(
+	_ context.Context,
+	address string,
+	cursor string,
+	limit int,
+) ([]gen.AddressWithdrawal, string, error) {
+	fake.address, fake.cursor, fake.limit = address, cursor, limit
+	fake.withdrawalCalled = true
+	return fake.withdrawals, fake.withdrawalsNext, nil
 }
 
 func (fake *fakeAddressActivityReader) AddressTransactions(
@@ -181,6 +195,11 @@ func TestAddressActivityHTTPResponsesUseGeneratedEnvelopes(t *testing.T) {
 			},
 		}},
 		next: "next-transactions",
+		withdrawals: []gen.AddressWithdrawal{{
+			Index: "10", ValidatorIndex: "110", Address: address, Amount: "3200000000",
+			BlockNumber: "12", BlockHash: hash, BlockTimestamp: time.Unix(1_700_000_000, 0).UTC(),
+		}},
+		withdrawalsNext: "next-withdrawals",
 	}
 	fake := &fakeCatalog{
 		internal: catalog.AddressInternalTransactionPage{
@@ -231,6 +250,25 @@ func TestAddressActivityHTTPResponsesUseGeneratedEnvelopes(t *testing.T) {
 		transactions.Meta.NextCursor == nil || *transactions.Meta.NextCursor != ordinary.next ||
 		ordinary.address != address || ordinary.cursor != "opaque" || ordinary.limit != 1 {
 		t.Fatalf("transactions=%+v reader=%+v", transactions, ordinary)
+	}
+
+	withdrawalRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(withdrawalRecorder, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/addresses/"+address+"/withdrawals?cursor=withdrawal-page&limit=1",
+		nil,
+	))
+	if withdrawalRecorder.Code != http.StatusOK {
+		t.Fatalf("withdrawal status=%d body=%s", withdrawalRecorder.Code, withdrawalRecorder.Body.String())
+	}
+	var withdrawals gen.AddressWithdrawalListResponse
+	if err := json.Unmarshal(withdrawalRecorder.Body.Bytes(), &withdrawals); err != nil {
+		t.Fatal(err)
+	}
+	if len(withdrawals.Data) != 1 || withdrawals.Data[0].Index != "10" ||
+		withdrawals.Meta.NextCursor == nil || *withdrawals.Meta.NextCursor != ordinary.withdrawalsNext ||
+		!ordinary.withdrawalCalled || ordinary.address != address || ordinary.cursor != "withdrawal-page" || ordinary.limit != 1 {
+		t.Fatalf("withdrawals=%+v reader=%+v", withdrawals, ordinary)
 	}
 
 	for _, test := range []struct {

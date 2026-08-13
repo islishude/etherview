@@ -496,6 +496,24 @@ func main() {
 		}
 		writeEnvelope(response, []any{transaction(testTransactionHash, secondHash, "2", "safe")})
 	})
+	mux.HandleFunc("GET /api/v1/addresses/{address}/withdrawals", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress {
+			writeEnvelope(response, []any{})
+			return
+		}
+		writeEnvelope(response, []any{
+			map[string]any{
+				"index": "10", "validator_index": "110", "address": testAddress,
+				"amount": "3200000000", "block_number": "2", "block_hash": secondHash,
+				"block_timestamp": "2026-01-01T00:00:00Z",
+			},
+			map[string]any{
+				"index": "2", "validator_index": "102", "address": testAddress,
+				"amount": "1", "block_number": "1", "block_hash": testHash,
+				"block_timestamp": "2025-12-31T00:00:00Z",
+			},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/internal-transactions", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {
 			writeNotFound(response)
@@ -822,7 +840,11 @@ func canonicalBlockOne() map[string]any {
 }
 
 func canonicalBlockTwo() map[string]any {
-	return block("2", secondHash, testHash, true, "safe")
+	result := block("2", secondHash, testHash, true, "safe")
+	result["withdrawals"] = []any{map[string]any{
+		"index": "10", "validator_index": "110", "address": testAddress, "amount": "3200000000",
+	}}
+	return result
 }
 
 func orphanBlock() map[string]any {

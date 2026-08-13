@@ -5,6 +5,7 @@ import type {
   AggregateStats,
   AddressInternalTransaction,
   AddressTokenTransfer,
+  AddressWithdrawal,
   BlockSummary,
   ChartInterval,
   ChartMetric,
@@ -346,6 +347,34 @@ export function useAddressTransactions(
     queryFn: async (): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await apiClient.GET("/addresses/{address}/transactions", {
+          params: { path: { address }, query: { limit, cursor } },
+        }),
+      );
+      return {
+        items: response.data,
+        meta: response.meta,
+        next_cursor: response.meta.next_cursor,
+      };
+    },
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
+    refetchInterval: cursor ? false : liveRefetchInterval,
+  });
+}
+
+export function useAddressWithdrawals(
+  address: string,
+  cursor?: string,
+  limit = 25,
+  refreshGeneration = 0,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["address", address, "withdrawals", cursor ?? null, limit, refreshGeneration],
+    queryFn: async (): Promise<CursorPage<AddressWithdrawal>> => {
+      const response = requireEnvelope(
+        await apiClient.GET("/addresses/{address}/withdrawals", {
           params: { path: { address }, query: { limit, cursor } },
         }),
       );

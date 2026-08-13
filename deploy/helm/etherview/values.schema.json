@@ -682,6 +682,7 @@
                   "getAddressDelegation",
                   "listAddressDelegations",
                   "listAddressTransactions",
+                  "listAddressWithdrawals",
                   "listAddressInternalTransactions",
                   "listAddressERC20Transfers",
                   "listAddressNFTTransfers",

@@ -80,6 +80,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T53 | done        | P40-T14, P50-T52 | Merge transaction gas limit and usage and expose execution and blob fee settings | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T54 | done        | P50-T53, P61-T13 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
 | P50-T55 | done | P40-T15, P50-T54 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
+| P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -111,6 +112,20 @@ None.
 
 ## Evidence
 
+- P50-T56 adds an always-visible, deep-linkable Withdrawals/提款 address tab
+  immediately after Internal Transactions. It lazily preserves API order and
+  independent cursor pagination, links exact block hashes, and provides
+  bilingual empty, error, and pagination states. Address and block withdrawal
+  tables share exact BigInt Gwei-to-Ether formatting, including
+  `3200000000 -> 3.2 Ether` and `1 -> 0.000000001 Ether`.
+- P50-T56 verification passes the focused frontend suite (2 files, 61 tests),
+  the complete frontend suite (30 files, 327 tests), TypeScript lint,
+  production build, `make generate-check`, `make helm-check`, owned PostgreSQL
+  18 `make test-integration`, `make plan-check`, and `git diff --check`.
+  Host-authorized `make test-e2e` passes all 18 flows, including lazy loading,
+  exact ordering and links, bilingual keyboard access, block Ether rendering,
+  and 390px overflow coverage; the complete host-authorized `make check` gate
+  also passes.
 - P50-T55 makes pending-list hashes deep-link to the shared transaction route,
   renders only the retained mempool Overview for pending/replaced observations,
   follows direct predecessor/successor hashes, polls every two seconds only

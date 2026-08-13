@@ -26,6 +26,7 @@ export type ChainStatus = components["schemas"]["Status"];
 export type PublicConfig = components["schemas"]["PublicConfig"];
 export type BlockSummary = components["schemas"]["Block"];
 export type BlockWithdrawal = components["schemas"]["BlockWithdrawal"];
+export type AddressWithdrawal = components["schemas"]["AddressWithdrawal"];
 export type TransactionSummary = components["schemas"]["Transaction"];
 export type TransactionDetail = components["schemas"]["TransactionDetail"];
 export type TransactionCalldata = components["schemas"]["TransactionCalldata"];

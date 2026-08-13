@@ -88,7 +88,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   Blob base-fee facts on transaction resources. P40-T15 adds strict,
   endpoint-scoped consecutive-snapshot replacement evidence and one
   writer-authoritative included/pending/replaced transaction-detail contract,
-  with PostgreSQL and monolith/split production-runtime coverage.
+  with PostgreSQL and monolith/split production-runtime coverage. P40-T16 adds
+  snapshot-stable canonical address withdrawal history ordered and paginated
+  directly on numeric withdrawal indexes, with exact block-identity cursors.
 - P50's established surface is complete: its core and capability explorer pages, exact
   verification-job and published-artifact reads, EIP-6963 wallet discovery,
   session-fenced
@@ -135,7 +137,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   execution-code evidence and fails closed while that evidence is unavailable.
   P50-T55 implements retention-bounded pending/replaced detail previews and a
   shared iconized transaction-status system, covered by bilingual responsive
-  browser and post-migration monolith/split production-runtime tests.
+  browser and post-migration monolith/split production-runtime tests. P50-T56
+  adds lazy address withdrawal history after Internal Transactions and shares
+  exact Gwei-to-Ether rendering between address and block withdrawal tables.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps

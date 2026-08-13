@@ -18,6 +18,7 @@ import {
   useAddressNFTBalances,
   useAddressNFTTransfers,
   useAddressTransactions,
+  useAddressWithdrawals,
   useAddress,
   useBlock,
   useBlockTransactions,
@@ -53,6 +54,7 @@ import type {
   AddressInternalTransaction,
   AddressSummary,
   AddressTokenTransfer,
+  AddressWithdrawal,
   BlockSummary,
   ChainStatus,
   ERC20Balance,
@@ -70,6 +72,7 @@ import type {
 } from "@/api/types";
 import {
   formatGweiFromWei,
+  formatEtherFromGwei,
   formatInteger,
   formatNativeAmount,
   formatPercentageRatio,
@@ -647,7 +650,7 @@ function BlockWithdrawalsPanel({
                     <code>{withdrawal.address}</code>
                   </Link>
                 </td>
-                <td><code>{formatInteger(withdrawal.amount, locale)} Gwei</code></td>
+                <td><code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code></td>
               </tr>
             ))}</tbody>
           </table>
@@ -2347,6 +2350,7 @@ function transactionActionLabel(
 type AddressTab =
   | "transactions"
   | "internal-transactions"
+  | "withdrawals"
   | "erc20-transfers"
   | "nft-transfers"
   | "assets"
@@ -2362,6 +2366,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
   const delegationHash = isDelegatedAccountTabHash(requestedHash);
   const transactionPager = useCursorHistory(`address-transactions:${address}`);
   const internalPager = useCursorHistory(`address-internal-transactions:${address}`);
+  const withdrawalPager = useCursorHistory(`address-withdrawals:${address}`);
   const erc20Pager = useCursorHistory(`address-erc20-transfers:${address}`);
   const nftTransferPager = useCursorHistory(`address-nft-transfers:${address}`);
   const erc20BalancePager = useCursorHistory(`address-erc20-balances:${address}`);
@@ -2388,6 +2393,13 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
     CORE_PAGE_SIZE,
     internalPager.refreshGeneration,
     activeTab === "internal-transactions" && isAddress(address),
+  );
+  const withdrawals = useAddressWithdrawals(
+    address,
+    withdrawalPager.cursor,
+    CORE_PAGE_SIZE,
+    withdrawalPager.refreshGeneration,
+    activeTab === "withdrawals" && isAddress(address),
   );
   const erc20Transfers = useAddressERC20Transfers(
     address,
@@ -2467,6 +2479,7 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
         {([
           ["transactions", t("addressTab.transactions")],
           ["internal-transactions", t("addressTab.internalTransactions")],
+          ["withdrawals", t("addressTab.withdrawals")],
           ["erc20-transfers", t("addressTab.erc20Transfers")],
           ["nft-transfers", t("addressTab.nftTransfers")],
           ["assets", t("addressTab.assets")],
@@ -2548,6 +2561,21 @@ function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
           onReset={internalPager.reset}
           page={internalPager.page}
           hasPrevious={internalPager.hasPrevious}
+        />
+      )}
+      {activeTab === "withdrawals" && (
+        <AddressWithdrawals
+          busy={withdrawals.isFetching}
+          error={withdrawals.error}
+          hasNext={Boolean(withdrawals.data?.next_cursor)}
+          hasPrevious={withdrawalPager.hasPrevious}
+          items={withdrawals.data?.items}
+          loading={withdrawals.isPending}
+          locale={locale}
+          onNext={() => withdrawalPager.next(withdrawals.data?.next_cursor)}
+          onPrevious={withdrawalPager.previous}
+          onReset={withdrawalPager.reset}
+          page={withdrawalPager.page}
         />
       )}
       {activeTab === "erc20-transfers" && (
@@ -2819,6 +2847,7 @@ function isAddressTab(tab: string): tab is AddressTab {
   return [
     "transactions",
     "internal-transactions",
+    "withdrawals",
     "erc20-transfers",
     "nft-transfers",
     "assets",
@@ -2980,6 +3009,73 @@ function AddressInternalTransactions({
         </AddressActivityTable>
       ) : null}
     </AddressActivitySection>
+  );
+}
+
+function AddressWithdrawals({
+  busy,
+  error,
+  hasNext,
+  hasPrevious,
+  items,
+  loading,
+  locale,
+  onNext,
+  onPrevious,
+  onReset,
+  page,
+}: Omit<AddressActivityProps, "address"> & { items?: AddressWithdrawal[] }) {
+  const { t } = useTranslation();
+  const title = t("addressTab.withdrawals");
+  return (
+    <section className="detail-section address-activity" aria-label={title}>
+      <QueryNotice loading={loading} error={error} onReset={onReset} />
+      {items?.length === 0 ? (
+        <p className="empty-result" role="status">{t("state.noAddressWithdrawals")}</p>
+      ) : null}
+      {items && items.length > 0 ? (
+        <div className="table-scroll" tabIndex={0} aria-label={title}>
+          <table className="address-activity-table">
+            <caption className="sr-only">{title}</caption>
+            <thead>
+              <tr>
+                <th>{t("detail.withdrawalIndex")}</th>
+                <th>{t("detail.validatorIndex")}</th>
+                <th>{t("table.block")}</th>
+                <th>{t("table.age")}</th>
+                <th>{t("detail.withdrawalAmount")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((withdrawal) => (
+                <tr key={`${withdrawal.block_hash}:${withdrawal.index}`}>
+                  <td><code>{formatInteger(withdrawal.index, locale)}</code></td>
+                  <td><code>{formatInteger(withdrawal.validator_index, locale)}</code></td>
+                  <td>
+                    <Link to="/blocks/$blockID" params={{ blockID: withdrawal.block_hash }}>
+                      {formatInteger(withdrawal.block_number, locale)}
+                    </Link>
+                  </td>
+                  <td>{formatRelativeTimestamp(withdrawal.block_timestamp, locale)}</td>
+                  <td><code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {!loading && !error ? (
+        <CursorPagination
+          busy={busy}
+          hasNext={hasNext}
+          hasPrevious={hasPrevious}
+          label={t("pagination.addressWithdrawals")}
+          onNext={onNext}
+          onPrevious={onPrevious}
+          page={page}
+        />
+      ) : null}
+    </section>
   );
 }
 

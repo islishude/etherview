@@ -45,6 +45,7 @@ const BILLABLE_OPERATIONS = [
   "listTransactionStateChanges",
   "getAddress",
   "listAddressTransactions",
+  "listAddressWithdrawals",
   "listAddressInternalTransactions",
   "listAddressERC20Transfers",
   "listAddressNFTTransfers",

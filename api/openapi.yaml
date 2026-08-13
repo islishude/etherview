@@ -739,6 +739,29 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /addresses/{address}/withdrawals:
+    get:
+      operationId: listAddressWithdrawals
+      tags: [addresses, blocks]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical withdrawals credited to the address, newest first by numeric withdrawal index.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressWithdrawalListResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}/internal-transactions:
     get:
       operationId: listAddressInternalTransactions
@@ -1995,7 +2018,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 32
+          maxItems: 33
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -2611,6 +2634,28 @@ components:
           $ref: "#/components/schemas/Address"
         amount:
           $ref: "#/components/schemas/Quantity"
+          description: Withdrawal amount in protocol Gwei units.
+    AddressWithdrawal:
+      type: object
+      additionalProperties: false
+      required: [index, validator_index, address, amount, block_number, block_hash, block_timestamp]
+      properties:
+        index:
+          $ref: "#/components/schemas/Quantity"
+        validator_index:
+          $ref: "#/components/schemas/Quantity"
+        address:
+          $ref: "#/components/schemas/Address"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+          description: Withdrawal amount in protocol Gwei units.
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
     TransactionAccessListEntry:
       type: object
       additionalProperties: false
@@ -5009,6 +5054,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AddressInternalTransaction"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AddressWithdrawalListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AddressWithdrawal"
         meta:
           $ref: "#/components/schemas/Meta"
     AddressTokenTransferListResponse:

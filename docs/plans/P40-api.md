@@ -36,6 +36,7 @@ the agreed Etherscan V2 subset.
 | P40-T13 | done | P40-T07, P40-T08 | Transaction-scoped successful internal ETH transfers and exact-block token decimals | OpenAPI, query, cursor, reorg, handler, billing-inventory, and generation tests |
 | P40-T14 | done | P40-T12 | Exact-block execution and blob base-fee facts on transaction resources | OpenAPI, generated contract, query, home-stream, and generation tests |
 | P40-T15 | done | P40-T14 | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests |
+| P40-T16 | done | P40-T12 | Snapshot-stable canonical address withdrawal history ordered by numeric withdrawal index | migration, OpenAPI, query, cursor, reorg, handler, billing-inventory, and integration tests |
 
 ## Acceptance
 
@@ -60,6 +61,15 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T16 adds migration `0045` and the generated
+  `/addresses/{address}/withdrawals` resource. PostgreSQL filters exact
+  canonical block identities, orders and paginates on numeric
+  `withdrawal_index`, freezes one repeatable-read canonical snapshot, and
+  rejects cursors after a relevant reorg. Focused API/query/handler/config
+  tests, `make generate-check helm-check plan-check`, and the owned PostgreSQL
+  18 `make test-integration` suite pass, including `10, 9, 2` cross-page
+  ordering, orphan exclusion, later-head stability, and stale-cursor rejection.
 
 - P40-T15 adds migration `0042`, strict cross-pool sender/nonce uniqueness,
   immutable same-endpoint consecutive-snapshot replacement observations, an

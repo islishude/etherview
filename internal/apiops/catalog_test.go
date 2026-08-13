@@ -361,6 +361,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listAddressNFTBalances",
 		"listAddressNFTTransfers",
 		"listAddressTransactions",
+		"listAddressWithdrawals",
 		"listBlockTransactions",
 		"listBlocks",
 		"listPendingTransactions",

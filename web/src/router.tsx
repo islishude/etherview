@@ -81,6 +81,7 @@ const addressRoute = createRoute({
     if (tab === "transactions") return {};
     return [
       "internal-transactions",
+      "withdrawals",
       "erc20-transfers",
       "nft-transfers",
       "assets",

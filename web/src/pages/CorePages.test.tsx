@@ -190,7 +190,7 @@ describe("core explorer pages", () => {
     const user = userEvent.setup();
     await user.click(withdrawalsTab);
     expect(await screen.findByRole("heading", { name: "Withdrawals" })).toBeVisible();
-    expect(screen.getByText("3,200,000,000 Gwei")).toBeVisible();
+    expect(screen.getByText("3.2 Ether")).toBeVisible();
     expect(withdrawalsTab).toHaveAttribute("aria-selected", "true");
     await user.click(within(tabs).getByRole("tab", { name: "Overview" }));
     expect(screen.queryByText("Data completeness")).not.toBeInTheDocument();
@@ -2009,6 +2009,36 @@ describe("core explorer pages", () => {
           reverted: false,
         }]);
       }
+      if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) {
+        if (url.searchParams.get("cursor") === "withdrawal-next") {
+          return envelope([{
+            index: "1",
+            validator_index: "101",
+            address,
+            amount: "1000000000",
+            block_number: "9",
+            block_hash: transactionHash,
+            block_timestamp: "2026-07-26T08:00:00Z",
+          }]);
+        }
+        return envelope([{
+          index: "10",
+          validator_index: "110",
+          address,
+          amount: "3200000000",
+          block_number: "12",
+          block_hash: canonicalHash,
+          block_timestamp: "2026-07-28T08:00:00Z",
+        }, {
+          index: "2",
+          validator_index: "102",
+          address,
+          amount: "1",
+          block_number: "10",
+          block_hash: olderHash,
+          block_timestamp: "2026-07-27T08:00:00Z",
+        }], { next_cursor: "withdrawal-next" });
+      }
       if (url.pathname === `/api/v1/addresses/${address}/erc20-transfers`) {
         return envelope([{
           block_hash: canonicalHash,
@@ -2049,6 +2079,10 @@ describe("core explorer pages", () => {
     renderExplorer(`/address/${address}`);
 
     const contractLink = await screen.findByRole("link", { name: "Contract" });
+    const addressTabs = screen.getByRole("navigation", { name: "Address activity sections" });
+    expect(within(addressTabs).getAllByRole("link").slice(0, 6).map((link) => link.textContent)).toEqual([
+      "Transactions", "Internal Transactions", "Withdrawals", "ERC-20 Transfers", "NFT Transfers", "Assets",
+    ]);
     expect(contractLink).toHaveAttribute(
       "href",
       `/address/${address}#code`,
@@ -2090,6 +2124,7 @@ describe("core explorer pages", () => {
     ).toHaveLength(2);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/internal-transactions`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/withdrawals`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/erc20-balances`);
 
@@ -2112,6 +2147,22 @@ describe("core explorer pages", () => {
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/internal-transactions`);
     expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
 
+    await user.click(screen.getByRole("link", { name: "Withdrawals" }));
+    const withdrawalTable = await screen.findByRole("table", { name: "Withdrawals" });
+    const withdrawalRows = within(withdrawalTable).getAllByRole("row").slice(1);
+    expect(withdrawalRows).toHaveLength(2);
+    expect(withdrawalRows[0]).toHaveTextContent("10");
+    expect(withdrawalRows[1]).toHaveTextContent("2");
+    expect(within(withdrawalRows[0]!).getByText("3.2 Ether")).toBeVisible();
+    expect(within(withdrawalRows[1]!).getByText("0.000000001 Ether")).toBeVisible();
+    expect(within(withdrawalRows[0]!).getByRole("link", { name: "12" })).toHaveAttribute(
+      "href", `/blocks/${canonicalHash}`,
+    );
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/withdrawals`);
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("Page 2", { exact: true })).toBeVisible();
+    expect(within(screen.getByRole("table", { name: "Withdrawals" })).getByText("1 Ether", { exact: true })).toBeVisible();
+
     await user.click(screen.getByRole("link", { name: "ERC-20 Transfers" }));
     expect(await screen.findByText("1.2345", { exact: true })).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-transfers`);
@@ -2123,6 +2174,35 @@ describe("core explorer pages", () => {
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
 
+  });
+
+  it("deep-links an empty address withdrawal history without loading transactions", async () => {
+    const requestedPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/addresses/${address}`) {
+        return envelope({
+          address,
+          type: "eoa",
+          balance: "0",
+          nonce: "0",
+          at_block: canonicalHash,
+          completeness: completeness(),
+          has_delegation_history: false,
+        });
+      }
+      if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) return envelope([]);
+      return notFound();
+    }));
+
+    renderExplorer(`/address/${address}?tab=withdrawals`);
+
+    expect(await screen.findByText("This address has no withdrawals in this snapshot.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Withdrawals" })).toHaveAttribute("aria-current", "page");
+    expect(requestedPaths).toContain(`/api/v1/addresses/${address}/withdrawals`);
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/transactions`);
   });
 
   it("renders delegated-account panels with the shared detail and pagination contracts", async () => {

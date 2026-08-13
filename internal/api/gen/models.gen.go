@@ -2436,6 +2436,34 @@ type AddressVerificationSubmission struct {
 // AddressVerificationSubmissionInputKind defines model for AddressVerificationSubmission.InputKind.
 type AddressVerificationSubmissionInputKind string
 
+// AddressWithdrawal defines model for AddressWithdrawal.
+type AddressWithdrawal struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address Address `json:"address"`
+
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount Quantity `json:"amount"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity  `json:"block_number"`
+	BlockTimestamp time.Time `json:"block_timestamp"`
+
+	// Index A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Index Quantity `json:"index"`
+
+	// ValidatorIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ValidatorIndex Quantity `json:"validator_index"`
+}
+
+// AddressWithdrawalListResponse defines model for AddressWithdrawalListResponse.
+type AddressWithdrawalListResponse struct {
+	Data []AddressWithdrawal `json:"data"`
+	Meta Meta                `json:"meta"`
+}
+
 // AdminUserUpdate defines model for AdminUserUpdate.
 type AdminUserUpdate struct {
 	Role   *UserRole   `json:"role,omitempty"`
@@ -4941,6 +4969,15 @@ type ListAddressNFTBalancesParams struct {
 
 // ListAddressTransactionsParams defines parameters for ListAddressTransactions.
 type ListAddressTransactionsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListAddressWithdrawalsParams defines parameters for ListAddressWithdrawals.
+type ListAddressWithdrawalsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 

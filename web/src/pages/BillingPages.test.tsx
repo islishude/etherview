@@ -217,6 +217,7 @@ describe("billing pages", () => {
       "listTransactionLogs",
       "listTransactionStateChanges",
       "listAddressTransactions",
+      "listAddressWithdrawals",
       "listAddressInternalTransactions",
       "listAddressERC20Transfers",
       "listAddressNFTTransfers",

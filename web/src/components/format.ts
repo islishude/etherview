@@ -86,6 +86,13 @@ export function formatNativeAmount(
   }
 }
 
+export function formatEtherFromGwei(
+  value?: string | number | bigint,
+  locale?: string,
+): string {
+  return formatNativeAmount(value, locale, 9);
+}
+
 export function formatTokenAmount(
   value: string | number | bigint | undefined,
   decimals: number | undefined,

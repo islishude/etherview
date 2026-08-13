@@ -128,6 +128,7 @@ type AnalyticsReader interface {
 
 type AddressActivityReader interface {
 	AddressTransactions(context.Context, string, string, int) ([]gen.Transaction, string, error)
+	AddressWithdrawals(context.Context, string, string, int) ([]gen.AddressWithdrawal, string, error)
 }
 
 type AddressEnrichmentActivityReader interface {
@@ -386,6 +387,7 @@ func (h *Handler) routes() {
 	h.handleBillable("getAddress", h.address)
 	h.handleBillable("getAddressDelegation", h.addressDelegation)
 	h.handleBillable("listAddressTransactions", h.addressTransactions)
+	h.handleBillable("listAddressWithdrawals", h.addressWithdrawals)
 	h.handleBillable("listAddressInternalTransactions", h.addressInternalTransactions)
 	h.handleBillable("listAddressERC20Transfers", h.addressERC20Transfers)
 	h.handleBillable("listAddressNFTTransfers", h.addressNFTTransfers)
@@ -1166,6 +1168,27 @@ func (h *Handler) addressTransactions(w http.ResponseWriter, r *http.Request) {
 		meta.NextCursor = &next
 	}
 	writeJSON(w, http.StatusOK, gen.TransactionListResponse{Data: items, Meta: meta})
+}
+
+func (h *Handler) addressWithdrawals(w http.ResponseWriter, r *http.Request) {
+	address, limit, cursor, ok := h.addressActivityPage(w, r)
+	if !ok {
+		return
+	}
+	if h.addressActivities == nil {
+		h.handleReaderError(w, r, ErrUnavailable)
+		return
+	}
+	items, next, err := h.addressActivities.AddressWithdrawals(r.Context(), address, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	meta := h.meta(r)
+	if next != "" {
+		meta.NextCursor = &next
+	}
+	writeJSON(w, http.StatusOK, gen.AddressWithdrawalListResponse{Data: items, Meta: meta})
 }
 
 func (h *Handler) addressInternalTransactions(w http.ResponseWriter, r *http.Request) {
