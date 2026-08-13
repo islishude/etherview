@@ -114,8 +114,13 @@
     "compilerCache": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sizeLimit"],
+      "required": ["existingClaim", "sizeLimit"],
       "properties": {
+        "existingClaim": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        },
         "sizeLimit": {"type": "string", "minLength": 2}
       }
     },

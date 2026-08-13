@@ -125,6 +125,16 @@ type hardhatProxySnapshot struct {
 	CompilerProvenance bool
 }
 
+type hardhatCompilerCacheFile struct {
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Size       string `json:"size"`
+	Inode      string `json:"inode"`
+	Mode       string `json:"mode"`
+	ModifiedNS string `json:"modified_ns"`
+	ChangedNS  string `json:"changed_ns"`
+}
+
 func TestHardhat3ProductionE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), hardhat3E2ETimeout)
 	defer cancel()
@@ -363,12 +373,28 @@ func runHardhat3Mode(
 	assertHardhatSlotTamperReport(t, deployment, tamper)
 	waitHardhatCanonicalTip(t, ctx, h)
 
-	h.enterPhase("production CLI API key and real Hardhat verify")
+	h.enterPhase("production CLI API key and first real compiler")
 	waitHardhatCompilerCatalog(t, ctx, h)
 	apiKey := createHardhatAPIKey(t, ctx, h)
 	submitAndWaitHardhatYul(t, ctx, h, apiKey)
+	cacheBefore := inspectHardhatCompilerCache(t, ctx, h)
+
+	h.enterPhase("persistent compiler cache across owner replacement")
+	recreateHardhatCompilerOwner(t, ctx, h)
+	cacheAfterRecreate := inspectHardhatCompilerCache(t, ctx, h)
+	if cacheAfterRecreate != cacheBefore {
+		t.Fatalf("compiler cache changed across %s replacement: before=%#v after=%#v",
+			h.apiService, cacheBefore, cacheAfterRecreate)
+	}
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v1",
 		"contracts/Implementation.sol:Implementation", deployment.Implementation, nil)
+	cacheAfterReuse := inspectHardhatCompilerCache(t, ctx, h)
+	if cacheAfterReuse != cacheBefore {
+		t.Fatalf("compiler cache was reinstalled after same-version reuse: before=%#v after=%#v",
+			cacheBefore, cacheAfterReuse)
+	}
+
+	h.enterPhase("real Hardhat address verification")
 	verifyHardhatAddress(t, ctx, h, apiKey, "uups-proxy",
 		"@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy",
 		deployment.Proxy, []any{deployment.Implementation, deployment.InitializationData.UUPS})
@@ -506,6 +532,74 @@ func runHardhat3Mode(
 	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy)
 	h.writeJSONArtifact(mode+"-proxy-summary.json", snapshot)
 	return snapshot
+}
+
+func inspectHardhatCompilerCache(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+) hardhatCompilerCacheFile {
+	t.Helper()
+	path := "/var/lib/etherview/compilers/cache/solidity-sha256-" +
+		hardhatCompilerDigest + ".js"
+	script := `
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+const path = process.argv[1];
+const stat = statSync(path, { bigint: true });
+process.stdout.write(JSON.stringify({
+  path,
+  sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+  size: stat.size.toString(),
+  inode: stat.ino.toString(),
+  mode: Number(stat.mode & 0o777n).toString(8).padStart(3, "0"),
+  modified_ns: stat.mtimeNs.toString(),
+  changed_ns: stat.ctimeNs.toString(),
+}));
+`
+	output, err := h.project.Run(
+		ctx,
+		"exec", "-T", "-e", "LD_LIBRARY_PATH=/opt/etherview/compiler/lib",
+		h.apiService,
+		"/usr/local/bin/node",
+		"--permission",
+		"--disable-sigusr1",
+		"--no-addons",
+		"--no-global-search-paths",
+		"--allow-fs-read="+path,
+		"--input-type=module",
+		"--eval", script,
+		path,
+	)
+	if err != nil {
+		t.Fatalf("inspect compiler cache: %v", err)
+	}
+	var file hardhatCompilerCacheFile
+	if err := json.Unmarshal(output, &file); err != nil {
+		t.Fatalf("decode compiler cache inspection: %v", err)
+	}
+	if file.Path != path || file.SHA256 != hardhatCompilerDigest ||
+		file.Size == "" || file.Size == "0" || file.Inode == "" ||
+		file.Mode != "400" || file.ModifiedNS == "" || file.ChangedNS == "" {
+		t.Fatalf("invalid compiler cache file: %#v", file)
+	}
+	return file
+}
+
+func recreateHardhatCompilerOwner(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+) {
+	t.Helper()
+	if _, err := h.project.Run(
+		ctx,
+		"up", "-d", "--no-deps", "--force-recreate", h.apiService,
+	); err != nil {
+		t.Fatal(err)
+	}
+	h.resolveAPI(ctx)
+	h.waitReady(ctx)
 }
 
 func createHardhatAPIKey(t *testing.T, ctx context.Context, h *harness) string {

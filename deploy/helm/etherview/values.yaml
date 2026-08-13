@@ -18,9 +18,11 @@ genesisState:
   sha256: ""
   fetchTimeout: 60s
 
-# Disposable, checksum-addressed solc-js artifacts. This memory-backed volume
-# is mounted only into the all/api application container.
+# Rebuildable checksum-addressed solc-js artifacts mounted only into all/api.
+# Leave existingClaim empty for memory-backed emptyDir, or provide one shared
+# operator-owned PVC for persistence across Pod replacement.
 compilerCache:
+  existingClaim: ""
   sizeLimit: 256Mi
 
 # monolith runs only the `all` deployment. distributed runs every enabled
@@ -39,6 +41,9 @@ podSecurityContext:
   runAsUser: 65532
   runAsGroup: 65532
   fsGroup: 65532
+  # Preserve mode-0400 authenticated cache entries after the volume root has
+  # received the application group on its first mount.
+  fsGroupChangePolicy: OnRootMismatch
   seccompProfile:
     type: RuntimeDefault
 securityContext:

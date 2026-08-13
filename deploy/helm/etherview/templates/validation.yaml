@@ -9,6 +9,11 @@
 {{- end }}
 {{- end }}
 {{- if .Values.config.features.verification }}
+{{- $compilerCacheClaimRaw := .Values.compilerCache.existingClaim }}
+{{- $compilerCacheClaim := .Values.compilerCache.existingClaim | trim }}
+{{- if or (ne $compilerCacheClaimRaw $compilerCacheClaim) (and (not (empty $compilerCacheClaim)) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" $compilerCacheClaim))) }}
+{{- fail "compilerCache.existingClaim must be a valid non-empty Kubernetes resource name" }}
+{{- end }}
 {{- if not .Values.networkPolicy.enabled }}
 {{- fail "networkPolicy.enabled must be true when verification is enabled" }}
 {{- end }}

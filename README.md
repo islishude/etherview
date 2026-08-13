@@ -64,8 +64,8 @@ artifacts and executes each bounded Standard JSON compilation in a fresh,
 permission-restricted Node subprocess. There is no standalone runner, Docker
 socket, nested runtime, or compiler CPU-platform selection. Use
 `make recreate-preview` to rebuild the application roles while preserving
-PostgreSQL and Geth; the compiler cache is disposable. Use `make stop-preview`
-to remove the complete Preview and its volumes. See the
+PostgreSQL, Geth, and the checksum-addressed compiler cache. Use
+`make stop-preview` to remove the complete Preview and all its volumes. See the
 [deployment guide](deploy/README.md#full-stack-preview) for prerequisites,
 enabled features, and endpoint overrides.
 

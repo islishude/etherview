@@ -22,6 +22,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0029: Daemonless remote compiler runner](../decisions/ADR-0029-daemonless-remote-compiler-runner.md)
 - [ADR-0030: API-integrated verifier and self-contained runner](../decisions/ADR-0030-api-integrated-verifier-and-self-contained-runner.md)
 - [ADR-0031: API-owned architecture-neutral solc-js executor](../decisions/ADR-0031-api-owned-solc-js-executor.md)
+- [ADR-0037: Rebuildable persistent solc-js artifact cache](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -65,6 +66,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T35 | done | P60, P70-T13, P70-T34 | Replace the Preview Reth development node with Geth and initialize its persistent Genesis through a Shell entrypoint | shell syntax, Compose rendering, Preview runtime, and common deployment gates |
 | P70-T36 | done | P70-T08, P40-T10, P50-T12 | Mark authenticated genesis allocation addresses as the explicit address-origin source | OpenAPI, generated contracts, query, API, frontend, and common gates |
 | P70-T37 | done | P60, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
+| P70-T38 | done | P60, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
 
 ## Acceptance
 
@@ -103,6 +105,12 @@ and user/operator evidence sufficient for a production public release.
       `/health/live` and `/health/ready`; their HTTP metrics and traces remain
       recorded, ordinary API completion logs remain enabled, and panic logs are
       unaffected.
+- [x] P70-T38: Compose and Preview preserve checksum-addressed compiler
+      artifacts across `all`/`api` replacement, while Helm can mount one
+      operator-owned shared PVC and retains memory-backed `emptyDir` by default.
+- [x] P70-T38: every cache hit remains size-, mode-, type-, and SHA-256-checked;
+      independent replicas may download one cold miss concurrently but can
+      install only the same authenticated digest through atomic replacement.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -150,7 +158,7 @@ and user/operator evidence sufficient for a production public release.
       compiler plus executor provenance once.
 - [x] P70-T29: Makefile, Docker, Compose, Preview, Helm, and CI contain no
       compiler runner, runner reference file, or fixed CPU platform; only
-      `api`/`all` receive the disposable cache and bounded compiler-catalog
+      `api`/`all` receive the rebuildable cache and bounded compiler-catalog
       egress, while host-native images preserve `emscripten-wasm32` solely as
       compiler artifact provenance.
 - [x] P70-T29: migration 0031 removes all Vyper records and dependent proxy
@@ -300,6 +308,26 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T38 implementation and verification: ADR-0037 defines authenticated
+  compiler artifacts as persistent but rebuildable performance data without
+  weakening catalog freshness, provenance, or per-use validation. Base and
+  Preview Compose give only `all`/`api` one project-scoped named volume; Helm
+  retains memory `emptyDir` by default and can mount one operator-owned shared
+  PVC. Independent cache instances can overlap a cold download and leave one
+  fully validated digest path, while a new cache instance reuses the artifact
+  with its origin offline. Focused cache tests pass for 20 repetitions and
+  under the race detector; `make compose-check`, `make helm-check`, and `make
+  docker-build docker-image-check` pass on ARM64 with the non-root mode-0750
+  cache seed verified in the hardened production image.
+- P70-T38 production evidence: `make test-hardhat3-e2e` passes both monolith
+  and distributed topologies after force-recreating the compiler-owning
+  `all`/`api` service and proving the same Solidity 0.8.30 artifact retains its
+  SHA-256, inode, mode, size, and modification/change timestamps before a
+  second real compilation. `make test-foundry-e2e`, `make
+  test-runtime-e2e-prebuilt`, and the aggregate `make check` also pass; the
+  latter includes generation, lint, ordinary/race, security, license,
+  Dockerfile, Compose, and Helm gates.
 
 - P70-T34 implementation and live Preview evidence: the single binary now
   exposes a backend-independent `etherview healthcheck` command whose default

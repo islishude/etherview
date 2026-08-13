@@ -71,14 +71,21 @@ for (const name of applicationServices) {
   const service = config.services[name];
   assert.ok(service, `missing application service ${name}`);
   assertApplicationHealthcheck(service, name);
-  const cacheTargets = tmpfsTargets(service).filter(
-    (target) => target === cachePath,
+  const cacheMounts = volumeMounts(service).filter(
+    (mount) => mount.target === cachePath,
   );
   if (name === compilerOwner) {
     assert.equal(
-      cacheTargets.length,
+      cacheMounts.length,
       1,
-      `${name} must receive exactly one private compiler cache`,
+      `${name} must receive exactly one persistent compiler cache`,
+    );
+    assert.equal(cacheMounts[0].type, "volume", `${name} compiler cache type`);
+    assert.ok(cacheMounts[0].source, `${name} compiler cache source`);
+    assert.equal(
+      tmpfsTargets(service).includes(cachePath),
+      false,
+      `${name} compiler cache must not be tmpfs`,
     );
     assert.ok(
       Object.hasOwn(
@@ -89,7 +96,7 @@ for (const name of applicationServices) {
     );
   } else {
     assert.equal(
-      cacheTargets.length,
+      cacheMounts.length,
       0,
       `${name} must not receive the compiler cache`,
     );
@@ -101,6 +108,14 @@ for (const name of applicationServices) {
       `${name} must not own verification workers`,
     );
   }
+}
+
+function volumeMounts(service) {
+  return (service.volumes ?? []).map((entry) =>
+    typeof entry === "string"
+      ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
+      : entry
+  );
 }
 
 function tmpfsTargets(service) {

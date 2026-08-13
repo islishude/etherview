@@ -210,7 +210,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   trusted Node, wrapper, and manifest paths explicit file/environment
   configuration without adding a runtime mount or weakening manifest identity;
   focused, deployment, production-image, common, and real Hardhat
-  monolith/split gates pass locally on ARM64.
+  monolith/split gates pass locally on ARM64. P70-T38 retains the authenticated
+  solc-js artifact cache across application replacement without changing
+  compiler trust or catalog-freshness semantics; cache concurrency, Compose,
+  Helm, image, real Hardhat/Foundry, runtime, and common gates pass locally on
+  ARM64.
   P66 live-payment evidence still gates conformance, security, release CI,
   documentation, and artifact work.
 

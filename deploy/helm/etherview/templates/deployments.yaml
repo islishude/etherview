@@ -284,9 +284,14 @@ spec:
             sizeLimit: 64Mi
         {{- if and $root.Values.config.features.verification $apiCapable }}
         - name: compiler-cache
+          {{- if $root.Values.compilerCache.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ $root.Values.compilerCache.existingClaim | quote }}
+          {{- else }}
           emptyDir:
             medium: Memory
             sizeLimit: {{ $root.Values.compilerCache.sizeLimit | quote }}
+          {{- end }}
         {{- end }}
         {{- if $apiTLS }}
         - name: api-tls

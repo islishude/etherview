@@ -219,6 +219,13 @@ func (cache *CompilerCache) ensureArtifact(
 		return "", errors.New("close compiler artifact")
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
+		// A separate API replica may have installed the same digest while this
+		// process downloaded it. Filesystems differ on whether rename replaces
+		// an existing destination, so accept only the completely revalidated
+		// content-addressed winner.
+		if validCompilerCacheFile(path, digest, maximum) {
+			return path, nil
+		}
 		return "", errors.New("install compiler artifact")
 	}
 	if !validCompilerCacheFile(path, digest, maximum) {

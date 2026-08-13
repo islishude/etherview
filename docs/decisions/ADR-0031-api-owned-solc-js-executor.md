@@ -2,6 +2,10 @@
 
 Status: accepted
 
+[ADR-0037](ADR-0037-persistent-solcjs-artifact-cache.md) supersedes only this
+decision's disposable-cache deployment consequence. The compiler trust,
+runtime, provenance, and execution decisions below remain accepted.
+
 ## Context
 
 ADR-0029 and ADR-0030 removed application-controlled container daemons but
@@ -95,7 +99,7 @@ canonical publication, stable errors, and hostile-input handling.
 Preview and production no longer carry a hidden AMD64 compiler dependency.
 The application image is larger because it includes the minimal Node runtime
 and solc-js wrapper, and API replicas require bounded HTTPS egress plus a
-disposable compiler cache. The trusted-subprocess model is intentionally
+rebuildable compiler cache. The trusted-subprocess model is intentionally
 narrower than a malicious-code sandbox; expanding compiler sources beyond the
 authenticated official solc-js catalog requires a new security decision.
 An operator that selects alternate runtime paths is responsible for placing

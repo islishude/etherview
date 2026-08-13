@@ -206,6 +206,8 @@ tls_test="$temporary_dir/tls-test.yaml"
   --set-string genesisState.fetchTimeout=5m >"$temporary_dir/genesis-timeout-maximum.yaml"
 verifier_monolith="$temporary_dir/verifier-monolith.yaml"
 verifier_distributed="$temporary_dir/verifier-distributed.yaml"
+verifier_persistent_monolith="$temporary_dir/verifier-persistent-monolith.yaml"
+verifier_persistent_distributed="$temporary_dir/verifier-persistent-distributed.yaml"
 verifier_custom_runtime="$temporary_dir/verifier-custom-runtime.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set config.features.verification=true \
@@ -216,6 +218,17 @@ verifier_custom_runtime="$temporary_dir/verifier-custom-runtime.yaml"
   --set config.features.verification=true \
   --set config.security.public_verification=true \
   --set networkPolicy.allowExternalHTTPS=false >"$verifier_distributed"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set config.features.verification=true \
+  --set config.security.public_verification=true \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string compilerCache.existingClaim=etherview-compiler-cache >"$verifier_persistent_monolith"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set config.features.verification=true \
+  --set config.security.public_verification=true \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string compilerCache.existingClaim=etherview-compiler-cache >"$verifier_persistent_distributed"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string config.verification.node_path=/custom/bin/node \
   --set-string config.verification.wrapper_path=/custom/runtime/compile.mjs \
@@ -232,6 +245,7 @@ assert_contains "$monolith" 'args: ["serve", "--config", "/etc/etherview/config.
 assert_contains "$monolith" "log_level: info"
 assert_contains "$monolith" "log_format: json"
 assert_contains "$monolith" "sync_progress_log_interval: 30s"
+assert_contains "$monolith" "fsGroupChangePolicy: OnRootMismatch"
 assert_occurrences "$monolith" "name: schema-compatibility" 1
 assert_occurrences "$monolith" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 1
 assert_occurrences "$monolith" 'args: ["migrate", "up", "--config", "/etc/etherview/config.yaml"]' 1
@@ -329,6 +343,15 @@ assert_component_occurrences "$verifier_distributed" api "medium: Memory" 1
 for role in sync enrich trace metadata maintenance; do
   assert_component_occurrences "$verifier_distributed" "$role" "name: compiler-cache" 0
 done
+assert_component_occurrences "$verifier_persistent_monolith" all "name: compiler-cache" 2
+assert_component_occurrences "$verifier_persistent_monolith" all 'claimName: "etherview-compiler-cache"' 1
+assert_component_occurrences "$verifier_persistent_monolith" all "medium: Memory" 0
+assert_component_occurrences "$verifier_persistent_distributed" api "name: compiler-cache" 2
+assert_component_occurrences "$verifier_persistent_distributed" api 'claimName: "etherview-compiler-cache"' 1
+assert_component_occurrences "$verifier_persistent_distributed" api "medium: Memory" 0
+for role in sync enrich trace metadata maintenance; do
+  assert_component_occurrences "$verifier_persistent_distributed" "$role" "name: compiler-cache" 0
+done
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "app.kubernetes.io/component: api" 1
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "port: 443" 1
 assert_contains "$verifier_monolith" "node_path: /usr/local/bin/node"
@@ -341,6 +364,10 @@ assert_not_contains "$verifier_monolith" "platform:"
 assert_not_contains "$verifier_distributed" "platform:"
 expect_render_failure verification-relative-node-path \
   --set-string config.verification.node_path=custom/bin/node
+expect_render_failure verification-invalid-cache-claim \
+  --set config.features.verification=true \
+  --set networkPolicy.allowExternalHTTPS=false \
+  --set-string compilerCache.existingClaim=Invalid_Claim
 expect_render_failure public-verification-without-feature \
   --set config.security.public_verification=true \
   --set networkPolicy.allowExternalHTTPS=false

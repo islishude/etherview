@@ -120,7 +120,7 @@ explorer or icon URL remain HTTPS-only.
 Verification v2 treats user-supplied Solidity/Yul input as hostile while
 trusting only checksum-pinned official solc-js artifacts. The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
-and redirect checks, checksum-pinned download, a disposable compiler cache,
+and redirect checks, checksum-pinned download, a rebuildable persistent cache,
 and execution. Each compile starts a fresh Node subprocess with a minimal
 environment, private temporary directory, read-only permissions, bounded
 heap/input/output/time, and process-group cleanup. The subprocess receives no
@@ -180,9 +180,14 @@ Compose, and Helm. Do not enable it in production or use it to admit an
 unreviewed compiler origin.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
-the six application containers while preserving PostgreSQL and Geth. The
-API-owned compiler cache is intentionally disposable.
-`make stop-preview` removes the deployment and all persistent volumes. Override
+the six application containers while preserving PostgreSQL, Geth, and the
+project-scoped `compiler-cache` named volume. Cache entries remain ordinary
+read-only files named by SHA-256 and are fully revalidated before reuse. They
+do not make an expired compiler catalog usable and do not belong in backups.
+`make stop-preview` removes the deployment and all project volumes, including
+the rebuildable compiler cache. For manual cache reclamation, stop every
+`all`/`api` process mounting the volume before removing it; the next compiler
+job downloads the authenticated artifact again. Override
 the application tag with `ETHERVIEW_IMAGE`.
 
 The reproducible deployment E2E uses a deterministic Anvil fixture and two

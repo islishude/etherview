@@ -176,7 +176,8 @@ verification:
   # Every API/all replica runs this many durable verification consumers.
   worker_count: 1
   # API/all owns an architecture-native Node subprocess and stores only
-  # checksum-addressed official solc-js artifacts in this private cache.
+  # checksum-addressed official solc-js artifacts in this private rebuildable
+  # cache. The standard Compose deployment mounts it from a named volume.
   cache_directory: /var/lib/etherview/compilers/cache
   # These paths may be relocated by a trusted host or custom image. They must
   # identify one read-only runtime covered by the configured manifest.

@@ -27,12 +27,22 @@ for (const name of appServices) {
     `${name} must not mount a Docker socket`,
   );
   assert.equal(service.privileged ?? false, false, `${name} must not be privileged`);
-  const hasCompilerCache = tmpfsTargets(service).includes(cachePath);
+  const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
+  const hasCompilerCache = cacheMounts.length === 1 && cacheMounts[0].type === "volume";
   assert.equal(hasCompilerCache, name === compilerOwner, `${name} compiler cache scope`);
+  assert.equal(tmpfsTargets(service).includes(cachePath), false, `${name} compiler cache tmpfs`);
   assert.equal(
     service.environment?.[unsafeDownloadEnvironment],
     name === compilerOwner ? "true" : undefined,
     `${name} Foundry fake-IP download exception scope`,
+  );
+}
+
+function volumeMounts(service) {
+  return (service.volumes ?? []).map((entry) =>
+    typeof entry === "string"
+      ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
+      : entry
   );
 }
 

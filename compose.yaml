@@ -128,7 +128,9 @@ services:
     profiles: ["monolith"]
     tmpfs:
       - /tmp:size=64m,mode=1777
-      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
+      - compiler-cache:/var/lib/etherview/compilers
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
@@ -143,7 +145,9 @@ services:
     profiles: ["distributed"]
     tmpfs:
       - /tmp:size=64m,mode=1777
-      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
+      - compiler-cache:/var/lib/etherview/compilers
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
@@ -222,5 +226,6 @@ services:
 
 volumes:
   postgres-data:
+  compiler-cache:
   nats-data:
   object-data:

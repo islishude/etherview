@@ -73,6 +73,26 @@ node_version=$(
     /opt/etherview/compiler/compile.mjs \
     --self-test >/dev/null
 
+"$docker_command" run --rm \
+    --read-only \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --env LD_LIBRARY_PATH=/opt/etherview/compiler/lib \
+    --entrypoint /usr/local/bin/node \
+    "$image" \
+    --permission \
+    --allow-fs-read=/var/lib/etherview/compilers \
+    --input-type=module \
+    --eval '
+      import { lstatSync } from "node:fs";
+      for (const path of ["/var/lib/etherview/compilers", "/var/lib/etherview/compilers/cache"]) {
+        const stat = lstatSync(path);
+        if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o750 || stat.uid !== 65532 || stat.gid !== 65532) {
+          throw new Error("unsafe compiler cache directory");
+        }
+      }
+    '
+
 normalize_architecture() {
     case "$1" in
         amd64|x86_64|x86-64) echo amd64 ;;

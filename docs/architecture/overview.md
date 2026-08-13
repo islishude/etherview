@@ -524,6 +524,12 @@ size alone is not sufficient justification to weaken those invariants.
   size, artifact size, and SHA-256. The API persists the generation, artifact
   identity, compiler digest, executor kind/policy, and executor digest, then
   atomically binds that complete identity under the worker lease.
+  An artifact is streamed into a same-directory temporary file, authenticated,
+  installed under its digest, and revalidated before every use. Compose keeps
+  this rebuildable cache across application replacement; Helm may mount one
+  operator-owned shared PVC or retain its default memory-backed cache. Cache
+  persistence never overrides catalog freshness or provenance. See
+  [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
 - The production image includes an exact Node 26.5.0 executable, the
   `solc@0.8.36` wrapper dependency, and a canonical read-only runtime manifest.
   Startup verifies every manifest path and digest and performs a permission

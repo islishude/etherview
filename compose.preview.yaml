@@ -118,9 +118,9 @@ services:
       - ${ETHERVIEW_GENESIS_FILE:-./deploy/preview.genesis.json}:/config/genesis.json:ro
       - ./.local/preview-tls/tls.crt:/run/etherview-tls/tls.crt:ro
       - ./.local/preview-tls/tls.key:/run/etherview-tls/tls.key:ro
+      - compiler-cache:/var/lib/etherview/compilers
     tmpfs:
       - /tmp:size=64m,mode=1777
-      - /var/lib/etherview/compilers:rw,nosuid,nodev,noexec,size=256m,mode=0700,uid=65532,gid=65532
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     ports:
@@ -183,3 +183,4 @@ services:
 volumes:
   postgres-data:
   geth-data:
+  compiler-cache:

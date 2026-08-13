@@ -102,6 +102,10 @@ replace a required `make test-e2e` pass.
   process consumes the durable job, resolves and checksum-validates the
   architecture-independent `emscripten-wasm32` artifact, and runs each bounded
   Standard JSON compilation in a fresh permission-restricted Node subprocess.
+  The first real compilation populates the Compose named cache volume; the
+  harness force-recreates the compiler-owning service, submits another job for
+  the same version, and proves the identical artifact survives without a new
+  installation.
   No application or test client receives a Docker socket or CLI. The test
   fails when the official catalog or compiler cannot be downloaded. CI builds
   and exercises the native production image independently on AMD64 and ARM64;
@@ -171,6 +175,8 @@ replace a required `make test-e2e` pass.
   and self-test, and scan its exported root filesystem. The image contains the
   pinned Node executable and read-only solc-js wrapper/dependency tree, but no
   npm, npx, corepack, shell, Go toolchain, native solc, or Vyper payload.
+  It also validates the non-root-owned mode-0750 compiler cache seed directory
+  used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
   `migrate status`.

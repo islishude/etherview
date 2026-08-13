@@ -227,13 +227,33 @@ runbook for the evidence boundary and tuning formula.
 ## Compiler executor
 
 Public source verification requires NetworkPolicy. The selected `all` or `api`
-Pods receive a memory-backed compiler cache and own official
+Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
 fresh permission-restricted Node subprocess. The exact Node executable,
 solc-js wrapper/dependency tree, and canonical read-only runtime manifest are
 part of the production image for its native architecture. There is no runner
 Deployment, Service, image value, runtime class, native compiler fallback, or
 CPU-platform setting.
+
+By default `compilerCache.existingClaim` is empty and each compiler-owning Pod
+receives its existing memory-backed `emptyDir`. Set it to one operator-created
+PVC to preserve the rebuildable artifact cache across Pod replacement. The
+same claim is mounted by every selected `all` or `api` replica; multi-node
+replicas therefore require storage supporting their concurrent read/write
+mounts (normally RWX), same-directory atomic rename, coherent reads, and Unix
+ownership/modes for UID/GID 65532. The chart never creates or deletes the
+claim. The `sizeLimit` value applies only to the default `emptyDir`.
+The default `fsGroupChangePolicy: OnRootMismatch` prevents later Pod mounts
+from recursively broadening the mode-0400 artifact files after the volume root
+has been initialized; an operator override must preserve that property.
+
+Cached files are still validated for ordinary-file type, read-only mode, byte
+limit, and catalog SHA-256 before every use. Persistence does not bypass
+catalog freshness. Do not back up this cache or delete entries while any
+compiler owner mounts it; stop those Pods, clear the rebuildable claim, then
+restart them to download required versions again. Monitor and size the PVC at
+the storage layer because automatic eviction could remove a compiler pinned by
+an older durable job generation.
 
 `config.verification.node_path`, `wrapper_path`, and `manifest_path` default to
 that bundled runtime and may select alternate absolute paths supplied by a

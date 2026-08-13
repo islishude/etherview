@@ -190,6 +190,99 @@ func TestCompilerCacheSerializesConcurrentInstall(t *testing.T) {
 	}
 }
 
+func TestCompilerCachePersistsAcrossInstances(t *testing.T) {
+	payload := []byte("persistent compiler JavaScript")
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write(payload)
+	}))
+	root := t.TempDir()
+	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
+	first := CompilerCache{
+		Root:                       root,
+		unsafeAllowHTTP:            true,
+		UnsafeAllowPrivateNetworks: true,
+	}
+	installed, err := first.EnsureCatalogEntry(context.Background(), entry)
+	if err != nil {
+		server.Close()
+		t.Fatal(err)
+	}
+	server.Close()
+
+	second := CompilerCache{
+		Root:                       root,
+		unsafeAllowHTTP:            true,
+		UnsafeAllowPrivateNetworks: true,
+	}
+	reused, err := second.EnsureCatalogEntry(context.Background(), entry)
+	if err != nil {
+		t.Fatalf("reuse persisted compiler with unavailable origin: %v", err)
+	}
+	if reused != installed || hits.Load() != 1 {
+		t.Fatalf("reused path=%q installed=%q downloads=%d", reused, installed, hits.Load())
+	}
+}
+
+func TestCompilerCacheAllowsIndependentConcurrentInstall(t *testing.T) {
+	payload := []byte("shared persistent compiler JavaScript")
+	var hits atomic.Int32
+	bothStarted := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 2 {
+			close(bothStarted)
+		}
+		<-release
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
+	results := make(chan string, 2)
+	errorsFound := make(chan error, 2)
+	for range 2 {
+		go func() {
+			cache := CompilerCache{
+				Root:                       root,
+				unsafeAllowHTTP:            true,
+				UnsafeAllowPrivateNetworks: true,
+			}
+			path, err := cache.EnsureCatalogEntry(context.Background(), entry)
+			results <- path
+			errorsFound <- err
+		}()
+	}
+	select {
+	case <-bothStarted:
+		close(release)
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("independent cache downloads did not overlap")
+	}
+
+	var installed string
+	for range 2 {
+		if err := <-errorsFound; err != nil {
+			t.Fatal(err)
+		}
+		path := <-results
+		if installed == "" {
+			installed = path
+		} else if path != installed {
+			t.Fatalf("cache paths differ: %q != %q", path, installed)
+		}
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("independent cold misses downloaded %d times", hits.Load())
+	}
+	if !validCompilerCacheFile(installed, entry.ArtifactSHA256, entry.MaxBytes) {
+		t.Fatal("concurrent installation did not leave one valid compiler artifact")
+	}
+}
+
 func TestRestrictedOutboundDialRejectsResolverFailureWithoutDetails(t *testing.T) {
 	_, err := dialRestrictedOutboundHost(
 		context.Background(), "tcp", "compiler.example:443",

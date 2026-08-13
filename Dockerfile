@@ -31,7 +31,8 @@ RUN mkdir -p lib \
     /opt/etherview/compiler/runtime-manifest.json \
     && find /opt/etherview/compiler -type d -exec chmod 0555 {} + \
     && find /opt/etherview/compiler -type f -exec chmod 0444 {} + \
-    && chmod 0555 /opt/etherview
+    && chmod 0555 /opt/etherview \
+    && install -d -m 0750 /var/lib/etherview/compilers/cache
 
 FROM golang:1.26.5 AS go-builder
 WORKDIR /src
@@ -77,6 +78,7 @@ COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0555 /usr/local/bin/node /usr/local/bin/node
 COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview /opt/etherview
+COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
 USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/etherview"]

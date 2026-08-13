@@ -119,11 +119,15 @@ for (const role of roles) {
       `${role} still receives removed ${key}`,
     );
   }
-  assert.equal(
-    tmpfsTargets(service).includes(cachePath),
-    role === "api",
-    `${role} compiler cache scope`,
+  const cacheMounts = volumeMounts(service).filter(
+    (mount) => mount.target === cachePath,
   );
+  assert.equal(cacheMounts.length, role === "api" ? 1 : 0, `${role} compiler cache scope`);
+  if (role === "api") {
+    assert.equal(cacheMounts[0].type, "volume", "Preview API compiler cache type");
+    assert.ok(cacheMounts[0].source, "Preview API compiler cache source");
+    assert.equal(tmpfsTargets(service).includes(cachePath), false, "Preview compiler cache tmpfs");
+  }
   assert.equal(
     service.environment?.[unsafeDownloadEnvironment],
     role === "api" ? "true" : undefined,
@@ -188,6 +192,14 @@ function requireService(name) {
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>
     typeof entry === "string" ? entry.split(":", 1)[0] : entry?.target
+  );
+}
+
+function volumeMounts(service) {
+  return (service.volumes ?? []).map((entry) =>
+    typeof entry === "string"
+      ? { type: "volume", source: entry.split(":", 1)[0], target: entry.split(":")[1] }
+      : entry
   );
 }
 
