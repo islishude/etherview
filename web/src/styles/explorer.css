@@ -333,6 +333,18 @@
   box-shadow: var(--shadow);
 }
 
+.transaction-method-cell {
+  max-width: 12rem;
+}
+
+.transaction-method {
+  display: block;
+  max-width: 12rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 table {
   width: 100%;
   min-width: 760px;

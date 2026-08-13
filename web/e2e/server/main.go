@@ -151,12 +151,17 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/v1/transactions", func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Query().Get("cursor") == transactionCursor {
-			writeEnvelope(response, []any{transaction(secondTransactionHash, testHash, "1", "finalized")})
+			item := contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized")
+			item["method"] = "Contract Creation"
+			writeEnvelope(response, []any{item})
 			return
 		}
+		item := transaction(testTransactionHash, secondHash, "2", "safe")
+		item["method"] = "valueWithAnIntentionallyLongMethodName"
+		item["method_signature"] = "valueWithAnIntentionallyLongMethodName(uint256,address)"
 		writeEnvelopeMeta(
 			response,
-			[]any{transaction(testTransactionHash, secondHash, "2", "safe")},
+			[]any{item},
 			map[string]any{"next_cursor": transactionCursor},
 		)
 	})

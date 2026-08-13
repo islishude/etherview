@@ -318,19 +318,19 @@ func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(10),
+			columns:  columns(12),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1)},
-				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1)},
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0)},
+				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1), "direct", "transfer(address,uint256)"},
+				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1), "empty", nil},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), nil, nil},
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
 		queryExpectation{
 			contains: "inclusion.tx_index < $3",
-			columns:  columns(10),
+			columns:  columns(12),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0)},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), "eip7702_delegate", "setValue(uint256)"},
 			},
 		},
 	)
@@ -342,12 +342,89 @@ func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 	if len(first) != 2 || cursor == "" || first[0].TransactionIndex == nil || *first[0].TransactionIndex != 1 || first[1].TransactionIndex == nil || *first[1].TransactionIndex != 0 {
 		t.Fatalf("first=%+v cursor=%q", first, cursor)
 	}
+	if first[0].Method == nil || *first[0].Method != "transfer" ||
+		first[0].MethodSignature == nil || *first[0].MethodSignature != "transfer(address,uint256)" ||
+		first[1].Method == nil || *first[1].Method != "0xdeadbeef" || first[1].MethodSignature != nil {
+		t.Fatalf("first transaction methods = %+v", first)
+	}
 	second, next, err := reader.Transactions(context.Background(), cursor, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(second) != 1 || next != "" || second[0].BlockNumber == nil || *second[0].BlockNumber != "1" || second[0].Finality != gen.FinalitySafe {
 		t.Fatalf("second=%+v next=%q", second, next)
+	}
+	if second[0].Method == nil || *second[0].Method != "setValue" ||
+		second[0].MethodSignature == nil || *second[0].MethodSignature != "setValue(uint256)" {
+		t.Fatalf("second transaction method = %+v", second[0])
+	}
+}
+
+func TestProjectTransactionMethodUsesExactPriorityAndFallbacks(t *testing.T) {
+	t.Parallel()
+	to := gen.Address("0xde709f2102306220921060314715629080e2fb77")
+	tests := []struct {
+		name        string
+		transaction gen.Transaction
+		resolution  sql.NullString
+		signature   sql.NullString
+		wantMethod  string
+		wantFull    string
+	}{
+		{
+			name: "contract creation wins", transaction: gen.Transaction{Input: "0x6000"},
+			resolution: sql.NullString{String: "direct", Valid: true},
+			signature:  sql.NullString{String: "ignored(uint256)", Valid: true},
+			wantMethod: "Contract Creation",
+		},
+		{
+			name: "unique direct decode", transaction: gen.Transaction{To: &to, Input: "0xa9059cbb"},
+			resolution: sql.NullString{String: "direct", Valid: true},
+			signature:  sql.NullString{String: "transfer(address,uint256)", Valid: true},
+			wantMethod: "transfer", wantFull: "transfer(address,uint256)",
+		},
+		{
+			name: "unique delegated decode", transaction: gen.Transaction{To: &to, Input: "0x55241077"},
+			resolution: sql.NullString{String: "eip7702_delegate", Valid: true},
+			signature:  sql.NullString{String: "setValue(uint256)", Valid: true},
+			wantMethod: "setValue", wantFull: "setValue(uint256)",
+		},
+		{
+			name: "native transfer", transaction: gen.Transaction{To: &to, Input: "0x"},
+			resolution: sql.NullString{String: "empty", Valid: true}, wantMethod: "Native Transfer",
+		},
+		{
+			name: "empty calldata contract call", transaction: gen.Transaction{To: &to, Input: "0x"},
+			resolution: sql.NullString{String: "direct", Valid: true}, wantMethod: "0x",
+		},
+		{
+			name: "unknown selector", transaction: gen.Transaction{To: &to, Input: "0xDEADBEEF0102"},
+			wantMethod: "0xdeadbeef",
+		},
+		{
+			name: "malformed decoded signature falls back", transaction: gen.Transaction{To: &to, Input: "0xDEADBEEF0102"},
+			signature: sql.NullString{String: "(uint256)", Valid: true}, wantMethod: "0xdeadbeef",
+		},
+		{
+			name: "short calldata", transaction: gen.Transaction{To: &to, Input: "0x1234"},
+			wantMethod: "0x1234",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := test.transaction
+			projectTransactionMethod(&model, test.resolution, test.signature)
+			if model.Method == nil || *model.Method != test.wantMethod {
+				t.Fatalf("method = %v, want %q", model.Method, test.wantMethod)
+			}
+			if test.wantFull == "" {
+				if model.MethodSignature != nil {
+					t.Fatalf("method_signature = %v, want nil", model.MethodSignature)
+				}
+			} else if model.MethodSignature == nil || *model.MethodSignature != test.wantFull {
+				t.Fatalf("method_signature = %v, want %q", model.MethodSignature, test.wantFull)
+			}
+		})
 	}
 }
 

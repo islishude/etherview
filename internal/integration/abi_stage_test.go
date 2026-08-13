@@ -21,6 +21,7 @@ import (
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -105,6 +106,18 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		"trace_revert:0":        "decoded:proxy_implementation:high",
 		"trace_revert:1":        "decoded:builtin:high",
 	})
+	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unpublished, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list transactions before ABI publication: %v", err)
+	}
+	if len(unpublished) == 0 || unpublished[0].Method == nil || *unpublished[0].Method != "0xa9059cbb" ||
+		unpublished[0].MethodSignature != nil {
+		t.Fatalf("unpublished ABI method projection = %+v", unpublished)
+	}
 	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +165,16 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3' AND canonical`, 1, mustBytes(t, reference.Hash))
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
+	publishABIStage(t, ctx, db, processor, reference)
+	transactions, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list transactions with published ABI method: %v", err)
+	}
+	if len(transactions) == 0 || transactions[0].Hash != strings.ToLower(block.Block.Transactions()[0].Hash().Hex()) ||
+		transactions[0].Method == nil || *transactions[0].Method != "transfer" ||
+		transactions[0].MethodSignature == nil || *transactions[0].MethodSignature != "transfer(address,uint256)" {
+		t.Fatalf("published transaction method projection = %+v", transactions)
+	}
 
 	replacement := testBundle(1, testHash(80_001), testHash(70_000), testHash(81_001), "abi-replacement")
 	ancestor := mustBlockRef(t, genesis)
@@ -172,6 +195,38 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 			map[string]int{"contract_abis": 4, "abi_decodings": 7}[table], mustBytes(t, reference.Hash),
 		)
 	}
+}
+
+func publishABIStage(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	processor *enrich.PostgresABIProcessor,
+	block store.BlockRef,
+) {
+	t.Helper()
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.ABIStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-stage-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
 }
 
 func TestABILateSameAddressVerificationDecodesEarlierSameCodeLog(t *testing.T) {

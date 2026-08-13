@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
@@ -57,11 +58,11 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 		}
 	}
 
-	query, arguments := listTransactionsSQL, []any{
+	query, arguments := listTransactionsWithMethodSQL, []any{
 		r.chainID, strconv.FormatUint(cursor.BeforeBlockNumber, 10), cursor.BeforeTxIndex, limit + 1,
 	}
 	if encodedCursor == "" {
-		query = listTransactionsFirstSQL
+		query = listTransactionsWithMethodFirstSQL
 		arguments = []any{r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), limit + 1}
 	}
 	rows, err := tx.QueryContext(ctx, query, arguments...)
@@ -71,7 +72,7 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 	defer rows.Close() //nolint:errcheck
 	records := make([]transactionRecord, 0, limit+1)
 	for rows.Next() {
-		record, err := r.scanTransaction(rows, cursor.SnapshotNumber)
+		record, err := r.scanTransactionWithMethod(rows, cursor.SnapshotNumber)
 		if err != nil {
 			return nil, "", err
 		}
@@ -108,6 +109,80 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 		return nil, "", fmt.Errorf("encode transaction cursor: %w", err)
 	}
 	return items, next, nil
+}
+
+func (r *PostgresReader) scanTransactionWithMethod(
+	scanner rowScanner,
+	tipNumber uint64,
+) (transactionRecord, error) {
+	var transactionJSON, receiptJSON, blockRaw []byte
+	var blockNumberText string
+	var blockHashBytes, transactionHashBytes []byte
+	var transactionIndex int64
+	var canonical bool
+	var safeHeight, finalizedHeight, executionResolution, methodSignature sql.NullString
+	if err := scanner.Scan(
+		&transactionJSON, &receiptJSON, &blockNumberText, &blockHashBytes, &transactionIndex,
+		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight, &blockRaw,
+		&executionResolution, &methodSignature,
+	); err != nil {
+		return transactionRecord{}, fmt.Errorf("scan transaction with method: %w", err)
+	}
+	model, err := r.transactionModel(
+		transactionJSON, receiptJSON, blockRaw, blockNumberText, blockHashBytes, transactionIndex,
+		transactionHashBytes, canonical, safeHeight, finalizedHeight, tipNumber,
+	)
+	if err != nil {
+		return transactionRecord{}, err
+	}
+	projectTransactionMethod(&model, executionResolution, methodSignature)
+	blockNumber, err := parseDecimalUint64(blockNumberText)
+	if err != nil {
+		return transactionRecord{}, err
+	}
+	blockHash, err := decodeHashBytes(blockHashBytes)
+	if err != nil {
+		return transactionRecord{}, err
+	}
+	transactionHash, err := decodeHashBytes(transactionHashBytes)
+	if err != nil {
+		return transactionRecord{}, err
+	}
+	return transactionRecord{
+		Model: model, BlockNumber: blockNumber, BlockHash: blockHash,
+		Index: uint64(transactionIndex), Hash: transactionHash,
+	}, nil
+}
+
+func projectTransactionMethod(
+	model *gen.Transaction,
+	executionResolution, methodSignature sql.NullString,
+) {
+	if model.To == nil {
+		method := "Contract Creation"
+		model.Method = &method
+		return
+	}
+	if methodSignature.Valid {
+		open := strings.IndexByte(methodSignature.String, '(')
+		if open > 0 && len(methodSignature.String) <= 4096 {
+			method := methodSignature.String[:open]
+			model.Method = &method
+			model.MethodSignature = &methodSignature.String
+			return
+		}
+	}
+	if executionResolution.Valid && executionResolution.String == "empty" && model.Input == "0x" {
+		method := "Native Transfer"
+		model.Method = &method
+		return
+	}
+	method := model.Input
+	if len(method) > 10 {
+		method = method[:10]
+	}
+	method = strings.ToLower(method)
+	model.Method = &method
 }
 
 func (r *PostgresReader) currentTransactionCursor(ctx context.Context, tx *sql.Tx) (transactionCursor, error) {
@@ -233,8 +308,48 @@ WHERE inclusion.chain_id = $1::numeric
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
 LIMIT $3`
 
-const listTransactionsSQL = `
-SELECT
+const transactionMethodJoinsSQL = `
+LEFT JOIN transaction_execution_code_resolutions AS execution
+  ON execution.chain_id = inclusion.chain_id
+ AND execution.block_number = inclusion.block_number
+ AND execution.block_hash = inclusion.block_hash
+ AND execution.transaction_hash = inclusion.tx_hash
+ AND execution.transaction_index = inclusion.tx_index
+ AND execution.context_address = decode(substring(inclusion.raw->>'to' from 3), 'hex')
+ AND execution.canonical
+ AND EXISTS (
+     SELECT 1
+     FROM published_block_stage_results AS published_state_diff
+     WHERE published_state_diff.chain_id = execution.chain_id
+       AND published_state_diff.block_number = execution.block_number
+       AND published_state_diff.block_hash = execution.block_hash
+       AND published_state_diff.stage = 'state_diff'
+       AND published_state_diff.stage_version = 2
+       AND published_state_diff.state = 'complete'
+ )
+LEFT JOIN abi_decodings AS decoding
+  ON decoding.chain_id = inclusion.chain_id
+ AND decoding.block_number = inclusion.block_number
+ AND decoding.block_hash = inclusion.block_hash
+ AND decoding.transaction_hash = inclusion.tx_hash
+ AND decoding.object_kind = 'transaction_calldata'
+ AND decoding.object_index = ''
+ AND decoding.target_address = execution.execution_address
+ AND decoding.target_code_hash = execution.execution_code_hash
+ AND decoding.status = 'decoded'
+ AND decoding.canonical
+ AND EXISTS (
+     SELECT 1
+     FROM published_block_stage_results AS published_abi
+     WHERE published_abi.chain_id = decoding.chain_id
+       AND published_abi.block_number = decoding.block_number
+       AND published_abi.block_hash = decoding.block_hash
+       AND published_abi.stage = 'abi'
+       AND published_abi.stage_version = 3
+       AND published_abi.state = 'complete'
+ )`
+
+const listTransactionsWithMethodColumnsSQL = `
     inclusion.raw,
     receipt.raw,
     inclusion.block_number::text,
@@ -244,7 +359,12 @@ SELECT
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw
+    block.raw,
+    execution.resolution,
+    decoding.signature`
+
+const listTransactionsWithMethodFirstSQL = `
+SELECT ` + listTransactionsWithMethodColumnsSQL + `
 FROM transaction_inclusions AS inclusion
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = inclusion.chain_id
@@ -260,6 +380,30 @@ JOIN receipts AS receipt
  AND receipt.block_hash = inclusion.block_hash
  AND receipt.tx_index = inclusion.tx_index
 LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
+` + transactionMethodJoinsSQL + `
+WHERE inclusion.chain_id = $1::numeric
+  AND inclusion.block_number <= $2::numeric
+ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
+LIMIT $3`
+
+const listTransactionsWithMethodSQL = `
+SELECT ` + listTransactionsWithMethodColumnsSQL + `
+FROM transaction_inclusions AS inclusion
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = inclusion.chain_id
+ AND canonical.number = inclusion.block_number
+ AND canonical.block_hash = inclusion.block_hash
+JOIN blocks AS block
+  ON block.chain_id = inclusion.chain_id
+ AND block.number = inclusion.block_number
+ AND block.hash = inclusion.block_hash
+JOIN receipts AS receipt
+  ON receipt.chain_id = inclusion.chain_id
+ AND receipt.block_number = inclusion.block_number
+ AND receipt.block_hash = inclusion.block_hash
+ AND receipt.tx_index = inclusion.tx_index
+LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
+` + transactionMethodJoinsSQL + `
 WHERE inclusion.chain_id = $1::numeric
   AND (
       inclusion.block_number < $2::numeric

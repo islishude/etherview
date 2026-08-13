@@ -548,6 +548,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     "href",
     "/blocks/0x2222222222222222222222222222222222222222222222222222222222222222",
   );
+  await expect(page.getByRole("columnheader", { name: "Method" })).toHaveCount(0);
 
   await page.goto("/blocks");
   await expect(page.getByRole("note")).toContainText("This list contains canonical blocks only");
@@ -563,10 +564,28 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await page.goto("/transactions");
   await expect(page.getByText("900.719925474099312345", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();
+  const method = page.getByLabel("valueWithAnIntentionallyLongMethodName(uint256,address)");
+  await expect(method).toHaveText("valueWithAnIntentionallyLongMethodName");
+  await method.hover();
+  await expect(method).toHaveAttribute(
+    "title",
+    "valueWithAnIntentionallyLongMethodName(uint256,address)",
+  );
+  await expect(method).toHaveCSS("text-overflow", "ellipsis");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const methodListOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(methodListOverflow).toBeLessThanOrEqual(1);
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByRole("columnheader", { name: "方法" })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
   expect(addressWithdrawalRequests).toEqual([]);
   await activateInView(page.getByRole("button", { name: "Next page" }));
   const secondPageTransaction = page.getByRole("link", { name: /0xbbbbbb…bbbbbb/ });
   await expect(secondPageTransaction).toBeVisible();
+  await expect(page.getByText("Contract Creation", { exact: true })).toBeVisible();
   await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
   expect(transactionCursors).toContain(transactionCursor);
   await activateInView(secondPageTransaction);

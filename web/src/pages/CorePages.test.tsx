@@ -182,6 +182,7 @@ describe("core explorer pages", () => {
     expect(await screen.findByRole("link", { name: shorten(transactionHash) })).toHaveAttribute(
       "href", `/tx/${transactionHash}?tab=overview`,
     );
+    expect(screen.queryByRole("columnheader", { name: "Method" })).not.toBeInTheDocument();
     expect(requested).toContain(`/api/v1/blocks/${canonicalHash}/transactions`);
     const withdrawalsTab = within(tabs).getByRole("tab", { name: "Withdrawals" });
     expect(withdrawalsTab).toHaveAttribute("aria-selected", "false");
@@ -2116,6 +2117,7 @@ describe("core explorer pages", () => {
     expect(selfDirection).toBeVisible();
     const transactionRow = selfDirection.closest("tr");
     if (!transactionRow) throw new Error("address transaction row is missing");
+    expect(screen.queryByRole("columnheader", { name: "Method" })).not.toBeInTheDocument();
     expect(
       within(transactionRow).queryByRole("link", { name: shorten(address) }),
     ).not.toBeInTheDocument();
@@ -2532,8 +2534,10 @@ describe("core explorer pages", () => {
   });
 
   it("renders ETH-formatted values on transactions list", async () => {
+    const requestedPaths: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestURL(input).pathname;
+      requestedPaths.push(path);
       if (path === "/api/v1/config") return configResponse();
       if (path === "/api/v1/status") {
         return statusResponse({
@@ -2558,6 +2562,9 @@ describe("core explorer pages", () => {
           value: "1500000000000000000",
           gas: "21000",
           gas_price: "1000000000",
+          input: "0xa9059cbb",
+          method: "transferTokensWithAnIntentionallyLongMethodName",
+          method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
           completeness: completeness(),
           finality: "safe",
           canonical: true,
@@ -2575,6 +2582,71 @@ describe("core explorer pages", () => {
     const txRow = txRowHash.closest("tr");
     if (!txRow) throw new Error("transactions row missing");
     expect(within(txRow).getByText("1.5")).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Method" })).toBeVisible();
+    const method = within(txRow).getByLabelText(
+      "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+    );
+    expect(method).toHaveTextContent("transferTokensWithAnIntentionallyLongMethodName");
+    expect(method).toHaveClass("transaction-method");
+    expect(method).toHaveAttribute(
+      "title",
+      "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+    );
+    expect(requestedPaths).not.toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+  });
+
+  it("renders localized Method fallbacks without deriving them in the browser", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const requestedPaths: string[] = [];
+    const hashes = [transactionHash, delegationTransactionHash, orphanHash, olderHash];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestURL(input).pathname;
+      requestedPaths.push(path);
+      if (path === "/api/v1/config") return configResponse();
+      if (path === "/api/v1/status") {
+        return statusResponse({
+          core_ready: true,
+          latest_block: "12",
+          indexed_block: "12",
+          highest_covered_block: "12",
+          backfill_complete: true,
+          lag: "0",
+        });
+      }
+      if (path === "/api/v1/transactions") {
+        const methods = ["Native Transfer", "Contract Creation", "0xdeadbeef", undefined];
+        return envelope(hashes.map((hash, index) => ({
+          hash,
+          status: "success",
+          block_hash: canonicalHash,
+          block_number: "12",
+          from: address,
+          to: index === 1 ? null : address,
+          transaction_index: index,
+          nonce: String(index),
+          value: "0",
+          gas: "21000",
+          gas_price: "1000000000",
+          input: index === 0 ? "0x" : index === 1 ? "0x6000" : "0xdeadbeef",
+          method: methods[index],
+          completeness: completeness(),
+          finality: "safe",
+          canonical: true,
+        })));
+      }
+      return notFound();
+    }));
+
+    renderExplorer("/transactions");
+
+    expect(await screen.findByRole("columnheader", { name: "方法" })).toBeVisible();
+    expect(screen.getByText("Native Transfer", { exact: true })).toBeVisible();
+    expect(screen.getByText("Contract Creation", { exact: true })).toBeVisible();
+    expect(screen.getByText("0xdeadbeef", { exact: true })).toBeVisible();
+    const missingMethodRow = screen.getByText(shorten(olderHash)).closest("tr");
+    if (!missingMethodRow) throw new Error("missing-method transaction row is absent");
+    expect(within(missingMethodRow).getByText("—", { exact: true })).toBeVisible();
+    expect(requestedPaths.some((path) => path.endsWith("/calldata"))).toBe(false);
   });
 
   it("clears a contract hash for an EOA and returns to transactions", async () => {

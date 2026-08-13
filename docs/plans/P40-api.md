@@ -37,6 +37,7 @@ the agreed Etherscan V2 subset.
 | P40-T14 | done | P40-T12 | Exact-block execution and blob base-fee facts on transaction resources | OpenAPI, generated contract, query, home-stream, and generation tests |
 | P40-T15 | done | P40-T14 | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests |
 | P40-T16 | done | P40-T12 | Snapshot-stable canonical address withdrawal history ordered by numeric withdrawal index | migration, OpenAPI, query, cursor, reorg, handler, billing-inventory, and integration tests |
+| P40-T17 | done | P40-T16, P20-T13 | Exact transaction-list method projection from published execution identity and ABI results | OpenAPI, query, canonicality, projection, generation, and integration tests |
 
 ## Acceptance
 
@@ -61,6 +62,19 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T17 adds optional generated `method` and `method_signature` transaction
+  fields and guarantees `method` on the global transaction list. One
+  repeatable-read query joins the exact canonical transaction inclusion to
+  published `state_diff@2` execution identity and published `abi@3` calldata
+  decoding without RPC, external lookup, or per-row HTTP requests. Projection
+  tests cover unique direct and EIP-7702 decoding, contract creation, exact
+  native transfer, empty contract calldata, malformed/unknown/short selector
+  fallback, pagination, unpublished-result isolation, and post-publication ABI
+  visibility. Focused Query/HTTP tests, `make generate-check`, owned
+  PostgreSQL 18 `make test-integration`, host-authorized `make test-e2e`, the
+  complete host-authorized `make check`, `make plan-check`, and `git diff
+  --check` pass.
 
 - P40-T16 adds migration `0045` and the generated
   `/addresses/{address}/withdrawals` resource. PostgreSQL filters exact

@@ -458,6 +458,7 @@ export function TransactionsPage() {
             <thead>
               <tr>
                 <th>{t("table.hash")}</th>
+                <th>{t("table.method")}</th>
                 <th>{t("table.block")}</th>
                 <th>{t("table.status")}</th>
                 <th>{t("table.from")}</th>
@@ -473,6 +474,13 @@ export function TransactionsPage() {
                     <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
                       {shorten(transaction.hash)}
                     </Link>
+                  </td>
+                  <td className="transaction-method-cell">
+                    <code
+                      aria-label={transaction.method_signature ?? transaction.method ?? undefined}
+                      className="transaction-method"
+                      title={transaction.method_signature ?? transaction.method}
+                    >{transaction.method ?? "—"}</code>
                   </td>
                   <td>
                     {transaction.block_hash ? (

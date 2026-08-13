@@ -23,9 +23,10 @@ import (
 )
 
 type fakeReader struct {
-	status      StatusSnapshot
-	transaction gen.Transaction
-	err         error
+	status       StatusSnapshot
+	transaction  gen.Transaction
+	transactions []gen.Transaction
+	err          error
 }
 
 type fakeGenesisReader struct {
@@ -85,7 +86,10 @@ func (f fakeReader) BlockTransactions(context.Context, string, string, int) ([]g
 	return []gen.Transaction{}, "next", f.err
 }
 func (f fakeReader) Transactions(context.Context, string, int) ([]gen.Transaction, string, error) {
-	return []gen.Transaction{}, "next", f.err
+	if f.transactions == nil {
+		return []gen.Transaction{}, "next", f.err
+	}
+	return f.transactions, "next", f.err
 }
 func (f fakeReader) Transaction(context.Context, string) (gen.Transaction, error) {
 	return f.transaction, f.err
@@ -168,6 +172,30 @@ func TestStatusUsesStringQuantitiesAndCompleteness(t *testing.T) {
 	}
 	if response.Data.ChainId != "11155111" || response.Data.Lag != "2" || response.Meta.RequestId != "request-1" {
 		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+
+func TestTransactionsPreserveMethodProjection(t *testing.T) {
+	t.Parallel()
+	method, signature := "transfer", "transfer(address,uint256)"
+	handler := testHandler(t, fakeReader{transactions: []gen.Transaction{{
+		Hash: "0x" + strings.Repeat("11", 32), Method: &method, MethodSignature: &signature,
+		Input: "0xa9059cbb", Canonical: true, Finality: gen.FinalitySafe,
+		Completeness: gen.Completeness{}, From: "0x" + strings.Repeat("22", 20),
+		Nonce: "0", Value: "0", Gas: "21000",
+	}}})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/transactions", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.TransactionListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Method == nil || *response.Data[0].Method != method ||
+		response.Data[0].MethodSignature == nil || *response.Data[0].MethodSignature != signature {
+		t.Fatalf("transaction method response = %+v", response.Data)
 	}
 }
 

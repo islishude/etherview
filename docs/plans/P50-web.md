@@ -81,6 +81,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T54 | done        | P50-T53, P61-T13 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
 | P50-T55 | done | P40-T15, P50-T54 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
 | P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
+| P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -111,6 +112,17 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T57 adds Method/方法 only to the global transaction table after Hash.
+  The compact 12rem cell preserves the full method in the DOM, exposes the
+  complete decoded signature through title and accessible name, falls back to
+  the projected semantic/selector value or `—`, and does not issue calldata
+  requests. Focused frontend tests pass all 48 cases and the complete suite
+  passes 30 files and 328 tests. Host-authorized `make test-e2e` passes all 18
+  embedded Chromium flows, including bilingual keyboard access, signature
+  disclosure, ellipsis styling, pagination, and 390px page-overflow coverage;
+  `make generate-check`, `make plan-check`, the complete host-authorized `make
+  check`, and `git diff --check` also pass.
 
 - P50-T56 adds an always-visible, deep-linkable Withdrawals/提款 address tab
   immediately after Internal Transactions. It lazily preserves API order and
