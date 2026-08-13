@@ -81,29 +81,43 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 	default:
 		return errors.New("verification job kind is invalid")
 	}
-	if request.Language != LanguageSolidity && request.Language != LanguageYul {
+	if request.Language != LanguageSolidity && request.Language != LanguageYul &&
+		request.Language != LanguageGeas {
 		return errors.New("verification language is invalid")
 	}
 	if !versionPattern.MatchString(normalizeCompilerVersion(request.CompilerVersion)) {
 		return errors.New("compiler version is invalid")
 	}
 	request.CompilerVersion = normalizeCompilerVersion(request.CompilerVersion)
-	if request.Multipart != nil {
-		variants, err := BuildMultipartStandardJSON(*request.Multipart, request.CompilerVersion, service.maxInputBytes)
-		if err != nil {
+	if request.Language == LanguageGeas {
+		if request.Kind != JobAddress || request.Multipart != nil || len(request.StandardJSON) != 0 ||
+			len(request.StandardJSONVariants) != 0 || request.CompilerVersion != GeasCompilerVersion {
+			return errors.New("geas verification request is invalid")
+		}
+		if err := prepareGeasRequest(request.Geas, &request.ContractNameHint, service.maxInputBytes); err != nil {
 			return err
 		}
-		request.StandardJSONVariants = variants
-		request.StandardJSON = variants[0]
 	} else {
-		prepared, err := PrepareVerifierStandardJSON(
-			request.StandardJSON, request.Language, request.CompilerVersion, service.maxInputBytes,
-		)
-		if err != nil {
-			return err
+		if request.Geas != nil {
+			return errors.New("solidity verification request contains geas input")
 		}
-		request.StandardJSON = prepared
-		request.StandardJSONVariants = []json.RawMessage{prepared}
+		if request.Multipart != nil {
+			variants, err := BuildMultipartStandardJSON(*request.Multipart, request.CompilerVersion, service.maxInputBytes)
+			if err != nil {
+				return err
+			}
+			request.StandardJSONVariants = variants
+			request.StandardJSON = variants[0]
+		} else {
+			prepared, err := PrepareVerifierStandardJSON(
+				request.StandardJSON, request.Language, request.CompilerVersion, service.maxInputBytes,
+			)
+			if err != nil {
+				return err
+			}
+			request.StandardJSON = prepared
+			request.StandardJSONVariants = []json.RawMessage{prepared}
+		}
 	}
 	maximumPairs := 1
 	if request.Kind == JobSolidityBatchMultipart || request.Kind == JobSolidityBatchStandardJSON {

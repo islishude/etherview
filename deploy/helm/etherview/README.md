@@ -263,12 +263,19 @@ runtime with the fixed Node/wrapper identity, every `all` or `api` replica must
 use the same manifest digest, and executor-bound jobs must be drained before a
 path change and replica restart.
 
+`config.verification.geas_path` defaults to the bundled read-only Geas v0.3.3
+helper. Startup requires its exact module checksum, executable digest, and
+self-test. It has no catalog, network policy exception, cache, or external
+runtime volume; keep its identity equal across every `all`/`api` replica and
+drain bound Geas jobs before replacing it.
+
 A dedicated policy selects only `all` or `api` and permits DNS plus TCP/443 for
 approved compiler catalogs and artifacts. Other worker roles receive neither
 the cache nor this egress. Catalog outages do not withdraw API readiness:
-version discovery reports unavailable and compiler jobs remain retryable. The
-`etherview_verification_compiler_available` metric and bundled alert expose the
-condition. Application Pods never require a Docker daemon, Docker socket, or
+version discovery reports unavailable and Solidity/Yul jobs remain queued;
+Geas work may continue. The family-labeled
+`etherview_verification_compiler_available` metric and bundled alert expose
+`solcjs` and `geas` independently. Application Pods never require a Docker daemon, Docker socket, or
 Kubernetes API access to execute compilers.
 
 ## Network policy

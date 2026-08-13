@@ -259,7 +259,7 @@ func TestVerifierV2CatalogOutageLeavesCompilerQueuedAndClaimsProxy(t *testing.T)
 	if err != nil || !created {
 		t.Fatalf("submit proxy job: created=%t error=%v", created, err)
 	}
-	lease, found, err := repository.ClaimRunnable(ctx, "api-catalog-offline", time.Minute, false)
+	lease, found, err := repository.ClaimRunnable(ctx, "api-catalog-offline", time.Minute, verify.CompilerAvailability{})
 	if err != nil || !found || lease.Job.ID != proxy.ID || lease.Job.Kind != verify.JobProxy {
 		t.Fatalf("catalog-offline claim: lease=%+v found=%t error=%v", lease, found, err)
 	}
@@ -267,9 +267,157 @@ func TestVerifierV2CatalogOutageLeavesCompilerQueuedAndClaimsProxy(t *testing.T)
 	if err != nil || !found || queued.Status != verify.JobQueued || queued.AttemptCount != 0 {
 		t.Fatalf("compiler job while catalog unavailable: job=%+v found=%t error=%v", queued, found, err)
 	}
-	compileLease, found, err := repository.ClaimRunnable(ctx, "api-catalog-recovered", time.Minute, true)
+	compileLease, found, err := repository.ClaimRunnable(ctx, "api-catalog-recovered", time.Minute, verify.CompilerAvailability{SolcJS: true, Geas: true})
 	if err != nil || !found || compileLease.Job.ID != compile.ID {
 		t.Fatalf("catalog-recovered claim: lease=%+v found=%t error=%v", compileLease, found, err)
+	}
+}
+
+func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	coreRepository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(
+		0, testHash(7_450), testHash(0), testHash(8_450), "geas-genesis",
+	)
+	block := testBundle(
+		1, testHash(7_451), genesis.Block.Hash(), testHash(8_451), "geas-block",
+	)
+	commitCanonical(t, ctx, coreRepository, genesis)
+	commitCanonical(t, ctx, coreRepository, block)
+	blockHash := block.Block.Hash()
+	runtime := []byte{0x60, 0x01}
+	codeHash := keccak256(runtime)
+	address := mustBytes(t, testAddress(745))
+	execFixture(t, ctx, db, `
+		INSERT INTO contract_code_observations (
+			chain_id, address, block_number, block_hash, code_hash, code, canonical
+		) VALUES (1, $1, 1, $2, $3, $4, TRUE)`,
+		address, mustBytes(t, blockHash), codeHash, runtime,
+	)
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{
+		MaxRequestBytes: 1 << 20, MaxResultBytes: 1 << 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This older solc job proves family availability is applied before FIFO
+	// ordering, rather than allowing a catalog outage to starve Geas.
+	solc, created, err := repository.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobSolidityStandardJSON, Language: verify.LanguageSolidity,
+		CompilerVersion: "0.8.30+commit.73712a01",
+		StandardJSON:    json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		StandardJSONVariants: []json.RawMessage{
+			json.RawMessage(`{"language":"Solidity","sources":{"A.sol":{"content":"contract A {}"}},"settings":{}}`),
+		},
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit solc control job: created=%t error=%v", created, err)
+	}
+	service, err := verify.NewService(repository, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, created, err := service.SubmitV2(ctx, verify.SubmissionV2{
+		Kind: verify.JobAddress, Language: verify.LanguageGeas, CompilerVersion: "0.3.3",
+		Geas: &verify.GeasRequest{
+			Sources:           map[string]string{"system/main.eas": "push 1\n", "unused.eas": "push 2\n"},
+			RuntimeEntrypoint: "system/main.eas",
+		},
+		Target: &verify.VerificationTarget{
+			ChainID: 1, Address: "0x" + hex.EncodeToString(address),
+			CodeHash: "0x" + hex.EncodeToString(codeHash), AtBlockHash: blockHash.Hex(),
+		},
+		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+	})
+	if err != nil || !created {
+		t.Fatalf("submit Geas job: created=%t error=%v", created, err)
+	}
+	lease, found, err := repository.ClaimRunnable(
+		ctx, "geas-only", time.Minute, verify.CompilerAvailability{Geas: true},
+	)
+	if err != nil || !found || lease.Job.ID != job.ID {
+		t.Fatalf("Geas-only claim: lease=%+v found=%t error=%v", lease, found, err)
+	}
+	compilerDigest := sha256.Sum256([]byte("github.com/fjl/geas@v0.3.3"))
+	executorDigest := sha256.Sum256([]byte("etherview-geas-compiler"))
+	wrongFamily := verify.CompilerProvenance{
+		Kind: verify.CompilerSolcJS, Digest: compilerDigest, ExecutorDigest: executorDigest,
+		ExecutorKind: verify.SolcJSExecutorKind, ExecutionPolicy: verify.TrustedSubprocessPolicy,
+		Platform: verify.CompilerPlatformEmscriptenWASM32, CatalogGeneration: 1,
+	}
+	if err := repository.BindCompiler(ctx, lease, wrongFamily); !errors.Is(err, verify.ErrCompilerProvenanceConflict) {
+		t.Fatalf("cross-family Geas binding error = %v", err)
+	}
+	provenance := verify.CompilerProvenance{
+		Kind: verify.CompilerGeas, Digest: compilerDigest, ExecutorDigest: executorDigest,
+		ExecutorKind: verify.GeasExecutorKind, ExecutionPolicy: verify.TrustedSubprocessPolicy,
+		Platform: verify.CompilerPlatformGoModule,
+	}
+	if err := repository.BindCompiler(ctx, lease, provenance); err != nil {
+		t.Fatalf("bind Geas compiler: %v", err)
+	}
+	var catalogGeneration sql.NullInt64
+	var platform, executorKind string
+	if err := db.QueryRowContext(ctx, `
+		SELECT catalog_generation_id, compiler_platform, executor_kind
+		FROM verification_jobs WHERE id = $1::uuid`, job.ID,
+	).Scan(&catalogGeneration, &platform, &executorKind); err != nil {
+		t.Fatal(err)
+	}
+	if catalogGeneration.Valid || platform != verify.CompilerPlatformGoModule || executorKind != verify.GeasExecutorKind {
+		t.Fatalf("stored Geas provenance generation=%+v platform=%q executor=%q", catalogGeneration, platform, executorKind)
+	}
+	outcome := json.RawMessage(`{
+		"kind":"verification_success",
+		"file_name":"system/main.eas",
+		"contract_name":"main",
+		"language":"geas",
+		"compiler_version":"0.3.3",
+		"settings":{"runtime_entrypoint":"system/main.eas","stack_check":true},
+		"sources":{"system/main.eas":{"content":"push 1\n"}},
+		"abi":[],
+		"compilation_artifacts":{},
+		"creation_code_artifacts":{},
+		"runtime_code_artifacts":{},
+		"creation_match":null,
+		"runtime_match":{"match_type":"full","transformations":[],"values":{}},
+		"libraries":{},
+		"is_blueprint":false
+	}`)
+	tamperedOutcome := json.RawMessage(strings.Replace(
+		string(outcome), `"push 1\n"`, `"push 2\n"`, 1,
+	))
+	if err := repository.CompleteV2(ctx, lease, "verification_success", tamperedOutcome); err == nil {
+		t.Fatal("Geas publication accepted source content that disagreed with its durable request")
+	}
+	missingCreationMatch := json.RawMessage(strings.Replace(
+		string(outcome), `"creation_match":null,`, "", 1,
+	))
+	if err := repository.CompleteV2(ctx, lease, "verification_success", missingCreationMatch); err == nil {
+		t.Fatal("Geas publication accepted a missing creation_match field")
+	}
+	if err := repository.CompleteV2(ctx, lease, "verification_success", outcome); err != nil {
+		t.Fatalf("complete Geas verification: %v", err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts
+		WHERE verification_job_id = $1::uuid AND language = 'geas'
+		  AND compiler_version = '0.3.3' AND match_type = 'full'
+		  AND abi = '[]'::jsonb AND libraries = '{}'::jsonb`, 1, job.ID)
+	queued, found, err := repository.Job(ctx, solc.ID)
+	if err != nil || !found || queued.Status != verify.JobQueued || queued.AttemptCount != 0 {
+		t.Fatalf("solc job during Geas-only availability: job=%+v found=%t error=%v", queued, found, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE verification_jobs SET executor_digest = decode(repeat('42', 32), 'hex')
+		WHERE id = $1::uuid`, job.ID); err == nil {
+		t.Fatal("Geas executor provenance rewrite was accepted")
 	}
 }
 
@@ -335,7 +483,7 @@ func TestVerifierV2ConcurrentAPIConsumersLeaseJobOnce(t *testing.T) {
 		go func(worker string) {
 			defer group.Done()
 			<-start
-			lease, found, claimErr := repository.ClaimRunnable(ctx, worker, time.Minute, true)
+			lease, found, claimErr := repository.ClaimRunnable(ctx, worker, time.Minute, verify.CompilerAvailability{SolcJS: true, Geas: true})
 			results <- claimResult{lease: lease, found: found, err: claimErr}
 		}(worker)
 	}

@@ -313,6 +313,7 @@ compose-check:
 	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
 		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
 		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=monolith \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
@@ -320,6 +321,7 @@ compose-check:
 	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
 		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
 		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=distributed \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
@@ -328,6 +330,7 @@ compose-check:
 	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
 		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
 		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/preview-compose-check.mjs

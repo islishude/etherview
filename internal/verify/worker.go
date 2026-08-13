@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"maps"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/geascompiler"
 )
 
 type WorkerOptions struct {
@@ -30,7 +33,7 @@ type VerificationObserver interface {
 }
 
 type verificationAvailabilityObserver interface {
-	RecordVerificationCompiler(available bool)
+	RecordVerificationCompiler(family string, available bool)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -91,7 +94,7 @@ func (worker *Worker) Run(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		found, err := worker.processOneRunnable(ctx, worker.compilerAvailable(ctx))
+		found, err := worker.processOneRunnable(ctx, worker.compilerAvailability(ctx))
 		if err != nil {
 			return err
 		}
@@ -104,42 +107,50 @@ func (worker *Worker) Run(ctx context.Context) error {
 }
 
 func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
-	return worker.processOneRunnable(ctx, true)
+	return worker.processOneRunnable(ctx, CompilerAvailability{SolcJS: true, Geas: true})
 }
 
 type runnableVerificationClaimer interface {
-	ClaimRunnable(context.Context, string, time.Duration, bool) (VerificationLease, bool, error)
+	ClaimRunnable(context.Context, string, time.Duration, CompilerAvailability) (VerificationLease, bool, error)
 }
 
-func (worker *Worker) compilerAvailable(ctx context.Context) bool {
+func (worker *Worker) compilerAvailability(ctx context.Context) CompilerAvailability {
+	if runtime, ok := worker.compiler.(interface {
+		Availability(context.Context) CompilerAvailability
+	}); ok {
+		return runtime.Availability(ctx)
+	}
 	if runtime, ok := worker.compiler.(interface {
 		CompilerAvailable(context.Context) bool
 	}); ok {
-		return runtime.CompilerAvailable(ctx)
+		available := runtime.CompilerAvailable(ctx)
+		return CompilerAvailability{SolcJS: available, Geas: available}
 	}
 	runtime, ok := worker.compiler.(interface{ Ready() bool })
 	if !ok {
-		return true
+		return CompilerAvailability{SolcJS: true, Geas: true}
 	}
-	return runtime.Ready()
+	available := runtime.Ready()
+	return CompilerAvailability{SolcJS: available, Geas: available}
 }
 
 func (worker *Worker) processOneRunnable(
 	ctx context.Context,
-	compilerAvailable bool,
+	availability CompilerAvailability,
 ) (bool, error) {
 	if observer, ok := worker.options.Observer.(verificationAvailabilityObserver); ok {
-		observer.RecordVerificationCompiler(compilerAvailable)
+		observer.RecordVerificationCompiler(string(CompilerFamilySolcJS), availability.SolcJS)
+		observer.RecordVerificationCompiler(string(CompilerFamilyGeas), availability.Geas)
 	}
 	var lease VerificationLease
 	var found bool
 	var err error
 	if repository, ok := worker.repository.(runnableVerificationClaimer); ok {
 		lease, found, err = repository.ClaimRunnable(
-			ctx, worker.options.WorkerID, worker.options.LeaseDuration, compilerAvailable,
+			ctx, worker.options.WorkerID, worker.options.LeaseDuration, availability,
 		)
 	} else {
-		if !compilerAvailable {
+		if !availability.SolcJS && !availability.Geas {
 			return false, nil
 		}
 		lease, found, err = worker.repository.Claim(
@@ -223,6 +234,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 	if err := worker.repository.BindCompiler(ctx, lease, provenance); err != nil {
 		return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
 	}
+	if request.Language == LanguageGeas {
+		return worker.processGeasV2(ctx, repository, lease, provenance)
+	}
 	var compiledVariants [][]CandidateArtifact
 	var sawCompilationFailure bool
 	for _, input := range request.StandardJSONVariants {
@@ -302,6 +316,139 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		return worker.completeOutcomeV2(ctx, repository, lease, "verification_failure", failure)
 	}
 	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", results[0])
+}
+
+type geasEntrypointCompiler interface {
+	CompileGeasEntrypointPinned(
+		context.Context,
+		string,
+		CompilerProvenance,
+		map[string]string,
+		string,
+	) (geascompiler.Response, error)
+}
+
+func (worker *Worker) processGeasV2(
+	ctx context.Context,
+	repository v2CompletionRepository,
+	lease VerificationLease,
+	provenance CompilerProvenance,
+) error {
+	request := lease.Job.RequestV2
+	compiler, ok := worker.compiler.(geasEntrypointCompiler)
+	if !ok || request == nil || request.Geas == nil || len(request.Bytecodes) != 1 {
+		return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
+	}
+	compile := func(entrypoint string) (geascompiler.Response, error) {
+		return runWithLeaseHeartbeat(
+			ctx, worker, lease,
+			func(operationContext context.Context) (geascompiler.Response, error) {
+				return compiler.CompileGeasEntrypointPinned(
+					operationContext, request.CompilerVersion, provenance,
+					request.Geas.Sources, entrypoint,
+				)
+			},
+		)
+	}
+	runtime, err := compile(request.Geas.RuntimeEntrypoint)
+	if err != nil {
+		return worker.handleGeasCompilerError(ctx, lease, err)
+	}
+	if !runtime.Successful {
+		return worker.completeOutcomeV2(ctx, repository, lease, "compilation_failure", map[string]any{
+			"kind": "compilation_failure",
+		})
+	}
+	compiledRuntime, runtimeErr := optionalBytecode(runtime.Bytecode)
+	targetRuntime, targetRuntimeErr := optionalBytecode(request.Bytecodes[0].Runtime)
+	if runtimeErr != nil || targetRuntimeErr != nil || !bytes.Equal(compiledRuntime, targetRuntime) {
+		return worker.completeOutcomeV2(ctx, repository, lease, "verification_failure", map[string]any{
+			"kind": "verification_failure",
+		})
+	}
+	usedSources := make(map[string]struct{}, len(runtime.Sources))
+	for _, name := range runtime.Sources {
+		usedSources[name] = struct{}{}
+	}
+	fullMatch := &VerificationMatchDetails{
+		MatchType: VerificationMatchFull, Transformations: make([]Transformation, 0),
+	}
+	var creationMatch *VerificationMatchDetails
+	if request.Geas.CreationEntrypoint != "" {
+		creation, compileErr := compile(request.Geas.CreationEntrypoint)
+		if compileErr != nil {
+			return worker.handleGeasCompilerError(ctx, lease, compileErr)
+		}
+		if !creation.Successful {
+			return worker.completeOutcomeV2(ctx, repository, lease, "compilation_failure", map[string]any{
+				"kind": "compilation_failure",
+			})
+		}
+		compiledCreation, compiledErr := optionalBytecode(creation.Bytecode)
+		targetCreation, targetErr := optionalBytecode(request.Bytecodes[0].Creation)
+		if compiledErr != nil || targetErr != nil || len(targetCreation) == 0 ||
+			!bytes.Equal(compiledCreation, targetCreation) {
+			return worker.completeOutcomeV2(ctx, repository, lease, "verification_failure", map[string]any{
+				"kind": "verification_failure",
+			})
+		}
+		for _, name := range creation.Sources {
+			usedSources[name] = struct{}{}
+		}
+		creationMatch = fullMatch
+	}
+	sources := make(map[string]any, len(usedSources))
+	for name := range usedSources {
+		content, exists := request.Geas.Sources[name]
+		if !exists {
+			return worker.failLease(ctx, lease, ErrorCompilerOutput)
+		}
+		sources[name] = map[string]string{"content": content}
+	}
+	settings := map[string]any{
+		"runtime_entrypoint": request.Geas.RuntimeEntrypoint,
+		"stack_check":        true,
+	}
+	if request.Geas.CreationEntrypoint != "" {
+		settings["creation_entrypoint"] = request.Geas.CreationEntrypoint
+	}
+	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", map[string]any{
+		"kind":                    "verification_success",
+		"file_name":               request.Geas.RuntimeEntrypoint,
+		"contract_name":           request.ContractNameHint,
+		"language":                LanguageGeas,
+		"compiler_version":        GeasCompilerVersion,
+		"settings":                settings,
+		"sources":                 sources,
+		"abi":                     []any{},
+		"compilation_artifacts":   map[string]any{},
+		"creation_code_artifacts": map[string]any{},
+		"runtime_code_artifacts":  map[string]any{},
+		"creation_match":          creationMatch,
+		"runtime_match":           fullMatch,
+		"libraries":               map[string]string{},
+		"is_blueprint":            false,
+	})
+}
+
+func (worker *Worker) handleGeasCompilerError(
+	ctx context.Context,
+	lease VerificationLease,
+	err error,
+) error {
+	if errors.Is(err, ErrCompilerCleanup) || errors.Is(err, ErrCompilerRuntime) {
+		return err
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		return err
+	}
+	if errors.Is(err, ErrCompilerNondeterministic) {
+		return worker.failLease(ctx, lease, ErrorCompilerOutput)
+	}
+	if errors.Is(err, ErrCompilerProvenanceConflict) {
+		return worker.failLease(ctx, lease, ErrorCompilerProvenanceMismatch)
+	}
+	return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 }
 
 func (worker *Worker) compilePairV2(

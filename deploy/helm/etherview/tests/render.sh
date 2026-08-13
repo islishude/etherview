@@ -233,6 +233,7 @@ verifier_custom_runtime="$temporary_dir/verifier-custom-runtime.yaml"
   --set-string config.verification.node_path=/custom/bin/node \
   --set-string config.verification.wrapper_path=/custom/runtime/compile.mjs \
   --set-string config.verification.manifest_path=/custom/runtime/runtime-manifest.json \
+  --set-string config.verification.geas_path=/custom/bin/etherview-geas-compiler \
   --show-only templates/configmap.yaml >"$verifier_custom_runtime"
 
 assert_kind_count "$monolith" Deployment 1
@@ -357,13 +358,17 @@ assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "
 assert_contains "$verifier_monolith" "node_path: /usr/local/bin/node"
 assert_contains "$verifier_monolith" "wrapper_path: /opt/etherview/compiler/compile.mjs"
 assert_contains "$verifier_monolith" "manifest_path: /opt/etherview/compiler/runtime-manifest.json"
+assert_contains "$verifier_monolith" "geas_path: /usr/local/bin/etherview-geas-compiler"
 assert_contains "$verifier_custom_runtime" "node_path: /custom/bin/node"
 assert_contains "$verifier_custom_runtime" "wrapper_path: /custom/runtime/compile.mjs"
 assert_contains "$verifier_custom_runtime" "manifest_path: /custom/runtime/runtime-manifest.json"
+assert_contains "$verifier_custom_runtime" "geas_path: /custom/bin/etherview-geas-compiler"
 assert_not_contains "$verifier_monolith" "platform:"
 assert_not_contains "$verifier_distributed" "platform:"
 expect_render_failure verification-relative-node-path \
   --set-string config.verification.node_path=custom/bin/node
+expect_render_failure verification-relative-geas-path \
+  --set-string config.verification.geas_path=custom/bin/etherview-geas-compiler
 expect_render_failure verification-invalid-cache-claim \
   --set config.features.verification=true \
   --set networkPolicy.allowExternalHTTPS=false \

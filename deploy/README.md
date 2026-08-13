@@ -117,8 +117,8 @@ The add-network control advertises the local Geth endpoint as
 Preview-local HTTP RPC exception only; production RPC URLs and every block
 explorer or icon URL remain HTTPS-only.
 
-Verification v2 treats user-supplied Solidity/Yul input as hostile while
-trusting only checksum-pinned official solc-js artifacts. The `api` process
+Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
+The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
 and execution. Each compile starts a fresh Node subprocess with a minimal
@@ -129,11 +129,20 @@ Node's permission model is defense in depth, not a JavaScript security
 boundary. Every bound job records the exact catalog generation, artifact
 format, compiler SHA-256, and runtime executor digest.
 
+Geas address verification accepts only the statically linked v0.3.3 helper
+bundled in the image. It uses no catalog or download: startup verifies the
+helper's Go module checksum, read-only ordinary-file identity, executable
+SHA-256, and self-test. Each requested runtime/optional creation entrypoint is
+assembled twice from an in-memory source filesystem before exact bytecode
+matching.
+
 The trusted runtime locations are explicit under `verification.node_path`,
-`verification.wrapper_path`, and `verification.manifest_path`, with matching
+`verification.wrapper_path`, `verification.manifest_path`, and
+`verification.geas_path`, with matching
 `ETHERVIEW_VERIFICATION_NODE_PATH`,
 `ETHERVIEW_VERIFICATION_WRAPPER_PATH`, and
-`ETHERVIEW_VERIFICATION_MANIFEST_PATH` overrides. Defaults point at the
+`ETHERVIEW_VERIFICATION_MANIFEST_PATH`, and
+`ETHERVIEW_VERIFICATION_GEAS_PATH` overrides. Defaults point at the
 runtime bundled in the production image. Alternate absolute clean paths must
 identify one coherent read-only tree whose manifest covers the configured Node
 binary and wrapper and whose fixed identity and self-test still pass. Standard
@@ -362,12 +371,12 @@ metric staleness, alerts, and repair/reindex response.
 
 ## Image properties
 
-The Dockerfile builds the SPA, compiles one static Go binary, and assembles a
+The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
 stage contains the application binary plus an exact Node 26.5.0 executable,
-the read-only solc-js wrapper/dependency tree, and its canonical runtime
-manifest. It contains no npm, npx, corepack, shell, native solc, Vyper, Go
-toolchain, or source tree.
+the read-only solc-js wrapper/dependency tree, its canonical runtime manifest,
+and the read-only Geas v0.3.3 helper. It contains no npm, npx, corepack, shell,
+native solc, Vyper, Go toolchain, or source tree.
 
 `make docker-image-check` enforces that boundary by inspecting the configured
 user, executing the binary as UID/GID 65532 with a read-only filesystem,

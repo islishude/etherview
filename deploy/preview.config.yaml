@@ -141,6 +141,7 @@ verification:
   node_path: /usr/local/bin/node
   wrapper_path: /opt/etherview/compiler/compile.mjs
   manifest_path: /opt/etherview/compiler/runtime-manifest.json
+  geas_path: /usr/local/bin/etherview-geas-compiler
   catalog_urls:
     solidity: auto
   allowed_download_origins:

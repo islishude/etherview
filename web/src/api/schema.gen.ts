@@ -1169,17 +1169,19 @@ export interface components {
         AddressVerificationSubmission: {
             compiler_version: string;
             contract_name_hint?: string;
+            creation_entrypoint?: string;
             evm_version?: string;
             input?: {
                 [key: string]: unknown;
             };
             /** @enum {string} */
-            input_kind: "multipart" | "standard_json";
+            input_kind: "multipart" | "standard_json" | "geas_sources";
             language: components["schemas"]["VerifierLanguage"];
             libraries?: {
                 [key: string]: components["schemas"]["Address"];
             };
             optimization_runs?: number;
+            runtime_entrypoint?: string;
             sources?: {
                 [key: string]: string;
             };
@@ -2023,6 +2025,8 @@ export interface components {
         };
         /** @description A canonical signed fixed-point decimal with at most 18 fractional digits. */
         SignedDecimal: string;
+        /** @enum {string} */
+        SolcVerifierLanguage: "solidity" | "yul";
         SourcifyFromEtherscanSubmission: {
             address: components["schemas"]["Address"];
             chain_id: components["schemas"]["Quantity"];
@@ -2527,7 +2531,7 @@ export interface components {
             contract_name_hint?: string;
             contracts: components["schemas"]["VerifierBytecodes"][];
             evm_version?: string;
-            language?: components["schemas"]["VerifierLanguage"];
+            language?: components["schemas"]["SolcVerifierLanguage"];
             libraries?: {
                 [key: string]: components["schemas"]["Address"];
             };
@@ -2543,7 +2547,7 @@ export interface components {
             input: {
                 [key: string]: unknown;
             };
-            language?: components["schemas"]["VerifierLanguage"];
+            language?: components["schemas"]["SolcVerifierLanguage"];
         };
         /** @description At least one creation or runtime bytecode must be non-empty. */
         VerifierBytecodes: {
@@ -2551,13 +2555,13 @@ export interface components {
             runtime_bytecode?: string;
         };
         /** @enum {string} */
-        VerifierLanguage: "solidity" | "yul";
+        VerifierLanguage: "solidity" | "yul" | "geas";
         VerifierMultipartRequest: {
             bytecodes: components["schemas"]["VerifierBytecodes"];
             compiler_version: string;
             contract_name_hint?: string;
             evm_version?: string;
-            language?: components["schemas"]["VerifierLanguage"];
+            language?: components["schemas"]["SolcVerifierLanguage"];
             libraries?: {
                 [key: string]: components["schemas"]["Address"];
             };
@@ -2574,7 +2578,7 @@ export interface components {
             input: {
                 [key: string]: unknown;
             };
-            language?: components["schemas"]["VerifierLanguage"];
+            language?: components["schemas"]["SolcVerifierLanguage"];
         };
         WalletAddChainConfig: {
             block_explorer_urls?: string[];

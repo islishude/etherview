@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/testcompose"
 )
 
@@ -74,6 +76,34 @@ type foundryVerificationSnapshot struct {
 	PublicContractName       string
 	PublicCompilerVersion    string
 	PublicMatchType          string
+	Geas                     foundryGeasVerificationSnapshot
+}
+
+type foundryGeasVerificationSnapshot struct {
+	Address                 string
+	Jobs                    int64
+	SuccessfulJobs          int64
+	Results                 int64
+	Publications            int64
+	Language                string
+	CompilerVersion         string
+	CompilerPlatform        string
+	CatalogGenerationAbsent bool
+	CompilerDigest          string
+	ExecutorKind            string
+	ExecutionPolicy         string
+	ExecutorDigest          string
+	FileName                string
+	ContractName            string
+	MatchType               string
+	CreationMatch           string
+	RuntimeMatch            string
+	ABIEmpty                bool
+	Sources                 int
+	PublicLanguage          string
+	PublicCompilerVersion   string
+	PublicFileName          string
+	PublicABIEmpty          bool
 }
 
 type foundryEtherscanEnvelope struct {
@@ -301,8 +331,12 @@ func runFoundryMode(
 		t.Fatalf("repeated Forge verification created a job: before=%d after=%d", beforeRepeat, afterRepeat)
 	}
 
+	h.enterPhase("pinned ethereum/sys-asm EIP-7002 Geas verification")
+	geas := runFoundryGeasVerification(t, ctx, h, apiKey)
+
 	h.enterPhase("durable and public verification provenance")
 	snapshot := captureFoundryVerificationSnapshot(t, ctx, h, apiKey, deployment.DeployedTo)
+	snapshot.Geas = geas
 	h.writeJSONArtifact(mode+"-foundry-summary.json", snapshot)
 	return snapshot
 }
@@ -483,6 +517,166 @@ func foundryAddressJobCount(t *testing.T, ctx context.Context, h *harness, addre
 		t.Fatal(err)
 	}
 	return count
+}
+
+func runFoundryGeasVerification(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	apiKey string,
+) foundryGeasVerificationSnapshot {
+	t.Helper()
+	fixtureRoot := filepath.Join(
+		h.root, "internal", "verify", "testdata", "geas", "sys-asm-eip7002",
+	)
+	readFixture := func(relative string) string {
+		contents, err := os.ReadFile(filepath.Join(fixtureRoot, filepath.FromSlash(relative)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(contents)
+	}
+	sources := make(map[string]string)
+	for _, name := range []string{
+		"withdrawals/main.eas",
+		"withdrawals/ctor.eas",
+		"common/fake_expo.eas",
+		"common/mstore.eas",
+	} {
+		sources[name] = readFixture("src/" + name)
+	}
+	creation := strings.TrimSpace(readFixture("bytecode/withdrawals/ctor.hex"))
+	runtime := strings.TrimSpace(readFixture("bytecode/withdrawals/main.hex"))
+	transactionHash := h.sendTransaction(ctx, map[string]any{
+		"from": h.fixture.accounts[0], "data": "0x" + creation,
+	})
+	receipt := h.waitReceipt(ctx, transactionHash)
+	if receipt.Status != "0x1" || !common.IsHexAddress(receipt.ContractAddress) {
+		t.Fatalf("sys-asm deployment receipt = %+v", receipt)
+	}
+	waitFoundryCanonicalTip(t, ctx, h)
+	waitFor(t, ctx, "sys-asm EIP-7002 code identity", func() (bool, string, error) {
+		var observed string
+		err := h.db.QueryRow(ctx, `
+			SELECT COALESCE(encode(code, 'hex'), '')
+			FROM contract_code_observations
+			WHERE chain_id = 1 AND address = $1 AND canonical
+			ORDER BY block_number DESC, block_hash DESC LIMIT 1`,
+			common.HexToAddress(receipt.ContractAddress).Bytes(),
+		).Scan(&observed)
+		return err == nil && observed == runtime, observed, err
+	})
+	payload, err := json.Marshal(map[string]any{
+		"language": "geas", "compiler_version": "0.3.3",
+		"input_kind": "geas_sources", "sources": sources,
+		"runtime_entrypoint":  "withdrawals/main.eas",
+		"creation_entrypoint": "withdrawals/ctor.eas",
+		"contract_name_hint":  "EIP7002Withdrawals",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		h.baseURL+"/api/v1/contracts/"+receipt.ContractAddress+"/verification",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-API-Key", apiKey)
+	response, err := h.http.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close() //nolint:errcheck
+	var accepted gen.VerificationJobResponse
+	if response.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		t.Fatalf("Geas submission status=%d body=%s", response.StatusCode, h.redact(body))
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&accepted); err != nil {
+		t.Fatal(err)
+	}
+	jobID := accepted.Data.Id.String()
+	waitFor(t, ctx, "sys-asm EIP-7002 verification", func() (bool, string, error) {
+		statusRequest, requestErr := http.NewRequestWithContext(
+			ctx, http.MethodGet, h.baseURL+"/api/v1/verifier/jobs/"+jobID, nil,
+		)
+		if requestErr != nil {
+			return false, "", requestErr
+		}
+		statusRequest.Header.Set("X-API-Key", apiKey)
+		statusResponse, requestErr := h.http.Do(statusRequest)
+		if requestErr != nil {
+			return false, "", requestErr
+		}
+		defer statusResponse.Body.Close() //nolint:errcheck
+		body, readErr := io.ReadAll(io.LimitReader(statusResponse.Body, 2<<20))
+		if readErr != nil || statusResponse.StatusCode != http.StatusOK {
+			return false, fmt.Sprintf("status=%d body=%s", statusResponse.StatusCode, h.redact(body)), readErr
+		}
+		var envelope gen.VerificationJobResponse
+		if decodeErr := json.Unmarshal(body, &envelope); decodeErr != nil {
+			return false, string(h.redact(body)), decodeErr
+		}
+		if envelope.Data.Status == gen.VerificationJobStatusFailed ||
+			envelope.Data.Status == gen.VerificationJobStatusCancelled {
+			return false, string(h.redact(body)), fmt.Errorf("Geas verification terminated with %s", envelope.Data.Status)
+		}
+		return envelope.Data.Status == gen.VerificationJobStatusSucceeded, string(h.redact(body)), nil
+	})
+
+	snapshot := foundryGeasVerificationSnapshot{Address: common.HexToAddress(receipt.ContractAddress).Hex()}
+	addressBytes := common.HexToAddress(receipt.ContractAddress).Bytes()
+	if err := h.db.QueryRow(ctx, `
+		SELECT
+		  count(*), count(*) FILTER (WHERE job.status = 'succeeded'),
+		  count(result.job_id), count(publication.verification_job_id),
+		  max(job.language), max(job.compiler_version), max(job.compiler_platform),
+		  bool_and(job.catalog_generation_id IS NULL),
+		  max(encode(job.compiler_digest, 'hex')), max(job.executor_kind),
+		  max(job.execution_policy), max(encode(job.executor_digest, 'hex')),
+		  max(result.file_name), max(result.contract_name), max(result.match_type),
+		  max(result.outcome->'creation_match'->>'match_type'),
+		  max(result.outcome->'runtime_match'->>'match_type'),
+		  bool_and(result.abi = '[]'::jsonb),
+		  max((SELECT count(*) FROM jsonb_object_keys(result.sources)))
+		FROM verification_jobs AS job
+		LEFT JOIN verification_results AS result ON result.job_id = job.id
+		LEFT JOIN verified_contracts AS publication ON publication.verification_job_id = job.id
+		WHERE job.kind = 'address' AND job.chain_id = 1 AND job.address = $1`, addressBytes,
+	).Scan(
+		&snapshot.Jobs, &snapshot.SuccessfulJobs, &snapshot.Results, &snapshot.Publications,
+		&snapshot.Language, &snapshot.CompilerVersion, &snapshot.CompilerPlatform,
+		&snapshot.CatalogGenerationAbsent, &snapshot.CompilerDigest, &snapshot.ExecutorKind,
+		&snapshot.ExecutionPolicy, &snapshot.ExecutorDigest, &snapshot.FileName,
+		&snapshot.ContractName, &snapshot.MatchType, &snapshot.CreationMatch,
+		&snapshot.RuntimeMatch, &snapshot.ABIEmpty, &snapshot.Sources,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var public gen.VerifiedContractResponse
+	h.mustGetJSON(ctx, "/api/v1/contracts/"+receipt.ContractAddress+"/verification", &public)
+	snapshot.PublicLanguage = string(public.Data.Language)
+	snapshot.PublicCompilerVersion = public.Data.CompilerVersion
+	snapshot.PublicFileName = public.Data.FileName
+	snapshot.PublicABIEmpty = public.Data.Abi != nil && len(*public.Data.Abi) == 0
+	if snapshot.Jobs != 1 || snapshot.SuccessfulJobs != 1 || snapshot.Results != 1 ||
+		snapshot.Publications != 1 || snapshot.Language != "geas" ||
+		snapshot.CompilerVersion != "0.3.3" || snapshot.CompilerPlatform != "go-module" ||
+		!snapshot.CatalogGenerationAbsent || len(snapshot.CompilerDigest) != 64 ||
+		snapshot.ExecutorKind != "etherview_geas_v1" ||
+		snapshot.ExecutionPolicy != "trusted_subprocess" || len(snapshot.ExecutorDigest) != 64 ||
+		snapshot.FileName != "withdrawals/main.eas" || snapshot.ContractName != "EIP7002Withdrawals" ||
+		snapshot.MatchType != "full" || snapshot.CreationMatch != "full" ||
+		snapshot.RuntimeMatch != "full" || !snapshot.ABIEmpty || snapshot.Sources != 4 ||
+		snapshot.PublicLanguage != "geas" || snapshot.PublicCompilerVersion != "0.3.3" ||
+		snapshot.PublicFileName != "withdrawals/main.eas" || !snapshot.PublicABIEmpty {
+		t.Fatalf("incomplete Geas verification persistence: %#v", snapshot)
+	}
+	return snapshot
 }
 
 func captureFoundryVerificationSnapshot(

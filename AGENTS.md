@@ -113,6 +113,12 @@ driver solely because an older evidence entry cites it.
   kind/policy, and runtime executor digest. The bundled Node permission model
   is defense in depth for trusted checksum-authenticated solc-js, not an
   isolation claim for malicious JavaScript.
+- Geas verification is address-only and fixed to `github.com/fjl/geas`
+  v0.3.3. Compile required runtime and optional creation entrypoints twice in
+  fresh bounded helper subprocesses from an inline read-only virtual
+  filesystem, with stack checking. Match byte-for-byte, publish only transitive
+  sources with an empty ABI and no transformations, and bind the exact Go
+  module checksum plus helper digest under the lease without a solc catalog.
 
 ## Security and browser boundaries
 

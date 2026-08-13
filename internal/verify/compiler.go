@@ -48,7 +48,9 @@ var (
 type CompilerKind string
 
 const (
+	GeasExecutorKind                   = "etherview_geas_v1"
 	CompilerSolcJS        CompilerKind = "node_solcjs_v1"
+	CompilerGeas          CompilerKind = "go_geas_v1"
 	CompilerLegacyRunner  CompilerKind = "legacy_runner"
 	CompilerLegacyProcess CompilerKind = "legacy_process"
 )
@@ -71,24 +73,36 @@ type CompilerProvenance struct {
 }
 
 func (provenance CompilerProvenance) valid() bool {
-	base := provenance.Digest != [sha256.Size]byte{} &&
-		provenance.CatalogGeneration > 0 &&
-		validCompilerPlatform(provenance.Platform)
-	if !base {
+	if provenance.Digest == [sha256.Size]byte{} {
 		return false
 	}
 	switch provenance.Kind {
 	case CompilerSolcJS:
-		return provenance.ExecutorDigest != [sha256.Size]byte{} &&
+		return validCompilerPlatform(provenance.Platform) &&
+			provenance.CatalogGeneration > 0 &&
+			provenance.ExecutorDigest != [sha256.Size]byte{} &&
 			provenance.ExecutorKind == SolcJSExecutorKind &&
 			provenance.ExecutionPolicy == TrustedSubprocessPolicy &&
 			provenance.Platform == CompilerPlatformEmscriptenWASM32
+	case CompilerGeas:
+		return provenance.CatalogGeneration == 0 &&
+			provenance.CatalogDigest == [sha256.Size]byte{} &&
+			provenance.CatalogSource == "" && provenance.CatalogEntryCount == 0 &&
+			provenance.ArtifactURL == "" && provenance.ArtifactMaxBytes == 0 &&
+			provenance.ExecutorDigest != [sha256.Size]byte{} &&
+			provenance.ExecutorKind == GeasExecutorKind &&
+			provenance.ExecutionPolicy == TrustedSubprocessPolicy &&
+			provenance.Platform == CompilerPlatformGoModule
 	case CompilerLegacyRunner:
-		return provenance.ExecutorDigest != [sha256.Size]byte{} &&
+		return validCompilerPlatform(provenance.Platform) &&
+			provenance.CatalogGeneration > 0 &&
+			provenance.ExecutorDigest != [sha256.Size]byte{} &&
 			provenance.ExecutorKind == "legacy_runner" &&
 			provenance.ExecutionPolicy == "legacy_hard_isolation"
 	case CompilerLegacyProcess:
-		return provenance.ExecutorDigest == [sha256.Size]byte{} &&
+		return validCompilerPlatform(provenance.Platform) &&
+			provenance.CatalogGeneration > 0 &&
+			provenance.ExecutorDigest == [sha256.Size]byte{} &&
 			provenance.ExecutorKind == "legacy_process" &&
 			provenance.ExecutionPolicy == "legacy_trusted_process"
 	default:

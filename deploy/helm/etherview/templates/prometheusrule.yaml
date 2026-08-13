@@ -82,7 +82,7 @@ spec:
           annotations:
             summary: Etherview verification jobs are repeatedly failing
         - alert: EtherviewVerificationCompilerUnavailable
-          expr: min(etherview_verification_compiler_available{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) == 0
+          expr: min by (family) (etherview_verification_compiler_available{etherview_release="{{ .Release.Name }}",etherview_namespace="{{ .Release.Namespace }}"}) == 0
           for: 5m
           labels:
             {{- include "etherview.alertScopeLabels" . | nindent 12 }}

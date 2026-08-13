@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/ethereum/go-ethereum v1.17.5
+	github.com/fjl/geas v0.3.3
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/google/uuid v1.6.0
 	github.com/holiman/uint256 v1.3.2

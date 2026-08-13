@@ -176,6 +176,7 @@ func (e AddressTokenTransferStandard) Valid() bool {
 
 // Defines values for AddressVerificationSubmissionInputKind.
 const (
+	GeasSources  AddressVerificationSubmissionInputKind = "geas_sources"
 	Multipart    AddressVerificationSubmissionInputKind = "multipart"
 	StandardJson AddressVerificationSubmissionInputKind = "standard_json"
 )
@@ -183,6 +184,8 @@ const (
 // Valid indicates whether the value is a known member of the AddressVerificationSubmissionInputKind enum.
 func (e AddressVerificationSubmissionInputKind) Valid() bool {
 	switch e {
+	case GeasSources:
+		return true
 	case Multipart:
 		return true
 	case StandardJson:
@@ -1281,6 +1284,24 @@ func (e SearchResultKind) Valid() bool {
 	}
 }
 
+// Defines values for SolcVerifierLanguage.
+const (
+	SolcVerifierLanguageSolidity SolcVerifierLanguage = "solidity"
+	SolcVerifierLanguageYul      SolcVerifierLanguage = "yul"
+)
+
+// Valid indicates whether the value is a known member of the SolcVerifierLanguage enum.
+func (e SolcVerifierLanguage) Valid() bool {
+	switch e {
+	case SolcVerifierLanguageSolidity:
+		return true
+	case SolcVerifierLanguageYul:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SourcifySuccessOutcomeKind.
 const (
 	SourcifySuccess SourcifySuccessOutcomeKind = "sourcify_success"
@@ -2153,16 +2174,19 @@ func (e VerifiedContractResolution) Valid() bool {
 
 // Defines values for VerifierLanguage.
 const (
-	Solidity VerifierLanguage = "solidity"
-	Yul      VerifierLanguage = "yul"
+	VerifierLanguageGeas     VerifierLanguage = "geas"
+	VerifierLanguageSolidity VerifierLanguage = "solidity"
+	VerifierLanguageYul      VerifierLanguage = "yul"
 )
 
 // Valid indicates whether the value is a known member of the VerifierLanguage enum.
 func (e VerifierLanguage) Valid() bool {
 	switch e {
-	case Solidity:
+	case VerifierLanguageGeas:
 		return true
-	case Yul:
+	case VerifierLanguageSolidity:
+		return true
+	case VerifierLanguageYul:
 		return true
 	default:
 		return false
@@ -2396,15 +2420,17 @@ type AddressTokenTransferListResponse struct {
 
 // AddressVerificationSubmission defines model for AddressVerificationSubmission.
 type AddressVerificationSubmission struct {
-	CompilerVersion  string                                 `json:"compiler_version"`
-	ContractNameHint *string                                `json:"contract_name_hint,omitempty"`
-	EvmVersion       *string                                `json:"evm_version,omitempty"`
-	Input            *map[string]interface{}                `json:"input,omitempty"`
-	InputKind        AddressVerificationSubmissionInputKind `json:"input_kind"`
-	Language         VerifierLanguage                       `json:"language"`
-	Libraries        *map[string]Address                    `json:"libraries,omitempty"`
-	OptimizationRuns *int                                   `json:"optimization_runs,omitempty"`
-	Sources          *map[string]string                     `json:"sources,omitempty"`
+	CompilerVersion    string                                 `json:"compiler_version"`
+	ContractNameHint   *string                                `json:"contract_name_hint,omitempty"`
+	CreationEntrypoint *string                                `json:"creation_entrypoint,omitempty"`
+	EvmVersion         *string                                `json:"evm_version,omitempty"`
+	Input              *map[string]interface{}                `json:"input,omitempty"`
+	InputKind          AddressVerificationSubmissionInputKind `json:"input_kind"`
+	Language           VerifierLanguage                       `json:"language"`
+	Libraries          *map[string]Address                    `json:"libraries,omitempty"`
+	OptimizationRuns   *int                                   `json:"optimization_runs,omitempty"`
+	RuntimeEntrypoint  *string                                `json:"runtime_entrypoint,omitempty"`
+	Sources            *map[string]string                     `json:"sources,omitempty"`
 }
 
 // AddressVerificationSubmissionInputKind defines model for AddressVerificationSubmission.InputKind.
@@ -3800,6 +3826,9 @@ type SessionRevocationResponse struct {
 // SignedDecimal A canonical signed fixed-point decimal with at most 18 fractional digits.
 type SignedDecimal = string
 
+// SolcVerifierLanguage defines model for SolcVerifierLanguage.
+type SolcVerifierLanguage string
+
 // SourcifyFromEtherscanSubmission defines model for SourcifyFromEtherscanSubmission.
 type SourcifyFromEtherscanSubmission struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
@@ -4718,14 +4747,14 @@ type VerifiedContractResponse struct {
 
 // VerifierBatchMultipartRequest defines model for VerifierBatchMultipartRequest.
 type VerifierBatchMultipartRequest struct {
-	CompilerVersion  string              `json:"compiler_version"`
-	ContractNameHint *string             `json:"contract_name_hint,omitempty"`
-	Contracts        []VerifierBytecodes `json:"contracts"`
-	EvmVersion       *string             `json:"evm_version,omitempty"`
-	Language         *VerifierLanguage   `json:"language,omitempty"`
-	Libraries        *map[string]Address `json:"libraries,omitempty"`
-	OptimizationRuns *int                `json:"optimization_runs,omitempty"`
-	Sources          map[string]string   `json:"sources"`
+	CompilerVersion  string                `json:"compiler_version"`
+	ContractNameHint *string               `json:"contract_name_hint,omitempty"`
+	Contracts        []VerifierBytecodes   `json:"contracts"`
+	EvmVersion       *string               `json:"evm_version,omitempty"`
+	Language         *SolcVerifierLanguage `json:"language,omitempty"`
+	Libraries        *map[string]Address   `json:"libraries,omitempty"`
+	OptimizationRuns *int                  `json:"optimization_runs,omitempty"`
+	Sources          map[string]string     `json:"sources"`
 }
 
 // VerifierBatchStandardJSONRequest defines model for VerifierBatchStandardJSONRequest.
@@ -4734,7 +4763,7 @@ type VerifierBatchStandardJSONRequest struct {
 	ContractNameHint *string                `json:"contract_name_hint,omitempty"`
 	Contracts        []VerifierBytecodes    `json:"contracts"`
 	Input            map[string]interface{} `json:"input"`
-	Language         *VerifierLanguage      `json:"language,omitempty"`
+	Language         *SolcVerifierLanguage  `json:"language,omitempty"`
 }
 
 // VerifierBytecodes At least one creation or runtime bytecode must be non-empty.
@@ -4749,14 +4778,14 @@ type VerifierLanguage string
 // VerifierMultipartRequest defines model for VerifierMultipartRequest.
 type VerifierMultipartRequest struct {
 	// Bytecodes At least one creation or runtime bytecode must be non-empty.
-	Bytecodes        VerifierBytecodes   `json:"bytecodes"`
-	CompilerVersion  string              `json:"compiler_version"`
-	ContractNameHint *string             `json:"contract_name_hint,omitempty"`
-	EvmVersion       *string             `json:"evm_version,omitempty"`
-	Language         *VerifierLanguage   `json:"language,omitempty"`
-	Libraries        *map[string]Address `json:"libraries,omitempty"`
-	OptimizationRuns *int                `json:"optimization_runs,omitempty"`
-	Sources          map[string]string   `json:"sources"`
+	Bytecodes        VerifierBytecodes     `json:"bytecodes"`
+	CompilerVersion  string                `json:"compiler_version"`
+	ContractNameHint *string               `json:"contract_name_hint,omitempty"`
+	EvmVersion       *string               `json:"evm_version,omitempty"`
+	Language         *SolcVerifierLanguage `json:"language,omitempty"`
+	Libraries        *map[string]Address   `json:"libraries,omitempty"`
+	OptimizationRuns *int                  `json:"optimization_runs,omitempty"`
+	Sources          map[string]string     `json:"sources"`
 }
 
 // VerifierStandardJSONRequest defines model for VerifierStandardJSONRequest.
@@ -4768,7 +4797,7 @@ type VerifierStandardJSONRequest struct {
 
 	// Input Inline-source Standard JSON. URL sources and duplicate keys are rejected.
 	Input    map[string]interface{} `json:"input"`
-	Language *VerifierLanguage      `json:"language,omitempty"`
+	Language *SolcVerifierLanguage  `json:"language,omitempty"`
 }
 
 // WalletAddChainConfig defines model for WalletAddChainConfig.

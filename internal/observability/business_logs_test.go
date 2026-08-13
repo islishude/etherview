@@ -59,17 +59,23 @@ func TestBusinessObserverExposesCompilerAvailabilityWithoutBusinessLogSpam(t *te
 	registry := NewRegistry("test", "api")
 	var output bytes.Buffer
 	observer := NewBusinessObserver(registry, slog.New(slog.NewJSONHandler(&output, nil)))
-	observer.RecordVerificationCompiler(false)
+	observer.RecordVerificationCompiler("solcjs", false)
+	observer.RecordVerificationCompiler("geas", true)
 	if metrics := registry.Gather(); !strings.Contains(
-		metrics, "etherview_verification_compiler_available 0",
+		metrics, `etherview_verification_compiler_available{family="solcjs"} 0`,
 	) {
 		t.Fatalf("unavailable compiler metric is absent:\n%s", metrics)
 	}
-	observer.RecordVerificationCompiler(true)
+	observer.RecordVerificationCompiler("solcjs", true)
 	if metrics := registry.Gather(); !strings.Contains(
-		metrics, "etherview_verification_compiler_available 1",
+		metrics, `etherview_verification_compiler_available{family="solcjs"} 1`,
 	) {
 		t.Fatalf("recovered compiler metric is absent:\n%s", metrics)
+	}
+	if metrics := registry.Gather(); !strings.Contains(
+		metrics, `etherview_verification_compiler_available{family="geas"} 1`,
+	) {
+		t.Fatalf("Geas compiler metric is absent:\n%s", metrics)
 	}
 	if output.Len() != 0 {
 		t.Fatalf("compiler polling emitted business-transition logs: %s", output.String())

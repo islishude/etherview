@@ -55,7 +55,8 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	cfg := Default()
 	if cfg.Verification.NodePath != defaultVerificationNodePath ||
 		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
-		cfg.Verification.ManifestPath != defaultVerificationManifestPath {
+		cfg.Verification.ManifestPath != defaultVerificationManifestPath ||
+		cfg.Verification.GeasPath != defaultVerificationGeasPath {
 		t.Fatalf("unexpected default verification runtime paths: %#v", cfg.Verification)
 	}
 
@@ -66,7 +67,8 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	}
 	if cfg.Verification.NodePath != defaultVerificationNodePath ||
 		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
-		cfg.Verification.ManifestPath != defaultVerificationManifestPath {
+		cfg.Verification.ManifestPath != defaultVerificationManifestPath ||
+		cfg.Verification.GeasPath != defaultVerificationGeasPath {
 		t.Fatalf("legacy YAML cleared verification runtime defaults: %#v", cfg.Verification)
 	}
 
@@ -74,6 +76,7 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 		"ETHERVIEW_VERIFICATION_NODE_PATH":     "/custom/bin/node",
 		"ETHERVIEW_VERIFICATION_WRAPPER_PATH":  "/custom/runtime/compile.mjs",
 		"ETHERVIEW_VERIFICATION_MANIFEST_PATH": "/custom/runtime/runtime-manifest.json",
+		"ETHERVIEW_VERIFICATION_GEAS_PATH":     "/custom/bin/etherview-geas-compiler",
 	}
 	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
 		value, ok := overrides[key]
@@ -83,7 +86,8 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	}
 	if cfg.Verification.NodePath != overrides["ETHERVIEW_VERIFICATION_NODE_PATH"] ||
 		cfg.Verification.WrapperPath != overrides["ETHERVIEW_VERIFICATION_WRAPPER_PATH"] ||
-		cfg.Verification.ManifestPath != overrides["ETHERVIEW_VERIFICATION_MANIFEST_PATH"] {
+		cfg.Verification.ManifestPath != overrides["ETHERVIEW_VERIFICATION_MANIFEST_PATH"] ||
+		cfg.Verification.GeasPath != overrides["ETHERVIEW_VERIFICATION_GEAS_PATH"] {
 		t.Fatalf("verification runtime environment override was not applied: %#v", cfg.Verification)
 	}
 }
@@ -115,6 +119,13 @@ func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.
 				verification.ManifestPath = "/opt/etherview/compiler/../runtime-manifest.json"
 			},
 			field: "verification.manifest_path",
+		},
+		{
+			name: "relative Geas helper",
+			configure: func(verification *VerificationConfig) {
+				verification.GeasPath = "bin/etherview-geas-compiler"
+			},
+			field: "verification.geas_path",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

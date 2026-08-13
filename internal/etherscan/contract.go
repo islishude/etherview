@@ -27,6 +27,7 @@ type verifiedContractRecord struct {
 	CompilerVersion string
 	MatchKind       string
 	ContractName    string
+	FileName        string
 }
 
 func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Values) (verifiedContractRecord, error) {
@@ -51,6 +52,7 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 		Settings: resolved.Source.Settings, Language: resolved.Source.Language,
 		CompilerVersion: resolved.Source.CompilerVersion,
 		MatchKind:       resolved.Source.MatchType, ContractName: resolved.Source.ContractName,
+		FileName: resolved.Source.FileName,
 	}
 	if len(record.CodeHash) != 32 {
 		return verifiedContractRecord{}, errors.New("stored canonical contract code hash is invalid")
@@ -61,7 +63,7 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	if len(record.SourceAddress) != common.AddressLength {
 		return verifiedContractRecord{}, errors.New("stored verified contract identity is incomplete")
 	}
-	if record.Language != "solidity" && record.Language != "yul" {
+	if record.Language != "solidity" && record.Language != "yul" && record.Language != "geas" {
 		return verifiedContractRecord{}, fmt.Errorf("stored verified contract has unsupported language %q", record.Language)
 	}
 	if record.MatchKind != "full" && record.MatchKind != "partial" {
@@ -123,13 +125,19 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 		similarMatch = common.BytesToAddress(record.SourceAddress).Hex()
 		settings.constructorArguments = ""
 	}
+	compilerType := "solc"
+	contractFileName := ""
+	if record.Language == "geas" {
+		compilerType = "geas"
+		contractFileName = record.FileName
+	}
 	return []sourceCodeResult{{
 		SourceCode: sources, ABI: abi, ContractName: record.ContractName,
-		CompilerVersion: record.CompilerVersion, CompilerType: "solc",
+		CompilerVersion: record.CompilerVersion, CompilerType: compilerType,
 		OptimizationUsed: settings.optimized,
 		Runs:             settings.runs, ConstructorArguments: settings.constructorArguments,
 		EVMVersion: settings.evmVersion, Library: settings.libraries,
-		ContractFileName: "", LicenseType: settings.licenseType,
+		ContractFileName: contractFileName, LicenseType: settings.licenseType,
 		Proxy: proxy, Implementation: implementation,
 		SwarmSource: "", SimilarMatch: similarMatch, MatchKind: record.MatchKind,
 	}}, nil

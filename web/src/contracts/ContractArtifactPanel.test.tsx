@@ -344,6 +344,45 @@ describe("ContractArtifactPanel", () => {
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
 
   });
+
+  it("renders Geas as read-only plain text with its pinned entrypoint settings", async () => {
+    const user = userEvent.setup();
+    render(<ContractArtifactPanel artifact={fixtureArtifact({
+      language: "geas",
+      compiler_version: "0.3.3",
+      file_name: "withdrawals/main.eas",
+      contract_name: "Withdrawals",
+      sources: {
+        "withdrawals/main.eas": { content: "#include \"../common/fake_expo.eas\"\npush 1\n" },
+        "common/fake_expo.eas": { content: "#define %fake_expo { add }\n" },
+      },
+      settings: {
+        runtime_entrypoint: "withdrawals/main.eas",
+        creation_entrypoint: "withdrawals/ctor.eas",
+        stack_check: true,
+      },
+      abi: [],
+      compilation_artifacts: {},
+      creation_code_artifacts: {},
+      runtime_code_artifacts: {},
+      libraries: {},
+    })} />);
+
+    expect(screen.getByRole("heading", { name: "Withdrawals" })).toBeVisible();
+    expect(screen.getAllByText("0 functions · 0 events · 0 errors · 0 constructors").length).toBeGreaterThan(0);
+    const editor = screen.getByRole("textbox", {
+      name: "Read-only source editor for withdrawals/main.eas",
+    });
+    expect(editor).toHaveAttribute("contenteditable", "false");
+    expect(editor).toHaveTextContent("#include");
+    expect(editor.querySelector(".tok-keyword")).toBeNull();
+    expect(screen.getByText("GEAS")).toBeVisible();
+    const settingsDisclosure = screen.getByText("Complete compiler settings").closest("details");
+    expect(settingsDisclosure).not.toBeNull();
+    await user.click(screen.getByText("Complete compiler settings"));
+    expect(within(settingsDisclosure as HTMLElement).getByText(/runtime_entrypoint/u)).toBeVisible();
+    expect(within(settingsDisclosure as HTMLElement).getByText(/stack_check/u)).toBeVisible();
+  });
 });
 
 function fixtureArtifact(

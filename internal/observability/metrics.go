@@ -34,8 +34,8 @@ type Registry struct {
 	jobsPending                   map[string]float64
 	durableJobs                   map[pair]float64
 	verificationCurrent           map[string]float64
-	verificationCompilerAvailable float64
-	verificationCompilerSeen      bool
+	verificationCompilerAvailable map[string]float64
+	verificationCompilerSeen      map[string]bool
 	repairCurrent                 map[pair]float64
 	repairOldestQueued            float64
 	billingSettling               map[pair]float64
@@ -90,30 +90,32 @@ type histogram struct {
 // NewRegistry constructs a process-local registry for one runtime role.
 func NewRegistry(version, role string) *Registry {
 	return &Registry{
-		version:                 safeLabel(version),
-		role:                    safeLabel(role),
-		httpRequests:            make(map[requestKey]uint64),
-		httpDuration:            make(map[requestKey]*histogram),
-		httpPanics:              make(map[pair]uint64),
-		syncHalted:              make(map[string]float64),
-		rpcRequests:             make(map[pair]uint64),
-		jobsPending:             make(map[string]float64),
-		durableJobs:             make(map[pair]float64),
-		verificationCurrent:     make(map[string]float64),
-		repairCurrent:           make(map[pair]float64),
-		billingSettling:         make(map[pair]float64),
-		enrichmentJobs:          make(map[pair]uint64),
-		traceJobs:               make(map[string]uint64),
-		verifyJobs:              make(map[string]uint64),
-		metadata:                make(map[string]uint64),
-		maintenance:             make(map[pair]uint64),
-		analyticsRollups:        make(map[string]uint64),
-		rateLimits:              make(map[string]uint64),
-		x402Requests:            make(map[pair]uint64),
-		proxyDetectionDuration:  &histogram{Buckets: make([]uint64, len(proxyDetectionDurationBuckets))},
-		proxyDetectionRPCCalls:  make(map[string]uint64),
-		proxyDetectionRPCErrors: make(map[string]uint64),
-		proxyDetectionResults:   make(map[proxyDetectionResultKey]uint64),
+		version:                       safeLabel(version),
+		role:                          safeLabel(role),
+		httpRequests:                  make(map[requestKey]uint64),
+		httpDuration:                  make(map[requestKey]*histogram),
+		httpPanics:                    make(map[pair]uint64),
+		syncHalted:                    make(map[string]float64),
+		rpcRequests:                   make(map[pair]uint64),
+		jobsPending:                   make(map[string]float64),
+		durableJobs:                   make(map[pair]float64),
+		verificationCurrent:           make(map[string]float64),
+		verificationCompilerAvailable: make(map[string]float64),
+		verificationCompilerSeen:      make(map[string]bool),
+		repairCurrent:                 make(map[pair]float64),
+		billingSettling:               make(map[pair]float64),
+		enrichmentJobs:                make(map[pair]uint64),
+		traceJobs:                     make(map[string]uint64),
+		verifyJobs:                    make(map[string]uint64),
+		metadata:                      make(map[string]uint64),
+		maintenance:                   make(map[pair]uint64),
+		analyticsRollups:              make(map[string]uint64),
+		rateLimits:                    make(map[string]uint64),
+		x402Requests:                  make(map[pair]uint64),
+		proxyDetectionDuration:        &histogram{Buckets: make([]uint64, len(proxyDetectionDurationBuckets))},
+		proxyDetectionRPCCalls:        make(map[string]uint64),
+		proxyDetectionRPCErrors:       make(map[string]uint64),
+		proxyDetectionResults:         make(map[proxyDetectionResultKey]uint64),
 	}
 }
 
@@ -254,15 +256,18 @@ func (registry *Registry) RecordVerificationJob(result string) {
 	registry.increment(registry.verifyJobs, boundedJobResult(result))
 }
 
-// SetVerificationCompilerAvailable records whether the API worker currently
-// has both a validated executor runtime and a fresh compiler catalog.
-func (registry *Registry) SetVerificationCompilerAvailable(available bool) {
+// SetVerificationCompilerAvailable records one bounded compiler family's
+// runtime and catalog availability.
+func (registry *Registry) SetVerificationCompilerAvailable(family string, available bool) {
+	if family != "solcjs" && family != "geas" {
+		return
+	}
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
-	registry.verificationCompilerSeen = true
-	registry.verificationCompilerAvailable = 0
+	registry.verificationCompilerSeen[family] = true
+	registry.verificationCompilerAvailable[family] = 0
 	if available {
-		registry.verificationCompilerAvailable = 1
+		registry.verificationCompilerAvailable[family] = 1
 	}
 }
 
@@ -391,9 +396,11 @@ func (registry *Registry) Gather() string {
 	writeGaugeMap(&output, "etherview_jobs_pending", "Durable PostgreSQL jobs waiting by queue.", "queue", registry.jobsPending)
 	writePairGauges(&output, "etherview_durable_jobs", "Active durable PostgreSQL backlog grouped by stage and status.", "stage", "status", registry.durableJobs)
 	writeGaugeMap(&output, "etherview_verification_jobs", "Active verification backlog grouped by status.", "status", registry.verificationCurrent)
-	writeHelp(&output, "etherview_verification_compiler_available", "Whether the API verification worker has a validated executor runtime and a fresh compiler catalog.", "gauge")
-	if registry.verificationCompilerSeen {
-		fmt.Fprintf(&output, "etherview_verification_compiler_available %s\n", formatFloat(registry.verificationCompilerAvailable))
+	writeHelp(&output, "etherview_verification_compiler_available", "Whether one API verification compiler family has a validated executor runtime and any required fresh catalog.", "gauge")
+	for _, family := range []string{"geas", "solcjs"} {
+		if registry.verificationCompilerSeen[family] {
+			fmt.Fprintf(&output, "etherview_verification_compiler_available{family=%s} %s\n", quote(family), formatFloat(registry.verificationCompilerAvailable[family]))
+		}
 	}
 	writePairGauges(&output, "etherview_repair_requests", "Active repair and reindex backlog grouped by operation and status.", "operation", "status", registry.repairCurrent)
 	writePairGauges(&output, "etherview_x402_stale_settling_payments", "Writer-backed x402 settlements requiring operator reconciliation.", "operation", "reason", registry.billingSettling)

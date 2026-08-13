@@ -36,9 +36,9 @@ func (observer *BusinessObserver) RecordVerificationJob(result string) {
 	observer.log("verification job transitioned", slog.Attr{}, result)
 }
 
-func (observer *BusinessObserver) RecordVerificationCompiler(available bool) {
+func (observer *BusinessObserver) RecordVerificationCompiler(family string, available bool) {
 	if observer != nil && observer.registry != nil {
-		observer.registry.SetVerificationCompilerAvailable(available)
+		observer.registry.SetVerificationCompilerAvailable(family, available)
 	}
 }
 

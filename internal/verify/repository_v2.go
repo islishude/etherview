@@ -35,8 +35,7 @@ func (repository *PostgresRepository) SubmitV2(
 	if request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
 		request.Kind != JobProxy {
 		language, version = request.Language, request.CompilerVersion
-		catalogLanguage = request.Language
-		if request.Language == LanguageYul {
+		if request.Language == LanguageSolidity || request.Language == LanguageYul {
 			catalogLanguage = LanguageSolidity
 		}
 	}
@@ -86,23 +85,23 @@ func (repository *PostgresRepository) Claim(
 	workerID string,
 	leaseFor time.Duration,
 ) (VerificationLease, bool, error) {
-	return repository.claimRunnable(ctx, workerID, leaseFor, true)
+	return repository.claimRunnable(ctx, workerID, leaseFor, CompilerAvailability{SolcJS: true, Geas: true})
 }
 
 func (repository *PostgresRepository) ClaimRunnable(
 	ctx context.Context,
 	workerID string,
 	leaseFor time.Duration,
-	compilerAvailable bool,
+	availability CompilerAvailability,
 ) (VerificationLease, bool, error) {
-	return repository.claimRunnable(ctx, workerID, leaseFor, compilerAvailable)
+	return repository.claimRunnable(ctx, workerID, leaseFor, availability)
 }
 
 func (repository *PostgresRepository) claimRunnable(
 	ctx context.Context,
 	workerID string,
 	leaseFor time.Duration,
-	compilerAvailable bool,
+	availability CompilerAvailability,
 ) (VerificationLease, bool, error) {
 	if strings.TrimSpace(workerID) == "" || len(workerID) > 128 {
 		return VerificationLease{}, false, errors.New("verification worker ID is invalid")
@@ -124,7 +123,9 @@ func (repository *PostgresRepository) claimRunnable(
 			WHERE id = (
 				SELECT id FROM verification_jobs
 				WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-				  AND ($4 OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan'))
+				  AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
+				       OR ($4 AND language IN ('solidity', 'yul'))
+				       OR ($5 AND language = 'geas'))
 				  AND attempt_count >= max_attempts
 				ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
 			)
@@ -132,7 +133,9 @@ func (repository *PostgresRepository) claimRunnable(
 		), candidate AS (
 			SELECT id FROM verification_jobs
 			WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-			  AND ($4 OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan'))
+			  AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
+			       OR ($4 AND language IN ('solidity', 'yul'))
+			       OR ($5 AND language = 'geas'))
 			  AND attempt_count < max_attempts
 			  AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
 			ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -143,7 +146,7 @@ func (repository *PostgresRepository) claimRunnable(
 		    attempt_count = job.attempt_count + 1, updated_at = clock_timestamp()
 		FROM candidate WHERE job.id = candidate.id
 		RETURNING `+v2ClaimedVerificationJobColumns,
-		workerID, token, microseconds, compilerAvailable,
+		workerID, token, microseconds, availability.SolcJS, availability.Geas,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerificationLease{}, false, nil
@@ -165,11 +168,20 @@ func (repository *PostgresRepository) BindCompiler(
 	if lease.Job.RequestV2 == nil || !provenance.valid() {
 		return errors.New("v2 compiler binding is invalid")
 	}
-	if provenance.Kind != CompilerSolcJS ||
-		provenance.ExecutorKind != SolcJSExecutorKind ||
+	if (provenance.Kind != CompilerSolcJS && provenance.Kind != CompilerGeas) ||
 		provenance.ExecutionPolicy != TrustedSubprocessPolicy ||
 		provenance.ExecutorDigest == [sha256.Size]byte{} {
 		return ErrCompilerProvenanceConflict
+	}
+	if (lease.Job.RequestV2.Language == LanguageGeas) != (provenance.Kind == CompilerGeas) ||
+		(provenance.Kind == CompilerSolcJS &&
+			lease.Job.RequestV2.Language != LanguageSolidity &&
+			lease.Job.RequestV2.Language != LanguageYul) {
+		return ErrCompilerProvenanceConflict
+	}
+	var generation any
+	if provenance.CatalogGeneration > 0 {
+		generation = provenance.CatalogGeneration
 	}
 	result, err := repository.db.ExecContext(ctx, `
 		UPDATE verification_jobs
@@ -184,12 +196,12 @@ func (repository *PostgresRepository) BindCompiler(
 		     AND compiler_digest IS NULL AND executor_kind IS NULL
 		     AND execution_policy IS NULL AND executor_digest IS NULL)
 		    OR
-		    (compiler_platform = $3 AND catalog_generation_id = $4
+		    (compiler_platform = $3 AND catalog_generation_id IS NOT DISTINCT FROM $4
 		     AND compiler_digest = $5 AND executor_kind = $6
 		     AND execution_policy = $7 AND executor_digest = $8)
 		  )
 	`, lease.Job.ID, lease.Token, provenance.Platform,
-		provenance.CatalogGeneration, provenance.Digest[:],
+		generation, provenance.Digest[:],
 		provenance.ExecutorKind, provenance.ExecutionPolicy,
 		provenance.ExecutorDigest[:])
 	if err != nil {
@@ -467,7 +479,7 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 		job.RequestV2.CompilerVersion = version.String
 		bound := platform.Valid || generation.Valid || len(compilerDigest) > 0
 		if bound {
-			if !platform.Valid || !generation.Valid || generation.Int64 <= 0 ||
+			if !platform.Valid || (generation.Valid && generation.Int64 <= 0) ||
 				len(compilerDigest) != sha256.Size ||
 				!executorKind.Valid || !executionPolicy.Valid {
 				return VerificationJob{}, errors.New("stored compiler provenance is incomplete")
@@ -496,6 +508,8 @@ func (repository *PostgresRepository) scanV2Job(row rowScanner) (VerificationJob
 			switch executorKind.String {
 			case SolcJSExecutorKind:
 				provenance.Kind = CompilerSolcJS
+			case GeasExecutorKind:
+				provenance.Kind = CompilerGeas
 			case "legacy_runner":
 				provenance.Kind = CompilerLegacyRunner
 			case "legacy_process":

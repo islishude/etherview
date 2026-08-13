@@ -14,6 +14,7 @@ const runtimePathEnvironment = {
   ETHERVIEW_VERIFICATION_WRAPPER_PATH: "/custom/runtime/compile.mjs",
   ETHERVIEW_VERIFICATION_MANIFEST_PATH:
     "/custom/runtime/runtime-manifest.json",
+  ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
 };
 const expectRuntimePathOverride =
   process.env.ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE === "true";

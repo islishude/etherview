@@ -15,7 +15,7 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 	if catalog == nil {
 		return nil, errors.New("verification compiler catalog is unavailable")
 	}
-	return &verify.SolcJSCompiler{
+	solcJS := &verify.SolcJSCompiler{
 		Catalog:      catalog,
 		NodePath:     cfg.Verification.NodePath,
 		WrapperPath:  cfg.Verification.WrapperPath,
@@ -26,7 +26,12 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 		},
 		Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 		MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-	}, nil
+	}
+	geas := &verify.GeasCompiler{
+		Path: cfg.Verification.GeasPath, Timeout: cfg.Verification.Timeout,
+		MaxInputBytes: cfg.Verification.MaxInputBytes, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
+	}
+	return verify.NewCompilerRouter(solcJS, geas)
 }
 
 func verificationWorkerID(index int) string {

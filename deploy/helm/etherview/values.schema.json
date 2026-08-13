@@ -531,7 +531,7 @@
         },
         "verification": {
           "type": "object",
-          "required": ["node_path", "wrapper_path", "manifest_path"],
+          "required": ["node_path", "wrapper_path", "manifest_path", "geas_path"],
           "properties": {
             "node_path": {
               "type": "string",
@@ -546,6 +546,12 @@
               "pattern": "^/"
             },
             "manifest_path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 4096,
+              "pattern": "^/"
+            },
+            "geas_path": {
               "type": "string",
               "minLength": 2,
               "maxLength": 4096,

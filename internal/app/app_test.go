@@ -452,6 +452,7 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	cfg.Verification.NodePath = "/custom/bin/node"
 	cfg.Verification.WrapperPath = "/custom/runtime/compile.mjs"
 	cfg.Verification.ManifestPath = "/custom/runtime/runtime-manifest.json"
+	cfg.Verification.GeasPath = "/custom/bin/etherview-geas-compiler"
 	cfg.Verification.CacheDirectory = "/custom/cache"
 	cfg.Verification.Timeout = 17 * time.Second
 	cfg.Verification.MaxInputBytes = 1234
@@ -462,10 +463,11 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	solcJS, ok := compiler.(*verify.SolcJSCompiler)
+	router, ok := compiler.(*verify.CompilerRouter)
 	if !ok {
 		t.Fatalf("verification compiler type = %T", compiler)
 	}
+	solcJS := router.SolcJS
 	if solcJS.NodePath != cfg.Verification.NodePath ||
 		solcJS.WrapperPath != cfg.Verification.WrapperPath ||
 		solcJS.ManifestPath != cfg.Verification.ManifestPath ||
@@ -479,6 +481,12 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 		solcJS.Cache.Timeout != cfg.Verification.Timeout ||
 		solcJS.Cache.UnsafeAllowPrivateNetworks != cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
 		t.Fatalf("verification compiler cache configuration = %#v", solcJS.Cache)
+	}
+	if router.Geas == nil || router.Geas.Path != cfg.Verification.GeasPath ||
+		router.Geas.Timeout != cfg.Verification.Timeout ||
+		router.Geas.MaxInputBytes != cfg.Verification.MaxInputBytes ||
+		router.Geas.MaxOutputBytes != cfg.Verification.MaxOutputBytes {
+		t.Fatalf("Geas compiler configuration = %#v", router.Geas)
 	}
 
 	if _, err := verificationCompiler(cfg, nil); err == nil ||

@@ -61,8 +61,11 @@ available over HTTP on <http://localhost:9090>.
 Preview builds the production image for the current Docker host architecture.
 The `api` process downloads checksum-pinned `emscripten-wasm32` solc-js
 artifacts and executes each bounded Standard JSON compilation in a fresh,
-permission-restricted Node subprocess. There is no standalone runner, Docker
-socket, nested runtime, or compiler CPU-platform selection. Use
+permission-restricted Node subprocess. It also supports address verification
+for multi-file Geas v0.3.3 sources (including ethereum/sys-asm relative
+`#include` and `assemble()` entrypoints) through the bundled read-only helper.
+There is no standalone runner, Docker socket, nested runtime, or caller-chosen
+compiler executable or CPU platform. Use
 `make recreate-preview` to rebuild the application roles while preserving
 PostgreSQL, Geth, and the checksum-addressed compiler cache. Use
 `make stop-preview` to remove the complete Preview and all its volumes. See the

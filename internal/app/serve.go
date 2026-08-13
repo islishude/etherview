@@ -717,10 +717,10 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		runtimeValidator, ok := compiler.(verify.RuntimeValidator)
 		if !ok {
-			return errors.New("solc-js verification compiler lacks runtime validation")
+			return errors.New("verification compiler lacks runtime validation")
 		}
 		if err := runtimeValidator.ValidateRuntime(ctx); err != nil {
-			return fmt.Errorf("validate solc-js runtime: %w", err)
+			return fmt.Errorf("validate verification compiler runtime: %w", err)
 		}
 		catalogRefresher, err := verify.NewCatalogRefresher(
 			compilerCatalog, cfg.Verification.CatalogRefreshInterval,

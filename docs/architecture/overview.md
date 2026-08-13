@@ -539,6 +539,14 @@ size alone is not sufficient justification to weaken those invariants.
   operator-owned shared PVC or retain its default memory-backed cache. Cache
   persistence never overrides catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
+- Native address verification also accepts a bounded inline Geas v0.3.3 source
+  filesystem with a required runtime entrypoint and optional creation
+  entrypoint. Each entrypoint is assembled twice with stack checking in fresh
+  helper subprocesses; runtime and supplied creation input match exactly, with
+  no Solidity transformations or ABI. Only transitively read source files are
+  published. The helper's exact Go module checksum and executable digest bind
+  once under the job lease without a compiler catalog. See
+  [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
 - The production image includes an exact Node 26.5.0 executable, the
   `solc@0.8.36` wrapper dependency, and a canonical read-only runtime manifest.
   Startup verifies every manifest path and digest and performs a permission
@@ -549,10 +557,10 @@ size alone is not sufficient justification to weaken those invariants.
   network, child-process, worker, addon, WASI, FFI, or inspector permission.
   The permission model is defense in depth for trusted checksum-pinned solc-js,
   not a claim that Node isolates malicious JavaScript.
-- API readiness is independent of temporary catalog availability. When no
+- API readiness is independent of temporary solc catalog availability. When no
   validated catalog generation is available, the version surface reports
-  unavailable and compiler jobs remain retryable rather than being executed
-  with an unbound artifact. Proxy or Sourcify jobs may continue. There is no
+  unavailable and Solidity/Yul jobs remain queued rather than being executed
+  with an unbound artifact. Geas, proxy, or Sourcify jobs may continue. There is no
   standalone runner, runner network, native compiler fallback, or CPU-platform
   selection. See
   [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).

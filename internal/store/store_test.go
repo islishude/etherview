@@ -316,7 +316,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL, geasVerificationSQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -343,6 +343,35 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			proxyHistoryEpochSQL = migration.SQL
 		case "0040_eip7702_delegated_accounts":
 			delegatedAccountsSQL = migration.SQL
+		case "0044_geas_verification":
+			geasVerificationSQL = migration.SQL
+		}
+	}
+	for _, fragment := range []string{
+		"language IN ('solidity', 'yul', 'geas')",
+		"CREATE FUNCTION valid_geas_verification_sources(candidate JSONB)",
+		"valid_geas_verification_sources(sources)",
+		"kind = 'address' AND language = 'geas'",
+		"compiler_version = '0.3.3'",
+		"compiler_platform = 'go-module'",
+		"catalog_generation_id IS NULL",
+		"executor_kind = 'etherview_geas_v1'",
+		"execution_policy = 'trusted_subprocess'",
+		"abi = '[]'::jsonb",
+		"match_type = 'full'",
+		"settings->'stack_check' = 'true'::jsonb",
+		"outcome #>> '{runtime_match,match_type}' = 'full'",
+		"CREATE OR REPLACE FUNCTION enforce_verifier_v2_result_job()",
+		"job.language IS DISTINCT FROM result.language",
+		"job.request #>> '{geas,runtime_entrypoint}'",
+		"FROM jsonb_each(result.sources) AS source(name, value)",
+		"CREATE FUNCTION enforce_verification_compiler_provenance()",
+		"verification compiler provenance is immutable after binding",
+		"NEW.lease_token IS NOT DISTINCT FROM OLD.lease_token",
+		"CREATE FUNCTION enforce_unbound_verification_job_insert()",
+	} {
+		if !strings.Contains(geasVerificationSQL, fragment) {
+			t.Errorf("Geas verification migration missing %q", fragment)
 		}
 	}
 	for _, fragment := range []string{

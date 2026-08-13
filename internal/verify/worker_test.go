@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/islishude/etherview/internal/geascompiler"
 )
 
 type verifyMemoryRepository struct {
@@ -22,6 +24,7 @@ type verifyMemoryRepository struct {
 	bindings   []CompilerProvenance
 	failures   []ErrorCode
 	outcomes   []string
+	payloads   []json.RawMessage
 	submitJob  VerificationJob
 	submitErr  error
 	submits    int
@@ -62,11 +65,12 @@ func (repository *verifyMemoryRepository) CompleteV2(
 	_ context.Context,
 	_ VerificationLease,
 	kind string,
-	_ json.RawMessage,
+	payload json.RawMessage,
 ) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	repository.outcomes = append(repository.outcomes, kind)
+	repository.payloads = append(repository.payloads, append(json.RawMessage(nil), payload...))
 	return nil
 }
 
@@ -113,6 +117,48 @@ type verifyTestCompiler struct {
 	output        json.RawMessage
 	compileCalls  int
 	compileInputs [][]byte
+}
+
+type verifyTestGeasCompiler struct {
+	provenance CompilerProvenance
+	responses  map[string]geascompiler.Response
+	err        error
+	calls      []string
+}
+
+func (compiler *verifyTestGeasCompiler) Provenance(Language, string) (CompilerProvenance, error) {
+	return compiler.provenance, nil
+}
+
+func (compiler *verifyTestGeasCompiler) Resolve(
+	context.Context,
+	Language,
+	string,
+) (CompilerProvenance, error) {
+	return compiler.provenance, nil
+}
+
+func (*verifyTestGeasCompiler) Compile(
+	context.Context,
+	Language,
+	string,
+	[]byte,
+) ([]byte, error) {
+	return nil, errors.New("generic Geas compile must not be used")
+}
+
+func (compiler *verifyTestGeasCompiler) CompileGeasEntrypointPinned(
+	_ context.Context,
+	_ string,
+	_ CompilerProvenance,
+	_ map[string]string,
+	entrypoint string,
+) (geascompiler.Response, error) {
+	compiler.calls = append(compiler.calls, entrypoint)
+	if compiler.err != nil {
+		return geascompiler.Response{}, compiler.err
+	}
+	return compiler.responses[entrypoint], nil
 }
 
 func (compiler *verifyTestCompiler) Provenance(
@@ -167,6 +213,15 @@ func testSolcJSProvenance() CompilerProvenance {
 	}
 }
 
+func testGeasProvenance() CompilerProvenance {
+	return CompilerProvenance{
+		Kind: CompilerGeas, Digest: sha256.Sum256([]byte("geas-v0.3.3")),
+		ExecutorDigest: sha256.Sum256([]byte("geas-helper")),
+		ExecutorKind:   GeasExecutorKind, ExecutionPolicy: TrustedSubprocessPolicy,
+		Platform: CompilerPlatformGoModule,
+	}
+}
+
 func verifyV2Lease() VerificationLease {
 	input := json.RawMessage(`{
 		"language":"Solidity",
@@ -198,17 +253,140 @@ func newVerifyTestWorker(
 	t *testing.T,
 	repository Repository,
 	compiler Compiler,
-	options WorkerOptions,
 ) *Worker {
 	t.Helper()
-	if options.WorkerID == "" {
-		options.WorkerID = "test-worker"
-	}
+	options := WorkerOptions{WorkerID: "test-worker"}
 	worker, err := NewWorker(repository, compiler, options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return worker
+}
+
+func TestWorkerPublishesExactGeasAddressVerification(t *testing.T) {
+	request := validGeasSubmission()
+	if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
+		t.Fatal(err)
+	}
+	repository := &verifyMemoryRepository{
+		claimFound: true,
+		lease: VerificationLease{
+			Job:   VerificationJob{ID: verificationID(63), Kind: JobAddress, Status: JobRunning, RequestV2: &request},
+			Token: "geas-lease",
+		},
+	}
+	compiler := &verifyTestGeasCompiler{
+		provenance: testGeasProvenance(),
+		responses: map[string]geascompiler.Response{
+			"system/main.eas": {
+				Schema: geascompiler.ProtocolSchema, Successful: true, Bytecode: "0x6001",
+				Sources: []string{"common/value.eas", "system/main.eas"},
+			},
+			"system/ctor.eas": {
+				Schema: geascompiler.ProtocolSchema, Successful: true, Bytecode: "0x6001",
+				Sources: []string{"common/value.eas", "system/ctor.eas", "system/main.eas"},
+			},
+		},
+	}
+	worker := newVerifyTestWorker(t, repository, compiler)
+	found, err := worker.ProcessOne(t.Context())
+	if err != nil || !found {
+		t.Fatalf("found=%t error=%v", found, err)
+	}
+	if len(repository.bindings) != 1 || repository.bindings[0] != compiler.provenance {
+		t.Fatalf("bindings = %+v", repository.bindings)
+	}
+	if got, want := strings.Join(compiler.calls, ","), "system/main.eas,system/ctor.eas"; got != want {
+		t.Fatalf("compile calls = %q, want %q", got, want)
+	}
+	if len(repository.outcomes) != 1 || repository.outcomes[0] != "verification_success" || len(repository.payloads) != 1 {
+		t.Fatalf("outcomes=%v payloads=%d", repository.outcomes, len(repository.payloads))
+	}
+	var outcome struct {
+		Kind            string                       `json:"kind"`
+		Language        Language                     `json:"language"`
+		FileName        string                       `json:"file_name"`
+		ContractName    string                       `json:"contract_name"`
+		ABI             []any                        `json:"abi"`
+		Sources         map[string]map[string]string `json:"sources"`
+		Settings        map[string]any               `json:"settings"`
+		CreationMatch   *VerificationMatchDetails    `json:"creation_match"`
+		RuntimeMatch    *VerificationMatchDetails    `json:"runtime_match"`
+		Libraries       map[string]string            `json:"libraries"`
+		CompilationData map[string]any               `json:"compilation_artifacts"`
+	}
+	if err := json.Unmarshal(repository.payloads[0], &outcome); err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Kind != "verification_success" || outcome.Language != LanguageGeas ||
+		outcome.FileName != "system/main.eas" || outcome.ContractName != "main" ||
+		len(outcome.ABI) != 0 || len(outcome.Sources) != 3 || len(outcome.Libraries) != 0 ||
+		len(outcome.CompilationData) != 0 || outcome.CreationMatch == nil || outcome.RuntimeMatch == nil ||
+		outcome.CreationMatch.MatchType != VerificationMatchFull ||
+		outcome.RuntimeMatch.MatchType != VerificationMatchFull || outcome.Settings["stack_check"] != true ||
+		outcome.Settings["runtime_entrypoint"] != "system/main.eas" ||
+		outcome.Settings["creation_entrypoint"] != "system/ctor.eas" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+	if _, exists := outcome.Sources["unused.eas"]; exists {
+		t.Fatal("unused source was published")
+	}
+}
+
+func TestWorkerClassifiesGeasCompilationAndMatchFailures(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		response   geascompiler.Response
+		compileErr error
+		wantKind   string
+		wantError  ErrorCode
+	}{
+		{
+			name: "source diagnostics", response: geascompiler.Response{
+				Schema: geascompiler.ProtocolSchema, Sources: []string{"system/main.eas"},
+			}, wantKind: "compilation_failure",
+		},
+		{
+			name: "bytecode mismatch", response: geascompiler.Response{
+				Schema: geascompiler.ProtocolSchema, Successful: true, Bytecode: "0x6002",
+				Sources: []string{"system/main.eas"},
+			}, wantKind: "verification_failure",
+		},
+		{name: "nondeterministic helper", compileErr: ErrCompilerNondeterministic, wantError: ErrorCompilerOutput},
+		{name: "bound helper changed", compileErr: ErrCompilerProvenanceConflict, wantError: ErrorCompilerProvenanceMismatch},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := validGeasSubmission()
+			request.Geas.CreationEntrypoint = ""
+			request.Bytecodes[0].Creation = ""
+			if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
+				t.Fatal(err)
+			}
+			repository := &verifyMemoryRepository{
+				claimFound: true,
+				lease: VerificationLease{
+					Job:   VerificationJob{ID: verificationID(64), Kind: JobAddress, Status: JobRunning, RequestV2: &request},
+					Token: "geas-lease",
+				},
+			}
+			compiler := &verifyTestGeasCompiler{
+				provenance: testGeasProvenance(), err: test.compileErr,
+				responses: map[string]geascompiler.Response{"system/main.eas": test.response},
+			}
+			found, err := newVerifyTestWorker(t, repository, compiler).ProcessOne(t.Context())
+			if err != nil || !found {
+				t.Fatalf("found=%t error=%v", found, err)
+			}
+			if test.wantKind != "" && (len(repository.outcomes) != 1 || repository.outcomes[0] != test.wantKind) {
+				t.Fatalf("outcomes = %v", repository.outcomes)
+			}
+			if test.wantError != "" && (len(repository.failures) != 1 || repository.failures[0] != test.wantError) {
+				t.Fatalf("failures = %v", repository.failures)
+			}
+		})
+	}
 }
 
 func TestWorkerBindsSolcJSAndCompilesDeterminismInputsSeparately(t *testing.T) {
@@ -221,7 +399,7 @@ func TestWorkerBindsSolcJSAndCompilesDeterminismInputsSeparately(t *testing.T) {
 		provenance: testSolcJSProvenance(),
 		output:     output,
 	}
-	worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+	worker := newVerifyTestWorker(t, repository, compiler)
 	found, err := worker.ProcessOne(context.Background())
 	if err != nil || !found {
 		t.Fatalf("found=%t error=%v", found, err)
@@ -271,7 +449,7 @@ func TestWorkerUsesStableCompilerFailures(t *testing.T) {
 				provenance:   testSolcJSProvenance(),
 				resolveError: test.resolve,
 			}
-			worker := newVerifyTestWorker(t, repository, compiler, WorkerOptions{})
+			worker := newVerifyTestWorker(t, repository, compiler)
 			found, err := worker.ProcessOne(context.Background())
 			if err != nil || !found {
 				t.Fatalf("found=%t error=%v", found, err)

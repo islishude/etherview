@@ -77,6 +77,17 @@ node_version=$(
     --read-only \
     --cap-drop ALL \
     --security-opt no-new-privileges \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700 \
+    --env HOME=/nonexistent \
+    --env TMPDIR=/tmp \
+    --env GOMEMLIMIT=384MiB \
+    --entrypoint /usr/local/bin/etherview-geas-compiler \
+    "$image" --self-test >/dev/null
+
+"$docker_command" run --rm \
+    --read-only \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
     --env LD_LIBRARY_PATH=/opt/etherview/compiler/lib \
     --entrypoint /usr/local/bin/node \
     "$image" \
@@ -122,6 +133,7 @@ for required_path in \
     LICENSE \
     THIRD_PARTY_NOTICES.md \
     etherview \
+    usr/local/bin/etherview-geas-compiler \
     usr/local/bin/node \
     opt/etherview/compiler/compile.mjs \
     opt/etherview/compiler/package.json \
@@ -133,6 +145,7 @@ for required_path in \
     licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
     licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
     licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
+    licenses/geas-LGPL-3.0.txt \
     licenses/holiman-bloomfilter-MIT.txt \
     licenses/libsecp256k1-MIT.txt
 do
@@ -166,6 +179,11 @@ if awk '$NF == "usr/local/bin/node" && $1 ~ /w/ { found = 1 } END { exit !found 
     echo "docker-image-check: bundled Node executable is writable" >&2
     exit 1
 fi
+if awk '$NF == "usr/local/bin/etherview-geas-compiler" && ($1 ~ /w/ || $1 !~ /x/) { found = 1 } END { exit !found }' \
+    "$temporary_directory/rootfs-verbose.txt"; then
+    echo "docker-image-check: bundled Geas helper is writable or not executable" >&2
+    exit 1
+fi
 if awk '$1 ~ /^l/ && $NF ~ /^opt\/etherview\/compiler(\/|$)/ { found = 1 } END { exit !found }' \
     "$temporary_directory/rootfs-verbose.txt"; then
     echo "docker-image-check: compiler runtime contains a symbolic link" >&2
@@ -182,4 +200,4 @@ if awk '$1 ~ /^-/ && $1 ~ /x/ && $NF ~ /^opt\/etherview\/compiler(\/|$)/ { found
     exit 1
 fi
 
-echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, Node=$node_version, hardened rootfs)"
+echo "docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, Node=$node_version, Geas=0.3.3, hardened rootfs)"

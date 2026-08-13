@@ -128,6 +128,63 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 		t.Fatalf("submission was not server-bound: %#v", service.submission)
 	}
 
+	geasBody := `{
+		"language":"geas",
+		"compiler_version":"0.3.3",
+		"input_kind":"geas_sources",
+		"sources":{
+			"system/main.eas":"push 1",
+			"system/ctor.eas":"#bytes code: assemble(\"main.eas\")"
+		},
+		"runtime_entrypoint":"system/main.eas",
+		"creation_entrypoint":"system/ctor.eas",
+		"contract_name_hint":"Withdrawals"
+	}`
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/contracts/"+address+"/verification", strings.NewReader(geasBody))
+	request.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || service.submission.Language != verify.LanguageGeas ||
+		service.submission.Geas == nil || service.submission.Geas.RuntimeEntrypoint != "system/main.eas" ||
+		service.submission.Geas.CreationEntrypoint != "system/ctor.eas" ||
+		service.submission.ContractNameHint != "Withdrawals" ||
+		service.submission.Bytecodes[0].Runtime != target.RuntimeBytecode {
+		t.Fatalf("status=%d submission=%#v body=%s", response.Code, service.submission, response.Body.String())
+	}
+
+	for name, invalid := range map[string]string{
+		"duplicate source path": strings.Replace(
+			geasBody,
+			`"system/main.eas":"push 1",`,
+			`"system/main.eas":"push 1","system/main.eas":"push 2",`,
+			1,
+		),
+		"unpaired source surrogate": strings.Replace(
+			geasBody,
+			`"system/main.eas":"push 1",`,
+			`"system/main.eas":"\ud800",`,
+			1,
+		),
+		"caller bytecodes": strings.Replace(
+			geasBody,
+			`"input_kind":"geas_sources",`,
+			`"input_kind":"geas_sources","bytecodes":{},`,
+			1,
+		),
+	} {
+		t.Run(name, func(t *testing.T) {
+			rejected := httptest.NewRequest(
+				http.MethodPost, "/api/v1/contracts/"+address+"/verification", strings.NewReader(invalid),
+			)
+			rejected.Header.Set("X-API-Key", key.Token)
+			recorder := httptest.NewRecorder()
+			protected.ServeHTTP(recorder, rejected)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+
 	read := httptest.NewRequest(http.MethodGet, "/api/v1/contracts/"+address+"/verification", nil)
 	response = httptest.NewRecorder()
 	protected.ServeHTTP(response, read)
@@ -215,6 +272,27 @@ func TestVerifierV2SoloSourcifyAndCompilerRoutes(t *testing.T) {
 	response = httptest.NewRecorder()
 	protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/verifier/compilers?language=yul", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "0.8.30") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/verifier/compilers?language=geas", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"language":"geas"`) ||
+		!strings.Contains(response.Body.String(), `"versions":["0.3.3"]`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestGeasCompilerListingDoesNotDependOnSolcCatalog(t *testing.T) {
+	t.Parallel()
+	handler, err := New(Options{Config: config.Default(), Reader: fakeReader{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet, "/api/v1/verifier/compilers?language=geas", nil,
+	))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"versions":["0.3.3"]`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

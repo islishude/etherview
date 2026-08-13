@@ -152,6 +152,11 @@ replace a required `make test-e2e` pass.
   images on native AMD64 and ARM64, stays quiet on success, and uploads failed
   `etherview-foundry-e2e-*` bundles for seven days. The existing Hardhat 3
   source/proxy/upgrade gate remains independent and unchanged.
+  The same production-topology suite also deploys the pinned ethereum/sys-asm
+  EIP-7002 creation bytecode, submits its four-file Geas bundle through the
+  native address-verification endpoint, and requires exact runtime/creation
+  matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
+  and monolith/six-role publication parity.
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
   (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
@@ -173,7 +178,8 @@ replace a required `make test-e2e` pass.
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact Node/compiler runtime manifest
   and self-test, and scan its exported root filesystem. The image contains the
-  pinned Node executable and read-only solc-js wrapper/dependency tree, but no
+  pinned Node executable, read-only solc-js wrapper/dependency tree, and the
+  read-only Geas v0.3.3 helper, but no
   npm, npx, corepack, shell, Go toolchain, native solc, or Vyper payload.
   It also validates the non-root-owned mode-0750 compiler cache seed directory
   used when Docker initializes the persistent named volume.

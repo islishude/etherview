@@ -9,6 +9,7 @@ type SubmissionV2 struct {
 	StandardJSON         json.RawMessage          `json:"standard_json,omitempty"`
 	StandardJSONVariants []json.RawMessage        `json:"standard_json_variants,omitempty"`
 	Multipart            *MultipartRequest        `json:"-"`
+	Geas                 *GeasRequest             `json:"geas,omitempty"`
 	Bytecodes            []BytecodePair           `json:"bytecodes,omitempty"`
 	ContractNameHint     string                   `json:"contract_name_hint,omitempty"`
 	Target               *VerificationTarget      `json:"target,omitempty"`

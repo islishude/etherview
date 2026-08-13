@@ -22,6 +22,7 @@ x-etherview-api-env: &etherview-api-env
   ETHERVIEW_VERIFICATION_NODE_PATH:
   ETHERVIEW_VERIFICATION_WRAPPER_PATH:
   ETHERVIEW_VERIFICATION_MANIFEST_PATH:
+  ETHERVIEW_VERIFICATION_GEAS_PATH:
   # Docker Desktop fake-IP DNS maps public compiler hosts into 198.18/15.
   # This Preview-only escape hatch retains exact HTTPS-origin, TLS, size, and
   # SHA-256 validation and is deliberately absent from every other role.

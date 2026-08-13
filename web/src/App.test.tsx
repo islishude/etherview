@@ -695,6 +695,114 @@ describe("embedded explorer shell", () => {
     expect(consoleSpy.mock.calls.flat().every((value) => !String(value).includes(secret))).toBe(true);
   });
 
+  it("submits a multi-file Geas address verification with explicit entrypoints", async () => {
+    const address = `0x${"34".repeat(20)}`;
+    const jobID = "018f3b52-0b3d-7bf1-b65f-6f214827cb63";
+    let submittedBody: Record<string, unknown> | undefined;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const meta = { request_id: "geas-verification-web-test", chain_id: "1" };
+      if (path === "/api/v1/config") {
+        return Response.json({
+          data: {
+            chain_id: "1",
+            chain_name: "Testnet",
+            native_symbol: "ETH",
+            native_name: "Ether",
+            native_decimals: 18,
+            features: { verification: true },
+          },
+          meta,
+        });
+      }
+      if (path === "/api/v1/verifier/compilers?language=solidity") {
+        return Response.json({ data: { language: "solidity", versions: ["0.8.30"] }, meta });
+      }
+      if (path === "/api/v1/verifier/compilers?language=geas") {
+        return Response.json({ data: { language: "geas", versions: ["0.3.3"] }, meta });
+      }
+      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return Response.json({
+          data: { id: jobID, kind: "address", status: "queued", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+          meta,
+        }, { status: 202 });
+      }
+      if (path === `/api/v1/verifier/jobs/${jobID}`) {
+        return Response.json({
+          data: {
+            id: jobID,
+            kind: "address",
+            status: "succeeded",
+            outcome: {
+              kind: "verification_success",
+              file_name: "system/main.eas",
+              contract_name: "Withdrawals",
+              language: "geas",
+              compiler_version: "0.3.3",
+              settings: {
+                runtime_entrypoint: "system/main.eas",
+                creation_entrypoint: "system/ctor.eas",
+                stack_check: true,
+              },
+              sources: {},
+              abi: [],
+              compilation_artifacts: {},
+              creation_code_artifacts: {},
+              runtime_code_artifacts: {},
+              libraries: {},
+              is_blueprint: false,
+              creation_match: { match_type: "full", transformations: [], values: {} },
+              runtime_match: { match_type: "full", transformations: [], values: {} },
+            },
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:02Z",
+          },
+          meta,
+        });
+      }
+      return Response.json({ error: { code: "NOT_FOUND", message: "not found" } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    renderExplorer(`/verify?address=${address}`);
+
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Language"), "geas");
+    expect(screen.getByLabelText("Input format")).toBeDisabled();
+    expect(screen.getByLabelText("Input format")).toHaveValue("geas_sources");
+    expect(await screen.findByLabelText("Compiler version")).toHaveValue("0.3.3");
+    fireEvent.change(screen.getByLabelText("Runtime entrypoint"), { target: { value: "system/main.eas" } });
+    fireEvent.change(screen.getByLabelText("Creation entrypoint (optional)"), { target: { value: "system/ctor.eas" } });
+    fireEvent.change(screen.getByLabelText("Contract name (optional)"), { target: { value: "Withdrawals" } });
+    fireEvent.change(screen.getByLabelText(/^Geas source files/), {
+      target: {
+        value: JSON.stringify({
+          "system/main.eas": "#include \"../common/value.eas\"\npush VALUE\n",
+          "system/ctor.eas": "#bytes code: assemble(\"main.eas\")\n",
+          "common/value.eas": "#define VALUE = 1\n",
+        }),
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "ev_geas_test" } });
+    await user.click(screen.getByRole("button", { name: "Submit verification" }));
+
+    expect(await screen.findByText("succeeded")).toBeVisible();
+    expect(submittedBody).toEqual({
+      compiler_version: "0.3.3",
+      contract_name_hint: "Withdrawals",
+      creation_entrypoint: "system/ctor.eas",
+      input_kind: "geas_sources",
+      language: "geas",
+      runtime_entrypoint: "system/main.eas",
+      sources: {
+        "system/main.eas": "#include \"../common/value.eas\"\npush VALUE\n",
+        "system/ctor.eas": "#bytes code: assemble(\"main.eas\")\n",
+        "common/value.eas": "#define VALUE = 1\n",
+      },
+    });
+    expect(submittedBody).not.toHaveProperty("input");
+  });
+
   it("renders verified source artifacts as inert preformatted text", async () => {
     const address = `0x${"77".repeat(20)}`;
     const codeHash = `0x${"88".repeat(32)}`;

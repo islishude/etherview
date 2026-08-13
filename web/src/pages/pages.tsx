@@ -3930,6 +3930,7 @@ function verificationLanguageLabel(value: string, t: Translate): string {
   switch (value) {
     case "solidity": return t("verificationLanguage.solidity");
     case "yul": return t("verificationLanguage.yul");
+    case "geas": return t("verificationLanguage.geas");
     default: return value;
   }
 }
@@ -3966,6 +3967,10 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
   const [compilerVersion, setCompilerVersion] = useState("");
   const [standardJSON, setStandardJSON] = useState('{\n  "language": "Solidity",\n  "sources": {},\n  "settings": {}\n}');
   const [multipartSources, setMultipartSources] = useState('{\n  "Contract.sol": "contract Contract {}"\n}');
+  const [geasSources, setGeasSources] = useState('{\n  "main.eas": "push 1"\n}');
+  const [runtimeEntrypoint, setRuntimeEntrypoint] = useState("main.eas");
+  const [creationEntrypoint, setCreationEntrypoint] = useState("");
+  const [contractName, setContractName] = useState("");
   const [formError, setFormError] = useState<string>();
   const submissionEnabled =
     publicConfig.isSuccess && publicConfig.data.features.verification === true;
@@ -3996,7 +4001,12 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     submission.reset();
     if (!submissionEnabled) return;
 
-    const rawInput = inputKind === "standard_json" ? standardJSON : multipartSources;
+    const isGeas = language === "geas";
+    const rawInput = isGeas
+      ? geasSources
+      : inputKind === "standard_json"
+        ? standardJSON
+        : multipartSources;
     if (new TextEncoder().encode(rawInput).byteLength > MAX_STANDARD_JSON_BYTES) {
       setFormError(t("verification.inputTooLarge"));
       return;
@@ -4029,26 +4039,32 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     if (
       !apiKey ||
       !isAddress(address) ||
-      !compilerVersion.trim()
+      !compilerVersion.trim() ||
+      (isGeas && !runtimeEntrypoint.trim())
     ) {
       setFormError(t("verification.invalidFields"));
       return;
     }
     if (
-      inputKind === "multipart" &&
+      (inputKind === "multipart" || isGeas) &&
       (Object.keys(parsed).length === 0 || Object.values(parsed).some((value) => typeof value !== "string"))
     ) {
-      setFormError(t("verification.invalidMultipart"));
+      setFormError(t(isGeas ? "verification.invalidGeasSources" : "verification.invalidMultipart"));
       return;
     }
 
     setSubmittedAPIKey(apiKey);
     const request: VerificationSubmission = {
       compiler_version: compilerVersion.trim(),
-      input_kind: inputKind,
+      input_kind: isGeas ? "geas_sources" : inputKind,
       language,
     };
-    if (inputKind === "standard_json") {
+    if (isGeas) {
+      request.sources = parsed as Record<string, string>;
+      request.runtime_entrypoint = runtimeEntrypoint.trim();
+      if (creationEntrypoint.trim()) request.creation_entrypoint = creationEntrypoint.trim();
+      if (contractName.trim()) request.contract_name_hint = contractName.trim();
+    } else if (inputKind === "standard_json") {
       request.input = parsed as Record<string, unknown>;
     } else {
       request.sources = parsed as Record<string, string>;
@@ -4071,16 +4087,38 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
               <FormField id="verification-address" label={t("page.address")} value={address} onChange={setAddress} />
               <label className="field-control" htmlFor="verification-language">
                 <span>{t("verification.language")}</span>
-                <select id="verification-language" value={language} onChange={(event) => setLanguage(event.target.value as VerificationSubmission["language"])}>
-                  <option value="solidity">Solidity</option>
-                  <option value="yul">Yul</option>
+                <select
+                  id="verification-language"
+                  value={language}
+                  onChange={(event) => {
+                    const nextLanguage = event.target.value as VerificationSubmission["language"];
+                    setLanguage(nextLanguage);
+                    setInputKind((current) => nextLanguage === "geas"
+                      ? "geas_sources"
+                      : current === "geas_sources" ? "standard_json" : current);
+                  }}
+                >
+                  <option value="solidity">{t("verificationLanguage.solidity")}</option>
+                  <option value="yul">{t("verificationLanguage.yul")}</option>
+                  <option value="geas">{t("verificationLanguage.geas")}</option>
                 </select>
               </label>
               <label className="field-control" htmlFor="verification-input-kind">
                 <span>{t("verification.inputKind")}</span>
-                <select id="verification-input-kind" value={inputKind} onChange={(event) => setInputKind(event.target.value as VerificationSubmission["input_kind"])}>
-                  <option value="standard_json">{t("verification.standardJSON")}</option>
-                  <option value="multipart">{t("verification.multipart")}</option>
+                <select
+                  disabled={language === "geas"}
+                  id="verification-input-kind"
+                  value={inputKind}
+                  onChange={(event) => setInputKind(event.target.value as VerificationSubmission["input_kind"])}
+                >
+                  {language === "geas" ? (
+                    <option value="geas_sources">{t("verification.geasSources")}</option>
+                  ) : (
+                    <>
+                      <option value="standard_json">{t("verification.standardJSON")}</option>
+                      <option value="multipart">{t("verification.multipart")}</option>
+                    </>
+                  )}
                 </select>
               </label>
               <label className="field-control" htmlFor="verification-compiler">
@@ -4095,13 +4133,45 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
                 </select>
                 <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
               </label>
+              {language === "geas" ? (
+                <>
+                  <FormField
+                    id="verification-runtime-entrypoint"
+                    label={t("verification.runtimeEntrypoint")}
+                    onChange={setRuntimeEntrypoint}
+                    value={runtimeEntrypoint}
+                  />
+                  <FormField
+                    id="verification-creation-entrypoint"
+                    label={t("verification.creationEntrypoint")}
+                    onChange={setCreationEntrypoint}
+                    value={creationEntrypoint}
+                  />
+                  <FormField
+                    id="verification-contract-name"
+                    label={t("verification.contractName")}
+                    onChange={setContractName}
+                    value={contractName}
+                  />
+                </>
+              ) : null}
               <label className="field-control wide" htmlFor="verification-input">
-                <span>{inputKind === "standard_json" ? t("verification.standardJSON") : t("verification.multipartSources")}</span>
+                <span>{language === "geas"
+                  ? t("verification.geasSources")
+                  : inputKind === "standard_json"
+                    ? t("verification.standardJSON")
+                    : t("verification.multipartSources")}</span>
                 <textarea
                   id="verification-input"
                   spellCheck={false}
-                  value={inputKind === "standard_json" ? standardJSON : multipartSources}
-                  onChange={(event) => inputKind === "standard_json" ? setStandardJSON(event.target.value) : setMultipartSources(event.target.value)}
+                  value={language === "geas"
+                    ? geasSources
+                    : inputKind === "standard_json" ? standardJSON : multipartSources}
+                  onChange={(event) => language === "geas"
+                    ? setGeasSources(event.target.value)
+                    : inputKind === "standard_json"
+                      ? setStandardJSON(event.target.value)
+                      : setMultipartSources(event.target.value)}
                 />
                 <small>{t("verification.sizeLimit")}</small>
               </label>

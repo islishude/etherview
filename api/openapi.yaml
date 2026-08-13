@@ -3668,6 +3668,9 @@ components:
           type: boolean
     VerifierLanguage:
       type: string
+      enum: [solidity, yul, geas]
+    SolcVerifierLanguage:
+      type: string
       enum: [solidity, yul]
     VerifierBytecodes:
       type: object
@@ -3690,7 +3693,7 @@ components:
           minLength: 1
           maxLength: 128
         language:
-          $ref: "#/components/schemas/VerifierLanguage"
+          $ref: "#/components/schemas/SolcVerifierLanguage"
         input:
           type: object
           additionalProperties: true
@@ -3710,7 +3713,7 @@ components:
           minLength: 1
           maxLength: 128
         language:
-          $ref: "#/components/schemas/VerifierLanguage"
+          $ref: "#/components/schemas/SolcVerifierLanguage"
         sources:
           type: object
           minProperties: 1
@@ -3744,7 +3747,7 @@ components:
           minLength: 1
           maxLength: 128
         language:
-          $ref: "#/components/schemas/VerifierLanguage"
+          $ref: "#/components/schemas/SolcVerifierLanguage"
         input:
           type: object
           additionalProperties: true
@@ -3767,7 +3770,7 @@ components:
           minLength: 1
           maxLength: 128
         language:
-          $ref: "#/components/schemas/VerifierLanguage"
+          $ref: "#/components/schemas/SolcVerifierLanguage"
         sources:
           type: object
           minProperties: 1
@@ -3808,7 +3811,7 @@ components:
           maxLength: 128
         input_kind:
           type: string
-          enum: [multipart, standard_json]
+          enum: [multipart, standard_json, geas_sources]
         input:
           type: object
           additionalProperties: true
@@ -3833,6 +3836,14 @@ components:
         contract_name_hint:
           type: string
           maxLength: 512
+        runtime_entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 384
+        creation_entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 384
     SourcifySubmission:
       type: object
       additionalProperties: false

@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -2045,17 +2046,19 @@ func (h *Handler) transactionResourceRequest(
 }
 
 type verifierSubmission struct {
-	Language         verify.Language       `json:"language"`
-	CompilerVersion  string                `json:"compiler_version"`
-	InputKind        string                `json:"input_kind"`
-	Input            json.RawMessage       `json:"input"`
-	Sources          map[string]string     `json:"sources"`
-	EVMVersion       string                `json:"evm_version"`
-	OptimizationRuns *int                  `json:"optimization_runs"`
-	Libraries        map[string]string     `json:"libraries"`
-	Bytecodes        verify.BytecodePair   `json:"bytecodes"`
-	Contracts        []verify.BytecodePair `json:"contracts"`
-	ContractNameHint string                `json:"contract_name_hint"`
+	Language           verify.Language       `json:"language"`
+	CompilerVersion    string                `json:"compiler_version"`
+	InputKind          string                `json:"input_kind"`
+	Input              json.RawMessage       `json:"input"`
+	Sources            map[string]string     `json:"sources"`
+	EVMVersion         string                `json:"evm_version"`
+	OptimizationRuns   *int                  `json:"optimization_runs"`
+	Libraries          map[string]string     `json:"libraries"`
+	Bytecodes          *verify.BytecodePair  `json:"bytecodes"`
+	Contracts          []verify.BytecodePair `json:"contracts"`
+	ContractNameHint   string                `json:"contract_name_hint"`
+	RuntimeEntrypoint  string                `json:"runtime_entrypoint"`
+	CreationEntrypoint string                `json:"creation_entrypoint"`
 }
 
 func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Request) {
@@ -2075,6 +2078,10 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "address verification request is invalid") {
 		return
 	}
+	if submission.Bytecodes != nil || submission.Contracts != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
+		return
+	}
 	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
 	if err != nil || target.ChainID != h.cfg.Chain.ID || !strings.EqualFold(target.Address, address) {
 		h.handleVerificationTargetError(w, r, err)
@@ -2089,15 +2096,36 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 	}
 	switch submission.InputKind {
 	case "standard_json":
+		if submission.Language == verify.LanguageGeas || len(submission.Sources) != 0 ||
+			submission.RuntimeEntrypoint != "" || submission.CreationEntrypoint != "" {
+			writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
+			return
+		}
 		request.StandardJSON = submission.Input
 	case "multipart":
+		if submission.Language == verify.LanguageGeas || len(submission.Input) != 0 ||
+			submission.RuntimeEntrypoint != "" || submission.CreationEntrypoint != "" {
+			writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
+			return
+		}
 		request.Multipart = &verify.MultipartRequest{
 			Language: submission.Language, Sources: submission.Sources,
 			EVMVersion: submission.EVMVersion, OptimizationRuns: submission.OptimizationRuns,
 			Libraries: submission.Libraries,
 		}
+	case "geas_sources":
+		if submission.Language != verify.LanguageGeas || len(submission.Input) != 0 ||
+			submission.EVMVersion != "" || submission.OptimizationRuns != nil ||
+			len(submission.Libraries) != 0 {
+			writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
+			return
+		}
+		request.Geas = &verify.GeasRequest{
+			Sources: submission.Sources, RuntimeEntrypoint: submission.RuntimeEntrypoint,
+			CreationEntrypoint: submission.CreationEntrypoint,
+		}
 	default:
-		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "input_kind must be multipart or standard_json", nil)
+		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "input_kind must be multipart, standard_json, or geas_sources", nil)
 		return
 	}
 	h.submitV2(w, r, request)
@@ -2148,6 +2176,10 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 		CompilerVersion:  submission.CompilerVersion,
 		ContractNameHint: submission.ContractNameHint,
 	}
+	var bytecodes verify.BytecodePair
+	if submission.Bytecodes != nil {
+		bytecodes = *submission.Bytecodes
+	}
 	switch r.Pattern {
 	case "POST /api/v1/verifier/solidity/multipart":
 		request.Kind, request.Language = verify.JobSolidityMultipart, submission.Language
@@ -2155,14 +2187,14 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 			request.Language = verify.LanguageSolidity
 		}
 		request.Multipart = multipartSubmission(request.Language, submission)
-		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+		request.Bytecodes = []verify.BytecodePair{bytecodes}
 	case "POST /api/v1/verifier/solidity/standard-json":
 		request.Kind, request.Language = verify.JobSolidityStandardJSON, submission.Language
 		if request.Language == "" {
 			request.Language = verify.LanguageSolidity
 		}
 		request.StandardJSON = submission.Input
-		request.Bytecodes = []verify.BytecodePair{submission.Bytecodes}
+		request.Bytecodes = []verify.BytecodePair{bytecodes}
 	case "POST /api/v1/verifier/solidity/batch/multipart":
 		request.Kind, request.Language = verify.JobSolidityBatchMultipart, submission.Language
 		if request.Language == "" {
@@ -2201,13 +2233,24 @@ func (h *Handler) submitV2(w http.ResponseWriter, r *http.Request, request verif
 }
 
 func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
-	if h.compilerCatalog == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "compiler_catalog_unavailable", "compiler catalog is unavailable", nil)
+	language := verify.Language(r.URL.Query().Get("language"))
+	if language != verify.LanguageSolidity && language != verify.LanguageYul &&
+		language != verify.LanguageGeas {
+		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity, yul, or geas", nil)
 		return
 	}
-	language := verify.Language(r.URL.Query().Get("language"))
-	if language != verify.LanguageSolidity && language != verify.LanguageYul {
-		writeError(w, r, http.StatusBadRequest, "invalid_language", "language must be solidity or yul", nil)
+	if language == verify.LanguageGeas {
+		writeJSON(w, http.StatusOK, gen.CompilerCatalogResponse{
+			Data: gen.CompilerCatalog{
+				Language: gen.VerifierLanguage(language),
+				Versions: []string{verify.GeasCompilerVersion},
+			},
+			Meta: h.meta(r),
+		})
+		return
+	}
+	if h.compilerCatalog == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "compiler_catalog_unavailable", "compiler catalog is unavailable", nil)
 		return
 	}
 	versions, err := h.compilerCatalog.Versions(r.Context(), language)
@@ -2457,7 +2500,12 @@ func (h *Handler) verificationReadAvailable(w http.ResponseWriter, r *http.Reque
 
 func (h *Handler) decodeBoundedJSON(w http.ResponseWriter, r *http.Request, destination any, code, message string) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxVerificationBody)
-	decoder := json.NewDecoder(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil || verify.ValidateUniqueJSON(body) != nil {
+		writeError(w, r, http.StatusBadRequest, code, message, nil)
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		writeError(w, r, http.StatusBadRequest, code, message, nil)

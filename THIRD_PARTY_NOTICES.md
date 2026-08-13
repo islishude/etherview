@@ -42,6 +42,32 @@ The `crypto/secp256k1` source includes libsecp256k1 under the MIT license,
 Copyright 2013 Pieter Wuille. Its text is included at
 `/licenses/libsecp256k1-MIT.txt`.
 
+## Geas assembler
+
+- Module: `github.com/fjl/geas`
+- Reviewed version: `v0.3.3`
+- Copyright: The go-ethereum Authors and Geas contributors
+- License: GNU Lesser General Public License, version 3
+- Upstream: <https://github.com/fjl/geas>
+
+Etherview links the Geas assembler library into its isolated compiler helper.
+The automated license gate pins the exact tagged module, forbids replacements,
+verifies its module checksum and license text, and includes that text in the
+production image at `/licenses/geas-LGPL-3.0.txt`.
+
+## ethereum/sys-asm EIP-7002 test fixture
+
+- Repository: `github.com/ethereum/sys-asm`
+- Commit: `83f9801245ff56878a450b5625801101b9a225a1`
+- Copyright: 2024 The go-ethereum Authors
+- License: MIT
+- Upstream: <https://github.com/ethereum/sys-asm>
+
+Etherview retains the withdrawals contract sources and official bytecode only
+as an offline verification fixture. The exact upstream license is stored beside
+the fixture at
+`internal/verify/testdata/geas/sys-asm-eip7002/LICENSE`.
+
 ## bloomfilter
 
 - Module: `github.com/holiman/bloomfilter/v2`

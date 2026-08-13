@@ -364,6 +364,56 @@ func TestVerifiedContractABIAndSource(t *testing.T) {
 	}
 }
 
+func TestVerifiedGeasContractExposesEmptyABIAndRuntimeFile(t *testing.T) {
+	t.Parallel()
+	codeHash := testHashBytes(19)
+	abi := []byte(`[]`)
+	sources := []byte(`{"withdrawals/main.eas":{"content":"push 1"}}`)
+	settings := []byte(`{"runtime_entrypoint":"withdrawals/main.eas","stack_check":true}`)
+	artifact := func() []sqlExpectation {
+		return []sqlExpectation{
+			currentArtifactTargetExpectation(codeHash),
+			{
+				contains: "FROM verified_contracts AS verified", columns: fakeColumns(24),
+				rows: [][]driver.Value{{
+					true, testAddressBytes(testContract), codeHash, "7", nil,
+					"123e4567-e89b-42d3-a456-426614174000", testHashBytes(8),
+					"withdrawals/main.eas", "Withdrawals", "geas", "0.3.3", "full",
+					abi, sources, settings, []byte(`{}`), []byte(`{}`), []byte(`{}`),
+					nil, []byte(`{"match_type":"full","transformations":[],"values":{}}`),
+					nil, []byte(`{}`), false, time.Unix(100, 0).UTC(),
+				}},
+			},
+		}
+	}
+	expectations := append(artifact(), artifact()...)
+	expectations = append(expectations, sqlExpectation{
+		contains: "JOIN verified_proxy_bindings AS binding", columns: fakeColumns(1),
+	})
+	db := fakeDatabase(t, expectations...)
+	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
+	values := url.Values{"address": {testContract}}
+	abiResult, err := backend.Execute(context.Background(), Request{
+		Module: "contract", Action: "getabi", Values: values,
+	})
+	if err != nil || abiResult != "[]" {
+		t.Fatalf("ABI=%#v error=%v", abiResult, err)
+	}
+	sourceAny, err := backend.Execute(context.Background(), Request{
+		Module: "contract", Action: "getsourcecode", Values: values,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := sourceAny.([]sourceCodeResult)
+	if len(source) != 1 || source[0].CompilerType != "geas" ||
+		source[0].ContractFileName != "withdrawals/main.eas" || source[0].ABI != "[]" ||
+		source[0].SourceCode != string(sources) || source[0].CompilerVersion != "0.3.3" ||
+		source[0].OptimizationUsed != "0" || source[0].Runs != "0" {
+		t.Fatalf("source=%+v", source)
+	}
+}
+
 func verifiedArtifactExpectations(
 	targetCodeHash []byte,
 	sourceCodeHash []byte,

@@ -36,6 +36,7 @@ const (
 	defaultVerificationNodePath     = "/usr/local/bin/node"
 	defaultVerificationWrapperPath  = "/opt/etherview/compiler/compile.mjs"
 	defaultVerificationManifestPath = "/opt/etherview/compiler/runtime-manifest.json"
+	defaultVerificationGeasPath     = "/usr/local/bin/etherview-geas-compiler"
 )
 
 // Config is the complete runtime configuration. A deployment serves exactly
@@ -212,6 +213,7 @@ type VerificationConfig struct {
 	NodePath               string            `yaml:"node_path"`
 	WrapperPath            string            `yaml:"wrapper_path"`
 	ManifestPath           string            `yaml:"manifest_path"`
+	GeasPath               string            `yaml:"geas_path"`
 	CatalogURLs            map[string]string `yaml:"catalog_urls"`
 	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
 	CatalogRefreshInterval time.Duration     `yaml:"catalog_refresh_interval"`
@@ -390,6 +392,7 @@ func Default() Config {
 			NodePath:       defaultVerificationNodePath,
 			WrapperPath:    defaultVerificationWrapperPath,
 			ManifestPath:   defaultVerificationManifestPath,
+			GeasPath:       defaultVerificationGeasPath,
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
 			},
@@ -913,6 +916,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 			{name: "node_path", value: c.Verification.NodePath},
 			{name: "wrapper_path", value: c.Verification.WrapperPath},
 			{name: "manifest_path", value: c.Verification.ManifestPath},
+			{name: "geas_path", value: c.Verification.GeasPath},
 		} {
 			if strings.TrimSpace(runtimePath.value) == "" {
 				errs = append(errs, fmt.Errorf(
@@ -1530,6 +1534,7 @@ func applyEnvironmentForRoles(
 	setString(lookup, "VERIFICATION_NODE_PATH", &cfg.Verification.NodePath)
 	setString(lookup, "VERIFICATION_WRAPPER_PATH", &cfg.Verification.WrapperPath)
 	setString(lookup, "VERIFICATION_MANIFEST_PATH", &cfg.Verification.ManifestPath)
+	setString(lookup, "VERIFICATION_GEAS_PATH", &cfg.Verification.GeasPath)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			cfg.Verification.CatalogURLs["solidity"] = value

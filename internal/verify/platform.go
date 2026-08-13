@@ -8,6 +8,7 @@ import (
 
 const (
 	CompilerPlatformEmscriptenWASM32 = "emscripten-wasm32"
+	CompilerPlatformGoModule         = "go-module"
 
 	automaticCatalogSource = "auto"
 )

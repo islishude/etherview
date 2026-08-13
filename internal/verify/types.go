@@ -1,6 +1,6 @@
 // Package verify implements reproducible, asynchronous contract verification
-// primitives. Runtime services execute checksum-pinned solc-js in the
-// API-owned trusted-subprocess boundary defined by ADR-0031.
+// primitives. Runtime services execute checksum-pinned compilers in the
+// API-owned trusted-subprocess boundaries defined by ADR-0031 and ADR-0039.
 package verify
 
 import (
@@ -19,6 +19,7 @@ type Language string
 const (
 	LanguageSolidity Language = "solidity"
 	LanguageYul      Language = "yul"
+	LanguageGeas     Language = "geas"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}$`)
