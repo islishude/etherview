@@ -576,10 +576,18 @@ size alone is not sufficient justification to weaken those invariants.
   instead of overwriting a block fact. Token and proxy exact-state calls share
   one sanitized capability classifier, so unsupported or pruned EIP-1898 state
   is `unavailable` and transient transport failures remain retryable.
-- Pending transactions come from validated `txpool_content` responses (pending + queued pools) and are
-  published as an immutable, expiring PostgreSQL snapshot. A cursor is bound
-  to that snapshot; timeout, method absence, or a failed poll is reported as
-  unavailable rather than an empty snapshot.
+- Pending transactions come from validated `txpool_content` responses (pending
+  + queued pools) and are published as an immutable, expiring PostgreSQL
+  snapshot. A cursor is bound to that snapshot; timeout, method absence, or a
+  failed poll is reported as unavailable rather than an empty snapshot.
+  Sender/nonce slots must be unique across both pools. Consecutive successful,
+  unexpired snapshots from the same endpoint may persist a direct old-hash to
+  new-hash replacement observation; endpoint changes, failure gaps, stale
+  writes, expiry, and disappearance alone never imply replacement. These
+  observations share the configured mempool retention. The writer-backed
+  transaction detail lookup gives canonical or orphan inclusion precedence,
+  then resolves current pending and retained direct replacement observations
+  without a live RPC call. See ADR-0036.
 - NFT media is never an arbitrary URL proxy. The server first resolves an
   `image` URI from an available metadata document bound to a canonical NFT
   observation, releases the database query, then applies DNS/IP/redirect

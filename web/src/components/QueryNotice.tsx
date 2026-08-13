@@ -61,7 +61,13 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
         }
       : code === "not_ready"
         ? { title: t("state.coreNotReady"), detail: t("state.coreNotReadyDetail") }
-        : code === "analytics_pending"
+      : code === "mempool_unavailable"
+        ? {
+            title: t("pending.unavailable"),
+            detail: t("pending.unavailableDetail"),
+            diagnosticCode: detailString(error.details, "reason"),
+          }
+      : code === "analytics_pending"
           ? { title: t("charts.backfillPending"), detail: t("charts.backfillPendingDetail", { dirty: "—" }) }
         : code === "invalid_cursor"
           ? { title: t("state.cursorInvalid"), detail: t("state.cursorInvalidDetail") }
@@ -104,6 +110,12 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
       </span>
     </div>
   );
+}
+
+function detailString(details: unknown, key: string): string | undefined {
+  if (typeof details !== "object" || details === null) return undefined;
+  const value = (details as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 type Translate = ReturnType<typeof useTranslation>["t"];

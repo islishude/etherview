@@ -14,6 +14,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0013: Embedded SPA serving and browser security](../decisions/ADR-0013-embedded-spa-serving-and-browser-security.md)
 - [ADR-0023: Exact transaction state differences](../decisions/ADR-0023-exact-transaction-state-differences.md)
+- [ADR-0036: Endpoint-scoped mempool replacement observations](../decisions/ADR-0036-endpoint-scoped-mempool-replacements.md)
 - [EIP-1193: Ethereum Provider JavaScript API](https://eips.ethereum.org/EIPS/eip-1193)
 - [EIP-6963: Multi Injected Provider Discovery](https://eips.ethereum.org/EIPS/eip-6963)
 - [Tailwind CSS with Vite](https://tailwindcss.com/docs/installation/using-vite)
@@ -78,6 +79,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T52 | done        | P50-T51 | Organize the global stylesheet into documented responsibility-based modules without visual or interaction changes | stylesheet regressions, complete frontend tests, lint, build, generation, plan check, and diff check |
 | P50-T53 | done        | P40-T14, P50-T52 | Merge transaction gas limit and usage and expose execution and blob fee settings | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T54 | done        | P50-T53, P61-T13 | Classify transaction actions from exact transaction-time execution code instead of calldata presence | focused frontend, bilingual, execution-identity, embedded browser, and common gates |
+| P50-T55 | done | P40-T15, P50-T54 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
 
 ## Acceptance
 
@@ -99,12 +101,34 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Verified code pages expose a bilingual, theme-aware, strictly read-only
       multi-file source workspace and summary-first compiler and artifact
       details without external browser resources.
+- [x] Pending and replaced hashes provide a retention-bounded basic detail
+      preview, automatic inclusion transition, direct replacement links, and
+      icon-plus-text transaction statuses across all transaction surfaces.
 
 ## Current Blockers
 
 None.
 
 ## Evidence
+
+- P50-T55 makes pending-list hashes deep-link to the shared transaction route,
+  renders only the retained mempool Overview for pending/replaced observations,
+  follows direct predecessor/successor hashes, polls every two seconds only
+  until the last known expiry, and automatically enables the existing included
+  detail tabs when chain inclusion wins. `lucide-react@1.31.0` supplies the
+  shared `CircleCheck`, `CircleX`, `Clock3`, `ArrowRightLeft`, `GitBranch`, and
+  `CircleHelp` status system; visible localized text, color, border, and
+  non-semantic icons remain present at narrow widths in both themes.
+- P50-T55 focused status/Pending/CorePages tests pass 58 assertions, and the
+  complete frontend suite passes 30 files and 320 tests. TypeScript lint,
+  production build, `make lint`, `make test`, `make test-race`, `make
+  security-check`, `make license-check`, PostgreSQL 18 integration, Compose
+  render, and Helm render gates pass. The 17-flow embedded Chromium suite
+  passes in 37.6s, including Pending -> Replaced -> Included, direct links, no
+  eager derived requests, English/light and Chinese/dark Axe scans, 320px
+  overflow, and status icons. The post-continuity-marker real Anvil replacement
+  flow passes monolith (31.91s) and complete split (42.66s) runtime E2E, and
+  the aggregate `make check` gate passes.
 
 - P50-T54 classifies contract creation directly and every transaction with a
   target from exact matching transaction-time execution evidence: direct and

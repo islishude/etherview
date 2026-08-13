@@ -60,34 +60,36 @@ const (
 )
 
 type fixture struct {
-	genesisHash          string
-	accounts             []string
-	authorityKey         *ecdsa.PrivateKey
-	sponsorKey           *ecdsa.PrivateKey
-	skippedKey           *ecdsa.PrivateKey
-	authority            string
-	sponsor              string
-	skippedAuthority     string
-	nativeHash           string
-	pendingHash          string
-	creationHash         string
-	failedHash           string
-	contractAddress      string
-	delegateA            string
-	delegateB            string
-	orphanDelegationHash string
-	delegationHash       string
-	delegationAuths      []types.SetCodeAuthorization
-	redelegationHash     string
-	redelegationAuth     types.SetCodeAuthorization
-	delegatedCallHash    string
-	clearingHash         string
-	clearingAuth         types.SetCodeAuthorization
-	blockOneHash         string
-	orphanHash           string
-	finalHash            string
-	finalHeight          uint64
-	snapshotID           string
+	genesisHash            string
+	accounts               []string
+	authorityKey           *ecdsa.PrivateKey
+	sponsorKey             *ecdsa.PrivateKey
+	skippedKey             *ecdsa.PrivateKey
+	authority              string
+	sponsor                string
+	skippedAuthority       string
+	nativeHash             string
+	pendingHash            string
+	pendingReplacementHash string
+	pendingNonce           uint64
+	creationHash           string
+	failedHash             string
+	contractAddress        string
+	delegateA              string
+	delegateB              string
+	orphanDelegationHash   string
+	delegationHash         string
+	delegationAuths        []types.SetCodeAuthorization
+	redelegationHash       string
+	redelegationAuth       types.SetCodeAuthorization
+	delegatedCallHash      string
+	clearingHash           string
+	clearingAuth           types.SetCodeAuthorization
+	blockOneHash           string
+	orphanHash             string
+	finalHash              string
+	finalHeight            uint64
+	snapshotID             string
 }
 
 type durableSnapshot struct {
@@ -467,6 +469,16 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	h.enterPhase("pending API exact hash")
 	{
 		h.waitPending(ctx, h.fixture.pendingHash)
+		h.fixture.pendingReplacementHash = h.sendTransaction(ctx, map[string]any{
+			"from": h.fixture.accounts[0], "to": h.fixture.accounts[3],
+			"nonce": hexutil.EncodeUint64(h.fixture.pendingNonce),
+			"value": "0xa", "gas": "0x5208", "gasPrice": "0x77359400",
+		})
+		h.waitReplacedAndPending(ctx, h.fixture.pendingHash, h.fixture.pendingReplacementHash)
+		h.rpcCall(ctx, &h.fixture.snapshotID, "evm_snapshot")
+		if h.fixture.snapshotID == "" {
+			t.Fatal("fixture returned empty replacement snapshot ID")
+		}
 	}
 
 	var firstRollup string
@@ -478,6 +490,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.mine(ctx, h.baseTimestamp+2)
 		h.fixture.orphanHash = h.latestBlock(ctx).Hash
 		h.waitCanonical(ctx, 2, h.fixture.orphanHash)
+		h.waitIncludedTransaction(ctx, h.fixture.pendingReplacementHash)
 		orphanReceipt := h.waitReceipt(ctx, h.fixture.orphanDelegationHash)
 		if orphanReceipt.Status != "0x1" {
 			t.Fatalf("orphan delegation receipt status = %s, want 0x1", orphanReceipt.Status)
@@ -737,8 +750,12 @@ func (h *harness) initializeFixture(ctx context.Context) {
 		}
 	}
 	h.fixture.blockOneHash = h.latestBlock(ctx).Hash
+	var pendingNonce hexutil.Uint64
+	h.rpcCall(ctx, &pendingNonce, "eth_getTransactionCount", h.fixture.accounts[0], "latest")
+	h.fixture.pendingNonce = uint64(pendingNonce)
 	h.fixture.pendingHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": h.fixture.accounts[2],
+		"nonce": hexutil.EncodeUint64(h.fixture.pendingNonce),
 		"value": "0x9", "gas": "0x5208", "gasPrice": "0x3b9aca00",
 	})
 	h.rpcCall(ctx, &h.fixture.snapshotID, "evm_snapshot")
@@ -1019,6 +1036,58 @@ func (h *harness) waitPending(ctx context.Context, expectedHash string) {
 	})
 }
 
+func (h *harness) waitReplacedAndPending(ctx context.Context, oldHash, newHash string) {
+	waitFor(h.t, ctx, "direct mempool replacement detail", func() (bool, string, error) {
+		var oldResponse, newResponse gen.TransactionResponse
+		if err := h.getJSON(ctx, "/api/v1/transactions/"+oldHash, &oldResponse); err != nil {
+			return false, "old detail unavailable", err
+		}
+		if err := h.getJSON(ctx, "/api/v1/transactions/"+newHash, &newResponse); err != nil {
+			return false, "new detail unavailable", err
+		}
+		replaced, oldErr := oldResponse.Data.AsReplacedTransactionDetail()
+		pending, newErr := newResponse.Data.AsPendingTransactionDetail()
+		matches := oldErr == nil && newErr == nil &&
+			replaced.Kind == gen.ReplacedTransactionDetailKindReplaced &&
+			strings.EqualFold(string(replaced.ReplacementHash), newHash) &&
+			pending.Kind == gen.PendingTransactionDetailKindPending &&
+			pending.Transaction.ReplacesHash != nil &&
+			strings.EqualFold(string(*pending.Transaction.ReplacesHash), oldHash)
+		state := fmt.Sprintf("old_kind=%s successor=%s new_kind=%s predecessor=%v",
+			replaced.Kind, replaced.ReplacementHash, pending.Kind, pending.Transaction.ReplacesHash)
+		return matches, state, errors.Join(oldErr, newErr)
+	})
+}
+
+func (h *harness) waitIncludedTransaction(ctx context.Context, hash string) {
+	waitFor(h.t, ctx, "included replacement transaction", func() (bool, string, error) {
+		var response gen.TransactionResponse
+		if err := h.getJSON(ctx, "/api/v1/transactions/"+hash, &response); err != nil {
+			return false, "detail unavailable", err
+		}
+		included, err := response.Data.AsIncludedTransactionDetail()
+		if err != nil {
+			return false, "included detail decode failed", err
+		}
+		status := ""
+		if included.Transaction.Status != nil {
+			status = string(*included.Transaction.Status)
+		}
+		matches := included.Kind == gen.IncludedTransactionDetailKindIncluded &&
+			strings.EqualFold(string(included.Transaction.Hash), hash) && status == string(gen.TransactionStatusSuccess)
+		return matches, fmt.Sprintf("kind=%s hash=%s status=%s", included.Kind, included.Transaction.Hash, status), nil
+	})
+}
+
+func (h *harness) requireIncludedTransaction(response gen.TransactionResponse) gen.Transaction {
+	h.t.Helper()
+	included, err := response.Data.AsIncludedTransactionDetail()
+	if err != nil || included.Kind != gen.IncludedTransactionDetailKindIncluded {
+		h.t.Fatalf("transaction detail is not included: kind=%s error=%v", included.Kind, err)
+	}
+	return included.Transaction
+}
+
 func (h *harness) waitReorgClosure(ctx context.Context) {
 	oldHash := strings.TrimPrefix(h.fixture.orphanHash, "0x")
 	newHash := strings.TrimPrefix(h.canonicalHash(ctx, 2), "0x")
@@ -1189,6 +1258,8 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.creationHash, &creation)
 	var failed gen.TransactionResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash, &failed)
+	creationTransaction := h.requireIncludedTransaction(creation)
+	failedTransaction := h.requireIncludedTransaction(failed)
 	var trace gen.TransactionTraceResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/trace", &trace)
 	var calldata gen.TransactionCalldataResponse
@@ -1216,12 +1287,12 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	sort.Strings(blockHashes)
 	sort.Strings(transactionHashes)
 	failedStatus := ""
-	if failed.Data.Status != nil {
-		failedStatus = string(*failed.Data.Status)
+	if failedTransaction.Status != nil {
+		failedStatus = string(*failedTransaction.Status)
 	}
 	creationAddress := ""
-	if creation.Data.ContractAddress != nil {
-		creationAddress = string(*creation.Data.ContractAddress)
+	if creationTransaction.ContractAddress != nil {
+		creationAddress = string(*creationTransaction.ContractAddress)
 	}
 	return apiSnapshot{
 		ChainID: config.Data.ChainId, IndexedBlock: status.Data.IndexedBlock,
@@ -1333,8 +1404,9 @@ func (h *harness) captureEIP7702API(ctx context.Context) eip7702APISnapshot {
 
 	var setCodeTransaction gen.TransactionResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.delegationHash, &setCodeTransaction)
-	if setCodeTransaction.Data.Type == nil || *setCodeTransaction.Data.Type != "4" {
-		h.t.Fatalf("EIP-7702 transaction type = %#v", setCodeTransaction.Data.Type)
+	setCodeIncluded := h.requireIncludedTransaction(setCodeTransaction)
+	if setCodeIncluded.Type == nil || *setCodeIncluded.Type != "4" {
+		h.t.Fatalf("EIP-7702 transaction type = %#v", setCodeIncluded.Type)
 	}
 
 	delegatedCalls := []struct {

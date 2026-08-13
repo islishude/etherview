@@ -16,6 +16,17 @@ type searchRoutingReader struct {
 	search httpapi.Reader
 }
 
+func selectTransactionDetailReader(
+	mempoolEnabled bool,
+	ordinary httpapi.TransactionReader,
+	authoritative httpapi.TransactionReader,
+) httpapi.TransactionReader {
+	if mempoolEnabled {
+		return authoritative
+	}
+	return ordinary
+}
+
 func (reader searchRoutingReader) Search(
 	ctx context.Context,
 	value string,

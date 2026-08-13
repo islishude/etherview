@@ -18,6 +18,9 @@ const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
 const oldImplementation = "0x4000000000000000000000000000000000000040";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
+const pendingTransactionHash = `0x${"c".repeat(64)}`;
+const predecessorTransactionHash = `0x${"9".repeat(64)}`;
+const replacementTransactionHash = `0x${"8".repeat(64)}`;
 const delegationTransactionHash = `0x${"e".repeat(64)}`;
 const clearingTransactionHash = `0x${"f".repeat(64)}`;
 const readAPIKey = "ev_e2e_read";
@@ -176,6 +179,138 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue("0x3fa4f245");
   await expect(rawChinese.getByRole("button", { name: "按 UTF-8 查看" })).toBeVisible();
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}`);
+});
+
+test("mempool details poll from pending through replacement to inclusion with accessible status icons", async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 320, height: 844 });
+  let phase: "pending" | "replaced" | "included" = "pending";
+  let detailRequests = 0;
+  const derivedRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith(`/api/v1/transactions/${pendingTransactionHash}/`)) {
+      derivedRequests.push(pathname);
+    }
+  });
+  await page.route("**/api/v1/transactions/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === `/api/v1/transactions/${pendingTransactionHash}/token-transfers`) {
+      await fulfillAPIEnvelope(route, {
+        state: "complete",
+        chain_id: "1",
+        block_number: "2",
+        block_hash: codeHash,
+        transaction_hash: pendingTransactionHash,
+        canonical: true,
+        finality: "safe",
+        items: [],
+      });
+      return;
+    }
+    if (pathname !== `/api/v1/transactions/${pendingTransactionHash}`) {
+      await route.fallback();
+      return;
+    }
+    detailRequests += 1;
+    const transaction = {
+      hash: pendingTransactionHash,
+      from: address,
+      nonce: "9007199254740993",
+      value: "900719925474099312345",
+      gas: "100000",
+      max_fee_per_gas: "30000000000",
+      max_priority_fee_per_gas: "1000000000",
+      type: "2",
+      input: "0x6000",
+      replaces_hash: predecessorTransactionHash,
+      first_seen_at: "2026-08-13T00:00:00Z",
+      last_seen_at: "2026-08-13T00:00:01Z",
+      expires_at: "2099-01-01T00:00:00Z",
+      endpoint: "pending-primary",
+    };
+    if (phase === "pending") {
+      await fulfillAPIEnvelope(route, { kind: "pending", transaction });
+      return;
+    }
+    if (phase === "replaced") {
+      await fulfillAPIEnvelope(route, {
+        kind: "replaced",
+        transaction,
+        replacement_hash: replacementTransactionHash,
+        replaced_at: "2026-08-13T00:00:02Z",
+      });
+      return;
+    }
+    await fulfillAPIEnvelope(route, {
+      kind: "included",
+      transaction: {
+        hash: pendingTransactionHash,
+        block_hash: codeHash,
+        block_number: "2",
+        transaction_index: 0,
+        block_timestamp: "2026-08-13T00:00:03Z",
+        from: address,
+        nonce: "9007199254740993",
+        value: "900719925474099312345",
+        gas: "100000",
+        gas_used: "53000",
+        type: "2",
+        input: "0x6000",
+        status: "success",
+        canonical: true,
+        finality: "safe",
+        contract_address: delegatedAddress,
+        completeness: { core: "complete", trace: "complete", metadata: "complete", state: "complete" },
+      },
+    });
+  });
+
+  await page.goto("/pending");
+  const pendingLink = page.getByRole("link", { name: "0xcccccc…cccccc" });
+  const pendingRow = page.getByRole("row").filter({ has: pendingLink });
+  const listStatus = pendingRow.locator('[data-status="pending"]');
+  await expect(listStatus).toBeVisible();
+  await expect(listStatus.locator("svg.lucide-clock-3")).toHaveAttribute("aria-hidden", "true");
+  await pendingLink.click();
+
+  await expect(page.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
+  const detailPendingStatus = page.locator('[data-status="pending"]').first();
+  await expect(detailPendingStatus.locator("svg.lucide-clock-3")).toBeVisible();
+  const pendingColor = await detailPendingStatus.evaluate((element) => getComputedStyle(element).color);
+  await expect(page.getByRole("link", { name: predecessorTransactionHash })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue("0x6000");
+  await expect(page.getByText("Contract creation", { exact: true })).toBeVisible();
+  expect(derivedRequests).toEqual([]);
+  await assertA11yAndNoOverflow(page, "pending transaction detail in English light mode at 320px");
+
+  phase = "replaced";
+  await expect(page.getByRole("heading", { name: "Transaction replaced" })).toBeVisible({ timeout: 3_500 });
+  const replacedStatus = page.locator('[data-status="replaced"]').first();
+  await expect(replacedStatus.locator("svg.lucide-arrow-right-left")).toBeVisible();
+  const replacedColor = await replacedStatus.evaluate((element) => getComputedStyle(element).color);
+  expect(replacedColor).not.toBe(pendingColor);
+  await expect(page.getByRole("link", { name: replacementTransactionHash })).toBeVisible();
+  expect(derivedRequests).toEqual([]);
+
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("heading", { name: "交易已被替换" })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "replaced transaction detail in Chinese dark mode at 320px");
+
+  phase = "included";
+  const successStatus = page.locator('[data-status="success"]').first();
+  await expect(successStatus).toBeVisible({ timeout: 3_500 });
+  await expect(successStatus.locator("svg.lucide-circle-check")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByRole("tablist", { name: "交易详情分区" })).toBeVisible();
+  await expect.poll(() => derivedRequests).toContain(
+    `/api/v1/transactions/${pendingTransactionHash}/token-transfers`,
+  );
+  expect(detailRequests).toBeGreaterThanOrEqual(3);
+  await assertA11yAndNoOverflow(page, "included transaction detail in Chinese dark mode at 320px");
 });
 
 test("EIP-7702 transaction keeps authorization outcomes lazy and uses transaction-time delegate code", async ({ page }) => {
@@ -2254,4 +2389,18 @@ async function assertA11yAndNoOverflow(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow, context).toBeLessThanOrEqual(1);
+}
+
+async function fulfillAPIEnvelope(
+  route: import("@playwright/test").Route,
+  data: unknown,
+) {
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      data,
+      meta: { request_id: "mempool-browser-e2e", chain_id: "1" },
+    }),
+  });
 }

@@ -459,7 +459,7 @@ paths:
         - $ref: "#/components/parameters/TransactionHash"
       responses:
         "200":
-          description: Transaction and current inclusion.
+          description: Included, pending, or directly replaced transaction detail from durable PostgreSQL state.
           headers:
             PAYMENT-RESPONSE:
               $ref: "#/components/headers/PaymentResponse"
@@ -2374,6 +2374,58 @@ components:
           format: date-time
         endpoint:
           type: string
+        replaces_hash:
+          $ref: "#/components/schemas/Hash"
+          description: Direct predecessor replaced by this transaction in one endpoint-scoped consecutive snapshot observation.
+    IncludedTransactionDetail:
+      type: object
+      additionalProperties: false
+      required: [kind, transaction]
+      properties:
+        kind:
+          type: string
+          enum: [included]
+          x-enum-varnames: [IncludedTransactionDetailKindIncluded]
+        transaction:
+          $ref: "#/components/schemas/Transaction"
+    PendingTransactionDetail:
+      type: object
+      additionalProperties: false
+      required: [kind, transaction]
+      properties:
+        kind:
+          type: string
+          enum: [pending]
+          x-enum-varnames: [PendingTransactionDetailKindPending]
+        transaction:
+          $ref: "#/components/schemas/PendingTransaction"
+    ReplacedTransactionDetail:
+      type: object
+      additionalProperties: false
+      required: [kind, transaction, replacement_hash, replaced_at]
+      properties:
+        kind:
+          type: string
+          enum: [replaced]
+          x-enum-varnames: [ReplacedTransactionDetailKindReplaced]
+        transaction:
+          $ref: "#/components/schemas/PendingTransaction"
+        replacement_hash:
+          $ref: "#/components/schemas/Hash"
+        replaced_at:
+          type: string
+          format: date-time
+    TransactionDetail:
+      discriminator:
+        propertyName: kind
+        mapping:
+          included: "#/components/schemas/IncludedTransactionDetail"
+          pending: "#/components/schemas/PendingTransactionDetail"
+          replaced: "#/components/schemas/ReplacedTransactionDetail"
+      oneOf:
+        - $ref: "#/components/schemas/IncludedTransactionDetail"
+        - $ref: "#/components/schemas/PendingTransactionDetail"
+        - $ref: "#/components/schemas/ReplacedTransactionDetail"
     PendingMeta:
       type: object
       required:
@@ -4705,7 +4757,7 @@ components:
       required: [data, meta]
       properties:
         data:
-          $ref: "#/components/schemas/Transaction"
+          $ref: "#/components/schemas/TransactionDetail"
         meta:
           $ref: "#/components/schemas/Meta"
     TransactionListResponse:

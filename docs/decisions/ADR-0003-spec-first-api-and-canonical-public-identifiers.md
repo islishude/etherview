@@ -103,6 +103,11 @@ authoritative empty result.
 - An enabled optional capability returns a machine-readable unavailable state
   when its authoritative source has no fresh observation. A successful empty
   collection is reserved for a fresh observation with no matching records.
+- `GET /api/v1/transactions/{hash}` preserves one route and operation identity
+  while returning a discriminated `included`, `pending`, or `replaced` detail.
+  Included PostgreSQL chain data has priority over endpoint-scoped mempool
+  observations; unknown hashes return `mempool_unavailable` when an enabled
+  mempool lacks a fresh successful snapshot. See ADR-0036.
 - `/v2/api` keeps Etherscan-compatible envelopes at its compatibility boundary;
   it must still report missing trace, archive, price, or verification ability
   explicitly rather than fabricating empty success.

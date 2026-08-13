@@ -19,6 +19,7 @@ import type {
   TokenContract,
   TokenEvent,
   TransactionSummary,
+  TransactionDetail,
   VerificationSubmission,
 } from "./types";
 
@@ -175,13 +176,21 @@ export function useBlockTransactions(
 export function useTransaction(hash: string, enabled = true) {
   return useQuery({
     queryKey: ["transaction", hash],
-    queryFn: async () =>
+    queryFn: async (): Promise<TransactionDetail> =>
       requireEnvelope(
         await apiClient.GET("/transactions/{hash}", { params: { path: { hash } } }),
       ).data,
     enabled: enabled && hash.length > 0,
     retry: false,
-    staleTime: 5_000,
+    staleTime: liveRefetchInterval,
+    refetchInterval: (query) => {
+      const detail = query.state.data;
+      if (!detail || (detail.kind !== "pending" && detail.kind !== "replaced")) return false;
+      const expiresAt = Date.parse(detail.transaction.expires_at);
+      if (!Number.isFinite(expiresAt)) return false;
+      const remaining = expiresAt - Date.now();
+      return remaining > 0 ? Math.min(liveRefetchInterval, remaining) : false;
+    },
   });
 }
 

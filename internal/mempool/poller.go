@@ -227,10 +227,14 @@ func buildSnapshot(rawContent json.RawMessage, endpoint string, options PollerOp
 		seen[key] = struct{}{}
 		parsed = append(parsed, transaction)
 	}
-	return Snapshot{
+	snapshot := Snapshot{
 		Endpoint: endpoint, ObservedAt: observedAt, ExpiresAt: observedAt.Add(options.Retention),
 		Transactions: parsed,
-	}, nil
+	}
+	if err := validateSnapshotForStorage(snapshot); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func pendingTransaction(raw json.RawMessage, chainID uint64, endpoint string, firstSeen, expires time.Time) (Transaction, error) {

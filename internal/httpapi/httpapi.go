@@ -112,6 +112,10 @@ type Reader interface {
 	Search(context.Context, string, string, int) ([]gen.SearchResult, string, error)
 }
 
+type TransactionReader interface {
+	Transaction(context.Context, string) (gen.Transaction, error)
+}
+
 type GenesisReader interface {
 	GenesisAccounts(context.Context, string, int) ([]gen.GenesisAccount, string, error)
 }
@@ -181,6 +185,7 @@ type UserAPIKeyAdministration interface {
 type Options struct {
 	Config                config.Config
 	Reader                Reader
+	TransactionReader     TransactionReader
 	AddressActivities     AddressActivityReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
@@ -214,6 +219,7 @@ type Options struct {
 type Handler struct {
 	cfg                   config.Config
 	reader                Reader
+	transactionReader     TransactionReader
 	addressActivities     AddressActivityReader
 	addressEnrichment     AddressEnrichmentActivityReader
 	genesis               GenesisReader
@@ -267,6 +273,7 @@ func New(options Options) (*Handler, error) {
 	h := &Handler{
 		cfg:                   options.Config,
 		reader:                options.Reader,
+		transactionReader:     options.TransactionReader,
 		addressActivities:     options.AddressActivities,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
@@ -295,6 +302,9 @@ func New(options Options) (*Handler, error) {
 		runtimeReady:          options.RuntimeReady,
 		maxVerificationBody:   options.MaxVerificationBody,
 		mux:                   http.NewServeMux(),
+	}
+	if h.transactionReader == nil {
+		h.transactionReader = options.Reader
 	}
 	h.addressEnrichment, _ = options.Catalog.(AddressEnrichmentActivityReader)
 	if h.maxVerificationBody <= 0 {
@@ -955,12 +965,72 @@ func (h *Handler) transaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_transaction_hash", "transaction hash must be 32 bytes", nil)
 		return
 	}
-	item, err := h.reader.Transaction(r.Context(), strings.ToLower(hash))
-	if err != nil {
+	item, err := h.transactionReader.Transaction(r.Context(), strings.ToLower(hash))
+	if err == nil {
+		detail, modelErr := includedTransactionDetail(item)
+		if modelErr != nil {
+			h.logger.ErrorContext(r.Context(), "encode included transaction detail", "request_id", requestIDFrom(r.Context()))
+			writeError(w, r, http.StatusInternalServerError, "query_failed", "query failed", nil)
+			return
+		}
+		writeJSON(w, http.StatusOK, gen.TransactionResponse{Data: detail, Meta: h.meta(r)})
+		return
+	}
+	if !errors.Is(err, ErrNotFound) {
 		h.handleReaderError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gen.TransactionResponse{Data: item, Meta: h.meta(r)})
+	if !h.cfg.Features.Mempool {
+		h.handleReaderError(w, r, ErrNotFound)
+		return
+	}
+	if h.mempool == nil {
+		h.handleMempoolError(w, r, mempool.CapabilityError{State: mempool.StateUnavailable, Code: "reader_unavailable"})
+		return
+	}
+	mempoolDetail, err := h.mempool.Lookup(r.Context(), strings.ToLower(hash))
+	if err != nil {
+		if errors.Is(err, mempool.ErrNotFound) {
+			h.handleReaderError(w, r, ErrNotFound)
+			return
+		}
+		h.handleMempoolError(w, r, err)
+		return
+	}
+	detail, err := mempoolTransactionDetail(mempoolDetail)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "encode mempool transaction detail", "request_id", requestIDFrom(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "query_failed", "query failed", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionResponse{Data: detail, Meta: h.meta(r)})
+}
+
+func includedTransactionDetail(transaction gen.Transaction) (gen.TransactionDetail, error) {
+	var detail gen.TransactionDetail
+	err := detail.FromIncludedTransactionDetail(gen.IncludedTransactionDetail{
+		Kind: gen.IncludedTransactionDetailKindIncluded, Transaction: transaction,
+	})
+	return detail, err
+}
+
+func mempoolTransactionDetail(detail mempool.Detail) (gen.TransactionDetail, error) {
+	var model gen.TransactionDetail
+	switch detail.Kind {
+	case mempool.DetailPending:
+		err := model.FromPendingTransactionDetail(gen.PendingTransactionDetail{
+			Kind: gen.PendingTransactionDetailKindPending, Transaction: pendingTransactionModel(detail.Transaction),
+		})
+		return model, err
+	case mempool.DetailReplaced:
+		err := model.FromReplacedTransactionDetail(gen.ReplacedTransactionDetail{
+			Kind: gen.ReplacedTransactionDetailKindReplaced, Transaction: pendingTransactionModel(detail.Transaction),
+			ReplacementHash: detail.ReplacementHash, ReplacedAt: detail.ReplacedAt.UTC(),
+		})
+		return model, err
+	default:
+		return gen.TransactionDetail{}, fmt.Errorf("unknown mempool transaction detail kind %q", detail.Kind)
+	}
 }
 
 func (h *Handler) transactions(w http.ResponseWriter, r *http.Request) {
@@ -1039,6 +1109,7 @@ func pendingTransactionModel(transaction mempool.Transaction) gen.PendingTransac
 	model.MaxFeePerGas = (*gen.Quantity)(transaction.MaxFeePerGas)
 	model.MaxPriorityFeePerGas = (*gen.Quantity)(transaction.MaxPriorityFeePerGas)
 	model.Type = (*gen.Quantity)(transaction.Type)
+	model.ReplacesHash = (*gen.Hash)(transaction.ReplacesHash)
 	return model
 }
 

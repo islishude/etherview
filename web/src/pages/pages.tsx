@@ -59,6 +59,7 @@ import type {
   NFTBalance,
   SearchResult,
   TokenEvent,
+  TransactionDetail,
   TransactionLog,
   TransactionCalldata as TransactionCalldataResource,
   TransactionSummary,
@@ -78,6 +79,10 @@ import {
   shorten,
 } from "@/components/format";
 import { CopyButton, CopyableField } from "@/components/CopyButton";
+import {
+  TransactionStatus,
+  type TransactionVisualStatus,
+} from "@/components/TransactionStatus";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
   flattenLogArgument,
@@ -278,9 +283,7 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
           {shorten(transaction.from)} → {transaction.to ? shorten(transaction.to) : "∅"}
         </small>
       </span>
-      <span className={`transaction-status ${transaction.status ?? "unknown"}`}>
-        {transactionStatusLabel(transaction.status, t)}
-      </span>
+      <IncludedTransactionStatus transaction={transaction} />
     </div>
   );
 }
@@ -476,9 +479,7 @@ export function TransactionsPage() {
                     ) : "—"}
                   </td>
                   <td>
-                    <span className={`transaction-status ${transaction.status ?? "unknown"}`}>
-                      {transactionStatusLabel(transaction.status, t)}
-                    </span>
+                    <IncludedTransactionStatus transaction={transaction} />
                   </td>
                   <td>
                     <Link to="/address/$address" params={{ address: transaction.from }}>
@@ -1094,12 +1095,24 @@ function TransactionCalldata({
 function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
-  const transaction = useTransaction(hash);
+  const transactionDetail = useTransaction(hash);
+  const [mempoolDetailExpired, setMempoolDetailExpired] = useState(false);
+  const observedDetail = transactionDetail.data;
+  const observedExpiry = observedDetail?.kind === "pending" || observedDetail?.kind === "replaced"
+    ? Date.parse(observedDetail.transaction.expires_at)
+    : Number.NaN;
+  const detailExpired = mempoolDetailExpired
+    || (Number.isFinite(observedExpiry) && observedExpiry <= Date.now());
+  const detail = transactionDetail.error || detailExpired ? undefined : observedDetail;
+  const included = detail?.kind === "included";
+  const transaction = detail?.kind === "included"
+    ? { ...transactionDetail, data: detail.transaction }
+    : { ...transactionDetail, data: undefined };
   const transactionTabs = transactionTabsForType(transaction.data?.type);
   const activeTab: TransactionTab = transactionTabs.includes(tab as TransactionTab)
     ? tab as TransactionTab
     : "overview";
-  const calldataEnabled = activeTab === "overview"
+  const calldataEnabled = included && activeTab === "overview"
     && Boolean(transaction.data?.to);
   const calldata = useTransactionCalldata(hash, calldataEnabled);
   const internalPager = useCursorHistory(`transaction-internal-transactions:${hash}`);
@@ -1110,24 +1123,24 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const tokenTransfers = useTransactionTokenTransfers(
     hash,
     tokenPager.cursor,
-    activeTab === "overview" || activeTab === "token-transfers",
+    included && (activeTab === "overview" || activeTab === "token-transfers"),
   );
   const internalTransactions = useTransactionInternalTransactions(
     hash,
     internalPager.cursor,
-    activeTab === "internal-transactions",
+    included && activeTab === "internal-transactions",
   );
-  const logs = useTransactionLogs(hash, logPager.cursor, activeTab === "logs");
-  const trace = useTransactionTrace(hash, activeTab === "trace");
+  const logs = useTransactionLogs(hash, logPager.cursor, included && activeTab === "logs");
+  const trace = useTransactionTrace(hash, included && activeTab === "trace");
   const authorizations = useTransactionAuthorizations(
     hash,
     authorizationPager.cursor,
-    activeTab === "authorizations",
+    included && activeTab === "authorizations",
   );
   const stateChanges = useTransactionStateChanges(
     hash,
     statePager.cursor,
-    activeTab === "state-changes",
+    included && activeTab === "state-changes",
   );
   const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
@@ -1206,9 +1219,42 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     return [...groups.entries()];
   }, [stateChanges.data]);
 
+  useEffect(() => {
+    if (!Number.isFinite(observedExpiry)) {
+      setMempoolDetailExpired(false);
+      return;
+    }
+    if (observedExpiry <= Date.now()) {
+      setMempoolDetailExpired(true);
+      return;
+    }
+    setMempoolDetailExpired(false);
+    const maximumDelay = 2_147_483_647;
+    const timer = window.setTimeout(
+      () => setMempoolDetailExpired(true),
+      Math.min(observedExpiry - Date.now(), maximumDelay),
+    );
+    return () => window.clearTimeout(timer);
+  }, [observedExpiry]);
+
+  if (detail?.kind === "pending" || detail?.kind === "replaced") {
+    return (
+      <Page title={t("page.transactionDetails")} description={hash} mono>
+        <QueryNotice loading={transactionDetail.isPending} error={transactionDetail.error} />
+        <MempoolTransactionOverview
+          detail={detail}
+          locale={locale}
+          nativeDecimals={nativeDecimals}
+          nativeSymbol={nativeSymbol}
+        />
+      </Page>
+    );
+  }
+
   return (
     <Page title={t("page.transactionDetails")} description={hash} mono>
-      <QueryNotice loading={transaction.isPending} error={transaction.error} />
+      <QueryNotice loading={transactionDetail.isPending} error={transactionDetail.error} />
+      {detailExpired && !transactionDetail.error ? <MempoolDetailExpired /> : null}
       {transaction.data && (
         <>
           {!transaction.data.canonical && (
@@ -1795,6 +1841,20 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   );
 }
 
+function MempoolDetailExpired() {
+  const { t } = useTranslation();
+  return (
+    <section className="capability-panel pending-unavailable" role="status">
+      <span className="capability-mark" aria-hidden="true">!</span>
+      <div>
+        <h2>{t("pending.unavailable")}</h2>
+        <p>{t("pending.expiredDetail")}</p>
+        <code>snapshot_expired</code>
+      </div>
+    </section>
+  );
+}
+
 function TransactionLogCard({
   log,
   locale,
@@ -2067,6 +2127,125 @@ function TransactionDetailRow({
   </div>;
 }
 
+function MempoolTransactionOverview({
+  detail,
+  locale,
+  nativeDecimals,
+  nativeSymbol,
+}: {
+  detail: Exclude<TransactionDetail, { kind: "included" }>;
+  locale: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
+}) {
+  const { t } = useTranslation();
+  const transaction = detail.transaction;
+  const pending = detail.kind === "pending";
+  return (
+    <div className="transaction-overview mempool-transaction-overview">
+      <section className={`panel mempool-transaction-state ${pending ? "pending" : "replaced"}`} role="status">
+        <TransactionStatus
+          label={t(pending ? "transactionStatus.pending" : "transactionStatus.replaced")}
+          status={pending ? "pending" : "replaced"}
+        />
+        <div>
+          <h2>{t(pending ? "detail.pendingTitle" : "detail.replacedTitle")}</h2>
+          <p>{t(pending ? "detail.pendingDetail" : "detail.replacedDetail")}</p>
+        </div>
+      </section>
+      <section className="panel transaction-detail-card" aria-label={t("detail.transactionSummary")}>
+        <h2 className="sr-only">{t("detail.transactionSummary")}</h2>
+        <dl className="transaction-detail-list">
+          <TransactionDetailRow label={t("table.hash")}>
+            <CopyableField value={transaction.hash}><code>{transaction.hash}</code></CopyableField>
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("table.status")}>
+            <TransactionStatus
+              label={t(pending ? "transactionStatus.pending" : "transactionStatus.replaced")}
+              status={pending ? "pending" : "replaced"}
+            />
+          </TransactionDetailRow>
+          {!pending ? (
+            <TransactionDetailRow label={t("detail.replacementHash")}>
+              <CopyableField value={detail.replacement_hash}>
+                <Link to="/tx/$hash" params={{ hash: detail.replacement_hash }} search={{ tab: "overview" }}>
+                  <code>{detail.replacement_hash}</code>
+                </Link>
+              </CopyableField>
+            </TransactionDetailRow>
+          ) : null}
+          {transaction.replaces_hash ? (
+            <TransactionDetailRow label={t("detail.replacesHash")}>
+              <CopyableField value={transaction.replaces_hash}>
+                <Link to="/tx/$hash" params={{ hash: transaction.replaces_hash }} search={{ tab: "overview" }}>
+                  <code>{transaction.replaces_hash}</code>
+                </Link>
+              </CopyableField>
+            </TransactionDetailRow>
+          ) : null}
+          <TransactionDetailRow label={t("table.from")}>
+            <CopyableField value={transaction.from}>
+              <Link to="/address/$address" params={{ address: transaction.from }}><code>{transaction.from}</code></Link>
+            </CopyableField>
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("table.to")}>
+            {transaction.to ? (
+              <CopyableField value={transaction.to}>
+                <Link to="/address/$address" params={{ address: transaction.to }}><code>{transaction.to}</code></Link>
+              </CopyableField>
+            ) : t("common.contractCreation")}
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("table.value", { symbol: nativeSymbol })}>
+            <strong>{formatNativeAmount(transaction.value, locale, nativeDecimals)} {nativeSymbol}</strong>
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.nonce")}>
+            {formatInteger(transaction.nonce, locale)}
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.type")}>
+            {transactionTypeLabel(transaction.type, t)}
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.gasLimit")}>
+            {formatInteger(transaction.gas, locale)}
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.gasFees")}>
+            <FeeSettings locale={locale} entries={[
+              { label: t("pending.gasPrice"), value: transaction.gas_price },
+              { label: t("detail.feeMax"), value: transaction.max_fee_per_gas },
+              { label: t("detail.feeMaxPriority"), value: transaction.max_priority_fee_per_gas },
+            ]} />
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.firstSeen")}>
+            <time dateTime={transaction.first_seen_at}>{formatTimestamp(transaction.first_seen_at, locale)}</time>
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.lastSeen")}>
+            <time dateTime={transaction.last_seen_at}>{formatTimestamp(transaction.last_seen_at, locale)}</time>
+          </TransactionDetailRow>
+          {!pending ? (
+            <TransactionDetailRow label={t("detail.replacedAt")}>
+              <time dateTime={detail.replaced_at}>{formatTimestamp(detail.replaced_at, locale)}</time>
+            </TransactionDetailRow>
+          ) : null}
+          <TransactionDetailRow label={t("detail.expiresAt")}>
+            <time dateTime={transaction.expires_at}>{formatTimestamp(transaction.expires_at, locale)}</time>
+          </TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.endpoint")}><code>{transaction.endpoint}</code></TransactionDetailRow>
+          <TransactionDetailRow label={t("detail.input")} wide>
+            <textarea
+              aria-label={t("detail.rawCalldataValue", { mode: t("detail.rawHex") })}
+              className="transaction-calldata-raw-value transaction-data"
+              readOnly
+              rows={4}
+              spellCheck={false}
+              value={transaction.input}
+              wrap="soft"
+            />
+          </TransactionDetailRow>
+        </dl>
+      </section>
+    </div>
+  );
+}
+
 function TransactionStatusBadge({ transaction }: { transaction: TransactionSummary }) {
   const { t } = useTranslation();
   const state = !transaction.canonical
@@ -2075,13 +2254,30 @@ function TransactionStatusBadge({ transaction }: { transaction: TransactionSumma
     : transaction.status === "failed" ? "failed"
     : "unknown";
   return <span className="transaction-status-group">
-    <span className={`transaction-status ${state}`}>
-      {state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)}
-    </span>
+    <TransactionStatus
+      label={state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)}
+      status={state}
+    />
     {transaction.canonical && transaction.finality === "finalized"
       ? <span className="finality-badge finalized">{finalityLabel(transaction.finality, t)}</span>
       : null}
   </span>;
+}
+
+function IncludedTransactionStatus({ transaction }: { transaction: TransactionSummary }) {
+  const { t } = useTranslation();
+  const state: TransactionVisualStatus = !transaction.canonical
+    ? "orphan"
+    : transaction.status === "success" ? "success"
+    : transaction.status === "failed" ? "failed"
+    : transaction.status === "pending" ? "pending"
+    : "unknown";
+  return (
+    <TransactionStatus
+      label={state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)}
+      status={state}
+    />
+  );
 }
 
 type TransactionActionEvidence =
@@ -2680,7 +2876,7 @@ function AddressTransactions({
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
-        <AddressActivityTable label={t("addressTab.transactions")} nativeSymbol={nativeSymbol}>
+        <AddressActivityTable label={t("addressTab.transactions")} nativeSymbol={nativeSymbol} status>
           {items.map((transaction) => {
             const destination = transaction.to ?? transaction.contract_address;
             return (
@@ -2691,6 +2887,7 @@ function AddressTransactions({
                   timestamp={transaction.block_timestamp}
                   locale={locale}
                 />
+                <td><TransactionStatusBadge transaction={transaction} /></td>
                 <AddressCell address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
@@ -2907,12 +3104,14 @@ function AddressActivityTable({
   children,
   label,
   nativeSymbol,
+  status,
   token,
 }: {
   action?: boolean;
   children: React.ReactNode;
   label: string;
   nativeSymbol?: string;
+  status?: boolean;
   token?: boolean;
 }) {
   const { t } = useTranslation();
@@ -2925,6 +3124,7 @@ function AddressActivityTable({
             <th>{t("table.hash")}</th>
             <th>{t("table.block")}</th>
             <th>{t("table.age")}</th>
+            {status ? <th>{t("table.status")}</th> : null}
             {action ? <th>{t("table.action")}</th> : null}
             {token ? <th>{t("table.token")}</th> : null}
             <th>{t("table.from")}</th>

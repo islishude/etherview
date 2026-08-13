@@ -13,6 +13,7 @@ the agreed Etherscan V2 subset.
 - [Architecture](../architecture/overview.md)
 - [Etherscan V2 compatibility matrix](../architecture/etherscan-v2-compatibility.md)
 - [ADR-0003: Spec-first API and canonical public identifiers](../decisions/ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
+- [ADR-0036: Endpoint-scoped mempool replacement observations](../decisions/ADR-0036-endpoint-scoped-mempool-replacements.md)
 - [ADR-0023: Exact transaction state differences](../decisions/ADR-0023-exact-transaction-state-differences.md)
 - [Testing](../testing.md)
 
@@ -34,6 +35,7 @@ the agreed Etherscan V2 subset.
 | P40-T12 | done | P40-T10 | Protocol detail fields, block-scoped transactions, withdrawals, and block-origin address evidence | OpenAPI, generated contract, query, cursor, reorg, and handler tests |
 | P40-T13 | done | P40-T07, P40-T08 | Transaction-scoped successful internal ETH transfers and exact-block token decimals | OpenAPI, query, cursor, reorg, handler, billing-inventory, and generation tests |
 | P40-T14 | done | P40-T12 | Exact-block execution and blob base-fee facts on transaction resources | OpenAPI, generated contract, query, home-stream, and generation tests |
+| P40-T15 | done | P40-T14 | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests |
 
 ## Acceptance
 
@@ -45,6 +47,9 @@ the agreed Etherscan V2 subset.
 - [x] API keys are one-time revealed and only keyed hashes are stored.
 - [x] Transaction subresources expose one inclusion identity, stable pagination,
       bounded hostile data, and explicit optional-capability state.
+- [x] One transaction-detail operation resolves included, current pending, and
+      strictly evidenced direct replacement states from writer-authoritative
+      PostgreSQL data without live RPC fallback.
 - [x] Proxy detail and histories expose only the current canonical published
       generation, bind pagination to an immutable chain and publication
       snapshot, and return a stable stale-cursor error after reorganization or
@@ -55,6 +60,19 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T15 adds migration `0042`, strict cross-pool sender/nonce uniqueness,
+  immutable same-endpoint consecutive-snapshot replacement observations, an
+  explicit last-write continuity marker that breaks evidence after stale
+  writes, direct replacement chains with retention cleanup, and the writer-authoritative
+  `included`/`pending`/`replaced` transaction detail union. Focused mempool,
+  HTTP, routing, API, and runtime-tag compilation tests pass. The latest `make
+  test-integration` passes migration `0042` and the replacement matrix against
+  owned PostgreSQL 18 (`internal/integration` 132.918s); `make
+  post-continuity-marker `make test-runtime-e2e` passes the real replacement
+  transition plus all existing runtime assertions in monolith (31.91s) and
+  complete split (42.66s) topologies. `make generate-check`, `make plan-check`,
+  `make check`, and `git diff --check` pass.
 
 - P40-T14 exposes optional `base_fee_per_gas` and
   `blob_base_fee_per_gas` transaction quantities from the exact containing

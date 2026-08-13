@@ -704,16 +704,17 @@ type MempoolSnapshotTransaction struct {
 }
 
 type MempoolStatus struct {
-	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	State            string             `db:"state" json:"state"`
-	EndpointName     *string            `db:"endpoint_name" json:"endpoint_name"`
-	LatestSnapshotID *int64             `db:"latest_snapshot_id" json:"latest_snapshot_id"`
-	TransactionCount *int32             `db:"transaction_count" json:"transaction_count"`
-	LastAttemptAt    pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
-	LastSuccessAt    pgtype.Timestamptz `db:"last_success_at" json:"last_success_at"`
-	ErrorCode        *string            `db:"error_code" json:"error_code"`
-	ErrorMessage     *string            `db:"error_message" json:"error_message"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	State               string             `db:"state" json:"state"`
+	EndpointName        *string            `db:"endpoint_name" json:"endpoint_name"`
+	LatestSnapshotID    *int64             `db:"latest_snapshot_id" json:"latest_snapshot_id"`
+	TransactionCount    *int32             `db:"transaction_count" json:"transaction_count"`
+	LastAttemptAt       pgtype.Timestamptz `db:"last_attempt_at" json:"last_attempt_at"`
+	LastSuccessAt       pgtype.Timestamptz `db:"last_success_at" json:"last_success_at"`
+	ErrorCode           *string            `db:"error_code" json:"error_code"`
+	ErrorMessage        *string            `db:"error_message" json:"error_message"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	LastSnapshotWriteID *int64             `db:"last_snapshot_write_id" json:"last_snapshot_write_id"`
 }
 
 type MempoolTransaction struct {
@@ -734,6 +735,13 @@ type MempoolTransaction struct {
 	LastSeenAt           pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
 	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	LastEndpointName     string             `db:"last_endpoint_name" json:"last_endpoint_name"`
+}
+
+type MempoolTransactionReplacement struct {
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	SnapshotID      int64          `db:"snapshot_id" json:"snapshot_id"`
+	ReplacedHash    []byte         `db:"replaced_hash" json:"replaced_hash"`
+	ReplacementHash []byte         `db:"replacement_hash" json:"replacement_hash"`
 }
 
 type Migration0031VyperJob struct {

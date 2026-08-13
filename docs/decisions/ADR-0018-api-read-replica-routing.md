@@ -56,7 +56,8 @@ The writer remains authoritative for:
 - external name/price observation persistence; when name resolution is
   configured, search is writer-routed so a request can consume its own
   observation;
-- mempool observation reads/writes and NFT media selection/revalidation; and
+- mempool observation reads/writes, the unified transaction detail lookup while
+  mempool collection is enabled, and NFT media selection/revalidation; and
 - every worker, maintenance, admin, repair, and migration operation.
 
 The public readiness query compares the reader's durable core coverage with the

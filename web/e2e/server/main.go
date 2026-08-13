@@ -159,13 +159,13 @@ func main() {
 	mux.HandleFunc("GET /api/v1/transactions/{hash}", func(response http.ResponseWriter, request *http.Request) {
 		switch request.PathValue("hash") {
 		case testTransactionHash:
-			writeEnvelope(response, transaction(testTransactionHash, secondHash, "2", "safe"))
+			writeEnvelope(response, includedTransactionDetail(transaction(testTransactionHash, secondHash, "2", "safe")))
 		case secondTransactionHash:
-			writeEnvelope(response, contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized"))
+			writeEnvelope(response, includedTransactionDetail(contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized")))
 		case delegationTransactionHash:
-			writeEnvelope(response, setCodeTransaction(delegationTransactionHash, 1, delegatedCalldata()))
+			writeEnvelope(response, includedTransactionDetail(setCodeTransaction(delegationTransactionHash, 1, delegatedCalldata())))
 		case clearingTransactionHash:
-			writeEnvelope(response, setCodeTransaction(clearingTransactionHash, 2, "0x55241077"))
+			writeEnvelope(response, includedTransactionDetail(setCodeTransaction(clearingTransactionHash, 2, "0x55241077")))
 		default:
 			writeNotFound(response)
 		}
@@ -834,6 +834,10 @@ func transaction(hash, blockHash, blockNumber, finality string) map[string]any {
 		"type": "2", "input": "0x3fa4f245",
 		"status": "success", "canonical": true, "finality": finality, "completeness": completeness(),
 	}
+}
+
+func includedTransactionDetail(transaction map[string]any) map[string]any {
+	return map[string]any{"kind": "included", "transaction": transaction}
 }
 
 func setCodeTransaction(hash string, transactionIndex int, input string) map[string]any {

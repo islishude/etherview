@@ -5,6 +5,7 @@ package gen
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -584,6 +585,36 @@ func (e GenesisAccountType) Valid() bool {
 	}
 }
 
+// Defines values for IncludedTransactionDetailKind.
+const (
+	IncludedTransactionDetailKindIncluded IncludedTransactionDetailKind = "included"
+)
+
+// Valid indicates whether the value is a known member of the IncludedTransactionDetailKind enum.
+func (e IncludedTransactionDetailKind) Valid() bool {
+	switch e {
+	case IncludedTransactionDetailKindIncluded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingTransactionDetailKind.
+const (
+	PendingTransactionDetailKindPending PendingTransactionDetailKind = "pending"
+)
+
+// Valid indicates whether the value is a known member of the PendingTransactionDetailKind enum.
+func (e PendingTransactionDetailKind) Valid() bool {
+	switch e {
+	case PendingTransactionDetailKindPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProxyArtifactKind.
 const (
 	ProxyArtifactKindBeaconProxy        ProxyArtifactKind = "beacon_proxy"
@@ -1064,6 +1095,21 @@ func (e ProxyVerificationState) Valid() bool {
 	case ProxyVerificationStateUnverified:
 		return true
 	case ProxyVerificationStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReplacedTransactionDetailKind.
+const (
+	ReplacedTransactionDetailKindReplaced ReplacedTransactionDetailKind = "replaced"
+)
+
+// Valid indicates whether the value is a known member of the ReplacedTransactionDetailKind enum.
+func (e ReplacedTransactionDetailKind) Valid() bool {
+	switch e {
+	case ReplacedTransactionDetailKindReplaced:
 		return true
 	default:
 		return false
@@ -2949,6 +2995,15 @@ type HomeSnapshotResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// IncludedTransactionDetail defines model for IncludedTransactionDetail.
+type IncludedTransactionDetail struct {
+	Kind        IncludedTransactionDetailKind `json:"kind"`
+	Transaction Transaction                   `json:"transaction"`
+}
+
+// IncludedTransactionDetailKind defines model for IncludedTransactionDetail.Kind.
+type IncludedTransactionDetailKind string
+
 // LookupMethods defines model for LookupMethods.
 type LookupMethods struct {
 	Methods []MethodSource `json:"methods"`
@@ -3101,6 +3156,9 @@ type PendingTransaction struct {
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Nonce Quantity `json:"nonce"`
 
+	// ReplacesHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ReplacesHash *Hash `json:"replaces_hash,omitempty"`
+
 	// To A 20-byte address; responses use the EIP-55 checksum form.
 	To *Address `json:"to,omitempty"`
 
@@ -3110,6 +3168,15 @@ type PendingTransaction struct {
 	// Value A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	Value Quantity `json:"value"`
 }
+
+// PendingTransactionDetail defines model for PendingTransactionDetail.
+type PendingTransactionDetail struct {
+	Kind        PendingTransactionDetailKind `json:"kind"`
+	Transaction PendingTransaction           `json:"transaction"`
+}
+
+// PendingTransactionDetailKind defines model for PendingTransactionDetail.Kind.
+type PendingTransactionDetailKind string
 
 // PendingTransactionListResponse defines model for PendingTransactionListResponse.
 type PendingTransactionListResponse struct {
@@ -3449,6 +3516,19 @@ type PublicConfigResponse struct {
 
 // Quantity A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 type Quantity = string
+
+// ReplacedTransactionDetail defines model for ReplacedTransactionDetail.
+type ReplacedTransactionDetail struct {
+	Kind       ReplacedTransactionDetailKind `json:"kind"`
+	ReplacedAt time.Time                     `json:"replaced_at"`
+
+	// ReplacementHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ReplacementHash Hash               `json:"replacement_hash"`
+	Transaction     PendingTransaction `json:"transaction"`
+}
+
+// ReplacedTransactionDetailKind defines model for ReplacedTransactionDetail.Kind.
+type ReplacedTransactionDetailKind string
 
 // SearchResponse defines model for SearchResponse.
 type SearchResponse struct {
@@ -3906,6 +3986,11 @@ type TransactionCalldataResponse struct {
 	Meta Meta                `json:"meta"`
 }
 
+// TransactionDetail defines model for TransactionDetail.
+type TransactionDetail struct {
+	union json.RawMessage
+}
+
 // TransactionInternalTransaction defines model for TransactionInternalTransaction.
 type TransactionInternalTransaction struct {
 	CallType string `json:"call_type"`
@@ -4042,8 +4127,8 @@ type TransactionLogsState string
 
 // TransactionResponse defines model for TransactionResponse.
 type TransactionResponse struct {
-	Data Transaction `json:"data"`
-	Meta Meta        `json:"meta"`
+	Data TransactionDetail `json:"data"`
+	Meta Meta              `json:"meta"`
 }
 
 // TransactionStateChange defines model for TransactionStateChange.
@@ -4993,6 +5078,143 @@ func (t BatchResultsOutcome_Results_Item) MarshalJSON() ([]byte, error) {
 }
 
 func (t *BatchResultsOutcome_Results_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsIncludedTransactionDetail returns the union data inside the TransactionDetail as a IncludedTransactionDetail
+func (t TransactionDetail) AsIncludedTransactionDetail() (IncludedTransactionDetail, error) {
+	var body IncludedTransactionDetail
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromIncludedTransactionDetail overwrites any union data inside the TransactionDetail as the provided IncludedTransactionDetail
+func (t *TransactionDetail) FromIncludedTransactionDetail(v IncludedTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"included"}`))
+	t.union = b
+	return err
+}
+
+// MergeIncludedTransactionDetail performs a merge with any union data inside the TransactionDetail, using the provided IncludedTransactionDetail
+func (t *TransactionDetail) MergeIncludedTransactionDetail(v IncludedTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"included"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPendingTransactionDetail returns the union data inside the TransactionDetail as a PendingTransactionDetail
+func (t TransactionDetail) AsPendingTransactionDetail() (PendingTransactionDetail, error) {
+	var body PendingTransactionDetail
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPendingTransactionDetail overwrites any union data inside the TransactionDetail as the provided PendingTransactionDetail
+func (t *TransactionDetail) FromPendingTransactionDetail(v PendingTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"pending"}`))
+	t.union = b
+	return err
+}
+
+// MergePendingTransactionDetail performs a merge with any union data inside the TransactionDetail, using the provided PendingTransactionDetail
+func (t *TransactionDetail) MergePendingTransactionDetail(v PendingTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"pending"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsReplacedTransactionDetail returns the union data inside the TransactionDetail as a ReplacedTransactionDetail
+func (t TransactionDetail) AsReplacedTransactionDetail() (ReplacedTransactionDetail, error) {
+	var body ReplacedTransactionDetail
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromReplacedTransactionDetail overwrites any union data inside the TransactionDetail as the provided ReplacedTransactionDetail
+func (t *TransactionDetail) FromReplacedTransactionDetail(v ReplacedTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"replaced"}`))
+	t.union = b
+	return err
+}
+
+// MergeReplacedTransactionDetail performs a merge with any union data inside the TransactionDetail, using the provided ReplacedTransactionDetail
+func (t *TransactionDetail) MergeReplacedTransactionDetail(v ReplacedTransactionDetail) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"replaced"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TransactionDetail) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t TransactionDetail) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "included":
+		return t.AsIncludedTransactionDetail()
+	case "pending":
+		return t.AsPendingTransactionDetail()
+	case "replaced":
+		return t.AsReplacedTransactionDetail()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t TransactionDetail) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TransactionDetail) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

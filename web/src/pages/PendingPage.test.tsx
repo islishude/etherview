@@ -68,7 +68,13 @@ describe("pending transaction route", () => {
     expect(screen.getByRole("columnheader", { name: "Fees (wei per gas)" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "First seen" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Last seen" })).toBeVisible();
-    expect(screen.getByText("0xaaaaaa…aaaaaa")).toBeVisible();
+    expect(screen.getByRole("link", { name: "0xaaaaaa…aaaaaa" })).toHaveAttribute(
+      "href",
+      `/tx/${firstHash}?tab=overview`,
+    );
+    const pendingStatus = document.querySelector('.transaction-status[data-status="pending"]');
+    expect(pendingStatus).toHaveAttribute("data-status", "pending");
+    expect(pendingStatus?.querySelector("svg.lucide-clock-3")).toHaveAttribute("aria-hidden", "true");
     expect(document.querySelector('time[datetime="2026-07-20T10:00:00Z"]')).not.toBeNull();
     expect(document.querySelector('time[datetime="2026-07-20T10:02:00Z"]')).not.toBeNull();
 

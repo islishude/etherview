@@ -283,10 +283,6 @@
     display: none;
   }
 
-  .transaction-row .transaction-status {
-    display: none;
-  }
-
   .search-result {
     grid-template-columns: auto minmax(0, 1fr);
   }

@@ -398,7 +398,7 @@ describe("embedded explorer shell", () => {
         }
         if (path === `/api/v1/transactions/${hash}`) {
           return Response.json({
-            data: {
+            data: { kind: "included", transaction: {
               hash,
               block_hash: blockHash,
               block_number: "42",
@@ -421,7 +421,7 @@ describe("embedded explorer shell", () => {
                 metadata: "pending",
                 state: "complete",
               },
-            },
+            } },
             meta,
           });
         }

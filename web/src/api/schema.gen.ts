@@ -1578,6 +1578,14 @@ export interface components {
             data: components["schemas"]["HomeSnapshot"];
             meta: components["schemas"]["Meta"];
         };
+        IncludedTransactionDetail: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "included";
+            transaction: components["schemas"]["Transaction"];
+        };
         LookupMethods: {
             methods: components["schemas"]["MethodSource"][];
         };
@@ -1665,9 +1673,19 @@ export interface components {
             max_fee_per_gas?: components["schemas"]["Quantity"];
             max_priority_fee_per_gas?: components["schemas"]["Quantity"];
             nonce: components["schemas"]["Quantity"];
+            /** @description Direct predecessor replaced by this transaction in one endpoint-scoped consecutive snapshot observation. */
+            replaces_hash?: components["schemas"]["Hash"];
             to?: components["schemas"]["Address"];
             type?: components["schemas"]["Quantity"];
             value: components["schemas"]["Quantity"];
+        };
+        PendingTransactionDetail: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "pending";
+            transaction: components["schemas"]["PendingTransaction"];
         };
         PendingTransactionListResponse: {
             data: components["schemas"]["PendingTransaction"][];
@@ -1889,6 +1907,17 @@ export interface components {
         };
         /** @description A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string. */
         Quantity: string;
+        ReplacedTransactionDetail: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "replaced";
+            /** Format: date-time */
+            replaced_at: string;
+            replacement_hash: components["schemas"]["Hash"];
+            transaction: components["schemas"]["PendingTransaction"];
+        };
         SearchResponse: {
             data: components["schemas"]["SearchResult"][];
             meta: components["schemas"]["Meta"];
@@ -2130,6 +2159,7 @@ export interface components {
             data: components["schemas"]["TransactionCalldata"];
             meta: components["schemas"]["Meta"];
         };
+        TransactionDetail: components["schemas"]["IncludedTransactionDetail"] | components["schemas"]["PendingTransactionDetail"] | components["schemas"]["ReplacedTransactionDetail"];
         TransactionInternalTransaction: {
             call_type: string;
             created_address?: components["schemas"]["Address"];
@@ -2192,7 +2222,7 @@ export interface components {
             items: components["schemas"]["TransactionLog"][];
         };
         TransactionResponse: {
-            data: components["schemas"]["Transaction"];
+            data: components["schemas"]["TransactionDetail"];
             meta: components["schemas"]["Meta"];
         };
         TransactionStateChange: {
@@ -3801,7 +3831,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Transaction and current inclusion. */
+            /** @description Included, pending, or directly replaced transaction detail from durable PostgreSQL state. */
             200: {
                 headers: {
                     "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];

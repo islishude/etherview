@@ -76,6 +76,10 @@ func TestBuildSnapshotRejectsWrongChainAndDuplicateHashes(t *testing.T) {
 	if _, err := buildSnapshot(duplicate, "rpc", options, time.Unix(1, 0)); err == nil || !strings.Contains(err.Error(), "duplicates") {
 		t.Fatalf("duplicate error = %v", err)
 	}
+	conflict := conflictingTxpoolSlot(t, txpoolTestContent(t, 1))
+	if _, err := buildSnapshot(conflict, "rpc", options, time.Unix(1, 0)); err == nil || !strings.Contains(err.Error(), "sender and nonce slot") {
+		t.Fatalf("conflicting slot error = %v", err)
+	}
 }
 
 func TestBuildSnapshotEnforcesTransactionAndResponseLimits(t *testing.T) {
@@ -298,7 +302,27 @@ func duplicateTxpoolTransaction(t *testing.T, raw json.RawMessage) json.RawMessa
 	return nil
 }
 
+func conflictingTxpoolSlot(t *testing.T, raw json.RawMessage) json.RawMessage {
+	t.Helper()
+	var parsed txpoolContent
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	sender := pendingTestSender().Hex()
+	parsed.Queued[sender]["0x7"] = pendingTestTransactionWithFees(t, 1, 7, 4, 2)
+	encoded, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
 func pendingTestTransaction(t *testing.T, chainID uint64, nonce uint64) json.RawMessage {
+	t.Helper()
+	return pendingTestTransactionWithFees(t, chainID, nonce, 2, 1)
+}
+
+func pendingTestTransactionWithFees(t *testing.T, chainID uint64, nonce, feeCap, tipCap uint64) json.RawMessage {
 	t.Helper()
 	key, err := crypto.HexToECDSA("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	if err != nil {
@@ -307,7 +331,7 @@ func pendingTestTransaction(t *testing.T, chainID uint64, nonce uint64) json.Raw
 	to := common.HexToAddress("0x2")
 	transaction := types.NewTx(&types.DynamicFeeTx{
 		ChainID: new(big.Int).SetUint64(chainID), Nonce: nonce, Gas: 21_000, To: &to,
-		Value: big.NewInt(9), GasFeeCap: big.NewInt(2), GasTipCap: big.NewInt(1),
+		Value: big.NewInt(9), GasFeeCap: new(big.Int).SetUint64(feeCap), GasTipCap: new(big.Int).SetUint64(tipCap),
 	})
 	transaction, err = types.SignTx(transaction, types.LatestSignerForChainID(new(big.Int).SetUint64(chainID)), key)
 	if err != nil {

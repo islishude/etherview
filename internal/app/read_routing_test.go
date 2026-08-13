@@ -9,6 +9,27 @@ import (
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
+type transactionRoutingReader struct{ hash string }
+
+func (reader transactionRoutingReader) Transaction(context.Context, string) (gen.Transaction, error) {
+	return gen.Transaction{Hash: reader.hash}, nil
+}
+
+func TestTransactionDetailRoutingUsesWriterOnlyWithMempool(t *testing.T) {
+	t.Parallel()
+	ordinary := transactionRoutingReader{hash: "ordinary"}
+	authoritative := transactionRoutingReader{hash: "writer"}
+	for _, test := range []struct {
+		enabled bool
+		want    string
+	}{{enabled: false, want: "ordinary"}, {enabled: true, want: "writer"}} {
+		transaction, err := selectTransactionDetailReader(test.enabled, ordinary, authoritative).Transaction(t.Context(), "ignored")
+		if err != nil || transaction.Hash != test.want {
+			t.Fatalf("enabled=%v transaction=%+v error=%v", test.enabled, transaction, err)
+		}
+	}
+}
+
 type routingTestReader struct {
 	httpapi.Reader
 	statusCalls int

@@ -181,9 +181,11 @@ replace a required `make test-e2e` pass.
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
   type-4 transactions with go-ethereum, and deploys two delegate contracts; it
-  never depends on host `cast` or fixture private keys. The suite verifies
-  an exact pending hash, contract creation and a failed call, all six deployed
-  stage
+  never depends on host `cast` or fixture private keys. The suite submits an
+  underpriced same-sender/nonce transaction followed by its signed fee-bumped
+  replacement, verifies the old hash as `replaced` and the new hash as
+  `pending`, then mines and verifies the new hash as included `success`. It
+  also verifies contract creation and a failed call, all six deployed stage
   publications, a distinct competing-hash reorg with orphan/journal retention
   and changed hourly analytics, an orphaned delegation followed by canonical
   delegation, redelegation, ordinary delegated execution, and clearing, plus

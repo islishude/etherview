@@ -23,8 +23,9 @@ import (
 )
 
 type fakeReader struct {
-	status StatusSnapshot
-	err    error
+	status      StatusSnapshot
+	transaction gen.Transaction
+	err         error
 }
 
 type fakeGenesisReader struct {
@@ -87,7 +88,7 @@ func (f fakeReader) Transactions(context.Context, string, int) ([]gen.Transactio
 	return []gen.Transaction{}, "next", f.err
 }
 func (f fakeReader) Transaction(context.Context, string) (gen.Transaction, error) {
-	return gen.Transaction{}, f.err
+	return f.transaction, f.err
 }
 func (f fakeReader) Address(context.Context, string) (gen.AddressSummary, error) {
 	return gen.AddressSummary{}, f.err

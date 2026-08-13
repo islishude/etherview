@@ -549,6 +549,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if redisAccelerator != nil {
 			publicReader = redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
 		}
+		// Included identity must win over a node-local replacement observation,
+		// so the unified detail lookup cannot inherit replica lag when enabled.
+		transactionReader := selectTransactionDetailReader(cfg.Features.Mempool, publicReader, writerReader)
 		artifactResolver, err := contractartifact.NewResolver(db)
 		if err != nil {
 			return err
@@ -663,7 +666,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			}.Wrap
 		}
 		handler, err := httpapi.New(httpapi.Options{
-			Config: cfg, Reader: publicReader, AddressActivities: reader,
+			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Analytics: analyticsReader,
 			ProxyReader: newProxyReaderAdapter(

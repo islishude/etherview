@@ -23,6 +23,7 @@ const (
 var (
 	ErrInvalidCursor = errors.New("mempool cursor is invalid or expired")
 	ErrCorruptData   = errors.New("mempool data is inconsistent")
+	ErrNotFound      = errors.New("mempool transaction not found")
 )
 
 type CapabilityError struct {
@@ -52,6 +53,21 @@ type Transaction struct {
 	LastSeenAt           time.Time
 	ExpiresAt            time.Time
 	Endpoint             string
+	ReplacesHash         *string
+}
+
+type DetailKind string
+
+const (
+	DetailPending  DetailKind = "pending"
+	DetailReplaced DetailKind = "replaced"
+)
+
+type Detail struct {
+	Kind            DetailKind
+	Transaction     Transaction
+	ReplacementHash string
+	ReplacedAt      time.Time
 }
 
 type Snapshot struct {
@@ -90,4 +106,5 @@ type Store interface {
 
 type Reader interface {
 	Pending(context.Context, string, int) (Page, error)
+	Lookup(context.Context, string) (Detail, error)
 }

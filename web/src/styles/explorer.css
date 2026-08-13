@@ -178,6 +178,14 @@
   text-transform: uppercase;
 }
 
+.transaction-status {
+  gap: 0.3rem;
+}
+
+.transaction-status-icon {
+  flex: 0 0 auto;
+}
+
 .finality-badge.finalized,
 .transaction-status.success,
 .availability.yes {
@@ -186,10 +194,23 @@
 }
 
 .transaction-status.reverted,
+.transaction-status.failed,
 .availability.no,
 .orphan-label {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.transaction-status.pending {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
+}
+
+.transaction-status.replaced {
+  color: var(--replaced);
+  background: color-mix(in srgb, var(--replaced) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--replaced) 38%, var(--line));
 }
 
 .orphan-label {
@@ -528,6 +549,27 @@ tbody tr:hover {
 
 .pending-table table {
   min-width: 1320px;
+}
+
+.mempool-transaction-overview {
+  display: grid;
+  gap: 1rem;
+}
+
+.mempool-transaction-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.mempool-transaction-state h2,
+.mempool-transaction-state p {
+  margin: 0;
+}
+
+.mempool-transaction-state p {
+  margin-top: 0.3rem;
+  color: var(--text-soft);
 }
 
 .pending-table time {
@@ -1089,6 +1131,18 @@ tbody tr:hover {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, var(--surface));
   border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
+}
+
+.transaction-status.pending {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--line));
+}
+
+.transaction-status.replaced {
+  color: var(--replaced);
+  background: color-mix(in srgb, var(--replaced) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--replaced) 32%, var(--line));
 }
 
 .transaction-more-details {

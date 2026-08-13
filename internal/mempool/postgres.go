@@ -70,6 +70,10 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 	if err := lockMempool(ctx, tx, repository.chain); err != nil {
 		return SnapshotInfo{}, err
 	}
+	previousSnapshotID, replacementEvidence, err := repository.replacementPredecessor(ctx, tx, snapshot)
+	if err != nil {
+		return SnapshotInfo{}, err
+	}
 
 	var snapshotID int64
 	err = tx.QueryRowContext(ctx, `
@@ -96,7 +100,10 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
 			last_seen_at = GREATEST(mempool_transactions.last_seen_at, EXCLUDED.last_seen_at),
 			expires_at = GREATEST(mempool_transactions.expires_at, EXCLUDED.expires_at),
-			last_endpoint_name = EXCLUDED.last_endpoint_name
+			last_endpoint_name = CASE
+				WHEN EXCLUDED.last_seen_at >= mempool_transactions.last_seen_at THEN EXCLUDED.last_endpoint_name
+				ELSE mempool_transactions.last_endpoint_name
+			END
 		WHERE mempool_transactions.from_address = EXCLUDED.from_address
 		  AND mempool_transactions.to_address IS NOT DISTINCT FROM EXCLUDED.to_address
 		  AND mempool_transactions.nonce = EXCLUDED.nonce
@@ -139,7 +146,53 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 		}
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if replacementEvidence {
+		if _, err := tx.ExecContext(ctx, `
+			WITH previous_slots AS (
+				SELECT pending.from_address, pending.nonce, (array_agg(pending.tx_hash))[1] AS tx_hash
+				FROM mempool_snapshot_transactions AS member
+				JOIN mempool_transactions AS pending
+				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
+				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2
+				GROUP BY pending.from_address, pending.nonce
+				HAVING count(*) = 1
+			), current_slots AS (
+				SELECT pending.from_address, pending.nonce, (array_agg(pending.tx_hash))[1] AS tx_hash
+				FROM mempool_snapshot_transactions AS member
+				JOIN mempool_transactions AS pending
+				  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
+				WHERE member.chain_id = $1::numeric AND member.snapshot_id = $3
+				GROUP BY pending.from_address, pending.nonce
+				HAVING count(*) = 1
+			)
+			INSERT INTO mempool_transaction_replacements (
+				chain_id, snapshot_id, replaced_hash, replacement_hash
+			)
+			SELECT $1::numeric, $3, previous.tx_hash, current.tx_hash
+			FROM previous_slots AS previous
+			JOIN current_slots AS current
+			  ON current.from_address = previous.from_address
+			 AND current.nonce = previous.nonce
+			WHERE current.tx_hash <> previous.tx_hash`,
+			repository.chain, previousSnapshotID, snapshotID,
+		); err != nil {
+			return SnapshotInfo{}, fmt.Errorf("insert mempool replacement observations: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE mempool_transactions AS pending
+			SET expires_at = GREATEST(pending.expires_at, $3)
+			FROM mempool_transaction_replacements AS replacement
+			WHERE replacement.chain_id = $1::numeric
+			  AND replacement.snapshot_id = $2
+			  AND pending.chain_id = replacement.chain_id
+			  AND pending.tx_hash = replacement.replaced_hash`,
+			repository.chain, snapshotID, snapshot.ExpiresAt,
+		); err != nil {
+			return SnapshotInfo{}, fmt.Errorf("extend replaced mempool transaction retention: %w", err)
+		}
+	}
+
+	statusResult, err := tx.ExecContext(ctx, `
 		INSERT INTO mempool_status (
 			chain_id, state, endpoint_name, latest_snapshot_id, transaction_count,
 			last_attempt_at, last_success_at, error_code, error_message, updated_at
@@ -156,8 +209,26 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 			updated_at = now()
 		WHERE mempool_status.last_attempt_at <= EXCLUDED.last_attempt_at`,
 		repository.chain, snapshot.Endpoint, snapshotID, len(snapshot.Transactions), snapshot.ObservedAt,
-	); err != nil {
+	)
+	if err != nil {
 		return SnapshotInfo{}, fmt.Errorf("update complete mempool status: %w", err)
+	}
+	if replacementEvidence {
+		rows, rowsErr := statusResult.RowsAffected()
+		if rowsErr != nil || rows != 1 {
+			return SnapshotInfo{}, fmt.Errorf("%w: replacement snapshot did not become current", ErrCorruptData)
+		}
+	}
+	markerResult, markerErr := tx.ExecContext(ctx, `
+		UPDATE mempool_status
+		SET last_snapshot_write_id = $2
+		WHERE chain_id = $1::numeric`, repository.chain, snapshotID,
+	)
+	if markerErr != nil {
+		return SnapshotInfo{}, fmt.Errorf("record mempool snapshot write continuity: %w", markerErr)
+	}
+	if rows, rowsErr := markerResult.RowsAffected(); rowsErr != nil || rows != 1 {
+		return SnapshotInfo{}, fmt.Errorf("%w: mempool snapshot write continuity was not recorded", ErrCorruptData)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM mempool_snapshots
@@ -183,6 +254,56 @@ func (repository *Postgres) StoreSnapshot(ctx context.Context, snapshot Snapshot
 		ID: snapshotID, Endpoint: snapshot.Endpoint, ObservedAt: snapshot.ObservedAt,
 		ExpiresAt: snapshot.ExpiresAt, TransactionCount: len(snapshot.Transactions),
 	}, nil
+}
+
+func (repository *Postgres) replacementPredecessor(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot Snapshot,
+) (int64, bool, error) {
+	var state string
+	var endpoint sql.NullString
+	var snapshotID sql.NullInt64
+	var lastSnapshotWriteID sql.NullInt64
+	var lastAttempt time.Time
+	err := tx.QueryRowContext(ctx, `
+		SELECT state, endpoint_name, latest_snapshot_id, last_snapshot_write_id, last_attempt_at
+		FROM mempool_status
+		WHERE chain_id = $1::numeric
+		FOR UPDATE`, repository.chain,
+	).Scan(&state, &endpoint, &snapshotID, &lastSnapshotWriteID, &lastAttempt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("query replacement predecessor status: %w", err)
+	}
+	if state != string(StateComplete) || !endpoint.Valid || !snapshotID.Valid ||
+		!lastSnapshotWriteID.Valid || lastSnapshotWriteID.Int64 != snapshotID.Int64 ||
+		!snapshot.ObservedAt.After(lastAttempt) || endpoint.String != snapshot.Endpoint {
+		return 0, false, nil
+	}
+
+	var previousEndpoint string
+	var previousObservedAt, previousExpiresAt time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT endpoint_name, observed_at, expires_at
+		FROM mempool_snapshots
+		WHERE chain_id = $1::numeric AND id = $2`, repository.chain, snapshotID.Int64,
+	).Scan(&previousEndpoint, &previousObservedAt, &previousExpiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, fmt.Errorf("%w: replacement predecessor snapshot is missing", ErrCorruptData)
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("query replacement predecessor snapshot: %w", err)
+	}
+	if previousEndpoint != endpoint.String || !previousObservedAt.Equal(lastAttempt) {
+		return 0, false, fmt.Errorf("%w: replacement predecessor status differs from its snapshot", ErrCorruptData)
+	}
+	if !previousExpiresAt.After(snapshot.ObservedAt) {
+		return 0, false, nil
+	}
+	return snapshotID.Int64, true, nil
 }
 
 func (repository *Postgres) StoreFailure(ctx context.Context, failure Failure) error {
@@ -280,7 +401,7 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 		}
 		return Page{}, err
 	}
-	rows, err := repository.pendingRows(ctx, tx, snapshotID, boundary, limit+1)
+	rows, err := repository.pendingRows(ctx, tx, snapshot, boundary, limit+1)
 	if err != nil {
 		return Page{}, err
 	}
@@ -315,6 +436,191 @@ func (repository *Postgres) Pending(ctx context.Context, encodedCursor string, l
 		}
 	}
 	return page, nil
+}
+
+func (repository *Postgres) Lookup(ctx context.Context, value string) (Detail, error) {
+	if !repository.enabled {
+		return Detail{}, CapabilityError{State: StateUnavailable, Code: "feature_disabled"}
+	}
+	hash, err := ethrpc.ParseHash(value)
+	if err != nil {
+		return Detail{}, errors.New("invalid mempool transaction hash")
+	}
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return Detail{}, fmt.Errorf("begin mempool detail query: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	status, err := repository.readStatus(ctx, tx)
+	if err != nil {
+		return Detail{}, err
+	}
+
+	var currentCapability *CapabilityError
+	if status.state == StateComplete {
+		snapshot, snapshotErr := repository.readSnapshot(ctx, tx, status.snapshotID)
+		switch {
+		case snapshotErr == nil:
+			transaction, lookupErr := repository.lookupPending(ctx, tx, snapshot, hash.Bytes())
+			if lookupErr == nil {
+				if err := tx.Commit(); err != nil {
+					return Detail{}, fmt.Errorf("commit pending transaction detail query: %w", err)
+				}
+				return Detail{Kind: DetailPending, Transaction: transaction}, nil
+			}
+			if !errors.Is(lookupErr, sql.ErrNoRows) {
+				return Detail{}, lookupErr
+			}
+		case errors.Is(snapshotErr, errSnapshotExpired):
+			currentCapability = &CapabilityError{
+				State: StateUnavailable, Code: "snapshot_expired", LastAttemptAt: status.lastAttemptAt,
+			}
+		case errors.Is(snapshotErr, sql.ErrNoRows):
+			return Detail{}, fmt.Errorf("%w: latest mempool snapshot is missing", ErrCorruptData)
+		default:
+			return Detail{}, snapshotErr
+		}
+	} else {
+		currentCapability = &CapabilityError{
+			State: status.state, Code: status.errorCode, LastAttemptAt: status.lastAttemptAt,
+		}
+	}
+
+	replaced, err := repository.lookupReplaced(ctx, tx, hash.Bytes())
+	if err == nil {
+		if commitErr := tx.Commit(); commitErr != nil {
+			return Detail{}, fmt.Errorf("commit replaced transaction detail query: %w", commitErr)
+		}
+		return replaced, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Detail{}, err
+	}
+	if currentCapability != nil {
+		return Detail{}, *currentCapability
+	}
+	if err := tx.Commit(); err != nil {
+		return Detail{}, fmt.Errorf("commit absent mempool transaction detail query: %w", err)
+	}
+	return Detail{}, ErrNotFound
+}
+
+func (repository *Postgres) lookupPending(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot SnapshotInfo,
+	hash []byte,
+) (Transaction, error) {
+	row := tx.QueryRowContext(ctx, `
+		SELECT
+			pending.tx_hash, pending.from_address, pending.to_address,
+			pending.nonce::text, pending.value::text, pending.gas::text,
+			pending.gas_price::text, pending.max_fee_per_gas::text,
+			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+			pending.input, pending.raw, pending.first_seen_at,
+			pending.last_seen_at, pending.expires_at,
+			predecessor.replaced_hash
+		FROM mempool_snapshot_transactions AS member
+		JOIN mempool_transactions AS pending
+		  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
+		LEFT JOIN LATERAL (
+			SELECT replacement.replaced_hash
+			FROM mempool_transaction_replacements AS replacement
+			JOIN mempool_snapshots AS evidence
+			  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
+			WHERE replacement.chain_id = pending.chain_id
+			  AND replacement.replacement_hash = pending.tx_hash
+			  AND evidence.observed_at <= $4
+			  AND evidence.expires_at > $5
+			ORDER BY evidence.observed_at DESC, evidence.id DESC
+			LIMIT 1
+		) AS predecessor ON TRUE
+		WHERE member.chain_id = $1::numeric
+		  AND member.snapshot_id = $2
+		  AND member.tx_hash = $3`,
+		repository.chain, snapshot.ID, hash, snapshot.ObservedAt, repository.now().UTC(),
+	)
+	return repository.scanPending(row, snapshot)
+}
+
+func (repository *Postgres) lookupReplaced(ctx context.Context, tx *sql.Tx, hash []byte) (Detail, error) {
+	row := tx.QueryRowContext(ctx, `
+		SELECT
+			pending.tx_hash, pending.from_address, pending.to_address,
+			pending.nonce::text, pending.value::text, pending.gas::text,
+			pending.gas_price::text, pending.max_fee_per_gas::text,
+			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
+			pending.input, pending.raw, pending.first_seen_at,
+			pending.last_seen_at, pending.expires_at,
+			predecessor.replaced_hash,
+			replacement.replacement_hash, evidence.observed_at,
+			evidence.expires_at, evidence.endpoint_name
+		FROM mempool_transaction_replacements AS replacement
+		JOIN mempool_snapshots AS evidence
+		  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
+		JOIN mempool_transactions AS pending
+		  ON pending.chain_id = replacement.chain_id AND pending.tx_hash = replacement.replaced_hash
+		LEFT JOIN LATERAL (
+			SELECT earlier.replaced_hash
+			FROM mempool_transaction_replacements AS earlier
+			JOIN mempool_snapshots AS earlier_evidence
+			  ON earlier_evidence.chain_id = earlier.chain_id AND earlier_evidence.id = earlier.snapshot_id
+			WHERE earlier.chain_id = pending.chain_id
+			  AND earlier.replacement_hash = pending.tx_hash
+			  AND earlier_evidence.observed_at <= evidence.observed_at
+			  AND earlier_evidence.expires_at > $3
+			ORDER BY earlier_evidence.observed_at DESC, earlier_evidence.id DESC
+			LIMIT 1
+		) AS predecessor ON TRUE
+		WHERE replacement.chain_id = $1::numeric
+		  AND replacement.replaced_hash = $2
+		  AND evidence.expires_at > $3
+		ORDER BY evidence.observed_at DESC, evidence.id DESC
+		LIMIT 1`, repository.chain, hash, repository.now().UTC())
+
+	var hashBytes, from, to, input, raw, replaces, replacement []byte
+	var nonce, value, gas string
+	var gasPrice, maxFee, priorityFee, txType sql.NullString
+	var firstSeen, lastSeen, storedExpires, replacedAt, evidenceExpires time.Time
+	var endpoint string
+	if err := row.Scan(
+		&hashBytes, &from, &to, &nonce, &value, &gas, &gasPrice, &maxFee,
+		&priorityFee, &txType, &input, &raw, &firstSeen, &lastSeen, &storedExpires,
+		&replaces, &replacement, &replacedAt, &evidenceExpires, &endpoint,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Detail{}, sql.ErrNoRows
+		}
+		return Detail{}, fmt.Errorf("query replaced mempool transaction: %w", err)
+	}
+	if storedExpires.Before(evidenceExpires) {
+		return Detail{}, fmt.Errorf("%w: replaced transaction retention is shorter than its evidence", ErrCorruptData)
+	}
+	transaction, err := repository.decodeStoredTransaction(
+		hashBytes, from, to, input, raw, nonce, value, gas,
+		gasPrice, maxFee, priorityFee, txType,
+		firstSeen.UTC(), lastSeen.UTC(), evidenceExpires.UTC(), SnapshotInfo{
+			Endpoint: endpoint, ObservedAt: lastSeen.UTC(), ExpiresAt: evidenceExpires.UTC(),
+		},
+	)
+	if err != nil {
+		return Detail{}, err
+	}
+	if replaces != nil {
+		value, err := fixedHash(replaces)
+		if err != nil {
+			return Detail{}, err
+		}
+		transaction.ReplacesHash = &value
+	}
+	replacementHash, err := fixedHash(replacement)
+	if err != nil {
+		return Detail{}, err
+	}
+	return Detail{
+		Kind: DetailReplaced, Transaction: transaction,
+		ReplacementHash: replacementHash, ReplacedAt: replacedAt.UTC(),
+	}, nil
 }
 
 type statusRecord struct {
@@ -381,7 +687,7 @@ func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapsh
 	return snapshot, nil
 }
 
-func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapshotID int64, cursor *pendingCursor, limit int) (*sql.Rows, error) {
+func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapshot SnapshotInfo, cursor *pendingCursor, limit int) (*sql.Rows, error) {
 	const selectSQL = `
 		SELECT
 			pending.tx_hash, pending.from_address, pending.to_address,
@@ -389,26 +695,39 @@ func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapsho
 			pending.gas_price::text, pending.max_fee_per_gas::text,
 			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
 			pending.input, pending.raw, pending.first_seen_at,
-			pending.last_seen_at, pending.expires_at
+			pending.last_seen_at, pending.expires_at,
+			predecessor.replaced_hash
 		FROM mempool_snapshot_transactions AS member
 		JOIN mempool_transactions AS pending
 		  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
+		LEFT JOIN LATERAL (
+			SELECT replacement.replaced_hash
+			FROM mempool_transaction_replacements AS replacement
+			JOIN mempool_snapshots AS evidence
+			  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
+			WHERE replacement.chain_id = pending.chain_id
+			  AND replacement.replacement_hash = pending.tx_hash
+			  AND evidence.observed_at <= $3
+			  AND evidence.expires_at > $4
+			ORDER BY evidence.observed_at DESC, evidence.id DESC
+			LIMIT 1
+		) AS predecessor ON TRUE
 		WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2`
 	var rows *sql.Rows
 	var err error
 	if cursor == nil {
 		rows, err = tx.QueryContext(ctx, selectSQL+`
 			ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-			LIMIT $3`, repository.chain, snapshotID, limit)
+			LIMIT $5`, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), limit)
 	} else {
 		hash, parseErr := ethrpc.ParseHash(cursor.BeforeHash)
 		if parseErr != nil {
 			return nil, ErrInvalidCursor
 		}
 		rows, err = tx.QueryContext(ctx, selectSQL+`
-			AND (pending.first_seen_at, pending.tx_hash) < ($3, $4)
+			AND (pending.first_seen_at, pending.tx_hash) < ($5, $6)
 			ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-			LIMIT $5`, repository.chain, snapshotID, cursor.BeforeFirstSeen, hash.Bytes(), limit)
+			LIMIT $7`, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), cursor.BeforeFirstSeen, hash.Bytes(), limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query pending transaction page: %w", err)
@@ -419,13 +738,13 @@ func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapsho
 type rowScanner interface{ Scan(...any) error }
 
 func (repository *Postgres) scanPending(scanner rowScanner, snapshot SnapshotInfo) (Transaction, error) {
-	var hash, from, to, input, raw []byte
+	var hash, from, to, input, raw, replaces []byte
 	var nonce, value, gas string
 	var gasPrice, maxFee, priorityFee, txType sql.NullString
 	var firstSeen, lastSeen, expires time.Time
 	if err := scanner.Scan(
 		&hash, &from, &to, &nonce, &value, &gas, &gasPrice, &maxFee,
-		&priorityFee, &txType, &input, &raw, &firstSeen, &lastSeen, &expires,
+		&priorityFee, &txType, &input, &raw, &firstSeen, &lastSeen, &expires, &replaces,
 	); err != nil {
 		return Transaction{}, fmt.Errorf("scan pending transaction: %w", err)
 	}
@@ -436,6 +755,17 @@ func (repository *Postgres) scanPending(scanner rowScanner, snapshot SnapshotInf
 	)
 	if err != nil {
 		return Transaction{}, err
+	}
+	// The membership is an immutable observation. A later poll may update the
+	// transaction's global last-seen fields, so expose the pinned snapshot time.
+	transaction.LastSeenAt = snapshot.ObservedAt
+	transaction.ExpiresAt = snapshot.ExpiresAt
+	if replaces != nil {
+		replacesHash, err := fixedHash(replaces)
+		if err != nil {
+			return Transaction{}, err
+		}
+		transaction.ReplacesHash = &replacesHash
 	}
 	return transaction, nil
 }
@@ -489,10 +819,8 @@ func (repository *Postgres) decodeStoredTransaction(
 	}
 	normalized.Raw = append(json.RawMessage(nil), raw...)
 	normalized.FirstSeenAt = firstSeen
-	// The membership is an immutable observation. A later poll may update the
-	// transaction's global last-seen fields, so expose the pinned snapshot time.
-	normalized.LastSeenAt = snapshot.ObservedAt
-	normalized.ExpiresAt = snapshot.ExpiresAt
+	normalized.LastSeenAt = lastSeen
+	normalized.ExpiresAt = expires
 	return normalized, nil
 }
 
@@ -535,8 +863,10 @@ func validateSnapshotForStorage(snapshot Snapshot) error {
 		return errors.New("mempool snapshot metadata is invalid")
 	}
 	seen := make(map[string]struct{}, len(snapshot.Transactions))
+	seenSlots := make(map[string]struct{}, len(snapshot.Transactions))
 	for index, transaction := range snapshot.Transactions {
-		if _, err := transactionStorageValues(transaction); err != nil {
+		values, err := transactionStorageValues(transaction)
+		if err != nil {
 			return fmt.Errorf("transaction %d: %w", index, err)
 		}
 		for _, quantity := range []string{transaction.Nonce, transaction.Value, transaction.Gas} {
@@ -557,6 +887,11 @@ func validateSnapshotForStorage(snapshot Snapshot) error {
 			return fmt.Errorf("transaction %d duplicates hash", index)
 		}
 		seen[key] = struct{}{}
+		slot := string(values.from) + "\x00" + transaction.Nonce
+		if _, duplicate := seenSlots[slot]; duplicate {
+			return fmt.Errorf("transaction %d conflicts with another transaction in sender and nonce slot", index)
+		}
+		seenSlots[slot] = struct{}{}
 	}
 	return nil
 }

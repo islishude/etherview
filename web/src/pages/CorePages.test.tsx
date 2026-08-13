@@ -30,6 +30,7 @@ describe("core explorer pages", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -290,6 +291,148 @@ describe("core explorer pages", () => {
     expect(await screen.findByRole("heading", { name: "地址摘要" })).toBeVisible();
     expect(screen.queryByText("委托外部账户", { exact: true })).not.toBeInTheDocument();
     expect(screen.queryByText("delegated_eoa", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("polls a basic mempool detail through pending, replaced, and included states", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T00:00:00Z"));
+    const predecessorHash = `0x${"99".repeat(32)}`;
+    const replacementHash = `0x${"bb".repeat(32)}`;
+    const requested: string[] = [];
+    let detailRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        detailRequests += 1;
+        const observed = mempoolTransaction(transactionHash, {
+          replaces_hash: predecessorHash,
+          expires_at: "2026-08-13T00:00:10Z",
+        });
+        if (detailRequests === 1) {
+          return envelope({ kind: "pending", transaction: observed });
+        }
+        if (detailRequests === 2) {
+          return envelope({
+            kind: "replaced",
+            transaction: observed,
+            replacement_hash: replacementHash,
+            replaced_at: "2026-08-13T00:00:02Z",
+          });
+        }
+        return envelope({
+          kind: "included",
+          transaction: {
+            hash: transactionHash,
+            block_hash: canonicalHash,
+            block_number: "12",
+            transaction_index: 0,
+            from: address,
+            nonce: "7",
+            value: "1000000000000000000",
+            gas: "100000",
+            input: "0x6000",
+            status: "success",
+            canonical: true,
+            finality: "safe",
+            contract_address: delegatedAddress,
+            completeness: completeness(),
+          },
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/token-transfers`) {
+        return envelope({
+          state: "complete",
+          chain_id: "1",
+          block_number: "12",
+          block_hash: canonicalHash,
+          transaction_hash: transactionHash,
+          canonical: true,
+          finality: "safe",
+          items: [],
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(screen.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
+    expect(screen.getByText("Contract creation", { exact: true })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue("0x6000");
+    expect(screen.getByRole("link", { name: predecessorHash })).toHaveAttribute(
+      "href",
+      `/tx/${predecessorHash}?tab=overview`,
+    );
+    expect(document.querySelector('[data-status="pending"] svg.lucide-clock-3')).not.toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Transaction detail sections" })).toBeNull();
+    expect(requested.some((path) => path.startsWith(`/api/v1/transactions/${transactionHash}/`))).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(screen.getByRole("heading", { name: "Transaction replaced" })).toBeVisible();
+    expect(screen.getByRole("link", { name: replacementHash })).toHaveAttribute(
+      "href",
+      `/tx/${replacementHash}?tab=overview`,
+    );
+    expect(document.querySelector('[data-status="replaced"] svg.lucide-arrow-right-left')).not.toBeNull();
+    expect(requested.some((path) => path.startsWith(`/api/v1/transactions/${transactionHash}/`))).toBe(false);
+
+    await act(async () => {
+      await i18n.changeLanguage("zh");
+    });
+    expect(screen.getByRole("heading", { name: "交易已被替换" })).toBeVisible();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(screen.getByRole("tablist", { name: "交易详情分区" })).toBeVisible();
+    expect(document.querySelector('[data-status="success"] svg.lucide-circle-check')).not.toBeNull();
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/token-transfers`);
+    expect(detailRequests).toBe(3);
+  });
+
+  it("hides an expired mempool observation and does not poll beyond its retention", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T00:00:00Z"));
+    let detailRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        detailRequests += 1;
+        return envelope({
+          kind: "pending",
+          transaction: mempoolTransaction(transactionHash, {
+            expires_at: "2026-08-13T00:00:01Z",
+          }),
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByRole("heading", { name: "Pending transaction snapshot is unavailable" })).toBeVisible();
+    expect(screen.getByText("snapshot_expired", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Waiting for confirmation" })).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(detailRequests).toBeLessThanOrEqual(2);
   });
 
   it("deep-links transaction tabs and lazily loads only the selected subresource", async () => {
@@ -1008,7 +1151,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1025,7 +1168,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1169,7 +1312,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1186,7 +1329,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1219,7 +1362,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1236,7 +1379,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1269,7 +1412,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1286,7 +1429,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1319,7 +1462,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1343,7 +1486,7 @@ describe("core explorer pages", () => {
               canonical: true,
               finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1498,7 +1641,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1515,7 +1658,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -1650,7 +1793,7 @@ describe("core explorer pages", () => {
       if (path === "/api/v1/config") return configResponse();
       if (path === `/api/v1/transactions/${transactionHash}`) {
         return Response.json({
-          data: {
+          data: { kind: "included", transaction: {
             hash: transactionHash,
             block_hash: canonicalHash,
             block_number: "12",
@@ -1669,7 +1812,7 @@ describe("core explorer pages", () => {
             canonical: true,
             finality: "safe",
             completeness: completeness(),
-          },
+          } },
           meta,
         });
       }
@@ -2480,11 +2623,45 @@ function completeness() {
   return { core: "complete", trace: "unavailable", metadata: "pending", state: "complete" };
 }
 
+function mempoolTransaction(hash: string, overrides: Record<string, unknown> = {}) {
+  return {
+    hash,
+    from: address,
+    nonce: "7",
+    value: "1000000000000000000",
+    gas: "100000",
+    max_fee_per_gas: "30000000000",
+    max_priority_fee_per_gas: "1000000000",
+    type: "2",
+    input: "0x6000",
+    first_seen_at: "2026-08-13T00:00:00Z",
+    last_seen_at: "2026-08-13T00:00:00Z",
+    expires_at: "2026-08-13T00:00:10Z",
+    endpoint: "pending-primary",
+    ...overrides,
+  };
+}
+
 function envelope(data: unknown, meta: Record<string, unknown> = {}) {
+  const responseData = includedTransactionFixture(data)
+    ? { kind: "included", transaction: data }
+    : data;
   return Response.json({
-    data,
+    data: responseData,
     meta: { request_id: "core-pages-test", chain_id: "1", ...meta },
   });
+}
+
+function includedTransactionFixture(data: unknown): data is Record<string, unknown> {
+  if (!data || Array.isArray(data) || typeof data !== "object") return false;
+  const candidate = data as Record<string, unknown>;
+  return typeof candidate.hash === "string"
+    && typeof candidate.from === "string"
+    && typeof candidate.nonce === "string"
+    && typeof candidate.gas === "string"
+    && typeof candidate.input === "string"
+    && typeof candidate.canonical === "boolean"
+    && typeof candidate.finality === "string";
 }
 
 function notFound() {

@@ -7,6 +7,7 @@ import { usePendingTransactions, usePublicConfig } from "@/api/hooks";
 import type { PendingMeta, PendingTransaction } from "@/api/types";
 import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
+import { TransactionStatus } from "@/components/TransactionStatus";
 import { Page } from "@/pages/pages";
 
 const PAGE_SIZE = 25;
@@ -201,6 +202,7 @@ function PendingTable({
         <thead>
           <tr>
             <th>{t("table.hash")}</th>
+            <th>{t("table.status")}</th>
             <th>{t("table.from")}</th>
             <th>{t("table.to")}</th>
             <th>{t("detail.nonce")}</th>
@@ -213,7 +215,12 @@ function PendingTable({
         <tbody>
           {transactions.map((transaction) => (
             <tr key={transaction.hash}>
-              <td><code title={transaction.hash}>{shorten(transaction.hash)}</code></td>
+              <td>
+                <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
+                  <code title={transaction.hash}>{shorten(transaction.hash)}</code>
+                </Link>
+              </td>
+              <td><TransactionStatus label={t("transactionStatus.pending")} status="pending" /></td>
               <td>
                 <Link to="/address/$address" params={{ address: transaction.from }}>
                   <code title={transaction.from}>{shorten(transaction.from)}</code>

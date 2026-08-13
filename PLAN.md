@@ -83,8 +83,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P40-T13 adds exact-inclusion successful internal ETH transfers plus
   block-correct nullable ERC-20 decimals to transaction and address transfer
   resources. P40-T14 exposes exact-block execution and authenticated receipt
-  Blob base-fee facts on transaction resources.
-- P50 is complete: its core and capability explorer pages, exact
+  Blob base-fee facts on transaction resources. P40-T15 adds strict,
+  endpoint-scoped consecutive-snapshot replacement evidence and one
+  writer-authoritative included/pending/replaced transaction-detail contract,
+  with PostgreSQL and monolith/split production-runtime coverage.
+- P50's established surface is complete: its core and capability explorer pages, exact
   verification-job and published-artifact reads, EIP-6963 wallet discovery,
   session-fenced
   contract calls, and the binary-embedded SPA pass generated-client,
@@ -128,6 +131,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   Blob fee settings across Overview and the Blob tab. P50-T54 classifies
   transaction actions from exact transaction-time direct, delegated, or empty
   execution-code evidence and fails closed while that evidence is unavailable.
+  P50-T55 implements retention-bounded pending/replaced detail previews and a
+  shared iconized transaction-status system, covered by bilingual responsive
+  browser and post-migration monolith/split production-runtime tests.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps

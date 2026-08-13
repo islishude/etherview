@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,12 +16,18 @@ import (
 )
 
 type fakeMempool struct {
-	page mempool.Page
-	err  error
+	page      mempool.Page
+	err       error
+	detail    mempool.Detail
+	lookupErr error
 }
 
 func (reader fakeMempool) Pending(context.Context, string, int) (mempool.Page, error) {
 	return reader.page, reader.err
+}
+
+func (reader fakeMempool) Lookup(context.Context, string) (mempool.Detail, error) {
+	return reader.detail, reader.lookupErr
 }
 
 func mempoolHandler(t *testing.T, reader mempool.Reader, enabled bool) http.Handler {
@@ -101,5 +108,101 @@ func TestPendingCursorAndLimitFailuresAreTyped(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "invalid_") {
 			t.Fatalf("path=%s status=%d body=%s", test.path, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestTransactionDetailDiscriminatesIncludedPendingAndReplaced(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(200, 0).UTC()
+	hash := "0x" + strings.Repeat("11", 32)
+	replacementHash := "0x" + strings.Repeat("22", 32)
+	predecessorHash := "0x" + strings.Repeat("33", 32)
+	pending := mempool.Transaction{
+		Hash: hash, From: "0x0000000000000000000000000000000000000001",
+		Nonce: "7", Value: "9", Gas: "21000", Input: "0x", FirstSeenAt: now,
+		LastSeenAt: now, ExpiresAt: now.Add(time.Minute), Endpoint: "rpc-a",
+		ReplacesHash: &predecessorHash,
+	}
+
+	tests := []struct {
+		name        string
+		reader      fakeReader
+		mempool     mempool.Reader
+		wantKind    string
+		wantSuccess string
+	}{
+		{
+			name: "included takes precedence", reader: fakeReader{transaction: gen.Transaction{Hash: hash}},
+			mempool:  fakeMempool{lookupErr: errors.New("mempool lookup must not run")},
+			wantKind: "included", wantSuccess: hash,
+		},
+		{
+			name: "pending", reader: fakeReader{err: ErrNotFound},
+			mempool:  fakeMempool{detail: mempool.Detail{Kind: mempool.DetailPending, Transaction: pending}},
+			wantKind: "pending", wantSuccess: predecessorHash,
+		},
+		{
+			name: "replaced", reader: fakeReader{err: ErrNotFound},
+			mempool: fakeMempool{detail: mempool.Detail{
+				Kind: mempool.DetailReplaced, Transaction: pending,
+				ReplacementHash: replacementHash, ReplacedAt: now.Add(time.Second),
+			}},
+			wantKind: "replaced", wantSuccess: replacementHash,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := config.Default()
+			cfg.Chain.ID = 1
+			cfg.Features.Mempool = true
+			handler, err := New(Options{
+				Config: cfg, Reader: test.reader, TransactionReader: test.reader, Mempool: test.mempool,
+				RequestID: func() string { return "detail-request" },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/transactions/"+hash, nil))
+			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"kind":"`+test.wantKind+`"`) ||
+				!strings.Contains(recorder.Body.String(), test.wantSuccess) {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestTransactionDetailPreservesNotFoundAndMempoolUnavailableSemantics(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("44", 32)
+	for _, test := range []struct {
+		name       string
+		enabled    bool
+		mempool    mempool.Reader
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "disabled", enabled: false, mempool: fakeMempool{}, wantStatus: http.StatusNotFound, wantCode: "not_found"},
+		{name: "fresh absence", enabled: true, mempool: fakeMempool{lookupErr: mempool.ErrNotFound}, wantStatus: http.StatusNotFound, wantCode: "not_found"},
+		{name: "failed observation", enabled: true, mempool: fakeMempool{lookupErr: mempool.CapabilityError{State: mempool.StateFailed, Code: "rpc_request_failed"}}, wantStatus: http.StatusServiceUnavailable, wantCode: "mempool_unavailable"},
+		{name: "missing reader", enabled: true, mempool: nil, wantStatus: http.StatusServiceUnavailable, wantCode: "mempool_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := config.Default()
+			cfg.Chain.ID = 1
+			cfg.Features.Mempool = test.enabled
+			reader := fakeReader{err: ErrNotFound}
+			handler, err := New(Options{Config: cfg, Reader: reader, TransactionReader: reader, Mempool: test.mempool})
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/transactions/"+hash, nil))
+			if recorder.Code != test.wantStatus || !strings.Contains(recorder.Body.String(), `"code":"`+test.wantCode+`"`) {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
