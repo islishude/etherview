@@ -17,7 +17,14 @@ import (
 
 func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testing.T) {
 	t.Parallel()
-	if !slices.Contains(derivedCanonicalRelations[:], "uups_implementation_observations") {
+	for _, relation := range []string{
+		"uups_implementation_observations",
+		"diamond_loupe_snapshots",
+		"diamond_cut_events",
+	} {
+		if slices.Contains(derivedCanonicalRelations[:], relation) {
+			continue
+		}
 		t.Fatalf("derived canonical relations=%v", derivedCanonicalRelations)
 	}
 }

@@ -12,6 +12,8 @@ export type ContractProxyUpgradeHistory =
   components["schemas"]["ProxyUpgradeHistory"];
 export type ContractProxyInitializationHistory =
   components["schemas"]["ProxyInitializationHistory"];
+export type ContractDiamondCutHistory =
+  components["schemas"]["DiamondCutHistory"];
 export type ContractProxyManagementKind =
   components["schemas"]["ProxyManagementKind"];
 
@@ -46,6 +48,11 @@ export type ContractProxyInitializationPage =
     meta: ApiMeta;
     next_cursor?: string;
   };
+
+export type ContractDiamondCutPage = ContractDiamondCutHistory & {
+  meta: ApiMeta;
+  next_cursor?: string;
+};
 
 export type ProxyReadIssueState =
   | "not_found"
@@ -145,6 +152,23 @@ export async function listContractProxyInitializations(
   };
 }
 
+export async function listContractDiamondCuts(
+  address: string,
+  cursor?: string,
+  limit = DEFAULT_PROXY_HISTORY_LIMIT,
+): Promise<ContractDiamondCutPage> {
+  const response = requireEnvelope(
+    await apiClient.GET("/contracts/{address}/proxy/diamond-cuts", {
+      params: { path: { address }, query: { cursor, limit } },
+    }),
+  );
+  return {
+    ...response.data,
+    meta: response.meta,
+    next_cursor: response.meta.next_cursor,
+  };
+}
+
 export function useVerifiedContractArtifact(
   address: string,
   enabled = true,
@@ -220,6 +244,21 @@ export function useContractProxyInitializations(
       cursor ?? null,
     ],
     queryFn: () => listContractProxyInitializations(address, cursor, limit),
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+export function useContractDiamondCuts(
+  address: string,
+  cursor?: string,
+  limit = DEFAULT_PROXY_HISTORY_LIMIT,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["contract-proxy", address, "diamond-cuts", limit, cursor ?? null],
+    queryFn: () => listContractDiamondCuts(address, cursor, limit),
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 0,

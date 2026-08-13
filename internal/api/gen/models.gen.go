@@ -16,6 +16,7 @@ import (
 const (
 	ABISourceKindBuiltin             ABISourceKind = "builtin"
 	ABISourceKindCodeHash            ABISourceKind = "code_hash"
+	ABISourceKindDiamondFacet        ABISourceKind = "diamond_facet"
 	ABISourceKindExactAddress        ABISourceKind = "exact_address"
 	ABISourceKindProxyImplementation ABISourceKind = "proxy_implementation"
 	ABISourceKindSignatureDatabase   ABISourceKind = "signature_database"
@@ -27,6 +28,8 @@ func (e ABISourceKind) Valid() bool {
 	case ABISourceKindBuiltin:
 		return true
 	case ABISourceKindCodeHash:
+		return true
+	case ABISourceKindDiamondFacet:
 		return true
 	case ABISourceKindExactAddress:
 		return true
@@ -468,6 +471,90 @@ func (e DelegationHistoryItemKind) Valid() bool {
 	}
 }
 
+// Defines values for DiamondCompleteness.
+const (
+	DiamondCompletenessComplete DiamondCompleteness = "complete"
+	DiamondCompletenessPartial  DiamondCompleteness = "partial"
+	DiamondCompletenessUnknown  DiamondCompleteness = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the DiamondCompleteness enum.
+func (e DiamondCompleteness) Valid() bool {
+	switch e {
+	case DiamondCompletenessComplete:
+		return true
+	case DiamondCompletenessPartial:
+		return true
+	case DiamondCompletenessUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiamondCutPresence.
+const (
+	DiamondCutPresenceAbsent  DiamondCutPresence = "absent"
+	DiamondCutPresencePresent DiamondCutPresence = "present"
+	DiamondCutPresenceUnknown DiamondCutPresence = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the DiamondCutPresence enum.
+func (e DiamondCutPresence) Valid() bool {
+	switch e {
+	case DiamondCutPresenceAbsent:
+		return true
+	case DiamondCutPresencePresent:
+		return true
+	case DiamondCutPresenceUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiamondFacetCutAction.
+const (
+	DiamondFacetCutActionAdd     DiamondFacetCutAction = "add"
+	DiamondFacetCutActionRemove  DiamondFacetCutAction = "remove"
+	DiamondFacetCutActionReplace DiamondFacetCutAction = "replace"
+)
+
+// Valid indicates whether the value is a known member of the DiamondFacetCutAction enum.
+func (e DiamondFacetCutAction) Valid() bool {
+	switch e {
+	case DiamondFacetCutActionAdd:
+		return true
+	case DiamondFacetCutActionRemove:
+		return true
+	case DiamondFacetCutActionReplace:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiamondValidation.
+const (
+	DiamondValidationFull          DiamondValidation = "full"
+	DiamondValidationInterfaceOnly DiamondValidation = "interface-only"
+	DiamondValidationSampled       DiamondValidation = "sampled"
+)
+
+// Valid indicates whether the value is a known member of the DiamondValidation enum.
+func (e DiamondValidation) Valid() bool {
+	switch e {
+	case DiamondValidationFull:
+		return true
+	case DiamondValidationInterfaceOnly:
+		return true
+	case DiamondValidationSampled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EIP7702AuthorizationApplicationStatus.
 const (
 	EIP7702AuthorizationApplicationStatusApplied     EIP7702AuthorizationApplicationStatus = "applied"
@@ -751,11 +838,16 @@ func (e ProxyDetectionV2Confidence) Valid() bool {
 const (
 	ContractCall       ProxyDetectionV2EvidenceKind = "contract-call"
 	DeploymentRegistry ProxyDetectionV2EvidenceKind = "deployment-registry"
+	DiamondCutEvent    ProxyDetectionV2EvidenceKind = "diamond-cut-event"
+	Erc165             ProxyDetectionV2EvidenceKind = "erc165"
 	ExecutionTrace     ProxyDetectionV2EvidenceKind = "execution-trace"
+	FacetCode          ProxyDetectionV2EvidenceKind = "facet-code"
 	FactoryLog         ProxyDetectionV2EvidenceKind = "factory-log"
+	LoupeCall          ProxyDetectionV2EvidenceKind = "loupe-call"
 	RuntimeBytecode    ProxyDetectionV2EvidenceKind = "runtime-bytecode"
 	RuntimeCodeHash    ProxyDetectionV2EvidenceKind = "runtime-code-hash"
 	StorageSlot        ProxyDetectionV2EvidenceKind = "storage-slot"
+	VerifiedSource     ProxyDetectionV2EvidenceKind = "verified-source"
 )
 
 // Valid indicates whether the value is a known member of the ProxyDetectionV2EvidenceKind enum.
@@ -765,15 +857,25 @@ func (e ProxyDetectionV2EvidenceKind) Valid() bool {
 		return true
 	case DeploymentRegistry:
 		return true
+	case DiamondCutEvent:
+		return true
+	case Erc165:
+		return true
 	case ExecutionTrace:
 		return true
+	case FacetCode:
+		return true
 	case FactoryLog:
+		return true
+	case LoupeCall:
 		return true
 	case RuntimeBytecode:
 		return true
 	case RuntimeCodeHash:
 		return true
 	case StorageSlot:
+		return true
+	case VerifiedSource:
 		return true
 	default:
 		return false
@@ -785,6 +887,7 @@ const (
 	ProxyDetectionV2FamilyCustom  ProxyDetectionV2Family = "custom"
 	ProxyDetectionV2FamilyErc1167 ProxyDetectionV2Family = "erc1167"
 	ProxyDetectionV2FamilyErc1967 ProxyDetectionV2Family = "erc1967"
+	ProxyDetectionV2FamilyErc2535 ProxyDetectionV2Family = "erc2535"
 	ProxyDetectionV2FamilySafe    ProxyDetectionV2Family = "safe"
 )
 
@@ -796,6 +899,8 @@ func (e ProxyDetectionV2Family) Valid() bool {
 	case ProxyDetectionV2FamilyErc1167:
 		return true
 	case ProxyDetectionV2FamilyErc1967:
+		return true
+	case ProxyDetectionV2FamilyErc2535:
 		return true
 	case ProxyDetectionV2FamilySafe:
 		return true
@@ -1038,6 +1143,33 @@ func (e ProxyPattern) Valid() bool {
 	case ProxyPatternUnknown:
 		return true
 	case ProxyPatternUups:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProxyTargetRole.
+const (
+	ProxyTargetRoleBeacon         ProxyTargetRole = "beacon"
+	ProxyTargetRoleFacet          ProxyTargetRole = "facet"
+	ProxyTargetRoleImmutable      ProxyTargetRole = "immutable"
+	ProxyTargetRoleImplementation ProxyTargetRole = "implementation"
+	ProxyTargetRoleSingleton      ProxyTargetRole = "singleton"
+)
+
+// Valid indicates whether the value is a known member of the ProxyTargetRole enum.
+func (e ProxyTargetRole) Valid() bool {
+	switch e {
+	case ProxyTargetRoleBeacon:
+		return true
+	case ProxyTargetRoleFacet:
+		return true
+	case ProxyTargetRoleImmutable:
+		return true
+	case ProxyTargetRoleImplementation:
+		return true
+	case ProxyTargetRoleSingleton:
 		return true
 	default:
 		return false
@@ -1946,22 +2078,22 @@ func (e VerificationSuccessKind) Valid() bool {
 
 // Defines values for VerificationTransformationReason.
 const (
-	CborAuxdata          VerificationTransformationReason = "cborAuxdata"
-	ConstructorArguments VerificationTransformationReason = "constructorArguments"
-	Immutable            VerificationTransformationReason = "immutable"
-	Library              VerificationTransformationReason = "library"
+	VerificationTransformationReasonCborAuxdata          VerificationTransformationReason = "cborAuxdata"
+	VerificationTransformationReasonConstructorArguments VerificationTransformationReason = "constructorArguments"
+	VerificationTransformationReasonImmutable            VerificationTransformationReason = "immutable"
+	VerificationTransformationReasonLibrary              VerificationTransformationReason = "library"
 )
 
 // Valid indicates whether the value is a known member of the VerificationTransformationReason enum.
 func (e VerificationTransformationReason) Valid() bool {
 	switch e {
-	case CborAuxdata:
+	case VerificationTransformationReasonCborAuxdata:
 		return true
-	case ConstructorArguments:
+	case VerificationTransformationReasonConstructorArguments:
 		return true
-	case Immutable:
+	case VerificationTransformationReasonImmutable:
 		return true
-	case Library:
+	case VerificationTransformationReasonLibrary:
 		return true
 	default:
 		return false
@@ -1970,16 +2102,16 @@ func (e VerificationTransformationReason) Valid() bool {
 
 // Defines values for VerificationTransformationType.
 const (
-	Insert  VerificationTransformationType = "insert"
-	Replace VerificationTransformationType = "replace"
+	VerificationTransformationTypeInsert  VerificationTransformationType = "insert"
+	VerificationTransformationTypeReplace VerificationTransformationType = "replace"
 )
 
 // Valid indicates whether the value is a known member of the VerificationTransformationType enum.
 func (e VerificationTransformationType) Valid() bool {
 	switch e {
-	case Insert:
+	case VerificationTransformationTypeInsert:
 		return true
-	case Replace:
+	case VerificationTransformationTypeReplace:
 		return true
 	default:
 		return false
@@ -2875,6 +3007,88 @@ type DelegationHistoryResponse struct {
 	Meta Meta                    `json:"meta"`
 }
 
+// DiamondCompleteness defines model for DiamondCompleteness.
+type DiamondCompleteness string
+
+// DiamondCut defines model for DiamondCut.
+type DiamondCut struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity          `json:"block_number"`
+	BlockTimestamp time.Time         `json:"block_timestamp"`
+	Cuts           []DiamondFacetCut `json:"cuts"`
+
+	// InitAddress A 20-byte address; responses use the EIP-55 checksum form.
+	InitAddress  Address `json:"init_address"`
+	InitCalldata string  `json:"init_calldata"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity `json:"log_index"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// DiamondCutHistory defines model for DiamondCutHistory.
+type DiamondCutHistory struct {
+	Coverage ProxyHistoryCoverage `json:"coverage"`
+
+	// DiamondAddress A 20-byte address; responses use the EIP-55 checksum form.
+	DiamondAddress Address         `json:"diamond_address"`
+	Items          []DiamondCut    `json:"items"`
+	Snapshot       CatalogSnapshot `json:"snapshot"`
+}
+
+// DiamondCutHistoryResponse defines model for DiamondCutHistoryResponse.
+type DiamondCutHistoryResponse struct {
+	Data DiamondCutHistory `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// DiamondCutPresence defines model for DiamondCutPresence.
+type DiamondCutPresence string
+
+// DiamondDetection defines model for DiamondDetection.
+type DiamondDetection struct {
+	Completeness            DiamondCompleteness `json:"completeness"`
+	Facets                  []ProxyTarget       `json:"facets"`
+	ImplementationAddresses []Address           `json:"implementation_addresses"`
+	LoupeInterfaceReported  *bool               `json:"loupe_interface_reported,omitempty"`
+	SelectorToFacet         map[string]Address  `json:"selector_to_facet"`
+	StandardDiamondCut      DiamondStandardCut  `json:"standard_diamond_cut"`
+	Truncated               bool                `json:"truncated"`
+	TruncationReason        *string             `json:"truncation_reason,omitempty"`
+	Validation              DiamondValidation   `json:"validation"`
+}
+
+// DiamondFacetCut defines model for DiamondFacetCut.
+type DiamondFacetCut struct {
+	Action   DiamondFacetCutAction `json:"action"`
+	CutIndex int                   `json:"cut_index"`
+
+	// FacetAddress A 20-byte address; responses use the EIP-55 checksum form.
+	FacetAddress Address            `json:"facet_address"`
+	Selectors    []FunctionSelector `json:"selectors"`
+}
+
+// DiamondFacetCutAction defines model for DiamondFacetCutAction.
+type DiamondFacetCutAction string
+
+// DiamondStandardCut defines model for DiamondStandardCut.
+type DiamondStandardCut struct {
+	// Facet A 20-byte address; responses use the EIP-55 checksum form.
+	Facet  *Address           `json:"facet,omitempty"`
+	Status DiamondCutPresence `json:"status"`
+}
+
+// DiamondValidation defines model for DiamondValidation.
+type DiamondValidation string
+
 // EIP7702Authorization defines model for EIP7702Authorization.
 type EIP7702Authorization struct {
 	ApplicationStatus EIP7702AuthorizationApplicationStatus `json:"application_status"`
@@ -2947,6 +3161,9 @@ type ErrorResponse struct {
 
 // Finality defines model for Finality.
 type Finality string
+
+// FunctionSelector defines model for FunctionSelector.
+type FunctionSelector = string
 
 // GenesisAccount defines model for GenesisAccount.
 type GenesisAccount struct {
@@ -3216,12 +3433,15 @@ type ProxyDetails struct {
 	Beacon  *ProxyContractIdentity `json:"beacon,omitempty"`
 
 	// BindingId Opaque current interaction-binding identity. Clients must compare it immediately before implementation-as-proxy or management writes.
-	BindingId                 *openapi_types.UUID             `json:"binding_id,omitempty"`
-	Confidence                *ProxyConfidence                `json:"confidence,omitempty"`
-	Evidence                  []ProxyRecognitionEvidence      `json:"evidence"`
-	EvidenceState             *ProxyEvidenceState             `json:"evidence_state,omitempty"`
-	ImmutableArgs             *string                         `json:"immutable_args,omitempty"`
-	Implementation            *ProxyContractIdentity          `json:"implementation,omitempty"`
+	BindingId      *openapi_types.UUID        `json:"binding_id,omitempty"`
+	Confidence     *ProxyConfidence           `json:"confidence,omitempty"`
+	Evidence       []ProxyRecognitionEvidence `json:"evidence"`
+	EvidenceState  *ProxyEvidenceState        `json:"evidence_state,omitempty"`
+	ImmutableArgs  *string                    `json:"immutable_args,omitempty"`
+	Implementation *ProxyContractIdentity     `json:"implementation,omitempty"`
+
+	// ImplementationAddresses Unordered distinct external Diamond facet addresses. This compatibility field excludes immutable functions implemented by the Diamond itself and is absent for singular proxies.
+	ImplementationAddresses   *[]Address                      `json:"implementation_addresses,omitempty"`
 	ImplementationInteraction *ProxyImplementationInteraction `json:"implementation_interaction,omitempty"`
 	Management                *ProxyManagement                `json:"management,omitempty"`
 	Mechanism                 *ProxyMechanism                 `json:"mechanism,omitempty"`
@@ -3298,6 +3518,7 @@ type ProxyDetectionV2Outcome struct {
 	Confidence      ProxyDetectionV2Confidence `json:"confidence"`
 	Detector        string                     `json:"detector"`
 	DetectorVersion string                     `json:"detector_version"`
+	Diamond         *DiamondDetection          `json:"diamond,omitempty"`
 	Evidence        []ProxyDetectionV2Evidence `json:"evidence"`
 	Family          *ProxyDetectionV2Family    `json:"family,omitempty"`
 
@@ -3318,6 +3539,7 @@ type ProxyDetectionV2Outcome struct {
 	SingletonDeploymentType *string                `json:"singleton_deployment_type,omitempty"`
 	SingletonVersion        *string                `json:"singleton_version,omitempty"`
 	Status                  ProxyDetectionV2Status `json:"status"`
+	Targets                 []ProxyTarget          `json:"targets"`
 	Variant                 *string                `json:"variant,omitempty"`
 	Warnings                []string               `json:"warnings"`
 }
@@ -3444,6 +3666,21 @@ type ProxyRecognitionEvidence struct {
 	Source   ProxyEvidenceSource  `json:"source"`
 	Subject  ProxyEvidenceSubject `json:"subject"`
 }
+
+// ProxyTarget defines model for ProxyTarget.
+type ProxyTarget struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address    Address `json:"address"`
+	CodeExists bool    `json:"code_exists"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash  *Hash              `json:"code_hash,omitempty"`
+	Role      ProxyTargetRole    `json:"role"`
+	Selectors []FunctionSelector `json:"selectors"`
+}
+
+// ProxyTargetRole defines model for ProxyTargetRole.
+type ProxyTargetRole string
 
 // ProxyUpgrade defines model for ProxyUpgrade.
 type ProxyUpgrade struct {
@@ -4761,6 +4998,12 @@ type ListBlockTransactionsParams struct {
 
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// ListContractDiamondCutsParams defines parameters for ListContractDiamondCuts.
+type ListContractDiamondCutsParams struct {
+	Cursor *Cursor            `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *ProxyHistoryLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListContractProxyInitializationsParams defines parameters for ListContractProxyInitializations.

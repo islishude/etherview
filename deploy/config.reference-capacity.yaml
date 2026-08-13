@@ -59,6 +59,7 @@ features:
   x402_billing: false
   proxy_detection_v2: false
   safe_proxy_detection: false
+  diamond_proxy_detection: false
   proxy_detection_v2_public: false
 
 security:

@@ -66,6 +66,12 @@ type hardhatDeployment struct {
 		ImmutableArgs     string `json:"immutableArgs"`
 		ImmutableArgsData string `json:"immutableArgsData"`
 	} `json:"clones"`
+	Diamond struct {
+		Address string   `json:"address"`
+		Facets  []string `json:"facets"`
+		Value   string   `json:"value"`
+		Doubled string   `json:"doubled"`
+	} `json:"diamond"`
 	InitializationData struct {
 		Transparent  string `json:"transparent"`
 		UUPS         string `json:"uups"`
@@ -123,6 +129,11 @@ type hardhatProxySnapshot struct {
 	ExecutorProvenance bool
 	YulProvenance      bool
 	CompilerProvenance bool
+	DiamondState       string
+	DiamondFacets      int64
+	DiamondSelectors   int64
+	DiamondCuts        int64
+	DiamondSingular    int64
 }
 
 type hardhatCompilerCacheFile struct {
@@ -304,6 +315,7 @@ func runHardhat3Mode(
 		"cloneFactory":            deployment.Clones.Factory,
 		"standardClone":           deployment.Clones.Standard,
 		"immutableArgumentsClone": deployment.Clones.ImmutableArgs,
+		"diamond":                 deployment.Diamond.Address,
 	} {
 		if !common.IsHexAddress(address) {
 			t.Fatalf("%s deployment address = %q", name, address)
@@ -317,6 +329,15 @@ func runHardhat3Mode(
 			t.Fatalf("Beacon proxy %d address = %q", index, address)
 		}
 	}
+	if len(deployment.Diamond.Facets) != 2 || deployment.Diamond.Value != "2535" ||
+		deployment.Diamond.Doubled != "42" {
+		t.Fatalf("Diamond deployment = %#v", deployment.Diamond)
+	}
+	for index, address := range deployment.Diamond.Facets {
+		if !common.IsHexAddress(address) {
+			t.Fatalf("Diamond facet %d address = %q", index, address)
+		}
+	}
 	if !strings.EqualFold(deployment.Proxy, deployment.UUPS.Proxy) ||
 		!strings.HasPrefix(deployment.InitializationData.UUPS, "0x") ||
 		!strings.HasPrefix(deployment.Clones.ImmutableArgsData, "0x") {
@@ -326,6 +347,7 @@ func runHardhat3Mode(
 		"implementationV1", "implementationV2", "badUUID", "transparent", "uups",
 		"beacon", "beaconProxyA", "beaconProxyB", "cloneFactory", "standardClone",
 		"standardCloneInitialization", "immutableArgsClone", "immutableArgsCloneInitialization",
+		"diamondValueFacet", "diamondMathFacet", "diamond", "diamondSetValue",
 	} {
 		transaction, exists := deployment.Transactions[name]
 		if !exists || len(transaction.Hash) != 66 || transaction.Status != "0x1" {
@@ -340,6 +362,7 @@ func runHardhat3Mode(
 	}
 	waitHardhatProxyObservation(t, ctx, h, deployment.Clones.Standard, deployment.Implementation)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Clones.ImmutableArgs, deployment.Implementation)
+	waitHardhatDiamond(t, ctx, h, deployment)
 	waitHardhatClone(t, ctx, h, deployment.Clones.Standard, deployment.Implementation, "0x")
 	waitHardhatClone(t, ctx, h, deployment.Clones.ImmutableArgs,
 		deployment.Implementation, deployment.Clones.ImmutableArgsData)
@@ -529,7 +552,7 @@ func runHardhat3Mode(
 	assertHardhatClonesHaveNoUpgrades(t, ctx, h,
 		deployment.Clones.Standard, deployment.Clones.ImmutableArgs)
 
-	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy)
+	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy, deployment.Diamond.Address)
 	h.writeJSONArtifact(mode+"-proxy-summary.json", snapshot)
 	return snapshot
 }
@@ -1123,6 +1146,107 @@ func waitHardhatProxyObservation(
 			LIMIT 1`, common.HexToAddress(proxy).Bytes()).Scan(&got)
 		return err == nil && strings.EqualFold(got, implementation), got, err
 	})
+}
+
+func waitHardhatDiamond(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	deployment hardhatDeployment,
+) {
+	t.Helper()
+	diamond := common.HexToAddress(deployment.Diamond.Address)
+	waitFor(t, ctx, "published ERC-2535 Diamond "+deployment.Diamond.Address, func() (bool, string, error) {
+		var state, completeness, validation, standardCut string
+		var facets, selectors, cuts, singular int64
+		err := h.db.QueryRow(ctx, `
+			WITH latest AS (
+			    SELECT snapshot.id, snapshot.detection_state,
+			           snapshot.completeness, snapshot.validation,
+			           snapshot.standard_diamond_cut
+			    FROM published_diamond_loupe_snapshots AS snapshot
+			    JOIN canonical_blocks AS canonical
+			      ON canonical.chain_id = snapshot.chain_id
+			     AND canonical.number = snapshot.block_number
+			     AND canonical.block_hash = snapshot.block_hash
+			    WHERE snapshot.chain_id = 1
+			      AND snapshot.diamond_address = $1
+			      AND snapshot.canonical
+			    ORDER BY snapshot.block_number DESC, snapshot.id DESC
+			    LIMIT 1
+			)
+			SELECT
+			  COALESCE((SELECT detection_state FROM latest), ''),
+			  COALESCE((SELECT completeness FROM latest), ''),
+			  COALESCE((SELECT validation FROM latest), ''),
+			  COALESCE((SELECT standard_diamond_cut FROM latest), ''),
+			  (SELECT count(*) FROM diamond_loupe_facets
+			   WHERE snapshot_id IN (SELECT id FROM latest)),
+			  (SELECT count(*) FROM diamond_loupe_selectors
+			   WHERE snapshot_id IN (SELECT id FROM latest)),
+			  (SELECT count(*) FROM diamond_cut_events AS event
+			   JOIN canonical_blocks AS canonical
+			     ON canonical.chain_id = event.chain_id
+			    AND canonical.number = event.block_number
+			    AND canonical.block_hash = event.block_hash
+			   WHERE event.chain_id = 1 AND event.diamond_address = $1
+			     AND event.canonical),
+			  (SELECT count(*) FROM proxy_observations
+			   WHERE chain_id = 1 AND proxy_address = $1)`, diamond.Bytes()).Scan(
+			&state, &completeness, &validation, &standardCut,
+			&facets, &selectors, &cuts, &singular,
+		)
+		diagnostic := fmt.Sprintf(
+			"%s/%s/%s/%s facets=%d selectors=%d cuts=%d singular=%d",
+			state, completeness, validation, standardCut,
+			facets, selectors, cuts, singular,
+		)
+		return err == nil && state == "confirmed" && completeness == "complete" &&
+			validation == "full" && standardCut == "absent" && facets == 3 &&
+			selectors == 8 && cuts == 1 && singular == 0, diagnostic, err
+	})
+
+	var detail gen.ProxyDetailsResponse
+	path := hardhatContractAPIPath(deployment.Diamond.Address, "/proxy", nil)
+	if err := h.getJSON(ctx, path, &detail); err != nil {
+		t.Fatalf("read Diamond proxy detail: %v", err)
+	}
+	if detail.Data.Status != gen.ProxyDetailStatusDetectedUnverified ||
+		detail.Data.Implementation != nil || detail.Data.ImplementationAddresses == nil ||
+		len(*detail.Data.ImplementationAddresses) != 2 || detail.Data.ProxyDetectionV2 == nil ||
+		detail.Data.ProxyDetectionV2.Primary == nil ||
+		detail.Data.ProxyDetectionV2.Primary.Family == nil ||
+		*detail.Data.ProxyDetectionV2.Primary.Family != gen.ProxyDetectionV2FamilyErc2535 ||
+		detail.Data.ProxyDetectionV2.Primary.Diamond == nil ||
+		len(detail.Data.ProxyDetectionV2.Primary.Diamond.Facets) != 3 ||
+		len(detail.Data.ProxyDetectionV2.Primary.Diamond.SelectorToFacet) != 8 ||
+		detail.Data.ProxyDetectionV2.Primary.Diamond.StandardDiamondCut.Status != gen.DiamondCutPresenceAbsent {
+		t.Fatalf("public Diamond proxy detail = %#v", detail)
+	}
+	wantFacets := make(map[common.Address]bool, len(deployment.Diamond.Facets))
+	for _, address := range deployment.Diamond.Facets {
+		wantFacets[common.HexToAddress(address)] = true
+	}
+	for _, address := range *detail.Data.ImplementationAddresses {
+		if !wantFacets[common.HexToAddress(string(address))] {
+			t.Fatalf("public Diamond implementation address %s not in %#v", address, deployment.Diamond.Facets)
+		}
+	}
+
+	var history gen.DiamondCutHistoryResponse
+	h.mustGetJSON(ctx, hardhatContractAPIPath(
+		deployment.Diamond.Address, "/proxy/diamond-cuts", url.Values{"limit": {"10"}},
+	), &history)
+	if !strings.EqualFold(string(history.Data.DiamondAddress), deployment.Diamond.Address) ||
+		len(history.Data.Items) != 1 || len(history.Data.Items[0].Cuts) != 3 ||
+		common.HexToAddress(string(history.Data.Items[0].InitAddress)) != (common.Address{}) {
+		t.Fatalf("public DiamondCut history = %#v", history)
+	}
+	for _, cut := range history.Data.Items[0].Cuts {
+		if cut.Action != gen.DiamondFacetCutActionAdd {
+			t.Fatalf("constructor DiamondCut action = %#v", cut)
+		}
+	}
 }
 
 func waitHardhatVerifiedProxyBinding(
@@ -2145,7 +2269,7 @@ func captureHardhatProxySnapshot(
 	t *testing.T,
 	ctx context.Context,
 	h *harness,
-	proxy string,
+	proxy, diamond string,
 ) hardhatProxySnapshot {
 	t.Helper()
 	var result hardhatProxySnapshot
@@ -2215,11 +2339,46 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.db.QueryRow(ctx, `
+		WITH latest AS (
+		    SELECT snapshot.id, snapshot.detection_state
+		    FROM published_diamond_loupe_snapshots AS snapshot
+		    JOIN canonical_blocks AS canonical
+		      ON canonical.chain_id = snapshot.chain_id
+		     AND canonical.number = snapshot.block_number
+		     AND canonical.block_hash = snapshot.block_hash
+		    WHERE snapshot.chain_id = 1
+		      AND snapshot.diamond_address = $1
+		      AND snapshot.canonical
+		    ORDER BY snapshot.block_number DESC, snapshot.id DESC
+		    LIMIT 1
+		)
+		SELECT
+		  COALESCE((SELECT detection_state FROM latest), ''),
+		  (SELECT count(*) FROM diamond_loupe_facets
+		   WHERE snapshot_id IN (SELECT id FROM latest)),
+		  (SELECT count(*) FROM diamond_loupe_selectors
+		   WHERE snapshot_id IN (SELECT id FROM latest)),
+		  (SELECT count(*) FROM diamond_cut_events
+		   WHERE chain_id = 1 AND diamond_address = $1 AND canonical),
+		  (SELECT count(*) FROM proxy_observations
+		   WHERE chain_id = 1 AND proxy_address = $1)`,
+		common.HexToAddress(diamond).Bytes(),
+	).Scan(
+		&result.DiamondState, &result.DiamondFacets,
+		&result.DiamondSelectors, &result.DiamondCuts,
+		&result.DiamondSingular,
+	); err != nil {
+		t.Fatal(err)
+	}
 	if result.AddressJobs != 8 || result.ProxyJobs != 10 ||
 		result.CompilerResults != 9 || result.ProxyResults != 10 ||
 		result.ProxyBindings != 10 || result.CatalogEntries == 0 ||
 		!result.ExecutorProvenance || !result.CompilerProvenance ||
-		result.CurrentProxyKind != "eip1967" {
+		result.CurrentProxyKind != "eip1967" ||
+		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||
+		result.DiamondSelectors != 8 || result.DiamondCuts != 1 ||
+		result.DiamondSingular != 0 {
 		t.Fatalf("incomplete Hardhat/proxy persistence: %#v", result)
 	}
 	return result

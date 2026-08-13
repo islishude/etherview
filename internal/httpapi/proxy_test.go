@@ -16,6 +16,7 @@ type proxyReaderStub struct {
 	detail          gen.ProxyDetails
 	upgrades        gen.ProxyUpgradeHistory
 	initializations gen.ProxyInitializationHistory
+	diamondCuts     gen.DiamondCutHistory
 	next            string
 	err             error
 	address         string
@@ -46,6 +47,15 @@ func (reader *proxyReaderStub) ProxyInitializations(
 	return reader.initializations, reader.next, reader.err
 }
 
+func (reader *proxyReaderStub) DiamondCuts(
+	_ context.Context,
+	address, cursor string,
+	limit int,
+) (gen.DiamondCutHistory, string, error) {
+	reader.address, reader.cursor, reader.limit = address, cursor, limit
+	return reader.diamondCuts, reader.next, reader.err
+}
+
 func TestProxyRoutesAreAnonymousSnapshotBoundReads(t *testing.T) {
 	t.Parallel()
 	const address = "0x1111111111111111111111111111111111111111"
@@ -67,6 +77,11 @@ func TestProxyRoutesAreAnonymousSnapshotBoundReads(t *testing.T) {
 			ContractAddress: address, Snapshot: snapshot,
 			Coverage: gen.ProxyHistoryCoverage{State: gen.ProxyHistoryCoverageStatePartial},
 			Items:    []gen.ProxyInitialization{},
+		},
+		diamondCuts: gen.DiamondCutHistory{
+			DiamondAddress: address, Snapshot: snapshot,
+			Coverage: gen.ProxyHistoryCoverage{State: gen.ProxyHistoryCoverageStateComplete},
+			Items:    []gen.DiamondCut{},
 		},
 		next: "next-page",
 	}
@@ -103,6 +118,15 @@ func TestProxyRoutesAreAnonymousSnapshotBoundReads(t *testing.T) {
 		t.Fatalf("proxy initializations status=%d limit=%d body=%s",
 			response.Code, reader.limit, response.Body.String())
 	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
+		"/api/v1/contracts/"+address+"/proxy/diamond-cuts?cursor=cut-page&limit=9", nil))
+	if response.Code != http.StatusOK || reader.cursor != "cut-page" || reader.limit != 9 ||
+		!strings.Contains(response.Body.String(), `"diamond_address":"`+address+`"`) {
+		t.Fatalf("DiamondCut history status=%d cursor=%q limit=%d body=%s",
+			response.Code, reader.cursor, reader.limit, response.Body.String())
+	}
 }
 
 func TestProxyHistoryRejectsStaleCursorAndBoundsInputs(t *testing.T) {
@@ -133,6 +157,7 @@ func TestProxyHistoryRejectsStaleCursorAndBoundsInputs(t *testing.T) {
 		"/api/v1/contracts/" + address + "/proxy/upgrades?cursor=&cursor=stale",
 		"/api/v1/contracts/" + address + "/proxy/upgrades?unknown=value",
 		"/api/v1/contracts/" + address + "/proxy/initializations?cursor=" + strings.Repeat("x", maximumOpaqueCursorLength+1),
+		"/api/v1/contracts/" + address + "/proxy/diamond-cuts?limit=0",
 	} {
 		response = httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
@@ -149,7 +174,7 @@ func TestProxyRoutesRemainPresentWhenReaderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, suffix := range []string{"", "/upgrades", "/initializations"} {
+	for _, suffix := range []string{"", "/upgrades", "/initializations", "/diamond-cuts"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
 			"/api/v1/contracts/"+address+"/proxy"+suffix, nil))

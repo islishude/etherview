@@ -32,6 +32,9 @@ x-runtime-e2e-environment: &runtime-e2e-environment
   ETHERVIEW_PUBLIC_VERIFICATION: "false"
   ETHERVIEW_FEATURE_SOURCIFY: "false"
   ETHERVIEW_FEATURE_PRICING: "false"
+  ETHERVIEW_FEATURE_PROXY_DETECTION_V2: "true"
+  ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION: "true"
+  ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC: "true"
 
 x-runtime-fixture-dependency: &runtime-fixture-dependency
   runtime-fixture:

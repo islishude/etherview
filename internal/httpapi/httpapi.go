@@ -172,6 +172,7 @@ type ProxyReader interface {
 	Proxy(context.Context, string) (gen.ProxyDetails, error)
 	ProxyUpgrades(context.Context, string, string, int) (gen.ProxyUpgradeHistory, string, error)
 	ProxyInitializations(context.Context, string, string, int) (gen.ProxyInitializationHistory, string, error)
+	DiamondCuts(context.Context, string, string, int) (gen.DiamondCutHistory, string, error)
 }
 
 type UserAPIKeyAdministration interface {
@@ -421,6 +422,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy", h.contractProxy)
 	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/upgrades", h.contractProxyUpgrades)
 	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/initializations", h.contractProxyInitializations)
+	h.mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/diamond-cuts", h.contractDiamondCuts)
 	if h.etherscan != nil {
 		h.mux.Handle("/v2/api", h.etherscan)
 	}
@@ -2318,6 +2320,41 @@ func (h *Handler) contractProxyUpgrades(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) contractProxyInitializations(w http.ResponseWriter, r *http.Request) {
 	h.contractProxyHistory(w, r, false)
+}
+
+func (h *Handler) contractDiamondCuts(w http.ResponseWriter, r *http.Request) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	values, ok := parseExactQuery(w, r, "cursor", "limit")
+	if !ok {
+		return
+	}
+	cursor := ""
+	if items, present := values["cursor"]; present {
+		cursor = items[0]
+	}
+	if len(cursor) > maximumOpaqueCursorLength || (values.Has("cursor") && cursor == "") {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or too long", nil)
+		return
+	}
+	limit, ok := parseExactLimit(w, r, values, 20)
+	if !ok {
+		return
+	}
+	if h.proxyReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "proxy_unavailable", "Diamond history is unavailable", nil)
+		return
+	}
+	page, next, err := h.proxyReader.DiamondCuts(r.Context(), address, cursor, limit)
+	if err != nil {
+		h.handleReaderError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.DiamondCutHistoryResponse{
+		Data: page, Meta: pageMeta(h.meta(r), next),
+	})
 }
 
 func (h *Handler) contractProxyHistory(w http.ResponseWriter, r *http.Request, upgrades bool) {

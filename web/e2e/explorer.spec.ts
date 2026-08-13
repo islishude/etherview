@@ -16,6 +16,10 @@ const cloneImplementation = "0x8000000000000000000000000000000000000008";
 const proxyAdminAddress = "0x9000000000000000000000000000000000000009";
 const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
 const oldImplementation = "0x4000000000000000000000000000000000000040";
+const diamondAddress = "0xd000000000000000000000000000000000000000";
+const diamondWriteFacet = "0xd100000000000000000000000000000000000001";
+const diamondLoupeFacet = "0xd200000000000000000000000000000000000002";
+const diamondInitAddress = "0xd300000000000000000000000000000000000003";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
 const pendingTransactionHash = `0x${"c".repeat(64)}`;
@@ -1053,6 +1057,68 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     pathname === `/api/v1/contracts/${proxyAdminAddress}/verification`)).toBe(true);
   expect(contractRequests.some(({ pathname }) =>
     pathname === `/api/v1/contracts/${upgradeableBeacon}/verification`)).toBe(true);
+});
+
+test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut history", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const contractRequests: Array<{
+    headers: Record<string, string>;
+    method: string;
+    pathname: string;
+  }> = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith("/api/v1/contracts/")) return;
+    contractRequests.push({
+      headers: request.headers(),
+      method: request.method(),
+      pathname: url.pathname,
+    });
+  });
+
+  await page.goto(`/address/${diamondAddress}#code`);
+  await expect(page.getByRole("heading", { name: "DiamondRouter", level: 2 })).toBeVisible();
+  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByText("ERC-2535 Diamond", { exact: true })).toBeVisible();
+  await expect(page.getByText("Full cross-check", { exact: true })).toBeVisible();
+  await expect(page.getByText("Not detected", { exact: true })).toBeVisible();
+  await expect(page.locator(".proxy-facts")).toContainText(diamondWriteFacet);
+  await expect(page.locator(".proxy-facts")).toContainText(diamondLoupeFacet);
+
+  const tabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+  await expect(tabs.getByRole("tab", { name: "Read implementation (as proxy)" })).toHaveCount(0);
+  await expect(tabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
+  await activateInView(tabs.getByRole("tab", { name: "Diamond facets" }));
+  await expect(page.getByText(/Every call is sent to the Diamond/)).toBeVisible();
+  const writeFacetCard = page.locator(".diamond-facet-card").filter({ hasText: diamondWriteFacet });
+  await activateInView(writeFacetCard.locator("summary"));
+  await expect(writeFacetCard.getByText("setValue(uint256)", { exact: true })).toBeVisible();
+  await expect(writeFacetCard.getByText("value()", { exact: true })).toHaveCount(0);
+
+  await activateInView(tabs.getByRole("tab", { name: "DiamondCut history" }));
+  await expect(page.getByText("Add selectors", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(diamondInitAddress, { exact: true })).toBeVisible();
+  await expect(page.getByText("0x55241077", { exact: true })).toBeVisible();
+  await expect.poll(() => contractRequests.some(({ pathname }) =>
+    pathname === `/api/v1/contracts/${diamondAddress}/proxy/diamond-cuts`)).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await assertA11yAndNoOverflow(page, "Diamond contract page in English dark mode");
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByRole("tab", { name: "DiamondCut 历史" })).toBeVisible();
+  await expect(page.getByText("添加 Selector", { exact: true }).first()).toBeVisible();
+  await assertA11yAndNoOverflow(page, "Diamond contract page in Chinese dark mode");
+
+  for (const request of contractRequests) {
+    expect(request.method).toBe("GET");
+    expect(request.headers["x-api-key"]).toBeUndefined();
+    expect(request.headers["payment-signature"]).toBeUndefined();
+    expect(request.headers["x-csrf-token"]).toBeUndefined();
+  }
 });
 
 test("embedded server isolates SPA fallback and serves only hashed immutable assets", async ({

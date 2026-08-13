@@ -405,6 +405,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contracts/{address}/proxy/diamond-cuts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Canonical ERC-2535 DiamondCut events ordered newest first. Each item preserves cut ordering, selector ordering, and the one-shot init target without treating the init address as a facet. Cursors are bound to the returned canonical proxy-stage snapshot. */
+        get: operations["listContractDiamondCuts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contracts/{address}/proxy/initializations": {
         parameters: {
             query?: never;
@@ -1060,7 +1077,7 @@ export interface components {
             address?: components["schemas"]["Address"];
             code_hash?: components["schemas"]["Hash"];
             /** @enum {string} */
-            kind: "exact_address" | "code_hash" | "proxy_implementation" | "signature_database" | "builtin";
+            kind: "exact_address" | "code_hash" | "proxy_implementation" | "diamond_facet" | "signature_database" | "builtin";
         };
         ABIValue: {
             name: string;
@@ -1518,6 +1535,59 @@ export interface components {
             data: components["schemas"]["DelegationHistoryItem"][];
             meta: components["schemas"]["Meta"];
         };
+        /** @enum {string} */
+        DiamondCompleteness: "complete" | "partial" | "unknown";
+        DiamondCut: {
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** Format: date-time */
+            block_timestamp: string;
+            cuts: components["schemas"]["DiamondFacetCut"][];
+            init_address: components["schemas"]["Address"];
+            init_calldata: string;
+            log_index: components["schemas"]["Quantity"];
+            transaction_hash: components["schemas"]["Hash"];
+            transaction_index: components["schemas"]["Quantity"];
+        };
+        DiamondCutHistory: {
+            coverage: components["schemas"]["ProxyHistoryCoverage"];
+            diamond_address: components["schemas"]["Address"];
+            items: components["schemas"]["DiamondCut"][];
+            snapshot: components["schemas"]["CatalogSnapshot"];
+        };
+        DiamondCutHistoryResponse: {
+            data: components["schemas"]["DiamondCutHistory"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        DiamondCutPresence: "present" | "absent" | "unknown";
+        DiamondDetection: {
+            completeness: components["schemas"]["DiamondCompleteness"];
+            facets: components["schemas"]["ProxyTarget"][];
+            implementation_addresses: components["schemas"]["Address"][];
+            loupe_interface_reported?: boolean;
+            selector_to_facet: {
+                [key: string]: components["schemas"]["Address"];
+            };
+            standard_diamond_cut: components["schemas"]["DiamondStandardCut"];
+            truncated: boolean;
+            truncation_reason?: string;
+            validation: components["schemas"]["DiamondValidation"];
+        };
+        DiamondFacetCut: {
+            action: components["schemas"]["DiamondFacetCutAction"];
+            cut_index: number;
+            facet_address: components["schemas"]["Address"];
+            selectors: components["schemas"]["FunctionSelector"][];
+        };
+        /** @enum {string} */
+        DiamondFacetCutAction: "add" | "replace" | "remove";
+        DiamondStandardCut: {
+            facet?: components["schemas"]["Address"];
+            status: components["schemas"]["DiamondCutPresence"];
+        };
+        /** @enum {string} */
+        DiamondValidation: "full" | "sampled" | "interface-only";
         EIP7702Authorization: {
             /** @enum {string} */
             application_status: "applied" | "skipped" | "unavailable";
@@ -1553,6 +1623,7 @@ export interface components {
         };
         /** @enum {string} */
         Finality: "pending" | "latest" | "safe" | "finalized" | "orphan";
+        FunctionSelector: string;
         GenesisAccount: {
             address: components["schemas"]["Address"];
             balance: components["schemas"]["Quantity"];
@@ -1717,6 +1788,8 @@ export interface components {
             evidence_state?: components["schemas"]["ProxyEvidenceState"];
             immutable_args?: string;
             implementation?: components["schemas"]["ProxyContractIdentity"];
+            /** @description Unordered distinct external Diamond facet addresses. This compatibility field excludes immutable functions implemented by the Diamond itself and is absent for singular proxies. */
+            implementation_addresses?: components["schemas"]["Address"][];
             implementation_interaction?: components["schemas"]["ProxyImplementationInteraction"];
             management?: components["schemas"]["ProxyManagement"];
             mechanism?: components["schemas"]["ProxyMechanism"];
@@ -1754,9 +1827,9 @@ export interface components {
             value?: string;
         };
         /** @enum {string} */
-        ProxyDetectionV2EvidenceKind: "runtime-bytecode" | "runtime-code-hash" | "storage-slot" | "contract-call" | "factory-log" | "deployment-registry" | "execution-trace";
+        ProxyDetectionV2EvidenceKind: "runtime-bytecode" | "runtime-code-hash" | "storage-slot" | "contract-call" | "factory-log" | "deployment-registry" | "execution-trace" | "loupe-call" | "diamond-cut-event" | "facet-code" | "erc165" | "verified-source";
         /** @enum {string} */
-        ProxyDetectionV2Family: "erc1167" | "erc1967" | "safe" | "custom";
+        ProxyDetectionV2Family: "erc1167" | "erc1967" | "erc2535" | "safe" | "custom";
         /** @enum {string} */
         ProxyDetectionV2ImplementationRole: "implementation" | "singleton";
         ProxyDetectionV2Outcome: {
@@ -1769,6 +1842,7 @@ export interface components {
             confidence: components["schemas"]["ProxyDetectionV2Confidence"];
             detector: string;
             detector_version: string;
+            diamond?: components["schemas"]["DiamondDetection"];
             evidence: components["schemas"]["ProxyDetectionV2Evidence"][];
             family?: components["schemas"]["ProxyDetectionV2Family"];
             implementation?: components["schemas"]["Address"];
@@ -1783,6 +1857,7 @@ export interface components {
             singleton_deployment_type?: string;
             singleton_version?: string;
             status: components["schemas"]["ProxyDetectionV2Status"];
+            targets: components["schemas"]["ProxyTarget"][];
             variant?: string;
             warnings: string[];
         };
@@ -1859,6 +1934,15 @@ export interface components {
             source: components["schemas"]["ProxyEvidenceSource"];
             subject: components["schemas"]["ProxyEvidenceSubject"];
         };
+        ProxyTarget: {
+            address: components["schemas"]["Address"];
+            code_exists: boolean;
+            code_hash?: components["schemas"]["Hash"];
+            role: components["schemas"]["ProxyTargetRole"];
+            selectors: components["schemas"]["FunctionSelector"][];
+        };
+        /** @enum {string} */
+        ProxyTargetRole: "implementation" | "singleton" | "beacon" | "facet" | "immutable";
         ProxyUpgrade: {
             beacon?: components["schemas"]["ProxyHistoricalIdentity"];
             block_hash: components["schemas"]["Hash"];
@@ -3249,6 +3333,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProxyDetailsResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listContractDiamondCuts: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["ProxyHistoryLimit"];
+            };
+            header?: never;
+            path: {
+                address: components["parameters"]["Address"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot-stable Diamond selector-change history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiamondCutHistoryResponse"];
                 };
             };
             default: components["responses"]["Error"];

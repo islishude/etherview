@@ -293,6 +293,15 @@ of the callback. The routing and lag contract is specified in
   they cannot fail the block or prevent valid peers from completing. Transport
   errors, exact-state capability loss, and malformed RPC wire remain distinct
   retry, unavailable, and permanent stage outcomes.
+- ERC-2535 Diamond identity is selector-scoped: an exact-block Loupe snapshot
+  maps each bytes4 selector to an external facet or to an immutable function on
+  the Diamond itself. No facet is projected as the singular implementation.
+  Bounded DiamondCut facts retain block/transaction/log/cut order and orphan
+  branches; published canonical intervals drive historical function ABI
+  attribution, while calls still target the Diamond. Enumeration truncation,
+  deterministic validation sampling, absent standard `diamondCut`, and
+  inconsistent Loupe/history evidence remain distinct public states; see
+  [ADR-0038](../decisions/ADR-0038-selector-scoped-erc2535-diamond-identity.md).
 - ABI candidates are looked up only by exact chain, target address, runtime
   code hash, context block number/hash, and an inclusive range covering that
   context. Direct verified artifacts outrank verified historical proxy

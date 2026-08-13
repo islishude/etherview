@@ -14,6 +14,7 @@ type appProxyQueryStub struct {
 	detail          query.ProxyDetail
 	upgrades        query.ProxyUpgradePage
 	initializations query.ProxyInitializationPage
+	diamondCuts     query.DiamondCutPage
 	err             error
 	address         string
 	cursor          string
@@ -41,6 +42,15 @@ func (stub *appProxyQueryStub) ProxyInitializations(
 ) (query.ProxyInitializationPage, error) {
 	stub.address, stub.cursor, stub.limit = address, cursor, limit
 	return stub.initializations, stub.err
+}
+
+func (stub *appProxyQueryStub) DiamondCuts(
+	_ context.Context,
+	address, cursor string,
+	limit int,
+) (query.DiamondCutPage, error) {
+	stub.address, stub.cursor, stub.limit = address, cursor, limit
+	return stub.diamondCuts, stub.err
 }
 
 func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
@@ -205,6 +215,64 @@ func TestProxyReaderAdapterGatesSafeDetectionV2PublicProjection(t *testing.T) {
 		public.ProxyDetectionV2.Primary.ImplementationRole == nil ||
 		*public.ProxyDetectionV2.Primary.ImplementationRole != "singleton" {
 		t.Fatalf("public Safe projection=%+v", public.ProxyDetectionV2)
+	}
+}
+
+func TestProxyReaderAdapterPublishesDiamondTargetsAndCutHistoryWithoutSingularImplementation(t *testing.T) {
+	t.Parallel()
+	const (
+		diamondAddress = "0x1111111111111111111111111111111111111111"
+		facetAddress   = "0x2222222222222222222222222222222222222222"
+		initAddress    = "0x3333333333333333333333333333333333333333"
+		blockHash      = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		codeHash       = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		txHash         = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	)
+	raw := json.RawMessage(`{
+		"status":"confirmed",
+		"primary":{"detector":"erc2535","detector_version":"1.0.0","priority":150,"family":"erc2535","variant":"diamond","status":"confirmed","confidence":"high","proxy":"0x1111111111111111111111111111111111111111","implementation_path":[],"canonical_proxy_shell":false,"implementation_has_code":false,"official_singleton":false,"singleton_changed":false,"targets":[{"address":"0x2222222222222222222222222222222222222222","role":"facet","selectors":["0x11223344"],"code_exists":true,"code_hash":"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"address":"0x1111111111111111111111111111111111111111","role":"immutable","selectors":["0x7a0ed627"],"code_exists":true}],"diamond":{"completeness":"complete","validation":"full","facets":[{"address":"0x2222222222222222222222222222222222222222","role":"facet","selectors":["0x11223344"],"code_exists":true,"code_hash":"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"address":"0x1111111111111111111111111111111111111111","role":"immutable","selectors":["0x7a0ed627"],"code_exists":true}],"selector_to_facet":{"0x11223344":"0x2222222222222222222222222222222222222222","0x7a0ed627":"0x1111111111111111111111111111111111111111"},"implementation_addresses":["0x2222222222222222222222222222222222222222"],"standard_diamond_cut":{"status":"absent"},"truncated":false},"evidence":[],"warnings":[],"chain_id":"31337","block_number":"42","block_hash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		"outcomes":[{"detector":"erc2535","detector_version":"1.0.0","priority":150,"family":"erc2535","variant":"diamond","status":"confirmed","confidence":"high","proxy":"0x1111111111111111111111111111111111111111","implementation_path":[],"canonical_proxy_shell":false,"implementation_has_code":false,"official_singleton":false,"singleton_changed":false,"targets":[{"address":"0x2222222222222222222222222222222222222222","role":"facet","selectors":["0x11223344"],"code_exists":true,"code_hash":"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"address":"0x1111111111111111111111111111111111111111","role":"immutable","selectors":["0x7a0ed627"],"code_exists":true}],"diamond":{"completeness":"complete","validation":"full","facets":[{"address":"0x2222222222222222222222222222222222222222","role":"facet","selectors":["0x11223344"],"code_exists":true,"code_hash":"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"address":"0x1111111111111111111111111111111111111111","role":"immutable","selectors":["0x7a0ed627"],"code_exists":true}],"selector_to_facet":{"0x11223344":"0x2222222222222222222222222222222222222222","0x7a0ed627":"0x1111111111111111111111111111111111111111"},"implementation_addresses":["0x2222222222222222222222222222222222222222"],"standard_diamond_cut":{"status":"absent"},"truncated":false},"evidence":[],"warnings":[],"chain_id":"31337","block_number":"42","block_hash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+		"conflicts":[]}`)
+	observedAt := time.Date(2026, time.August, 13, 1, 2, 3, 0, time.UTC)
+	stub := &appProxyQueryStub{
+		detail: query.ProxyDetail{
+			Address: diamondAddress, Status: "not_detected",
+			Snapshot: query.ProxySnapshot{Number: "42", Hash: blockHash}, DetectionV2: raw,
+		},
+		diamondCuts: query.DiamondCutPage{
+			DiamondAddress: diamondAddress,
+			Snapshot:       query.ProxySnapshot{Number: "42", Hash: blockHash},
+			Coverage:       query.ProxyHistoryCoverage{State: "complete", FromBlock: "1", ToBlock: "42"},
+			Items: []query.DiamondCut{{
+				BlockNumber: "1", BlockHash: blockHash, BlockTimestamp: observedAt,
+				TransactionHash: txHash, TransactionIndex: "0", LogIndex: "0",
+				InitAddress: initAddress, InitCalldata: "0x1234",
+				Cuts: []query.DiamondFacetCut{{
+					CutIndex: 0, Action: "add", FacetAddress: facetAddress,
+					Selectors: []string{"0x11223344"},
+				}},
+			}},
+		},
+	}
+	adapter := newProxyReaderAdapter(stub, 31337, true)
+	detail, err := adapter.Proxy(context.Background(), diamondAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Status != "detected_unverified" || detail.Implementation != nil ||
+		detail.ImplementationAddresses == nil || len(*detail.ImplementationAddresses) != 1 ||
+		(*detail.ImplementationAddresses)[0] != facetAddress || detail.ProxyDetectionV2 == nil ||
+		detail.ProxyDetectionV2.Primary == nil || detail.ProxyDetectionV2.Primary.Diamond == nil {
+		t.Fatalf("Diamond detail=%+v", detail)
+	}
+	history, _, err := adapter.DiamondCuts(context.Background(), diamondAddress, "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Items) != 1 || history.Items[0].InitAddress != initAddress ||
+		history.Items[0].Cuts[0].FacetAddress != facetAddress ||
+		history.Items[0].Cuts[0].Selectors[0] != "0x11223344" {
+		t.Fatalf("DiamondCut history=%+v", history)
 	}
 }
 

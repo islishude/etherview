@@ -143,6 +143,8 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		return StageResult{}, Permanent(err)
 	}
 	identities := make(map[common.Address]ABIIdentity)
+	baseBindings := make(map[common.Address][]persistedABIBinding)
+	persistedBindings := make(map[string]struct{})
 	bindingsCount, invalidSignatures := 0, 0
 	for _, address := range uniqueABIAddresses(observations) {
 		identity, codeRange, found, err := resolveABICodeIdentity(ctx, tx, job, address)
@@ -157,6 +159,7 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		if err != nil {
 			return StageResult{}, err
 		}
+		baseBindings[address] = append([]persistedABIBinding(nil), bindings...)
 		invalidSignatures += invalid
 		for _, candidate := range bindings {
 			if err := registry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
@@ -165,19 +168,117 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 			if err := persistABIBinding(ctx, tx, candidate); err != nil {
 				return StageResult{}, err
 			}
+			persistedBindings[abiBindingKey(candidate)] = struct{}{}
+			bindingsCount++
+		}
+	}
+	diamondAuxiliaryWarnings := make(map[common.Address]string)
+	for address, identity := range identities {
+		if !hasDiamondAuxiliaryObservation(observations, address) {
+			continue
+		}
+		bindings, warning, err := loadDiamondAuxiliaryABIBindings(
+			ctx, tx, job, identity, processor.limits,
+		)
+		if err != nil {
+			return StageResult{}, err
+		}
+		if warning != "" {
+			diamondAuxiliaryWarnings[address] = warning
+		}
+		for _, candidate := range bindings {
+			if err := registry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
+				return StageResult{}, Permanent(fmt.Errorf("register Diamond event/error ABI binding: %w", err))
+			}
+			bindingKey := abiBindingKey(candidate)
+			if _, alreadyPersisted := persistedBindings[bindingKey]; alreadyPersisted {
+				continue
+			}
+			if err := persistABIBinding(ctx, tx, candidate); err != nil {
+				return StageResult{}, err
+			}
+			persistedBindings[bindingKey] = struct{}{}
 			bindingsCount++
 		}
 	}
 
 	counts := map[DecodeStatus]int{}
 	unbound := 0
+	diamondRouted := 0
+	routeCache := make(map[diamondABIRouteKey]diamondABIRoute)
+	facetBindingCache := make(map[diamondABIRouteKey]*persistedABIBinding)
 	for _, observation := range observations {
 		identity, found := identities[observation.target]
 		if !found {
 			unbound++
 			continue
 		}
-		result := decodeABIObservation(registry, identity, observation)
+		activeRegistry := registry
+		routeWarning := diamondAuxiliaryWarnings[observation.target]
+		if selector, functionObservation := diamondFunctionObservation(observation); functionObservation {
+			key := routeKeyForObservation(observation, selector)
+			route, cached := routeCache[key]
+			if !cached {
+				route, err = resolveDiamondABIRoute(ctx, tx, job, observation, selector)
+				if err != nil {
+					return StageResult{}, err
+				}
+				routeCache[key] = route
+			}
+			if route.detected {
+				diamondRouted++
+				routeWarning = route.warning
+				routeRegistry, registryErr := NewABIRegistryWithLimits(processor.limits)
+				if registryErr != nil {
+					return StageResult{}, Permanent(registryErr)
+				}
+				candidates := []persistedABIBinding{}
+				if route.exact && route.facet != (common.Address{}) {
+					candidates, registryErr = diamondFunctionCandidates(
+						baseBindings[observation.target], route, selector, processor.limits,
+					)
+					if registryErr != nil {
+						return StageResult{}, Permanent(fmt.Errorf("filter target ABI for Diamond route: %w", registryErr))
+					}
+					if route.facet != observation.target {
+						facetCandidate, bindingCached := facetBindingCache[key]
+						if !bindingCached {
+							candidate, candidateFound, loadErr := loadDiamondFacetABIBinding(
+								ctx, tx, identity, route, selector, processor.limits,
+							)
+							if loadErr != nil {
+								return StageResult{}, loadErr
+							}
+							if candidateFound {
+								facetCandidate = &candidate
+							}
+							facetBindingCache[key] = facetCandidate
+						}
+						if facetCandidate != nil {
+							candidates = append(candidates, *facetCandidate)
+							bindingKey := abiBindingKey(*facetCandidate)
+							if _, alreadyPersisted := persistedBindings[bindingKey]; !alreadyPersisted {
+								if err := persistABIBinding(ctx, tx, *facetCandidate); err != nil {
+									return StageResult{}, err
+								}
+								persistedBindings[bindingKey] = struct{}{}
+								bindingsCount++
+							}
+						} else if routeWarning == "" {
+							routeWarning = "active Diamond facet has no selector-matching verified ABI"
+						}
+					}
+				}
+				for _, candidate := range candidates {
+					if err := routeRegistry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
+						return StageResult{}, Permanent(fmt.Errorf("register Diamond-routed ABI binding: %w", err))
+					}
+				}
+				activeRegistry = routeRegistry
+			}
+		}
+		result := decodeABIObservation(activeRegistry, identity, observation)
+		appendDecodeWarning(&result, routeWarning)
 		if err := persistABIDecoding(ctx, tx, job, identity, observation, result); err != nil {
 			return StageResult{}, err
 		}
@@ -193,9 +294,20 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 			"unknown":            strconv.Itoa(counts[DecodeUnknown]),
 			"malformed":          strconv.Itoa(counts[DecodeMalformed]),
 			"unbound":            strconv.Itoa(unbound),
+			"diamond_routed":     strconv.Itoa(diamondRouted),
 			"invalid_signatures": strconv.Itoa(invalidSignatures),
 		},
 	}, nil
+}
+
+func hasDiamondAuxiliaryObservation(observations []abiObservation, address common.Address) bool {
+	for _, observation := range observations {
+		if observation.target == address &&
+			(observation.objectKind == abiObjectLog || observation.objectKind == abiObjectTraceRevert) {
+			return true
+		}
+	}
+	return false
 }
 
 func proxyDependencyState(ctx context.Context, tx *sql.Tx, job Job) (ResultState, error) {
@@ -223,16 +335,17 @@ func proxyDependencyState(ctx context.Context, tx *sql.Tx, job Job) (ResultState
 }
 
 type abiObservation struct {
-	objectKind      string
-	transactionHash common.Hash
-	objectIndex     string
-	target          common.Address
-	input           []byte
-	topics          []common.Hash
-	data            []byte
-	output          []byte
-	directReverted  bool
-	malformed       string
+	objectKind       string
+	transactionHash  common.Hash
+	transactionIndex uint64
+	objectIndex      string
+	target           common.Address
+	input            []byte
+	topics           []common.Hash
+	data             []byte
+	output           []byte
+	directReverted   bool
+	malformed        string
 }
 
 func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
@@ -263,7 +376,7 @@ func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT DISTINCT ON (trace.transaction_hash, trace.trace_path)
-		       trace.transaction_hash, trace.trace_path, trace.created_address,
+		       trace.transaction_hash, trace.transaction_index, trace.trace_path, trace.created_address,
 		       trace.input, verified.constructor_arguments, verified.abi,
 		       verified.code_hash
 		FROM normalized_traces AS trace
@@ -302,20 +415,22 @@ func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 	var observations []abiObservation
 	for rows.Next() {
 		var transactionHashBytes, targetBytes, initcode, arguments, abiJSON, codeHashBytes []byte
+		var transactionIndex int64
 		var tracePath string
 		if err := rows.Scan(
-			&transactionHashBytes, &tracePath, &targetBytes, &initcode,
+			&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes, &initcode,
 			&arguments, &abiJSON, &codeHashBytes,
 		); err != nil {
 			return nil, fmt.Errorf("scan exact constructor observation: %w", err)
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
-		if err != nil || len(targetBytes) != common.AddressLength || len(codeHashBytes) != common.HashLength {
+		if err != nil || transactionIndex < 0 || len(targetBytes) != common.AddressLength || len(codeHashBytes) != common.HashLength {
 			return nil, Permanent(errors.New("exact constructor identity is invalid"))
 		}
 		observation := abiObservation{
 			objectKind: abiObjectTraceConstructor, transactionHash: transactionHash,
-			objectIndex: tracePath, target: common.BytesToAddress(targetBytes), input: common.CopyBytes(arguments),
+			transactionIndex: uint64(transactionIndex),
+			objectIndex:      tracePath, target: common.BytesToAddress(targetBytes), input: common.CopyBytes(arguments),
 		}
 		if !bytes.HasSuffix(initcode, arguments) {
 			observation.malformed = "verified constructor arguments are not an exact initcode suffix"
@@ -351,7 +466,7 @@ func validateConstructorArguments(document, arguments []byte) error {
 
 func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT inclusion.tx_hash, inclusion.raw, resolution.execution_address,
+		SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw, resolution.execution_address,
 		       resolution.execution_code_hash
 		FROM transaction_inclusions AS inclusion
 		LEFT JOIN transaction_execution_code_resolutions AS resolution
@@ -383,11 +498,12 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 	var result []abiObservation
 	for rows.Next() {
 		var transactionHashBytes, raw, executionAddress, executionCodeHash []byte
-		if err := rows.Scan(&transactionHashBytes, &raw, &executionAddress, &executionCodeHash); err != nil {
+		var transactionIndex int64
+		if err := rows.Scan(&transactionHashBytes, &transactionIndex, &raw, &executionAddress, &executionCodeHash); err != nil {
 			return nil, fmt.Errorf("scan ABI transaction input: %w", err)
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
-		if err != nil {
+		if err != nil || transactionIndex < 0 {
 			return nil, Permanent(fmt.Errorf("stored transaction hash: %w", err))
 		}
 		var wire types.Transaction
@@ -408,7 +524,8 @@ func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 		input := wire.Data()
 		result = append(result, abiObservation{
 			objectKind: abiObjectTransactionCalldata, transactionHash: transactionHash,
-			target: target, input: input,
+			transactionIndex: uint64(transactionIndex),
+			target:           target, input: input,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -527,7 +644,8 @@ func loadABILogs(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, er
 		topics := append([]common.Hash(nil), wire.Topics...)
 		result = append(result, abiObservation{
 			objectKind: abiObjectLog, transactionHash: transactionHash,
-			objectIndex: strconv.FormatInt(logIndex, 10), target: target, topics: topics, data: data,
+			transactionIndex: uint64(wire.TxIndex),
+			objectIndex:      strconv.FormatInt(logIndex, 10), target: target, topics: topics, data: data,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -558,7 +676,7 @@ func validateABILogIdentity(
 
 func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_hash, trace_path, execution_address, input, output, direct_reverted
+		SELECT transaction_hash, transaction_index, trace_path, execution_address, input, output, direct_reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
 		  AND trace.block_number = $2::numeric
@@ -585,9 +703,10 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	var result []abiObservation
 	for rows.Next() {
 		var transactionHashBytes, targetBytes, input, output []byte
+		var transactionIndex int64
 		var tracePath string
 		var directReverted bool
-		if err := rows.Scan(&transactionHashBytes, &tracePath, &targetBytes, &input, &output, &directReverted); err != nil {
+		if err := rows.Scan(&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes, &input, &output, &directReverted); err != nil {
 			return nil, fmt.Errorf("scan ABI trace: %w", err)
 		}
 		if len(targetBytes) == 0 {
@@ -596,7 +715,7 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 		// The normalized transaction root deliberately uses the empty trace
 		// path. Child paths are non-empty, but emptiness alone is not an invalid
 		// identity.
-		if len(targetBytes) != common.AddressLength {
+		if transactionIndex < 0 || len(targetBytes) != common.AddressLength {
 			return nil, Permanent(errors.New("stored ABI trace identity is invalid"))
 		}
 		transactionHash, err := WordFromBytes(transactionHashBytes)
@@ -606,13 +725,15 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 		target := common.BytesToAddress(targetBytes)
 		result = append(result, abiObservation{
 			objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
-			objectIndex: tracePath, target: target, input: append([]byte(nil), input...),
+			transactionIndex: uint64(transactionIndex),
+			objectIndex:      tracePath, target: target, input: append([]byte(nil), input...),
 			output: append([]byte(nil), output...), directReverted: directReverted,
 		})
 		if directReverted && len(output) > 0 {
 			result = append(result, abiObservation{
 				objectKind: abiObjectTraceRevert, transactionHash: transactionHash,
-				objectIndex: tracePath, target: target, input: append([]byte(nil), output...),
+				transactionIndex: uint64(transactionIndex),
+				objectIndex:      tracePath, target: target, input: append([]byte(nil), output...),
 			})
 		}
 	}
@@ -1206,12 +1327,15 @@ func persistABIBinding(ctx context.Context, tx *sql.Tx, candidate persistedABIBi
 		INSERT INTO contract_abis (
 			chain_id, address, code_hash, source, confidence, abi,
 			valid_from_block, valid_to_block, block_number, block_hash,
-			source_address, source_code_hash, canonical
+			source_address, source_code_hash, selector_scope, canonical
 		) VALUES (
 			$1::numeric, $2, $3, $4, $5, $6::jsonb,
-			$7::numeric, $8::numeric, $9::numeric, $10, $11, $12, TRUE
+			$7::numeric, $8::numeric, $9::numeric, $10, $11, $12, $13, TRUE
 		)
-		ON CONFLICT (chain_id, address, code_hash, source, valid_from_block, block_hash)
+		ON CONFLICT (
+			chain_id, address, code_hash, source, source_address,
+			source_code_hash, selector_scope, valid_from_block, block_hash
+		)
 		DO UPDATE SET
 			confidence = EXCLUDED.confidence,
 			abi = EXCLUDED.abi,
@@ -1225,6 +1349,7 @@ func persistABIBinding(ctx context.Context, tx *sql.Tx, candidate persistedABIBi
 		strconv.FormatUint(candidate.binding.ValidFromBlock, 10), validTo,
 		strconv.FormatUint(identity.BlockNumber, 10), identity.BlockHash[:],
 		candidate.binding.SourceAddress[:], candidate.binding.SourceCodeHash[:],
+		candidate.binding.SelectorScope[:],
 	); err != nil {
 		return fmt.Errorf("persist ABI binding: %w", err)
 	}

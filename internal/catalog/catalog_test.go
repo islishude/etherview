@@ -665,9 +665,9 @@ func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *tes
 		traceStageStep("complete"),
 		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
 		catalogQueryStep{contains: "FROM abi_decodings AS decoding", rows: catalogRows(15)},
-		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(8, []driver.Value{
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9, []driver.Value{
 			codeHash, []byte(`[{"type":"receive","stateMutability":"payable"}]`),
-			"verified", "exact_address", target, codeHash, "0", nil,
+			"verified", "exact_address", target, codeHash, make([]byte, 32), "0", nil,
 		})},
 	)
 	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))

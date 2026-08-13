@@ -26,6 +26,8 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 			"proxy_detection_evidence",
 			"proxy_upgrade_events",
 			"proxy_initialization_events",
+			"diamond_loupe_snapshots",
+			"diamond_cut_events",
 		}},
 		{stage: ABIStage, relations: []string{"contract_abis", "abi_decodings"}},
 		{stage: TokenStage, relations: []string{"token_events", "token_balance_deltas"}},

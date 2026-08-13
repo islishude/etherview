@@ -29,6 +29,7 @@ batch semantics are not core v1 scope.
 | P59 | [Trace-bound ABI Decoding](docs/plans/P59-trace-bound-abi-decoding.md) | done | P20, P40, P50, P56 | Exact trace-frame log attribution and decoded calls, returns, and reverts |
 | P60 | [Runtime & Operations](docs/plans/P60-runtime-operations.md) | done | P00; spans P10–P50 | Monolith/split runtime, Compose, Helm, observability, optional adapters |
 | P61 | [EIP-7702 Delegated Accounts](docs/plans/P61-eip7702-delegated-accounts.md) | done | P20, P30, P40, P50, P59, P60 | Exact authorization, execution-code, constructor, API, and delegated-account interaction semantics |
+| P62 | [ERC-2535 Diamond Proxies](docs/plans/P62-erc2535-diamond-proxies.md) | done | P20, P30, P40, P50, P58, P59, P60 | Selector-scoped facet detection, history, ABI resolution, and interaction |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys with a tabbed `/account` workspace |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
@@ -163,6 +164,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   delegate identity, clearing, and canonical reorg retention. PostgreSQL,
   browser, monolith/six-role runtime, real Hardhat verification, and common-gate
   results remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
+- P62 is complete: migration `0043` replaces the singular implementation
+  assumption with exact selector-scoped Diamond facets and immutable targets.
+  Bounded fixed-block Loupe detection, ordered reorg-safe DiamondCut history,
+  historical selector-bound ABI resolution, collision-preserving interaction,
+  generated APIs, and bilingual facets/history surfaces pass PostgreSQL
+  ordinary/race, Chromium, real Hardhat monolith/six-role, and common-gate
+  evidence. Reviewable commands and results remain in
+  [P62 evidence](docs/plans/P62-erc2535-diamond-proxies.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

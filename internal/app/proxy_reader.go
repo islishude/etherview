@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/query"
 )
@@ -19,6 +21,7 @@ type proxyQueryReader interface {
 	Proxy(context.Context, string) (query.ProxyDetail, error)
 	ProxyUpgrades(context.Context, string, string, int) (query.ProxyUpgradePage, error)
 	ProxyInitializations(context.Context, string, string, int) (query.ProxyInitializationPage, error)
+	DiamondCuts(context.Context, string, string, int) (query.DiamondCutPage, error)
 }
 
 // proxyReaderAdapter owns the public-model boundary. The query reader returns
@@ -77,6 +80,22 @@ func (adapter proxyReaderAdapter) ProxyInitializations(
 	return model, page.NextCursor, nil
 }
 
+func (adapter proxyReaderAdapter) DiamondCuts(
+	ctx context.Context,
+	address, cursor string,
+	limit int,
+) (gen.DiamondCutHistory, string, error) {
+	page, err := adapter.reader.DiamondCuts(ctx, address, cursor, limit)
+	if err != nil {
+		return gen.DiamondCutHistory{}, "", err
+	}
+	model, err := adapter.diamondCutHistory(page)
+	if err != nil {
+		return gen.DiamondCutHistory{}, "", err
+	}
+	return model, page.NextCursor, nil
+}
+
 func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.ProxyDetails, error) {
 	if len(detail.Evidence) > 64 {
 		return gen.ProxyDetails{}, errors.New("proxy evidence exceeds the public bound")
@@ -127,7 +146,7 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 		Evidence: make([]gen.ProxyRecognitionEvidence, len(detail.Evidence)),
 	}
 	if adapter.publicDetectionV2 && len(detail.DetectionV2) != 0 {
-		if len(detail.DetectionV2) > 64<<10 {
+		if len(detail.DetectionV2) > 4<<20 {
 			return gen.ProxyDetails{}, errors.New("proxy detection V2 exceeds the public bound")
 		}
 		var detection gen.ProxyDetectionV2
@@ -138,6 +157,16 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 			return gen.ProxyDetails{}, err
 		}
 		model.ProxyDetectionV2 = &detection
+		if model.Status == gen.ProxyDetailStatusNotDetected &&
+			(detection.Status == gen.ProxyDetectionV2StatusConfirmed ||
+				detection.Status == gen.ProxyDetectionV2StatusCandidate ||
+				detection.Status == gen.ProxyDetectionV2StatusInconsistent) {
+			model.Status = gen.ProxyDetailStatusDetectedUnverified
+		}
+		if detection.Primary != nil && detection.Primary.Diamond != nil {
+			addresses := append([]gen.Address(nil), detection.Primary.Diamond.ImplementationAddresses...)
+			model.ImplementationAddresses = &addresses
+		}
 	}
 	if model.Proxy, err = proxyCurrentIdentity(detail.Proxy); err != nil {
 		return gen.ProxyDetails{}, fmt.Errorf("invalid proxy identity: %w", err)
@@ -229,7 +258,7 @@ func (adapter proxyReaderAdapter) validateProxyDetectionV2(
 		if outcome.Detector == "" || !outcome.Status.Valid() || !outcome.Confidence.Valid() ||
 			outcome.Proxy != proxy || string(outcome.ChainId) != adapter.chainID ||
 			len(outcome.Evidence) > 64 || len(outcome.Warnings) > 64 ||
-			len(outcome.ImplementationPath) > 8 {
+			len(outcome.ImplementationPath) > 8 || len(outcome.Targets) > enrich.DiamondMaxFacets+2 {
 			return errors.New("proxy detection V2 outcome is outside the public contract")
 		}
 		if outcome.Family != nil && !outcome.Family.Valid() {
@@ -237,6 +266,29 @@ func (adapter proxyReaderAdapter) validateProxyDetectionV2(
 		}
 		if outcome.ImplementationRole != nil && !outcome.ImplementationRole.Valid() {
 			return errors.New("proxy detection V2 implementation role is invalid")
+		}
+		for _, target := range outcome.Targets {
+			if !target.Role.Valid() || len(target.Selectors) > enrich.DiamondMaxSelectorsPerFacet {
+				return errors.New("proxy detection V2 target is invalid")
+			}
+			if _, err := proxyAddress(target.Address); err != nil {
+				return errors.New("proxy detection V2 target address is invalid")
+			}
+			for _, selector := range target.Selectors {
+				if !validFunctionSelector(string(selector)) {
+					return errors.New("proxy detection V2 target selector is invalid")
+				}
+			}
+		}
+		if outcome.Family != nil && *outcome.Family == gen.ProxyDetectionV2FamilyErc2535 {
+			if outcome.Diamond == nil || outcome.Implementation != nil || outcome.ImplementationRole != nil {
+				return errors.New("ERC-2535 outcome does not use selector-scoped targets")
+			}
+			if err := validatePublicDiamond(*outcome.Diamond, outcome.Targets, proxy, outcome.Status); err != nil {
+				return err
+			}
+		} else if outcome.Diamond != nil {
+			return errors.New("non-Diamond outcome carries Diamond details")
 		}
 		for _, evidence := range outcome.Evidence {
 			if !evidence.Kind.Valid() || evidence.Description == "" {
@@ -256,6 +308,165 @@ func (adapter proxyReaderAdapter) validateProxyDetectionV2(
 		}
 	}
 	return nil
+}
+
+func validFunctionSelector(value string) bool {
+	if len(value) != 10 || value[0:2] != "0x" {
+		return false
+	}
+	for _, char := range value[2:] {
+		if char < '0' || char > '9' {
+			lower := char | 0x20
+			if lower < 'a' || lower > 'f' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validatePublicDiamond(
+	diamond gen.DiamondDetection,
+	targets []gen.ProxyTarget,
+	proxy gen.Address,
+	status gen.ProxyDetectionV2Status,
+) error {
+	if !diamond.Completeness.Valid() || !diamond.Validation.Valid() ||
+		!diamond.StandardDiamondCut.Status.Valid() || len(diamond.Facets) > enrich.DiamondMaxFacets ||
+		len(diamond.SelectorToFacet) > enrich.DiamondMaxSelectorsTotal ||
+		len(diamond.ImplementationAddresses) > enrich.DiamondMaxFacets {
+		return errors.New("diamond detection is outside the public contract")
+	}
+	if diamond.Truncated != (diamond.TruncationReason != nil) ||
+		diamond.Completeness == gen.DiamondCompletenessComplete && diamond.Truncated {
+		return errors.New("diamond truncation state is invalid")
+	}
+	if (diamond.StandardDiamondCut.Status == gen.DiamondCutPresencePresent) !=
+		(diamond.StandardDiamondCut.Facet != nil) {
+		return errors.New("standard DiamondCut target is invalid")
+	}
+	if diamond.Completeness == gen.DiamondCompletenessComplete &&
+		(len(diamond.Facets) == 0 || len(diamond.SelectorToFacet) == 0) {
+		return errors.New("complete Diamond detection has no selector routes")
+	}
+	if !samePublicProxyTargetSet(targets, diamond.Facets) {
+		return errors.New("ERC-2535 root targets differ from Diamond facets")
+	}
+	seenFacets := make(map[string]gen.ProxyTarget, len(diamond.Facets))
+	seenSelectors := make(map[string]string, len(diamond.SelectorToFacet))
+	externalFacets := make(map[string]struct{}, len(diamond.Facets))
+	for _, facet := range diamond.Facets {
+		if facet.Role != gen.ProxyTargetRoleFacet && facet.Role != gen.ProxyTargetRoleImmutable ||
+			facet.Role == gen.ProxyTargetRoleImmutable && facet.Address != proxy ||
+			facet.Role == gen.ProxyTargetRoleImmutable && !facet.CodeExists ||
+			facet.Role == gen.ProxyTargetRoleFacet && facet.Address == proxy ||
+			len(facet.Selectors) == 0 ||
+			status == gen.ProxyDetectionV2StatusConfirmed && facet.Role == gen.ProxyTargetRoleFacet &&
+				(!facet.CodeExists || facet.CodeHash == nil) {
+			return errors.New("diamond facet role is invalid")
+		}
+		key := strings.ToLower(facet.Address)
+		if _, duplicate := seenFacets[key]; duplicate {
+			return errors.New("diamond facet is duplicated")
+		}
+		seenFacets[key] = facet
+		if facet.Role == gen.ProxyTargetRoleFacet {
+			externalFacets[key] = struct{}{}
+		}
+		for _, rawSelector := range facet.Selectors {
+			selector := strings.ToLower(string(rawSelector))
+			if !validFunctionSelector(selector) {
+				return errors.New("diamond selector is invalid")
+			}
+			if _, duplicate := seenSelectors[selector]; duplicate {
+				return errors.New("diamond selector appears more than once")
+			}
+			mapped, ok := diamond.SelectorToFacet[selector]
+			if !ok || !strings.EqualFold(mapped, facet.Address) {
+				return errors.New("diamond selector map is inconsistent")
+			}
+			seenSelectors[selector] = key
+		}
+	}
+	for selector, facet := range diamond.SelectorToFacet {
+		if !validFunctionSelector(selector) || seenSelectors[strings.ToLower(selector)] != strings.ToLower(facet) {
+			return errors.New("diamond selector map contains an unlisted route")
+		}
+	}
+	seenImplementations := make(map[string]struct{}, len(diamond.ImplementationAddresses))
+	for _, address := range diamond.ImplementationAddresses {
+		key := strings.ToLower(address)
+		facet, ok := seenFacets[key]
+		if !ok || facet.Role != gen.ProxyTargetRoleFacet {
+			return errors.New("diamond implementation address is not an external facet")
+		}
+		if _, duplicate := seenImplementations[key]; duplicate {
+			return errors.New("diamond implementation address is duplicated")
+		}
+		seenImplementations[key] = struct{}{}
+	}
+	if len(seenImplementations) != len(externalFacets) {
+		return errors.New("diamond implementation addresses do not cover every external facet")
+	}
+	for address := range externalFacets {
+		if _, exists := seenImplementations[address]; !exists {
+			return errors.New("diamond implementation address is missing an external facet")
+		}
+	}
+	if diamond.StandardDiamondCut.Status == gen.DiamondCutPresencePresent {
+		mapped, exists := diamond.SelectorToFacet["0x1f931c1c"]
+		if !exists || !strings.EqualFold(mapped, string(*diamond.StandardDiamondCut.Facet)) {
+			return errors.New("standard DiamondCut target differs from selector map")
+		}
+	}
+	return nil
+}
+
+func samePublicProxyTargetSet(left, right []gen.ProxyTarget) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	byAddress := make(map[string]gen.ProxyTarget, len(left))
+	for _, target := range left {
+		key := strings.ToLower(target.Address)
+		if _, duplicate := byAddress[key]; duplicate {
+			return false
+		}
+		byAddress[key] = target
+	}
+	for _, target := range right {
+		observed, exists := byAddress[strings.ToLower(target.Address)]
+		if !exists || observed.Role != target.Role || observed.CodeExists != target.CodeExists ||
+			!samePublicOptionalHash(observed.CodeHash, target.CodeHash) ||
+			!samePublicSelectorSet(observed.Selectors, target.Selectors) {
+			return false
+		}
+	}
+	return true
+}
+
+func samePublicOptionalHash(left, right *gen.Hash) bool {
+	return left == nil && right == nil || left != nil && right != nil && strings.EqualFold(string(*left), string(*right))
+}
+
+func samePublicSelectorSet(left, right []gen.FunctionSelector) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(left))
+	for _, selector := range left {
+		key := strings.ToLower(string(selector))
+		if _, duplicate := seen[key]; duplicate {
+			return false
+		}
+		seen[key] = struct{}{}
+	}
+	for _, selector := range right {
+		if _, exists := seen[strings.ToLower(string(selector))]; !exists {
+			return false
+		}
+	}
+	return true
 }
 
 func proxyImplementationInteraction(
@@ -384,6 +595,92 @@ func (adapter proxyReaderAdapter) proxyInitializationHistory(page query.ProxyIni
 			TransactionHash: transactionHash,
 			LogIndex:        logIndex,
 			Implementation:  implementation,
+		}
+	}
+	return model, nil
+}
+
+func (adapter proxyReaderAdapter) diamondCutHistory(page query.DiamondCutPage) (gen.DiamondCutHistory, error) {
+	if len(page.Items) > 100 {
+		return gen.DiamondCutHistory{}, errors.New("DiamondCut history exceeds the public bound")
+	}
+	address, err := proxyAddress(page.DiamondAddress)
+	if err != nil {
+		return gen.DiamondCutHistory{}, fmt.Errorf("invalid Diamond history address: %w", err)
+	}
+	snapshot, err := adapter.proxySnapshot(page.Snapshot)
+	if err != nil {
+		return gen.DiamondCutHistory{}, err
+	}
+	coverage, err := proxyCoverage(page.Coverage, page.Snapshot.Number)
+	if err != nil {
+		return gen.DiamondCutHistory{}, err
+	}
+	model := gen.DiamondCutHistory{
+		DiamondAddress: address, Snapshot: snapshot, Coverage: coverage,
+		Items: make([]gen.DiamondCut, len(page.Items)),
+	}
+	for index, item := range page.Items {
+		if greaterProxyQuantity(item.BlockNumber, page.Snapshot.Number) {
+			return gen.DiamondCutHistory{}, errors.New("DiamondCut is newer than its snapshot")
+		}
+		blockNumber, parseErr := proxyQuantity(item.BlockNumber)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		transactionIndex, parseErr := proxyQuantity(item.TransactionIndex)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		logIndex, parseErr := proxyQuantity(item.LogIndex)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		blockHash, parseErr := proxyHash(item.BlockHash)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		transactionHash, parseErr := proxyHash(item.TransactionHash)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		initAddress, parseErr := proxyAddress(item.InitAddress)
+		if parseErr != nil {
+			return gen.DiamondCutHistory{}, parseErr
+		}
+		if len(item.InitCalldata) > enrich.DiamondMaxRawReturnBytes*2+2 {
+			return gen.DiamondCutHistory{}, errors.New("DiamondCut init calldata exceeds the public bound")
+		}
+		if _, parseErr = ethrpc.ParseData(item.InitCalldata); parseErr != nil {
+			return gen.DiamondCutHistory{}, errors.New("DiamondCut init calldata is invalid")
+		}
+		cuts := make([]gen.DiamondFacetCut, len(item.Cuts))
+		for cutIndex, cut := range item.Cuts {
+			action := gen.DiamondFacetCutAction(cut.Action)
+			if !action.Valid() || cut.CutIndex != cutIndex {
+				return gen.DiamondCutHistory{}, errors.New("DiamondCut entry is invalid")
+			}
+			facetAddress, addressErr := proxyAddress(cut.FacetAddress)
+			if addressErr != nil {
+				return gen.DiamondCutHistory{}, addressErr
+			}
+			selectors := make([]gen.FunctionSelector, len(cut.Selectors))
+			for selectorIndex, selector := range cut.Selectors {
+				if !validFunctionSelector(selector) {
+					return gen.DiamondCutHistory{}, errors.New("DiamondCut selector is invalid")
+				}
+				selectors[selectorIndex] = gen.FunctionSelector(selector)
+			}
+			cuts[cutIndex] = gen.DiamondFacetCut{
+				CutIndex: cut.CutIndex, Action: action,
+				FacetAddress: facetAddress, Selectors: selectors,
+			}
+		}
+		model.Items[index] = gen.DiamondCut{
+			BlockNumber: blockNumber, BlockHash: blockHash,
+			BlockTimestamp: item.BlockTimestamp.UTC(), TransactionHash: transactionHash,
+			TransactionIndex: transactionIndex, LogIndex: logIndex,
+			InitAddress: initAddress, InitCalldata: item.InitCalldata, Cuts: cuts,
 		}
 	}
 	return model, nil

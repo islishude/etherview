@@ -29,13 +29,14 @@ type persistedLogDecoding struct {
 }
 
 type logABICandidate struct {
-	abi        []byte
-	source     enrich.ABISource
-	sourceKind string
-	address    common.Address
-	codeHash   common.Hash
-	validFrom  uint64
-	validTo    sql.NullString
+	abi           []byte
+	source        enrich.ABISource
+	sourceKind    string
+	address       common.Address
+	codeHash      common.Hash
+	selectorScope common.Hash
+	validFrom     uint64
+	validTo       sql.NullString
 }
 
 func resolveTransactionLogDecoding(
@@ -88,6 +89,7 @@ func resolveTransactionLogDecoding(
 		binding := enrich.ABIBinding{
 			Identity: identity, Source: candidate.source,
 			SourceAddress: candidate.address, SourceCodeHash: candidate.codeHash,
+			SelectorScope:  candidate.selectorScope,
 			ValidFromBlock: candidate.validFrom, ValidToBlock: validTo,
 		}
 		if err := registry.RegisterJSON(binding, candidate.abi); err != nil {
@@ -127,16 +129,16 @@ func loadLogABICandidates(
 	for rows.Next() {
 		var candidate logABICandidate
 		var source, sourceKind string
-		var sourceAddress, sourceCodeHash, targetCodeHash []byte
+		var sourceAddress, sourceCodeHash, selectorScope, targetCodeHash []byte
 		var validFrom string
 		if err := rows.Scan(
 			&targetCodeHash, &candidate.abi, &source, &sourceKind,
-			&sourceAddress, &sourceCodeHash, &validFrom, &candidate.validTo,
+			&sourceAddress, &sourceCodeHash, &selectorScope, &validFrom, &candidate.validTo,
 		); err != nil {
 			return identity, nil, fmt.Errorf("scan log ABI candidate: %w", err)
 		}
 		if len(targetCodeHash) != common.HashLength || len(sourceAddress) != common.AddressLength ||
-			len(sourceCodeHash) != common.HashLength {
+			len(sourceCodeHash) != common.HashLength || len(selectorScope) != common.HashLength {
 			return identity, nil, ErrCorruptData
 		}
 		parsedValidFrom, parseErr := strconv.ParseUint(validFrom, 10, 64)
@@ -148,6 +150,7 @@ func loadLogABICandidates(
 		candidate.sourceKind = sourceKind
 		candidate.address = common.BytesToAddress(sourceAddress)
 		candidate.codeHash = common.BytesToHash(sourceCodeHash)
+		candidate.selectorScope = common.BytesToHash(selectorScope)
 		candidate.validFrom = parsedValidFrom
 		candidates = append(candidates, candidate)
 	}
@@ -255,6 +258,8 @@ func mapDecodeABISource(source enrich.ABISource) string {
 		return "code_hash"
 	case enrich.ABISourceProxyImplementation:
 		return "proxy_implementation"
+	case enrich.ABISourceDiamondFacet:
+		return "diamond_facet"
 	case enrich.ABISourceSignatureDatabase:
 		return "signature_database"
 	default:
@@ -274,6 +279,8 @@ func mapStoredABISource(source string) string {
 		return "exact_address"
 	case "proxy_implementation":
 		return "proxy_implementation"
+	case "diamond_facet":
+		return "diamond_facet"
 	case "code_hash":
 		return "code_hash"
 	case "builtin":
@@ -319,20 +326,28 @@ WITH target_code AS (
              observation.block_hash DESC
     LIMIT 1
 ), candidates AS (
-    SELECT target_code.code_hash AS target_code_hash, binding.abi,
-           CASE binding.source
-             WHEN 'verified' THEN 'verified'
-             WHEN 'proxy_implementation' THEN 'proxy_implementation'
-             ELSE 'signature_database'
-           END AS registry_source,
-           CASE binding.source
-             WHEN 'verified' THEN 'exact_address'
-             WHEN 'proxy_implementation' THEN 'proxy_implementation'
-             ELSE 'signature_database'
-           END AS source_kind,
-           binding.source_address, binding.source_code_hash,
-           binding.valid_from_block, binding.valid_to_block,
-           CASE binding.source WHEN 'verified' THEN 0 WHEN 'proxy_implementation' THEN 2 ELSE 4 END AS priority,
+	    SELECT target_code.code_hash AS target_code_hash, binding.abi,
+	           CASE binding.source
+	             WHEN 'verified' THEN 'verified'
+	             WHEN 'proxy_implementation' THEN 'proxy_implementation'
+	             WHEN 'diamond_facet' THEN 'diamond_facet'
+	             ELSE 'signature_database'
+	           END AS registry_source,
+	           CASE binding.source
+	             WHEN 'verified' THEN 'exact_address'
+	             WHEN 'proxy_implementation' THEN 'proxy_implementation'
+	             WHEN 'diamond_facet' THEN 'diamond_facet'
+	             ELSE 'signature_database'
+	           END AS source_kind,
+	           binding.source_address, binding.source_code_hash,
+	           binding.selector_scope,
+	           binding.valid_from_block, binding.valid_to_block,
+	           CASE binding.source
+	             WHEN 'verified' THEN 0
+	             WHEN 'proxy_implementation' THEN 2
+	             WHEN 'diamond_facet' THEN 2
+	             ELSE 4
+	           END AS priority,
            binding.created_at, NULL::bytea AS request_digest, NULL::uuid AS job_id
     FROM contract_abis AS binding, target_code
     WHERE binding.chain_id = $1::numeric
@@ -351,7 +366,8 @@ WITH target_code AS (
                      AND verified.valid_from_block <= $3::numeric
                      AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
                 THEN 'exact_address' ELSE 'code_hash' END,
-           verified.address, verified.code_hash,
+	           verified.address, verified.code_hash,
+	           decode(repeat('00', 32), 'hex'),
            0::numeric, NULL::numeric,
            CASE WHEN verified.address = $2
                      AND verified.valid_from_block <= $3::numeric
@@ -364,7 +380,8 @@ WITH target_code AS (
       AND verified.abi IS NOT NULL
     UNION ALL
     SELECT target_code.code_hash, verified.abi, 'proxy_implementation',
-           'proxy_implementation', verified.address, verified.code_hash,
+	           'proxy_implementation', verified.address, verified.code_hash,
+	           decode(repeat('00', 32), 'hex'),
            0::numeric, NULL::numeric, 2,
            verified.created_at, verified.request_digest, verified.verification_job_id
     FROM verified_contracts AS verified, target_code, historical_proxy AS proxy
@@ -374,7 +391,7 @@ WITH target_code AS (
       AND verified.abi IS NOT NULL
 )
 SELECT target_code_hash, abi, registry_source, source_kind,
-       source_address, source_code_hash,
+       source_address, source_code_hash, selector_scope,
        valid_from_block::text, valid_to_block::text
 FROM candidates
 ORDER BY priority, created_at DESC, request_digest ASC NULLS FIRST,

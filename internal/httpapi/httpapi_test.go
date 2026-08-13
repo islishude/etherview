@@ -636,6 +636,7 @@ func TestRoutePatternUsesRegisteredMuxPatternsAndBoundsCatchAll(t *testing.T) {
 		{http.MethodGet, "/api/v1/contracts/0xsecret/proxy", "", "/api/v1/contracts/{address}/proxy"},
 		{http.MethodGet, "/api/v1/contracts/0xsecret/proxy/upgrades", "", "/api/v1/contracts/{address}/proxy/upgrades"},
 		{http.MethodGet, "/api/v1/contracts/0xsecret/proxy/initializations", "", "/api/v1/contracts/{address}/proxy/initializations"},
+		{http.MethodGet, "/api/v1/contracts/0xsecret/proxy/diamond-cuts", "", "/api/v1/contracts/{address}/proxy/diamond-cuts"},
 		{http.MethodPost, "/api/v1/verifier/solidity/multipart", "", "/api/v1/verifier/solidity/multipart"},
 		{http.MethodPost, "/api/v1/verifier/solidity/batch/standard-json", "", "/api/v1/verifier/solidity/batch/standard-json"},
 		{http.MethodGet, "/api/v1/verifier/compilers", "", "/api/v1/verifier/compilers"},

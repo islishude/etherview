@@ -266,6 +266,32 @@ func TestProxyUpgradeAndInitializationModelsPreserveStringQuantities(t *testing.
 	}
 }
 
+func TestDiamondCutModelPreservesOrderingAndKeepsInitSeparate(t *testing.T) {
+	diamondFacet := common.HexToAddress("0x0000000000000000000000000000000000000022")
+	initTarget := common.HexToAddress("0x0000000000000000000000000000000000000033")
+	transactionHash := common.BigToHash(proxyTestBig(99))
+	blockHash := common.BigToHash(proxyTestBig(10))
+	model, err := diamondCutModel(dbgen.ListDiamondCutHistoryRow{
+		BlockNumber: "10", BlockHash: blockHash.Bytes(), BlockTimestamp: "1700000000",
+		TransactionHash: transactionHash.Bytes(), TransactionIndex: 2, LogIndex: 4,
+		InitAddress: initTarget.Bytes(), InitCalldata: []byte{0x12, 0x34},
+		Cuts: []byte(`[
+			{"cut_index":0,"action":0,"facet_address":"0x0000000000000000000000000000000000000022","selectors":["0x11223344"]},
+			{"cut_index":1,"action":2,"facet_address":"0x0000000000000000000000000000000000000000","selectors":["0xaabbccdd"]}
+		]`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.TransactionIndex != "2" || model.LogIndex != "4" ||
+		model.InitAddress != initTarget.Hex() || model.InitCalldata != "0x1234" ||
+		len(model.Cuts) != 2 || model.Cuts[0].FacetAddress != diamondFacet.Hex() ||
+		model.Cuts[0].Action != "add" || model.Cuts[1].Action != "remove" ||
+		model.Cuts[1].FacetAddress == model.InitAddress {
+		t.Fatalf("DiamondCut=%+v", model)
+	}
+}
+
 func proxyTestBig(value int64) *big.Int {
 	return big.NewInt(value)
 }

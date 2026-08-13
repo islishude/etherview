@@ -618,6 +618,100 @@ func (q *Queries) GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pg
 	return i, err
 }
 
+const getDiamondCutHistoryCoverage = `-- name: GetDiamondCutHistoryCoverage :one
+WITH tip AS (
+    SELECT number, block_hash
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+      AND number = $2::numeric
+      AND block_hash = $3::bytea
+), first_cut AS (
+    SELECT event.block_number, event.block_hash
+    FROM diamond_cut_events AS event
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = event.chain_id
+     AND canonical.number = event.block_number
+     AND canonical.block_hash = event.block_hash
+    JOIN published_block_stage_results AS published
+      ON published.chain_id = event.chain_id
+     AND published.block_number = event.block_number
+     AND published.block_hash = event.block_hash
+     AND published.stage = 'proxy'
+     AND published.stage_version = event.stage_version
+     AND published.state = 'complete'
+    WHERE event.chain_id = $1::numeric
+      AND event.diamond_address = $4::bytea
+      AND event.block_number <= $2::numeric
+      AND event.stage_version = 2
+      AND event.canonical
+    ORDER BY event.block_number, event.transaction_index, event.log_index
+    LIMIT 1
+), created AS (
+    SELECT EXISTS (
+        SELECT 1
+        FROM receipts AS receipt
+        WHERE receipt.chain_id = $1::numeric
+          AND receipt.block_number = first_cut.block_number
+          AND receipt.block_hash = first_cut.block_hash
+          AND lower(receipt.raw->>'contractAddress') =
+              lower('0x' || encode($4::bytea, 'hex'))
+        UNION ALL
+        SELECT 1
+        FROM normalized_traces AS trace
+        JOIN published_block_stage_results AS published
+          ON published.chain_id = trace.chain_id
+         AND published.block_number = trace.block_number
+         AND published.block_hash = trace.block_hash
+         AND published.stage = 'trace'
+         AND published.stage_version = 2
+         AND published.state = 'complete'
+        WHERE trace.chain_id = $1::numeric
+          AND trace.block_number = first_cut.block_number
+          AND trace.block_hash = first_cut.block_hash
+          AND trace.created_address = $4::bytea
+          AND trace.call_type IN ('CREATE', 'CREATE2')
+          AND NOT trace.reverted
+          AND trace.canonical
+    ) AS at_first_cut
+    FROM first_cut
+)
+SELECT first_cut.block_number::text AS from_block,
+       tip.number::text AS to_block,
+       (created.at_first_cut AND proxy_interaction_coverage_contains(
+           $1::numeric,
+           first_cut.block_number, first_cut.block_hash,
+           tip.number, tip.block_hash
+       ))::boolean AS complete
+FROM tip
+JOIN first_cut ON TRUE
+JOIN created ON TRUE
+`
+
+type GetDiamondCutHistoryCoverageParams struct {
+	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	SnapshotNumber pgtype.Numeric `db:"snapshot_number" json:"snapshot_number"`
+	SnapshotHash   []byte         `db:"snapshot_hash" json:"snapshot_hash"`
+	DiamondAddress []byte         `db:"diamond_address" json:"diamond_address"`
+}
+
+type GetDiamondCutHistoryCoverageRow struct {
+	FromBlock string `db:"from_block" json:"from_block"`
+	ToBlock   string `db:"to_block" json:"to_block"`
+	Complete  bool   `db:"complete" json:"complete"`
+}
+
+func (q *Queries) GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamondCutHistoryCoverageParams) (GetDiamondCutHistoryCoverageRow, error) {
+	row := q.db.QueryRow(ctx, getDiamondCutHistoryCoverage,
+		arg.ChainID,
+		arg.SnapshotNumber,
+		arg.SnapshotHash,
+		arg.DiamondAddress,
+	)
+	var i GetDiamondCutHistoryCoverageRow
+	err := row.Scan(&i.FromBlock, &i.ToBlock, &i.Complete)
+	return i, err
+}
+
 const getLatestPublishedProxyDetection = `-- name: GetLatestPublishedProxyDetection :one
 WITH canonical_tip AS (
     SELECT number, block_hash
@@ -1177,6 +1271,107 @@ func (q *Queries) GetProxyHistoryCoverage(ctx context.Context, arg GetProxyHisto
 		&i.ProxyPattern,
 	)
 	return i, err
+}
+
+const listDiamondCutHistory = `-- name: ListDiamondCutHistory :many
+SELECT event.block_number::text AS block_number,
+       event.block_hash,
+       block.timestamp::text AS block_timestamp,
+       event.transaction_hash,
+       event.transaction_index,
+       event.log_index,
+       event.init_address,
+       event.init_calldata,
+       event.cuts
+FROM diamond_cut_events AS event
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = event.chain_id
+ AND canonical.number = event.block_number
+ AND canonical.block_hash = event.block_hash
+JOIN blocks AS block
+  ON block.chain_id = event.chain_id
+ AND block.number = event.block_number
+ AND block.hash = event.block_hash
+JOIN published_block_stage_results AS published
+  ON published.chain_id = event.chain_id
+ AND published.block_number = event.block_number
+ AND published.block_hash = event.block_hash
+ AND published.stage = 'proxy'
+ AND published.stage_version = event.stage_version
+ AND published.state = 'complete'
+WHERE event.chain_id = $1::numeric
+  AND event.diamond_address = $2::bytea
+  AND event.block_number <= $3::numeric
+  AND event.stage_version = 2
+  AND event.canonical
+  AND (
+      NOT $4::boolean OR
+      event.block_number < $5::numeric OR
+      (event.block_number = $5::numeric AND
+       event.log_index < $6::bigint)
+  )
+ORDER BY event.block_number DESC, event.log_index DESC
+LIMIT $7
+`
+
+type ListDiamondCutHistoryParams struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	DiamondAddress    []byte         `db:"diamond_address" json:"diamond_address"`
+	SnapshotNumber    pgtype.Numeric `db:"snapshot_number" json:"snapshot_number"`
+	HasBoundary       bool           `db:"has_boundary" json:"has_boundary"`
+	BeforeBlockNumber pgtype.Numeric `db:"before_block_number" json:"before_block_number"`
+	BeforeLogIndex    int64          `db:"before_log_index" json:"before_log_index"`
+	PageLimit         int32          `db:"page_limit" json:"page_limit"`
+}
+
+type ListDiamondCutHistoryRow struct {
+	BlockNumber      string `db:"block_number" json:"block_number"`
+	BlockHash        []byte `db:"block_hash" json:"block_hash"`
+	BlockTimestamp   string `db:"block_timestamp" json:"block_timestamp"`
+	TransactionHash  []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64  `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64  `db:"log_index" json:"log_index"`
+	InitAddress      []byte `db:"init_address" json:"init_address"`
+	InitCalldata     []byte `db:"init_calldata" json:"init_calldata"`
+	Cuts             []byte `db:"cuts" json:"cuts"`
+}
+
+func (q *Queries) ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutHistoryParams) ([]ListDiamondCutHistoryRow, error) {
+	rows, err := q.db.Query(ctx, listDiamondCutHistory,
+		arg.ChainID,
+		arg.DiamondAddress,
+		arg.SnapshotNumber,
+		arg.HasBoundary,
+		arg.BeforeBlockNumber,
+		arg.BeforeLogIndex,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDiamondCutHistoryRow{}
+	for rows.Next() {
+		var i ListDiamondCutHistoryRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.BlockHash,
+			&i.BlockTimestamp,
+			&i.TransactionHash,
+			&i.TransactionIndex,
+			&i.LogIndex,
+			&i.InitAddress,
+			&i.InitCalldata,
+			&i.Cuts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProxyInitializationHistory = `-- name: ListProxyInitializationHistory :many

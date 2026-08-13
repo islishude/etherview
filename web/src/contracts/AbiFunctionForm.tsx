@@ -12,6 +12,7 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   toHex,
+  toFunctionSelector,
   type Address,
   type Abi,
   type AbiParameter,
@@ -75,7 +76,8 @@ export function AbiFunctionExplorer({
   const parsed = useMemo(() => {
     try {
       const abi = parseVerifiedABI(rawABI);
-      return { abi, functions: partitionAbiFunctions(abi) };
+      const functions = partitionAbiFunctions(abi);
+      return { abi, functions, ambiguousSelectors: ambiguousFunctionSelectors(functions) };
     } catch (error) {
       return { error };
     }
@@ -88,10 +90,15 @@ export function AbiFunctionExplorer({
   const sections = mode === "all" ? ["read", "write"] as const : [mode] as const;
   return (
     <div className="abi-function-explorer">
+      {parsed.ambiguousSelectors && parsed.ambiguousSelectors.size > 0 ? (
+        <p className="chain-warning" role="status">
+          {t("contracts.functions.selectorCollision", { count: parsed.ambiguousSelectors.size })}
+        </p>
+      ) : null}
       {sections.map((section) => {
         const entries = parsed.functions?.[section] ?? [];
         const callable = entries.flatMap((entry) => {
-          const target = targetForFunction(targets, entry);
+          const target = targetForFunction(targets, entry, parsed.ambiguousSelectors);
           return target ? [{ entry, target }] : [];
         });
         return (
@@ -683,10 +690,40 @@ function AbiInputEditor({
 function targetForFunction(
   targets: readonly ContractInteractionTarget[],
   entry: AbiFunctionEntry,
+  ambiguousSelectors: ReadonlySet<string> = new Set(),
 ): ContractInteractionTarget | undefined {
   const write = entry.fn.stateMutability !== "view" && entry.fn.stateMutability !== "pure";
+  try {
+    if (ambiguousSelectors.has(toFunctionSelector(entry.signature).toLowerCase())) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
   return targets.find((target) =>
     isInteractionFunctionAllowed(target, entry.signature, write),
+  );
+}
+
+function ambiguousFunctionSelectors(functions: {
+  read: readonly AbiFunctionEntry[];
+  write: readonly AbiFunctionEntry[];
+}): ReadonlySet<string> {
+  const signatures = new Map<string, Set<string>>();
+  for (const entry of [...functions.read, ...functions.write]) {
+    try {
+      const selector = toFunctionSelector(entry.signature).toLowerCase();
+      const candidates = signatures.get(selector) ?? new Set<string>();
+      candidates.add(entry.signature);
+      signatures.set(selector, candidates);
+    } catch {
+      continue;
+    }
+  }
+  return new Set(
+    [...signatures.entries()]
+      .filter(([, candidates]) => candidates.size > 1)
+      .map(([selector]) => selector),
   );
 }
 
@@ -761,6 +798,15 @@ function interactionBindingContext(target: ContractInteractionTarget): readonly 
 			target.delegationBlockHash,
 			target.abiAddress,
 			target.abiCodeHash ?? "",
+		];
+	}
+	if (target.kind === "diamond_facet") {
+		return [
+			target.proxyChainID,
+			target.proxyAddress,
+			target.abiAddress,
+			target.abiCodeHash ?? "",
+			...target.facetSelectors,
 		];
 	}
 	return [

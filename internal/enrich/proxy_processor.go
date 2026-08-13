@@ -25,22 +25,26 @@ var ProxyStage = StageID{Name: "proxy", Version: 2}
 var errProxyDependencyPending = errors.New("proxy stage dependency is not complete")
 
 const (
-	proxySourceTransaction  = "transaction_target"
-	proxySourceLog          = "log_target"
-	proxySourceTrace        = "trace_target"
-	proxySourceStateDiff    = "state_diff_target"
-	proxySourceReceipt      = "creation_receipt"
-	proxySourceTraceCreate  = "trace_create"
-	proxySourceUpgrade      = "upgrade_event"
-	proxySourceBeaconReplay = "exact_beacon_replay"
-	proxySourceVerification = "verification_publication"
-	proxySourceGenesis      = "genesis_allocation"
+	proxySourceTransaction          = "transaction_target"
+	proxySourceLog                  = "log_target"
+	proxySourceTrace                = "trace_target"
+	proxySourceStateDiff            = "state_diff_target"
+	proxySourceReceipt              = "creation_receipt"
+	proxySourceTraceCreate          = "trace_create"
+	proxySourceUpgrade              = "upgrade_event"
+	proxySourceBeaconReplay         = "exact_beacon_replay"
+	proxySourceVerification         = "verification_publication"
+	proxySourceGenesis              = "genesis_allocation"
+	proxySourceDiamondCut           = "diamond_cut_event"
+	proxySourceDelegatecallRouter   = "delegatecall_router"
+	proxySourceVerifiedDiamondLoupe = "verified_diamond_loupe"
 )
 
 var (
 	proxyUpgradedTopic       = SignatureHash("Upgraded(address)")
 	proxyBeaconUpgradedTopic = SignatureHash("BeaconUpgraded(address)")
 	proxyInitializedTopic    = SignatureHash("Initialized(uint64)")
+	proxyDiamondCutTopic     = SignatureHash("DiamondCut((address,uint8,bytes4[])[],address,bytes)")
 )
 
 type ProxyLimits struct {
@@ -57,7 +61,7 @@ func (limits *ProxyLimits) defaults() {
 		limits.MaxCodeBytes = 1 << 20
 	}
 	if limits.MaxDetailsBytes <= 0 {
-		limits.MaxDetailsBytes = 16 << 10
+		limits.MaxDetailsBytes = 4 << 20
 	}
 }
 
@@ -68,7 +72,7 @@ func (limits ProxyLimits) validate() error {
 	if limits.MaxCodeBytes <= 0 || limits.MaxCodeBytes > 32<<20 {
 		return errors.New("proxy code limit is invalid")
 	}
-	if limits.MaxDetailsBytes < 128 || limits.MaxDetailsBytes > 64<<10 {
+	if limits.MaxDetailsBytes < 128 || limits.MaxDetailsBytes > 8<<20 {
 		return errors.New("proxy details limit is invalid")
 	}
 	return nil
@@ -175,6 +179,7 @@ type proxyInitializationEvent struct {
 type proxyBlockEvents struct {
 	upgrades        []proxyUpgradeEvent
 	initializations []proxyInitializationEvent
+	diamondCuts     []diamondCutRecord
 	rejected        int
 }
 
@@ -189,9 +194,10 @@ type PostgresProxyProcessor struct {
 }
 
 type ProxyDetectionOptions struct {
-	Enabled     bool
-	SafeEnabled bool
-	Observer    ProxyDetectionObserver
+	Enabled        bool
+	SafeEnabled    bool
+	DiamondEnabled bool
+	Observer       ProxyDetectionObserver
 }
 
 type ProxyDetectionObserver interface {
@@ -223,6 +229,9 @@ func NewPostgresProxyProcessorWithOptions(
 	}
 	if options.SafeEnabled && !options.Enabled {
 		return nil, errors.New("safe proxy detector requires proxy detection V2")
+	}
+	if options.DiamondEnabled && !options.Enabled {
+		return nil, errors.New("diamond proxy detector requires proxy detection V2")
 	}
 	return &PostgresProxyProcessor{db: db, pool: pool, limits: limits, options: options}, nil
 }
@@ -264,6 +273,7 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	detector := rpcProxyDetector{
 		caller: endpoint.Client, limits: processor.limits,
 		v2Enabled: processor.options.Enabled, safeEnabled: processor.options.SafeEnabled,
+		diamondEnabled:            processor.options.DiamondEnabled,
 		observer:                  processor.options.Observer,
 		codeCache:                 make(map[common.Address][]byte),
 		beaconImplementationCache: make(map[common.Address]cachedBeaconImplementation),
@@ -373,6 +383,15 @@ func (processor *PostgresProxyProcessor) loadCandidates(
 
 	result := make([]proxyCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
+		if candidate.hasSource(proxySourceVerification) {
+			verifiedLoupe, err := processor.hasVerifiedDiamondLoupeABI(ctx, job, candidate.address)
+			if err != nil {
+				return nil, nil, proxyBlockEvents{}, false, err
+			}
+			if verifiedLoupe {
+				candidate.add(proxySourceVerifiedDiamondLoupe, true)
+			}
+		}
 		candidate.knownBeacon = candidate.knownBeacon || candidate.hasSource(proxySourceBeaconReplay)
 		if !candidate.force {
 			hasHistory, err := processor.hasCanonicalCodeHistory(ctx, job, candidate.address)
@@ -590,6 +609,21 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(
 		if err := add(address, proxySourceLog, false); err != nil {
 			return proxyBlockEvents{}, err
 		}
+		if topic == proxyDiamondCutTopic && processor.options.DiamondEnabled {
+			if err := add(address, proxySourceDiamondCut, true); err != nil {
+				return proxyBlockEvents{}, err
+			}
+			record, valid := parseStrictDiamondCutEvent(wire)
+			if !valid {
+				events.rejected++
+				continue
+			}
+			record.index = uint64(index)
+			record.hash = hash
+			record.diamond = address
+			events.diamondCuts = append(events.diamondCuts, record)
+			continue
+		}
 		if topic == proxyUpgradedTopic || topic == proxyBeaconUpgradedTopic {
 			if err := add(address, proxySourceUpgrade, true); err != nil {
 				return proxyBlockEvents{}, err
@@ -646,7 +680,7 @@ func parseStrictInitializedEvent(log types.Log) (uint64, bool) {
 
 func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
 	rows, err := processor.db.QueryContext(ctx, `
-		SELECT call_type, to_address, created_address, reverted
+		SELECT call_type, from_address, to_address, created_address, reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
 		  AND trace.block_number = $2::numeric
@@ -670,10 +704,18 @@ func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context
 	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var callType string
-		var toBytes, createdBytes []byte
+		var fromBytes, toBytes, createdBytes []byte
 		var reverted bool
-		if err := rows.Scan(&callType, &toBytes, &createdBytes, &reverted); err != nil {
+		if err := rows.Scan(&callType, &fromBytes, &toBytes, &createdBytes, &reverted); err != nil {
 			return fmt.Errorf("scan proxy trace target: %w", err)
+		}
+		if processor.options.DiamondEnabled && !reverted && callType == "DELEGATECALL" && len(fromBytes) != 0 {
+			if len(fromBytes) != common.AddressLength {
+				return Permanent(errors.New("stored proxy trace caller is invalid"))
+			}
+			if err := add(common.BytesToAddress(fromBytes), proxySourceDelegatecallRouter, true); err != nil {
+				return err
+			}
 		}
 		if len(toBytes) != 0 {
 			if len(toBytes) != common.AddressLength {
@@ -954,6 +996,32 @@ func (processor *PostgresProxyProcessor) loadProxyArtifact(
 	return artifact, true, nil
 }
 
+func (processor *PostgresProxyProcessor) hasVerifiedDiamondLoupeABI(
+	ctx context.Context,
+	job Job,
+	address common.Address,
+) (bool, error) {
+	var found bool
+	err := processor.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM verified_contracts AS verified
+			WHERE verified.chain_id = $1::numeric
+			  AND verified.address = $2
+			  AND verified.abi IS NOT NULL
+			  AND verified.valid_from_block <= $3::numeric
+			  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+			  AND verified.abi @> '[{"type":"function","name":"facets","inputs":[]}]'::jsonb
+			  AND verified.abi @> '[{"type":"function","name":"facetAddresses","inputs":[]}]'::jsonb
+			  AND verified.abi @> '[{"type":"function","name":"facetFunctionSelectors","inputs":[{"type":"address"}]}]'::jsonb
+			  AND verified.abi @> '[{"type":"function","name":"facetAddress","inputs":[{"type":"bytes4"}]}]'::jsonb
+		)`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("query verified Diamond Loupe ABI: %w", err)
+	}
+	return found, nil
+}
+
 func (processor *PostgresProxyProcessor) authenticateCloneCreation(
 	ctx context.Context,
 	job Job,
@@ -1019,6 +1087,17 @@ func (processor *PostgresProxyProcessor) proxyOrBeaconHistory(
 		          AND observation.proxy_address = $2
 		          AND observation.block_number <= $3::numeric
 		          AND observation.canonical
+		        UNION ALL
+		        SELECT 1
+		        FROM published_diamond_loupe_snapshots AS snapshot
+		        JOIN canonical_blocks AS canonical
+		          ON canonical.chain_id = snapshot.chain_id
+		         AND canonical.number = snapshot.block_number
+		         AND canonical.block_hash = snapshot.block_hash
+		        WHERE snapshot.chain_id = $1::numeric
+		          AND snapshot.diamond_address = $2
+		          AND snapshot.block_number <= $3::numeric
+		          AND snapshot.canonical
 		    ),
 		    EXISTS (
 		        SELECT 1
@@ -1076,6 +1155,7 @@ type rpcProxyDetector struct {
 	beaconImplementationCache map[common.Address]cachedBeaconImplementation
 	v2Enabled                 bool
 	safeEnabled               bool
+	diamondEnabled            bool
 	observer                  ProxyDetectionObserver
 }
 
@@ -1118,6 +1198,9 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 		beforeCounters := detectionContext.Counters()
 		adapter := &openZeppelinProxyDetectorAdapter{legacy: detector, candidate: candidate}
 		detectors := []ProxyDetector{adapter}
+		if detector.diamondEnabled {
+			detectors = append(detectors, newDiamondProxyDetector(candidate))
+		}
 		if detector.safeEnabled {
 			detectors = append(detectors, newSafeProxyDetector())
 		}
@@ -1668,6 +1751,16 @@ func (processor *PostgresProxyProcessor) persistTx(
 		uupsProbes = nil
 		events = proxyBlockEvents{}
 	}
+	for _, event := range events.diamondCuts {
+		if err := persistDiamondCutRecord(ctx, tx, job, event); err != nil {
+			return StageResult{}, err
+		}
+	}
+	for index := range detections {
+		if err := processor.reconcileDiamondHistory(ctx, tx, job, &detections[index]); err != nil {
+			return StageResult{}, err
+		}
+	}
 	codeObservations := make(map[common.Address]proxyCodeObservation)
 	beaconObservations := make(map[common.Address]proxyBeaconObservation)
 	proxyCount := 0
@@ -1819,6 +1912,9 @@ func (processor *PostgresProxyProcessor) persistTx(
 			if err := processor.persistProxyDetectionV2(ctx, tx, job, detection); err != nil {
 				return StageResult{}, err
 			}
+			if err := persistDiamondDetectionSnapshots(ctx, tx, job, detection.v2); err != nil {
+				return StageResult{}, err
+			}
 		}
 	}
 	for _, detection := range beacons {
@@ -1903,6 +1999,7 @@ func (processor *PostgresProxyProcessor) persistTx(
 		"uups_rejected":                  strconv.Itoa(uupsRejectedCount),
 		"upgrade_events":                 strconv.Itoa(len(events.upgrades)),
 		"initialization_events":          strconv.Itoa(len(events.initializations)),
+		"diamond_cut_events":             strconv.Itoa(len(events.diamondCuts)),
 		"rejected_events":                strconv.Itoa(events.rejected),
 		"rejected_candidates":            strconv.Itoa(rejectedCount),
 		"proxy_detection_v2_differences": strconv.Itoa(v2DifferenceCount),

@@ -280,6 +280,25 @@ type CanonicalBlock struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type CanonicalDiamondSelectorInterval struct {
+	ChainID                   pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	DiamondAddress            []byte         `db:"diamond_address" json:"diamond_address"`
+	Selector                  []byte         `db:"selector" json:"selector"`
+	FacetAddress              []byte         `db:"facet_address" json:"facet_address"`
+	ValidFromBlockNumber      pgtype.Numeric `db:"valid_from_block_number" json:"valid_from_block_number"`
+	ValidFromBlockHash        []byte         `db:"valid_from_block_hash" json:"valid_from_block_hash"`
+	ValidFromTransactionIndex int64          `db:"valid_from_transaction_index" json:"valid_from_transaction_index"`
+	ValidFromLogIndex         int64          `db:"valid_from_log_index" json:"valid_from_log_index"`
+	ValidFromCutIndex         int32          `db:"valid_from_cut_index" json:"valid_from_cut_index"`
+	ValidFromSelectorIndex    int32          `db:"valid_from_selector_index" json:"valid_from_selector_index"`
+	ValidToBlockNumber        interface{}    `db:"valid_to_block_number" json:"valid_to_block_number"`
+	ValidToBlockHash          interface{}    `db:"valid_to_block_hash" json:"valid_to_block_hash"`
+	ValidToTransactionIndex   interface{}    `db:"valid_to_transaction_index" json:"valid_to_transaction_index"`
+	ValidToLogIndex           interface{}    `db:"valid_to_log_index" json:"valid_to_log_index"`
+	ValidToCutIndex           interface{}    `db:"valid_to_cut_index" json:"valid_to_cut_index"`
+	ValidToSelectorIndex      interface{}    `db:"valid_to_selector_index" json:"valid_to_selector_index"`
+}
+
 type Chain struct {
 	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	GenesisHash []byte             `db:"genesis_hash" json:"genesis_hash"`
@@ -384,6 +403,7 @@ type ContractAbi struct {
 	SourceAddress  []byte             `db:"source_address" json:"source_address"`
 	SourceCodeHash []byte             `db:"source_code_hash" json:"source_code_hash"`
 	Canonical      bool               `db:"canonical" json:"canonical"`
+	SelectorScope  []byte             `db:"selector_scope" json:"selector_scope"`
 }
 
 type ContractCodeObservation struct {
@@ -420,6 +440,69 @@ type CoreIndexConfiguration struct {
 	ConfiguredStart pgtype.Numeric     `db:"configured_start" json:"configured_start"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type DiamondCutEvent struct {
+	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash        []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash  []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64          `db:"transaction_index" json:"transaction_index"`
+	LogIndex         int64          `db:"log_index" json:"log_index"`
+	DiamondAddress   []byte         `db:"diamond_address" json:"diamond_address"`
+	InitAddress      []byte         `db:"init_address" json:"init_address"`
+	InitCalldata     []byte         `db:"init_calldata" json:"init_calldata"`
+	Cuts             []byte         `db:"cuts" json:"cuts"`
+	StageVersion     int32          `db:"stage_version" json:"stage_version"`
+	Canonical        bool           `db:"canonical" json:"canonical"`
+}
+
+type DiamondLoupeFacet struct {
+	SnapshotID   int64  `db:"snapshot_id" json:"snapshot_id"`
+	FacetAddress []byte `db:"facet_address" json:"facet_address"`
+	FacetKind    string `db:"facet_kind" json:"facet_kind"`
+	CodeExists   bool   `db:"code_exists" json:"code_exists"`
+	CodeHash     []byte `db:"code_hash" json:"code_hash"`
+}
+
+type DiamondLoupeSelector struct {
+	SnapshotID   int64  `db:"snapshot_id" json:"snapshot_id"`
+	Selector     []byte `db:"selector" json:"selector"`
+	FacetAddress []byte `db:"facet_address" json:"facet_address"`
+}
+
+type DiamondLoupeSnapshot struct {
+	ID                      int64              `db:"id" json:"id"`
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	DiamondAddress          []byte             `db:"diamond_address" json:"diamond_address"`
+	BlockNumber             pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash               []byte             `db:"block_hash" json:"block_hash"`
+	StageVersion            int32              `db:"stage_version" json:"stage_version"`
+	DetectionState          string             `db:"detection_state" json:"detection_state"`
+	Completeness            string             `db:"completeness" json:"completeness"`
+	Validation              string             `db:"validation" json:"validation"`
+	StandardDiamondCut      string             `db:"standard_diamond_cut" json:"standard_diamond_cut"`
+	StandardDiamondCutFacet []byte             `db:"standard_diamond_cut_facet" json:"standard_diamond_cut_facet"`
+	LoupeInterfaceReported  *bool              `db:"loupe_interface_reported" json:"loupe_interface_reported"`
+	Truncated               bool               `db:"truncated" json:"truncated"`
+	TruncationReason        *string            `db:"truncation_reason" json:"truncation_reason"`
+	Warnings                []byte             `db:"warnings" json:"warnings"`
+	Canonical               bool               `db:"canonical" json:"canonical"`
+	DurableJobID            *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64             `db:"job_generation" json:"job_generation"`
+	ObservedAt              pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type DiamondSelectorChange struct {
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockHash     []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex      int64          `db:"log_index" json:"log_index"`
+	StageVersion  int32          `db:"stage_version" json:"stage_version"`
+	CutIndex      int32          `db:"cut_index" json:"cut_index"`
+	SelectorIndex int32          `db:"selector_index" json:"selector_index"`
+	Selector      []byte         `db:"selector" json:"selector"`
+	Action        int16          `db:"action" json:"action"`
+	FacetAddress  []byte         `db:"facet_address" json:"facet_address"`
 }
 
 type DurableJob struct {
@@ -1007,6 +1090,28 @@ type PublishedBlockStageResult struct {
 	CompletedAt   pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 	DurableJobID  *int64             `db:"durable_job_id" json:"durable_job_id"`
 	JobGeneration *int64             `db:"job_generation" json:"job_generation"`
+}
+
+type PublishedDiamondLoupeSnapshot struct {
+	ID                      int64              `db:"id" json:"id"`
+	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	DiamondAddress          []byte             `db:"diamond_address" json:"diamond_address"`
+	BlockNumber             pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash               []byte             `db:"block_hash" json:"block_hash"`
+	StageVersion            int32              `db:"stage_version" json:"stage_version"`
+	DetectionState          string             `db:"detection_state" json:"detection_state"`
+	Completeness            string             `db:"completeness" json:"completeness"`
+	Validation              string             `db:"validation" json:"validation"`
+	StandardDiamondCut      string             `db:"standard_diamond_cut" json:"standard_diamond_cut"`
+	StandardDiamondCutFacet []byte             `db:"standard_diamond_cut_facet" json:"standard_diamond_cut_facet"`
+	LoupeInterfaceReported  *bool              `db:"loupe_interface_reported" json:"loupe_interface_reported"`
+	Truncated               bool               `db:"truncated" json:"truncated"`
+	TruncationReason        *string            `db:"truncation_reason" json:"truncation_reason"`
+	Warnings                []byte             `db:"warnings" json:"warnings"`
+	Canonical               bool               `db:"canonical" json:"canonical"`
+	DurableJobID            *int64             `db:"durable_job_id" json:"durable_job_id"`
+	JobGeneration           *int64             `db:"job_generation" json:"job_generation"`
+	ObservedAt              pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
 type Receipt struct {

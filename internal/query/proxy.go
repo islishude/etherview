@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/jackc/pgx/v5"
@@ -129,6 +130,33 @@ type ProxyInitializationPage struct {
 	Items           []ProxyInitialization
 	Snapshot        ProxySnapshot
 	NextCursor      string
+}
+
+type DiamondFacetCut struct {
+	CutIndex     int
+	Action       string
+	FacetAddress string
+	Selectors    []string
+}
+
+type DiamondCut struct {
+	BlockNumber      string
+	BlockHash        string
+	BlockTimestamp   time.Time
+	TransactionHash  string
+	TransactionIndex string
+	LogIndex         string
+	InitAddress      string
+	InitCalldata     string
+	Cuts             []DiamondFacetCut
+}
+
+type DiamondCutPage struct {
+	DiamondAddress string
+	Coverage       ProxyHistoryCoverage
+	Items          []DiamondCut
+	Snapshot       ProxySnapshot
+	NextCursor     string
 }
 
 type proxyHistoryCursor struct {
@@ -404,6 +432,105 @@ func (r *PostgresReader) ProxyInitializations(
 			return ProxyInitializationPage{}, ErrInvalidCursor
 		}
 		return ProxyInitializationPage{}, fmt.Errorf("query proxy initializations: %w", err)
+	}
+	return result, nil
+}
+
+func (r *PostgresReader) DiamondCuts(
+	ctx context.Context,
+	rawAddress string,
+	encodedCursor string,
+	limit int,
+) (DiamondCutPage, error) {
+	if limit <= 0 || limit > 100 {
+		return DiamondCutPage{}, fmt.Errorf("DiamondCut history limit %d is outside 1..100", limit)
+	}
+	address, cursor, err := r.decodeProxyHistoryCursor(rawAddress, encodedCursor, "diamond_cuts")
+	if err != nil {
+		return DiamondCutPage{}, err
+	}
+	chainID, err := r.proxyChainNumeric()
+	if err != nil {
+		return DiamondCutPage{}, err
+	}
+	result := DiamondCutPage{DiamondAddress: address.Hex(), Items: []DiamondCut{}}
+	err = r.withProxyReadTransaction(ctx, func(queries *dbgen.Queries) error {
+		if err := r.prepareProxyHistorySnapshot(ctx, queries, chainID, address, encodedCursor, &cursor); err != nil {
+			return err
+		}
+		result.Snapshot = ProxySnapshot{
+			Number: strconv.FormatUint(cursor.SnapshotNumber, 10), Hash: cursor.SnapshotHash,
+		}
+		result.Coverage = ProxyHistoryCoverage{
+			State: ProxyCoveragePartial, ToBlock: result.Snapshot.Number,
+		}
+		coverage, coverageErr := queries.GetDiamondCutHistoryCoverage(
+			ctx, dbgen.GetDiamondCutHistoryCoverageParams{
+				ChainID: chainID, SnapshotNumber: numericUint64(cursor.SnapshotNumber),
+				SnapshotHash:   common.HexToHash(cursor.SnapshotHash).Bytes(),
+				DiamondAddress: address.Bytes(),
+			},
+		)
+		if coverageErr == nil {
+			if _, parseErr := parseDecimalUint64(coverage.FromBlock); parseErr != nil {
+				return fmt.Errorf("decode DiamondCut coverage start: %w", parseErr)
+			}
+			if _, parseErr := parseDecimalUint64(coverage.ToBlock); parseErr != nil {
+				return fmt.Errorf("decode DiamondCut coverage end: %w", parseErr)
+			}
+			result.Coverage.FromBlock = coverage.FromBlock
+			result.Coverage.ToBlock = coverage.ToBlock
+			if coverage.Complete {
+				result.Coverage.State = ProxyCoverageComplete
+			}
+		} else if !errors.Is(coverageErr, pgx.ErrNoRows) {
+			return coverageErr
+		}
+		rows, queryErr := queries.ListDiamondCutHistory(ctx, dbgen.ListDiamondCutHistoryParams{
+			ChainID: chainID, DiamondAddress: address.Bytes(),
+			SnapshotNumber:    numericUint64(cursor.SnapshotNumber),
+			HasBoundary:       encodedCursor != "",
+			BeforeBlockNumber: numericUint64(cursor.BeforeBlockNumber),
+			BeforeLogIndex:    cursor.BeforeLogIndex, PageLimit: int32(limit + 1),
+		})
+		if queryErr != nil {
+			return queryErr
+		}
+		for index, row := range rows {
+			if index == limit {
+				break
+			}
+			item, modelErr := diamondCutModel(row)
+			if modelErr != nil {
+				return modelErr
+			}
+			result.Items = append(result.Items, item)
+		}
+		if len(rows) > limit && len(result.Items) != 0 {
+			last := result.Items[len(result.Items)-1]
+			cursor.BeforeBlockNumber, err = parseDecimalUint64(last.BlockNumber)
+			if err != nil {
+				return err
+			}
+			cursor.BeforeLogIndex, err = strconv.ParseInt(last.LogIndex, 10, 64)
+			if err != nil || cursor.BeforeLogIndex < 0 {
+				return errors.New("stored DiamondCut log index is invalid")
+			}
+			result.NextCursor, err = httpapi.EncodeCursor(cursor)
+			if err != nil {
+				return fmt.Errorf("encode DiamondCut cursor: %w", err)
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DiamondCutPage{}, httpapi.ErrNotReady
+	}
+	if err != nil {
+		if errors.Is(err, ErrInvalidCursor) {
+			return DiamondCutPage{}, ErrInvalidCursor
+		}
+		return DiamondCutPage{}, fmt.Errorf("query DiamondCut history: %w", err)
 	}
 	return result, nil
 }
@@ -890,6 +1017,79 @@ func proxyInitializationModel(row dbgen.ListProxyInitializationHistoryRow) (Prox
 	return ProxyInitialization{Version: row.Version, BlockNumber: row.BlockNumber,
 		BlockHash: blockHash, BlockTimestamp: timestamp, TransactionHash: transactionHash,
 		LogIndex: strconv.FormatInt(row.LogIndex, 10), Implementation: *implementation}, nil
+}
+
+func diamondCutModel(row dbgen.ListDiamondCutHistoryRow) (DiamondCut, error) {
+	if _, err := parseDecimalUint64(row.BlockNumber); err != nil {
+		return DiamondCut{}, fmt.Errorf("decode DiamondCut block number: %w", err)
+	}
+	if row.TransactionIndex < 0 || row.LogIndex < 0 {
+		return DiamondCut{}, errors.New("stored DiamondCut position is negative")
+	}
+	blockHash, err := requiredHash(row.BlockHash, "DiamondCut block hash")
+	if err != nil {
+		return DiamondCut{}, err
+	}
+	transactionHash, err := requiredHash(row.TransactionHash, "DiamondCut transaction hash")
+	if err != nil {
+		return DiamondCut{}, err
+	}
+	timestamp, err := proxyBlockTimestamp(row.BlockTimestamp)
+	if err != nil {
+		return DiamondCut{}, err
+	}
+	if len(row.InitAddress) != common.AddressLength {
+		return DiamondCut{}, errors.New("stored DiamondCut init address is invalid")
+	}
+	var stored []struct {
+		CutIndex  int      `json:"cut_index"`
+		Action    uint8    `json:"action"`
+		Facet     string   `json:"facet_address"`
+		Selectors []string `json:"selectors"`
+	}
+	if !json.Valid(row.Cuts) || json.Unmarshal(row.Cuts, &stored) != nil ||
+		len(stored) > enrich.DiamondMaxFacets {
+		return DiamondCut{}, errors.New("stored DiamondCut payload is invalid")
+	}
+	cuts := make([]DiamondFacetCut, len(stored))
+	selectorCount := 0
+	for index, cut := range stored {
+		if cut.CutIndex != index || cut.Action > 2 || len(cut.Selectors) == 0 ||
+			len(cut.Selectors) > enrich.DiamondMaxSelectorsPerFacet {
+			return DiamondCut{}, errors.New("stored DiamondCut entry is invalid")
+		}
+		facet, err := ethrpc.ParseAddress(cut.Facet)
+		if err != nil {
+			return DiamondCut{}, errors.New("stored DiamondCut facet address is invalid")
+		}
+		action := [...]string{"add", "replace", "remove"}[cut.Action]
+		cuts[index] = DiamondFacetCut{
+			CutIndex: cut.CutIndex, Action: action, FacetAddress: facet.Hex(),
+			Selectors: make([]string, len(cut.Selectors)),
+		}
+		for selectorIndex, selector := range cut.Selectors {
+			if len(selector) != 10 || !strings.HasPrefix(selector, "0x") {
+				return DiamondCut{}, errors.New("stored DiamondCut selector is invalid")
+			}
+			decoded, decodeErr := hex.DecodeString(selector[2:])
+			if decodeErr != nil || len(decoded) != 4 {
+				return DiamondCut{}, errors.New("stored DiamondCut selector is invalid")
+			}
+			cuts[index].Selectors[selectorIndex] = "0x" + strings.ToLower(selector[2:])
+		}
+		selectorCount += len(cut.Selectors)
+		if selectorCount > enrich.DiamondMaxSelectorsTotal {
+			return DiamondCut{}, errors.New("stored DiamondCut selector count exceeds the public bound")
+		}
+	}
+	return DiamondCut{
+		BlockNumber: row.BlockNumber, BlockHash: blockHash, BlockTimestamp: timestamp,
+		TransactionHash:  transactionHash,
+		TransactionIndex: strconv.FormatInt(row.TransactionIndex, 10),
+		LogIndex:         strconv.FormatInt(row.LogIndex, 10),
+		InitAddress:      common.BytesToAddress(row.InitAddress).Hex(),
+		InitCalldata:     "0x" + hex.EncodeToString(row.InitCalldata), Cuts: cuts,
+	}, nil
 }
 
 func currentProxyIdentity(address, codeHash []byte, verified bool) (*ProxyIdentity, error) {

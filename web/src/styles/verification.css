@@ -286,6 +286,46 @@
   border-radius: var(--radius-sm);
 }
 
+.diamond-facets,
+.diamond-cut-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.diamond-facet-card > summary {
+  cursor: pointer;
+}
+
+.diamond-facet-card[open] > summary {
+  margin-bottom: 0.8rem;
+}
+
+.diamond-selector-list {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.65rem 0;
+}
+
+.diamond-selector-list code {
+  padding: 0.25rem 0.4rem;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.diamond-cut-list {
+  padding-left: 1.35rem;
+}
+
+.diamond-cut-list > li {
+  min-width: 0;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--line);
+}
+
 .history-card-heading,
 .history-transition,
 .history-identity {
@@ -310,6 +350,15 @@
 
 .history-transition code,
 .history-identity code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.history-evidence,
+.history-evidence p,
+.history-evidence a,
+.history-evidence code {
+  min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
 }

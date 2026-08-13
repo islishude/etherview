@@ -425,19 +425,22 @@ Proxy detection V2 is additive and defaults off. It never replaces the legacy
 OpenZeppelin observation, verified binding, ABI dependency, or browser write
 authority.
 
-1. Apply migration `0038_proxy_detection_v2.sql` and enable only shadow
-   collection on every `enrich`/`all` process:
+1. Apply migrations `0038_proxy_detection_v2.sql` and
+   `0043_erc2535_diamonds.sql`, then enable only shadow collection on every
+   `enrich`/`all` process:
 
    ```yaml
    features:
      proxy_detection_v2: true
      safe_proxy_detection: true
+     diamond_proxy_detection: true
      proxy_detection_v2_public: false
    ```
 
    The equivalent environment variables are
    `ETHERVIEW_FEATURE_PROXY_DETECTION_V2=true` and
-   `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION=true` and
+   `ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION=true`,
+   `ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION=true`, and
    `ETHERVIEW_FEATURE_PROXY_DETECTION_V2_PUBLIC=false`.
 2. Reindex a bounded canonical range. The maintenance command resolves each
    number to its current exact block hash, and the normal durable generation
@@ -446,30 +449,44 @@ authority.
    ```sh
    etherview reindex --config /etc/etherview/config.yaml \
      --from 21000000 --to 21010000 --stage proxy \
-     --reason "Safe proxy detector shadow sample"
+     --reason "Safe and Diamond proxy detector shadow sample"
    ```
 
+   Reindex `proxy` before `abi` for the same bounded range. Diamond selector
+   history and Loupe snapshots are block-hash keyed and reorg-safe; historical
+   ABI bindings become available only after the exact `proxy@2` generation is
+   published. The migration never performs an unbounded historical scan.
 3. Compare `proxy_detection_evidence` rows whose `candidate_kind` is
    `proxy_v2` with the published legacy proxy observation from the same durable
    job generation. Review all `inconsistent` and `unknown` results, all V2/OZ
-   disagreements, confirmed and compatible Safe samples, and a random negative
-   sample. `unknown` may be reindexed after the historical RPC is healthy;
-   `not-detected` is terminal evidence and is not automatically retried.
+   disagreements, confirmed and compatible Safe samples, confirmed Diamond
+   snapshots, partial/truncated Diamonds, and a random negative sample. For
+   Diamonds also compare `diamond_cut_events` replay with the latest published
+   `diamond_loupe_snapshots` map. `unknown` may be reindexed after the
+   historical RPC is healthy; `not-detected` is terminal evidence and is not
+   automatically retried.
 4. Monitor `etherview_proxy_detection_duration_ms`,
    `etherview_proxy_detection_rpc_calls_total`,
    `etherview_proxy_detection_rpc_errors_total`,
    `etherview_proxy_detection_results_total`, the ambiguous/inconsistent
    counters, and both `etherview_safe_proxy_*` counters. A non-Safe fingerprint
-   miss must add no Safe-specific storage or call request.
+   miss must add no Safe-specific storage or call request. Alert on sustained
+   Diamond `inconsistent`, `unknown`, or truncated results and on exact-state
+   RPC errors; do not reinterpret them as negative detection.
 5. After sample approval, enable `proxy_detection_v2_public` on API processes.
-   The contract page then shows the V2 family, evidence status, and Safe
-   singleton role. This still does not enable implementation-as-proxy writes
-   for Safe.
+   The contract page then shows the V2 family, evidence status, Safe singleton
+   role, and selector-filtered Diamond facet/current-cut surfaces. This still
+   does not enable implementation-as-proxy writes for Safe, and Diamond calls
+   remain addressed to the Diamond rather than to a facet.
 
 Rollback is a configuration restart: disable `proxy_detection_v2_public`
 first. Disable only `safe_proxy_detection` to stop the Safe detector while
-retaining framework/OZ shadow comparisons; disable `proxy_detection_v2` to stop
-the entire V2 suite. Retain the additive evidence rows for audit.
+retaining framework/OZ and Diamond shadow comparisons. Disable only
+`diamond_proxy_detection` to stop new Loupe detection and DiamondCut indexing;
+existing exact-block snapshots and raw canonical/orphan Cut facts remain for
+audit and old public generations remain readable until public V2 is disabled.
+Disable `proxy_detection_v2` to stop the entire V2 suite. Retain the additive
+evidence rows for audit.
 No database rollback or legacy reindex is required because old readers exclude
 the `proxy_v2` candidate kind. Re-enable shadow collection before public
 exposure; validation rejects the inverse configuration.

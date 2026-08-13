@@ -368,7 +368,7 @@ func proxyProbeKey(address common.Address, data []byte) string {
 	if len(data) < 4 {
 		return address.String()
 	}
-	return address.String() + ":" + hexutil.Encode(data[:4])
+	return address.String() + ":" + hexutil.Encode(data)
 }
 
 func TestRPCProxyDetectorRecognizesAuthenticatedImmutableCloneWithoutImplementationCode(t *testing.T) {

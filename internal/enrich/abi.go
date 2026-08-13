@@ -420,7 +420,7 @@ func chooseDecodedABICandidate(kind ABIKind, decoded []decodedABICandidate) (Dec
 		if confidenceRank(item.entry.confidence()) != bestRank {
 			break
 		}
-		bestSignatures[item.entry.signature] = struct{}{}
+		bestSignatures[abiCandidateLabel(item.entry)] = struct{}{}
 	}
 	status := DecodeDecoded
 	warning := ""
@@ -453,11 +453,12 @@ func uniqueSignatures(entries []abiEntry) []string {
 	seen := make(map[string]struct{}, len(entries))
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if _, exists := seen[entry.signature]; exists {
+		label := abiCandidateLabel(entry)
+		if _, exists := seen[label]; exists {
 			continue
 		}
-		seen[entry.signature] = struct{}{}
-		result = append(result, entry.signature)
+		seen[label] = struct{}{}
+		result = append(result, label)
 	}
 	sort.Strings(result)
 	return result
@@ -467,14 +468,22 @@ func uniqueDecodedSignatures(entries []decodedABICandidate) []string {
 	seen := make(map[string]struct{}, len(entries))
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if _, exists := seen[entry.entry.signature]; exists {
+		label := abiCandidateLabel(entry.entry)
+		if _, exists := seen[label]; exists {
 			continue
 		}
-		seen[entry.entry.signature] = struct{}{}
-		result = append(result, entry.entry.signature)
+		seen[label] = struct{}{}
+		result = append(result, label)
 	}
 	sort.Strings(result)
 	return result
+}
+
+func abiCandidateLabel(entry abiEntry) string {
+	if entry.source == ABISourceDiamondFacet && entry.sourceAddress != (common.Address{}) {
+		return entry.signature + " @ " + entry.sourceAddress.Hex()
+	}
+	return entry.signature
 }
 
 func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Hash, data []byte) DecodeResult {

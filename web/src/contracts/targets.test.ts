@@ -1,4 +1,4 @@
-import { getAddress } from "viem";
+import { getAddress, toFunctionSelector } from "viem";
 import { describe, expect, it, vi } from "vitest";
 
 import { WalletBoundaryError } from "@/wallet/eip6963";
@@ -26,6 +26,7 @@ const PROXY = getAddress("0xdc64a140aa3e981100a9beca4e685f962f0cf6c9");
 const IMPLEMENTATION = getAddress("0x5fbdb2315678afecb367f032d93f642f64180aa3");
 const ADMIN = getAddress("0xe7f1725e7734ce288f8367e1bb143e90bb3f0512");
 const BEACON = getAddress("0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0");
+const FACET = getAddress("0x0165878a594ca255338adfa4d48449f69242eb8f");
 const ACCOUNT = getAddress("0x70997970c51812dc3a010c7d01b50e0d17dc79c8");
 const OTHER = getAddress("0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc");
 const PROXY_HASH = `0x${"11".repeat(32)}`;
@@ -240,6 +241,44 @@ describe("contract interaction targets", () => {
     });
     expect(targetOfKind(targets, "implementation_as_proxy")).not.toHaveProperty(
       "standardVersion",
+    );
+  });
+
+  it("builds selector-scoped Diamond facet targets without inventing one implementation", () => {
+    const details = diamondProxyDetails();
+    const targets = buildContractInteractionTargets(PROXY, details);
+    expect(targets.map(({ kind }) => kind)).toEqual(["contract", "diamond_facet"]);
+    const facet = targetOfKind(targets, "diamond_facet");
+    expect(facet).toMatchObject({
+      transactionTarget: PROXY,
+      abiAddress: FACET,
+      abiCodeHash: IMPLEMENTATION_HASH,
+      proxyAddress: PROXY,
+      proxyChainID: "31337",
+      supportsWrites: true,
+      requiresFreshBinding: true,
+    });
+    expect(isInteractionFunctionAllowed(facet, "setValue(uint256)", true)).toBe(true);
+    expect(isInteractionFunctionAllowed(facet, "value()", false)).toBe(false);
+    expect(details.implementation).toBeUndefined();
+    expect(details.implementation_addresses).toEqual([FACET]);
+  });
+
+  it("disables Diamond facet interaction for partial snapshots and fences route changes", () => {
+    const partial = diamondProxyDetails({ completeness: "partial", truncated: true });
+    expect(buildContractInteractionTargets(PROXY, partial).map(({ kind }) => kind))
+      .toEqual(["contract"]);
+
+    const loaded = diamondProxyDetails();
+    const target = targetOfKind(
+      buildContractInteractionTargets(PROXY, loaded),
+      "diamond_facet",
+    );
+    const fence = captureInteractionFence(target, "31337", wallet);
+    const changed = diamondProxyDetails({ selectorFacet: OTHER });
+    expectFenceCode(
+      () => assertFreshInteractionFence(fence, wallet, proxyResponse(changed)),
+      "TARGET_CHANGED",
     );
   });
 });
@@ -602,6 +641,95 @@ function proxyResponse(
     meta: {
       chain_id: chainID,
       request_id: "request-1",
+    },
+  };
+}
+
+function diamondProxyDetails({
+  completeness = "complete",
+  truncated = false,
+  selectorFacet = FACET,
+}: {
+  completeness?: "complete" | "partial" | "unknown";
+  truncated?: boolean;
+  selectorFacet?: string;
+} = {}): ProxyDetails {
+  const selector = toFunctionSelector("setValue(uint256)").toLowerCase();
+  const activeFacet = getAddress(selectorFacet);
+  const outcome = {
+    detector: "erc2535",
+    detector_version: "1.0.0",
+    priority: 150,
+    family: "erc2535" as const,
+    variant: "diamond",
+    status: "confirmed" as const,
+    confidence: "high" as const,
+    proxy: PROXY,
+    implementation_path: [],
+    canonical_proxy_shell: false,
+    implementation_has_code: false,
+    official_singleton: false,
+    singleton_changed: false,
+    evidence: [],
+    warnings: [],
+    chain_id: "31337",
+    block_number: "20",
+    block_hash: BLOCK_HASH,
+    targets: [
+      {
+        address: activeFacet,
+        role: "facet" as const,
+        selectors: [selector],
+        code_exists: true,
+        code_hash: IMPLEMENTATION_HASH,
+      },
+      {
+        address: PROXY,
+        role: "immutable" as const,
+        selectors: [toFunctionSelector("facets()").toLowerCase()],
+        code_exists: true,
+      },
+    ],
+    diamond: {
+      completeness,
+      validation: completeness === "complete" ? "full" as const : "sampled" as const,
+      facets: [
+        {
+          address: activeFacet,
+          role: "facet" as const,
+          selectors: [selector],
+          code_exists: true,
+          code_hash: IMPLEMENTATION_HASH,
+        },
+        {
+          address: PROXY,
+          role: "immutable" as const,
+          selectors: [toFunctionSelector("facets()").toLowerCase()],
+          code_exists: true,
+        },
+      ],
+      selector_to_facet: {
+        [selector]: activeFacet,
+        [toFunctionSelector("facets()").toLowerCase()]: PROXY,
+      },
+      implementation_addresses: [activeFacet],
+      standard_diamond_cut: { status: "absent" as const },
+      truncated,
+      ...(truncated ? { truncation_reason: "test-limit" } : {}),
+    },
+  };
+  return {
+    address: PROXY,
+    status: "detected_unverified",
+    snapshot: { chain_id: "31337", block_number: "20", block_hash: BLOCK_HASH },
+    implementation_addresses: [activeFacet],
+    evidence: [],
+    proxy_detection_v2: {
+      status: "confirmed",
+      primary: outcome,
+      outcomes: [outcome],
+      conflicts: [],
+      shadow_diff: { different: true, reasons: ["diamond"] },
     },
   };
 }

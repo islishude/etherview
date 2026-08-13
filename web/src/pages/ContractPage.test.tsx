@@ -148,6 +148,34 @@ describe("contract proxy route", () => {
     expect(screen.queryByRole("tab", { name: "Read implementation (as proxy)" })).not.toBeInTheDocument();
   });
 
+  it("shows selector-filtered Diamond facets and ordered DiamondCut history without choosing a first implementation", async () => {
+    const fetcher = installContractAPI({ pattern: "none", diamondDetection: true });
+    const user = userEvent.setup();
+    renderContractRoute();
+
+    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    expect(await screen.findByText("ERC-2535 Diamond")).toBeVisible();
+    expect(screen.getByText("Full cross-check")).toBeVisible();
+    expect(screen.getByText("Not detected")).toBeVisible();
+
+    const tabs = screen.getByRole("tablist", { name: "Contract interaction sections" });
+    expect(within(tabs).queryByRole("tab", { name: "Read implementation (as proxy)" })).toBeNull();
+    await user.click(within(tabs).getByRole("tab", { name: "Diamond facets" }));
+    const facetAddress = await screen.findByText(implementationAddress);
+    await user.click(facetAddress.closest("summary")!);
+    expect(await screen.findByText("setValue(uint256)", { exact: true })).toBeVisible();
+    expect(screen.queryByText("value()", { exact: true })).toBeNull();
+    expect(screen.getByText(/Every call is sent to the Diamond/u)).toBeVisible();
+
+    await user.click(within(tabs).getByRole("tab", { name: "DiamondCut history" }));
+    expect(await screen.findByText("Add selectors")).toBeVisible();
+    expect(screen.getByText("One-shot init target", { exact: false })).toBeVisible();
+    expect(screen.getByText(managementAddress)).toBeVisible();
+    expect(contractRequests(fetcher).some(({ url }) =>
+      url.pathname.endsWith("/proxy/diamond-cuts")
+    )).toBe(true);
+  });
+
   it.each([
     { pattern: "uups", managementKind: undefined },
     { pattern: "transparent", managementKind: "proxy_admin" },
@@ -460,6 +488,7 @@ function installContractAPI({
   implementationArtifactCodeHash,
   managementArtifactCodeHash,
   safeDetection,
+  diamondDetection,
   proxyStatus,
   verificationStatus,
 }: {
@@ -468,6 +497,7 @@ function installContractAPI({
   implementationArtifactCodeHash?: string;
   managementArtifactCodeHash?: string;
   safeDetection?: boolean;
+  diamondDetection?: boolean;
   proxyStatus?: number;
   verificationStatus?: number;
 }) {
@@ -501,7 +531,7 @@ function installContractAPI({
           { status: proxyStatus },
         );
       }
-      const detail = proxyDetail(pattern);
+      const detail = diamondDetection ? diamondProxyDetail() : proxyDetail(pattern);
       return envelope(safeDetection ? {
         ...detail,
         proxy_detection_v2: safeProxyDetection(),
@@ -545,6 +575,9 @@ function installContractAPI({
         return staleCursor();
       }
       return envelope(initializationHistory(), { next_cursor: nextCursor });
+    }
+    if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy/diamond-cuts`) {
+      return envelope(diamondCutHistory(), { next_cursor: nextCursor });
     }
     return Response.json(
       {
@@ -590,6 +623,98 @@ function safeProxyDetection() {
     outcomes: [primary],
     conflicts: [],
     shadow_diff: { different: true, reasons: ["v2_positive_legacy_not_detected"] },
+  };
+}
+
+function diamondProxyDetail() {
+  const selector = "0x55241077";
+  const immutableSelector = "0x7a0ed627";
+  const facets = [
+    {
+      address: implementationAddress,
+      role: "facet" as const,
+      selectors: [selector],
+      code_exists: true,
+      code_hash: hash,
+    },
+    {
+      address: proxyAddress,
+      role: "immutable" as const,
+      selectors: [immutableSelector],
+      code_exists: true,
+    },
+  ];
+  const primary = {
+    detector: "erc2535",
+    detector_version: "1.0.0",
+    priority: 150,
+    family: "erc2535" as const,
+    variant: "diamond",
+    status: "confirmed" as const,
+    confidence: "high" as const,
+    proxy: proxyAddress,
+    implementation_path: [],
+    canonical_proxy_shell: false,
+    implementation_has_code: false,
+    official_singleton: false,
+    singleton_changed: false,
+    targets: facets,
+    diamond: {
+      completeness: "complete" as const,
+      validation: "full" as const,
+      facets,
+      selector_to_facet: {
+        [selector]: implementationAddress,
+        [immutableSelector]: proxyAddress,
+      },
+      implementation_addresses: [implementationAddress],
+      standard_diamond_cut: { status: "absent" as const },
+      loupe_interface_reported: true,
+      truncated: false,
+    },
+    evidence: [],
+    warnings: [],
+    chain_id: "1",
+    block_number: "42",
+    block_hash: hash,
+  };
+  return {
+    address: proxyAddress,
+    status: "detected_unverified",
+    snapshot: snapshot(),
+    implementation_addresses: [implementationAddress],
+    proxy_detection_v2: {
+      status: "confirmed" as const,
+      primary,
+      outcomes: [primary],
+      conflicts: [],
+      shadow_diff: { different: true, reasons: ["v2_positive_legacy_not_detected"] },
+    },
+    evidence: [],
+  };
+}
+
+function diamondCutHistory() {
+  return {
+    diamond_address: proxyAddress,
+    snapshot: snapshot(),
+    coverage: { state: "complete", from_block: "1", to_block: "42" },
+    items: [{
+      block_number: "1",
+      block_hash: hash,
+      block_timestamp: "2026-08-01T00:00:00Z",
+      transaction_hash: oldHash,
+      transaction_index: "0",
+      log_index: "0",
+      init_address: managementAddress,
+      init_calldata: "0x1234",
+      cuts: [{
+        cut_index: 0,
+        action: "add",
+        facet_address: implementationAddress,
+        selectors: ["0x55241077"],
+      }],
+    }],
   };
 }
 

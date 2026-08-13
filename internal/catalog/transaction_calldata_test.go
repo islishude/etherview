@@ -228,8 +228,8 @@ func TestTransactionCalldataUsesExactReadTimeABIWhenPublicationIsWeak(t *testing
 			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
-		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(8,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, "0", nil},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -260,8 +260,8 @@ func TestTransactionCalldataDecodesSelectorlessReceiveFromExactABI(t *testing.T)
 			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
 		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
-		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(8,
-			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, "0", nil},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())

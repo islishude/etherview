@@ -41,6 +41,8 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 			"proxy_detection_evidence",
 			"proxy_upgrade_events",
 			"proxy_initialization_events",
+			"diamond_loupe_snapshots",
+			"diamond_cut_events",
 		}
 	case ABIStage:
 		relations = []string{"contract_abis", "abi_decodings"}

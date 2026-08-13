@@ -9,6 +9,7 @@ import {
   adaptContractProxy,
   classifyProxyReadError,
   getContractProxy,
+  listContractDiamondCuts,
   listContractProxyInitializations,
   listContractProxyUpgrades,
   useVerifiedContractArtifact,
@@ -187,6 +188,9 @@ describe("proxy API adapter", () => {
       if (url.pathname.endsWith("/initializations")) {
         return envelope(initializationHistory(), { next_cursor: opaqueCursor });
       }
+      if (url.pathname.endsWith("/diamond-cuts")) {
+        return envelope(diamondCutHistory(), { next_cursor: opaqueCursor });
+      }
       return Response.json({}, { status: 404 });
     });
     vi.stubGlobal("fetch", fetcher);
@@ -197,6 +201,7 @@ describe("proxy API adapter", () => {
       7,
     );
     const initializations = await listContractProxyInitializations(proxyAddress);
+    const cuts = await listContractDiamondCuts(proxyAddress, opaqueCursor, 5);
 
     expect(upgrades.next_cursor).toBe(opaqueCursor);
     expect(upgrades.items[0]?.new_implementation.address).toBe(
@@ -206,6 +211,8 @@ describe("proxy API adapter", () => {
     expect(initializations.items[0]?.version).toBe(
       "18446744073709551615",
     );
+    expect(cuts.next_cursor).toBe(opaqueCursor);
+    expect(cuts.items[0]?.cuts[0]?.selectors).toEqual(["0x11223344"]);
 
     const upgradeURL = new URL(String(fetcher.mock.calls[0]?.[0]), "http://localhost");
     expect(upgradeURL.pathname).toBe(
@@ -221,6 +228,14 @@ describe("proxy API adapter", () => {
     );
     expect(Object.fromEntries(initializationURL.searchParams)).toEqual({
       limit: "20",
+    });
+    const cutsURL = new URL(String(fetcher.mock.calls[2]?.[0]), "http://localhost");
+    expect(cutsURL.pathname).toBe(
+      `/api/v1/contracts/${proxyAddress}/proxy/diamond-cuts`,
+    );
+    expect(Object.fromEntries(cutsURL.searchParams)).toEqual({
+      cursor: opaqueCursor,
+      limit: "5",
     });
   });
 
@@ -286,6 +301,30 @@ function snapshot() {
     chain_id: "1",
     block_number: "42",
     block_hash: hash,
+  };
+}
+
+function diamondCutHistory() {
+  return {
+    diamond_address: proxyAddress,
+    snapshot: snapshot(),
+    coverage: { state: "complete", from_block: "1", to_block: "42" },
+    items: [{
+      block_number: "1",
+      block_hash: hash,
+      block_timestamp: "2026-08-13T00:00:00Z",
+      transaction_hash: oldHash,
+      transaction_index: "0",
+      log_index: "0",
+      init_address: managementAddress,
+      init_calldata: "0x",
+      cuts: [{
+        cut_index: 0,
+        action: "add",
+        facet_address: implementationAddress,
+        selectors: ["0x11223344"],
+      }],
+    }],
   };
 }
 

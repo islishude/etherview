@@ -2923,3 +2923,111 @@ WHERE COALESCE(preceding.implementation_address,
   AND implementation_code.code_hash IS NOT NULL
 ORDER BY initialization.block_number DESC, initialization.log_index DESC
 LIMIT sqlc.arg(page_limit);
+
+-- name: GetDiamondCutHistoryCoverage :one
+WITH tip AS (
+    SELECT number, block_hash
+    FROM canonical_blocks
+    WHERE chain_id = sqlc.arg(chain_id)::numeric
+      AND number = sqlc.arg(snapshot_number)::numeric
+      AND block_hash = sqlc.arg(snapshot_hash)::bytea
+), first_cut AS (
+    SELECT event.block_number, event.block_hash
+    FROM diamond_cut_events AS event
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = event.chain_id
+     AND canonical.number = event.block_number
+     AND canonical.block_hash = event.block_hash
+    JOIN published_block_stage_results AS published
+      ON published.chain_id = event.chain_id
+     AND published.block_number = event.block_number
+     AND published.block_hash = event.block_hash
+     AND published.stage = 'proxy'
+     AND published.stage_version = event.stage_version
+     AND published.state = 'complete'
+    WHERE event.chain_id = sqlc.arg(chain_id)::numeric
+      AND event.diamond_address = sqlc.arg(diamond_address)::bytea
+      AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+      AND event.stage_version = 2
+      AND event.canonical
+    ORDER BY event.block_number, event.transaction_index, event.log_index
+    LIMIT 1
+), created AS (
+    SELECT EXISTS (
+        SELECT 1
+        FROM receipts AS receipt
+        WHERE receipt.chain_id = sqlc.arg(chain_id)::numeric
+          AND receipt.block_number = first_cut.block_number
+          AND receipt.block_hash = first_cut.block_hash
+          AND lower(receipt.raw->>'contractAddress') =
+              lower('0x' || encode(sqlc.arg(diamond_address)::bytea, 'hex'))
+        UNION ALL
+        SELECT 1
+        FROM normalized_traces AS trace
+        JOIN published_block_stage_results AS published
+          ON published.chain_id = trace.chain_id
+         AND published.block_number = trace.block_number
+         AND published.block_hash = trace.block_hash
+         AND published.stage = 'trace'
+         AND published.stage_version = 2
+         AND published.state = 'complete'
+        WHERE trace.chain_id = sqlc.arg(chain_id)::numeric
+          AND trace.block_number = first_cut.block_number
+          AND trace.block_hash = first_cut.block_hash
+          AND trace.created_address = sqlc.arg(diamond_address)::bytea
+          AND trace.call_type IN ('CREATE', 'CREATE2')
+          AND NOT trace.reverted
+          AND trace.canonical
+    ) AS at_first_cut
+    FROM first_cut
+)
+SELECT first_cut.block_number::text AS from_block,
+       tip.number::text AS to_block,
+       (created.at_first_cut AND proxy_interaction_coverage_contains(
+           sqlc.arg(chain_id)::numeric,
+           first_cut.block_number, first_cut.block_hash,
+           tip.number, tip.block_hash
+       ))::boolean AS complete
+FROM tip
+JOIN first_cut ON TRUE
+JOIN created ON TRUE;
+
+-- name: ListDiamondCutHistory :many
+SELECT event.block_number::text AS block_number,
+       event.block_hash,
+       block.timestamp::text AS block_timestamp,
+       event.transaction_hash,
+       event.transaction_index,
+       event.log_index,
+       event.init_address,
+       event.init_calldata,
+       event.cuts
+FROM diamond_cut_events AS event
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = event.chain_id
+ AND canonical.number = event.block_number
+ AND canonical.block_hash = event.block_hash
+JOIN blocks AS block
+  ON block.chain_id = event.chain_id
+ AND block.number = event.block_number
+ AND block.hash = event.block_hash
+JOIN published_block_stage_results AS published
+  ON published.chain_id = event.chain_id
+ AND published.block_number = event.block_number
+ AND published.block_hash = event.block_hash
+ AND published.stage = 'proxy'
+ AND published.stage_version = event.stage_version
+ AND published.state = 'complete'
+WHERE event.chain_id = sqlc.arg(chain_id)::numeric
+  AND event.diamond_address = sqlc.arg(diamond_address)::bytea
+  AND event.block_number <= sqlc.arg(snapshot_number)::numeric
+  AND event.stage_version = 2
+  AND event.canonical
+  AND (
+      NOT sqlc.arg(has_boundary)::boolean OR
+      event.block_number < sqlc.arg(before_block_number)::numeric OR
+      (event.block_number = sqlc.arg(before_block_number)::numeric AND
+       event.log_index < sqlc.arg(before_log_index)::bigint)
+  )
+ORDER BY event.block_number DESC, event.log_index DESC
+LIMIT sqlc.arg(page_limit);

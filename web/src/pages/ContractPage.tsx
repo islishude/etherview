@@ -15,11 +15,13 @@ import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
 import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import {
   useContractProxy,
+  useContractDiamondCuts,
   useContractProxyInitializations,
   useContractProxyUpgrades,
   useVerifiedContractArtifact,
   verifiedArtifactMatchesIdentity,
   type ContractProxyDetails,
+  type ContractDiamondCutPage,
   type ContractProxyInitializationPage,
   type ContractProxyUpgradePage,
   type VerifiedContractArtifact,
@@ -27,6 +29,7 @@ import {
 import {
   buildContractInteractionTargets,
   type ContractInteractionTarget,
+  type DiamondFacetInteractionTarget,
 } from "@/contracts/targets";
 
 export type ContractTab =
@@ -36,6 +39,8 @@ export type ContractTab =
   | "read-implementation"
   | "write-implementation"
   | "management"
+  | "diamond-facets"
+  | "diamond-cuts"
   | "upgrades"
   | "initializations";
 
@@ -46,6 +51,8 @@ export const CONTRACT_TAB_IDS: readonly ContractTab[] = [
   "read-implementation",
   "write-implementation",
   "management",
+  "diamond-facets",
+  "diamond-cuts",
   "upgrades",
   "initializations",
 ];
@@ -67,6 +74,8 @@ function contractTabLabel(tab: ContractTab, t: Translate): string {
     case "read-implementation": return t("contracts.tabs.readImplementation");
     case "write-implementation": return t("contracts.tabs.writeImplementation");
     case "management": return t("contracts.tabs.management");
+    case "diamond-facets": return t("contracts.tabs.diamondFacets");
+    case "diamond-cuts": return t("contracts.tabs.diamondCuts");
     case "upgrades": return t("contracts.tabs.upgrades");
     case "initializations": return t("contracts.tabs.initializations");
   }
@@ -76,6 +85,10 @@ interface CursorState {
   identity: string;
   cursors: string[];
 }
+
+type PublicProxyTarget = NonNullable<
+  NonNullable<ContractProxyDetails["proxy_detection_v2"]>["primary"]
+>["targets"][number];
 
 export function ContractPage({ address }: { address: string }) {
   const { t } = useTranslation();
@@ -100,6 +113,9 @@ export function ContractPage({ address }: { address: string }) {
   );
   const managementTargets = interactionTargets.filter((target) =>
     target.kind === "transparent_proxy_admin" || target.kind === "beacon_management"
+  );
+  const diamondTargets = interactionTargets.filter(
+    (target): target is DiamondFacetInteractionTarget => target.kind === "diamond_facet",
   );
   const implementationTarget = implementationTargets[0];
   const managementTarget = managementTargets[0];
@@ -133,11 +149,22 @@ export function ContractPage({ address }: { address: string }) {
     identity: address,
     cursors: [""],
   });
+  const [diamondCutState, setDiamondCutState] = useState<CursorState>({
+    identity: address,
+    cursors: [""],
+  });
   const upgradeCursors = upgradeState.identity === address ? upgradeState.cursors : [""];
   const initializationCursors =
     initializationState.identity === address ? initializationState.cursors : [""];
+  const diamondCutCursors =
+    diamondCutState.identity === address ? diamondCutState.cursors : [""];
   const proxyDetail = proxy.data?.detail;
   const isProxy = proxyDetail?.proxy !== undefined;
+  const diamondOutcome = proxyDetail?.proxy_detection_v2?.outcomes.find((outcome) =>
+    outcome.family === "erc2535" && outcome.status !== "not-detected" && outcome.status !== "unknown"
+  );
+  const diamond = diamondOutcome?.diamond;
+  const isDiamond = diamond !== undefined;
   const showProxySummary = isProxy || proxyDetail?.proxy_detection_v2 !== undefined;
   const clone = proxyDetail?.pattern === "clone";
   const detected = isProxy && proxyDetail?.status !== "not_detected";
@@ -152,6 +179,12 @@ export function ContractPage({ address }: { address: string }) {
     initializationCursors.at(-1) || undefined,
     20,
     validAddress && isProxy && detected && activeTab === "initializations",
+  );
+  const diamondCuts = useContractDiamondCuts(
+    address,
+    diamondCutCursors.at(-1) || undefined,
+    20,
+    validAddress && isDiamond && activeTab === "diamond-cuts",
   );
 
   const contractQueriesPending = artifact.isPending || proxy.isPending
@@ -188,6 +221,12 @@ export function ContractPage({ address }: { address: string }) {
     if (managementArtifactMatches && managementArtifact.data?.abi) {
       next.push({ id: "management", label: t("contracts.tabs.management") });
     }
+    if (isDiamond && diamond.facets.length > 0) {
+      next.push({ id: "diamond-facets", label: t("contracts.tabs.diamondFacets") });
+    }
+    if (isDiamond) {
+      next.push({ id: "diamond-cuts", label: t("contracts.tabs.diamondCuts") });
+    }
     if (detected && !clone) {
       next.push({ id: "upgrades", label: t("contracts.tabs.upgrades") });
     }
@@ -198,7 +237,7 @@ export function ContractPage({ address }: { address: string }) {
       next.push({ id: requestedTab, label: contractTabLabel(requestedTab, t) });
     }
     return next;
-  }, [artifact.data?.abi, clone, contractQueriesSettling, detected, implementationArtifact.data?.abi, implementationArtifactMatches, managementArtifact.data?.abi, managementArtifactMatches, requestedTab, t]);
+  }, [artifact.data?.abi, clone, contractQueriesSettling, detected, diamond, implementationArtifact.data?.abi, implementationArtifactMatches, isDiamond, managementArtifact.data?.abi, managementArtifactMatches, requestedTab, t]);
 
   useEffect(() => {
     if (!requestedTab || contractQueriesSettling || tabs.some((tab) => tab.id === requestedTab)) return;
@@ -311,6 +350,31 @@ export function ContractPage({ address }: { address: string }) {
                       targets={managementTargets}
                     />
                   )}
+                  {activeTab === "diamond-facets" && diamond && (
+                    <DiamondFacetsPanel
+                      diamondAddress={address}
+                      facets={diamond.facets}
+                      targets={diamondTargets}
+                      onBindingChanged={() => void proxy.refetch()}
+                    />
+                  )}
+                  {activeTab === "diamond-cuts" && (
+                    <DiamondCutHistory
+                      data={diamondCuts.data}
+                      error={diamondCuts.error}
+                      loading={diamondCuts.isPending}
+                      page={diamondCutCursors.length}
+                      onNext={(cursor) => setDiamondCutState({
+                        identity: address,
+                        cursors: [...diamondCutCursors, cursor],
+                      })}
+                      onPrevious={() => setDiamondCutState({
+                        identity: address,
+                        cursors: diamondCutCursors.slice(0, -1),
+                      })}
+                      onReset={() => setDiamondCutState({ identity: address, cursors: [""] })}
+                    />
+                  )}
                   {activeTab === "upgrades" && (
                     <UpgradeHistory
                       data={upgrades.data}
@@ -355,6 +419,188 @@ export function ContractPage({ address }: { address: string }) {
   );
 }
 
+function DiamondFacetsPanel({
+  diamondAddress,
+  facets,
+  targets,
+  onBindingChanged,
+}: {
+  diamondAddress: string;
+  facets: readonly PublicProxyTarget[];
+  targets: readonly DiamondFacetInteractionTarget[];
+  onBindingChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="diamond-facets">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">ERC-2535</span>
+          <h2>{t("contracts.diamond.facetsTitle")}</h2>
+        </div>
+        <span className="availability yes">
+          {t("contracts.diamond.facetCount", { count: facets.length })}
+        </span>
+      </div>
+      <p className="context-note" role="note">
+        {t("contracts.diamond.callTarget", { address: diamondAddress })}
+      </p>
+      <div className="history-list">
+        {facets.map((facet) => {
+          const target = targets.find((candidate) =>
+            candidate.abiAddress.toLowerCase() === facet.address.toLowerCase()
+          );
+          return (
+            <DiamondFacetCard
+              facet={facet}
+              key={`${facet.role}:${facet.address}`}
+              onBindingChanged={onBindingChanged}
+              target={target}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DiamondFacetCard({
+  facet,
+  target,
+  onBindingChanged,
+}: {
+  facet: PublicProxyTarget;
+  target?: DiamondFacetInteractionTarget;
+  onBindingChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const artifact = useVerifiedContractArtifact(
+    facet.address,
+    expanded && target !== undefined,
+    target?.abiCodeHash,
+  );
+  const artifactMatches = target !== undefined && verifiedArtifactMatchesIdentity(
+    artifact.data,
+    target.abiAddress,
+    target.abiCodeHash,
+  );
+  const unverified = expanded && target !== undefined && !artifact.isPending &&
+    !artifact.data && isUnverifiedArtifactError(artifact.error);
+  return (
+    <details
+      className="history-card diamond-facet-card"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary className="history-card-heading">
+        <span>
+          <strong>{facet.role === "immutable"
+            ? t("contracts.diamond.immutable")
+            : t("contracts.diamond.facet")}</strong>{" "}
+          <code>{facet.address}</code>
+        </span>
+        <span>{t("contracts.diamond.selectorCount", { count: facet.selectors.length })}</span>
+      </summary>
+      <div className="diamond-selector-list" aria-label={t("contracts.diamond.selectors")}>
+        {facet.selectors.map((selector) => <code key={selector}>{selector}</code>)}
+      </div>
+      {facet.role === "immutable" ? (
+        <p className="context-note" role="note">{t("contracts.diamond.immutableNotice")}</p>
+      ) : target === undefined ? (
+        <p className="chain-warning" role="status">{t("contracts.diamond.partialInteraction")}</p>
+      ) : (
+        <>
+          <QueryNotice loading={artifact.isPending} error={unverified ? undefined : artifact.error} />
+          {unverified ? (
+            <p className="chain-warning" role="status">{t("contracts.diamond.unverifiedFacet")}</p>
+          ) : null}
+          {artifactMatches && artifact.data?.abi ? (
+            <AbiFunctionExplorer
+              abi={artifact.data.abi}
+              mode="all"
+              onBindingChanged={onBindingChanged}
+              targets={[target]}
+            />
+          ) : null}
+        </>
+      )}
+    </details>
+  );
+}
+
+function DiamondCutHistory({
+  data,
+  loading,
+  error,
+  page,
+  onNext,
+  onPrevious,
+  onReset,
+}: {
+  data?: ContractDiamondCutPage;
+  loading: boolean;
+  error: unknown;
+  page: number;
+  onNext: (cursor: string) => void;
+  onPrevious: () => void;
+  onReset: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <HistoryLayout
+      coverage={data?.coverage}
+      error={error}
+      loading={loading}
+      nextCursor={data?.next_cursor}
+      onNext={onNext}
+      onPrevious={onPrevious}
+      onReset={onReset}
+      page={page}
+      title={t("contracts.diamond.cutsTitle")}
+    >
+      {data?.items.length === 0 ? <p className="quiet">{t("contracts.diamond.noCuts")}</p> : null}
+      {data?.items.map((item) => (
+        <article className="history-card" key={`${item.block_hash}:${item.log_index}`}>
+          <div className="history-card-heading">
+            <strong>{t("contracts.diamond.cut")}</strong>
+            <span>{t("contracts.history.logIndex")}: {item.log_index}</span>
+          </div>
+          <HistoryIdentity
+            blockHash={item.block_hash}
+            blockNumber={item.block_number}
+            timestamp={item.block_timestamp}
+            transactionHash={item.transaction_hash}
+          />
+          <ol className="diamond-cut-list">
+            {item.cuts.map((cut) => (
+              <li key={cut.cut_index}>
+                <div className="history-card-heading">
+                  <strong>{diamondCutActionLabel(cut.action, t)}</strong>
+                  <Link hash="code" search={{}} to="/address/$address" params={{ address: cut.facet_address }}>
+                    <code>{cut.facet_address}</code>
+                  </Link>
+                </div>
+                <div className="diamond-selector-list">
+                  {cut.selectors.map((selector) => <code key={selector}>{selector}</code>)}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="history-evidence">
+            <p>
+              <small>{t("contracts.diamond.initTarget")}: </small>
+              <Link hash="code" search={{}} to="/address/$address" params={{ address: item.init_address }}>
+                <code>{item.init_address}</code>
+              </Link>
+            </p>
+            <p><small>{t("contracts.diamond.initCalldata")}: </small><code>{item.init_calldata}</code></p>
+          </div>
+        </article>
+      ))}
+    </HistoryLayout>
+  );
+}
+
 function ProxySummary({
   detail,
   loading,
@@ -368,11 +614,22 @@ function ProxySummary({
   const detectionV2 = detail?.proxy_detection_v2;
   const v2Primary = detectionV2?.primary;
   const v2Detected = detectionV2 !== undefined && detectionV2.status !== "not-detected";
+  const diamondOutcome = detectionV2?.outcomes.find((outcome) =>
+    outcome.family === "erc2535" && outcome.diamond !== undefined && outcome.status !== "not-detected"
+  );
+  const diamond = diamondOutcome?.diamond;
+  const layers = detectionV2?.outcomes
+    .filter((outcome) => outcome.family && outcome.status !== "not-detected")
+    .map((outcome) => `${outcome.family}${outcome.variant ? ` (${outcome.variant})` : ""}`)
+    .join(" → ");
+  const eyebrow = diamond
+    ? "ERC-2535 Diamond"
+    : v2Primary?.family === "safe" ? "Safe Proxy" : "OpenZeppelin 5.x";
   return (
     <details className="panel proxy-summary">
       <summary className="panel-heading">
         <div>
-          <span className="eyebrow">{v2Primary?.family === "safe" ? "Safe Proxy" : "OpenZeppelin 5.x"}</span>
+          <span className="eyebrow">{eyebrow}</span>
           <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
         </div>
         {detail ? (
@@ -392,12 +649,17 @@ function ProxySummary({
               <Fact label={t("contracts.proxy.detectorStatus")} value={proxyDetectionV2StatusLabel(detectionV2.status, t)} />
               <Fact label={t("contracts.proxy.family")} value={v2Primary?.family ?? "—"} />
               <Fact label={t("contracts.proxy.variant")} value={v2Primary?.variant ?? "—"} />
-              <Fact
-                label={v2Primary?.implementation_role === "singleton" ? t("contracts.proxy.singleton") : t("contracts.proxy.implementation")}
-                value={v2Primary?.implementation ?? "—"}
-                mono
-              />
-              <Fact label={t("contracts.proxy.officialSingleton")} value={v2Primary?.official_singleton ? t("common.yes") : t("common.no")} />
+              {layers ? <Fact label={t("contracts.proxy.layers")} value={layers} /> : null}
+              {v2Primary?.implementation ? (
+                <Fact
+                  label={v2Primary.implementation_role === "singleton" ? t("contracts.proxy.singleton") : t("contracts.proxy.implementation")}
+                  value={v2Primary.implementation}
+                  mono
+                />
+              ) : null}
+              {v2Primary?.family === "safe" ? (
+                <Fact label={t("contracts.proxy.officialSingleton")} value={v2Primary.official_singleton ? t("common.yes") : t("common.no")} />
+              ) : null}
               <Fact label={t("contracts.proxy.detectorVersion")} value={v2Primary?.detector_version ?? "—"} />
               {v2Primary && v2Primary.warnings.length > 0 ? (
                 <Fact label={t("contracts.proxy.warnings")} value={v2Primary.warnings.join(" · ")} />
@@ -405,34 +667,46 @@ function ProxySummary({
               {detectionV2.conflicts.length > 0 ? (
                 <Fact label={t("contracts.proxy.conflicts")} value={detectionV2.conflicts.join(" · ")} />
               ) : null}
+              {diamond ? (
+                <>
+                  <Fact label={t("contracts.diamond.facets")} value={String(diamond.facets.length)} />
+                  <Fact label={t("contracts.diamond.selectors")} value={String(Object.keys(diamond.selector_to_facet).length)} />
+                  <Fact label={t("contracts.diamond.completeness")} value={diamondCompletenessLabel(diamond.completeness, t)} />
+                  <Fact label={t("contracts.diamond.validation")} value={diamondValidationLabel(diamond.validation, t)} />
+                  <Fact
+                    label={t("contracts.diamond.standardCut")}
+                    value={`${diamondCutPresenceLabel(diamond.standard_diamond_cut.status, t)}${diamond.standard_diamond_cut.facet ? ` · ${diamond.standard_diamond_cut.facet}` : ""}`}
+                    mono={diamond.standard_diamond_cut.facet !== undefined}
+                  />
+                  <Fact
+                    label={t("contracts.diamond.loupeInterface")}
+                    value={diamond.loupe_interface_reported === undefined
+                      ? t("contracts.diamond.unknown")
+                      : diamond.loupe_interface_reported ? t("common.yes") : t("common.no")}
+                  />
+                  <Fact
+                    label={t("contracts.diamond.externalFacets")}
+                    value={diamond.implementation_addresses.join(" · ") || "—"}
+                    mono
+                  />
+                  {diamond.truncated ? (
+                    <Fact label={t("contracts.diamond.truncated")} value={diamond.truncation_reason ?? t("contracts.diamond.unknown")} />
+                  ) : null}
+                </>
+              ) : null}
             </>
           ) : null}
-          <Fact
-            label={t("contracts.proxy.pattern")}
-            value={detail.pattern ? proxyPatternLabel(detail.pattern, t) : "—"}
-          />
-          <Fact
-            label={t("contracts.proxy.mechanism")}
-            value={detail.mechanism ? proxyMechanismLabel(detail.mechanism, t) : "—"}
-          />
-          <Fact
-            label={t("contracts.proxy.evidenceState")}
-            value={detail.evidence_state ? proxyEvidenceStateLabel(detail.evidence_state, t) : "—"}
-          />
-          <Fact
-            label={t("contracts.proxy.confidence")}
-            value={detail.confidence ? proxyConfidenceLabel(detail.confidence, t) : "—"}
-          />
-          <Fact label={t("contracts.proxy.standardVersion")} value={detail.standard_version ?? "—"} />
-          <IdentityFact label={t("contracts.proxy.implementation")} identity={detail.implementation} />
-          <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} />
-          <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} />
-          <IdentityFact label={t("contracts.proxy.managementTarget")} identity={detail.management?.target} />
-          <Fact
-            label={t("contracts.proxy.affectedProxies")}
-            value={detail.management?.affected_proxy_count ?? "—"}
-          />
-          <Fact label={t("contracts.proxy.binding")} value={detail.binding_id ?? "—"} mono />
+          {detail.pattern ? <Fact label={t("contracts.proxy.pattern")} value={proxyPatternLabel(detail.pattern, t)} /> : null}
+          {detail.mechanism ? <Fact label={t("contracts.proxy.mechanism")} value={proxyMechanismLabel(detail.mechanism, t)} /> : null}
+          {detail.evidence_state ? <Fact label={t("contracts.proxy.evidenceState")} value={proxyEvidenceStateLabel(detail.evidence_state, t)} /> : null}
+          {detail.confidence ? <Fact label={t("contracts.proxy.confidence")} value={proxyConfidenceLabel(detail.confidence, t)} /> : null}
+          {detail.standard_version ? <Fact label={t("contracts.proxy.standardVersion")} value={detail.standard_version} /> : null}
+          {detail.implementation ? <IdentityFact label={t("contracts.proxy.implementation")} identity={detail.implementation} /> : null}
+          {detail.admin ? <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} /> : null}
+          {detail.beacon ? <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} /> : null}
+          {detail.management?.target ? <IdentityFact label={t("contracts.proxy.managementTarget")} identity={detail.management.target} /> : null}
+          {detail.management?.affected_proxy_count ? <Fact label={t("contracts.proxy.affectedProxies")} value={detail.management.affected_proxy_count} /> : null}
+          {detail.binding_id ? <Fact label={t("contracts.proxy.binding")} value={detail.binding_id} mono /> : null}
           <Fact
             label={t("contracts.proxy.snapshot")}
             value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
@@ -457,7 +731,9 @@ function ProxySummary({
           </ul>
         </details>
       ) : null}
-      {detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
+      {diamond ? (
+        <p className="context-note" role="note">{t("contracts.diamond.interactionSafety")}</p>
+      ) : detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
         <p className="chain-warning" role="status">{t("contracts.proxy.writeDisabled")}</p>
       ) : null}
       {detail?.pattern === "clone" ? (
@@ -799,6 +1075,50 @@ function proxyDetectionV2StatusLabel(
     case "inconsistent": return t("contracts.proxy.v2Status.inconsistent");
     case "not-detected": return t("contracts.proxy.v2Status.notDetected");
     case "unknown": return t("contracts.proxy.v2Status.unknown");
+  }
+}
+
+function diamondCompletenessLabel(
+  state: "complete" | "partial" | "unknown",
+  t: Translate,
+): string {
+  switch (state) {
+    case "complete": return t("contracts.diamond.complete");
+    case "partial": return t("contracts.diamond.partial");
+    case "unknown": return t("contracts.diamond.unknown");
+  }
+}
+
+function diamondValidationLabel(
+  state: "full" | "sampled" | "interface-only",
+  t: Translate,
+): string {
+  switch (state) {
+    case "full": return t("contracts.diamond.fullValidation");
+    case "sampled": return t("contracts.diamond.sampledValidation");
+    case "interface-only": return t("contracts.diamond.interfaceOnlyValidation");
+  }
+}
+
+function diamondCutPresenceLabel(
+  state: "present" | "absent" | "unknown",
+  t: Translate,
+): string {
+  switch (state) {
+    case "present": return t("contracts.diamond.present");
+    case "absent": return t("contracts.diamond.absent");
+    case "unknown": return t("contracts.diamond.unknown");
+  }
+}
+
+function diamondCutActionLabel(
+  action: "add" | "replace" | "remove",
+  t: Translate,
+): string {
+  switch (action) {
+    case "add": return t("contracts.diamond.add");
+    case "replace": return t("contracts.diamond.replace");
+    case "remove": return t("contracts.diamond.remove");
   }
 }
 

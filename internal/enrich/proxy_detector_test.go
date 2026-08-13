@@ -408,6 +408,88 @@ func TestProxyDetectionResolutionDocumentUsesPublicQuantitiesAndRoles(t *testing
 	}
 }
 
+func TestDiamondDetectionDocumentKeepsSelectorScopedTargetsWithoutImplementation(t *testing.T) {
+	t.Parallel()
+	diamond, facet := testAddress(72), testAddress(73)
+	immutableSelector := [4]byte{0x7a, 0x0e, 0xd6, 0x27}
+	facetSelector := [4]byte{0xa9, 0x05, 0x9c, 0xbb}
+	facetCodeHash := uintWord(73)
+	implementationAddresses := []common.Address{facet}
+	detection := ProxyDetectionV2{
+		Detector: "erc2535", DetectorVersion: "erc2535@1", Priority: 150,
+		Family: ProxyFamilyERC2535, Variant: "diamond", Status: ProxyStatusConfirmed,
+		Confidence: ProxyConfidenceHigh, Proxy: diamond,
+		Targets: []ProxyTarget{
+			{Address: diamond, Role: ProxyTargetImmutable, Selectors: [][4]byte{immutableSelector}, CodeExists: true},
+			{Address: facet, Role: ProxyTargetFacet, Selectors: [][4]byte{facetSelector}, CodeExists: true, CodeHash: &facetCodeHash},
+		},
+		Diamond: &DiamondDetection{
+			Completeness: DiamondComplete, Validation: DiamondValidationFull,
+			Facets: []ProxyTarget{
+				{Address: diamond, Role: ProxyTargetImmutable, Selectors: [][4]byte{immutableSelector}, CodeExists: true},
+				{Address: facet, Role: ProxyTargetFacet, Selectors: [][4]byte{facetSelector}, CodeExists: true, CodeHash: &facetCodeHash},
+			},
+			SelectorToFacet: map[[4]byte]common.Address{
+				immutableSelector: diamond, facetSelector: facet,
+			},
+			ImplementationAddresses: implementationAddresses,
+			StandardDiamondCut:      DiamondStandardCut{Status: DiamondCutAbsent},
+		},
+		Evidence: []ProxyDetectionEvidence{{
+			Kind: ProxyEvidenceContractCall, Description: "Loupe results agree",
+		}},
+		Warnings: []string{}, ChainID: "1", BlockNumber: 99, BlockHash: uintWord(99),
+	}
+	if err := detection.validate(); err != nil {
+		t.Fatal(err)
+	}
+	resolution := ProxyDetectionResolution{
+		Status: ProxyStatusConfirmed, Primary: &detection,
+		Outcomes: []ProxyDetectionV2{detection}, Conflicts: []string{},
+	}
+	encoded, err := marshalProxyDetectionResolution(resolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	for _, expected := range []string{
+		`"family":"erc2535"`, `"targets":[`, `"diamond":{`,
+		`"0x7a0ed627":"` + diamond.Hex() + `"`,
+		`"implementation_addresses":["` + facet.Hex() + `"]`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("Diamond document missing %s: %s", expected, text)
+		}
+	}
+	if strings.Contains(text, `"implementation":"`) {
+		t.Fatalf("Diamond document invented a singular implementation: %s", text)
+	}
+}
+
+func TestDiamondDetectionRejectsSelectorAssignedToTwoFacets(t *testing.T) {
+	t.Parallel()
+	diamond, first, second := testAddress(74), testAddress(75), testAddress(76)
+	selector := [4]byte{1, 2, 3, 4}
+	detection := ProxyDetectionV2{
+		Detector: "erc2535", DetectorVersion: "erc2535@1", Family: ProxyFamilyERC2535,
+		Status: ProxyStatusInconsistent, Confidence: ProxyConfidenceHigh,
+		Proxy: diamond, ChainID: "1", BlockNumber: 1, BlockHash: uintWord(1),
+		Diamond: &DiamondDetection{
+			Completeness: DiamondComplete, Validation: DiamondValidationFull,
+			Facets: []ProxyTarget{
+				{Address: first, Role: ProxyTargetFacet, Selectors: [][4]byte{selector}, CodeExists: true},
+				{Address: second, Role: ProxyTargetFacet, Selectors: [][4]byte{selector}, CodeExists: true},
+			},
+			SelectorToFacet:         map[[4]byte]common.Address{selector: first},
+			StandardDiamondCut:      DiamondStandardCut{Status: DiamondCutUnknown},
+			ImplementationAddresses: []common.Address{first, second},
+		},
+	}
+	if err := detection.validate(); err == nil || !strings.Contains(err.Error(), "more than once") {
+		t.Fatalf("duplicate Diamond selector validation error=%v", err)
+	}
+}
+
 func TestProxyRPCCountersReportPerCandidateDelta(t *testing.T) {
 	t.Parallel()
 	before := ProxyRPCCounters{

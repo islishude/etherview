@@ -148,6 +148,7 @@ func assertProxyInteractionBoundary(
 		{path: "/contracts/{address}/proxy", operation: "getContractProxy", response: "ProxyDetailsResponse"},
 		{path: "/contracts/{address}/proxy/upgrades", operation: "listContractProxyUpgrades", response: "ProxyUpgradeHistoryResponse", paginated: true},
 		{path: "/contracts/{address}/proxy/initializations", operation: "listContractProxyInitializations", response: "ProxyInitializationHistoryResponse", paginated: true},
+		{path: "/contracts/{address}/proxy/diamond-cuts", operation: "listContractDiamondCuts", response: "DiamondCutHistoryResponse", paginated: true},
 	} {
 		defined := mappingValue(t, mappingValue(t, paths, operation.path), "get")
 		assertScalar(t, mappingValue(t, defined, "operationId"), operation.operation)
@@ -206,6 +207,7 @@ func assertVerificationBoundary(t *testing.T, paths, schemas *yaml.Node) {
 		{path: "/contracts/{address}/proxy", method: "get"},
 		{path: "/contracts/{address}/proxy/upgrades", method: "get"},
 		{path: "/contracts/{address}/proxy/initializations", method: "get"},
+		{path: "/contracts/{address}/proxy/diamond-cuts", method: "get"},
 	} {
 		defined := mappingValue(t, mappingValue(t, paths, operation.path), operation.method)
 		if security := optionalMappingValue(defined, "security"); security != nil {

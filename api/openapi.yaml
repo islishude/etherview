@@ -1341,6 +1341,28 @@ paths:
                 $ref: "#/components/schemas/ProxyInitializationHistoryResponse"
         default:
           $ref: "#/components/responses/Error"
+  /contracts/{address}/proxy/diamond-cuts:
+    get:
+      operationId: listContractDiamondCuts
+      tags: [contracts, proxy]
+      description: >-
+        Canonical ERC-2535 DiamondCut events ordered newest first. Each item
+        preserves cut ordering, selector ordering, and the one-shot init
+        target without treating the init address as a facet. Cursors are
+        bound to the returned canonical proxy-stage snapshot.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/ProxyHistoryLimit"
+      responses:
+        "200":
+          description: Snapshot-stable Diamond selector-change history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiamondCutHistoryResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /verifier/jobs/{id}:
     get:
       operationId: getVerifierJob
@@ -3121,7 +3143,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [exact_address, code_hash, proxy_implementation, signature_database, builtin]
+          enum: [exact_address, code_hash, proxy_implementation, diamond_facet, signature_database, builtin]
         address:
           $ref: "#/components/schemas/Address"
         code_hash:
@@ -4249,10 +4271,92 @@ components:
       enum: [high, medium, low]
     ProxyDetectionV2Family:
       type: string
-      enum: [erc1167, erc1967, safe, custom]
+      enum: [erc1167, erc1967, erc2535, safe, custom]
     ProxyDetectionV2ImplementationRole:
       type: string
       enum: [implementation, singleton]
+    ProxyTargetRole:
+      type: string
+      enum: [implementation, singleton, beacon, facet, immutable]
+    FunctionSelector:
+      type: string
+      pattern: '^0x[0-9a-fA-F]{8}$'
+    ProxyTarget:
+      type: object
+      additionalProperties: false
+      required: [address, role, selectors, code_exists]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        role:
+          $ref: "#/components/schemas/ProxyTargetRole"
+        selectors:
+          type: array
+          maxItems: 4096
+          items:
+            $ref: "#/components/schemas/FunctionSelector"
+        code_exists:
+          type: boolean
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+    DiamondCompleteness:
+      type: string
+      enum: [complete, partial, unknown]
+    DiamondValidation:
+      type: string
+      enum: [full, sampled, interface-only]
+    DiamondCutPresence:
+      type: string
+      enum: [present, absent, unknown]
+    DiamondStandardCut:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/DiamondCutPresence"
+        facet:
+          $ref: "#/components/schemas/Address"
+    DiamondDetection:
+      type: object
+      additionalProperties: false
+      required:
+        - completeness
+        - validation
+        - facets
+        - selector_to_facet
+        - implementation_addresses
+        - standard_diamond_cut
+        - truncated
+      properties:
+        completeness:
+          $ref: "#/components/schemas/DiamondCompleteness"
+        validation:
+          $ref: "#/components/schemas/DiamondValidation"
+        facets:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/ProxyTarget"
+        selector_to_facet:
+          type: object
+          maxProperties: 16384
+          additionalProperties:
+            $ref: "#/components/schemas/Address"
+        implementation_addresses:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/Address"
+        standard_diamond_cut:
+          $ref: "#/components/schemas/DiamondStandardCut"
+        loupe_interface_reported:
+          type: boolean
+        truncated:
+          type: boolean
+        truncation_reason:
+          type: string
+          maxLength: 128
     ProxyDetectionV2EvidenceKind:
       type: string
       enum:
@@ -4263,6 +4367,11 @@ components:
         - factory-log
         - deployment-registry
         - execution-trace
+        - loupe-call
+        - diamond-cut-event
+        - facet-code
+        - erc165
+        - verified-source
     ProxyDetectionV2Evidence:
       type: object
       additionalProperties: false
@@ -4297,6 +4406,7 @@ components:
         - official_singleton
         - singleton_changed
         - implementation_path
+        - targets
         - evidence
         - warnings
         - chain_id
@@ -4330,6 +4440,13 @@ components:
           $ref: "#/components/schemas/Address"
         implementation_role:
           $ref: "#/components/schemas/ProxyDetectionV2ImplementationRole"
+        targets:
+          type: array
+          maxItems: 258
+          items:
+            $ref: "#/components/schemas/ProxyTarget"
+        diamond:
+          $ref: "#/components/schemas/DiamondDetection"
         implementation_path:
           type: array
           maxItems: 8
@@ -4431,6 +4548,15 @@ components:
           $ref: "#/components/schemas/ProxyContractIdentity"
         implementation:
           $ref: "#/components/schemas/ProxyContractIdentity"
+        implementation_addresses:
+          type: array
+          maxItems: 256
+          description: >-
+            Unordered distinct external Diamond facet addresses. This
+            compatibility field excludes immutable functions implemented by
+            the Diamond itself and is absent for singular proxies.
+          items:
+            $ref: "#/components/schemas/Address"
         admin:
           $ref: "#/components/schemas/ProxyContractIdentity"
         beacon:
@@ -4591,6 +4717,82 @@ components:
           maxItems: 100
           items:
             $ref: "#/components/schemas/ProxyInitialization"
+    DiamondFacetCutAction:
+      type: string
+      enum: [add, replace, remove]
+    DiamondFacetCut:
+      type: object
+      additionalProperties: false
+      required: [cut_index, action, facet_address, selectors]
+      properties:
+        cut_index:
+          type: integer
+          minimum: 0
+          maximum: 255
+        action:
+          $ref: "#/components/schemas/DiamondFacetCutAction"
+        facet_address:
+          $ref: "#/components/schemas/Address"
+        selectors:
+          type: array
+          minItems: 1
+          maxItems: 4096
+          items:
+            $ref: "#/components/schemas/FunctionSelector"
+    DiamondCut:
+      type: object
+      additionalProperties: false
+      required:
+        - block_number
+        - block_hash
+        - block_timestamp
+        - transaction_hash
+        - transaction_index
+        - log_index
+        - init_address
+        - init_calldata
+        - cuts
+      properties:
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        init_address:
+          $ref: "#/components/schemas/Address"
+        init_calldata:
+          type: string
+          pattern: '^0x([0-9a-fA-F]{2})*$'
+          maxLength: 4194306
+        cuts:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/DiamondFacetCut"
+    DiamondCutHistory:
+      type: object
+      additionalProperties: false
+      required: [diamond_address, snapshot, coverage, items]
+      properties:
+        diamond_address:
+          $ref: "#/components/schemas/Address"
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        coverage:
+          $ref: "#/components/schemas/ProxyHistoryCoverage"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/DiamondCut"
     APIError:
       type: object
       required: [code, message, request_id]
@@ -5028,6 +5230,14 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/ProxyInitializationHistory"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    DiamondCutHistoryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DiamondCutHistory"
         meta:
           $ref: "#/components/schemas/Meta"
     ErrorResponse:

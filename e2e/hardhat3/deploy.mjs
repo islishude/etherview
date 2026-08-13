@@ -161,6 +161,15 @@ const badUUIDArtifact = await projectArtifact(
 const cloneFactoryArtifact = await projectArtifact(
   "./build/artifacts/contracts/CloneFactory.sol/CloneFactory.json",
 );
+const valueFacetArtifact = await projectArtifact(
+  "./build/artifacts/contracts/DiamondFixture.sol/ValueFacet.json",
+);
+const mathFacetArtifact = await projectArtifact(
+  "./build/artifacts/contracts/DiamondFixture.sol/MathFacet.json",
+);
+const diamondArtifact = await projectArtifact(
+  "./build/artifacts/contracts/DiamondFixture.sol/FixtureDiamond.json",
+);
 const erc1967ProxyArtifact = await compilerArtifact(
   "/proxy/ERC1967/ERC1967Proxy.sol",
   "ERC1967Proxy",
@@ -259,6 +268,35 @@ const immutableCloneInitialization = await sendTransaction(owner, {
   data: initializeData(42n),
 });
 
+const valueFacetDeployment = await deploy(owner, valueFacetArtifact);
+const mathFacetDeployment = await deploy(owner, mathFacetArtifact);
+const diamondDeployment = await deploy(owner, diamondArtifact, [
+  valueFacetDeployment.address,
+  mathFacetDeployment.address,
+]);
+const diamondInterface = new Interface([
+  ...diamondArtifact.abi,
+  ...valueFacetArtifact.abi,
+  ...mathFacetArtifact.abi,
+]);
+const diamondSetValue = await sendTransaction(owner, {
+  to: diamondDeployment.address,
+  data: diamondInterface.encodeFunctionData("setValue", [2535n]),
+});
+const [diamondValue] = await call(
+  diamondDeployment.address,
+  diamondInterface,
+  "value",
+);
+const [diamondDouble] = await call(
+  diamondDeployment.address,
+  diamondInterface,
+  "double",
+  [21n],
+);
+assert.equal(diamondValue, 2535n, "Diamond delegated storage value");
+assert.equal(diamondDouble, 42n, "Diamond delegated pure call");
+
 const currentUUPSImplementation = addressFromStorageWord(
   await rpc("eth_getStorageAt", [uupsDeployment.address, IMPLEMENTATION_SLOT, "latest"]),
 );
@@ -269,7 +307,7 @@ assert.equal(
 );
 
 const output = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   openzeppelinVersion: OPENZEPPELIN_VERSION,
   owner,
   // The primary fields keep the production Go harness concise while now
@@ -302,6 +340,12 @@ const output = {
     immutableArgs: immutableArgsClone,
     immutableArgsData: immutableArgs,
   },
+  diamond: {
+    address: diamondDeployment.address,
+    facets: [valueFacetDeployment.address, mathFacetDeployment.address],
+    value: diamondValue.toString(),
+    doubled: diamondDouble.toString(),
+  },
   transactions: {
     implementationV1: implementationDeployment.transaction,
     implementationV2: implementationV2Deployment.transaction,
@@ -316,6 +360,10 @@ const output = {
     standardCloneInitialization,
     immutableArgsClone: immutableCloneTransaction,
     immutableArgsCloneInitialization: immutableCloneInitialization,
+    diamondValueFacet: valueFacetDeployment.transaction,
+    diamondMathFacet: mathFacetDeployment.transaction,
+    diamond: diamondDeployment.transaction,
+    diamondSetValue,
   },
   constructorArguments: {
     transparent: transparentDeployment.encodedConstructorArguments,
@@ -323,6 +371,7 @@ const output = {
     beacon: beaconDeployment.encodedConstructorArguments,
     beaconProxyA: beaconProxyADeployment.encodedConstructorArguments,
     beaconProxyB: beaconProxyBDeployment.encodedConstructorArguments,
+    diamond: diamondDeployment.encodedConstructorArguments,
   },
   initializationData: {
     transparent: initializeData(11n),

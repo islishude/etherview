@@ -17,6 +17,7 @@ const (
 	ABISourceVerified            ABISource = "verified"
 	ABISourceCodeHash            ABISource = "code_hash"
 	ABISourceProxyImplementation ABISource = "proxy_implementation"
+	ABISourceDiamondFacet        ABISource = "diamond_facet"
 	ABISourceSignatureDatabase   ABISource = "signature_database"
 	ABISourceBuiltin             ABISource = "builtin"
 )
@@ -25,7 +26,7 @@ func (source ABISource) confidence() Confidence {
 	switch source {
 	case ABISourceVerified:
 		return ConfidenceVerified
-	case ABISourceCodeHash, ABISourceProxyImplementation, ABISourceBuiltin:
+	case ABISourceCodeHash, ABISourceProxyImplementation, ABISourceDiamondFacet, ABISourceBuiltin:
 		return ConfidenceHigh
 	case ABISourceSignatureDatabase:
 		return ConfidenceGuess
@@ -35,7 +36,9 @@ func (source ABISource) confidence() Confidence {
 }
 
 func (source ABISource) persistent() bool {
-	return source == ABISourceVerified || source == ABISourceCodeHash || source == ABISourceProxyImplementation || source == ABISourceSignatureDatabase
+	return source == ABISourceVerified || source == ABISourceCodeHash ||
+		source == ABISourceProxyImplementation || source == ABISourceDiamondFacet ||
+		source == ABISourceSignatureDatabase
 }
 
 // ABIIdentity is the exact target identity at which ABI material may be used.
@@ -73,6 +76,7 @@ type ABIBinding struct {
 	Source         ABISource
 	SourceAddress  common.Address
 	SourceCodeHash common.Hash
+	SelectorScope  common.Hash
 	ValidFromBlock uint64
 	ValidToBlock   *uint64
 }
@@ -94,8 +98,15 @@ func (binding ABIBinding) validate() error {
 		return errors.New("ABI identity block is outside binding validity range")
 	}
 	if binding.Source != ABISourceProxyImplementation && binding.Source != ABISourceCodeHash &&
+		binding.Source != ABISourceDiamondFacet &&
 		(binding.SourceAddress != binding.Identity.Address || binding.SourceCodeHash != binding.Identity.CodeHash) {
 		return errors.New("direct and signature ABI bindings must use the target source identity")
+	}
+	if binding.Source == ABISourceDiamondFacet && binding.SelectorScope == (common.Hash{}) {
+		return errors.New("diamond facet ABI binding is missing its selector scope")
+	}
+	if binding.Source != ABISourceDiamondFacet && binding.SelectorScope != (common.Hash{}) {
+		return errors.New("non-Diamond ABI binding carries a selector scope")
 	}
 	return nil
 }

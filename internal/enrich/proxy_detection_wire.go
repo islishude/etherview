@@ -22,31 +22,58 @@ type proxyDetectionShadowDiffDocument struct {
 }
 
 type proxyDetectionDocument struct {
-	Detector                string                   `json:"detector"`
-	DetectorVersion         string                   `json:"detector_version"`
-	Priority                int                      `json:"priority"`
-	Family                  ProxyFamily              `json:"family,omitempty"`
-	Variant                 string                   `json:"variant,omitempty"`
-	Status                  ProxyDetectionStatus     `json:"status"`
-	Confidence              ProxyDetectionConfidence `json:"confidence"`
-	Proxy                   string                   `json:"proxy"`
-	Implementation          string                   `json:"implementation,omitempty"`
-	ImplementationRole      ProxyImplementationRole  `json:"implementation_role,omitempty"`
-	ImplementationPath      []string                 `json:"implementation_path"`
-	Admin                   string                   `json:"admin,omitempty"`
-	Beacon                  string                   `json:"beacon,omitempty"`
-	CanonicalProxyShell     bool                     `json:"canonical_proxy_shell"`
-	ImplementationHasCode   bool                     `json:"implementation_has_code"`
-	OfficialSingleton       bool                     `json:"official_singleton"`
-	SingletonVersion        string                   `json:"singleton_version,omitempty"`
-	SingletonDeploymentType string                   `json:"singleton_deployment_type,omitempty"`
-	InitialSingleton        string                   `json:"initial_singleton,omitempty"`
-	SingletonChanged        bool                     `json:"singleton_changed"`
-	Evidence                []proxyEvidenceDocument  `json:"evidence"`
-	Warnings                []string                 `json:"warnings"`
-	ChainID                 string                   `json:"chain_id"`
-	BlockNumber             string                   `json:"block_number"`
-	BlockHash               string                   `json:"block_hash"`
+	Detector                string                    `json:"detector"`
+	DetectorVersion         string                    `json:"detector_version"`
+	Priority                int                       `json:"priority"`
+	Family                  ProxyFamily               `json:"family,omitempty"`
+	Variant                 string                    `json:"variant,omitempty"`
+	Status                  ProxyDetectionStatus      `json:"status"`
+	Confidence              ProxyDetectionConfidence  `json:"confidence"`
+	Proxy                   string                    `json:"proxy"`
+	Implementation          string                    `json:"implementation,omitempty"`
+	ImplementationRole      ProxyImplementationRole   `json:"implementation_role,omitempty"`
+	ImplementationPath      []string                  `json:"implementation_path"`
+	Admin                   string                    `json:"admin,omitempty"`
+	Beacon                  string                    `json:"beacon,omitempty"`
+	CanonicalProxyShell     bool                      `json:"canonical_proxy_shell"`
+	ImplementationHasCode   bool                      `json:"implementation_has_code"`
+	OfficialSingleton       bool                      `json:"official_singleton"`
+	SingletonVersion        string                    `json:"singleton_version,omitempty"`
+	SingletonDeploymentType string                    `json:"singleton_deployment_type,omitempty"`
+	InitialSingleton        string                    `json:"initial_singleton,omitempty"`
+	SingletonChanged        bool                      `json:"singleton_changed"`
+	Targets                 []proxyTargetDocument     `json:"targets"`
+	Diamond                 *diamondDetectionDocument `json:"diamond,omitempty"`
+	Evidence                []proxyEvidenceDocument   `json:"evidence"`
+	Warnings                []string                  `json:"warnings"`
+	ChainID                 string                    `json:"chain_id"`
+	BlockNumber             string                    `json:"block_number"`
+	BlockHash               string                    `json:"block_hash"`
+}
+
+type proxyTargetDocument struct {
+	Address    string          `json:"address"`
+	Role       ProxyTargetRole `json:"role"`
+	Selectors  []string        `json:"selectors"`
+	CodeExists bool            `json:"code_exists"`
+	CodeHash   string          `json:"code_hash,omitempty"`
+}
+
+type diamondDetectionDocument struct {
+	Completeness            DiamondCompleteness        `json:"completeness"`
+	Validation              DiamondValidation          `json:"validation"`
+	Facets                  []proxyTargetDocument      `json:"facets"`
+	SelectorToFacet         map[string]string          `json:"selector_to_facet"`
+	ImplementationAddresses []string                   `json:"implementation_addresses"`
+	StandardDiamondCut      diamondStandardCutDocument `json:"standard_diamond_cut"`
+	LoupeInterfaceReported  *bool                      `json:"loupe_interface_reported,omitempty"`
+	Truncated               bool                       `json:"truncated"`
+	TruncationReason        string                     `json:"truncation_reason,omitempty"`
+}
+
+type diamondStandardCutDocument struct {
+	Status DiamondCutPresence `json:"status"`
+	Facet  string             `json:"facet,omitempty"`
 }
 
 type proxyEvidenceDocument struct {
@@ -94,6 +121,7 @@ func proxyDetectionToDocument(detection ProxyDetectionV2) proxyDetectionDocument
 		SingletonVersion:        detection.SingletonVersion,
 		SingletonDeploymentType: detection.SingletonDeploymentType,
 		SingletonChanged:        detection.SingletonChanged,
+		Targets:                 proxyTargetsToDocuments(detection.Targets),
 		Evidence:                make([]proxyEvidenceDocument, len(detection.Evidence)),
 		Warnings:                append([]string(nil), detection.Warnings...),
 		ImplementationPath:      make([]string, len(detection.ImplementationPath)),
@@ -110,6 +138,9 @@ func proxyDetectionToDocument(detection ProxyDetectionV2) proxyDetectionDocument
 	document.Admin = optionalAddressString(detection.Admin)
 	document.Beacon = optionalAddressString(detection.Beacon)
 	document.InitialSingleton = optionalAddressString(detection.InitialSingleton)
+	if detection.Diamond != nil {
+		document.Diamond = diamondDetectionToDocument(*detection.Diamond)
+	}
 	for index, evidence := range detection.Evidence {
 		document.Evidence[index] = proxyEvidenceDocument{
 			Kind: evidence.Kind, Description: evidence.Description,
@@ -121,6 +152,45 @@ func proxyDetectionToDocument(detection ProxyDetectionV2) proxyDetectionDocument
 		if len(evidence.Value) != 0 {
 			document.Evidence[index].Value = "0x" + hex.EncodeToString(evidence.Value)
 		}
+	}
+	return document
+}
+
+func proxyTargetsToDocuments(targets []ProxyTarget) []proxyTargetDocument {
+	documents := make([]proxyTargetDocument, len(targets))
+	for index, target := range targets {
+		documents[index] = proxyTargetDocument{
+			Address: target.Address.Hex(), Role: target.Role,
+			Selectors: make([]string, len(target.Selectors)), CodeExists: target.CodeExists,
+		}
+		if target.CodeHash != nil {
+			documents[index].CodeHash = target.CodeHash.Hex()
+		}
+		for selectorIndex, selector := range target.Selectors {
+			documents[index].Selectors[selectorIndex] = "0x" + hex.EncodeToString(selector[:])
+		}
+	}
+	return documents
+}
+
+func diamondDetectionToDocument(diamond DiamondDetection) *diamondDetectionDocument {
+	document := &diamondDetectionDocument{
+		Completeness: diamond.Completeness, Validation: diamond.Validation,
+		Facets:                  proxyTargetsToDocuments(diamond.Facets),
+		SelectorToFacet:         make(map[string]string, len(diamond.SelectorToFacet)),
+		ImplementationAddresses: make([]string, len(diamond.ImplementationAddresses)),
+		StandardDiamondCut:      diamondStandardCutDocument{Status: diamond.StandardDiamondCut.Status},
+		LoupeInterfaceReported:  diamond.LoupeInterfaceReported,
+		Truncated:               diamond.Truncated, TruncationReason: diamond.TruncationReason,
+	}
+	for selector, facet := range diamond.SelectorToFacet {
+		document.SelectorToFacet["0x"+hex.EncodeToString(selector[:])] = facet.Hex()
+	}
+	for index, address := range diamond.ImplementationAddresses {
+		document.ImplementationAddresses[index] = address.Hex()
+	}
+	if diamond.StandardDiamondCut.Facet != nil {
+		document.StandardDiamondCut.Facet = diamond.StandardDiamondCut.Facet.Hex()
 	}
 	return document
 }

@@ -188,6 +188,7 @@ type FeatureConfig struct {
 	X402Billing            bool `yaml:"x402_billing"`
 	ProxyDetectionV2       bool `yaml:"proxy_detection_v2"`
 	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
+	DiamondProxyDetection  bool `yaml:"diamond_proxy_detection"`
 	ProxyDetectionV2Public bool `yaml:"proxy_detection_v2_public"`
 }
 
@@ -709,6 +710,9 @@ func (c Config) Validate() error {
 	}
 	if c.Features.SafeProxyDetection && !c.Features.ProxyDetectionV2 {
 		errs = append(errs, errors.New("features.safe_proxy_detection requires features.proxy_detection_v2"))
+	}
+	if c.Features.DiamondProxyDetection && !c.Features.ProxyDetectionV2 {
+		errs = append(errs, errors.New("features.diamond_proxy_detection requires features.proxy_detection_v2"))
 	}
 	if c.Security.PublicVerification && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("public verification requires API key authentication"))
@@ -1748,6 +1752,7 @@ func applyEnvironmentForRoles(
 		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
 		"FEATURE_PROXY_DETECTION_V2":                          &cfg.Features.ProxyDetectionV2,
 		"FEATURE_SAFE_PROXY_DETECTION":                        &cfg.Features.SafeProxyDetection,
+		"FEATURE_DIAMOND_PROXY_DETECTION":                     &cfg.Features.DiamondProxyDetection,
 		"FEATURE_PROXY_DETECTION_V2_PUBLIC":                   &cfg.Features.ProxyDetectionV2Public,
 		"PUBLIC_VERIFICATION":                                 &cfg.Security.PublicVerification,
 		"VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": &cfg.Verification.UnsafeAllowPrivateDownloadNetworks,

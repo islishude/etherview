@@ -792,7 +792,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		proxyProcessor, err := enrich.NewPostgresProxyProcessorWithOptions(
 			db, rpcBuild.Pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
 				Enabled: cfg.Features.ProxyDetectionV2, SafeEnabled: cfg.Features.SafeProxyDetection,
-				Observer: registry,
+				DiamondEnabled: cfg.Features.DiamondProxyDetection,
+				Observer:       registry,
 			},
 		)
 		if err != nil {

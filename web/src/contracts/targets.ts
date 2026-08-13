@@ -1,5 +1,6 @@
 import {
   getAddress,
+  toFunctionSelector,
   type Address,
   type Hex,
 } from "viem";
@@ -63,6 +64,15 @@ export interface DelegatedEOAInteractionTarget extends BaseInteractionTarget {
   readonly requiresFreshBinding: true;
 }
 
+export interface DiamondFacetInteractionTarget extends BaseInteractionTarget {
+  readonly kind: "diamond_facet";
+  readonly proxyAddress: Address;
+  readonly proxyChainID: string;
+  readonly facetSelectors: readonly Hex[];
+  readonly supportsWrites: true;
+  readonly requiresFreshBinding: true;
+}
+
 export interface ImplementationAsProxyTarget extends BoundInteractionTarget {
   readonly kind: "implementation_as_proxy";
   readonly supportsWrites: true;
@@ -97,6 +107,7 @@ export type ContractInteractionTarget =
   | UUPSImplementationDirectTarget
   | TransparentProxyAdminTarget
   | BeaconManagementTarget
+  | DiamondFacetInteractionTarget
   | DelegatedEOAInteractionTarget;
 
 export type BoundContractInteractionTarget = Exclude<
@@ -210,6 +221,23 @@ export function buildContractInteractionTargets(
       requiresFreshBinding: false,
     }),
   ];
+
+	const diamond = confirmedDiamond(proxy, address);
+	if (diamond) {
+		for (const facet of diamond.facets) {
+			targets.push(freezeTarget({
+				kind: "diamond_facet",
+				transactionTarget: address,
+				abiAddress: facet.address,
+				abiCodeHash: facet.codeHash,
+				proxyAddress: address,
+				proxyChainID: diamond.chainID,
+				facetSelectors: Object.freeze([...facet.selectors]),
+				supportsWrites: true,
+				requiresFreshBinding: true,
+			}));
+		}
+	}
 
 	const binding = exactBinding(proxy, address);
 	const interaction = standardImplementationInteraction(proxy, address);
@@ -419,16 +447,22 @@ export function assertFreshInteractionFence(
     throw new InteractionFenceError("TARGET_CHANGED");
   }
 	if (
+		fence.target.kind !== "diamond_facet" &&
 		fence.target.bindingId !== undefined &&
 		freshResponse.details.binding_id !== fence.target.bindingId
 	) {
     throw new InteractionFenceError("BINDING_CHANGED");
   }
 
-  const freshTarget = buildContractInteractionTargets(
-    fence.target.proxyAddress,
-    freshResponse.details,
-  ).find((candidate) => candidate.kind === fence.target.kind);
+	const freshTargets = buildContractInteractionTargets(
+		fence.target.proxyAddress,
+		freshResponse.details,
+	);
+	const freshTarget = fence.target.kind === "diamond_facet"
+		? freshTargets.find((candidate) =>
+			candidate.kind === "diamond_facet" &&
+			candidate.abiAddress === fence.target.abiAddress)
+		: freshTargets.find((candidate) => candidate.kind === fence.target.kind);
   if (!freshTarget || !targetsMatch(fence.target, freshTarget)) {
     throw new InteractionFenceError("TARGET_CHANGED");
   }
@@ -543,6 +577,15 @@ export function isInteractionFunctionAllowed(
   write = false,
 ): boolean {
   if (write && !target.supportsWrites) return false;
+	if (target.kind === "diamond_facet") {
+		try {
+			return target.facetSelectors.includes(
+				toFunctionSelector(canonicalSignature) as Hex,
+			);
+		} catch {
+			return false;
+		}
+	}
   if (target.kind === "uups_implementation_direct") {
     return canonicalSignature === PROXIABLE_UUID_SIGNATURE;
   }
@@ -647,6 +690,46 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
 		implementation,
 		beacon: currentCodeIdentity(proxy.beacon),
 	} as const;
+}
+
+function confirmedDiamond(proxy: ProxyDetails | undefined, address: Address) {
+	const chainID = normalizeChainID(proxy?.snapshot.chain_id);
+	const outcome = proxy?.proxy_detection_v2?.outcomes.find((candidate) =>
+		candidate.family === "erc2535" && candidate.status === "confirmed" &&
+		candidate.diamond?.completeness === "complete" &&
+		!candidate.diamond.truncated,
+	);
+	if (!proxy || !chainID || !outcome?.diamond ||
+		!addressesMatch(proxy.address, address) || !addressesMatch(outcome.proxy, address)) {
+		return undefined;
+	}
+	const facets: Array<{
+		address: Address;
+		codeHash: string;
+		selectors: readonly Hex[];
+	}> = [];
+	for (const facet of outcome.diamond.facets) {
+		if (facet.role !== "facet" || !facet.code_exists ||
+			!facet.code_hash || !HASH_PATTERN.test(facet.code_hash)) {
+			continue;
+		}
+		const facetAddress = checkedAddress(facet.address);
+		const selectors: Hex[] = [];
+		for (const selector of facet.selectors) {
+			if (!/^0x[0-9a-f]{8}$/iu.test(selector) ||
+				!addressesMatch(outcome.diamond.selector_to_facet[selector.toLowerCase()] ?? "", facetAddress)) {
+				throw new InteractionFenceError("INVALID_TARGET");
+			}
+			selectors.push(selector.toLowerCase() as Hex);
+		}
+		if (selectors.length === 0) continue;
+		facets.push({
+			address: facetAddress,
+			codeHash: facet.code_hash.toLowerCase(),
+			selectors: Object.freeze(selectors),
+		});
+	}
+	return { chainID, facets: Object.freeze(facets) } as const;
 }
 
 function standardImplementationInteraction(
@@ -757,6 +840,18 @@ function validateTarget(target: ContractInteractionTarget): void {
         }
         return;
       }
+		if (target.kind === "diamond_facet") {
+			getAddress(target.proxyAddress);
+			if (target.proxyAddress !== target.transactionTarget ||
+				!normalizeChainID(target.proxyChainID) ||
+				!target.abiCodeHash || !HASH_PATTERN.test(target.abiCodeHash) ||
+				target.facetSelectors.length === 0 ||
+				new Set(target.facetSelectors).size !== target.facetSelectors.length ||
+				target.facetSelectors.some((selector) => !/^0x[0-9a-f]{8}$/u.test(selector))) {
+				throw new Error("invalid Diamond facet identity");
+			}
+			return;
+		}
       getAddress(target.proxyAddress);
       if (!HASH_PATTERN.test(target.proxyCodeHash)) {
         throw new Error("invalid proxy code hash");
@@ -828,6 +923,13 @@ function boundTargetFieldsMatch(
       loaded.delegationBlockNumber === fresh.delegationBlockNumber &&
       loaded.delegationBlockHash === fresh.delegationBlockHash;
   }
+	if (loaded.kind === "diamond_facet" || fresh.kind === "diamond_facet") {
+		return loaded.kind === "diamond_facet" && fresh.kind === "diamond_facet" &&
+			loaded.proxyAddress === fresh.proxyAddress &&
+			loaded.proxyChainID === fresh.proxyChainID &&
+			loaded.facetSelectors.length === fresh.facetSelectors.length &&
+			loaded.facetSelectors.every((selector, index) => selector === fresh.facetSelectors[index]);
+	}
   return (
     loaded.proxyAddress === fresh.proxyAddress &&
     loaded.proxyCodeHash === fresh.proxyCodeHash &&

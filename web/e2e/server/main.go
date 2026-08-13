@@ -30,6 +30,10 @@ const (
 	upgradeableBeacon         = "0x2000000000000000000000000000000000000020"
 	transparentImplementation = "0x3000000000000000000000000000000000000030"
 	oldImplementation         = "0x4000000000000000000000000000000000000040"
+	diamondAddress            = "0xd000000000000000000000000000000000000000"
+	diamondWriteFacet         = "0xd100000000000000000000000000000000000001"
+	diamondLoupeFacet         = "0xd200000000000000000000000000000000000002"
+	diamondInitAddress        = "0xd300000000000000000000000000000000000003"
 	testHash                  = "0x1111111111111111111111111111111111111111111111111111111111111111"
 	secondHash                = "0x2222222222222222222222222222222222222222222222222222222222222222"
 	orphanHash                = "0x3333333333333333333333333333333333333333333333333333333333333333"
@@ -746,6 +750,17 @@ func main() {
 		}
 		writeEnvelope(response, history)
 	})
+	mux.HandleFunc("GET /api/v1/contracts/{address}/proxy/diamond-cuts", func(response http.ResponseWriter, request *http.Request) {
+		if rejectAuthenticatedContractRead(response, request) {
+			return
+		}
+		history, ok := diamondCutHistory(request.PathValue("address"))
+		if !ok {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, history)
+	})
 	mux.HandleFunc("GET /api/v1/search", func(response http.ResponseWriter, request *http.Request) {
 		query := request.URL.Query().Get("q")
 		cursor := request.URL.Query().Get("cursor")
@@ -1054,6 +1069,21 @@ func contractArtifact(address string) (map[string]any, bool) {
 	case cloneAddress:
 		contractName = "MinimalClone"
 		abi = proxyContractABI()
+	case diamondAddress:
+		contractName = "DiamondRouter"
+		abi = []any{
+			map[string]any{
+				"type": "function", "name": "supportsInterface", "stateMutability": "view",
+				"inputs":  []any{map[string]any{"name": "interfaceId", "type": "bytes4"}},
+				"outputs": []any{map[string]any{"name": "supported", "type": "bool"}},
+			},
+		}
+	case diamondWriteFacet:
+		contractName = "DiamondWriteFacet"
+		abi = implementationABI(false)
+	case diamondLoupeFacet:
+		contractName = "DiamondLoupeFacet"
+		abi = diamondLoupeABI()
 	case delegatedDelegate:
 		contractName = "DelegatedDisperser"
 		abi = []any{
@@ -1185,7 +1215,42 @@ func implementationABI(uups bool) []any {
 	)
 }
 
+func diamondLoupeABI() []any {
+	return []any{
+		map[string]any{
+			"type": "function", "name": "facets", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{
+				"name": "facets_", "type": "tuple[]", "components": []any{
+					map[string]any{"name": "facetAddress", "type": "address"},
+					map[string]any{"name": "functionSelectors", "type": "bytes4[]"},
+				},
+			}},
+		},
+		map[string]any{
+			"type": "function", "name": "facetFunctionSelectors", "stateMutability": "view",
+			"inputs":  []any{map[string]any{"name": "facet", "type": "address"}},
+			"outputs": []any{map[string]any{"name": "functionSelectors_", "type": "bytes4[]"}},
+		},
+		map[string]any{
+			"type": "function", "name": "facetAddresses", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{"name": "facetAddresses_", "type": "address[]"}},
+		},
+		map[string]any{
+			"type": "function", "name": "facetAddress", "stateMutability": "view",
+			"inputs":  []any{map[string]any{"name": "selector", "type": "bytes4"}},
+			"outputs": []any{map[string]any{"name": "facetAddress_", "type": "address"}},
+		},
+		map[string]any{
+			"type": "function", "name": "unregisteredLoupeHelper", "stateMutability": "view",
+			"inputs": []any{}, "outputs": []any{map[string]any{"name": "value", "type": "uint256"}},
+		},
+	}
+}
+
 func contractProxy(address string) (map[string]any, bool) {
+	if address == diamondAddress {
+		return diamondProxyDetail(), true
+	}
 	var mechanism, pattern, implementation, bindingID, proxyArtifactKind string
 	var management map[string]any
 	var admin map[string]any
@@ -1288,6 +1353,9 @@ func contractSnapshot() map[string]any {
 }
 
 func proxyUpgradeHistory(address string) (map[string]any, bool) {
+	if address == diamondAddress {
+		return nil, false
+	}
 	detail, ok := contractProxy(address)
 	if !ok || detail["pattern"] == "clone" {
 		return nil, false
@@ -1335,6 +1403,9 @@ func proxyUpgradeHistory(address string) (map[string]any, bool) {
 }
 
 func proxyInitializationHistory(address string) (map[string]any, bool) {
+	if address == diamondAddress {
+		return nil, false
+	}
 	detail, ok := contractProxy(address)
 	if !ok {
 		return nil, false
@@ -1349,6 +1420,89 @@ func proxyInitializationHistory(address string) (map[string]any, bool) {
 			"transaction_hash": testTransactionHash, "log_index": "1",
 			"implementation": map[string]any{
 				"address": implementation, "code_hash": testHash, "verification_state": "verified",
+			},
+		}},
+	}, true
+}
+
+func diamondProxyDetail() map[string]any {
+	writeSelectors := []any{"0x55241077"}
+	loupeSelectors := []any{"0x7a0ed627", "0xadfca15e", "0x52ef6b2c", "0xcdffacc6"}
+	facets := []any{
+		map[string]any{
+			"address": diamondWriteFacet, "role": "facet", "selectors": writeSelectors,
+			"code_exists": true, "code_hash": testHash,
+		},
+		map[string]any{
+			"address": diamondLoupeFacet, "role": "facet", "selectors": loupeSelectors,
+			"code_exists": true, "code_hash": testHash,
+		},
+		map[string]any{
+			"address": diamondAddress, "role": "immutable", "selectors": []any{"0x01ffc9a7"},
+			"code_exists": true,
+		},
+	}
+	selectorToFacet := map[string]any{
+		"0x55241077": diamondWriteFacet,
+		"0x7a0ed627": diamondLoupeFacet,
+		"0xadfca15e": diamondLoupeFacet,
+		"0x52ef6b2c": diamondLoupeFacet,
+		"0xcdffacc6": diamondLoupeFacet,
+		"0x01ffc9a7": diamondAddress,
+	}
+	outcome := map[string]any{
+		"detector": "erc2535", "detector_version": "1.0.0", "priority": 150,
+		"family": "erc2535", "variant": "diamond", "status": "confirmed", "confidence": "high",
+		"proxy": diamondAddress, "implementation_path": []any{}, "canonical_proxy_shell": false,
+		"implementation_has_code": false, "official_singleton": false, "singleton_changed": false,
+		"targets": facets,
+		"diamond": map[string]any{
+			"completeness": "complete", "validation": "full", "facets": facets,
+			"selector_to_facet":        selectorToFacet,
+			"implementation_addresses": []any{diamondWriteFacet, diamondLoupeFacet},
+			"standard_diamond_cut":     map[string]any{"status": "absent"},
+			"loupe_interface_reported": true, "truncated": false,
+		},
+		"evidence": []any{
+			map[string]any{"kind": "loupe-call", "description": "All four Loupe views agree at the snapshot block."},
+			map[string]any{"kind": "facet-code", "description": "Every external facet has code at the snapshot block."},
+		},
+		"warnings": []any{}, "chain_id": "1", "block_number": "42", "block_hash": testHash,
+	}
+	return map[string]any{
+		"address": diamondAddress, "status": "detected_unverified", "snapshot": contractSnapshot(),
+		"implementation_addresses": []any{diamondWriteFacet, diamondLoupeFacet},
+		"proxy_detection_v2": map[string]any{
+			"status": "confirmed", "primary": outcome, "outcomes": []any{outcome},
+			"conflicts": []any{}, "shadow_diff": map[string]any{
+				"different": true, "reasons": []any{"v2_positive_legacy_not_detected"},
+			},
+		},
+		"evidence": []any{},
+	}
+}
+
+func diamondCutHistory(address string) (map[string]any, bool) {
+	if address != diamondAddress {
+		return nil, false
+	}
+	return map[string]any{
+		"diamond_address": diamondAddress, "snapshot": contractSnapshot(),
+		"coverage": map[string]any{"state": "complete", "from_block": "1", "to_block": "42"},
+		"items": []any{map[string]any{
+			"block_number": "1", "block_hash": testHash,
+			"block_timestamp":  "2026-08-02T00:00:00Z",
+			"transaction_hash": testTransactionHash, "transaction_index": "0", "log_index": "0",
+			"init_address": diamondInitAddress, "init_calldata": "0x1234",
+			"cuts": []any{
+				map[string]any{
+					"cut_index": 0, "action": "add", "facet_address": diamondWriteFacet,
+					"selectors": []any{"0x55241077"},
+				},
+				map[string]any{
+					"cut_index": 1, "action": "add", "facet_address": diamondLoupeFacet,
+					"selectors": []any{"0x7a0ed627", "0xadfca15e", "0x52ef6b2c", "0xcdffacc6"},
+				},
 			},
 		}},
 	}, true
