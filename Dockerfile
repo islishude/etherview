@@ -34,7 +34,7 @@ RUN mkdir -p lib \
     && chmod 0555 /opt/etherview \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
-FROM golang:1.26.5 AS go-builder
+FROM golang:1.26.6 AS go-builder
 WORKDIR /src
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
