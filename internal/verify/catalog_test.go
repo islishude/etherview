@@ -3,10 +3,35 @@ package verify
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestCompilerVersionsUseSemanticOrder(t *testing.T) {
+	t.Parallel()
+	versions := []string{
+		"nightly-2026-08-15",
+		"0.8.31",
+		"0.8.20+commit.bbbbbbbb",
+		"0.8.3+commit.aaaaaaaa",
+		"0.8.31-pre.1+commit.cccccccc",
+		"0.8.20+commit.aaaaaaaa",
+	}
+	sortCompilerVersions(versions)
+	want := []string{
+		"0.8.3+commit.aaaaaaaa",
+		"0.8.20+commit.aaaaaaaa",
+		"0.8.20+commit.bbbbbbbb",
+		"0.8.31-pre.1+commit.cccccccc",
+		"0.8.31",
+		"nightly-2026-08-15",
+	}
+	if !slices.Equal(versions, want) {
+		t.Fatalf("compiler versions = %v, want %v", versions, want)
+	}
+}
 
 func TestCompilerCatalogParsesArchitectureNeutralSolcJSList(t *testing.T) {
 	t.Parallel()

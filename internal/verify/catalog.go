@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -245,7 +247,9 @@ func (catalog *CompilerCatalog) Refresh(ctx context.Context, language Language) 
 	for _, entry := range byVersion {
 		entries = append(entries, entry)
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Version < entries[j].Version })
+	sort.Slice(entries, func(i, j int) bool {
+		return compareCompilerVersions(entries[i].Version, entries[j].Version) < 0
+	})
 	var digest [sha256.Size]byte
 	copy(digest[:], hasher.Sum(nil))
 	return catalog.persist(ctx, language, strings.Join(sources, ","), digest, entries)
@@ -347,12 +351,38 @@ func (catalog *CompilerCatalog) parse(language Language, source string, raw []by
 			ArtifactSHA256: digest, MaxBytes: catalog.options.MaxArtifactBytes,
 		})
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Version < entries[j].Version })
+	sort.Slice(entries, func(i, j int) bool {
+		return compareCompilerVersions(entries[i].Version, entries[j].Version) < 0
+	})
 	return entries, nil
 }
 
 func normalizeCompilerVersion(value string) string {
 	return strings.TrimPrefix(strings.TrimSpace(value), "v")
+}
+
+func compareCompilerVersions(left, right string) int {
+	leftSemver := "v" + normalizeCompilerVersion(left)
+	rightSemver := "v" + normalizeCompilerVersion(right)
+	leftValid := semver.IsValid(leftSemver)
+	rightValid := semver.IsValid(rightSemver)
+	switch {
+	case leftValid && rightValid:
+		if compared := semver.Compare(leftSemver, rightSemver); compared != 0 {
+			return compared
+		}
+	case leftValid:
+		return -1
+	case rightValid:
+		return 1
+	}
+	return strings.Compare(left, right)
+}
+
+func sortCompilerVersions(versions []string) {
+	sort.SliceStable(versions, func(i, j int) bool {
+		return compareCompilerVersions(versions[i], versions[j]) < 0
+	})
 }
 
 func decodeCatalogDigest(value string) ([sha256.Size]byte, error) {
@@ -509,5 +539,6 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	if time.Since(fetchedAt) > catalog.options.Freshness {
 		return nil, ErrCompilerCatalogStale
 	}
+	sortCompilerVersions(versions)
 	return versions, nil
 }

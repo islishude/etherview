@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -585,6 +586,63 @@ func TestVerifierV2CatalogGenerationIsArchitectureNeutral(t *testing.T) {
 		entry.Platform != verify.CompilerPlatformEmscriptenWASM32 ||
 		entry.ArtifactSHA256 != compilerDigest {
 		t.Fatalf("architecture-neutral catalog entry = %#v", entry)
+	}
+}
+
+func TestVerifierV2CatalogVersionsUseSemanticOrder(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	catalogDigest := sha256.Sum256([]byte("semantic-version-order-catalog"))
+	var generation int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO compiler_catalog_generations (
+			language, source_url, catalog_digest, entry_count
+		) VALUES ('solidity', 'https://compiler.example/list.json', $1, 4)
+		RETURNING id`, catalogDigest[:]).Scan(&generation); err != nil {
+		t.Fatalf("insert compiler generation: %v", err)
+	}
+	execFixture(t, ctx, db, `
+		INSERT INTO compiler_catalog_entries (
+			generation_id, language, version, platform, artifact_url,
+			artifact_sha256, max_bytes
+		) VALUES
+			($1, 'solidity', '0.8.20+commit.a1b79de6', 'emscripten-wasm32',
+			 'https://compiler.example/soljson-0.8.20.js', decode(repeat('20', 32), 'hex'), 209715200),
+			($1, 'solidity', '0.8.3+commit.8d00100c', 'emscripten-wasm32',
+			 'https://compiler.example/soljson-0.8.3.js', decode(repeat('03', 32), 'hex'), 209715200),
+			($1, 'solidity', '0.8.31-pre.1+commit.cccccccc', 'emscripten-wasm32',
+			 'https://compiler.example/soljson-0.8.31-pre.1.js', decode(repeat('31', 32), 'hex'), 209715200),
+			($1, 'solidity', '0.8.30+commit.73712a01', 'emscripten-wasm32',
+			 'https://compiler.example/soljson-0.8.30.js', decode(repeat('30', 32), 'hex'), 209715200)`, generation)
+	execFixture(t, ctx, db, `
+		INSERT INTO compiler_catalog_heads (language, generation_id)
+		VALUES ('solidity', $1)`, generation)
+	catalog, err := verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
+		Sources: map[verify.Language]string{
+			verify.LanguageSolidity: "https://compiler.example/emscripten-wasm32/list.json",
+		},
+		Platform:       verify.CompilerPlatformEmscriptenWASM32,
+		AllowedOrigins: []string{"https://compiler.example"},
+		Freshness:      time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"0.8.3+commit.8d00100c",
+		"0.8.20+commit.a1b79de6",
+		"0.8.30+commit.73712a01",
+		"0.8.31-pre.1+commit.cccccccc",
+	}
+	for _, language := range []verify.Language{verify.LanguageSolidity, verify.LanguageYul} {
+		versions, err := catalog.Versions(ctx, language)
+		if err != nil {
+			t.Fatalf("list %s compiler versions: %v", language, err)
+		}
+		if !slices.Equal(versions, want) {
+			t.Fatalf("%s compiler versions = %v, want %v", language, versions, want)
+		}
 	}
 }
 

@@ -125,6 +125,32 @@ test("embedded SPA deep links, language, theme, and keyboard entry remain functi
   await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "合约" })).toHaveCount(0);
 });
 
+test("verification compiler versions preserve semantic order", async ({ page }) => {
+  const versions = [
+    "0.8.3+commit.8d00100c",
+    "0.8.20+commit.a1b79de6",
+    "0.8.30+commit.73712a01",
+  ];
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json() as {
+      data: { features: { verification: boolean } };
+    };
+    payload.data.features.verification = true;
+    await route.fulfill({ response, json: payload });
+  });
+  await page.route("**/api/v1/verifier/compilers?language=solidity", async (route) => {
+    await fulfillAPIEnvelope(route, { language: "solidity", versions });
+  });
+
+  const response = await page.goto("/verify");
+  expect(response?.status()).toBe(200);
+  const compilerVersion = page.getByLabel("Compiler version");
+  await expect(compilerVersion).toHaveValue(versions[0]);
+  expect(await compilerVersion.locator("option").allTextContents()).toEqual(versions);
+  await assertA11yAndNoOverflow(page, "semantic compiler version order");
+});
+
 test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
   const traceRequests: string[] = [];
   const internalTransactionRequests: string[] = [];

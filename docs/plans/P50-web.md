@@ -82,6 +82,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T55 | done | P40-T15, P50-T54 | Preview pending and replaced transaction details with automatic transitions and iconized transaction statuses | focused frontend, bilingual, responsive, accessibility, embedded browser, and runtime E2E gates |
 | P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
+| P50-T58 | done | P30-T15, P50-T57, P70-T29 | Sort verification compiler versions by ascending semantic version instead of lexical text | compiler catalog, PostgreSQL, generated contract, frontend, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -112,6 +113,22 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T58 replaces textual compiler catalog ordering with ascending SemVer
+  precedence, retains exact long-version strings with deterministic build
+  tie-breaking, and places non-SemVer mirror entries after valid versions.
+  Solidity and Yul share the same ordered catalog; Geas remains a fixed single
+  version. The OpenAPI contract now states the ordering, and the Verify page
+  continues to select the first available version without client-side sorting.
+- P50-T58 focused Go tests pass for the verifier and HTTP API, the complete Web
+  suite passes 30 files and 328 tests, and `make generate-check` plus owned
+  PostgreSQL 18 `make test-integration` pass. Host-authorized `make test-e2e`
+  passes all 19 Chromium flows, including the exact `0.8.3`, `0.8.20`,
+  `0.8.30` option order; `make deployment-check`, ordinary/race tests, lint,
+  vulnerability scans, secret scans, npm audits, and `git diff --check` pass.
+  The corrected license command passes independently, and the complete
+  host-authorized aggregate `make check` passes through generation, lint,
+  ordinary/race tests, security, license, and deployment gates.
 
 - P50-T57 adds Method/方法 only to the global transaction table after Hash.
   The compact 12rem cell preserves the full method in the DOM, exposes the

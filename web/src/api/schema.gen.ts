@@ -1505,6 +1505,7 @@ export interface components {
         };
         CompilerCatalog: {
             language: components["schemas"]["VerifierLanguage"];
+            /** @description Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker. */
             versions: string[];
         };
         CompilerCatalogResponse: {

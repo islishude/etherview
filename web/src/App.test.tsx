@@ -625,7 +625,17 @@ describe("embedded explorer shell", () => {
         });
       }
       if (path === "/api/v1/verifier/compilers?language=solidity") {
-        return Response.json({ data: { language: "solidity", versions: ["0.8.30"] }, meta });
+        return Response.json({
+          data: {
+            language: "solidity",
+            versions: [
+              "0.8.3+commit.8d00100c",
+              "0.8.20+commit.a1b79de6",
+              "0.8.30+commit.73712a01",
+            ],
+          },
+          meta,
+        });
       }
       if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -645,7 +655,7 @@ describe("embedded explorer shell", () => {
               file_name: "src/Test.sol",
               contract_name: "Test",
               language: "solidity",
-              compiler_version: "0.8.30",
+              compiler_version: "0.8.3+commit.8d00100c",
               settings: {},
               sources: {},
               compilation_artifacts: {},
@@ -667,14 +677,20 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/verify?address=${address}`);
 
     expect(await screen.findByLabelText("Address")).toHaveValue(address);
-    expect(await screen.findByLabelText("Compiler version")).toHaveValue("0.8.30");
+    const compilerVersion = await screen.findByLabelText("Compiler version") as HTMLSelectElement;
+    expect(Array.from(compilerVersion.options, (option) => option.value)).toEqual([
+      "0.8.3+commit.8d00100c",
+      "0.8.20+commit.a1b79de6",
+      "0.8.30+commit.73712a01",
+    ]);
+    expect(compilerVersion).toHaveValue("0.8.3+commit.8d00100c");
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("full").length).toBeGreaterThan(0);
     expect(submittedBody).toMatchObject({
-      compiler_version: "0.8.30",
+      compiler_version: "0.8.3+commit.8d00100c",
       input_kind: "standard_json",
     });
     expect(submittedBody).not.toHaveProperty("address");

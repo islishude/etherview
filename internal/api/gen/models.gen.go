@@ -2935,7 +2935,9 @@ type CompilationFailureOutcomeKind string
 // CompilerCatalog defines model for CompilerCatalog.
 type CompilerCatalog struct {
 	Language VerifierLanguage `json:"language"`
-	Versions []string         `json:"versions"`
+
+	// Versions Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker.
+	Versions []string `json:"versions"`
 }
 
 // CompilerCatalogResponse defines model for CompilerCatalogResponse.

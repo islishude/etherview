@@ -4130,6 +4130,7 @@ components:
         versions:
           type: array
           maxItems: 4096
+          description: Semantic versions in ascending precedence order; equal-precedence builds use their exact version text as a deterministic tie-breaker.
           items:
             type: string
     LookupMethodsRequest:

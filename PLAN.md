@@ -148,7 +148,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   exact Gwei-to-Ether rendering between address and block withdrawal tables.
   P50-T57 adds the bilingual compact Method column only to the global
   transaction list, with full-signature disclosure and responsive overflow
-  coverage.
+  coverage. P50-T58 implements ascending semantic compiler-version ordering
+  through the catalog API and verification page; its targeted, PostgreSQL,
+  browser, race, security, license, and deployment gates pass.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps
