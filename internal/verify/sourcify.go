@@ -106,9 +106,11 @@ type SourcifyJob struct {
 	ErrorCode      string               `json:"error_code,omitempty"`
 }
 
-// VerificationTarget is the exact canonical code and creation identity that a
-// caller resolved from local PostgreSQL facts. External adapters may compare
-// data against it, but they never get to select or replace these fields.
+// VerificationTarget is the exact canonical code and optional creation
+// identity that a caller resolved from local PostgreSQL facts. External
+// adapters may compare data against it, but they never get to select or replace
+// these fields. GenesisPredeploy authorizes an absent creation identity only
+// when the repository can revalidate the exact authenticated Genesis code.
 type VerificationTarget struct {
 	ChainID          uint64
 	Address          string
@@ -116,6 +118,7 @@ type VerificationTarget struct {
 	AtBlockHash      string
 	CreationBytecode string
 	RuntimeBytecode  string
+	GenesisPredeploy bool `json:"genesis_predeploy,omitempty"`
 }
 
 // BindConstructorArguments validates a locally resolved target, removes only
@@ -806,7 +809,7 @@ func validDurableSourcifyJob(job VerificationJob, expectedID string) bool {
 func validSourcifyImportTarget(target VerificationTarget, maximum int) bool {
 	if target.ChainID == 0 || !fixedHex(target.Address, 20) || !fixedHex(target.CodeHash, 32) ||
 		!fixedHex(target.AtBlockHash, 32) || len(target.RuntimeBytecode) > maximum ||
-		len(target.CreationBytecode) > maximum {
+		len(target.CreationBytecode) > maximum || target.GenesisPredeploy {
 		return false
 	}
 	runtimeBytecode, err := decodeBytecode(target.RuntimeBytecode)

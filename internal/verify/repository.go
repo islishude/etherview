@@ -364,3 +364,32 @@ WHERE observation.chain_id = $1::numeric
   AND observation.block_hash = $4
   AND observation.canonical = TRUE
 FOR SHARE OF observation, canonical`
+
+const verificationCanonicalGenesisTargetSQL = `
+SELECT observation.block_number::text
+FROM contract_code_observations AS observation
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = observation.chain_id
+ AND canonical.number = observation.block_number
+ AND canonical.block_hash = observation.block_hash
+JOIN genesis_state_imports AS imported
+  ON imported.chain_id = observation.chain_id
+ AND imported.state = 'complete'
+JOIN canonical_blocks AS genesis_canonical
+  ON genesis_canonical.chain_id = imported.chain_id
+ AND genesis_canonical.number = 0
+ AND genesis_canonical.block_hash = imported.block_hash
+JOIN genesis_account_observations AS account
+  ON account.chain_id = imported.chain_id
+ AND account.block_hash = imported.block_hash
+ AND account.address = observation.address
+ AND octet_length(account.code) > 0
+ AND account.code_hash = observation.code_hash
+ AND account.code = observation.code
+WHERE observation.chain_id = $1::numeric
+  AND observation.address = $2
+  AND observation.code_hash = $3
+  AND observation.block_hash = $4
+  AND observation.code = $5
+  AND observation.canonical = TRUE
+FOR SHARE OF observation, canonical, imported, genesis_canonical, account`

@@ -52,7 +52,8 @@ func TestDecodeV2ResultFieldsRequiresRuntimeMatchForPublicationData(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fields.RuntimeMatch != "full" || fields.MatchType != VerificationMatchFull {
+	if fields.CreationMatch != "partial" || fields.RuntimeMatch != "full" ||
+		fields.MatchType != VerificationMatchFull {
 		t.Fatalf("fields = %#v", fields)
 	}
 }
@@ -70,10 +71,46 @@ func TestDecodeV2ResultFieldsRejectsMalformedSuccess(t *testing.T) {
 			"runtime_match":{"match_type":"mismatch","transformations":[],"values":{}},
 			"is_blueprint":false
 		}`),
+		json.RawMessage(`{
+			"kind":"verification_success",
+			"file_name":"A.sol","contract_name":"A","language":"solidity",
+			"compiler_version":"0.8.30","sources":{},"settings":{},
+			"compilation_artifacts":{},"creation_code_artifacts":{},
+			"runtime_code_artifacts":{},"libraries":{},
+			"creation_match":{"match_type":"mismatch","transformations":[],"values":{}},
+			"runtime_match":{"match_type":"full","transformations":[],"values":{}},
+			"is_blueprint":false
+		}`),
 	} {
 		if _, err := decodeV2ResultFields("verification_success", outcome); err == nil {
 			t.Fatalf("expected malformed outcome rejection: %s", outcome)
 		}
+	}
+}
+
+func TestValidateAddressSuccessEvidenceFencesGenesisCreationEvidence(t *testing.T) {
+	t.Parallel()
+	ordinary := &VerificationTarget{}
+	genesis := &VerificationTarget{GenesisPredeploy: true}
+	runtimeOnly := v2ResultFields{RuntimeMatch: "full"}
+	if err := validateAddressSuccessEvidence(ordinary, runtimeOnly); err != nil {
+		t.Fatalf("ordinary runtime-only result changed existing semantics: %v", err)
+	}
+	if err := validateAddressSuccessEvidence(genesis, runtimeOnly); err != nil {
+		t.Fatalf("Genesis runtime-only result: %v", err)
+	}
+	if err := validateAddressSuccessEvidence(genesis, v2ResultFields{
+		CreationMatch: "full", RuntimeMatch: "full",
+	}); err == nil {
+		t.Fatal("Genesis result with a creation match was accepted")
+	}
+	if err := validateAddressSuccessEvidence(genesis, v2ResultFields{
+		RuntimeMatch: "full", ConstructorArguments: []byte{},
+	}); err == nil {
+		t.Fatal("Genesis result with constructor arguments was accepted")
+	}
+	if err := validateAddressSuccessEvidence(ordinary, v2ResultFields{}); err == nil {
+		t.Fatal("address result without a runtime match was accepted")
 	}
 }
 
@@ -217,6 +254,72 @@ func TestVerificationRequestDigestV2SeparatesKinds(t *testing.T) {
 	})
 	if string(first) == string(second) {
 		t.Fatal("job kind did not affect durable request payload")
+	}
+}
+
+func TestGenesisPredeployMarkerIsDurableWithoutChangingOrdinaryPayload(t *testing.T) {
+	t.Parallel()
+	target := VerificationTarget{
+		ChainID: 1, Address: "0x" + strings.Repeat("11", 20),
+		CodeHash: "0x" + strings.Repeat("22", 32), AtBlockHash: "0x" + strings.Repeat("33", 32),
+		CreationBytecode: "0x6000", RuntimeBytecode: "0x6001",
+	}
+	ordinaryRequest := SubmissionV2{
+		Kind: JobAddress, Language: LanguageSolidity, CompilerVersion: "0.8.30",
+		Bytecodes: []BytecodePair{{Creation: "0x6000", Runtime: "0x6001"}},
+		Target:    &target,
+	}
+	ordinary, err := json.Marshal(ordinaryRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOrdinary := `{"kind":"address","language":"solidity","compiler_version":"0.8.30","bytecodes":[{"creation_bytecode":"0x6000","runtime_bytecode":"0x6001"}],"target":{"ChainID":1,"Address":"0x1111111111111111111111111111111111111111","CodeHash":"0x2222222222222222222222222222222222222222222222222222222222222222","AtBlockHash":"0x3333333333333333333333333333333333333333333333333333333333333333","CreationBytecode":"0x6000","RuntimeBytecode":"0x6001"}}`
+	if string(ordinary) != wantOrdinary || strings.Contains(string(ordinary), "genesis_predeploy") {
+		t.Fatalf("ordinary target payload changed: %s", ordinary)
+	}
+	runtimeOnlyTarget := target
+	runtimeOnlyTarget.CreationBytecode = ""
+	runtimeOnlyRequest := ordinaryRequest
+	runtimeOnlyRequest.Target = &runtimeOnlyTarget
+	runtimeOnlyRequest.Bytecodes = []BytecodePair{{Runtime: "0x6001"}}
+	unmarked, err := json.Marshal(runtimeOnlyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markedTarget := runtimeOnlyTarget
+	markedTarget.GenesisPredeploy = true
+	markedRequest := runtimeOnlyRequest
+	markedRequest.Target = &markedTarget
+	marked, err := json.Marshal(markedRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmarkedDigest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), unmarked...))
+	markedDigest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), marked...))
+	if !strings.Contains(string(marked), `"genesis_predeploy":true`) ||
+		unmarkedDigest == markedDigest {
+		t.Fatalf("Genesis marker was not durably bound: %s", marked)
+	}
+}
+
+func TestGenesisCanonicalTargetQueryRechecksAndLocksExactProof(t *testing.T) {
+	t.Parallel()
+	query := strings.Join(strings.Fields(verificationCanonicalGenesisTargetSQL), " ")
+	for _, required := range []string{
+		"imported.state = 'complete'",
+		"genesis_canonical.number = 0",
+		"genesis_canonical.block_hash = imported.block_hash",
+		"account.address = observation.address",
+		"octet_length(account.code) > 0",
+		"account.code_hash = observation.code_hash",
+		"account.code = observation.code",
+		"observation.block_hash = $4",
+		"observation.code = $5",
+		"FOR SHARE OF observation, canonical, imported, genesis_canonical, account",
+	} {
+		if !strings.Contains(query, strings.Join(strings.Fields(required), " ")) {
+			t.Fatalf("Genesis publication query lacks %q: %s", required, query)
+		}
 	}
 }
 

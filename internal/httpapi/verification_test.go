@@ -227,6 +227,56 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 	}
 }
 
+func TestAddressVerificationForwardsAuthenticatedGenesisRuntimeOnlyTarget(t *testing.T) {
+	t.Parallel()
+	const address = "0x1111111111111111111111111111111111111111"
+	target := verify.VerificationTarget{
+		ChainID: 1, Address: address, CodeHash: "0x" + strings.Repeat("2", 64),
+		AtBlockHash: "0x" + strings.Repeat("3", 64), RuntimeBytecode: "0x6001",
+		GenesisPredeploy: true,
+	}
+	service := &verificationV2Service{job: verify.VerificationJob{
+		ID: "123e4567-e89b-42d3-a456-426614174000", Kind: verify.JobAddress,
+		Status: verify.JobQueued,
+	}}
+	cfg := config.Default()
+	cfg.Chain.ID = 1
+	handler, err := New(Options{
+		Config: cfg, Reader: fakeReader{}, VerificationReader: service,
+		VerificationSubmitter: service, VerificationTargets: verificationTargetResolver{target: target},
+		CompilerCatalog: compilerCatalogStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
+	key, err := manager.Create(context.Background(), "test", 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{
+		"language":"yul",
+		"compiler_version":"0.5.8+commit.23d335f2",
+		"input_kind":"standard_json",
+		"input":{"language":"Yul","sources":{"Proxy.yul":{"content":"object \"Proxy\" { code {} }"}},"settings":{}}
+	}`
+	request := httptest.NewRequest(
+		http.MethodPost, "/api/v1/contracts/"+address+"/verification", strings.NewReader(body),
+	)
+	request.Header.Set("X-API-Key", key.Token)
+	response := httptest.NewRecorder()
+	manager.Middleware(false, handler).ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if service.submission.Target == nil || !service.submission.Target.GenesisPredeploy ||
+		service.submission.Target.CreationBytecode != "" ||
+		len(service.submission.Bytecodes) != 1 || service.submission.Bytecodes[0].Creation != "" ||
+		service.submission.Bytecodes[0].Runtime != target.RuntimeBytecode {
+		t.Fatalf("Genesis submission=%#v", service.submission)
+	}
+}
+
 func TestVerifierV2SoloSourcifyAndCompilerRoutes(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(100, 0).UTC()

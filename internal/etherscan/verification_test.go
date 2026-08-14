@@ -47,8 +47,8 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	db := fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(4),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001aabb"}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
+		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001aabb", false}},
 	})
 	backend := testPostgresBackend(t, db, PostgresOptions{
 		ChainID: 1, Verification: service, VerificationMaxInputBytes: 1 << 20,
@@ -85,6 +85,7 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 		request.Target.ChainID != 1 || request.Target.Address != strings.ToLower(testContract) ||
 		request.Target.CodeHash != "0x"+hex.EncodeToString(codeHash) || request.Target.AtBlockHash != testHash(32) ||
 		request.Target.CreationBytecode != "0x6001aabb" || request.Target.RuntimeBytecode != "0x6002" ||
+		request.Target.GenesisPredeploy ||
 		len(request.Bytecodes) != 1 || request.Bytecodes[0].Creation != "0x6001aabb" ||
 		request.Bytecodes[0].Runtime != "0x6002" {
 		t.Fatalf("submitted request=%+v", request)
@@ -116,6 +117,38 @@ func TestSourceVerificationBuildsCanonicalDurableRequest(t *testing.T) {
 	}
 }
 
+func TestSourceVerificationBuildsAuthenticatedGenesisRuntimeOnlyRequest(t *testing.T) {
+	t.Parallel()
+	const jobID = "123e4567-e89b-42d3-a456-426614174000"
+	service := &fakeVerificationService{
+		submitJob: verify.VerificationJob{ID: jobID, Status: verify.JobQueued},
+	}
+	runtimeBytecode := []byte{0x60, 0x02}
+	codeHash := testRuntimeCodeHash(runtimeBytecode)
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(5),
+		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, nil, true}},
+	}), PostgresOptions{ChainID: 1, Verification: service, VerificationMaxInputBytes: 1 << 20})
+	values := url.Values{
+		"contractaddress": {testContract}, "sourceCode": {"contract A {}"},
+		"codeformat": {"solidity-single-file"}, "contractname": {"A"},
+		"compilerversion": {"v0.8.30"},
+	}
+	result, err := backend.Execute(context.Background(), Request{
+		Module: "contract", Action: "verifysourcecode", Values: values,
+	})
+	if err != nil || result != jobID {
+		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	request := service.submitted
+	if service.submitCalls != 1 || request.Target == nil || !request.Target.GenesisPredeploy ||
+		request.Target.CreationBytecode != "" || request.Target.RuntimeBytecode != "0x6002" ||
+		len(request.Bytecodes) != 1 || request.Bytecodes[0].Creation != "" ||
+		request.Bytecodes[0].Runtime != "0x6002" {
+		t.Fatalf("submitted Genesis request=%+v", request)
+	}
+}
+
 func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testing.T) {
 	t.Parallel()
 	base := url.Values{
@@ -126,7 +159,7 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	service := &fakeVerificationService{submitJob: verify.VerificationJob{ID: "123e4567-e89b-42d3-a456-426614174000"}}
 
 	missing := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM contract_code_observations AS observation", columns: fakeColumns(4),
+		contains: "FROM contract_code_observations AS observation", columns: fakeColumns(5),
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err := missing.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: base})
 	if !errors.Is(err, ErrVerificationTargetUnavailable) || !errors.Is(err, ErrVerificationUnavailable) {
@@ -137,8 +170,8 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	mismatchValues.Set("constructorArguments", "ccdd")
 	runtimeBytecode := []byte{0x60, 0x02}
 	mismatch := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(4),
-		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "0x6001aabb"}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
+		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "0x6001aabb", false}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = mismatch.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: mismatchValues})
 	if err != nil || service.submitCalls != 1 || service.submitted.Bytecodes[0].Creation != "0x6001aabb" {
@@ -146,12 +179,23 @@ func TestSourceVerificationRejectsMissingProofAndIgnoresConstructorHint(t *testi
 	}
 
 	corrupt := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(4),
-		rows: [][]driver.Value{{testHashBytes(31), testHashBytes(32), runtimeBytecode, "0x6001"}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
+		rows: [][]driver.Value{{testHashBytes(31), testHashBytes(32), runtimeBytecode, "0x6001", false}},
 	}), PostgresOptions{ChainID: 1, Verification: service})
 	_, err = corrupt.Execute(context.Background(), Request{Module: "contract", Action: "verifysourcecode", Values: base})
 	if !errors.Is(err, ErrVerificationTargetUnavailable) || service.submitCalls != 1 {
 		t.Fatalf("corrupt code hash error=%v submitCalls=%d", err, service.submitCalls)
+	}
+
+	malformedCreation := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
+		rows: [][]driver.Value{{testRuntimeCodeHash(runtimeBytecode), testHashBytes(32), runtimeBytecode, "", true}},
+	}), PostgresOptions{ChainID: 1, Verification: service})
+	_, err = malformedCreation.Execute(context.Background(), Request{
+		Module: "contract", Action: "verifysourcecode", Values: base,
+	})
+	if !errors.Is(err, ErrVerificationTargetUnavailable) || service.submitCalls != 1 {
+		t.Fatalf("malformed creation fallback error=%v submitCalls=%d", err, service.submitCalls)
 	}
 }
 
@@ -160,8 +204,8 @@ func TestResolveVerificationTargetReturnsCanonicalServerFacts(t *testing.T) {
 	runtimeBytecode := []byte{0x60, 0x02}
 	codeHash := testRuntimeCodeHash(runtimeBytecode)
 	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
-		contains: "FROM normalized_traces AS trace", columns: fakeColumns(4),
-		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001AABB"}},
+		contains: "FROM normalized_traces AS trace", columns: fakeColumns(5),
+		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, "0x6001AABB", false}},
 	}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
 	target, err := backend.ResolveVerificationTarget(context.Background(), testContract)
 	if err != nil {
@@ -169,12 +213,88 @@ func TestResolveVerificationTargetReturnsCanonicalServerFacts(t *testing.T) {
 	}
 	if target.ChainID != 1 || target.Address != strings.ToLower(testContract) ||
 		target.CodeHash != "0x"+hex.EncodeToString(codeHash) || target.AtBlockHash != testHash(32) ||
-		target.CreationBytecode != "0x6001aabb" || target.RuntimeBytecode != "0x6002" {
+		target.CreationBytecode != "0x6001aabb" || target.RuntimeBytecode != "0x6002" ||
+		target.GenesisPredeploy {
 		t.Fatalf("target=%+v", target)
 	}
 
 	if _, err := backend.ResolveVerificationTarget(context.Background(), "not-an-address"); !errors.Is(err, ErrVerificationTargetUnavailable) {
 		t.Fatalf("invalid address error=%v", err)
+	}
+}
+
+func TestResolveVerificationTargetReturnsAuthenticatedGenesisFacts(t *testing.T) {
+	t.Parallel()
+	runtimeBytecode := []byte{0x60, 0x02}
+	codeHash := testRuntimeCodeHash(runtimeBytecode)
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "genesis_canonical.number = 0", columns: fakeColumns(5),
+		rows: [][]driver.Value{{codeHash, testHashBytes(32), runtimeBytecode, nil, true}},
+	}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
+	target, err := backend.ResolveVerificationTarget(context.Background(), testContract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !target.GenesisPredeploy || target.CreationBytecode != "" ||
+		target.RuntimeBytecode != "0x6002" {
+		t.Fatalf("Genesis target=%+v", target)
+	}
+}
+
+func TestResolveVerificationTargetRejectsUnprovenGenesisShapes(t *testing.T) {
+	t.Parallel()
+	runtime := []byte{0x60, 0x02}
+	for _, test := range []struct {
+		name     string
+		codeHash []byte
+		runtime  []byte
+		proven   bool
+	}{
+		{
+			name:     "incomplete noncanonical or missing account proof",
+			codeHash: testRuntimeCodeHash(runtime), runtime: runtime,
+		},
+		{
+			name:     "empty account code",
+			codeHash: testRuntimeCodeHash(nil), proven: true,
+		},
+		{
+			name:     "code hash mismatch",
+			codeHash: testRuntimeCodeHash([]byte{0x60, 0x03}), runtime: runtime, proven: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+				contains: "FROM genesis_state_imports AS imported", columns: fakeColumns(5),
+				rows: [][]driver.Value{{
+					test.codeHash, testHashBytes(32), test.runtime, nil, test.proven,
+				}},
+			}), PostgresOptions{ChainID: 1, VerificationMaxInputBytes: 1 << 20})
+			if _, err := backend.ResolveVerificationTarget(
+				context.Background(), testContract,
+			); !errors.Is(err, ErrVerificationTargetUnavailable) {
+				t.Fatalf("unproven target error = %v", err)
+			}
+		})
+	}
+}
+
+func TestVerificationTargetQueryAuthenticatesExactGenesisRuntime(t *testing.T) {
+	t.Parallel()
+	query := compactSQL(verificationTargetSQL)
+	for _, required := range []string{
+		"imported.state = 'complete'",
+		"genesis_canonical.number = 0",
+		"genesis_canonical.block_hash = imported.block_hash",
+		"account.address = $2",
+		"octet_length(account.code) > 0",
+		"account.code_hash = current_code.code_hash",
+		"account.code = current_code.code",
+	} {
+		if !strings.Contains(query, compactSQL(required)) {
+			t.Fatalf("verification target query lacks %q: %s", required, query)
+		}
 	}
 }
 

@@ -39,6 +39,15 @@ redaction, and fail-closed cleanup requirements remain mandatory.
   validated differences between the two artifact sets locate compiler metadata
   auxdata; a candidate-set or bytecode-length difference is a compiler-output
   failure.
+- Address verification of official solc-js Yul output that omits
+  `evm.deployedBytecode` is accepted only for a certified Genesis target and
+  only when its link-free, protocol-sized bytecode has the compiler's static
+  object wrapper: one exact trailing byte range is copied with `CODECOPY` and
+  returned. Arbitrary initcode is not executed. Both compiler executions
+  independently derive that bounded runtime before the normal stable-shape and
+  byte-for-byte matching rules apply. The derived runtime is compiler candidate
+  data, never a substitute for an on-chain creation fact; standalone, batch,
+  and ordinary transaction-deployment verifier semantics do not use this path.
 - Matching records bounded Verifier Alliance-style transformations and values.
   Creation matching may replace CBOR auxdata and library slots and insert ABI-
   canonical constructor arguments. Runtime matching may replace CBOR auxdata,
@@ -51,10 +60,17 @@ redaction, and fail-closed cleanup requirements remain mandatory.
   runtime full, then any partial result; an Etherscan compatibility hint wins
   only within one evidence tier, followed by ascending fully-qualified name.
 - Address verification derives creation and runtime bytecode from canonical
-  PostgreSQL facts. A runtime full or partial match is required for publication;
-  creation-only matches remain valid only for standalone or batch verifier
-  results. Completion rechecks the exact canonical code observation before
-  atomically inserting the immutable result and its projection.
+  PostgreSQL facts. Missing creation facts are accepted only for a non-empty
+  runtime authenticated by a completed Genesis import whose imported block is
+  still canonical block zero and whose exact account code and code hash equal
+  the selected canonical runtime. That Genesis provenance is bound into the
+  durable request and revalidated under the publication transaction; no
+  creation match or constructor evidence is fabricated. Ordinary addresses
+  still require canonical creation facts. A runtime full or partial match is
+  required for publication; creation-only matches remain valid only for
+  standalone or batch verifier results. Completion rechecks the exact
+  canonical code observation before atomically inserting the immutable result
+  and its projection.
 - ERC-5202 creation and runtime wrappers must decode to the same non-empty
   initcode when both are supplied. Sourcify results and compiler-list contents
   are hostile external input and never become local publication evidence.
@@ -97,4 +113,7 @@ Verification can discover the matching contract and preserve the exact
 transformations needed to reproduce deployed code. Dynamic compiler coverage
 does not permit a retry to change compiler or runner identity. The destructive
 schema reset requires an operator backup before upgrade, and old verification
-records are not available through the new API.
+records are not available through the new API. Authenticated Genesis
+predeploys can publish runtime source without inventing a deployment
+transaction, initcode, or constructor arguments; an incomplete or stale
+Genesis proof remains unavailable rather than weakening the creation boundary.

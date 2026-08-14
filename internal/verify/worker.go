@@ -260,8 +260,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			// and are classified by ExtractCandidatesV2 below.
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
-		candidates, err := ExtractCandidatesV2(
+		candidates, err := extractCandidatesV2(
 			first, second, request.Language, request.CompilerVersion,
+			request.Kind == JobAddress && request.Target != nil && request.Target.GenesisPredeploy,
 		)
 		if err != nil {
 			if _, ok := errors.AsType[CompilationFailure](err); ok {
@@ -412,7 +413,7 @@ func (worker *Worker) processGeasV2(
 	if request.Geas.CreationEntrypoint != "" {
 		settings["creation_entrypoint"] = request.Geas.CreationEntrypoint
 	}
-	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", map[string]any{
+	outcome := map[string]any{
 		"kind":                    "verification_success",
 		"file_name":               request.Geas.RuntimeEntrypoint,
 		"contract_name":           request.ContractNameHint,
@@ -424,11 +425,14 @@ func (worker *Worker) processGeasV2(
 		"compilation_artifacts":   map[string]any{},
 		"creation_code_artifacts": map[string]any{},
 		"runtime_code_artifacts":  map[string]any{},
-		"creation_match":          creationMatch,
 		"runtime_match":           fullMatch,
 		"libraries":               map[string]string{},
 		"is_blueprint":            false,
-	})
+	}
+	if creationMatch != nil {
+		outcome["creation_match"] = creationMatch
+	}
+	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", outcome)
 }
 
 func (worker *Worker) handleGeasCompilerError(
@@ -636,8 +640,11 @@ func verificationSuccessOutcome(
 		"compilation_artifacts":   json.RawMessage(result.Candidate.CompilationArtifacts),
 		"creation_code_artifacts": json.RawMessage(result.Candidate.CreationCodeArtifacts),
 		"runtime_code_artifacts":  json.RawMessage(result.Candidate.RuntimeCodeArtifacts),
-		"creation_match":          result.Creation, "runtime_match": result.Runtime,
-		"libraries": libraries, "is_blueprint": result.Blueprint,
+		"runtime_match":           result.Runtime,
+		"libraries":               libraries, "is_blueprint": result.Blueprint,
+	}
+	if result.Creation != nil {
+		outcome["creation_match"] = result.Creation
 	}
 	if constructor != "" {
 		outcome["constructor_arguments"] = constructor

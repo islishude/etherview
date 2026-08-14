@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -134,9 +135,7 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 		}
 	}
 	if request.Kind == JobAddress {
-		if request.Target == nil || request.Target.ChainID == 0 ||
-			!fixedHex(request.Target.Address, 20) || !fixedHex(request.Target.CodeHash, 32) ||
-			!fixedHex(request.Target.AtBlockHash, 32) || request.Bytecodes[0].Runtime == "" {
+		if !validAddressVerificationSubmission(request) {
 			return errors.New("address verification target is invalid")
 		}
 	}
@@ -149,8 +148,32 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 	return nil
 }
 
+func validAddressVerificationSubmission(request *SubmissionV2) bool {
+	if request == nil || request.Target == nil || request.Target.ChainID == 0 ||
+		!fixedHex(request.Target.Address, 20) || !fixedHex(request.Target.CodeHash, 32) ||
+		!fixedHex(request.Target.AtBlockHash, 32) || len(request.Bytecodes) != 1 {
+		return false
+	}
+	pairCreation, pairCreationErr := optionalBytecode(request.Bytecodes[0].Creation)
+	pairRuntime, pairRuntimeErr := optionalBytecode(request.Bytecodes[0].Runtime)
+	targetCreation, targetCreationErr := optionalBytecode(request.Target.CreationBytecode)
+	targetRuntime, targetRuntimeErr := optionalBytecode(request.Target.RuntimeBytecode)
+	codeHash, codeHashErr := decodeBytecode(request.Target.CodeHash)
+	if pairCreationErr != nil || pairRuntimeErr != nil || targetCreationErr != nil ||
+		targetRuntimeErr != nil || codeHashErr != nil || len(pairRuntime) == 0 ||
+		!bytes.Equal(pairRuntime, targetRuntime) ||
+		!bytes.Equal(keccak256Bytes(targetRuntime), codeHash) {
+		return false
+	}
+	if request.Target.GenesisPredeploy {
+		return len(pairCreation) == 0 && len(targetCreation) == 0
+	}
+	return len(pairCreation) > 0 && bytes.Equal(pairCreation, targetCreation)
+}
+
 func validateProxyVerificationSubmission(request *SubmissionV2) error {
 	if request.Target == nil || request.Target.ChainID == 0 ||
+		request.Target.GenesisPredeploy ||
 		!fixedHex(request.Target.Address, 20) ||
 		!fixedHex(request.Target.CodeHash, 32) ||
 		!fixedHex(request.Target.AtBlockHash, 32) ||

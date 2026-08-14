@@ -24,6 +24,7 @@ SSRF-safe.
 - [ADR-0014](../decisions/ADR-0014-durable-verification-identity-and-publication.md)
 - [ADR-0016](../decisions/ADR-0016-compiler-supply-chain-and-sandbox.md)
 - [ADR-0017](../decisions/ADR-0017-sourcify-interoperability-boundary.md)
+- [ADR-0019](../decisions/ADR-0019-authenticated-genesis-state-import.md)
 - [ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md)
 - [Testing](../testing.md)
 
@@ -46,6 +47,7 @@ SSRF-safe.
 | P30-T13 | done | P30-T12 | Common, race, PostgreSQL, security, license, and parity closure | applicable repository gates |
 | P30-T14 | done | P30-T13 | Runner-platform-aware compiler catalog discovery and exact platform provenance | platform/catalog/provenance regressions |
 | P30-T15 | done | P20-T13, P30-T14 | Bind verified OpenZeppelin 5.6.1 proxy, implementation, and management artifacts to exact immutable runtime identities and invalidate stale interaction bindings | verifier, PostgreSQL, immutable-source, upgrade/reorg, and Hardhat fixture tests |
+| P30-T16 | done | P30-T14, P63 | Allow authenticated canonical Genesis predeploys to use runtime-only native and Etherscan-compatible address verification without fabricating creation evidence | target-resolution, publication-fence, PostgreSQL, and compatibility regressions |
 
 ## Acceptance
 
@@ -89,6 +91,10 @@ SSRF-safe.
 - [x] Automatic Solidity catalog discovery follows the solc-bin platform
       directories, binds the selected platform into catalog/job provenance,
       and verifies the downloaded executable format before use.
+- [x] P30-T16: an address without canonical creation facts is admitted only when
+      a complete canonical Genesis import authenticates the exact non-empty
+      runtime code, and publication revalidates that proof without recording
+      creation or constructor evidence.
 
 ## Current Blockers
 
@@ -96,6 +102,31 @@ None.
 
 ## Evidence
 
+- P30-T16: native and Etherscan-compatible address submission now share one
+  target resolver. It prefers valid transaction creation facts and otherwise
+  admits runtime-only verification only for an exact non-empty account in a
+  complete canonical block-0 Genesis import whose observed code/hash still
+  equal current canonical runtime. The authenticated origin is persisted as
+  `genesis_predeploy`, participates in the job digest, is rejected when
+  internally contradictory, and is revalidated at publication. Successful
+  Genesis results publish runtime evidence only; creation matches and
+  constructor arguments remain absent. Solidity, Yul, and Geas share these
+  semantics. For official solc-js Yul output that omits deployed bytecode, the
+  Genesis-only path accepts only the compiler's bounded static object wrapper
+  and never executes arbitrary initcode.
+- P30-T16 verification: `make test-integration`, `make
+  test-hardhat3-provider-compat`, and `make test-foundry-e2e` pass; the Foundry
+  gate covers monolith and distributed production topologies. On the final
+  source, `make check` passes with Go 1.26.6 after binding the fixed
+  `go-licenses` binary to the current Homebrew GOROOT; this includes generation,
+  lint, unit/race, security, license, Buildx, Compose, and Helm gates. `make
+  recreate-preview` rebuilt healthy split roles, and native Yul submission for
+  `0x4e59b44847b379578588920cA78FbF26c0B4956C` returned `202` as job
+  `15aa33f4-72e5-4844-8876-fe282f55b1d2`, then succeeded with checksum-pinned
+  solc `0.5.8+commit.23d335f2` and a partial runtime match at block 0. The
+  task outcome, public artifact, and persisted outcome omit both creation match
+  and constructor arguments, while the persisted request records
+  `genesis_predeploy=true`; all temporary Preview API keys were revoked.
 - P30-T08: ADR-0024 supersedes the conflicting verifier-v1 persistence,
   compiler-image, and Sourcify-consent decisions. Migration
   `0027_verifier_v2` deliberately removes the three historical verification

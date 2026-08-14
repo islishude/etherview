@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/params"
 )
 
 func TestExtractAndVerifyAllCandidates(t *testing.T) {
@@ -101,6 +103,81 @@ func TestExtractCandidatesFromChecksumPinnedSolidityFixture(t *testing.T) {
 	}
 }
 
+func TestExtractCandidatesDerivesSolc058YulRuntimeFromStaticObjectWrapper(t *testing.T) {
+	t.Parallel()
+	output := solc058YulProxyCompilerOutput(t)
+	candidates, err := extractCandidatesV2(
+		output, output, LanguageYul, "0.5.8+commit.23d335f2", true,
+	)
+	if err != nil {
+		t.Fatalf("extract solc 0.5.8 Yul candidate: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("candidates=%d", len(candidates))
+	}
+	candidate := candidates[0]
+	const runtime = "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3"
+	if candidate.FullyQualifiedName() != "deterministic-deployment-proxy.yul:Proxy" ||
+		candidate.RuntimeBytecode != runtime || candidate.CreationBytecode == "" ||
+		string(candidate.ABI) != "[]" || len(candidate.runtimeLinks) != 0 ||
+		len(candidate.runtimeImmutables) != 0 {
+		t.Fatalf("candidate=%+v", candidate)
+	}
+	results, err := VerifyCandidateArtifacts(
+		candidates, BytecodePair{Runtime: runtime}, candidate.FullyQualifiedName(), true,
+	)
+	if err != nil || len(results) != 1 || results[0].Creation != nil ||
+		results[0].Runtime == nil || results[0].Runtime.MatchType != VerificationMatchPartial {
+		t.Fatalf("results=%+v error=%v", results, err)
+	}
+}
+
+func TestYulRuntimeDerivationRejectsUnusableCompilerOutput(t *testing.T) {
+	t.Parallel()
+	t.Run("Solidity missing deployed bytecode", func(t *testing.T) {
+		output := solc058YulProxyCompilerOutput(t)
+		if _, err := extractCandidatesV2(
+			output, output, LanguageSolidity, "0.5.8", true,
+		); err == nil {
+			t.Fatal("expected Solidity output without deployed bytecode to fail")
+		}
+	})
+	t.Run("standalone Yul remains unchanged", func(t *testing.T) {
+		output := solc058YulProxyCompilerOutput(t)
+		if _, err := ExtractCandidatesV2(output, output, LanguageYul, "0.5.8"); err == nil {
+			t.Fatal("standalone Yul unexpectedly derived a missing runtime")
+		}
+	})
+	t.Run("Yul initcode reverts", func(t *testing.T) {
+		output := yulCompilerOutput(t, []byte{0x60, 0x00, 0x60, 0x00, 0xfd})
+		if _, err := extractCandidatesV2(
+			output, output, LanguageYul, "0.5.8", true,
+		); err == nil {
+			t.Fatal("expected reverting Yul initcode to fail")
+		}
+	})
+	t.Run("oversized Yul initcode", func(t *testing.T) {
+		if _, err := deriveYulRuntime(make([]byte, params.MaxInitCodeSize+1), nil); err == nil {
+			t.Fatal("expected oversized Yul initcode to fail")
+		}
+	})
+	t.Run("unresolved Yul libraries", func(t *testing.T) {
+		links := map[string]map[string][]bytecodeRange{
+			"Proxy.yul": {
+				"Library": []bytecodeRange{{Start: 0, Length: 1}},
+			},
+		}
+		if _, err := deriveYulRuntime([]byte{0x00}, links); err == nil {
+			t.Fatal("expected linked Yul initcode to fail")
+		}
+	})
+	t.Run("dynamic constructor wrapper", func(t *testing.T) {
+		if _, err := deriveYulRuntime([]byte{0x5b, 0x60, 0x00, 0x56}, nil); err == nil {
+			t.Fatal("expected dynamic Yul initcode to fail")
+		}
+	})
+}
+
 type candidateOutputFixture struct {
 	creation []byte
 	runtime  []byte
@@ -145,6 +222,42 @@ func candidateCompilerOutput(
 		contracts[file] = encodedContracts
 	}
 	encoded, err := json.Marshal(map[string]any{"contracts": contracts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func solc058YulProxyCompilerOutput(t *testing.T) json.RawMessage {
+	t.Helper()
+	// Exact official emscripten-wasm32 solc-js 0.5.8 output for the upstream
+	// deterministic-deployment-proxy Yul source and verifier output selection.
+	output := json.RawMessage(`{"contracts":{"deterministic-deployment-proxy.yul":{"Proxy":{"evm":{"bytecode":{"linkReferences":{},"object":"604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3","opcodes":"PUSH1 0x45 DUP1 PUSH1 0xE PUSH1 0x0 CODECOPY DUP1 PUSH1 0x0 RETURN POP INVALID PUSH32 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE0 CALLDATASIZE ADD PUSH1 0x0 DUP2 PUSH1 0x20 DUP3 CALLDATACOPY DUP1 CALLDATALOAD DUP3 DUP3 CALLVALUE CREATE2 DUP1 ISZERO ISZERO PUSH1 0x39 JUMPI DUP2 DUP3 REVERT JUMPDEST DUP1 DUP3 MSTORE POP POP POP PUSH1 0x14 PUSH1 0xC RETURN ","sourceMap":""}}}}},"errors":[{"component":"general","formattedMessage":"Yul is still experimental. Please use the output with care.","message":"Yul is still experimental. Please use the output with care.","severity":"warning","type":"Warning"}]}`)
+	if !json.Valid(output) {
+		t.Fatal("solc 0.5.8 Yul fixture is invalid")
+	}
+	return output
+}
+
+func yulCompilerOutput(t *testing.T, creation []byte) json.RawMessage {
+	t.Helper()
+	encoded, err := json.Marshal(map[string]any{
+		"contracts": map[string]any{
+			"deterministic-deployment-proxy.yul": map[string]any{
+				"Proxy": map[string]any{
+					"evm": map[string]any{
+						"bytecode": map[string]any{
+							"object": hex.EncodeToString(creation), "sourceMap": "", "linkReferences": map[string]any{},
+						},
+					},
+				},
+			},
+		},
+		"errors": []map[string]string{{
+			"severity": "warning", "type": "Warning",
+			"message": "Yul is still experimental. Please use the output with care.",
+		}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

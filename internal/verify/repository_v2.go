@@ -270,8 +270,8 @@ func (repository *PostgresRepository) CompleteV2(
 		authenticatedArtifact  *recognizedProxyArtifact
 	)
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
-		if resultFields.RuntimeMatch == "" {
-			return errors.New("address verification success lacks a runtime match")
+		if err := validateAddressSuccessEvidence(job.RequestV2.Target, resultFields); err != nil {
+			return err
 		}
 		publicationBlockNumber, err = canonicalV2Target(ctx, tx, job.RequestV2.Target)
 		if err != nil {
@@ -642,6 +642,7 @@ type v2ResultFields struct {
 	Language             any
 	CompilerVersion      any
 	MatchType            any
+	CreationMatch        string
 	RuntimeMatch         string
 	ABI                  any
 	Sources              any
@@ -683,16 +684,23 @@ func decodeV2ResultFields(kind string, outcome json.RawMessage) (v2ResultFields,
 		return v2ResultFields{}, errors.New("verification success outcome is incomplete")
 	}
 	matchType := VerificationMatchPartial
+	creationMatch := ""
 	runtimeMatch := ""
 	if success.CreationMatch != nil {
+		if success.CreationMatch.MatchType != VerificationMatchFull &&
+			success.CreationMatch.MatchType != VerificationMatchPartial {
+			return v2ResultFields{}, errors.New("verification creation match type is invalid")
+		}
 		matchType = success.CreationMatch.MatchType
+		creationMatch = string(success.CreationMatch.MatchType)
 	}
 	if success.RuntimeMatch != nil {
+		if success.RuntimeMatch.MatchType != VerificationMatchFull &&
+			success.RuntimeMatch.MatchType != VerificationMatchPartial {
+			return v2ResultFields{}, errors.New("verification runtime match type is invalid")
+		}
 		matchType = success.RuntimeMatch.MatchType
 		runtimeMatch = string(success.RuntimeMatch.MatchType)
-	}
-	if matchType != VerificationMatchFull && matchType != VerificationMatchPartial {
-		return v2ResultFields{}, errors.New("verification success match type is invalid")
 	}
 	var constructor any
 	if success.Constructor != "" {
@@ -712,13 +720,24 @@ func decodeV2ResultFields(kind string, outcome json.RawMessage) (v2ResultFields,
 	return v2ResultFields{
 		FileName: success.FileName, ContractName: success.ContractName,
 		Language: success.Language, CompilerVersion: success.CompilerVersion,
-		MatchType: matchType, RuntimeMatch: runtimeMatch, ABI: abi,
+		MatchType: matchType, CreationMatch: creationMatch, RuntimeMatch: runtimeMatch, ABI: abi,
 		Sources: string(success.Sources), Settings: string(success.Settings),
 		CompilationArtifacts: string(success.Compilation),
 		CreationArtifacts:    string(success.Creation), RuntimeArtifacts: string(success.Runtime),
 		ConstructorArguments: constructor, Libraries: string(success.Libraries),
 		Blueprint: success.Blueprint,
 	}, nil
+}
+
+func validateAddressSuccessEvidence(target *VerificationTarget, fields v2ResultFields) error {
+	if fields.RuntimeMatch == "" {
+		return errors.New("address verification success lacks a runtime match")
+	}
+	if target != nil && target.GenesisPredeploy &&
+		(fields.CreationMatch != "" || fields.ConstructorArguments != nil) {
+		return errors.New("genesis predeploy verification success contains creation evidence")
+	}
+	return nil
 }
 
 func canonicalV2Target(ctx context.Context, tx *sql.Tx, target *VerificationTarget) (uint64, error) {
@@ -729,7 +748,17 @@ func canonicalV2Target(ctx context.Context, tx *sql.Tx, target *VerificationTarg
 	codeHash, _ := decodeFixedHex(target.CodeHash, 32)
 	blockHash, _ := decodeFixedHex(target.AtBlockHash, 32)
 	var blockNumber string
-	if err := tx.QueryRowContext(ctx, verificationCanonicalTargetSQL,
+	if target.GenesisPredeploy {
+		runtime, err := decodeBytecode(target.RuntimeBytecode)
+		if err != nil || len(runtime) == 0 {
+			return 0, ErrTargetNotCanonical
+		}
+		if err := tx.QueryRowContext(ctx, verificationCanonicalGenesisTargetSQL,
+			strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash, runtime,
+		).Scan(&blockNumber); err != nil {
+			return 0, err
+		}
+	} else if err := tx.QueryRowContext(ctx, verificationCanonicalTargetSQL,
 		strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash,
 	).Scan(&blockNumber); err != nil {
 		return 0, err

@@ -59,7 +59,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   upgrade/initialization facts, and generation-safe replay. Reviewable commands
   and results remain in [P20
   evidence](docs/plans/P20-enrichment.md#evidence).
-- P30 is complete: its historical verifier-v2 foundation remains superseded at
+- P30 is complete: P30-T16 adds authenticated runtime-only verification
+  for canonical Genesis predeploys across native and Etherscan-compatible address
+  submission without weakening ordinary creation-fact requirements. Its
+  historical verifier-v2 foundation remains superseded at
   the runner and language boundaries by P70-T29; the maintained surface is
   bounded automatic Solidity/Yul matching with official
   architecture-neutral solc-js, asynchronous REST and explicit Sourcify

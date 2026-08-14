@@ -141,6 +141,143 @@ func TestVerifierV2RejectsAddressPublicationAfterCanonicalIdentityChanges(t *tes
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_contracts`, 0)
 }
 
+func TestVerifierV2PublishesAuthenticatedGenesisRuntimeOnlyTarget(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	coreRepository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(
+		0, testHash(7_320), testHash(0), testHash(8_320), "verifier-v2-predeploy-genesis",
+	)
+	commitCanonical(t, ctx, coreRepository, genesis)
+	address := testAddress(732)
+	runtime := []byte{0x60, 0x03}
+	codeHash := keccak256(runtime)
+	insertAuthenticatedGenesisPredeploy(
+		t, ctx, db, genesis.Block.Hash(), genesis.Block.Root(), address.Bytes(), runtime,
+	)
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{
+		MaxRequestBytes: 1 << 20, MaxResultBytes: 1 << 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := verify.NewService(repository, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := verifierV2AddressSubmission(
+		address.Bytes(), codeHash, genesis.Block.Hash().Bytes(), runtime,
+	)
+	submission.Bytecodes[0].Creation = ""
+	submission.Target.CreationBytecode = ""
+	submission.Target.GenesisPredeploy = true
+	job, created, err := service.SubmitV2(ctx, submission)
+	if err != nil || !created {
+		t.Fatalf("submit Genesis verifier-v2 job: created=%t error=%v", created, err)
+	}
+	lease, found, err := repository.Claim(ctx, "integration-verifier-v2-genesis", time.Minute)
+	if err != nil || !found {
+		t.Fatalf("claim Genesis verifier-v2 job: found=%t error=%v", found, err)
+	}
+	if err := repository.BindCompiler(
+		ctx, lease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CompleteV2(
+		ctx, lease, "verification_success", verifierV2SuccessOutcome(t, "full"),
+	); err == nil {
+		t.Fatal("Genesis publication accepted a creation match")
+	}
+	if err := repository.CompleteV2(
+		ctx, lease, "verification_success", verifierV2GenesisSuccessOutcome(t, "full"),
+	); err != nil {
+		t.Fatalf("complete Genesis verifier-v2 job: %v", err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_results
+		WHERE job_id = $1::uuid AND constructor_arguments IS NULL
+		  AND outcome->'creation_match' = 'null'::jsonb
+		  AND outcome->'runtime_match' IS NOT NULL`, 1, job.ID)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts
+		WHERE verification_job_id = $1::uuid AND valid_from_block = 0
+		  AND constructor_arguments IS NULL`, 1, job.ID)
+	verified, found, err := repository.VerifiedContract(ctx, 1, address.Hex())
+	if err != nil || !found || verified.CreationMatch != nil || verified.RuntimeMatch == nil ||
+		verified.ConstructorArguments != "" {
+		t.Fatalf("published Genesis artifact: found=%t artifact=%+v error=%v", found, verified, err)
+	}
+}
+
+func TestVerifierV2RejectsGenesisPublicationAfterProofDisappears(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	coreRepository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(
+		0, testHash(7_330), testHash(0), testHash(8_330), "verifier-v2-predeploy-stale",
+	)
+	commitCanonical(t, ctx, coreRepository, genesis)
+	address := testAddress(733)
+	runtime := []byte{0x60, 0x04}
+	codeHash := keccak256(runtime)
+	insertAuthenticatedGenesisPredeploy(
+		t, ctx, db, genesis.Block.Hash(), genesis.Block.Root(), address.Bytes(), runtime,
+	)
+	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := verify.NewService(repository, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission := verifierV2AddressSubmission(
+		address.Bytes(), codeHash, genesis.Block.Hash().Bytes(), runtime,
+	)
+	submission.Bytecodes[0].Creation = ""
+	submission.Target.CreationBytecode = ""
+	submission.Target.GenesisPredeploy = true
+	job, created, err := service.SubmitV2(ctx, submission)
+	if err != nil || !created {
+		t.Fatalf("submit stale Genesis job: created=%t error=%v", created, err)
+	}
+	lease, found, err := repository.Claim(ctx, "integration-verifier-v2-genesis-stale", time.Minute)
+	if err != nil || !found {
+		t.Fatalf("claim stale Genesis job: found=%t error=%v", found, err)
+	}
+	if err := repository.BindCompiler(
+		ctx, lease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	execFixture(t, ctx, db, `
+		DELETE FROM genesis_account_observations
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2`,
+		genesis.Block.Hash().Bytes(), address.Bytes(),
+	)
+	err = repository.CompleteV2(
+		ctx, lease, "verification_success", verifierV2GenesisSuccessOutcome(t, "full"),
+	)
+	if !errors.Is(err, verify.ErrTargetNotCanonical) {
+		t.Fatalf("stale Genesis publication error = %v", err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_results WHERE job_id = $1::uuid`, 0, job.ID)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts WHERE verification_job_id = $1::uuid`, 0, job.ID)
+}
+
 func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -332,8 +469,9 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 		Target: &verify.VerificationTarget{
 			ChainID: 1, Address: "0x" + hex.EncodeToString(address),
 			CodeHash: "0x" + hex.EncodeToString(codeHash), AtBlockHash: blockHash.Hex(),
+			CreationBytecode: "0x6000", RuntimeBytecode: "0x6001",
 		},
-		Bytecodes: []verify.BytecodePair{{Runtime: "0x6001"}},
+		Bytecodes: []verify.BytecodePair{{Creation: "0x6000", Runtime: "0x6001"}},
 	})
 	if err != nil || !created {
 		t.Fatalf("submit Geas job: created=%t error=%v", created, err)
@@ -981,13 +1119,14 @@ func verifierV2AddressSubmission(
 		StandardJSON:         standardJSON,
 		StandardJSONVariants: []json.RawMessage{standardJSON},
 		Bytecodes: []verify.BytecodePair{{
-			Runtime: "0x" + hex.EncodeToString(runtime),
+			Creation: "0x6000", Runtime: "0x" + hex.EncodeToString(runtime),
 		}},
 		Target: &verify.VerificationTarget{
 			ChainID: 1, Address: "0x" + hex.EncodeToString(address),
-			CodeHash:        "0x" + hex.EncodeToString(codeHash),
-			AtBlockHash:     "0x" + hex.EncodeToString(blockHash),
-			RuntimeBytecode: "0x" + hex.EncodeToString(runtime),
+			CodeHash:         "0x" + hex.EncodeToString(codeHash),
+			AtBlockHash:      "0x" + hex.EncodeToString(blockHash),
+			CreationBytecode: "0x6000",
+			RuntimeBytecode:  "0x" + hex.EncodeToString(runtime),
 		},
 	}
 }
@@ -1011,7 +1150,25 @@ func solcJSProvenance(
 }
 
 func verifierV2SuccessOutcome(t *testing.T, match string) json.RawMessage {
+	return verifierV2SuccessOutcomeWithCreation(t, match, true)
+}
+
+func verifierV2GenesisSuccessOutcome(t *testing.T, match string) json.RawMessage {
+	return verifierV2SuccessOutcomeWithCreation(t, match, false)
+}
+
+func verifierV2SuccessOutcomeWithCreation(
+	t *testing.T,
+	match string,
+	includeCreation bool,
+) json.RawMessage {
 	t.Helper()
+	var creationMatch any
+	if includeCreation {
+		creationMatch = map[string]any{
+			"match_type": match, "transformations": []any{}, "values": map[string]any{},
+		}
+	}
 	outcome, err := json.Marshal(map[string]any{
 		"kind": "verification_success", "file_name": "A.sol",
 		"contract_name": "A", "language": "solidity",
@@ -1020,6 +1177,7 @@ func verifierV2SuccessOutcome(t *testing.T, match string) json.RawMessage {
 		"settings": map[string]any{}, "compilation_artifacts": map[string]any{},
 		"creation_code_artifacts": map[string]any{},
 		"runtime_code_artifacts":  map[string]any{},
+		"creation_match":          creationMatch,
 		"runtime_match": map[string]any{
 			"match_type": match, "transformations": []any{}, "values": map[string]any{},
 		},

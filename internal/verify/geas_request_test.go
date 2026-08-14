@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -22,10 +23,46 @@ func validGeasSubmission() SubmissionV2 {
 		},
 		Target: &VerificationTarget{
 			ChainID: 1, Address: "0x" + strings.Repeat("11", 20),
-			CodeHash:    "0x" + strings.Repeat("22", 32),
-			AtBlockHash: "0x" + strings.Repeat("33", 32),
+			CodeHash:         "0x" + hex.EncodeToString(keccak256Bytes([]byte{0x60, 0x01})),
+			AtBlockHash:      "0x" + strings.Repeat("33", 32),
+			CreationBytecode: "0x6001",
+			RuntimeBytecode:  "0x6001",
 		},
 		Bytecodes: []BytecodePair{{Creation: "0x6001", Runtime: "0x6001"}},
+	}
+}
+
+func TestPrepareAddressSubmissionRequiresCreationOrGenesisProof(t *testing.T) {
+	t.Parallel()
+	service := &Service{maxInputBytes: 5 << 20}
+
+	missingCreation := validGeasSubmission()
+	missingCreation.Geas.CreationEntrypoint = ""
+	missingCreation.Bytecodes[0].Creation = ""
+	missingCreation.Target.CreationBytecode = ""
+	if err := service.prepareV2(t.Context(), &missingCreation); err == nil {
+		t.Fatal("ordinary runtime-only address request was accepted")
+	}
+
+	genesis := validGeasSubmission()
+	genesis.Geas.CreationEntrypoint = ""
+	genesis.Bytecodes[0].Creation = ""
+	genesis.Target.CreationBytecode = ""
+	genesis.Target.GenesisPredeploy = true
+	if err := service.prepareV2(t.Context(), &genesis); err != nil {
+		t.Fatalf("authenticated Genesis runtime-only request: %v", err)
+	}
+
+	contradictory := validGeasSubmission()
+	contradictory.Target.GenesisPredeploy = true
+	if err := service.prepareV2(t.Context(), &contradictory); err == nil {
+		t.Fatal("Genesis request with creation evidence was accepted")
+	}
+
+	mismatchedRuntime := validGeasSubmission()
+	mismatchedRuntime.Target.RuntimeBytecode = "0x6002"
+	if err := service.prepareV2(t.Context(), &mismatchedRuntime); err == nil {
+		t.Fatal("address request with mismatched target runtime was accepted")
 	}
 }
 

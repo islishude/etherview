@@ -46,6 +46,8 @@ type verificationTarget struct {
 	blockHash        []byte
 	runtimeBytecode  []byte
 	creationBytecode string
+	hasCreation      bool
+	genesisPredeploy bool
 }
 
 type proxyVerificationTarget struct {
@@ -341,7 +343,7 @@ func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values u
 	if err != nil {
 		return "", err
 	}
-	target, err := b.currentVerificationTarget(ctx, addressBytes, address)
+	target, err := b.resolveVerificationTarget(ctx, addressBytes, address)
 	if err != nil {
 		return "", err
 	}
@@ -355,17 +357,10 @@ func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values u
 		StandardJSON:     form.standardJSON,
 		ContractNameHint: form.contractIdentifier,
 		Bytecodes: []verify.BytecodePair{{
-			Creation: target.creationBytecode,
-			Runtime:  "0x" + hex.EncodeToString(target.runtimeBytecode),
+			Creation: target.CreationBytecode,
+			Runtime:  target.RuntimeBytecode,
 		}},
-		Target: &verify.VerificationTarget{
-			ChainID:          b.chainID,
-			Address:          strings.ToLower(address),
-			CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
-			AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
-			CreationBytecode: target.creationBytecode,
-			RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
-		},
+		Target: &target,
 	}
 	job, _, err := b.verification.SubmitV2(ctx, request)
 	if err != nil {
@@ -430,6 +425,7 @@ func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, address
 	var creation sql.NullString
 	err := b.db.QueryRowContext(ctx, verificationTargetSQL, b.chain, addressBytes, strings.ToLower(address)).Scan(
 		&target.codeHash, &target.blockHash, &target.runtimeBytecode, &creation,
+		&target.genesisPredeploy,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
@@ -443,11 +439,41 @@ func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, address
 	if !bytes.Equal(crypto.Keccak256(target.runtimeBytecode), target.codeHash) {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
 	}
-	if !creation.Valid || strings.TrimSpace(creation.String) == "" {
+	if creation.Valid {
+		target.hasCreation = true
+		target.creationBytecode = creation.String
+	} else if !target.genesisPredeploy {
 		return verificationTarget{}, ErrVerificationTargetUnavailable
 	}
-	target.creationBytecode = creation.String
 	return target, nil
+}
+
+func (b *PostgresBackend) resolveVerificationTarget(
+	ctx context.Context,
+	addressBytes []byte,
+	address string,
+) (verify.VerificationTarget, error) {
+	target, err := b.currentVerificationTarget(ctx, addressBytes, address)
+	if err != nil {
+		return verify.VerificationTarget{}, err
+	}
+	creation := ""
+	if target.hasCreation {
+		creation, err = stripConstructorArguments(
+			target.creationBytecode, "", b.maxVerificationInputBytes,
+		)
+		if err != nil {
+			return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
+		}
+	}
+	return verify.VerificationTarget{
+		ChainID: b.chainID, Address: strings.ToLower(address),
+		CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
+		AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
+		CreationBytecode: creation,
+		RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
+		GenesisPredeploy: target.genesisPredeploy && creation == "",
+	}, nil
 }
 
 // ResolveVerificationTarget returns only locally authoritative canonical facts
@@ -462,21 +488,7 @@ func (b *PostgresBackend) ResolveVerificationTarget(ctx context.Context, rawAddr
 	if err != nil {
 		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
 	}
-	target, err := b.currentVerificationTarget(ctx, addressBytes, address.String())
-	if err != nil {
-		return verify.VerificationTarget{}, err
-	}
-	creation, err := stripConstructorArguments(target.creationBytecode, "", b.maxVerificationInputBytes)
-	if err != nil {
-		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
-	}
-	return verify.VerificationTarget{
-		ChainID: b.chainID, Address: strings.ToLower(address.String()),
-		CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
-		AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
-		CreationBytecode: creation,
-		RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
-	}, nil
+	return b.resolveVerificationTarget(ctx, addressBytes, address.String())
 }
 
 func parseEtherscanVerificationForm(values url.Values, maximum int) (etherscanVerificationForm, []byte, string, error) {
@@ -996,7 +1008,24 @@ WITH current_code AS (
     LIMIT 1
 )
 SELECT current_code.code_hash, current_code.block_hash, current_code.code,
-       creation.creation_bytecode
+       creation.creation_bytecode,
+       EXISTS (
+           SELECT 1
+           FROM genesis_state_imports AS imported
+           JOIN canonical_blocks AS genesis_canonical
+             ON genesis_canonical.chain_id = imported.chain_id
+            AND genesis_canonical.number = 0
+            AND genesis_canonical.block_hash = imported.block_hash
+           JOIN genesis_account_observations AS account
+             ON account.chain_id = imported.chain_id
+            AND account.block_hash = imported.block_hash
+            AND account.address = $2
+           WHERE imported.chain_id = $1::numeric
+             AND imported.state = 'complete'
+             AND octet_length(account.code) > 0
+             AND account.code_hash = current_code.code_hash
+             AND account.code = current_code.code
+       ) AS genesis_predeploy
 FROM current_code
 LEFT JOIN LATERAL (
     SELECT candidate.creation_bytecode

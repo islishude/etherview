@@ -10,6 +10,8 @@ import (
 	"maps"
 	"strconv"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type CandidateArtifact struct {
@@ -97,6 +99,16 @@ func ExtractCandidatesV2(
 	language Language,
 	version string,
 ) ([]CandidateArtifact, error) {
+	return extractCandidatesV2(originalOutput, modifiedOutput, language, version, false)
+}
+
+func extractCandidatesV2(
+	originalOutput json.RawMessage,
+	modifiedOutput json.RawMessage,
+	language Language,
+	version string,
+	deriveMissingYulRuntime bool,
+) ([]CandidateArtifact, error) {
 	original, err := compilerContractDocuments(originalOutput)
 	if err != nil {
 		return nil, err
@@ -134,11 +146,15 @@ func ExtractCandidatesV2(
 	}
 	candidates := make([]CandidateArtifact, 0, len(originalNames))
 	for _, name := range originalNames {
-		first, firstEmpty, err := parseCandidateContract(original[name], language)
+		first, firstEmpty, err := parseCandidateContract(
+			original[name], language, deriveMissingYulRuntime,
+		)
 		if err != nil {
 			return nil, err
 		}
-		second, secondEmpty, err := parseCandidateContract(modified[name], language)
+		second, secondEmpty, err := parseCandidateContract(
+			modified[name], language, deriveMissingYulRuntime,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -403,6 +419,7 @@ func compilerContractDocuments(output json.RawMessage) (map[string]json.RawMessa
 func parseCandidateContract(
 	raw json.RawMessage,
 	language Language,
+	deriveMissingYulRuntime bool,
 ) (CandidateArtifact, bool, error) {
 	contract, err := decodeRawJSONObject(raw)
 	if err != nil {
@@ -423,9 +440,30 @@ func parseCandidateContract(
 	if err != nil {
 		return CandidateArtifact{}, false, err
 	}
-	runtime, runtimeLinks, immutables, runtimeEmpty, err := parseCandidateBytecode(evm["deployedBytecode"], true)
-	if err != nil {
-		return CandidateArtifact{}, false, err
+	var (
+		runtime       []byte
+		runtimeLinks  map[string]map[string][]bytecodeRange
+		immutables    map[string][]bytecodeRange
+		runtimeEmpty  bool
+		runtimeFields map[string]json.RawMessage
+	)
+	if rawRuntime, exists := evm["deployedBytecode"]; exists {
+		runtime, runtimeLinks, immutables, runtimeEmpty, err = parseCandidateBytecode(rawRuntime, true)
+		if err != nil {
+			return CandidateArtifact{}, false, err
+		}
+		runtimeFields, _ = decodeRawJSONObject(rawRuntime)
+	} else {
+		if language != LanguageYul || !deriveMissingYulRuntime || creationEmpty {
+			return CandidateArtifact{}, false, errCompilerOutputMalformed
+		}
+		runtime, err = deriveYulRuntime(creation, creationLinks)
+		if err != nil {
+			return CandidateArtifact{}, false, err
+		}
+		runtimeLinks = make(map[string]map[string][]bytecodeRange)
+		immutables = make(map[string][]bytecodeRange)
+		runtimeFields = make(map[string]json.RawMessage)
 	}
 	if creationEmpty && runtimeEmpty {
 		return CandidateArtifact{}, true, nil
@@ -440,7 +478,6 @@ func parseCandidateContract(
 		"storageLayout": objectOrEmpty(contract["storageLayout"]),
 	})
 	creationFields, _ := decodeRawJSONObject(evm["bytecode"])
-	runtimeFields, _ := decodeRawJSONObject(evm["deployedBytecode"])
 	creationArtifacts := marshalArtifactObject(map[string]json.RawMessage{
 		"sourceMap":      stringOrEmpty(creationFields["sourceMap"]),
 		"linkReferences": objectOrEmpty(creationFields["linkReferences"]),
@@ -463,6 +500,81 @@ func parseCandidateContract(
 		runtimeLinks:          runtimeLinks,
 		runtimeImmutables:     immutables,
 	}, false, nil
+}
+
+// Older official solc-js Yul compilers expose only evm.bytecode for a
+// top-level object. Accept only the compiler's static object wrapper, which
+// copies one exact trailing byte range and returns it. Arbitrary constructor
+// execution is deliberately outside this runtime-only compatibility path.
+func deriveYulRuntime(
+	creation []byte,
+	links map[string]map[string][]bytecodeRange,
+) ([]byte, error) {
+	if len(creation) == 0 || len(creation) > params.MaxInitCodeSize ||
+		len(links) != 0 {
+		return nil, errCompiledCodeMalformed
+	}
+	cursor := 0
+	runtimeSize, ok := readYulWrapperPush(creation, &cursor)
+	if !ok || runtimeSize == 0 || runtimeSize > maxMatcherBytecodeBytes ||
+		!consumeYulWrapperOpcode(creation, &cursor, 0x80) { // DUP1
+		return nil, errCompiledCodeMalformed
+	}
+	runtimeOffset, ok := readYulWrapperPush(creation, &cursor)
+	if !ok {
+		return nil, errCompiledCodeMalformed
+	}
+	destination, ok := readYulWrapperPush(creation, &cursor)
+	if !ok || destination != 0 ||
+		!consumeYulWrapperOpcode(creation, &cursor, 0x39) || // CODECOPY
+		!consumeYulWrapperOpcode(creation, &cursor, 0x80) { // DUP1
+		return nil, errCompiledCodeMalformed
+	}
+	returnOffset, ok := readYulWrapperPush(creation, &cursor)
+	if !ok || returnOffset != 0 ||
+		!consumeYulWrapperOpcode(creation, &cursor, 0xf3) || // RETURN
+		!consumeYulWrapperOpcode(creation, &cursor, 0x50) || // POP
+		!consumeYulWrapperOpcode(creation, &cursor, 0xfe) || // INVALID
+		runtimeOffset != uint64(cursor) ||
+		runtimeSize != uint64(len(creation)-cursor) {
+		return nil, errCompiledCodeMalformed
+	}
+	return append([]byte(nil), creation[cursor:]...), nil
+}
+
+func readYulWrapperPush(code []byte, cursor *int) (uint64, bool) {
+	if cursor == nil || *cursor < 0 || *cursor >= len(code) {
+		return 0, false
+	}
+	opcode := code[*cursor]
+	if opcode < 0x60 || opcode > 0x7f { // PUSH1 through PUSH32
+		return 0, false
+	}
+	width := int(opcode - 0x5f)
+	(*cursor)++
+	if width > len(code)-*cursor {
+		return 0, false
+	}
+	leading := max(width-8, 0)
+	for _, value := range code[*cursor : *cursor+leading] {
+		if value != 0 {
+			return 0, false
+		}
+	}
+	var value uint64
+	for _, part := range code[*cursor+leading : *cursor+width] {
+		value = value<<8 | uint64(part)
+	}
+	*cursor += width
+	return value, true
+}
+
+func consumeYulWrapperOpcode(code []byte, cursor *int, opcode byte) bool {
+	if cursor == nil || *cursor < 0 || *cursor >= len(code) || code[*cursor] != opcode {
+		return false
+	}
+	(*cursor)++
+	return true
 }
 
 func parseCandidateBytecode(

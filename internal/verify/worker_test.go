@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -333,6 +334,215 @@ func TestWorkerPublishesExactGeasAddressVerification(t *testing.T) {
 	}
 }
 
+func TestWorkerPublishesGeasGenesisRuntimeOnlyVerification(t *testing.T) {
+	request := validGeasSubmission()
+	request.Geas.CreationEntrypoint = ""
+	request.Bytecodes[0].Creation = ""
+	request.Target.CreationBytecode = ""
+	request.Target.GenesisPredeploy = true
+	if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
+		t.Fatal(err)
+	}
+	repository := &verifyMemoryRepository{
+		claimFound: true,
+		lease: VerificationLease{
+			Job: VerificationJob{
+				ID: verificationID(66), Kind: JobAddress, Status: JobRunning, RequestV2: &request,
+			},
+			Token: "geas-genesis-lease",
+		},
+	}
+	compiler := &verifyTestGeasCompiler{
+		provenance: testGeasProvenance(),
+		responses: map[string]geascompiler.Response{
+			"system/main.eas": {
+				Schema: geascompiler.ProtocolSchema, Successful: true, Bytecode: "0x6001",
+				Sources: []string{"common/value.eas", "system/main.eas"},
+			},
+		},
+	}
+	found, err := newVerifyTestWorker(t, repository, compiler).ProcessOne(t.Context())
+	if err != nil || !found || strings.Join(compiler.calls, ",") != "system/main.eas" ||
+		len(repository.outcomes) != 1 || repository.outcomes[0] != "verification_success" ||
+		len(repository.payloads) != 1 {
+		t.Fatalf("found=%t error=%v calls=%v outcomes=%v", found, err, compiler.calls, repository.outcomes)
+	}
+	var outcome struct {
+		CreationMatch        *VerificationMatchDetails `json:"creation_match"`
+		RuntimeMatch         *VerificationMatchDetails `json:"runtime_match"`
+		ConstructorArguments string                    `json:"constructor_arguments"`
+		Settings             map[string]any            `json:"settings"`
+	}
+	if err := json.Unmarshal(repository.payloads[0], &outcome); err != nil {
+		t.Fatal(err)
+	}
+	if outcome.CreationMatch != nil || outcome.RuntimeMatch == nil ||
+		outcome.RuntimeMatch.MatchType != VerificationMatchFull ||
+		outcome.ConstructorArguments != "" || outcome.Settings["creation_entrypoint"] != nil {
+		t.Fatalf("runtime-only Geas outcome=%+v", outcome)
+	}
+	assertNoCreationEvidence(t, repository.payloads[0])
+}
+
+func TestWorkerPublishesSolidityGenesisRuntimeOnlyVerification(t *testing.T) {
+	runtime := []byte{0x60, 0x02}
+	input := json.RawMessage(`{
+		"language":"Solidity",
+		"sources":{"Proxy.sol":{"content":"contract Proxy {}"}},
+		"settings":{}
+	}`)
+	request := SubmissionV2{
+		Kind: JobAddress, Language: LanguageSolidity,
+		CompilerVersion: "0.8.30+commit.73712a01", StandardJSON: input,
+		ContractNameHint: "Proxy.sol:Proxy",
+		Bytecodes:        []BytecodePair{{Runtime: "0x" + hex.EncodeToString(runtime)}},
+		Target: &VerificationTarget{
+			ChainID: 1, Address: "0x" + strings.Repeat("11", 20),
+			CodeHash:         "0x" + hex.EncodeToString(keccak256Bytes(runtime)),
+			AtBlockHash:      "0x" + strings.Repeat("33", 32),
+			RuntimeBytecode:  "0x" + hex.EncodeToString(runtime),
+			GenesisPredeploy: true,
+		},
+	}
+	if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
+		t.Fatal(err)
+	}
+	repository := &verifyMemoryRepository{
+		claimFound: true,
+		lease: VerificationLease{
+			Job: VerificationJob{
+				ID: verificationID(67), Kind: JobAddress, Status: JobRunning, RequestV2: &request,
+			},
+			Token: "solidity-genesis-lease",
+		},
+	}
+	compiler := &verifyTestCompiler{
+		provenance: testSolcJSProvenance(),
+		output: candidateCompilerOutput(t, map[string]map[string]candidateOutputFixture{
+			"Proxy.sol": {"Proxy": {creation: []byte{0x60, 0x01}, runtime: runtime}},
+		}),
+	}
+	found, err := newVerifyTestWorker(t, repository, compiler).ProcessOne(t.Context())
+	if err != nil || !found || len(repository.outcomes) != 1 ||
+		repository.outcomes[0] != "verification_success" || len(repository.payloads) != 1 {
+		t.Fatalf("found=%t error=%v outcomes=%v", found, err, repository.outcomes)
+	}
+	var outcome struct {
+		CreationMatch        *VerificationMatchDetails `json:"creation_match"`
+		RuntimeMatch         *VerificationMatchDetails `json:"runtime_match"`
+		ConstructorArguments string                    `json:"constructor_arguments"`
+	}
+	if err := json.Unmarshal(repository.payloads[0], &outcome); err != nil {
+		t.Fatal(err)
+	}
+	if outcome.CreationMatch != nil || outcome.RuntimeMatch == nil ||
+		outcome.RuntimeMatch.MatchType != VerificationMatchPartial ||
+		outcome.ConstructorArguments != "" {
+		t.Fatalf("runtime-only Solidity outcome=%+v", outcome)
+	}
+	assertNoCreationEvidence(t, repository.payloads[0])
+}
+
+func TestWorkerPublishesYulGenesisRuntimeOnlyVerification(t *testing.T) {
+	runtime, err := hex.DecodeString("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := json.Marshal(map[string]any{
+		"language": "Yul",
+		"sources": map[string]any{
+			"deterministic-deployment-proxy.yul": map[string]string{
+				"content": `object "Proxy" {
+	code {
+		let size := datasize("runtime")
+		datacopy(0, dataoffset("runtime"), size)
+		return(0, size)
+	}
+	object "runtime" {
+		code {
+			calldatacopy(0, 32, sub(calldatasize(), 32))
+			let result := create2(callvalue(), 0, sub(calldatasize(), 32), calldataload(0))
+			if iszero(result) { revert(0, 0) }
+			mstore(0, result)
+			return(12, 20)
+		}
+	}
+}`,
+			},
+		},
+		"settings": map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := SubmissionV2{
+		Kind: JobAddress, Language: LanguageYul,
+		CompilerVersion: "0.5.8+commit.23d335f2", StandardJSON: input,
+		ContractNameHint: "deterministic-deployment-proxy.yul:Proxy",
+		Bytecodes:        []BytecodePair{{Runtime: "0x" + hex.EncodeToString(runtime)}},
+		Target: &VerificationTarget{
+			ChainID: 1, Address: "0x" + strings.Repeat("11", 20),
+			CodeHash:         "0x" + hex.EncodeToString(keccak256Bytes(runtime)),
+			AtBlockHash:      "0x" + strings.Repeat("33", 32),
+			RuntimeBytecode:  "0x" + hex.EncodeToString(runtime),
+			GenesisPredeploy: true,
+		},
+	}
+	if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
+		t.Fatal(err)
+	}
+	repository := &verifyMemoryRepository{
+		claimFound: true,
+		lease: VerificationLease{
+			Job: VerificationJob{
+				ID: verificationID(65), Kind: JobAddress, Status: JobRunning, RequestV2: &request,
+			},
+			Token: "yul-genesis-lease",
+		},
+	}
+	compiler := &verifyTestCompiler{
+		provenance: testSolcJSProvenance(),
+		output:     solc058YulProxyCompilerOutput(t),
+	}
+	found, err := newVerifyTestWorker(t, repository, compiler).ProcessOne(t.Context())
+	if err != nil || !found || len(repository.outcomes) != 1 ||
+		repository.outcomes[0] != "verification_success" || len(repository.payloads) != 1 {
+		t.Fatalf("found=%t error=%v outcomes=%v", found, err, repository.outcomes)
+	}
+	var outcome struct {
+		Language             Language                  `json:"language"`
+		FileName             string                    `json:"file_name"`
+		ContractName         string                    `json:"contract_name"`
+		CreationMatch        *VerificationMatchDetails `json:"creation_match"`
+		RuntimeMatch         *VerificationMatchDetails `json:"runtime_match"`
+		ConstructorArguments string                    `json:"constructor_arguments"`
+	}
+	if err := json.Unmarshal(repository.payloads[0], &outcome); err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Language != LanguageYul || outcome.FileName != "deterministic-deployment-proxy.yul" ||
+		outcome.ContractName != "Proxy" || outcome.CreationMatch != nil ||
+		outcome.RuntimeMatch == nil || outcome.RuntimeMatch.MatchType != VerificationMatchPartial ||
+		outcome.ConstructorArguments != "" {
+		t.Fatalf("runtime-only Yul outcome=%+v", outcome)
+	}
+	assertNoCreationEvidence(t, repository.payloads[0])
+}
+
+func assertNoCreationEvidence(t *testing.T, payload json.RawMessage) {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["creation_match"]; exists {
+		t.Fatalf("runtime-only outcome contains creation_match: %s", payload)
+	}
+	if _, exists := fields["constructor_arguments"]; exists {
+		t.Fatalf("runtime-only outcome contains constructor_arguments: %s", payload)
+	}
+}
+
 func TestWorkerClassifiesGeasCompilationAndMatchFailures(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -361,6 +571,8 @@ func TestWorkerClassifiesGeasCompilationAndMatchFailures(t *testing.T) {
 			request := validGeasSubmission()
 			request.Geas.CreationEntrypoint = ""
 			request.Bytecodes[0].Creation = ""
+			request.Target.CreationBytecode = ""
+			request.Target.GenesisPredeploy = true
 			if err := (&Service{maxInputBytes: 5 << 20}).prepareV2(t.Context(), &request); err != nil {
 				t.Fatal(err)
 			}
