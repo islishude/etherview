@@ -223,7 +223,7 @@ func TestProxyDetectionGenerationPromotesPublishedImmutableCloneEvidence(t *test
 
 	validTracePool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name:     "immutable-clone-trace-generation-two",
-		Client:   newIntegrationRPCClient(t, "debug", &immutableCloneTraceService{raw: creationTrace}),
+		Client:   newIntegrationRPCClient(t, "debug", &immutableCloneTraceService{db: db, raw: creationTrace}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
@@ -454,15 +454,18 @@ type immutableCloneTraceCreation struct {
 }
 
 type immutableCloneTraceService struct {
+	db  *sql.DB
 	raw json.RawMessage
 }
 
-func (service *immutableCloneTraceService) TraceTransaction(
-	_ context.Context,
-	_ common.Hash,
+func (service *immutableCloneTraceService) TraceBlockByHash(
+	ctx context.Context,
+	blockHash common.Hash,
 	_ map[string]any,
 ) (json.RawMessage, error) {
-	return append(json.RawMessage(nil), service.raw...), nil
+	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
+		return service.raw, nil
+	})
 }
 
 func publishCloneTrace(
@@ -476,7 +479,7 @@ func publishCloneTrace(
 	t.Helper()
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name:     "immutable-clone-trace",
-		Client:   newIntegrationRPCClient(t, "debug", &immutableCloneTraceService{raw: raw}),
+		Client:   newIntegrationRPCClient(t, "debug", &immutableCloneTraceService{db: db, raw: raw}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,

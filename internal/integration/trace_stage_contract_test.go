@@ -18,21 +18,49 @@ import (
 )
 
 type traceStageService struct {
-	calls int
-	raw   json.RawMessage
-	err   error
+	calls     int
+	blockHash common.Hash
+	hashes    []common.Hash
+	raw       json.RawMessage
+	err       error
 }
 
-func (service *traceStageService) TraceTransaction(
+type stateDiffBlockFailureService struct {
+	blockHash       common.Hash
+	transactionHash common.Hash
+	calls           int
+}
+
+func (service *stateDiffBlockFailureService) TraceBlockByHash(
 	_ context.Context,
-	_ common.Hash,
+	blockHash common.Hash,
+	_ map[string]any,
+) (json.RawMessage, error) {
+	service.calls++
+	if blockHash != service.blockHash {
+		return nil, fmt.Errorf("state difference block hash = %s, want %s", blockHash, service.blockHash)
+	}
+	return json.Marshal([]map[string]any{{
+		"txHash": service.transactionHash,
+		"error":  "provider-secret historical state pruned",
+	}})
+}
+
+func (service *traceStageService) TraceBlockByHash(
+	_ context.Context,
+	blockHash common.Hash,
 	_ map[string]any,
 ) (json.RawMessage, error) {
 	service.calls++
 	if service.err != nil {
 		return nil, service.err
 	}
-	return append(json.RawMessage(nil), service.raw...), nil
+	if blockHash != service.blockHash {
+		return nil, fmt.Errorf("trace block hash = %s, want %s", blockHash, service.blockHash)
+	}
+	return marshalIntegrationBlockTraceResults(service.hashes, func(common.Hash) (json.RawMessage, error) {
+		return service.raw, nil
+	})
 }
 
 func (service *traceStageService) Transaction(
@@ -86,7 +114,7 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 			name: "whole_block_frame_budget", debug: ethrpc.AvailabilityAvailable, parity: ethrpc.AvailabilityUnavailable,
 			wantState:   enrich.ResultFailed,
 			wantError:   "whole_block_frame_budget",
-			wantRPCCall: 2,
+			wantRPCCall: 1,
 			configure:   func(limits *enrich.TraceLimits) { limits.MaxBlockFrames = 1 },
 			twoTx:       true, assertEmpty: true,
 		},
@@ -111,7 +139,13 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 			if test.twoTx {
 				raw = traceStageCallTracerResponse(t, bundle.Block.Transactions()[0])
 			}
-			service := &traceStageService{raw: raw, err: test.rpcError}
+			hashes := make([]common.Hash, len(bundle.Block.Transactions()))
+			for index, transaction := range bundle.Block.Transactions() {
+				hashes[index] = transaction.Hash()
+			}
+			service := &traceStageService{
+				blockHash: bundle.Block.Hash(), hashes: hashes, raw: raw, err: test.rpcError,
+			}
 			client := newIntegrationRPCClientServices(t, map[string]any{
 				"debug": service,
 				"trace": service,
@@ -184,6 +218,75 @@ func TestTraceStageTerminalOutcomesAreDurable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStateDiffStageBlockItemFailurePublishesUnavailableAtomically(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := traceStageBundle(t, false)
+	commitCanonical(t, ctx, repository, bundle)
+	reference := mustBlockRef(t, bundle)
+	blockHash, err := enrich.ParseWord(reference.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &stateDiffBlockFailureService{
+		blockHash: bundle.Block.Hash(), transactionHash: bundle.Block.Transactions()[0].Hash(),
+	}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state-diff-block-failure", Client: newIntegrationRPCClient(t, "debug", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewStateDiffRPCProcessor(db, pool, enrich.StateDiffLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.StateDiffStage, ChainID: "1", BlockHash: blockHash,
+		BlockNumber: reference.Number, MaxAttempts: 1,
+	})
+	if err != nil || !enqueued.Created {
+		t.Fatalf("enqueue state difference job = %+v, err=%v", enqueued, err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "state-diff-block-failure", LeaseDuration: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err := worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("process state difference job=%t err=%v", processed, err)
+	}
+	assertEnrichmentJobTerminal(t, ctx, db, enqueued.Job.ID, "failed", 1)
+	assertStageResult(
+		t, ctx, db, enqueued.Job, enrich.ResultUnavailable,
+		"state difference RPC capability unavailable", map[string]string{},
+	)
+	if service.calls != 1 {
+		t.Fatalf("block trace RPC calls=%d, want 1", service.calls)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM transaction_state_changes
+		WHERE chain_id = 1 AND block_hash = $1`, 0, mustBytes(t, reference.Hash))
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM block_journals
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'state_diff@2'`, 0, mustBytes(t, reference.Hash))
 }
 
 func traceStageBundle(t *testing.T, twoTransactions bool) chainbundle.Bundle {

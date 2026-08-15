@@ -2424,15 +2424,17 @@ type proxyVerificationCoverageRPCService struct {
 	stateDiff json.RawMessage
 }
 
-func (service *proxyVerificationCoverageRPCService) TraceTransaction(
+func (service *proxyVerificationCoverageRPCService) TraceBlockByHash(
 	ctx context.Context,
-	hash common.Hash,
+	blockHash common.Hash,
 	options map[string]any,
 ) (json.RawMessage, error) {
 	if options["tracer"] == "prestateTracer" {
-		return common.CopyBytes(service.stateDiff), nil
+		return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
+			return service.stateDiff, nil
+		})
 	}
-	return (&derivedTraceService{db: service.db}).TraceTransaction(ctx, hash, options)
+	return (&derivedTraceService{db: service.db}).TraceBlockByHash(ctx, blockHash, options)
 }
 
 func publishProxyVerificationInteractionCoverage(

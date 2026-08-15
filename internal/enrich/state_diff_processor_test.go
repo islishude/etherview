@@ -1,6 +1,7 @@
 package enrich
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"math"
@@ -13,6 +14,90 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 )
+
+func TestStateDiffRPCProcessorFetchesWholeBlockOnce(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "state-block", Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(530), BlockNumber: 530}
+	firstHash, secondHash := uintWord(531), uintWord(532)
+	firstTarget, secondTarget := testAddress(0x31), testAddress(0x32)
+	transactions := []stateDiffTransaction{
+		{hash: firstHash, tx: types.NewTx(&types.LegacyTx{To: &firstTarget}), sender: testAddress(0x41)},
+		{hash: secondHash, tx: types.NewTx(&types.LegacyTx{To: &secondTarget}), sender: testAddress(0x42)},
+	}
+	diff := json.RawMessage(`{"pre":{},"post":{}}`)
+	caller := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
+		if method != debugTraceBlockByHashMethod || hash != job.BlockHash.String() {
+			return nil, errors.New("unexpected state difference RPC request")
+		}
+		return repeatedBlockTraceResponse(t, diff, firstHash, secondHash), nil
+	}}
+	processor := &StateDiffRPCProcessor{limits: DefaultStateDiffLimits()}
+	if err := processor.fetch(t.Context(), caller, job, transactions, &stateDiffBudget{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(caller.calls) != 1 || caller.calls[0].method != debugTraceBlockByHashMethod ||
+		caller.calls[0].tracer != "prestateTracer" || caller.calls[0].diffMode == nil || !*caller.calls[0].diffMode {
+		t.Fatalf("calls=%+v", caller.calls)
+	}
+	for index := range transactions {
+		if len(transactions[index].changes) != 0 {
+			t.Fatalf("transaction %d changes=%+v", index, transactions[index].changes)
+		}
+	}
+}
+
+func TestStateDiffRPCProcessorRejectsBlockPayloadOverLimit(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "state-block-limit", Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(540), BlockNumber: 540}
+	transactionHash := uintWord(541)
+	target := testAddress(0x51)
+	transactions := []stateDiffTransaction{{
+		hash: transactionHash, tx: types.NewTx(&types.LegacyTx{To: &target}), sender: testAddress(0x52),
+	}}
+	raw := repeatedBlockTraceResponse(t, json.RawMessage(`{"pre":{},"post":{}}`), transactionHash)
+	caller := &traceTestCaller{handler: func(string, string) (json.RawMessage, error) { return raw, nil }}
+	limits := DefaultStateDiffLimits()
+	limits.MaxBlockPayloadBytes = len(raw) - 1
+	processor := &StateDiffRPCProcessor{limits: limits}
+	err := processor.fetch(context.Background(), caller, job, transactions, &stateDiffBudget{})
+	var classified stageError
+	if !errors.Is(err, ErrStateDiffLimit) || !errors.As(err, &classified) || classified.kind != "permanent" || len(caller.calls) != 1 {
+		t.Fatalf("err=%#v calls=%+v", err, caller.calls)
+	}
+}
+
+func TestStateDiffRPCProcessorClassifiesBlockItemErrorsWithoutTransactionFallback(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "state-block-error", Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(550), BlockNumber: 550}
+	transactionHash := uintWord(551)
+	target := testAddress(0x61)
+	transactions := []stateDiffTransaction{{
+		hash: transactionHash, tx: types.NewTx(&types.LegacyTx{To: &target}), sender: testAddress(0x62),
+	}}
+	for _, test := range []struct {
+		name    string
+		message string
+		want    error
+	}{
+		{name: "history unavailable", message: "provider-secret missing trie node", want: errBlockTraceHistoryUnavailable},
+		{name: "retryable item failure", message: "provider-secret tracer timeout", want: errBlockTraceTransactionFailed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			caller := &traceTestCaller{handler: func(string, string) (json.RawMessage, error) {
+				return blockTraceResponse(
+					t, []common.Hash{transactionHash}, []json.RawMessage{nil}, map[int]string{0: test.message},
+				), nil
+			}}
+			processor := &StateDiffRPCProcessor{limits: DefaultStateDiffLimits()}
+			err := processor.fetch(t.Context(), caller, job, transactions, &stateDiffBudget{})
+			if !errors.Is(err, test.want) || strings.Contains(err.Error(), "provider-secret") ||
+				len(caller.calls) != 1 || caller.calls[0].method != debugTraceBlockByHashMethod {
+				t.Fatalf("err=%v calls=%+v", err, caller.calls)
+			}
+		})
+	}
+}
 
 func TestDeriveEIP7702EvidenceReplaysOrderedAuthorizationsAndExecution(t *testing.T) {
 	t.Parallel()

@@ -216,14 +216,18 @@ of the callback. The routing and lag contract is specified in
   transactions has null blob base fee and zero blob burn, while receipt blob
   gas without the required header inputs is a permanent inconsistency; see
   [ADR-0011](../decisions/ADR-0011-snapshot-search-stats-and-bounded-adapters.md).
-- A trace attempt acquires one trace-purpose RPC endpoint for the entire block.
-  It first requests Geth `callTracer` with `withLog=true`. An exact `-32602`
-  rejection downgrades the remaining attempt to ordinary `callTracer`; the
-  compatible `trace_transaction` method remains a same-endpoint fallback
-  only on that same endpoint, so one normalized tree never combines node
-  histories. Every returned frame is bounded and, where the trace API carries
-  identity fields, bound to the requested block hash, block number,
-  transaction hash, and transaction position. A completed mined-transaction
+- A trace attempt acquires one trace-purpose RPC endpoint for the entire block
+  and calls `debug_traceBlockByHash` once for the exact job block hash with Geth
+  `callTracer` and `withLog=true`. An exact `-32602` retries the complete block
+  once with `withLog=false`. The compatible `trace_transaction` method remains
+  a same-endpoint fallback only when the block debug method or historical state
+  is unavailable; `debug_traceTransaction` is never used. The non-null block
+  response must match the stored canonical transaction-inclusion count, order,
+  and `txHash`, and each item must contain exactly one of `result` or `error`.
+  Any malformed or failed item rejects the complete block, so Trace and its
+  journal never publish partially. Every returned frame is bounded and bound
+  to the requested block hash, block number, transaction hash, and transaction
+  position. A completed mined-transaction
   trace has exactly one root whose sender, target/creation kind, value, and
   input match the canonical core transaction. A root-only tree means the
   transaction made no internal calls; a missing stage, unavailable/failed
@@ -232,8 +236,8 @@ of the callback. The routing and lag contract is specified in
   only a missing method or recognized pruned-history response marks the
   capability unavailable. Payload, frame, input/output-data, and error-text
   budgets apply independently to each transaction and cumulatively to the
-  complete block attempt. Work decoded before an adapter fallback remains
-  charged to that block budget.
+  complete block response and attempt. Work and payload consumed before the
+  log-config retry or parity fallback remain charged to that block budget.
 - `trace@3` retains direct frame failure separately from ancestor rollback. It
   validates every returned callTracer log against the persisted receipt log's
   global index, emitter, topics, and data before recording a trace path and
@@ -326,10 +330,14 @@ of the callback. The routing and lag contract is specified in
   independent direct-revert data; successful children remain output-decodable
   even when an ancestor later rolls back; see
   [ADR-0033](../decisions/ADR-0033-trace-bound-log-attribution-and-call-decoding.md).
-- `state_diff@2` replays geth-owned EIP-7702 authorization tuples against exact
-  per-transaction pre/post evidence and publishes first-hop execution-code
-  identity. Missing evidence is unavailable; contradictory nonce/code evidence
-  fails permanently rather than consulting block-end or latest state. See
+- `state_diff@2` calls `debug_traceBlockByHash` once with `prestateTracer` and
+  `diffMode=true`, then replays geth-owned EIP-7702 authorization tuples against
+  each exact ordered transaction item and publishes first-hop execution-code
+  identity. It has no per-transaction debug fallback. A missing block method,
+  recognized unavailable history, missing item evidence, or any failed item
+  makes the whole stage unavailable or failed without partial rows or journal;
+  contradictory nonce/code evidence fails permanently rather than consulting
+  block-end or latest state. See
   [ADR-0034](../decisions/ADR-0034-eip7702-execution-identity-and-constructor-decoding.md).
 - `abi@3` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact

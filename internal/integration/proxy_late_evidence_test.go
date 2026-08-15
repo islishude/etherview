@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -19,17 +20,20 @@ import (
 )
 
 type proxyStateDiffService struct {
+	db    *sql.DB
 	raw   json.RawMessage
 	calls int
 }
 
-func (service *proxyStateDiffService) TraceTransaction(
-	_ context.Context,
-	_ common.Hash,
+func (service *proxyStateDiffService) TraceBlockByHash(
+	ctx context.Context,
+	blockHash common.Hash,
 	_ map[string]any,
 ) (json.RawMessage, error) {
 	service.calls++
-	return append(json.RawMessage(nil), service.raw...), nil
+	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
+		return service.raw, nil
+	})
 }
 
 func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
@@ -101,7 +105,7 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 	}
 	assertPublishedGeneration(t, ctx, db, proxyJob.Job.ID, 1)
 
-	service := &proxyStateDiffService{raw: proxyStateDiffResponse(t, proxyStateDiffFixture{
+	service := &proxyStateDiffService{db: db, raw: proxyStateDiffResponse(t, proxyStateDiffFixture{
 		ordinaryAddress: ordinaryAddress,
 	})}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
@@ -183,7 +187,11 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 
 	traceRaw := traceStageCallTracerResponse(t, block.Block.Transactions()[0])
 	tracePool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "state-diff-trace", Client: newIntegrationRPCClient(t, "debug", &traceStageService{raw: traceRaw}),
+		Name: "state-diff-trace", Client: newIntegrationRPCClient(t, "debug", &traceStageService{
+			blockHash: block.Block.Hash(),
+			hashes:    []common.Hash{block.Block.Transactions()[0].Hash()},
+			raw:       traceRaw,
+		}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
@@ -306,7 +314,11 @@ func TestPublishedOrdinaryCallReplaysProxyWithoutInventingProxy(t *testing.T) {
 		WHERE chain_id = 1 AND block_hash = $1 AND address = $2`, 0,
 		mustBytes(t, reference.Hash), internalTarget.Bytes())
 
-	traceService := &traceStageService{raw: ordinaryNestedCallTrace(t, block, internalTarget)}
+	traceService := &traceStageService{
+		blockHash: block.Block.Hash(),
+		hashes:    []common.Hash{transaction.Hash()},
+		raw:       ordinaryNestedCallTrace(t, block, internalTarget),
+	}
 	tracePool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "ordinary-call-trace", Client: newIntegrationRPCClient(t, "debug", traceService),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},

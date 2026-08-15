@@ -812,7 +812,11 @@ func publishABITrace(
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := &traceStageService{raw: raw}
+	service := &traceStageService{
+		blockHash: bundle.Block.Hash(),
+		hashes:    []common.Hash{transaction.Hash()},
+		raw:       raw,
+	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "abi-trace", Client: newIntegrationRPCClient(t, "debug", service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
@@ -863,12 +867,17 @@ func publishABITrace(
 	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
 }
 
-type abiStateDiffService struct{ raw json.RawMessage }
+type abiStateDiffService struct {
+	db  *sql.DB
+	raw json.RawMessage
+}
 
-func (service *abiStateDiffService) TraceTransaction(
-	context.Context, common.Hash, map[string]any,
+func (service *abiStateDiffService) TraceBlockByHash(
+	ctx context.Context, blockHash common.Hash, _ map[string]any,
 ) (json.RawMessage, error) {
-	return append(json.RawMessage(nil), service.raw...), nil
+	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
+		return service.raw, nil
+	})
 }
 
 func publishABIStateDiff(
@@ -887,7 +896,7 @@ func publishABIStateDiff(
 		t.Fatal(err)
 	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
-		Name: "abi-state-diff", Client: newIntegrationRPCClient(t, "debug", &abiStateDiffService{raw: raw}),
+		Name: "abi-state-diff", Client: newIntegrationRPCClient(t, "debug", &abiStateDiffService{db: db, raw: raw}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
 		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
 			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,

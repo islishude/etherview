@@ -1,7 +1,6 @@
 package enrich
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -9,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,9 +19,11 @@ import (
 )
 
 type traceRPCInvocation struct {
-	method  string
-	hash    string
-	withLog *bool
+	method   string
+	hash     string
+	withLog  *bool
+	tracer   string
+	diffMode *bool
 }
 
 type traceTestCaller struct {
@@ -40,23 +42,22 @@ type parityTraceRPCService struct {
 
 func (caller *traceTestCaller) CallContext(_ context.Context, result any, method string, params ...any) error {
 	if len(params) == 0 {
-		return fmt.Errorf("trace RPC %s has no transaction hash", method)
+		return fmt.Errorf("trace RPC %s has no target hash", method)
 	}
-	hash, ok := params[0].(string)
-	if !ok {
+	var hash string
+	switch value := params[0].(type) {
+	case string:
+		hash = value
+	case common.Hash:
+		hash = value.String()
+	default:
 		return fmt.Errorf("trace RPC %s hash is %T", method, params[0])
 	}
-	var withLog *bool
+	var options map[string]any
 	if len(params) > 1 {
-		if options, ok := params[1].(map[string]any); ok {
-			if tracerConfig, ok := options["tracerConfig"].(map[string]any); ok {
-				if value, ok := tracerConfig["withLog"].(bool); ok {
-					withLog = &value
-				}
-			}
-		}
+		options, _ = params[1].(map[string]any)
 	}
-	raw, err := caller.invoke(method, hash, withLog)
+	raw, err := caller.invoke(method, hash, options)
 	if err != nil {
 		return err
 	}
@@ -68,18 +69,12 @@ func (caller *traceTestCaller) CallContext(_ context.Context, result any, method
 	return nil
 }
 
-func (service debugTraceRPCService) TraceTransaction(
+func (service debugTraceRPCService) TraceBlockByHash(
 	_ context.Context,
-	hash string,
+	hash common.Hash,
 	config map[string]any,
 ) (json.RawMessage, error) {
-	var withLog *bool
-	if tracerConfig, ok := config["tracerConfig"].(map[string]any); ok {
-		if value, ok := tracerConfig["withLog"].(bool); ok {
-			withLog = &value
-		}
-	}
-	return service.caller.invoke("debug_traceTransaction", hash, withLog)
+	return service.caller.invoke(debugTraceBlockByHashMethod, hash.String(), config)
 }
 
 func (service parityTraceRPCService) Transaction(
@@ -89,9 +84,21 @@ func (service parityTraceRPCService) Transaction(
 	return service.caller.invoke("trace_transaction", hash, nil)
 }
 
-func (caller *traceTestCaller) invoke(method, hash string, withLog *bool) (json.RawMessage, error) {
+func (caller *traceTestCaller) invoke(method, hash string, options map[string]any) (json.RawMessage, error) {
+	invocation := traceRPCInvocation{method: method, hash: hash}
+	if tracer, ok := options["tracer"].(string); ok {
+		invocation.tracer = tracer
+	}
+	if tracerConfig, ok := options["tracerConfig"].(map[string]any); ok {
+		if value, ok := tracerConfig["withLog"].(bool); ok {
+			invocation.withLog = &value
+		}
+		if value, ok := tracerConfig["diffMode"].(bool); ok {
+			invocation.diffMode = &value
+		}
+	}
 	caller.mu.Lock()
-	caller.calls = append(caller.calls, traceRPCInvocation{method: method, hash: hash, withLog: withLog})
+	caller.calls = append(caller.calls, invocation)
 	handler := caller.handler
 	caller.mu.Unlock()
 	if handler == nil {
@@ -105,6 +112,41 @@ func callTracerRoot(from string) json.RawMessage {
 		"type":"CALL","from":"` + from + `","to":"` + traceAddress2 + `","value":"0x5",
 		"gas":"0x100","gasUsed":"0x20","input":"0x1234","output":"0x"
 	}`)
+}
+
+func blockTraceResponse(
+	t *testing.T,
+	hashes []common.Hash,
+	results []json.RawMessage,
+	itemErrors map[int]string,
+) json.RawMessage {
+	t.Helper()
+	if len(hashes) != len(results) {
+		t.Fatalf("block trace fixture hashes=%d results=%d", len(hashes), len(results))
+	}
+	items := make([]map[string]any, len(hashes))
+	for index := range hashes {
+		items[index] = map[string]any{"txHash": hashes[index]}
+		if message, exists := itemErrors[index]; exists {
+			items[index]["error"] = message
+			continue
+		}
+		items[index]["result"] = results[index]
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func repeatedBlockTraceResponse(t *testing.T, result json.RawMessage, hashes ...common.Hash) json.RawMessage {
+	t.Helper()
+	results := make([]json.RawMessage, len(hashes))
+	for index := range results {
+		results[index] = result
+	}
+	return blockTraceResponse(t, hashes, results, nil)
 }
 
 func traceTransactionRow(index int64, hash common.Hash) []driver.Value {
@@ -164,11 +206,11 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 			return driver.RowsAffected(1), nil
 		},
 	}
-	first := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
-		if method != "debug_traceTransaction" {
+	first := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
+		if method != debugTraceBlockByHashMethod || hash != job.BlockHash.String() {
 			return nil, fmt.Errorf("unexpected RPC method %s", method)
 		}
-		return callTracerRoot(traceAddress1), nil
+		return repeatedBlockTraceResponse(t, callTracerRoot(traceAddress1), txHash1, txHash2), nil
 	}}
 	second := &traceTestCaller{handler: first.handler}
 	endpoints := []ethrpc.Endpoint{
@@ -194,13 +236,13 @@ func TestTraceRPCProcessorUsesOneEndpointAndPersistsNormalizedFrames(t *testing.
 		result.Details["abi_requeued"] != "false" {
 		t.Fatalf("result=%+v", result)
 	}
-	if queryCount != 8 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 2 || len(second.calls) != 0 {
+	if queryCount != 8 || insertedFrames != 2 || !stageWritten || !journalWritten || len(first.calls) != 1 || len(second.calls) != 0 {
 		t.Fatalf("queries=%d frames=%d stage=%v journal=%v first=%v second=%v", queryCount, insertedFrames, stageWritten, journalWritten, first.calls, second.calls)
 	}
 	if !reflect.DeepEqual(replayStages, []string{"proxy", "abi"}) {
 		t.Fatalf("ordinary CALL replay stages = %v, want Proxy then ABI", replayStages)
 	}
-	if first.calls[0].hash != txHash1.String() || first.calls[1].hash != txHash2.String() {
+	if first.calls[0].hash != job.BlockHash.String() || first.calls[0].tracer != "callTracer" {
 		t.Fatalf("calls=%+v", first.calls)
 	}
 }
@@ -213,24 +255,60 @@ func TestCallTracerWithLogInvalidParamsDowngradesOncePerBlock(t *testing.T) {
 		{hash: uintWord(881), from: from, to: &to, value: "0x5", input: []byte{0x12, 0x34}},
 	}
 	calls := 0
+	blockHash := uintWord(88)
 	caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
 		calls++
-		if method != "debug_traceTransaction" {
+		if method != debugTraceBlockByHashMethod {
 			return nil, fmt.Errorf("unexpected method %s", method)
 		}
 		if calls == 1 {
 			return nil, testRPCError{code: -32602, message: "unknown tracerConfig field withLog"}
 		}
-		return callTracerRoot(traceAddress1), nil
+		return repeatedBlockTraceResponse(t, callTracerRoot(traceAddress1), transactions[0].hash, transactions[1].hash), nil
 	}}
 	processor := &TraceRPCProcessor{limits: DefaultTraceLimits()}
-	if err := processor.fetchCallTracer(context.Background(), caller, transactions, newTraceBlockBudget(processor.limits)); err != nil {
+	if err := processor.fetchCallTracer(context.Background(), caller, blockHash, transactions, newTraceBlockBudget(processor.limits)); err != nil {
 		t.Fatal(err)
 	}
-	if len(caller.calls) != 3 || caller.calls[0].withLog == nil || !*caller.calls[0].withLog ||
-		caller.calls[1].withLog == nil || *caller.calls[1].withLog ||
-		caller.calls[2].withLog == nil || *caller.calls[2].withLog {
+	if len(caller.calls) != 2 || caller.calls[0].hash != blockHash.String() ||
+		caller.calls[1].hash != blockHash.String() || caller.calls[0].withLog == nil || !*caller.calls[0].withLog ||
+		caller.calls[1].withLog == nil || *caller.calls[1].withLog {
 		t.Fatalf("calls=%+v", caller.calls)
+	}
+}
+
+func TestCallTracerUsesOneBlockRPCForMultipleTransactions(t *testing.T) {
+	t.Parallel()
+	from := common.HexToAddress(traceAddress1)
+	to := common.HexToAddress(traceAddress2)
+	for _, transactionCount := range []int{2, 5} {
+		t.Run(strconv.Itoa(transactionCount), func(t *testing.T) {
+			t.Parallel()
+			transactions := make([]traceTransaction, transactionCount)
+			hashes := make([]common.Hash, transactionCount)
+			for index := range transactions {
+				hashes[index] = uintWord(uint64(890 + index))
+				transactions[index] = traceTransaction{
+					hash: hashes[index], from: from, to: &to, value: "0x5", input: []byte{0x12, 0x34},
+				}
+			}
+			blockHash := uintWord(uint64(880 + transactionCount))
+			caller := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
+				if method != debugTraceBlockByHashMethod || hash != blockHash.String() {
+					return nil, fmt.Errorf("unexpected block trace request %s %s", method, hash)
+				}
+				return repeatedBlockTraceResponse(t, callTracerRoot(traceAddress1), hashes...), nil
+			}}
+			processor := &TraceRPCProcessor{limits: DefaultTraceLimits()}
+			if err := processor.fetchCallTracer(
+				t.Context(), caller, blockHash, transactions, newTraceBlockBudget(processor.limits),
+			); err != nil {
+				t.Fatal(err)
+			}
+			if len(caller.calls) != 1 {
+				t.Fatalf("block trace calls=%+v", caller.calls)
+			}
+		})
 	}
 }
 
@@ -406,15 +484,12 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 		"type":"CALL","from":"` + traceAddress1 + `","to":"` + traceAddress2 + `","value":"0x5",
 		"gas":"0x100","gasUsed":"0x20","input":"0x1234","output":"0x","error":"x"
 	}`)
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, raw); err != nil {
-		t.Fatal(err)
-	}
+	blockRaw := repeatedBlockTraceResponse(t, raw, txHash1, txHash2)
 	for _, test := range []struct {
 		name   string
 		change func(*TraceLimits)
 	}{
-		{name: "payload", change: func(limits *TraceLimits) { limits.MaxBlockPayloadBytes = compact.Len()*2 - 1 }},
+		{name: "payload", change: func(limits *TraceLimits) { limits.MaxBlockPayloadBytes = len(blockRaw) - 1 }},
 		{name: "frames", change: func(limits *TraceLimits) { limits.MaxBlockFrames = 1 }},
 		{name: "data", change: func(limits *TraceLimits) { limits.MaxBlockDataBytes = 3 }},
 		{name: "text", change: func(limits *TraceLimits) { limits.MaxBlockTextBytes = 1 }},
@@ -423,10 +498,10 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 			t.Parallel()
 			backend := traceBlockReadBackend(txHash1, txHash2)
 			caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
-				if method != "debug_traceTransaction" {
+				if method != debugTraceBlockByHashMethod {
 					return nil, fmt.Errorf("unexpected RPC method %s", method)
 				}
-				return raw, nil
+				return blockRaw, nil
 			}}
 			pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
 				traceEndpoint(t, "trace-budget", caller, ethrpc.AvailabilityAvailable, ethrpc.AvailabilityUnavailable),
@@ -445,7 +520,7 @@ func TestTraceRPCProcessorEnforcesWholeBlockBudgets(t *testing.T) {
 			if !errors.Is(err, ErrTraceLimit) || !errors.As(err, &classified) || classified.kind != "permanent" {
 				t.Fatalf("err=%#v", err)
 			}
-			if len(caller.calls) != 2 {
+			if len(caller.calls) != 1 {
 				t.Fatalf("calls=%+v", caller.calls)
 			}
 		})
@@ -486,11 +561,12 @@ func TestTraceRPCProcessorDoesNotResetBlockBudgetOnAdapterFallback(t *testing.T)
 	backend := traceBlockReadBackend(txHash1, txHash2)
 	caller := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
 		switch method {
-		case "debug_traceTransaction":
-			if hash == txHash2.String() {
-				return nil, testRPCError{code: -32601, message: "method not found"}
-			}
-			return callTracerRoot(traceAddress1), nil
+		case debugTraceBlockByHashMethod:
+			return blockTraceResponse(t,
+				[]common.Hash{txHash1, txHash2},
+				[]json.RawMessage{callTracerRoot(traceAddress1), nil},
+				map[int]string{1: "historical state pruned"},
+			), nil
 		case "trace_transaction":
 			transactionHash, transactionIndex := txHash1, uint64(0)
 			if hash == txHash2.String() {
@@ -530,7 +606,7 @@ func TestTraceRPCProcessorFallsBackToSameEndpointTraceAPI(t *testing.T) {
 			txHash := uintWord(140)
 			backend := successfulTraceBackend(t, txHash)
 			caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
-				if method == "debug_traceTransaction" {
+				if method == debugTraceBlockByHashMethod {
 					return nil, test.err
 				}
 				if method != "trace_transaction" {
@@ -562,7 +638,7 @@ func TestTraceRPCProcessorFallsBackToSameEndpointTraceAPI(t *testing.T) {
 			for index := range caller.calls {
 				methods[index] = caller.calls[index].method
 			}
-			if result.Details["source"] != string(TraceAPI) || !reflect.DeepEqual(methods, []string{"debug_traceTransaction", "trace_transaction"}) {
+			if result.Details["source"] != string(TraceAPI) || !reflect.DeepEqual(methods, []string{debugTraceBlockByHashMethod, "trace_transaction"}) {
 				t.Fatalf("result=%+v methods=%v", result, methods)
 			}
 		})
@@ -584,8 +660,11 @@ func TestTraceRPCProcessorRejectsEmptyOrMismatchedTrace(t *testing.T) {
 			txHash := uintWord(150)
 			backend := traceReadBackend(txHash)
 			caller := &traceTestCaller{handler: func(method, _ string) (json.RawMessage, error) {
-				if test.name == "empty_trace_api" && method == "debug_traceTransaction" {
+				if test.name == "empty_trace_api" && method == debugTraceBlockByHashMethod {
 					return nil, testRPCError{code: -32601, message: "method not found"}
+				}
+				if method == debugTraceBlockByHashMethod {
+					return repeatedBlockTraceResponse(t, test.raw, txHash), nil
 				}
 				return test.raw, nil
 			}}

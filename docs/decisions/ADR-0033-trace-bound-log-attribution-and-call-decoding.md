@@ -14,21 +14,28 @@ projected reliably.
 
 ## Decision
 
-- `trace@2` requests `callTracer` with `withLog=true` from one block-pinned
-  endpoint. Every captured log must form a complete one-to-one match with the
-  persisted receipt logs by global index, emitter, topics, and data. Exact
-  matches persist transaction hash, log index, trace path, call type, and
-  execution code address in `trace_log_attributions`.
+- The current Trace stage requests `callTracer` with `withLog=true` through one
+  `debug_traceBlockByHash` call to one block-pinned endpoint. The non-null block
+  response must match the exact stored transaction count, order, and `txHash`;
+  no item may contain both or neither of `result` and `error`. Every captured
+  log must form a complete one-to-one match with the persisted receipt logs by
+  global index, emitter, topics, and data. Exact matches persist transaction
+  hash, log index, trace path, call type, and execution code address in
+  `trace_log_attributions`.
 - The receipt emitter remains the public log address. For `DELEGATECALL` and
   `CALLCODE`, frame `to` is the execution/ABI address; the same rule records
   ordinary calls, roots, and construction frames. `STATICCALL` cannot own a
   log. Partial, duplicate, impossible, or contradictory results are permanent
   provider-data failures.
-- Only JSON-RPC `-32602` for the log-enabled tracer config downgrades to ordinary
-  `callTracer`. A same-endpoint `trace_transaction` fallback remains available.
-  Either fallback may publish its complete call tree, but logs without exact
-  attribution decode conservatively from the emitter, published historical
-  proxy evidence, or a same-code verified artifact.
+- Only JSON-RPC `-32602` for the log-enabled tracer config retries the complete
+  block once with ordinary `callTracer`. A same-endpoint `trace_transaction`
+  fallback remains available only when the block debug method or historical
+  state is unavailable; `debug_traceTransaction` is never used. Work and bytes
+  consumed before either fallback stay charged to the block budget. Any block
+  item failure prevents partial Trace or journal publication. A complete parity
+  fallback tree may publish, but logs without exact attribution decode
+  conservatively from the emitter, published historical proxy evidence, or a
+  same-code verified artifact.
 - `normalized_traces.direct_reverted` records the current frame's failure;
   `reverted` also includes ancestor rollback. A locally successful child keeps
   successful output semantics even if an ancestor later fails. Direct failures

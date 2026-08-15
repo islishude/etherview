@@ -193,48 +193,68 @@ func (processor *StateDiffRPCProcessor) Process(ctx context.Context, job Job) (S
 		return StageResult{}, Unavailable(errStateDiffRPCAbsent)
 	}
 	budget := &stateDiffBudget{}
+	if err := processor.fetch(ctx, endpoint.Client, job, transactions, budget); err != nil {
+		processor.pool.ReportFailure(endpoint.Name)
+		if traceCapabilityUnavailable(err) {
+			return StageResult{}, Unavailable(errStateDiffRPCAbsent)
+		}
+		return StageResult{}, err
+	}
+	processor.pool.ReportSuccess(endpoint.Name)
+	return processor.persist(ctx, job, transactions, "complete")
+}
+
+func (processor *StateDiffRPCProcessor) fetch(
+	ctx context.Context,
+	caller rpcCaller,
+	job Job,
+	transactions []stateDiffTransaction,
+	budget *stateDiffBudget,
+) error {
+	var raw json.RawMessage
+	if err := caller.CallContext(ctx, &raw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
+		"tracer":       "prestateTracer",
+		"tracerConfig": map[string]any{"diffMode": true},
+	}); err != nil {
+		return sanitizeTraceRPCError(err)
+	}
+	if err := budget.add(len(raw), normalizedStateDiffCounts{}, processor.limits); err != nil {
+		return Permanent(err)
+	}
+	expected := make([]common.Hash, len(transactions))
 	for index := range transactions {
-		var raw json.RawMessage
-		if err := endpoint.Client.CallContext(ctx, &raw, "debug_traceTransaction",
-			transactions[index].hash.String(),
-			map[string]any{
-				"tracer":       "prestateTracer",
-				"tracerConfig": map[string]any{"diffMode": true},
-			},
-		); err != nil {
-			processor.pool.ReportFailure(endpoint.Name)
-			if traceCapabilityUnavailable(err) {
-				return StageResult{}, Unavailable(errStateDiffRPCAbsent)
-			}
-			return StageResult{}, ethrpc.SanitizeError(err)
+		expected[index] = transactions[index].hash
+	}
+	results, err := decodeBlockTraceResults(raw, expected)
+	if err != nil {
+		return Permanent(fmt.Errorf("decode state difference block response: %w", err))
+	}
+	for index := range transactions {
+		if results[index].err != nil {
+			return results[index].err
 		}
-		changes, counts, err := normalizeStateDiff(raw, processor.limits)
+		changes, counts, err := normalizeStateDiff(results[index].result, processor.limits)
 		if err != nil {
-			processor.pool.ReportFailure(endpoint.Name)
-			return StageResult{}, Permanent(fmt.Errorf("normalize transaction state difference: %w", err))
+			return Permanent(fmt.Errorf("normalize transaction state difference: %w", err))
 		}
-		if err := budget.add(len(raw), counts, processor.limits); err != nil {
-			processor.pool.ReportFailure(endpoint.Name)
-			return StageResult{}, Permanent(err)
+		if err := budget.add(0, counts, processor.limits); err != nil {
+			return Permanent(err)
 		}
 		transactions[index].changes = changes
-		evidence, err := decodeTransactionStateEvidence(raw)
+		evidence, err := decodeTransactionStateEvidence(results[index].result)
 		if err != nil {
-			processor.pool.ReportFailure(endpoint.Name)
-			return StageResult{}, Permanent(fmt.Errorf("decode transaction state evidence: %w", err))
+			return Permanent(fmt.Errorf("decode transaction state evidence: %w", err))
 		}
 		authorities, executions, err := deriveEIP7702Evidence(
 			job.ChainID, transactions[index].tx, transactions[index].sender, evidence,
 		)
 		if err != nil {
-			processor.pool.ReportFailure(endpoint.Name)
-			return StageResult{}, Permanent(fmt.Errorf("derive EIP-7702 evidence: %w", err))
+			return Permanent(fmt.Errorf("derive EIP-7702 evidence: %w", err))
 		}
 		transactions[index].authorities = authorities
 		transactions[index].executions = executions
 	}
-	processor.pool.ReportSuccess(endpoint.Name)
-	return processor.persist(ctx, job, transactions, "complete")
+	return nil
 }
 
 func (processor *StateDiffRPCProcessor) transactions(

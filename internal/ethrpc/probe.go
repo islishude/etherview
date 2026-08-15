@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -171,6 +172,9 @@ func ProbeEndpoint(ctx context.Context, endpoint *Endpoint, options ProbeOptions
 	if endpoint.Supports(PurposeTrace) || endpoint.Supports(PurposeMempool) {
 		probeModules(ctx, endpoint, &report)
 	}
+	if endpoint.Supports(PurposeTrace) {
+		probeDebugTraceBlockByHash(ctx, endpoint, &report)
+	}
 	return report, nil
 }
 
@@ -279,6 +283,26 @@ func probeModules(ctx context.Context, endpoint *Endpoint, report *CapabilityRep
 		} else {
 			report.Methods[capability] = AvailabilityUnavailable
 		}
+	}
+}
+
+func probeDebugTraceBlockByHash(ctx context.Context, endpoint *Endpoint, report *CapabilityReport) {
+	var result json.RawMessage
+	err := endpoint.CallContext(
+		ctx,
+		&result,
+		"debug_traceBlockByHash",
+		report.GenesisHash,
+		map[string]any{},
+	)
+	switch {
+	case err == nil:
+		report.Methods[CapabilityDebugTrace] = AvailabilityAvailable
+	case IsMethodNotFound(err):
+		report.Methods[CapabilityDebugTrace] = AvailabilityUnavailable
+	default:
+		report.Methods[CapabilityDebugTrace] = AvailabilityUnknown
+		report.Warnings = append(report.Warnings, "debug_traceBlockByHash probe failed")
 	}
 }
 

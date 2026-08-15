@@ -37,6 +37,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T11 | done | P20-T05, P20-T10 | Exact bounded transaction state differences with independent capability state | malformed, limit, replay, and reorg tests |
 | P20-T12 | done | P20-T11 | Preserve historical migration replay and DEFAULT-partition evacuation after adding state differences | migration replay and partition lifecycle integration tests |
 | P20-T13 | done | P20-T03, P20-T07, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests |
+| P20-T14 | done | P20-T05, P20-T11 | Block-hash-batched Geth call and state-difference tracing without per-transaction debug fallback | block envelope, fallback, budget, PostgreSQL, runtime, and common-gate tests |
 
 ## Acceptance
 
@@ -71,6 +72,9 @@ search documents, and rollup statistics without delaying core readiness.
       normalized within per-transaction and per-block limits, retained by
       immutable block identity, and published only through the matching
       lease-fenced generation.
+- [x] Every non-empty Trace and StateDiff attempt uses one strict ordered
+      `debug_traceBlockByHash` response, never calls `debug_traceTransaction`,
+      and cannot publish partial rows or a journal after any block item fails.
 - [x] OpenZeppelin 5.6.1 proxy, implementation, Beacon, Clone, upgrade, and
       initialization facts are exact-block-bound, reorg-safe, and distinguish
       exact evidence from partial or generic detection.
@@ -80,6 +84,23 @@ search documents, and rollup statistics without delaying core readiness.
 None.
 
 ## Evidence
+
+- P20-T14: `trace@3` and `state_diff@2` now share a hostile-input block-trace
+  envelope that binds exact transaction count, order, and `txHash`, rejects
+  null or contradictory items, sanitizes item errors, and charges the existing
+  transaction/block budgets without changing stage versions, schemas, public
+  contracts, or configuration. Trace retries the whole block without logs only
+  for exact `-32602` and retains the same-endpoint `trace_transaction` fallback;
+  StateDiff has no transaction-level fallback. Capability probing now requires
+  `debug_traceBlockByHash` rather than the debug module name alone.
+- P20-T14 verification: `go test ./internal/enrich -count=1`, `go test -race
+  ./internal/enrich ./internal/ethrpc -count=1`, `make test-integration`, `make
+  test-runtime-e2e`, `make test-hardhat3-e2e`, and `make check` passed. The
+  production Runtime E2E passed in monolith and six-role topologies against
+  pinned Anvil v1.7.1, observed block-level debug tracing with zero
+  `debug_traceTransaction` calls, and proved that the EIP-7702 adapter patches
+  only the matching block response item. `make plan-check` and `git diff
+  --check` passed.
 
 - P20-T13: `proxy@2` now persists generation-witnessed EIP-1967,
   Transparent, UUPS, Beacon, standard Clone, and authenticated immutable-args

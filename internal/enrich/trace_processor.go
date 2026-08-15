@@ -269,7 +269,7 @@ func (processor *TraceRPCProcessor) fetch(ctx context.Context, endpoint *ethrpc.
 	parityStatus := endpoint.Capabilities.Status(ethrpc.CapabilityParityTrace)
 	budget := newTraceBlockBudget(processor.limits)
 	if debugStatus != ethrpc.AvailabilityUnavailable {
-		err := processor.fetchCallTracer(ctx, endpoint.Client, transactions, budget)
+		err := processor.fetchCallTracer(ctx, endpoint.Client, job.BlockHash, transactions, budget)
 		if err == nil {
 			return string(TraceCallTracer), nil
 		}
@@ -289,29 +289,35 @@ func (processor *TraceRPCProcessor) fetch(ctx context.Context, endpoint *ethrpc.
 func (processor *TraceRPCProcessor) fetchCallTracer(
 	ctx context.Context,
 	caller rpcCaller,
+	blockHash common.Hash,
 	transactions []traceTransaction,
 	budget *traceBlockBudget,
 ) error {
-	withLog := true
+	var raw json.RawMessage
+	err := caller.CallContext(ctx, &raw, debugTraceBlockByHashMethod, blockHash, callTracerOptions(true))
+	if err != nil && traceLogConfigUnsupported(err) {
+		raw = nil
+		err = caller.CallContext(ctx, &raw, debugTraceBlockByHashMethod, blockHash, callTracerOptions(false))
+	}
+	if err != nil {
+		return sanitizeTraceRPCError(err)
+	}
+	if err := budget.addPayload(len(raw)); err != nil {
+		return Permanent(fmt.Errorf("account callTracer block response: %w", err))
+	}
+	expected := make([]common.Hash, len(transactions))
 	for index := range transactions {
-		var raw json.RawMessage
-		err := caller.CallContext(ctx, &raw, "debug_traceTransaction",
-			transactions[index].hash.String(), callTracerOptions(withLog),
-		)
-		if err != nil && withLog && traceLogConfigUnsupported(err) {
-			withLog = false
-			raw = nil
-			err = caller.CallContext(ctx, &raw, "debug_traceTransaction",
-				transactions[index].hash.String(), callTracerOptions(false),
-			)
+		expected[index] = transactions[index].hash
+	}
+	results, err := decodeBlockTraceResults(raw, expected)
+	if err != nil {
+		return Permanent(fmt.Errorf("decode callTracer block response: %w", err))
+	}
+	for index := range transactions {
+		if results[index].err != nil {
+			return results[index].err
 		}
-		if err != nil {
-			return sanitizeTraceRPCError(err)
-		}
-		if err := budget.addPayload(len(raw)); err != nil {
-			return Permanent(fmt.Errorf("account callTracer transaction %s: %w", transactions[index].hash, err))
-		}
-		trace, err := NormalizeCallTracer(raw, processor.limits)
+		trace, err := NormalizeCallTracer(results[index].result, processor.limits)
 		if err != nil {
 			return Permanent(fmt.Errorf("normalize callTracer transaction %s: %w", transactions[index].hash, err))
 		}
@@ -736,7 +742,8 @@ func nullableBytes(value []byte) any {
 }
 
 func traceCapabilityUnavailable(err error) bool {
-	if errors.Is(err, errTraceRPCUnavailable) || ethrpc.IsMethodNotFound(err) {
+	if errors.Is(err, errTraceRPCUnavailable) || errors.Is(err, errBlockTraceHistoryUnavailable) ||
+		ethrpc.IsMethodNotFound(err) {
 		return true
 	}
 	var rpcError rpc.Error

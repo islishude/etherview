@@ -14,8 +14,10 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 
 ## Decision
 
-- `state_diff@2` binds the raw geth type-4 transaction and one endpoint's exact
-  pre/post-state diff to the requested transaction and block. It uses
+- `state_diff@2` binds each raw geth type-4 transaction to its exact ordered
+  `txHash` item in one endpoint's `debug_traceBlockByHash` pre/post-state
+  response. The complete response is rejected before publication if any item
+  is missing, reordered, duplicated, malformed, or failed. It uses
   `types.SetCodeAuthorization.Authority` and applies tuples in order, including
   chain ID zero, sender pre-increment, low-s signature rules, nonce checks,
   ordinary-code rejection, zero-address clearing, and repeated authorities.

@@ -216,11 +216,13 @@ replace a required `make test-e2e` pass.
   A bounded test-only Go RPC adapter removes the orphan `blobGasPrice` field
   emitted by the pinned Anvil fixture when `blobGasUsed` is absent. Anvil
   `v1.7.1` also omits geth-style prestate fields for cleared delegation code,
-  implicit delegated authority code, and the executed delegate account; the
-  adapter restores only the deterministic fixture evidence after verifying the
-  deployed runtime bytecode and exact delegated-call transaction hash.
-  Complete provider observations pass through unchanged, so production receipt
-  and trace validation remain strict.
+  implicit delegated authority code, and the executed delegate account. The
+  adapter restores deterministic fixture evidence only inside the block-trace
+  response item whose `txHash` is the exact delegated-call transaction; sibling
+  items pass unchanged. Both monolith and the six-role topology assert that the
+  adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
+  calls. Complete provider observations pass through unchanged, so production
+  receipt and trace validation remain strict.
   Successful Compose lifecycle output is captured rather than streamed, so the
   terminal shows only the current mode and phase. A failure prints the exact Go
   assertion followed by one bounded summary containing the mode, phase,

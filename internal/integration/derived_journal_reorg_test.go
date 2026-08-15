@@ -297,10 +297,19 @@ func (harness *derivedPublicationHarness) process(
 
 type derivedTraceService struct{ db *sql.DB }
 
-func (service *derivedTraceService) TraceTransaction(
+func (service *derivedTraceService) TraceBlockByHash(
+	ctx context.Context,
+	blockHash common.Hash,
+	_ map[string]any,
+) (json.RawMessage, error) {
+	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(hash common.Hash) (json.RawMessage, error) {
+		return service.traceResult(ctx, hash)
+	})
+}
+
+func (service *derivedTraceService) traceResult(
 	ctx context.Context,
 	hash common.Hash,
-	_ map[string]any,
 ) (json.RawMessage, error) {
 	if service.db == nil {
 		return nil, errors.New("derived trace caller is not configured")

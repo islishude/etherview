@@ -1021,13 +1021,22 @@ type proxyTraceService struct {
 	created []common.Address
 }
 
-func (service *proxyTraceService) TraceTransaction(
+func (service *proxyTraceService) TraceBlockByHash(
 	_ context.Context,
-	_ common.Hash,
+	blockHash common.Hash,
 	options map[string]any,
 ) (json.RawMessage, error) {
+	if blockHash != service.block.Block.Hash() {
+		return nil, fmt.Errorf("proxy trace block hash = %s, want %s", blockHash, service.block.Block.Hash())
+	}
+	hashes := make([]common.Hash, len(service.block.Block.Transactions()))
+	for index, transaction := range service.block.Block.Transactions() {
+		hashes[index] = transaction.Hash()
+	}
 	if options["tracer"] == "prestateTracer" {
-		return json.RawMessage(`{"pre":{},"post":{}}`), nil
+		return marshalIntegrationBlockTraceResults(hashes, func(common.Hash) (json.RawMessage, error) {
+			return json.RawMessage(`{"pre":{},"post":{}}`), nil
+		})
 	}
 	transaction := service.block.Block.Transactions()[0]
 	from, err := types.Sender(types.LatestSignerForChainID(transaction.ChainId()), transaction)
@@ -1055,7 +1064,9 @@ func (service *proxyTraceService) TraceTransaction(
 	if err != nil {
 		return nil, err
 	}
-	return encoded, nil
+	return marshalIntegrationBlockTraceResults(hashes, func(common.Hash) (json.RawMessage, error) {
+		return encoded, nil
+	})
 }
 
 func assertOneEthCall(t *testing.T, entries []string) {

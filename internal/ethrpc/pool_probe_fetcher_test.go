@@ -128,6 +128,55 @@ func TestProbeEndpointUsesGethHeadersAndPurposeCapabilities(t *testing.T) {
 	}
 }
 
+func TestProbeDebugTraceRequiresBlockByHashMethod(t *testing.T) {
+	t.Parallel()
+	genesis := mustFixture(t, testfixture.Options{Number: 0, ExtraData: []byte("trace-genesis")})
+	for _, test := range []struct {
+		name      string
+		supported bool
+		want      Availability
+	}{
+		{name: "block method", supported: true, want: AvailabilityAvailable},
+		{name: "transaction only", supported: false, want: AvailabilityUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			server := newSingleRPCServer(t, func(request testRequest) (json.RawMessage, *testRPCError) {
+				switch request.Method {
+				case "eth_chainId":
+					return json.RawMessage(`"0x1"`), nil
+				case "eth_getBlockByNumber":
+					return genesis.RawBlock, nil
+				case "rpc_modules":
+					return json.RawMessage(`{"debug":"1.0"}`), nil
+				case "debug_traceBlockByHash":
+					var hash common.Hash
+					if len(request.Params) < 2 || json.Unmarshal(request.Params[0], &hash) != nil || hash != genesis.Block.Hash() {
+						t.Fatalf("block trace probe params = %s", request.Params)
+					}
+					if test.supported {
+						return json.RawMessage(`[]`), nil
+					}
+					return nil, &testRPCError{Code: -32601, Message: "debug_traceBlockByHash unavailable"}
+				default:
+					t.Fatalf("unexpected method %q", request.Method)
+				}
+				return nil, nil
+			})
+			client := mustClient(t, server.URL)
+			report, err := ProbeEndpoint(t.Context(), &Endpoint{
+				Name: "trace", Purposes: map[Purpose]bool{PurposeTrace: true}, Client: client,
+			}, ProbeOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := report.Status(CapabilityDebugTrace); got != test.want {
+				t.Fatalf("debug trace capability = %s, want %s; report=%+v", got, test.want, report)
+			}
+		})
+	}
+}
+
 func TestProbeClassifiesPrunedHistoryWithoutRetainingProviderMessage(t *testing.T) {
 	t.Parallel()
 	const providerSecret = "provider-secret"

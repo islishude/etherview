@@ -287,25 +287,39 @@ func TestNormalizeAnvilDelegationCodeEvidence(t *testing.T) {
 func TestNormalizeAnvilDelegatedAuthorityEvidence(t *testing.T) {
 	authority := "0x0000000000000000000000000000000000000001"
 	delegate := common.HexToAddress("0x0000000000000000000000000000000000000002")
+	targetHash := "0x1111111111111111111111111111111111111111111111111111111111111111"
+	otherHash := "0x2222222222222222222222222222222222222222222222222222222222222222"
 	payload := map[string]any{
-		"result": map[string]any{
-			"pre":  map[string]any{},
-			"post": map[string]any{},
+		"result": []any{
+			map[string]any{
+				"txHash": otherHash,
+				"result": map[string]any{"pre": map[string]any{}, "post": map[string]any{}},
+			},
+			map[string]any{
+				"txHash": targetHash,
+				"result": map[string]any{"pre": map[string]any{}, "post": map[string]any{}},
+			},
 		},
 	}
-	if got := normalizeAnvilDelegatedAuthorityEvidence(payload, authority, delegate.Hex()); got != 1 {
+	if got := normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
+		payload, targetHash, authority, delegate.Hex(),
+	); got != 1 {
 		t.Fatalf("normalized delegated authorities = %d, want 1", got)
 	}
-	result := payload["result"].(map[string]any)
+	items := payload["result"].([]any)
+	other := items[0].(map[string]any)["result"].(map[string]any)
+	if _, contaminated := other["pre"].(map[string]any)[authority]; contaminated {
+		t.Fatalf("non-target block trace item was modified: %#v", other)
+	}
+	result := items[1].(map[string]any)["result"].(map[string]any)
 	pre := result["pre"].(map[string]any)
 	account := pre[authority].(map[string]any)
 	if account["code"] != hexutil.Encode(types.AddressToDelegation(delegate)) {
 		t.Fatalf("delegated authority evidence = %#v", account)
 	}
-	hash := "0x1111111111111111111111111111111111111111111111111111111111111111"
-	request := []byte(`{"jsonrpc":"2.0","method":"debug_traceTransaction","params":["` + hash + `",{}]}`)
-	if got := debugTraceTransactionHash(request); got != hash {
-		t.Fatalf("debug trace transaction hash = %q, want %q", got, hash)
+	request := []byte(`{"jsonrpc":"2.0","method":"debug_traceBlockByHash","params":["0x01",{}]}`)
+	if got := rpcRequestMethod(request); got != "debug_traceBlockByHash" {
+		t.Fatalf("JSON-RPC request method = %q", got)
 	}
 }
 
@@ -653,6 +667,12 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 		encoded, _ := json.MarshalIndent(report, "", "  ")
 		h.writeArtifact(mode+"-load.json", encoded)
+	}
+	if h.rpcProxy.blockTraceCalls.Load() == 0 {
+		t.Fatal("RPC fixture adapter did not observe debug_traceBlockByHash")
+	}
+	if calls := h.rpcProxy.transactionTraces.Load(); calls != 0 {
+		t.Fatalf("RPC fixture adapter observed %d debug_traceTransaction calls, want 0", calls)
 	}
 
 	result := modeResult{
@@ -1503,6 +1523,8 @@ type receiptProxy struct {
 	delegationCode     atomic.Uint64
 	delegatedAuthority atomic.Uint64
 	delegatedCallHash  atomic.Value
+	blockTraceCalls    atomic.Uint64
+	transactionTraces  atomic.Uint64
 }
 
 func startReceiptProxy(t *testing.T, upstream string, eip7702Identity ...string) *receiptProxy {
@@ -1558,6 +1580,13 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		http.Error(writer, "bounded JSON-RPC request required", http.StatusBadRequest)
 		return
 	}
+	requestMethod := rpcRequestMethod(body)
+	switch requestMethod {
+	case "debug_traceBlockByHash":
+		p.blockTraceCalls.Add(1)
+	case "debug_traceTransaction":
+		p.transactionTraces.Add(1)
+	}
 	upstreamRequest, err := http.NewRequestWithContext(
 		request.Context(), http.MethodPost, p.upstream, bytes.NewReader(body),
 	)
@@ -1591,8 +1620,10 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	p.normalized.Add(normalizeAnvilReceipts(payload))
-	if hash := debugTraceTransactionHash(body); hash != "" && hash == p.delegatedCallHash.Load().(string) {
-		p.delegatedAuthority.Add(normalizeAnvilDelegatedAuthorityEvidence(payload, p.authority, p.delegate))
+	if requestMethod == "debug_traceBlockByHash" {
+		p.delegatedAuthority.Add(normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
+			payload, p.delegatedCallHash.Load().(string), p.authority, p.delegate,
+		))
 	}
 	p.delegationCode.Add(normalizeAnvilDelegationCodeEvidence(payload))
 	p.clearedDelegation.Add(normalizeAnvilClearedDelegations(payload))
@@ -1638,19 +1669,51 @@ func normalizeAnvilDelegatedAuthorityEvidence(value any, authority, delegate str
 	}
 }
 
-func debugTraceTransactionHash(body []byte) string {
+func normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
+	value any,
+	targetHash string,
+	authority string,
+	delegate string,
+) uint64 {
+	if !common.IsHexHash(targetHash) {
+		return 0
+	}
+	switch typed := value.(type) {
+	case []any:
+		var normalized uint64
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
+				item, targetHash, authority, delegate,
+			)
+		}
+		return normalized
+	case map[string]any:
+		if transactionHash, present := typed["txHash"].(string); present {
+			if !strings.EqualFold(transactionHash, targetHash) {
+				return 0
+			}
+			return normalizeAnvilDelegatedAuthorityEvidence(typed["result"], authority, delegate)
+		}
+		var normalized uint64
+		for _, item := range typed {
+			normalized += normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
+				item, targetHash, authority, delegate,
+			)
+		}
+		return normalized
+	default:
+		return 0
+	}
+}
+
+func rpcRequestMethod(body []byte) string {
 	var request struct {
-		Method string            `json:"method"`
-		Params []json.RawMessage `json:"params"`
+		Method string `json:"method"`
 	}
-	if json.Unmarshal(body, &request) != nil || request.Method != "debug_traceTransaction" || len(request.Params) == 0 {
+	if json.Unmarshal(body, &request) != nil {
 		return ""
 	}
-	var hash string
-	if json.Unmarshal(request.Params[0], &hash) != nil || !common.IsHexHash(hash) {
-		return ""
-	}
-	return strings.ToLower(hash)
+	return request.Method
 }
 
 func normalizeAnvilDelegationCodeEvidence(value any) uint64 {
