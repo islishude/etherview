@@ -19,8 +19,10 @@ import (
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
@@ -41,6 +43,216 @@ const integrationCompoundABI = `[{"type":"function","name":"configure","inputs":
   ]},
   {"name":"pairs","type":"uint8[2][]"}
 ],"outputs":[]}]`
+
+func TestABIStageIsolatesSameBlockRedelegationsByTransaction(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(69_000), testHash(0), testHash(69_001), "effective-execution-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	authorityKey, err := crypto.HexToECDSA("1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := crypto.PubkeyToAddress(authorityKey.PublicKey)
+	delegateA, delegateB := testAddress(691), testAddress(692)
+	authorizationA, err := types.SignSetCode(authorityKey, types.SetCodeAuthorization{
+		ChainID: *uint256.NewInt(1), Address: delegateA, Nonce: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizationB, err := types.SignSetCode(authorityKey, types.SetCodeAuthorization{
+		ChainID: *uint256.NewInt(1), Address: delegateB, Nonce: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroValue := big.NewInt(0)
+	block, err := newIntegrationBundle(integrationBundleOptions{
+		Number: 1, ParentHash: mustBlockRef(t, genesis).Hash,
+		ExtraData: []byte("same-block-redelegations"),
+		Transactions: []integrationTransactionOptions{
+			{Type: types.SetCodeTxType, To: &authority, Value: zeroValue, Authorizations: []types.SetCodeAuthorization{authorizationA}},
+			{Type: types.SetCodeTxType, To: &authority, Value: zeroValue, Authorizations: []types.SetCodeAuthorization{authorizationB}},
+		},
+		Withdrawals: []*types.Withdrawal{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitCanonical(t, ctx, repository, block)
+	reference := mustBlockRef(t, block)
+	transactions := block.Block.Transactions()
+	sender, err := types.Sender(types.LatestSignerForChainID(transactions[0].ChainId()), transactions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stateByTransaction := make(map[common.Hash]json.RawMessage, len(transactions))
+	for index, transaction := range transactions {
+		delegate := []common.Address{delegateA, delegateB}[index]
+		beforeCode := "0x"
+		if index > 0 {
+			beforeCode = hexutil.Encode(types.AddressToDelegation(delegateA))
+		}
+		raw, marshalErr := json.Marshal(map[string]any{
+			"pre": map[string]any{
+				sender.Hex(): map[string]any{
+					"nonce": hexutil.EncodeUint64(uint64(index)), "code": "0x",
+				},
+				authority.Hex(): map[string]any{
+					"nonce": hexutil.EncodeUint64(uint64(index)), "code": beforeCode,
+				},
+			},
+			"post": map[string]any{
+				sender.Hex(): map[string]any{"nonce": hexutil.EncodeUint64(uint64(index + 1))},
+				authority.Hex(): map[string]any{
+					"nonce": hexutil.EncodeUint64(uint64(index + 1)),
+					"code":  hexutil.Encode(types.AddressToDelegation(delegate)),
+				},
+			},
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		stateByTransaction[transaction.Hash()] = raw
+	}
+	publishABIStateDiffService(t, ctx, db, reference, &abiStateDiffByTransactionService{
+		db: db, raw: stateByTransaction,
+	})
+
+	rootRaw, err := json.Marshal(map[string]any{
+		"type": "CALL", "from": sender.Hex(), "to": authority.Hex(),
+		"value": "0x0", "gas": "0x5208", "gasUsed": "0x5208",
+		"input": "0x", "output": "0x",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishABITraceService(t, ctx, db, reference, &traceStageService{
+		blockHash: reference.Hash,
+		hashes:    []common.Hash{transactions[0].Hash(), transactions[1].Hash()},
+		raw:       rootRaw,
+	})
+
+	codeA, codeB := []byte{0x60, 0x01}, []byte{0x60, 0x02}
+	hashA, hashB := crypto.Keccak256Hash(codeA), crypto.Keccak256Hash(codeB)
+	genesisReference := mustBlockRef(t, genesis)
+	for _, observation := range []struct {
+		address common.Address
+		code    []byte
+		hash    common.Hash
+		name    string
+		abi     string
+	}{
+		{delegateA, codeA, hashA, "ReceiveDelegate", `[{"type":"receive","stateMutability":"payable"}]`},
+		{delegateB, codeB, hashB, "FallbackDelegate", `[{"type":"fallback","stateMutability":"payable"}]`},
+	} {
+		execFixture(t, ctx, db, `
+			INSERT INTO contract_code_observations (
+				chain_id, address, block_number, block_hash,
+				code_hash, code, canonical
+			) VALUES (1, $1, $2::numeric, $3, $4, $5, TRUE)`,
+			observation.address[:], fmt.Sprint(genesisReference.Number), genesisReference.Hash[:],
+			observation.hash[:], observation.code)
+		insertVerifiedContractFixture(
+			t, ctx, db, observation.address[:], observation.hash[:], 0, nil,
+			"0.8.30", observation.name, observation.abi, `{}`, `{}`,
+		)
+	}
+	publishABIProxyStage(t, ctx, db, reference, map[string]proxyContractState{
+		authority.String(): {code: types.AddressToDelegation(delegateB)},
+		delegateA.String(): {code: common.CopyBytes(codeA)},
+		delegateB.String(): {code: common.CopyBytes(codeB)},
+	})
+
+	publishABIStage(t, ctx, db, processor, reference)
+	rows, err := db.QueryContext(ctx, `
+		SELECT transaction_hash, transaction_index, context_address,
+		       execution_address, execution_code_hash, resolution, evidence_source
+		FROM transaction_effective_execution_identities
+		WHERE chain_id = 1 AND block_hash = $1 AND canonical
+		ORDER BY transaction_index`, reference.Hash[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close() //nolint:errcheck
+	wantDelegates := []common.Address{delegateA, delegateB}
+	wantHashes := []common.Hash{hashA, hashB}
+	identityCount := 0
+	for rows.Next() {
+		var txHashBytes, contextBytes, executionBytes, codeHashBytes []byte
+		var index int64
+		var resolution, source string
+		if err := rows.Scan(
+			&txHashBytes, &index, &contextBytes, &executionBytes, &codeHashBytes,
+			&resolution, &source,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if index != int64(identityCount) || common.BytesToHash(txHashBytes) != transactions[identityCount].Hash() ||
+			common.BytesToAddress(contextBytes) != authority ||
+			common.BytesToAddress(executionBytes) != wantDelegates[identityCount] ||
+			common.BytesToHash(codeHashBytes) != wantHashes[identityCount] ||
+			resolution != "eip7702_delegate" || source != "root_trace_code_observation" {
+			t.Fatalf("effective identity %d is not transaction-scoped", identityCount)
+		}
+		identityCount++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if identityCount != 2 {
+		t.Fatalf("effective identity count=%d, want 2", identityCount)
+	}
+
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSignatures := []string{"receive()", "fallback()"}
+	for index, transaction := range transactions {
+		calldata, readErr := catalogReader.TransactionCalldata(ctx, "1", transaction.Hash().Hex())
+		if readErr != nil {
+			t.Fatalf("read transaction %d calldata: %v", index, readErr)
+		}
+		if calldata.Execution.Address != wantDelegates[index].Hex() ||
+			calldata.Execution.CodeHash != wantHashes[index].Hex() ||
+			calldata.Execution.EvidenceSource != "root_trace_code_observation" ||
+			calldata.Decoding.Signature != wantSignatures[index] {
+			t.Fatalf("transaction %d calldata=%+v", index, calldata)
+		}
+	}
+	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	methodByHash := make(map[string]string, len(listed))
+	for _, item := range listed {
+		if item.MethodSignature != nil {
+			methodByHash[item.Hash] = *item.MethodSignature
+		}
+	}
+	for index, transaction := range transactions {
+		if got := methodByHash[strings.ToLower(transaction.Hash().Hex())]; got != wantSignatures[index] {
+			t.Fatalf("transaction %d Method signature=%q, want %q", index, got, wantSignatures[index])
+		}
+	}
+}
 
 func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	db := newMigratedPostgres(t)
@@ -250,7 +462,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	}
 	if len(unpublished) == 0 || unpublished[0].Method == nil || *unpublished[0].Method != "transfer" ||
 		unpublished[0].MethodSignature == nil || *unpublished[0].MethodSignature != "transfer(address,uint256)" {
-		t.Fatalf("verified selector method projection before abi@3 publication = %+v", unpublished)
+		t.Fatalf("verified selector method projection before abi@4 publication = %+v", unpublished)
 	}
 	txHashText := txHash.String()
 	assertProjectedLog := func(label string) {
@@ -292,7 +504,7 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3' AND canonical`, 1, mustBytes(t, reference.Hash))
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4' AND canonical`, 1, mustBytes(t, reference.Hash))
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
 	publishABIStage(t, ctx, db, processor, reference)
@@ -315,14 +527,19 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("apply ABI fixture reorg: %v", err)
 	}
-	for _, table := range []string{"contract_abis", "abi_decodings"} {
+	for _, table := range []string{
+		"contract_abis", "abi_decodings", "transaction_effective_execution_identities",
+	} {
 		assertRowCount(t, ctx, db,
 			fmt.Sprintf(`SELECT count(*) FROM %s WHERE chain_id = 1 AND block_hash = $1 AND canonical`, table),
 			0, mustBytes(t, reference.Hash),
 		)
 		assertRowCount(t, ctx, db,
 			fmt.Sprintf(`SELECT count(*) FROM %s WHERE chain_id = 1 AND block_hash = $1 AND NOT canonical`, table),
-			map[string]int{"contract_abis": 4, "abi_decodings": 7}[table], mustBytes(t, reference.Hash),
+			map[string]int{
+				"contract_abis": 4, "abi_decodings": 7,
+				"transaction_effective_execution_identities": 1,
+			}[table], mustBytes(t, reference.Hash),
 		)
 	}
 }
@@ -432,7 +649,7 @@ func TestTransactionCalldataPersistsValuesAndReprojectsExactCompoundABI(t *testi
 	}
 	if bytes.Contains(persistedArguments, []byte("components")) ||
 		bytes.Contains(persistedArguments, []byte("internalType")) {
-		t.Fatalf("abi@3 arguments unexpectedly contain projection shape: %s", persistedArguments)
+		t.Fatalf("abi@4 arguments unexpectedly contain projection shape: %s", persistedArguments)
 	}
 
 	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
@@ -1050,12 +1267,133 @@ type abiStateDiffService struct {
 	raw json.RawMessage
 }
 
+type abiStateDiffByTransactionService struct {
+	db  *sql.DB
+	raw map[common.Hash]json.RawMessage
+}
+
 func (service *abiStateDiffService) TraceBlockByHash(
 	ctx context.Context, blockHash common.Hash, options map[string]any,
 ) (json.RawMessage, error) {
 	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
 		return integrationPrestateTraceResult(service.raw, options)
 	})
+}
+
+func (service *abiStateDiffByTransactionService) TraceBlockByHash(
+	ctx context.Context, blockHash common.Hash, options map[string]any,
+) (json.RawMessage, error) {
+	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(hash common.Hash) (json.RawMessage, error) {
+		raw, exists := service.raw[hash]
+		if !exists {
+			return nil, fmt.Errorf("state-diff fixture has no transaction %s", hash)
+		}
+		return integrationPrestateTraceResult(raw, options)
+	})
+}
+
+func publishABIStateDiffService(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	service any,
+) {
+	t.Helper()
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "abi-state-diff", Client: newIntegrationRPCClient(t, "debug", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewStateDiffRPCProcessor(db, pool, enrich.StateDiffLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.StateDiffStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-state-diff-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
+}
+
+func publishABITraceService(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	service *traceStageService,
+) {
+	t.Helper()
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "abi-trace", Client: newIntegrationRPCClient(t, "debug", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewTraceRPCProcessor(db, pool, enrich.TraceLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := db.ExecContext(ctx, `
+		UPDATE transactional_outbox
+		SET published_at = clock_timestamp()
+		WHERE chain_id = 1 AND topic = 'core.block.canonical'
+		  AND message_key = $1`, block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		t.Fatalf("publish ABI trace core outbox rows=%d error=%v", affected, err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	word, err := enrich.ParseWord(block.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.TraceStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "abi-trace-publication", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processOne(t, ctx, worker)
+	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
 }
 
 func publishABIStateDiff(

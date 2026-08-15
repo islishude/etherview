@@ -3035,9 +3035,10 @@ func transactionTraceModel(item catalog.TransactionTrace) gen.TransactionTrace {
 }
 
 func transactionCalldataModel(item catalog.TransactionCalldata) gen.TransactionCalldata {
-	execution := gen.TraceExecution{
+	execution := gen.TransactionExecution{
 		ContextAddress: item.Execution.ContextAddress,
-		Resolution:     gen.TraceExecutionResolution(item.Execution.Resolution),
+		Resolution:     gen.TransactionExecutionResolution(item.Execution.Resolution),
+		EvidenceSource: gen.TransactionExecutionEvidenceSource(item.Execution.EvidenceSource),
 	}
 	if item.Execution.Address != "" {
 		execution.Address = &item.Execution.Address

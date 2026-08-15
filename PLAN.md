@@ -188,12 +188,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   exact-runtime artifact as `code_hash`/`high` without backdating verified
   address provenance; the reported Preview transaction now decodes all four
   exact-trace-attributed logs.
-- P61 is complete: migrations `0040` and `0047` plus `state_diff@3` preserve and replay
+- P61 is complete: P61-T16 adds an `abi@4` transaction-scoped effective
+  execution-identity projection without changing raw `state_diff@3` evidence.
+  Existing migrations `0040` and `0047` plus `state_diff@3` preserve and replay
   type-4 authorization outcomes into canonical delegation and transaction-time
   execution-code facts, including unchanged top-level targets recovered from
-  one same-endpoint, exact-block complete-prestate request; `trace@3` and
-  `abi@3` expose exact EIP-7702 execution
-  identity and verified CREATE/CREATE2 constructor decoding without changing
+  one same-endpoint, exact-block complete-prestate request. `trace@3` exposes
+  raw execution evidence while `abi@4` materializes transaction-scoped EIP-7702
+  execution identity and verified CREATE/CREATE2 constructor decoding without changing
   raw context, emitter, initcode, input, or output. Generated authorization and
   delegation APIs plus the bilingual delegated-EOA interaction surface use a
   writer-authoritative binding fence before every write. Cleared delegations

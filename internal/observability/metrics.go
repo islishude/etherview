@@ -579,7 +579,7 @@ func boundedJobStage(value string) string {
 	switch strings.TrimSpace(value) {
 	case "proxy", "proxy@1", "proxy@2":
 		return "proxy"
-	case "abi", "abi@1", "abi@2", "abi@3":
+	case "abi", "abi@1", "abi@2", "abi@3", "abi@4":
 		return "abi"
 	case "token", "token@1":
 		return "token"

@@ -22,7 +22,9 @@ type diamondABIRoute struct {
 
 type diamondABIRouteKey struct {
 	address          common.Address
+	codeHash         common.Hash
 	selector         [4]byte
+	transactionHash  common.Hash
 	transactionIndex uint64
 	internalTrace    bool
 }
@@ -566,7 +568,8 @@ func routeKeyForObservation(
 	selector [4]byte,
 ) diamondABIRouteKey {
 	return diamondABIRouteKey{
-		address: observation.target, selector: selector,
+		address: observation.target, codeHash: observation.identity.CodeHash,
+		selector: selector, transactionHash: observation.transactionHash,
 		transactionIndex: observation.transactionIndex,
 		internalTrace:    observation.objectKind == abiObjectTraceCalldata,
 	}

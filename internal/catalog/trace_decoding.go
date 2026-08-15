@@ -585,6 +585,40 @@ func loadTraceRegistry(
 	return traceRegistryResult{identity: identity, registry: registry, candidates: candidates}, nil
 }
 
+func loadTraceRegistryForCodeHash(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID string,
+	blockNumber uint64,
+	blockHash []byte,
+	address common.Address,
+	codeHash common.Hash,
+) (traceRegistryResult, error) {
+	identity, candidates, err := loadLogABICandidatesForCodeHash(
+		ctx, tx, chainID, blockNumber, blockHash, address, &codeHash,
+	)
+	if err != nil {
+		return traceRegistryResult{}, err
+	}
+	if identity.CodeHash != codeHash {
+		return traceRegistryResult{}, ErrCorruptData
+	}
+	if len(candidates) == 0 {
+		return traceRegistryResult{identity: identity}, nil
+	}
+	if len(candidates) > maxReadTimeLogABICandidates {
+		return traceRegistryResult{identity: identity, candidates: candidates}, nil
+	}
+	registry, err := traceRegistryForCandidates(identity, candidates)
+	if err != nil {
+		if errors.Is(err, ErrCorruptData) {
+			return traceRegistryResult{}, err
+		}
+		return traceRegistryResult{identity: identity, candidates: candidates}, nil
+	}
+	return traceRegistryResult{identity: identity, registry: registry, candidates: candidates}, nil
+}
+
 func traceRegistryForCandidates(
 	identity enrich.ABIIdentity,
 	candidates []logABICandidate,
@@ -921,7 +955,7 @@ WHERE decoding.chain_id = $1::numeric
       WHERE published.chain_id = decoding.chain_id
         AND published.block_hash = decoding.block_hash
         AND published.stage = 'abi'
-        AND published.stage_version = 3
+        AND published.stage_version = 4
         AND published.state = 'complete'
   )
 ORDER BY decoding.object_index, decoding.object_kind`

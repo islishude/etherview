@@ -2,12 +2,29 @@ package query
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
+
+func TestTransactionMethodProjectionUsesPublishedTransactionScopedEffectiveIdentity(t *testing.T) {
+	t.Parallel()
+	for _, fragment := range []string{
+		"transaction_effective_execution_identities AS effective",
+		"effective.transaction_hash = inclusion.tx_hash",
+		"effective.transaction_index = inclusion.tx_index",
+		"effective.context_address",
+		"stage_version = 4",
+		"NOT EXISTS (SELECT 1 FROM published_abi)",
+	} {
+		if !strings.Contains(transactionMethodJoinsSQL, fragment) {
+			t.Fatalf("transaction Method projection missing %q", fragment)
+		}
+	}
+}
 
 func TestDecodeTransactionSelectorRequiresUniqueExactCalldataMatch(t *testing.T) {
 	t.Parallel()

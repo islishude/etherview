@@ -51,6 +51,7 @@ this plan.
 | P61-T13 | done | P61-T12 | Add production-browser and real Prague/Anvil EIP-7702 transaction E2E coverage across authorization outcomes, transaction-time execution identity, clearing, and reorg canonicality | browser, runtime, topology-parity, and common gates |
 | P61-T14 | done | P61-T13, P40-T19, P50-T59 | Recover exact top-level execution identity when diff-only prestate evidence omits an unchanged target, including Native Transfer list and transaction-action projection | state-diff, query, Catalog, Web, PostgreSQL, browser, Preview, and common gates |
 | P61-T15 | done | P61-T14 | Restore exact transaction-time ABI component metadata and bounded recursive Decoded calldata rendering without current-state fallback | ABI/Catalog/API contracts, Web transformation and DOM, PostgreSQL, browser, runtime, and common gates |
+| P61-T16 | done | P61-T15, P40-T19, P50-T63 | Materialize transaction-scoped effective EIP-7702 execution identities in `abi@4`, preserving raw evidence while fixing same-transaction delegation calls and same-block redelegation isolation | ABI/store/Catalog/API/Web regressions, PostgreSQL reorg and replay, real runtime E2E, Preview, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -101,6 +102,12 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Transaction calldata reprojects recursive tuple and array shape from the
       exact transaction-time ABI, renders a bounded bilingual tree, and fails
       closed on missing or contradictory structure without hiding raw bytes.
+- [x] Published `abi@4` effective execution identities recover only exact
+      transaction-root EIP-7702 evidence and remain isolated by block hash,
+      transaction hash, transaction index, context address, and code hash.
+- [x] Same-block redelegations of one authority decode and render independently,
+      while missing, conflicting, future-transaction, stale-generation, and
+      orphan evidence remain fail-closed.
 
 ## Current Blockers
 
@@ -351,3 +358,32 @@ None.
   final Docker validation was prevented by Docker Desktop's configured
   `http.docker.internal` proxy DNS failure. Repeated image builds were stopped
   at the user's direction after all scoped test suites had passed.
+- P61-T16 adds migration `0048` and the partitioned
+  `transaction_effective_execution_identities` relation to the `abi@4`
+  generation journal. Effective identities bind block hash, transaction hash,
+  transaction index, context address, execution address, and code hash; exact
+  prestate evidence is preserved, while only matching root Trace observations
+  may recover a missing delegate code identity from continuous transaction-
+  ordered code history. ABI, proxy, and Diamond caches now use the same
+  transaction-scoped identity, and conflicts fail the ABI job permanently.
+- Focused Go and Web regressions cover exact root recovery, future-change
+  exclusion, evidence conflicts, selectorless receive/fallback resolution, and
+  two signed type-4 transactions that redelegate one authority to distinct
+  delegates in the same block. The PostgreSQL test also proves independent ABI
+  and Method projection, canonical reorg retention, and replay cleanup.
+  `make test-integration` passes against runner-owned PostgreSQL 18 with
+  `internal/integration` completing in 159.529s; `make test-e2e` passes 22/22
+  Chromium tests; `make test-runtime-e2e` passes monolith (32.03s) and the
+  complete six-role topology (45.36s) without fixture-injected delegate code.
+- Preview migration `0048` and bounded finalized replay operation 1 publish
+  `abi@4` for blocks 3039-3047. Transaction
+  `0x7df2c9a708cb63354a0a04d65f4896ba69257cbbccc23fd77f6aea4420bbd4ab`
+  reports `root_trace_code_observation`, the exact delegate/code hash,
+  `receive()`, and visible `Contract interaction`; transaction
+  `0xbbef02a8007882041c533b23961c680fae48a9b97a1d3dbb9d8073685dbc41b9`
+  retains `prestate_tracer` and `receive()`. The live address table renders
+  `receive()` for both rows.
+- The final `make check` passes generation, vet/lint, Go and Web ordinary tests
+  (341 Web tests), full race tests, vulnerability/secret/audit/license gates,
+  Buildx and Compose validation, and Helm lint/render. `make generate-check`,
+  `make plan-check`, and `git diff --check` also pass.

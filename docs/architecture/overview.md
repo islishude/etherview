@@ -345,7 +345,16 @@ of the callback. The routing and lag contract is specified in
   nonce/code evidence fails permanently rather than consulting block-end or
   latest state. See
   [ADR-0034](../decisions/ADR-0034-eip7702-execution-identity-and-constructor-decoding.md).
-- `abi@3` consumes existing canonical code and proxy observations. PostgreSQL
+- `abi@4` first materializes each transaction root's effective execution
+  identity without changing `state_diff@3`. Exact raw identities are retained;
+  only a known first-hop delegate with a missing code hash may be recovered
+  from the matching `trace@3` root plus canonical code history strictly before
+  that transaction. Code changes are replayed by transaction index, so current
+  and later changes cannot flow backward. The identity, its evidence source,
+  ABI decoding, journal, and publication commit atomically. Until `abi@4` is
+  published, public readers retain raw state-diff semantics and ignore old ABI
+  generations.
+- `abi@4` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact
   same-version `proxy@2` result first. Complete proxy facts permit decoding;
   unavailable proxy state makes ABI unavailable instead of terminal `unbound`,
@@ -373,7 +382,8 @@ of the callback. The routing and lag contract is specified in
 Block-scoped fact tables use fixed half-open ranges of 1,000,000 block
 numbers. The partition manager covers `transaction_inclusions`, `receipts`,
 `logs`, `withdrawals`, `token_events`, `token_balance_deltas`,
-`normalized_traces`, `trace_log_attributions`, `abi_decodings`, and
+`normalized_traces`, `trace_log_attributions`, `abi_decodings`,
+`transaction_effective_execution_identities`, and
 `address_activities`. Before a core bundle can write
 facts in a new range, its chain-locked database transaction takes the global
 partition lifecycle lock, rechecks the PostgreSQL catalog, creates every table

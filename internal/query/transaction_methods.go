@@ -256,7 +256,7 @@ func decodeTransactionSelector(
 // range, and selector; no complete verified ABI document is read.
 // Existing canonical route bindings preserve proxy/Diamond provenance, while
 // published proxy observations make late implementation verification visible
-// without replaying abi@3.
+// without replaying abi@4.
 const transactionSelectorCandidatesSQL = `
 WITH request AS (
     SELECT ordinal, block_number, block_hash, transaction_index,

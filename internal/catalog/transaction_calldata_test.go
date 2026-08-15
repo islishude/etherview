@@ -34,9 +34,18 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
 			[]driver.Value{"complete", int64(7)},
 		)},
-		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
-			[]driver.Value{contextAddress[:], delegateB[:], codeHash, "eip7702_delegate", "prestate_tracer"},
-		)},
+		catalogQueryStep{
+			contains: "FROM transaction_execution_code_resolutions",
+			check: func(arguments []driver.NamedValue) error {
+				if len(arguments) != 6 || arguments[5].Value != int64(3) {
+					return fmt.Errorf("effective execution arguments = %+v", arguments)
+				}
+				return nil
+			},
+			rows: catalogRows(5,
+				[]driver.Value{contextAddress[:], delegateB[:], codeHash, "eip7702_delegate", "prestate_tracer"},
+			),
+		},
 		catalogQueryStep{
 			contains: "decoding.object_kind = 'transaction_calldata'",
 			check: func(arguments []driver.NamedValue) error {
@@ -61,8 +70,54 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Execution.Resolution != "eip7702_delegate" || result.Execution.Address != delegateB.Hex() ||
+		result.Execution.EvidenceSource != "prestate_tracer" ||
 		result.Decoding.Status != "decoded" || result.Decoding.Signature != "setValue(uint256)" ||
 		len(result.Decoding.Inputs) != 1 || result.Decoding.Inputs[0].Value != "42" {
+		t.Fatalf("calldata=%+v", result)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataUsesPublishedRootTraceExecutionIdentity(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	delegate := common.HexToAddress("0x4000000000000000000000000000000000000004")
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, nil)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xcc, common.HashLength)
+	abiJSON := []byte(`[{"type":"receive","stateMutability":"payable"}]`)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
+			[]driver.Value{
+				contextAddress[:], delegate[:], codeHash, "eip7702_delegate",
+				"root_trace_code_observation",
+			},
+		)},
+		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
+			[]driver.Value{
+				"decoded", "receive()", "verified", "verified", []byte(`[]`), []byte(`[]`), "",
+				delegate[:], codeHash, delegate[:], codeHash, "not_applicable", []byte(`[]`),
+			},
+		)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{
+				codeHash, abiJSON, "verified", "exact_address", delegate[:], codeHash,
+				make([]byte, 32), "100", "100",
+			},
+		)},
+	)
+	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Execution.Resolution != "eip7702_delegate" ||
+		result.Execution.EvidenceSource != "root_trace_code_observation" ||
+		result.Execution.Address != delegate.Hex() || result.Decoding.Signature != "receive()" {
 		t.Fatalf("calldata=%+v", result)
 	}
 	assertCatalogConsumed(t, backend)

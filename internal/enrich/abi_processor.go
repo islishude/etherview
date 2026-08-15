@@ -18,7 +18,7 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
-var ABIStage = StageID{Name: "abi", Version: 3}
+var ABIStage = StageID{Name: "abi", Version: 4}
 
 const (
 	abiObjectTransactionCalldata = "transaction_calldata"
@@ -121,7 +121,11 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		}
 	}
 
-	observations, err := loadABIObservations(ctx, tx, job)
+	executions, err := loadEffectiveTransactionExecutions(ctx, tx, job)
+	if err != nil {
+		return StageResult{}, err
+	}
+	observations, err := loadABIObservations(ctx, tx, job, executions)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -137,29 +141,44 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 		return StageResult{}, fmt.Errorf("clear ABI bindings: %w", err)
 	}
+	if err := persistEffectiveTransactionExecutions(ctx, tx, job, executions); err != nil {
+		return StageResult{}, err
+	}
 
 	registry, err := NewABIRegistryWithLimits(processor.limits)
 	if err != nil {
 		return StageResult{}, Permanent(err)
 	}
-	identities := make(map[common.Address]ABIIdentity)
-	baseBindings := make(map[common.Address][]persistedABIBinding)
+	identities := make(map[ABIIdentity]abiBlockRange)
+	baseBindings := make(map[ABIIdentity][]persistedABIBinding)
 	persistedBindings := make(map[string]struct{})
 	bindingsCount, invalidSignatures := 0, 0
-	for _, address := range uniqueABIAddresses(observations) {
-		identity, codeRange, found, err := resolveABICodeIdentity(ctx, tx, job, address)
+	for index := range observations {
+		identity, codeRange, found, err := resolveABIObservationIdentity(ctx, tx, job, observations[index])
 		if err != nil {
 			return StageResult{}, err
 		}
 		if !found {
 			continue
 		}
-		identities[address] = identity
-		bindings, invalid, err := loadABIBindings(ctx, tx, identity, codeRange, observationsForAddress(observations, address), processor.limits)
+		observations[index].identity = identity
+		observations[index].identityResolved = true
+		if existing, exists := identities[identity]; exists {
+			intersection, ok := intersectABIRanges(existing, codeRange)
+			if !ok {
+				return StageResult{}, Permanent(errors.New("ABI observation identity ranges do not intersect"))
+			}
+			identities[identity] = intersection
+		} else {
+			identities[identity] = codeRange
+		}
+	}
+	for identity, codeRange := range identities {
+		bindings, invalid, err := loadABIBindings(ctx, tx, identity, codeRange, observationsForIdentity(observations, identity), processor.limits)
 		if err != nil {
 			return StageResult{}, err
 		}
-		baseBindings[address] = append([]persistedABIBinding(nil), bindings...)
+		baseBindings[identity] = append([]persistedABIBinding(nil), bindings...)
 		invalidSignatures += invalid
 		for _, candidate := range bindings {
 			if err := registry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
@@ -172,9 +191,9 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 			bindingsCount++
 		}
 	}
-	diamondAuxiliaryWarnings := make(map[common.Address]string)
-	for address, identity := range identities {
-		if !hasDiamondAuxiliaryObservation(observations, address) {
+	diamondAuxiliaryWarnings := make(map[ABIIdentity]string)
+	for identity := range identities {
+		if !hasDiamondAuxiliaryObservation(observations, identity) {
 			continue
 		}
 		bindings, warning, err := loadDiamondAuxiliaryABIBindings(
@@ -184,7 +203,7 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 			return StageResult{}, err
 		}
 		if warning != "" {
-			diamondAuxiliaryWarnings[address] = warning
+			diamondAuxiliaryWarnings[identity] = warning
 		}
 		for _, candidate := range bindings {
 			if err := registry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
@@ -208,13 +227,13 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 	routeCache := make(map[diamondABIRouteKey]diamondABIRoute)
 	facetBindingCache := make(map[diamondABIRouteKey]*persistedABIBinding)
 	for _, observation := range observations {
-		identity, found := identities[observation.target]
-		if !found {
+		if !observation.identityResolved {
 			unbound++
 			continue
 		}
+		identity := observation.identity
 		activeRegistry := registry
-		routeWarning := diamondAuxiliaryWarnings[observation.target]
+		routeWarning := diamondAuxiliaryWarnings[identity]
 		if selector, functionObservation := diamondFunctionObservation(observation); functionObservation {
 			key := routeKeyForObservation(observation, selector)
 			route, cached := routeCache[key]
@@ -235,7 +254,7 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 				candidates := []persistedABIBinding{}
 				if route.exact && route.facet != (common.Address{}) {
 					candidates, registryErr = diamondFunctionCandidates(
-						baseBindings[observation.target], route, selector, processor.limits,
+						baseBindings[identity], route, selector, processor.limits,
 					)
 					if registryErr != nil {
 						return StageResult{}, Permanent(fmt.Errorf("filter target ABI for Diamond route: %w", registryErr))
@@ -287,22 +306,26 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 	return StageResult{
 		State: ResultComplete,
 		Details: map[string]string{
-			"proxy_dependency":   proxyDependency,
-			"bindings":           strconv.Itoa(bindingsCount),
-			"decoded":            strconv.Itoa(counts[DecodeDecoded]),
-			"ambiguous":          strconv.Itoa(counts[DecodeAmbiguous]),
-			"unknown":            strconv.Itoa(counts[DecodeUnknown]),
-			"malformed":          strconv.Itoa(counts[DecodeMalformed]),
-			"unbound":            strconv.Itoa(unbound),
-			"diamond_routed":     strconv.Itoa(diamondRouted),
-			"invalid_signatures": strconv.Itoa(invalidSignatures),
+			"proxy_dependency":     proxyDependency,
+			"bindings":             strconv.Itoa(bindingsCount),
+			"decoded":              strconv.Itoa(counts[DecodeDecoded]),
+			"ambiguous":            strconv.Itoa(counts[DecodeAmbiguous]),
+			"unknown":              strconv.Itoa(counts[DecodeUnknown]),
+			"malformed":            strconv.Itoa(counts[DecodeMalformed]),
+			"unbound":              strconv.Itoa(unbound),
+			"diamond_routed":       strconv.Itoa(diamondRouted),
+			"invalid_signatures":   strconv.Itoa(invalidSignatures),
+			"effective_executions": strconv.Itoa(len(executions)),
+			"recovered_executions": strconv.Itoa(countEffectiveExecutionSource(
+				executions, effectiveExecutionSourceRoot,
+			)),
 		},
 	}, nil
 }
 
-func hasDiamondAuxiliaryObservation(observations []abiObservation, address common.Address) bool {
+func hasDiamondAuxiliaryObservation(observations []abiObservation, identity ABIIdentity) bool {
 	for _, observation := range observations {
-		if observation.target == address &&
+		if observation.identityResolved && observation.identity == identity &&
 			(observation.objectKind == abiObjectLog || observation.objectKind == abiObjectTraceRevert) {
 			return true
 		}
@@ -335,24 +358,29 @@ func proxyDependencyState(ctx context.Context, tx *sql.Tx, job Job) (ResultState
 }
 
 type abiObservation struct {
-	objectKind       string
-	transactionHash  common.Hash
-	transactionIndex uint64
-	objectIndex      string
-	target           common.Address
-	input            []byte
-	topics           []common.Hash
-	data             []byte
-	output           []byte
-	directReverted   bool
-	malformed        string
+	objectKind        string
+	transactionHash   common.Hash
+	transactionIndex  uint64
+	objectIndex       string
+	target            common.Address
+	input             []byte
+	topics            []common.Hash
+	data              []byte
+	output            []byte
+	directReverted    bool
+	malformed         string
+	executionCodeHash *common.Hash
+	identity          ABIIdentity
+	identityResolved  bool
 }
 
-func loadABIObservations(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
-	transactions, err := loadABITransactions(ctx, tx, job)
-	if err != nil {
-		return nil, err
-	}
+func loadABIObservations(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	executions []effectiveTransactionExecution,
+) ([]abiObservation, error) {
+	transactions := loadABITransactions(executions)
 	logs, err := loadABILogs(ctx, tx, job)
 	if err != nil {
 		return nil, err
@@ -432,6 +460,8 @@ func loadABIConstructors(ctx context.Context, tx *sql.Tx, job Job) ([]abiObserva
 			transactionIndex: uint64(transactionIndex),
 			objectIndex:      tracePath, target: common.BytesToAddress(targetBytes), input: common.CopyBytes(arguments),
 		}
+		codeHash := common.BytesToHash(codeHashBytes)
+		observation.executionCodeHash = &codeHash
 		if !bytes.HasSuffix(initcode, arguments) {
 			observation.malformed = "verified constructor arguments are not an exact initcode suffix"
 		} else if err := validateConstructorArguments(abiJSON, arguments); err != nil {
@@ -464,74 +494,23 @@ func validateConstructorArguments(document, arguments []byte) error {
 	return nil
 }
 
-func loadABITransactions(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw, resolution.execution_address,
-		       resolution.execution_code_hash
-		FROM transaction_inclusions AS inclusion
-		LEFT JOIN transaction_execution_code_resolutions AS resolution
-		  ON resolution.chain_id = inclusion.chain_id
-		 AND resolution.block_number = inclusion.block_number
-		 AND resolution.block_hash = inclusion.block_hash
-		 AND resolution.transaction_hash = inclusion.tx_hash
-		 AND resolution.context_address = decode(substring(inclusion.raw->>'to' from 3), 'hex')
-		 AND resolution.resolution IN ('direct', 'eip7702_delegate')
-		 AND resolution.canonical
-		 AND EXISTS (
-		     SELECT 1 FROM published_block_stage_results AS published
-		     WHERE published.chain_id = resolution.chain_id
-		       AND published.block_number = resolution.block_number
-		       AND published.block_hash = resolution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
-		       AND published.state = 'complete'
-		 )
-		WHERE inclusion.chain_id = $1::numeric
-		  AND inclusion.block_number = $2::numeric
-		  AND inclusion.block_hash = $3
-		ORDER BY inclusion.tx_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		StateDiffStage.Name, StateDiffStage.Version)
-	if err != nil {
-		return nil, fmt.Errorf("query ABI transaction inputs: %w", err)
-	}
-	defer rows.Close() //nolint:errcheck
-	var result []abiObservation
-	for rows.Next() {
-		var transactionHashBytes, raw, executionAddress, executionCodeHash []byte
-		var transactionIndex int64
-		if err := rows.Scan(&transactionHashBytes, &transactionIndex, &raw, &executionAddress, &executionCodeHash); err != nil {
-			return nil, fmt.Errorf("scan ABI transaction input: %w", err)
-		}
-		transactionHash, err := WordFromBytes(transactionHashBytes)
-		if err != nil || transactionIndex < 0 {
-			return nil, Permanent(fmt.Errorf("stored transaction hash: %w", err))
-		}
-		var wire types.Transaction
-		if err := json.Unmarshal(raw, &wire); err != nil {
-			return nil, Permanent(fmt.Errorf("decode stored transaction: %w", err))
-		}
-		if err := validateABITransactionIdentity(&wire, raw, job, transactionHash); err != nil {
-			return nil, Permanent(err)
-		}
-		to := wire.To()
-		if to == nil || len(executionAddress) == 0 {
+func loadABITransactions(executions []effectiveTransactionExecution) []abiObservation {
+	result := make([]abiObservation, 0, len(executions))
+	for _, execution := range executions {
+		if execution.executionAddress == nil || execution.executionCodeHash == nil ||
+			(execution.resolution != "direct" && execution.resolution != "eip7702_delegate") {
 			continue
 		}
-		if len(executionAddress) != common.AddressLength || len(executionCodeHash) != common.HashLength {
-			return nil, Permanent(errors.New("transaction execution-code identity is invalid"))
-		}
-		target := common.BytesToAddress(executionAddress)
-		input := wire.Data()
+		codeHash := *execution.executionCodeHash
 		result = append(result, abiObservation{
-			objectKind: abiObjectTransactionCalldata, transactionHash: transactionHash,
-			transactionIndex: uint64(transactionIndex),
-			target:           target, input: input,
+			objectKind:       abiObjectTransactionCalldata,
+			transactionHash:  execution.transactionHash,
+			transactionIndex: execution.transactionIndex,
+			target:           *execution.executionAddress,
+			input:            common.CopyBytes(execution.input), executionCodeHash: &codeHash,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate ABI transaction inputs: %w", err)
-	}
-	return result, nil
+	return result
 }
 
 func validateABITransactionIdentity(
@@ -676,7 +655,8 @@ func validateABILogIdentity(
 
 func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_hash, transaction_index, trace_path, execution_address, input, output, direct_reverted
+		SELECT transaction_hash, transaction_index, trace_path, execution_address,
+		       execution_code_hash, input, output, direct_reverted
 		FROM normalized_traces AS trace
 		WHERE trace.chain_id = $1::numeric
 		  AND trace.block_number = $2::numeric
@@ -702,11 +682,14 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	defer rows.Close() //nolint:errcheck
 	var result []abiObservation
 	for rows.Next() {
-		var transactionHashBytes, targetBytes, input, output []byte
+		var transactionHashBytes, targetBytes, codeHashBytes, input, output []byte
 		var transactionIndex int64
 		var tracePath string
 		var directReverted bool
-		if err := rows.Scan(&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes, &input, &output, &directReverted); err != nil {
+		if err := rows.Scan(
+			&transactionHashBytes, &transactionIndex, &tracePath, &targetBytes,
+			&codeHashBytes, &input, &output, &directReverted,
+		); err != nil {
 			return nil, fmt.Errorf("scan ABI trace: %w", err)
 		}
 		if len(targetBytes) == 0 {
@@ -723,18 +706,31 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 			return nil, Permanent(fmt.Errorf("stored ABI trace transaction hash: %w", err))
 		}
 		target := common.BytesToAddress(targetBytes)
-		result = append(result, abiObservation{
+		observation := abiObservation{
 			objectKind: abiObjectTraceCalldata, transactionHash: transactionHash,
 			transactionIndex: uint64(transactionIndex),
 			objectIndex:      tracePath, target: target, input: append([]byte(nil), input...),
 			output: append([]byte(nil), output...), directReverted: directReverted,
-		})
+		}
+		if len(codeHashBytes) != 0 {
+			if len(codeHashBytes) != common.HashLength {
+				return nil, Permanent(errors.New("stored ABI trace code hash is invalid"))
+			}
+			codeHash := common.BytesToHash(codeHashBytes)
+			observation.executionCodeHash = &codeHash
+		}
+		result = append(result, observation)
 		if directReverted && len(output) > 0 {
-			result = append(result, abiObservation{
+			revert := abiObservation{
 				objectKind: abiObjectTraceRevert, transactionHash: transactionHash,
 				transactionIndex: uint64(transactionIndex),
 				objectIndex:      tracePath, target: target, input: append([]byte(nil), output...),
-			})
+			}
+			if observation.executionCodeHash != nil {
+				codeHash := *observation.executionCodeHash
+				revert.executionCodeHash = &codeHash
+			}
+			result = append(result, revert)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -743,27 +739,69 @@ func loadABITraces(ctx context.Context, tx *sql.Tx, job Job) ([]abiObservation, 
 	return result, nil
 }
 
-func uniqueABIAddresses(observations []abiObservation) []common.Address {
-	seen := make(map[common.Address]struct{})
-	result := make([]common.Address, 0)
-	for _, observation := range observations {
-		if _, exists := seen[observation.target]; exists {
-			continue
-		}
-		seen[observation.target] = struct{}{}
-		result = append(result, observation.target)
-	}
-	return result
-}
-
-func observationsForAddress(observations []abiObservation, address common.Address) []abiObservation {
+func observationsForIdentity(observations []abiObservation, identity ABIIdentity) []abiObservation {
 	result := make([]abiObservation, 0)
 	for _, observation := range observations {
-		if observation.target == address {
+		if observation.identityResolved && observation.identity == identity {
 			result = append(result, observation)
 		}
 	}
 	return result
+}
+
+func resolveABIObservationIdentity(
+	ctx context.Context,
+	tx *sql.Tx,
+	job Job,
+	observation abiObservation,
+) (ABIIdentity, abiBlockRange, bool, error) {
+	if observation.executionCodeHash == nil {
+		identity, codeRange, found, err := resolveABICodeIdentity(ctx, tx, job, observation.target)
+		if found {
+			identity.TransactionHash = observation.transactionHash
+			identity.TransactionIndex = observation.transactionIndex
+		}
+		return identity, codeRange, found, err
+	}
+	if *observation.executionCodeHash == (common.Hash{}) {
+		return ABIIdentity{}, abiBlockRange{}, false,
+			Permanent(errors.New("ABI observation code hash is zero"))
+	}
+	identity := ABIIdentity{
+		ChainID: job.ChainID, Address: observation.target,
+		CodeHash:         *observation.executionCodeHash,
+		BlockNumber:      job.BlockNumber,
+		BlockHash:        job.BlockHash,
+		TransactionHash:  observation.transactionHash,
+		TransactionIndex: observation.transactionIndex,
+	}
+	if err := identity.validate(); err != nil {
+		return ABIIdentity{}, abiBlockRange{}, false, Permanent(err)
+	}
+	resolved, codeRange, found, err := resolveABICodeIdentity(ctx, tx, job, observation.target)
+	if err != nil {
+		return ABIIdentity{}, abiBlockRange{}, false, err
+	}
+	if found && resolved.CodeHash == identity.CodeHash {
+		resolved.TransactionHash = observation.transactionHash
+		resolved.TransactionIndex = observation.transactionIndex
+		return identity, codeRange, true, nil
+	}
+	block := job.BlockNumber
+	return identity, abiBlockRange{from: block, to: &block}, true, nil
+}
+
+func countEffectiveExecutionSource(
+	executions []effectiveTransactionExecution,
+	source string,
+) int {
+	count := 0
+	for _, execution := range executions {
+		if execution.evidenceSource == source {
+			count++
+		}
+	}
+	return count
 }
 
 type abiBlockRange struct {

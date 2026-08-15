@@ -411,7 +411,7 @@ OpenZeppelin proxy cutover, schedule `proxy` before `abi`; the ABI worker also
 refuses to claim a block until the current `proxy@2` result is published.
 The `trace@3` cutover is an explicit bounded reindex, never a migration-time
 historical enqueue. Each completed Trace generation requests the existing
-`proxy@2` replay and then `abi@3`; wait for those publications before treating
+`proxy@2` replay and then `abi@4`; wait for those publications before treating
 the range as proxy-interaction complete. Nodes that reject `withLog` with
 `-32602` still publish the call tree, but their logs remain visibly on the
 conservative address fallback path.
@@ -422,9 +422,17 @@ changes the public witness to `state_diff@3` and clears proxy-interaction
 coverage that depended on the superseded version, but it never enqueues
 history. Run `reindex --stage state_diff` for the chosen canonical range and
 wait for `state_diff@3`. Its completion requests `trace@3`; after Trace
-publishes, wait for `proxy@2` and then `abi@3`, then rebuild and verify the
+publishes, wait for `proxy@2` and then `abi@4`, then rebuild and verify the
 affected coverage range. Operators must not substitute block-end or `latest`
 code for unavailable transaction prestate.
+
+Migration `0048` adds the partitioned ABI-owned effective execution identity
+and advances the ABI witness to `abi@4`; it never backfills or queues history.
+For a bounded historical or Preview range, first ensure its canonical
+`state_diff@3` and `trace@3` publications exist, replay `proxy@2`, then run
+`reindex --stage abi` and wait for `abi@4`. The replay uses only stored exact
+block evidence. Do not derive an identity from block-end state, `latest`, or
+the last delegation observed for an address in the block.
 
 ### Proxy detection V2 shadow rollout
 

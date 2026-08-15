@@ -19,7 +19,7 @@ arbitrary executable SQL would create a second migration and security surface.
 
 ## Decision
 
-- Every successful or stale production `proxy@2`, `abi@3`, `token@1`,
+- Every successful or stale production `proxy@2`, `abi@4`, `token@1`,
   `stats@3`, `trace@3`, and `state_diff@3`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
@@ -55,7 +55,7 @@ arbitrary executable SQL would create a second migration and security surface.
   `etherview.derived-canonicality` schema. It contains only controlled
   `set_canonical` rollback/replay descriptions and a fixed relation allowlist:
   `contract_code_observations` plus `proxy_observations`, `contract_abis` plus
-  `abi_decodings`, `token_events` plus
+  `abi_decodings` and `transaction_effective_execution_identities`, `token_events` plus
   `token_balance_deltas`, `block_statistics`, `normalized_traces` plus
   `trace_log_attributions`, or `transaction_state_changes` plus
   `eip7702_authorizations` and `transaction_execution_code_resolutions`. It is
@@ -124,3 +124,9 @@ Migration `0047` supersedes the current StateDiff witness with
 versioned authorization and execution-code relations are derived; their
 journal identity, lease fence, reorg behavior, and controlled relation set are
 unchanged.
+
+Migration `0048` advances ABI to `abi@4` and adds
+`transaction_effective_execution_identities` to the ABI journal. Effective
+identities therefore detach, reattach, refresh, cleanup, and replay with the
+same immutable block hash and ABI generation as their decodings; no reader can
+observe a partially rebuilt generation.

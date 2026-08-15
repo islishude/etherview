@@ -219,9 +219,10 @@ replace a required `make test-e2e` pass.
   emitted by the pinned Anvil fixture when `blobGasUsed` is absent. Anvil
   `v1.7.1` also omits geth-style prestate fields for cleared delegation code,
   implicit delegated authority code, and the executed delegate account. The
-  adapter restores deterministic fixture evidence only inside the block-trace
-  response item whose `txHash` is the exact delegated-call transaction; sibling
-  items pass unchanged. Both monolith and the six-role topology assert that the
+  adapter normalizes only the explicit clearing post-state gap; it deliberately
+  does not add authority or delegate code to transaction prestate. The runtime
+  therefore exercises `abi@4` recovery from the exact root Trace and prior
+  canonical code observations. Both monolith and the six-role topology assert that the
   adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
   calls. Complete provider observations pass through unchanged, so production
   receipt and trace validation remain strict.

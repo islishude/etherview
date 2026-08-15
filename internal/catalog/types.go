@@ -364,6 +364,14 @@ type TraceExecution struct {
 	Resolution     string
 }
 
+type TransactionExecution struct {
+	ContextAddress string
+	Address        string
+	CodeHash       string
+	Resolution     string
+	EvidenceSource string
+}
+
 type ABIValue struct {
 	Name  string
 	Type  string
@@ -432,7 +440,7 @@ type TransactionTrace struct {
 type TransactionCalldata struct {
 	Identity  TransactionResourceIdentity
 	Input     string
-	Execution TraceExecution
+	Execution TransactionExecution
 	Decoding  TransactionCalldataDecoding
 }
 

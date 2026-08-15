@@ -26,6 +26,7 @@ type integrationTransactionOptions struct {
 	Data             []byte
 	Value            *big.Int
 	GasPrice         *big.Int
+	Authorizations   []types.SetCodeAuthorization
 	Logs             []*types.Log
 	RawExtra         map[string]any
 	ReceiptRawExtra  map[string]any
@@ -229,7 +230,7 @@ func newIntegrationTransaction(
 			GasTipCap: uint256.NewInt(1), GasFeeCap: uint256.MustFromBig(gasPrice),
 			Gas: 21_000, To: *to, Value: uint256.MustFromBig(value),
 			Data: common.CopyBytes(options.Data), AccessList: types.AccessList{},
-			AuthList: []types.SetCodeAuthorization{},
+			AuthList: append([]types.SetCodeAuthorization(nil), options.Authorizations...),
 		}), nil
 	default:
 		return nil, fmt.Errorf("%w: %d", chainbundle.ErrUnsupportedTransactionType, options.Type)
@@ -253,7 +254,7 @@ func integrationTransactionJSON(
 	setIntegrationJSON(fields, "blockNumber", fmt.Sprintf("0x%x", blockNumber))
 	setIntegrationJSON(fields, "transactionIndex", fmt.Sprintf("0x%x", index))
 	if transaction.Type() == types.SetCodeTxType {
-		fields["authorizationList"] = json.RawMessage("[]")
+		setIntegrationJSON(fields, "authorizationList", transaction.SetCodeAuthorizations())
 	}
 	for name, value := range extra {
 		setIntegrationJSON(fields, name, value)

@@ -1395,6 +1395,51 @@ type Transaction struct {
 	InsertedAt pgtype.Timestamptz `db:"inserted_at" json:"inserted_at"`
 }
 
+type TransactionEffectiveExecutionIdentitiesDefault struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	RootTracePath     *string        `db:"root_trace_path" json:"root_trace_path"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionEffectiveExecutionIdentitiesP01000000 struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	RootTracePath     *string        `db:"root_trace_path" json:"root_trace_path"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
+}
+
+type TransactionEffectiveExecutionIdentity struct {
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash         []byte         `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte         `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex  int64          `db:"transaction_index" json:"transaction_index"`
+	ContextAddress    []byte         `db:"context_address" json:"context_address"`
+	ExecutionAddress  []byte         `db:"execution_address" json:"execution_address"`
+	ExecutionCodeHash []byte         `db:"execution_code_hash" json:"execution_code_hash"`
+	Resolution        string         `db:"resolution" json:"resolution"`
+	EvidenceSource    string         `db:"evidence_source" json:"evidence_source"`
+	RootTracePath     *string        `db:"root_trace_path" json:"root_trace_path"`
+	Canonical         bool           `db:"canonical" json:"canonical"`
+}
+
 type TransactionExecutionCodeResolution struct {
 	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber       pgtype.Numeric `db:"block_number" json:"block_number"`

@@ -233,7 +233,7 @@ func main() {
 				"input": "0x3fa4f245",
 				"execution": map[string]any{
 					"context_address": testAddress, "address": testAddress,
-					"code_hash": testHash, "resolution": "direct",
+					"code_hash": testHash, "resolution": "direct", "evidence_source": "prestate_tracer",
 				},
 				"decoding": map[string]any{
 					"status": "decoded", "function_name": "value", "signature": "value()",
@@ -251,7 +251,7 @@ func main() {
 				"input": compoundCalldata(),
 				"execution": map[string]any{
 					"context_address": testAddress, "address": testAddress,
-					"code_hash": testHash, "resolution": "direct",
+					"code_hash": testHash, "resolution": "direct", "evidence_source": "prestate_tracer",
 				},
 				"decoding": map[string]any{
 					"status": "decoded", "function_name": "configure",
@@ -285,6 +285,7 @@ func main() {
 				"execution": map[string]any{
 					"context_address": delegatedAddress, "address": delegatedDelegate,
 					"code_hash": testHash, "resolution": "eip7702_delegate",
+					"evidence_source": "root_trace_code_observation",
 				},
 				"decoding": map[string]any{
 					"status": "decoded", "function_name": "setValue", "signature": "setValue(uint256)",
@@ -304,7 +305,7 @@ func main() {
 				"transaction_hash": clearingTransactionHash, "transaction_index": "2", "state": "complete",
 				"input": "0x55241077",
 				"execution": map[string]any{
-					"context_address": delegatedAddress, "resolution": "empty",
+					"context_address": delegatedAddress, "resolution": "empty", "evidence_source": "prestate_tracer",
 				},
 				"decoding": map[string]any{
 					"status": "not_applicable", "inputs": []any{}, "candidates": []any{},

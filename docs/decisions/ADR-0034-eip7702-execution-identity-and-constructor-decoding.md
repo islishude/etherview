@@ -46,12 +46,12 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 - Geth's `prestateTracer` may expose the authorization-applied first-hop
   EIP-7702 delegate address without returning that delegate account's code. In
   this case `trace@3` may retain the exact trace path and execution address for
-  a receipt log while the frame resolution remains `unavailable`. `abi@3`
+  a receipt log while the frame resolution remains `unavailable`. `abi@4`
   decodes that log only if the ordinary block-scoped code-identity resolver
   independently finds a canonical historical code hash and range-valid ABI for
   the attributed address; otherwise it remains unavailable. The emitter's ABI,
   current delegation, block height, and `latest` are never substitutes.
-- `abi@3` decodes functions and logs only from an exact execution identity (or
+- `abi@4` decodes functions and logs only from an exact execution identity (or
   the existing explicit conservative log fallback). `CREATE` and `CREATE2`
   constructor inputs require the created address's canonical code observation,
   exact verified artifact, full creation match, and persisted constructor
@@ -83,6 +83,32 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   failure or revert does not undo the authorization identity used for decoding.
   A delegated target is followed once; an empty first-hop result does not fall
   back to an older delegate or another delegation designator.
+- `state_diff@3` remains the immutable provider-evidence layer. `abi@4`
+  separately materializes one effective execution identity for every
+  transaction root, keyed by immutable block hash, transaction hash and index,
+  and call-context address. An exact `direct`, `eip7702_delegate`, or `empty`
+  state-diff result is copied with `prestate_tracer` provenance. Only an
+  `unavailable` result that already names its first-hop execution address may
+  be recovered; all other unavailable shapes remain unavailable.
+- Recovery requires the unique published `trace@3` root for the same block,
+  transaction hash and index. Its target, input, context, and first-hop
+  execution address must agree with the canonical transaction and raw
+  state-diff result. The resolver starts with a canonical code observation
+  strictly before the block and applies only continuous code changes whose
+  transaction index precedes the current transaction. A change in the current
+  or any later transaction cannot affect the identity. Ordinary non-empty code
+  yields the exact delegate code hash; proven empty code, a precompile, or a
+  second delegation designator yields `empty`. Missing history stays
+  unavailable, while inconsistent code history or contradictory exact evidence
+  fails the ABI job permanently.
+- Effective identities, ABI bindings, transaction calldata decodings, the
+  `abi@4` publication, and its canonicality journal commit atomically. Readers
+  use the materialized identity only after the exact `abi@4` generation is
+  published. Before that publication they retain raw `state_diff@3` semantics
+  and never read an old `abi@3` result. Registry and Diamond routing keys bind
+  transaction position and exact code hash, so two transactions in one block
+  may execute different delegates for the same authority without sharing
+  candidates. Trace APIs continue to expose their original trace evidence.
 - Once the transaction-time execution identity is fixed, selectorless calldata
   is decoded against that exact code's ABI: empty calldata selects `receive`
   before `fallback`, while incomplete or unmatched selectors may select only a
@@ -92,7 +118,7 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   from the same block-, execution-address-, and code-hash-bound ABI candidate
   inside its repeatable-read snapshot. Public inputs carry the selected
   parameter's `name`, canonical `type`, optional validated `internalType`, and
-  recursive tuple components while persisted `abi@3` arguments remain the
+  recursive tuple components while persisted `abi@4` arguments remain the
   value-only decoding fact. A persisted decoded fact without a corresponding
   exact ABI, or a value/signature disagreement after re-decoding the same ABI
   source, is corrupt data. A later higher-confidence candidate may improve the
@@ -126,9 +152,10 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 ## Consequences
 
 Historical support requires an explicit bounded `state_diff` reindex, followed
-by `trace`, `proxy`, and `abi` replay. Migration `0040` creates storage;
+by `trace`, `proxy`, and `abi` replay. Migration `0040` creates raw storage;
 migration `0047` advances the current witness to `state_diff@3` and invalidates
-superseded proxy-interaction coverage. Neither migration enqueues unbounded
-history. Authorization
+superseded proxy-interaction coverage. Migration `0048` creates the
+transaction-scoped effective-identity partition and advances ABI to `abi@4`;
+it does not enqueue or backfill history. Authorization
 creation/signing/revocation, opcode/raw trace persistence, EIP-7851, EIP-8202,
 and proxy authority inferred from arbitrary delegatecall remain out of scope.

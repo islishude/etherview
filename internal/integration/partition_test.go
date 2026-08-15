@@ -22,18 +22,19 @@ const (
 )
 
 var partitionTableNames = map[string]string{
-	"transaction_inclusions":                 "etherview_p_txi_1000000_2000000",
-	"receipts":                               "etherview_p_rcp_1000000_2000000",
-	"logs":                                   "etherview_p_log_1000000_2000000",
-	"withdrawals":                            "etherview_p_wdr_1000000_2000000",
-	"token_events":                           "etherview_p_tev_1000000_2000000",
-	"token_balance_deltas":                   "etherview_p_tbd_1000000_2000000",
-	"normalized_traces":                      "etherview_p_trc_1000000_2000000",
-	"trace_log_attributions":                 "etherview_p_tla_1000000_2000000",
-	"transaction_state_changes":              "etherview_p_sdf_1000000_2000000",
-	"eip7702_authorizations":                 "etherview_p_e7a_1000000_2000000",
-	"transaction_execution_code_resolutions": "etherview_p_ecr_1000000_2000000",
-	"address_activities":                     "etherview_p_act_1000000_2000000",
+	"transaction_inclusions":                     "etherview_p_txi_1000000_2000000",
+	"receipts":                                   "etherview_p_rcp_1000000_2000000",
+	"logs":                                       "etherview_p_log_1000000_2000000",
+	"withdrawals":                                "etherview_p_wdr_1000000_2000000",
+	"token_events":                               "etherview_p_tev_1000000_2000000",
+	"token_balance_deltas":                       "etherview_p_tbd_1000000_2000000",
+	"normalized_traces":                          "etherview_p_trc_1000000_2000000",
+	"trace_log_attributions":                     "etherview_p_tla_1000000_2000000",
+	"transaction_state_changes":                  "etherview_p_sdf_1000000_2000000",
+	"eip7702_authorizations":                     "etherview_p_e7a_1000000_2000000",
+	"transaction_execution_code_resolutions":     "etherview_p_ecr_1000000_2000000",
+	"transaction_effective_execution_identities": "etherview_p_eei_1000000_2000000",
+	"address_activities":                         "etherview_p_act_1000000_2000000",
 }
 
 func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {
@@ -250,6 +251,14 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *sql.D
 		height, blockHash, transactionHash, toAddress, topic, fromAddress)
 	execFixture(t, ctx, db, `
 		INSERT INTO transaction_execution_code_resolutions (
+			chain_id, block_number, block_hash, transaction_hash, transaction_index,
+			context_address, execution_address, execution_code_hash, resolution,
+			evidence_source, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, $4, $4, $5, 'direct',
+			'prestate_tracer', TRUE)`,
+		height, blockHash, transactionHash, toAddress, topic)
+	execFixture(t, ctx, db, `
+		INSERT INTO transaction_effective_execution_identities (
 			chain_id, block_number, block_hash, transaction_hash, transaction_index,
 			context_address, execution_address, execution_code_hash, resolution,
 			evidence_source, canonical

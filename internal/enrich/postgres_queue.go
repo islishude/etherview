@@ -368,7 +368,9 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 		return fmt.Errorf("clear enrichment stage journal for replay: %w", err)
 	}
 	if job.Stage == ABIStage {
-		for _, table := range []string{"abi_decodings", "contract_abis"} {
+		for _, table := range []string{
+			"abi_decodings", "contract_abis", "transaction_effective_execution_identities",
+		} {
 			statement := fmt.Sprintf(
 				"DELETE FROM %s WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3",
 				table,

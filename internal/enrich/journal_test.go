@@ -29,7 +29,10 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 			"diamond_loupe_snapshots",
 			"diamond_cut_events",
 		}},
-		{stage: ABIStage, relations: []string{"contract_abis", "abi_decodings"}},
+		{stage: ABIStage, relations: []string{
+			"contract_abis", "abi_decodings",
+			"transaction_effective_execution_identities",
+		}},
 		{stage: TokenStage, relations: []string{"token_events", "token_balance_deltas"}},
 		{stage: StatsStage, relations: []string{"block_statistics"}},
 		{stage: TraceStage, relations: []string{"normalized_traces", "trace_log_attributions"}},

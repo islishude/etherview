@@ -60,6 +60,11 @@ var blockPartitionSpecs = []blockPartitionSpec{
 		NameCode: "ecr", Dependencies: []string{"transaction_inclusions"},
 		IntroducedBy: "0040_eip7702_delegated_accounts",
 	},
+	{
+		Parent: "transaction_effective_execution_identities", Default: "transaction_effective_execution_identities_default",
+		NameCode: "eei", Dependencies: []string{"transaction_inclusions"},
+		IntroducedBy: "0048_transaction_effective_execution_identity",
+	},
 	{Parent: "address_activities", Default: "address_activities_default", NameCode: "act"},
 }
 
@@ -70,6 +75,7 @@ var blockPartitionDeleteOrder = []string{
 	"token_events",
 	"trace_log_attributions",
 	"normalized_traces",
+	"transaction_effective_execution_identities",
 	"transaction_execution_code_resolutions",
 	"eip7702_authorizations",
 	"transaction_state_changes",

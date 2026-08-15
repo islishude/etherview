@@ -60,7 +60,7 @@ func DecodeVerifiedFunctionCalldata(entry json.RawMessage, calldata []byte) (str
 }
 
 // NormalizeVerifiedFunctionSelectors validates an entire verified ABI with the
-// same parser and limits as abi@3, then projects only selector-bearing
+// same parser and limits as abi@4, then projects only selector-bearing
 // functions. Duplicate canonical signatures are collapsed deterministically.
 func NormalizeVerifiedFunctionSelectors(data []byte) ([]VerifiedFunctionSelector, error) {
 	if len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {

@@ -114,12 +114,34 @@ func loadLogABICandidates(
 	blockHash []byte,
 	address common.Address,
 ) (enrich.ABIIdentity, []logABICandidate, error) {
+	return loadLogABICandidatesForCodeHash(
+		ctx, tx, chainID, blockNumber, blockHash, address, nil,
+	)
+}
+
+func loadLogABICandidatesForCodeHash(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID string,
+	blockNumber uint64,
+	blockHash []byte,
+	address common.Address,
+	codeHash *common.Hash,
+) (enrich.ABIIdentity, []logABICandidate, error) {
 	identity := enrich.ABIIdentity{
 		ChainID: chainID, Address: address, BlockNumber: blockNumber,
 		BlockHash: common.BytesToHash(blockHash),
 	}
+	if codeHash != nil {
+		identity.CodeHash = *codeHash
+	}
+	var expectedCodeHash any
+	if codeHash != nil {
+		expectedCodeHash = codeHash[:]
+	}
 	rows, err := tx.QueryContext(ctx, transactionLogABICandidatesSQL,
 		chainID, address[:], fmt.Sprint(blockNumber), maxReadTimeLogABICandidates+1,
+		expectedCodeHash,
 	)
 	if err != nil {
 		return identity, nil, fmt.Errorf("load log ABI candidates: %w", err)
@@ -294,18 +316,24 @@ func mapStoredABISource(source string) string {
 
 const transactionLogABICandidatesSQL = `
 WITH target_code AS (
-    SELECT observation.code_hash
-    FROM contract_code_observations AS observation
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = observation.chain_id
-     AND canonical.number = observation.block_number
-     AND canonical.block_hash = observation.block_hash
-    WHERE observation.chain_id = $1::numeric
-      AND observation.address = $2
-      AND observation.block_number <= $3::numeric
-      AND observation.canonical
-    ORDER BY observation.block_number DESC, observation.observed_at DESC
-    LIMIT 1
+    SELECT $5::bytea AS code_hash
+    WHERE $5::bytea IS NOT NULL
+    UNION ALL
+    (
+        SELECT observation.code_hash
+        FROM contract_code_observations AS observation
+        JOIN canonical_blocks AS canonical
+          ON canonical.chain_id = observation.chain_id
+         AND canonical.number = observation.block_number
+         AND canonical.block_hash = observation.block_hash
+        WHERE observation.chain_id = $1::numeric
+          AND observation.address = $2
+          AND observation.block_number <= $3::numeric
+          AND observation.canonical
+          AND $5::bytea IS NULL
+        ORDER BY observation.block_number DESC, observation.observed_at DESC
+        LIMIT 1
+    )
 ), historical_proxy AS (
     SELECT observation.implementation_address, observation.implementation_code_hash
     FROM proxy_observations AS observation

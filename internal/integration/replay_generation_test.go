@@ -371,7 +371,7 @@ func TestLateTraceReplayRacingActiveABILeaseIsConsumedByNextGeneration(t *testin
 	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
 		0, mustBytes(t, reference.Hash))
 
 	proxyLease, found, err = queue.Claim(ctx, "proxy-generation-two", []enrich.StageID{enrich.ProxyStage}, time.Minute)
@@ -467,7 +467,7 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 		t.Fatalf("publish crash fixture proxy: %v", err)
 	}
 	// The proxy stage sees exact code history and therefore has no RPC candidate.
-	// Keep a later raw observation in the fixture to prove abi@3 does not consume
+	// Keep a later raw observation in the fixture to prove abi@4 does not consume
 	// evidence that is outside the published proxy generation.
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	abiLease, found, err := queue.Claim(ctx, "crash-abi-generation-one", []enrich.StageID{enrich.ABIStage}, time.Minute)
@@ -482,7 +482,10 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	if err != nil || abiResult.State != enrich.ResultComplete {
 		t.Fatalf("persist crash fixture ABI generation one: result=%+v err=%v", abiResult, err)
 	}
-	for table, count := range map[string]int{"contract_abis": 3, "abi_decodings": 7} {
+	for table, count := range map[string]int{
+		"contract_abis": 3, "abi_decodings": 7,
+		"transaction_effective_execution_identities": 1,
+	} {
 		assertRowCount(t, ctx, db,
 			"SELECT count(*) FROM "+table+" WHERE chain_id = 1 AND block_hash = $1",
 			count, mustBytes(t, reference.Hash),
@@ -490,11 +493,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
 		1, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4'`,
 		1, mustBytes(t, reference.Hash))
 
 	// Model a late Trace/Proxy completion through the public enqueue contract:
@@ -525,7 +528,9 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	assertReplayGeneration(t, ctx, db, abiJob.Job.ID, replayGenerationState{
 		Status: "leased", Requested: 2, Claimed: 2, Completed: 0, Leased: true,
 	})
-	for _, table := range []string{"contract_abis", "abi_decodings"} {
+	for _, table := range []string{
+		"contract_abis", "abi_decodings", "transaction_effective_execution_identities",
+	} {
 		assertRowCount(t, ctx, db,
 			"SELECT count(*) FROM "+table+" WHERE chain_id = 1 AND block_hash = $1",
 			0, mustBytes(t, reference.Hash),
@@ -533,11 +538,11 @@ func TestExpiredABILeaseReclaimAtomicallyClearsPersistedPreviousGeneration(t *te
 	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_stage_results
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 3`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi' AND stage_version = 4`,
 		0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@3'`,
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'abi@4'`,
 		0, mustBytes(t, reference.Hash))
 	if err := queue.Finish(ctx, abiLease, enrich.StageResult{State: enrich.ResultFailed, Error: "expired writer"}); !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("expired generation-one terminal write err=%v, want ErrLeaseLost", err)

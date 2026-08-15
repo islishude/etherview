@@ -130,7 +130,8 @@ func refreshHappyPathSteps(number uint64, hash, parentHash common.Hash) []refres
 	for _, table := range []string{
 		"block_stage_results", "proxy_upgrade_events", "proxy_initialization_events",
 		"diamond_loupe_snapshots", "diamond_cut_events",
-		"abi_decodings", "contract_abis", "token_balance_deltas", "token_events",
+		"abi_decodings", "contract_abis", "transaction_effective_execution_identities",
+		"token_balance_deltas", "token_events",
 		"trace_log_attributions", "normalized_traces", "transaction_execution_code_resolutions",
 		"eip7702_authorizations", "transaction_state_changes", "address_activities", "block_statistics",
 		"block_journals", "logs", "receipts", "transaction_inclusions", "withdrawals",

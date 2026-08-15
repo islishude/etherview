@@ -1701,6 +1701,51 @@ func (e TransactionCalldataDecodingStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransactionExecutionEvidenceSource.
+const (
+	TransactionExecutionEvidenceSourcePrestateTracer           TransactionExecutionEvidenceSource = "prestate_tracer"
+	TransactionExecutionEvidenceSourceRootTraceCodeObservation TransactionExecutionEvidenceSource = "root_trace_code_observation"
+	TransactionExecutionEvidenceSourceUnavailable              TransactionExecutionEvidenceSource = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionExecutionEvidenceSource enum.
+func (e TransactionExecutionEvidenceSource) Valid() bool {
+	switch e {
+	case TransactionExecutionEvidenceSourcePrestateTracer:
+		return true
+	case TransactionExecutionEvidenceSourceRootTraceCodeObservation:
+		return true
+	case TransactionExecutionEvidenceSourceUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionExecutionResolution.
+const (
+	TransactionExecutionResolutionDirect          TransactionExecutionResolution = "direct"
+	TransactionExecutionResolutionEip7702Delegate TransactionExecutionResolution = "eip7702_delegate"
+	TransactionExecutionResolutionEmpty           TransactionExecutionResolution = "empty"
+	TransactionExecutionResolutionUnavailable     TransactionExecutionResolution = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionExecutionResolution enum.
+func (e TransactionExecutionResolution) Valid() bool {
+	switch e {
+	case TransactionExecutionResolutionDirect:
+		return true
+	case TransactionExecutionResolutionEip7702Delegate:
+		return true
+	case TransactionExecutionResolutionEmpty:
+		return true
+	case TransactionExecutionResolutionUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionFailureState.
 const (
 	TransactionFailureStateComplete    TransactionFailureState = "complete"
@@ -4322,7 +4367,7 @@ type TransactionCalldata struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ChainId   Quantity                    `json:"chain_id"`
 	Decoding  TransactionCalldataDecoding `json:"decoding"`
-	Execution TraceExecution              `json:"execution"`
+	Execution TransactionExecution        `json:"execution"`
 	Input     string                      `json:"input"`
 	State     TransactionCalldataState    `json:"state"`
 
@@ -4381,6 +4426,26 @@ type TransactionCalldataResponse struct {
 type TransactionDetail struct {
 	union json.RawMessage
 }
+
+// TransactionExecution defines model for TransactionExecution.
+type TransactionExecution struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	CodeHash *Hash `json:"code_hash,omitempty"`
+
+	// ContextAddress A 20-byte address; responses use the EIP-55 checksum form.
+	ContextAddress Address                            `json:"context_address"`
+	EvidenceSource TransactionExecutionEvidenceSource `json:"evidence_source"`
+	Resolution     TransactionExecutionResolution     `json:"resolution"`
+}
+
+// TransactionExecutionEvidenceSource defines model for TransactionExecution.EvidenceSource.
+type TransactionExecutionEvidenceSource string
+
+// TransactionExecutionResolution defines model for TransactionExecution.Resolution.
+type TransactionExecutionResolution string
 
 // TransactionFailure defines model for TransactionFailure.
 type TransactionFailure struct {

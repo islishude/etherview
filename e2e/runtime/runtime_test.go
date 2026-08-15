@@ -282,68 +282,6 @@ func TestNormalizeAnvilClearedDelegations(t *testing.T) {
 	}
 }
 
-func TestNormalizeAnvilDelegationCodeEvidence(t *testing.T) {
-	delegate := "0x0000000000000000000000000000000000000002"
-	payload := map[string]any{
-		"result": map[string]any{
-			"pre": map[string]any{},
-			"post": map[string]any{
-				"0x0000000000000000000000000000000000000001": map[string]any{
-					"nonce": "0x1", "code": "0xef01000000000000000000000000000000000000000002",
-				},
-			},
-		},
-	}
-	if got := normalizeAnvilDelegationCodeEvidence(payload); got != 1 {
-		t.Fatalf("normalized delegate accounts = %d, want 1", got)
-	}
-	result := payload["result"].(map[string]any)
-	pre := result["pre"].(map[string]any)
-	account, ok := pre[delegate].(map[string]any)
-	if !ok || account["code"] != noCBORRuntimeBytecode {
-		t.Fatalf("delegate code evidence = %#v", pre[delegate])
-	}
-}
-
-func TestNormalizeAnvilDelegatedAuthorityEvidence(t *testing.T) {
-	authority := "0x0000000000000000000000000000000000000001"
-	delegate := common.HexToAddress("0x0000000000000000000000000000000000000002")
-	targetHash := "0x1111111111111111111111111111111111111111111111111111111111111111"
-	otherHash := "0x2222222222222222222222222222222222222222222222222222222222222222"
-	payload := map[string]any{
-		"result": []any{
-			map[string]any{
-				"txHash": otherHash,
-				"result": map[string]any{"pre": map[string]any{}, "post": map[string]any{}},
-			},
-			map[string]any{
-				"txHash": targetHash,
-				"result": map[string]any{"pre": map[string]any{}, "post": map[string]any{}},
-			},
-		},
-	}
-	if got := normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
-		payload, targetHash, authority, delegate.Hex(),
-	); got != 1 {
-		t.Fatalf("normalized delegated authorities = %d, want 1", got)
-	}
-	items := payload["result"].([]any)
-	other := items[0].(map[string]any)["result"].(map[string]any)
-	if _, contaminated := other["pre"].(map[string]any)[authority]; contaminated {
-		t.Fatalf("non-target block trace item was modified: %#v", other)
-	}
-	result := items[1].(map[string]any)["result"].(map[string]any)
-	pre := result["pre"].(map[string]any)
-	account := pre[authority].(map[string]any)
-	if account["code"] != hexutil.Encode(types.AddressToDelegation(delegate)) {
-		t.Fatalf("delegated authority evidence = %#v", account)
-	}
-	request := []byte(`{"jsonrpc":"2.0","method":"debug_traceBlockByHash","params":["0x01",{}]}`)
-	if got := rpcRequestMethod(request); got != "debug_traceBlockByHash" {
-		t.Fatalf("JSON-RPC request method = %q", got)
-	}
-}
-
 func TestRuntimeTLSKeyPairPermissions(t *testing.T) {
 	certificateFile, keyFile, _ := writeRuntimeTLSKeyPair(t)
 	for _, filename := range []string{certificateFile, keyFile} {
@@ -478,9 +416,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			t.Fatal(err)
 		}
 		h.initializeFixture(ctx)
-		h.rpcProxy = startReceiptProxy(
-			t, "http://"+binding, h.fixture.authority, h.fixture.delegateA,
-		)
+		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
 		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
@@ -570,9 +506,6 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			t.Fatalf("canonical delegation receipt status = %s, want 0x1", delegationReceipt.Status)
 		}
 		h.waitCanonical(ctx, 2, replacement.Hash)
-		if h.rpcProxy.delegationCode.Load() == 0 {
-			t.Fatal("RPC fixture adapter did not restore Anvil's omitted delegate code evidence")
-		}
 		h.assertCurrentDelegation(ctx, h.fixture.delegateB)
 		h.assertCanonicalDelegationHistory(ctx, []string{"delegated"}, []string{h.fixture.delegationHash})
 		h.insertRuntimeCompoundSignature(ctx)
@@ -595,7 +528,6 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			common.HexToAddress(h.fixture.authority),
 			common.FromHex("0x3fa4f245"),
 		)
-		h.rpcProxy.delegatedCallHash.Store(strings.ToLower(h.fixture.delegatedCallHash))
 		h.mine(ctx, h.baseTimestamp+13)
 		delegatedBlock := h.latestBlock(ctx)
 		delegatedHeight := mustDecodeUint64(t, delegatedBlock.Number)
@@ -617,9 +549,6 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			}
 		}
 		h.assertCurrentDelegation(ctx, h.fixture.delegateA)
-		if h.rpcProxy.delegatedAuthority.Load() == 0 {
-			t.Fatal("RPC fixture adapter did not restore Anvil's omitted delegated authority code")
-		}
 
 		h.fixture.clearingAuth = h.signAuthorization(h.fixture.authorityKey, common.Address{}, 2)
 		h.fixture.clearingHash = h.sendSetCodeTransaction(
@@ -1352,7 +1281,7 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.compoundHash+"/calldata", &compoundCalldata)
 	compoundInputs := compoundCalldata.Data.Decoding.Inputs
 	if compoundCalldata.Data.Input != runtimeCompoundCalldata ||
-		compoundCalldata.Data.Execution.Resolution != gen.TraceExecutionResolutionDirect ||
+		compoundCalldata.Data.Execution.Resolution != gen.TransactionExecutionResolutionDirect ||
 		compoundCalldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusDecoded ||
 		compoundCalldata.Data.Decoding.Signature == nil ||
 		*compoundCalldata.Data.Decoding.Signature != runtimeCompoundSignature ||
@@ -1371,7 +1300,7 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	var nativeCalldata gen.TransactionCalldataResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/calldata", &nativeCalldata)
 	if nativeCalldata.Data.Input != "0x" ||
-		nativeCalldata.Data.Execution.Resolution != gen.TraceExecutionResolutionEmpty ||
+		nativeCalldata.Data.Execution.Resolution != gen.TransactionExecutionResolutionEmpty ||
 		!strings.EqualFold(string(nativeCalldata.Data.Execution.ContextAddress), nativeTransferTarget) ||
 		nativeCalldata.Data.Execution.Address != nil || nativeCalldata.Data.Execution.CodeHash != nil ||
 		nativeCalldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusNotApplicable {
@@ -1534,17 +1463,31 @@ func (h *harness) captureEIP7702API(ctx context.Context) eip7702APISnapshot {
 	}
 
 	delegatedCalls := []struct {
-		hash     string
-		delegate string
+		hash           string
+		delegate       string
+		evidenceSource gen.TransactionExecutionEvidenceSource
 	}{
-		{hash: h.fixture.delegationHash, delegate: h.fixture.delegateB},
-		{hash: h.fixture.redelegationHash, delegate: h.fixture.delegateA},
-		{hash: h.fixture.delegatedCallHash, delegate: h.fixture.delegateA},
+		{
+			hash:           h.fixture.delegationHash,
+			delegate:       h.fixture.delegateB,
+			evidenceSource: gen.TransactionExecutionEvidenceSourceRootTraceCodeObservation,
+		},
+		{
+			hash:           h.fixture.redelegationHash,
+			delegate:       h.fixture.delegateA,
+			evidenceSource: gen.TransactionExecutionEvidenceSourceRootTraceCodeObservation,
+		},
+		{
+			hash:           h.fixture.delegatedCallHash,
+			delegate:       h.fixture.delegateA,
+			evidenceSource: gen.TransactionExecutionEvidenceSourcePrestateTracer,
+		},
 	}
 	for _, call := range delegatedCalls {
 		var response gen.TransactionCalldataResponse
 		h.mustGetJSON(ctx, "/api/v1/transactions/"+call.hash+"/calldata", &response)
-		if response.Data.Execution.Resolution != gen.TraceExecutionResolutionEip7702Delegate ||
+		if response.Data.Execution.Resolution != gen.TransactionExecutionResolutionEip7702Delegate ||
+			response.Data.Execution.EvidenceSource != call.evidenceSource ||
 			!strings.EqualFold(string(response.Data.Execution.ContextAddress), h.fixture.authority) ||
 			response.Data.Execution.Address == nil ||
 			!strings.EqualFold(string(*response.Data.Execution.Address), call.delegate) {
@@ -1616,37 +1559,24 @@ type rpcReceipt struct {
 }
 
 type receiptProxy struct {
-	upstream           string
-	authority          string
-	delegate           string
-	listener           net.Listener
-	server             *http.Server
-	client             *http.Client
-	normalized         atomic.Uint64
-	clearedDelegation  atomic.Uint64
-	delegationCode     atomic.Uint64
-	delegatedAuthority atomic.Uint64
-	delegatedCallHash  atomic.Value
-	blockTraceCalls    atomic.Uint64
-	transactionTraces  atomic.Uint64
+	upstream          string
+	listener          net.Listener
+	server            *http.Server
+	client            *http.Client
+	normalized        atomic.Uint64
+	clearedDelegation atomic.Uint64
+	blockTraceCalls   atomic.Uint64
+	transactionTraces atomic.Uint64
 }
 
-func startReceiptProxy(t *testing.T, upstream string, eip7702Identity ...string) *receiptProxy {
+func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
 	t.Helper()
-	if len(eip7702Identity) != 0 && len(eip7702Identity) != 2 {
-		t.Fatalf("EIP-7702 RPC fixture identity has %d fields, want 0 or 2", len(eip7702Identity))
-	}
-	authority, delegate := "", ""
-	if len(eip7702Identity) == 2 {
-		authority, delegate = eip7702Identity[0], eip7702Identity[1]
-	}
 	listener, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := &receiptProxy{
-		upstream: upstream, authority: strings.ToLower(authority), delegate: delegate,
-		listener: listener,
+		upstream: upstream, listener: listener,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -1654,7 +1584,6 @@ func startReceiptProxy(t *testing.T, upstream string, eip7702Identity ...string)
 			},
 		},
 	}
-	proxy.delegatedCallHash.Store("")
 	proxy.server = &http.Server{
 		Handler:           proxy,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -1724,12 +1653,6 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	p.normalized.Add(normalizeAnvilReceipts(payload))
-	if requestMethod == "debug_traceBlockByHash" {
-		p.delegatedAuthority.Add(normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
-			payload, p.delegatedCallHash.Load().(string), p.authority, p.delegate,
-		))
-	}
-	p.delegationCode.Add(normalizeAnvilDelegationCodeEvidence(payload))
 	p.clearedDelegation.Add(normalizeAnvilClearedDelegations(payload))
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -1740,76 +1663,6 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	_, _ = writer.Write(encoded)
 }
 
-func normalizeAnvilDelegatedAuthorityEvidence(value any, authority, delegate string) uint64 {
-	switch typed := value.(type) {
-	case []any:
-		var normalized uint64
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegatedAuthorityEvidence(item, authority, delegate)
-		}
-		return normalized
-	case map[string]any:
-		var normalized uint64
-		pre, hasPre := typed["pre"].(map[string]any)
-		_, hasPost := typed["post"].(map[string]any)
-		if hasPre && hasPost {
-			account, present := pre[authority].(map[string]any)
-			if !present {
-				account = map[string]any{}
-				pre[authority] = account
-			}
-			_, hasCode := account["code"]
-			if !hasCode {
-				account["code"] = hexutil.Encode(types.AddressToDelegation(common.HexToAddress(delegate)))
-				normalized++
-			}
-		}
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegatedAuthorityEvidence(item, authority, delegate)
-		}
-		return normalized
-	default:
-		return 0
-	}
-}
-
-func normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
-	value any,
-	targetHash string,
-	authority string,
-	delegate string,
-) uint64 {
-	if !common.IsHexHash(targetHash) {
-		return 0
-	}
-	switch typed := value.(type) {
-	case []any:
-		var normalized uint64
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
-				item, targetHash, authority, delegate,
-			)
-		}
-		return normalized
-	case map[string]any:
-		if transactionHash, present := typed["txHash"].(string); present {
-			if !strings.EqualFold(transactionHash, targetHash) {
-				return 0
-			}
-			return normalizeAnvilDelegatedAuthorityEvidence(typed["result"], authority, delegate)
-		}
-		var normalized uint64
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegatedAuthorityEvidenceForTransaction(
-				item, targetHash, authority, delegate,
-			)
-		}
-		return normalized
-	default:
-		return 0
-	}
-}
-
 func rpcRequestMethod(body []byte) string {
 	var request struct {
 		Method string `json:"method"`
@@ -1818,52 +1671,6 @@ func rpcRequestMethod(body []byte) string {
 		return ""
 	}
 	return request.Method
-}
-
-func normalizeAnvilDelegationCodeEvidence(value any) uint64 {
-	switch typed := value.(type) {
-	case []any:
-		var normalized uint64
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegationCodeEvidence(item)
-		}
-		return normalized
-	case map[string]any:
-		var normalized uint64
-		pre, hasPre := typed["pre"].(map[string]any)
-		post, hasPost := typed["post"].(map[string]any)
-		if hasPre && hasPost {
-			delegates := make(map[string]struct{})
-			for _, accounts := range []map[string]any{pre, post} {
-				for _, value := range accounts {
-					account, ok := value.(map[string]any)
-					code, hasCode := account["code"].(string)
-					decoded := common.FromHex(code)
-					if ok && hasCode && len(decoded) == 23 && bytes.Equal(decoded[:3], []byte{0xef, 0x01, 0x00}) {
-						delegates[strings.ToLower(common.BytesToAddress(decoded[3:]).Hex())] = struct{}{}
-					}
-				}
-			}
-			for delegate := range delegates {
-				if delegate == strings.ToLower((common.Address{}).Hex()) {
-					continue
-				}
-				if _, exists := pre[delegate]; !exists {
-					// Anvil v1.7.1 omits the account whose code an EIP-7702
-					// delegation executes. Both delegates in this fixture are
-					// deployed and verified against this exact runtime code.
-					pre[delegate] = map[string]any{"code": noCBORRuntimeBytecode}
-					normalized++
-				}
-			}
-		}
-		for _, item := range typed {
-			normalized += normalizeAnvilDelegationCodeEvidence(item)
-		}
-		return normalized
-	default:
-		return 0
-	}
 }
 
 func normalizeAnvilClearedDelegations(value any) uint64 {

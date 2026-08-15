@@ -3203,6 +3203,23 @@ components:
         resolution:
           type: string
           enum: [direct, eip7702_delegate, empty, unavailable, not_applicable]
+    TransactionExecution:
+      type: object
+      additionalProperties: false
+      required: [context_address, resolution, evidence_source]
+      properties:
+        context_address:
+          $ref: "#/components/schemas/Address"
+        address:
+          $ref: "#/components/schemas/Address"
+        code_hash:
+          $ref: "#/components/schemas/Hash"
+        resolution:
+          type: string
+          enum: [direct, eip7702_delegate, empty, unavailable]
+        evidence_source:
+          type: string
+          enum: [prestate_tracer, root_trace_code_observation, unavailable]
     ABIValue:
       type: object
       additionalProperties: false
@@ -3552,7 +3569,7 @@ components:
               type: string
               pattern: '^0x[0-9a-fA-F]*$'
             execution:
-              $ref: "#/components/schemas/TraceExecution"
+              $ref: "#/components/schemas/TransactionExecution"
             decoding:
               $ref: "#/components/schemas/TransactionCalldataDecoding"
     TransactionCalldataDecoding:

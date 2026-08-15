@@ -241,10 +241,12 @@ func TestABIRegistryDecodesAnonymousEventWithoutSignatureTopic(t *testing.T) {
 	}
 }
 
-func TestABIRegistryIsolatesTargetCodeRangeAndFork(t *testing.T) {
+func TestABIRegistryIsolatesTransactionTargetCodeRangeAndFork(t *testing.T) {
 	t.Parallel()
 	registry := NewABIRegistry()
 	identity := testABIIdentity(20, 200, 2000)
+	identity.TransactionHash = uintWord(2001)
+	identity.TransactionIndex = 2
 	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(tokenABI)); err != nil {
 		t.Fatal(err)
 	}
@@ -257,6 +259,8 @@ func TestABIRegistryIsolatesTargetCodeRangeAndFork(t *testing.T) {
 		{ChainID: identity.ChainID, Address: identity.Address, CodeHash: uintWord(201), BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash},
 		{ChainID: identity.ChainID, Address: identity.Address, CodeHash: identity.CodeHash, BlockNumber: identity.BlockNumber, BlockHash: uintWord(2001)},
 		{ChainID: identity.ChainID, Address: identity.Address, CodeHash: identity.CodeHash, BlockNumber: identity.BlockNumber + 1, BlockHash: identity.BlockHash},
+		{ChainID: identity.ChainID, Address: identity.Address, CodeHash: identity.CodeHash, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash, TransactionHash: uintWord(2002), TransactionIndex: identity.TransactionIndex},
+		{ChainID: identity.ChainID, Address: identity.Address, CodeHash: identity.CodeHash, BlockNumber: identity.BlockNumber, BlockHash: identity.BlockHash, TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex + 1},
 	}
 	for _, other := range variants {
 		if result := registry.DecodeCalldata(other, calldata); result.Status != DecodeUnknown {
@@ -393,7 +397,7 @@ func TestABIRegistryRetainsValidatedCalldataParameterStructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bytes.Contains(stored, []byte("internalType")) || bytes.Contains(stored, []byte("components")) {
-		t.Fatalf("abi@3 persisted value shape changed: %s", stored)
+		t.Fatalf("abi@4 persisted value shape changed: %s", stored)
 	}
 }
 

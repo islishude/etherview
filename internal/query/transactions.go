@@ -333,24 +333,58 @@ ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
 LIMIT $3`
 
 const transactionMethodJoinsSQL = `
-LEFT JOIN transaction_execution_code_resolutions AS execution
-  ON execution.chain_id = inclusion.chain_id
- AND execution.block_number = inclusion.block_number
- AND execution.block_hash = inclusion.block_hash
- AND execution.transaction_hash = inclusion.tx_hash
- AND execution.transaction_index = inclusion.tx_index
- AND execution.context_address = decode(substring(inclusion.raw->>'to' from 3), 'hex')
- AND execution.canonical
- AND EXISTS (
-     SELECT 1
-     FROM published_block_stage_results AS published_state_diff
-     WHERE published_state_diff.chain_id = execution.chain_id
-       AND published_state_diff.block_number = execution.block_number
-       AND published_state_diff.block_hash = execution.block_hash
-       AND published_state_diff.stage = 'state_diff'
-       AND published_state_diff.stage_version = 3
-       AND published_state_diff.state = 'complete'
- )
+LEFT JOIN LATERAL (
+    WITH published_abi AS (
+        SELECT 1
+        FROM published_block_stage_results
+        WHERE chain_id = inclusion.chain_id
+          AND block_number = inclusion.block_number
+          AND block_hash = inclusion.block_hash
+          AND stage = 'abi'
+          AND stage_version = 4
+          AND state = 'complete'
+    ), candidates AS (
+        SELECT effective.resolution, effective.execution_address,
+               effective.execution_code_hash, 1 AS priority
+        FROM transaction_effective_execution_identities AS effective
+        WHERE effective.chain_id = inclusion.chain_id
+          AND effective.block_number = inclusion.block_number
+          AND effective.block_hash = inclusion.block_hash
+          AND effective.transaction_hash = inclusion.tx_hash
+          AND effective.transaction_index = inclusion.tx_index
+          AND effective.context_address =
+              decode(substring(inclusion.raw->>'to' from 3), 'hex')
+          AND effective.canonical
+          AND EXISTS (SELECT 1 FROM published_abi)
+        UNION ALL
+        SELECT raw.resolution, raw.execution_address,
+               raw.execution_code_hash, 2 AS priority
+        FROM transaction_execution_code_resolutions AS raw
+        WHERE raw.chain_id = inclusion.chain_id
+          AND raw.block_number = inclusion.block_number
+          AND raw.block_hash = inclusion.block_hash
+          AND raw.transaction_hash = inclusion.tx_hash
+          AND raw.transaction_index = inclusion.tx_index
+          AND raw.context_address =
+              decode(substring(inclusion.raw->>'to' from 3), 'hex')
+          AND raw.canonical
+          AND NOT EXISTS (SELECT 1 FROM published_abi)
+          AND EXISTS (
+              SELECT 1
+              FROM published_block_stage_results AS published_state_diff
+              WHERE published_state_diff.chain_id = raw.chain_id
+                AND published_state_diff.block_number = raw.block_number
+                AND published_state_diff.block_hash = raw.block_hash
+                AND published_state_diff.stage = 'state_diff'
+                AND published_state_diff.stage_version = 3
+                AND published_state_diff.state = 'complete'
+          )
+    )
+    SELECT resolution, execution_address, execution_code_hash
+    FROM candidates
+    ORDER BY priority
+    LIMIT 1
+) AS execution ON TRUE
 LEFT JOIN abi_decodings AS decoding
   ON decoding.chain_id = inclusion.chain_id
  AND decoding.block_number = inclusion.block_number
@@ -369,7 +403,7 @@ LEFT JOIN abi_decodings AS decoding
        AND published_abi.block_number = decoding.block_number
        AND published_abi.block_hash = decoding.block_hash
        AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 3
+       AND published_abi.stage_version = 4
        AND published_abi.state = 'complete'
  )`
 

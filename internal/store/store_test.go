@@ -21,6 +21,7 @@ func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testi
 		"uups_implementation_observations",
 		"diamond_loupe_snapshots",
 		"diamond_cut_events",
+		"transaction_effective_execution_identities",
 	} {
 		if slices.Contains(derivedCanonicalRelations[:], relation) {
 			continue
@@ -316,7 +317,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL, geasVerificationSQL, selectorIndexSQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL, geasVerificationSQL, selectorIndexSQL, effectiveExecutionSQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -347,6 +348,19 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			geasVerificationSQL = migration.SQL
 		case "0046_verified_function_selectors":
 			selectorIndexSQL = migration.SQL
+		case "0048_transaction_effective_execution_identity":
+			effectiveExecutionSQL = migration.SQL
+		}
+	}
+	for _, fragment := range []string{
+		"transaction_inclusions_position_hash_key",
+		"CREATE TABLE IF NOT EXISTS transaction_effective_execution_identities",
+		"root_trace_code_observation",
+		"PARTITION BY RANGE (block_number)",
+		"root_trace_path = ''",
+	} {
+		if !strings.Contains(effectiveExecutionSQL, fragment) {
+			t.Errorf("effective execution identity migration missing %q", fragment)
 		}
 	}
 	for _, fragment := range []string{

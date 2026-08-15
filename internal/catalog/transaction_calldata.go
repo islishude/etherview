@@ -84,7 +84,10 @@ func (catalog *Postgres) TransactionCalldata(
 		Input:    "0x" + hex.EncodeToString(wire.Data()),
 		Decoding: TransactionCalldataDecoding{Inputs: []TransactionCalldataInput{}, Candidates: []string{}},
 	}
-	if err := catalog.loadTransactionExecution(ctx, tx, chainID, blockNumberText, blockHash, transactionHash, *wire.To(), &result); err != nil {
+	if err := catalog.loadTransactionExecution(
+		ctx, tx, chainID, blockNumberText, blockHash, transactionHash,
+		transactionIndex, *wire.To(), &result,
+	); err != nil {
 		return TransactionCalldata{}, err
 	}
 	if result.Execution.Resolution == "empty" {
@@ -253,17 +256,19 @@ func (catalog *Postgres) loadTransactionExecution(
 	tx *sql.Tx,
 	chainID, blockNumber string,
 	blockHash, transactionHash []byte,
+	transactionIndex int64,
 	contextAddress common.Address,
 	result *TransactionCalldata,
 ) error {
 	var storedContext, executionAddress, executionCodeHash []byte
 	var resolution, evidenceSource string
 	err := tx.QueryRowContext(ctx, transactionCalldataExecutionSQL,
-		chainID, blockNumber, blockHash, transactionHash, contextAddress[:],
+		chainID, blockNumber, blockHash, transactionHash, contextAddress[:], transactionIndex,
 	).Scan(&storedContext, &executionAddress, &executionCodeHash, &resolution, &evidenceSource)
 	if errors.Is(err, sql.ErrNoRows) {
-		result.Execution = TraceExecution{
+		result.Execution = TransactionExecution{
 			ContextAddress: contextAddress.Hex(), Resolution: "unavailable",
+			EvidenceSource: "unavailable",
 		}
 		return nil
 	}
@@ -273,7 +278,10 @@ func (catalog *Postgres) loadTransactionExecution(
 	if len(storedContext) != common.AddressLength || common.BytesToAddress(storedContext) != contextAddress {
 		return ErrCorruptData
 	}
-	result.Execution = TraceExecution{ContextAddress: contextAddress.Hex(), Resolution: resolution}
+	result.Execution = TransactionExecution{
+		ContextAddress: contextAddress.Hex(), Resolution: resolution,
+		EvidenceSource: evidenceSource,
+	}
 	if len(executionAddress) != 0 {
 		if len(executionAddress) != common.AddressLength {
 			return ErrCorruptData
@@ -286,13 +294,34 @@ func (catalog *Postgres) loadTransactionExecution(
 		}
 		result.Execution.CodeHash = common.BytesToHash(executionCodeHash).Hex()
 	}
-	if !validTraceExecution(&result.Execution) ||
+	if !validTransactionExecution(&result.Execution) ||
 		resolution == "direct" && result.Execution.Address != result.Execution.ContextAddress ||
-		resolution != "unavailable" && evidenceSource != "prestate_tracer" ||
+		resolution == "direct" && evidenceSource != "prestate_tracer" ||
+		resolution == "eip7702_delegate" &&
+			evidenceSource != "prestate_tracer" && evidenceSource != "root_trace_code_observation" ||
+		resolution == "empty" &&
+			evidenceSource != "prestate_tracer" && evidenceSource != "root_trace_code_observation" ||
 		resolution == "unavailable" && evidenceSource != "unavailable" {
 		return ErrCorruptData
 	}
 	return nil
+}
+
+func validTransactionExecution(value *TransactionExecution) bool {
+	if value == nil || !common.IsHexAddress(value.ContextAddress) {
+		return false
+	}
+	switch value.Resolution {
+	case "direct", "eip7702_delegate":
+		return common.IsHexAddress(value.Address) && len(value.CodeHash) == 66
+	case "empty":
+		return value.Address == "" && value.CodeHash == ""
+	case "unavailable":
+		return value.CodeHash == "" &&
+			(value.Address == "" || common.IsHexAddress(value.Address))
+	default:
+		return false
+	}
 }
 
 func (catalog *Postgres) decodeTransactionCalldata(
@@ -324,8 +353,9 @@ func (catalog *Postgres) decodeTransactionCalldata(
 		}
 	}
 
-	registryResult, err := loadTraceRegistry(
-		ctx, tx, result.Identity.ChainID, blockNumber, blockHash, executionAddress,
+	registryResult, err := loadTraceRegistryForCodeHash(
+		ctx, tx, result.Identity.ChainID, blockNumber, blockHash,
+		executionAddress, executionCodeHash,
 	)
 	if err != nil {
 		return err
@@ -490,14 +520,47 @@ WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
 LIMIT 1`
 
 const transactionCalldataExecutionSQL = `
-SELECT context_address, execution_address, execution_code_hash, resolution, evidence_source
-FROM transaction_execution_code_resolutions
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND transaction_hash = $4
-  AND context_address = $5
-  AND canonical`
+WITH published_abi AS (
+    SELECT 1
+    FROM published_block_stage_results
+    WHERE chain_id = $1::numeric
+      AND block_number = $2::numeric
+      AND block_hash = $3
+      AND stage = 'abi'
+      AND stage_version = 4
+      AND state = 'complete'
+), selected AS (
+    SELECT effective.context_address, effective.execution_address,
+           effective.execution_code_hash, effective.resolution,
+           effective.evidence_source, 1 AS priority
+    FROM transaction_effective_execution_identities AS effective
+    WHERE effective.chain_id = $1::numeric
+      AND effective.block_number = $2::numeric
+      AND effective.block_hash = $3
+      AND effective.transaction_hash = $4
+      AND effective.context_address = $5
+	  AND effective.transaction_index = $6
+      AND effective.canonical
+      AND EXISTS (SELECT 1 FROM published_abi)
+    UNION ALL
+    SELECT raw.context_address, raw.execution_address,
+           raw.execution_code_hash, raw.resolution,
+           raw.evidence_source, 2 AS priority
+    FROM transaction_execution_code_resolutions AS raw
+    WHERE raw.chain_id = $1::numeric
+      AND raw.block_number = $2::numeric
+      AND raw.block_hash = $3
+      AND raw.transaction_hash = $4
+      AND raw.context_address = $5
+	  AND raw.transaction_index = $6
+      AND raw.canonical
+      AND NOT EXISTS (SELECT 1 FROM published_abi)
+)
+SELECT context_address, execution_address, execution_code_hash,
+       resolution, evidence_source
+FROM selected
+ORDER BY priority
+LIMIT 1`
 
 const transactionCalldataDecodingSQL = `
 SELECT decoding.status, decoding.signature, decoding.source, decoding.confidence,
@@ -521,7 +584,7 @@ WHERE decoding.chain_id = $1::numeric
         AND published.block_number = decoding.block_number
         AND published.block_hash = decoding.block_hash
         AND published.stage = 'abi'
-        AND published.stage_version = 3
+        AND published.stage_version = 4
         AND published.state = 'complete'
   )`
 

@@ -46,11 +46,13 @@ func (source ABISource) persistent() bool {
 // BlockHash deliberately participates in the identity: two forks at the same
 // height must never share candidates through an in-process registry.
 type ABIIdentity struct {
-	ChainID     string
-	Address     common.Address
-	CodeHash    common.Hash
-	BlockNumber uint64
-	BlockHash   common.Hash
+	ChainID          string
+	Address          common.Address
+	CodeHash         common.Hash
+	BlockNumber      uint64
+	BlockHash        common.Hash
+	TransactionHash  common.Hash
+	TransactionIndex uint64
 }
 
 func (identity ABIIdentity) validate() error {
@@ -186,7 +188,7 @@ type DecodedArgument struct {
 
 // DecodedParameter is the validated recursive ABI shape selected for a
 // decoded value. It is intentionally excluded from persisted DecodedArgument
-// JSON so abi@3 storage remains value-only; exact readers rebuild this shape
+// JSON so abi@4 storage remains value-only; exact readers rebuild this shape
 // from the block-bound ABI candidate that decoded the calldata.
 type DecodedParameter struct {
 	Name         string

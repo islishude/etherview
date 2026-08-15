@@ -495,8 +495,9 @@ func TestTransactionCalldataExposesExactDelegatedExecution(t *testing.T) {
 			TransactionHash: hash, TransactionIndex: "3", State: catalog.StageComplete,
 		},
 		Input: "0x55241077",
-		Execution: catalog.TraceExecution{
-			ContextAddress: authority, Address: delegate, CodeHash: codeHash, Resolution: "eip7702_delegate",
+		Execution: catalog.TransactionExecution{
+			ContextAddress: authority, Address: delegate, CodeHash: codeHash,
+			Resolution: "eip7702_delegate", EvidenceSource: "root_trace_code_observation",
 		},
 		Decoding: catalog.TransactionCalldataDecoding{
 			Status: "decoded", FunctionName: "setValue", Signature: "setValue(uint256,(address,uint16[]))",
@@ -527,7 +528,9 @@ func TestTransactionCalldataExposesExactDelegatedExecution(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Data.Execution.Resolution != "eip7702_delegate" || response.Data.Execution.Address == nil ||
+	if response.Data.Execution.Resolution != "eip7702_delegate" ||
+		response.Data.Execution.EvidenceSource != "root_trace_code_observation" ||
+		response.Data.Execution.Address == nil ||
 		*response.Data.Execution.Address != delegate || response.Data.Decoding.Signature == nil ||
 		*response.Data.Decoding.Signature != "setValue(uint256,(address,uint16[]))" ||
 		len(response.Data.Decoding.Inputs) != 2 || response.Data.Decoding.Inputs[0].Components == nil ||

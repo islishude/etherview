@@ -2281,7 +2281,7 @@ export interface components {
         };
         TransactionCalldata: components["schemas"]["TransactionSubresourceIdentity"] & {
             decoding: components["schemas"]["TransactionCalldataDecoding"];
-            execution: components["schemas"]["TraceExecution"];
+            execution: components["schemas"]["TransactionExecution"];
             input: string;
         };
         TransactionCalldataDecoding: {
@@ -2314,6 +2314,15 @@ export interface components {
             meta: components["schemas"]["Meta"];
         };
         TransactionDetail: components["schemas"]["IncludedTransactionDetail"] | components["schemas"]["PendingTransactionDetail"] | components["schemas"]["ReplacedTransactionDetail"];
+        TransactionExecution: {
+            address?: components["schemas"]["Address"];
+            code_hash?: components["schemas"]["Hash"];
+            context_address: components["schemas"]["Address"];
+            /** @enum {string} */
+            evidence_source: "prestate_tracer" | "root_trace_code_observation" | "unavailable";
+            /** @enum {string} */
+            resolution: "direct" | "eip7702_delegate" | "empty" | "unavailable";
+        };
         TransactionFailure: components["schemas"]["TransactionSubresourceIdentity"] & {
             decoding: components["schemas"]["TransactionFailureDecoding"];
             error: string;
