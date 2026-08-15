@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/verifiedselector"
 )
 
 func (repository *PostgresRepository) SubmitV2(
@@ -387,6 +388,22 @@ func (repository *PostgresRepository) CompleteV2(
 			); err != nil {
 				return fmt.Errorf("publish authenticated OpenZeppelin proxy artifact: %w", err)
 			}
+		}
+		var selectorABI []byte
+		if resultFields.ABI != nil {
+			encoded, ok := resultFields.ABI.(string)
+			if !ok {
+				return errors.New("verification ABI selector projection is invalid")
+			}
+			selectorABI = []byte(encoded)
+		}
+		if err := verifiedselector.Persist(ctx, tx, verifiedselector.Identity{
+			JobID: job.ID, RequestDigest: job.RequestDigest[:],
+			ChainID: strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+			Address: publicationAddress, CodeHash: publicationCodeHash,
+			ValidFromBlock: publicationBlockNumber,
+		}, selectorABI); err != nil {
+			return err
 		}
 		if err := repository.requestVerificationProxyReplayTx(
 			ctx, tx, job, publicationBlockNumber, publicationTarget,

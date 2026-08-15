@@ -70,7 +70,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   adds source-authenticated OpenZeppelin 5.6.1 interaction bindings fenced to
   the exact canonical proxy generation, runtime immutables, implementation and
   management code identities, shared Beacon/UUPS generation, code epoch, and
-  continuous interaction coverage. Reviewable commands and results remain in
+  continuous interaction coverage. P30-T17 atomically persists bounded
+  verified function-selector sets for every newly successful verification;
+  active-development migrations deliberately do not retain a legacy backfill
+  or compatibility readiness path. Reviewable commands and results remain in
   [P30 evidence](docs/plans/P30-contract-verification.md#evidence).
 - P40's existing native spec-first API, stable cursors, authenticated
   capability surfaces, durable event replay, and the explicit Etherscan V2
@@ -96,7 +99,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   directly on numeric withdrawal indexes, with exact block-identity cursors.
   P40-T17 projects global-list methods from exact canonical published
   execution identity and ABI results, with deterministic creation, native
-  transfer, selector, and short-calldata fallbacks.
+  transfer, selector, and short-calldata fallbacks. P40-T18 shares that
+  projection with address transactions and resolves verified selector entries,
+  same-code history, proxy routes, and Diamond routes without loading complete
+  ABI documents on list reads. P40-T19 also resolves exact verified-address
+  selectors when a completed state diff omits an unchanged direct-call target,
+  covering both transaction lists and the transaction calldata resource.
 - P50's established surface is complete: its core and capability explorer pages, exact
   verification-job and published-artifact reads, EIP-6963 wallet discovery,
   session-fenced
@@ -150,7 +158,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   transaction list, with full-signature disclosure and responsive overflow
   coverage. P50-T58 implements ascending semantic compiler-version ordering
   through the catalog API and verification page; its targeted, PostgreSQL,
-  browser, race, security, license, and deployment gates pass.
+  browser, race, security, license, and deployment gates pass. P50-T59 reuses
+  the compact bilingual Method cell in address Transactions only, with
+  full-signature disclosure and responsive/accessibility coverage.
 - P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps

@@ -475,13 +475,10 @@ export function TransactionsPage() {
                       {shorten(transaction.hash)}
                     </Link>
                   </td>
-                  <td className="transaction-method-cell">
-                    <code
-                      aria-label={transaction.method_signature ?? transaction.method ?? undefined}
-                      className="transaction-method"
-                      title={transaction.method_signature ?? transaction.method}
-                    >{transaction.method ?? "—"}</code>
-                  </td>
+                  <TransactionMethodCell
+                    method={transaction.method}
+                    signature={transaction.method_signature}
+                  />
                   <td>
                     {transaction.block_hash ? (
                       <Link to="/blocks/$blockID" params={{ blockID: transaction.block_hash }}>
@@ -1176,7 +1173,11 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
       ? { state: "loading" }
       : calldata.error !== null || calldata.data === undefined || !calldataIdentityCurrent
         ? { state: "unavailable" }
-        : { state: "current", resolution: calldata.data.execution.resolution };
+        : {
+            state: "current",
+            resolution: calldata.data.execution.resolution,
+            decoded: calldata.data.decoding.status === "decoded",
+          };
   const logIdentityCurrent = identityMatches(logs.data?.block_hash);
   const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
   const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
@@ -2297,6 +2298,7 @@ type TransactionActionEvidence =
   | {
       state: "current";
       resolution: TransactionCalldataResource["execution"]["resolution"];
+      decoded: boolean;
     };
 
 function transactionCalldataIdentityMatches(
@@ -2344,6 +2346,7 @@ function transactionActionLabel(
   if (!transaction.to) return t("detail.actionContractCreation");
   if (evidence.state === "loading") return t("detail.actionDetermining");
   if (evidence.state === "unavailable") return t("detail.actionUnavailable");
+  if (evidence.decoded) return t("detail.actionContractCall");
   if (evidence.resolution === "direct" || evidence.resolution === "eip7702_delegate") {
     return t("detail.actionContractCall");
   }
@@ -2913,7 +2916,12 @@ function AddressTransactions({
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
-        <AddressActivityTable label={t("addressTab.transactions")} nativeSymbol={nativeSymbol} status>
+        <AddressActivityTable
+          label={t("addressTab.transactions")}
+          method
+          nativeSymbol={nativeSymbol}
+          status
+        >
           {items.map((transaction) => {
             const destination = transaction.to ?? transaction.contract_address;
             return (
@@ -2923,6 +2931,10 @@ function AddressTransactions({
                   hash={transaction.hash}
                   timestamp={transaction.block_timestamp}
                   locale={locale}
+                  method={{
+                    value: transaction.method,
+                    signature: transaction.method_signature,
+                  }}
                 />
                 <td><TransactionStatusBadge transaction={transaction} /></td>
                 <AddressCell address={transaction.from} currentAddress={address} />
@@ -3207,6 +3219,7 @@ function AddressActivityTable({
   action,
   children,
   label,
+  method,
   nativeSymbol,
   status,
   token,
@@ -3214,6 +3227,7 @@ function AddressActivityTable({
   action?: boolean;
   children: React.ReactNode;
   label: string;
+  method?: boolean;
   nativeSymbol?: string;
   status?: boolean;
   token?: boolean;
@@ -3226,6 +3240,7 @@ function AddressActivityTable({
         <thead>
           <tr>
             <th>{t("table.hash")}</th>
+            {method ? <th>{t("table.method")}</th> : null}
             <th>{t("table.block")}</th>
             <th>{t("table.age")}</th>
             {status ? <th>{t("table.status")}</th> : null}
@@ -3251,11 +3266,13 @@ function ActivityIdentity({
   blockNumber,
   hash,
   locale,
+  method,
   timestamp,
 }: {
   blockNumber?: string;
   hash: string;
   locale: string;
+  method?: { value?: string; signature?: string };
   timestamp?: string;
 }) {
   return (
@@ -3265,6 +3282,7 @@ function ActivityIdentity({
           <code>{shorten(hash)}</code>
         </Link>
       </td>
+      {method ? <TransactionMethodCell method={method.value} signature={method.signature} /> : null}
       <td>
         {blockNumber ? (
           <Link to="/blocks/$blockID" params={{ blockID: blockNumber }}>
@@ -3274,6 +3292,25 @@ function ActivityIdentity({
       </td>
       <td>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</td>
     </>
+  );
+}
+
+function TransactionMethodCell({
+  method,
+  signature,
+}: {
+  method?: string;
+  signature?: string;
+}) {
+  const accessibleName = signature ?? method;
+  return (
+    <td className="transaction-method-cell">
+      <code
+        aria-label={accessibleName}
+        className="transaction-method"
+        title={accessibleName}
+      >{method ?? "—"}</code>
+    </td>
   );
 }
 

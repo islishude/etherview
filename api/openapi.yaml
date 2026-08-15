@@ -2365,14 +2365,15 @@ components:
           type: string
           maxLength: 4096
           description: >-
-            Transaction-list display method. GET /transactions always returns
-            this projection; other Transaction-bearing resources may omit it.
+            Transaction-list display method. GET /transactions and
+            GET /addresses/{address}/transactions always return this
+            projection; other Transaction-bearing resources may omit it.
         method_signature:
           type: string
           maxLength: 4096
           description: >-
             Full canonical ABI function signature when method came from one
-            uniquely decoded published calldata result.
+            uniquely decoded published or verified-selector calldata result.
         status:
           type: string
           enum: [pending, success, failed, unknown]

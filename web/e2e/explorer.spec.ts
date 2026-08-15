@@ -557,6 +557,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
 }) => {
   const transactionCursors: string[] = [];
   const addressWithdrawalRequests: string[] = [];
+  const calldataRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/transactions" && url.searchParams.has("cursor")) {
@@ -565,6 +566,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     if (url.pathname === `/api/v1/addresses/${address}/withdrawals`) {
       addressWithdrawalRequests.push(url.pathname);
     }
+    if (url.pathname.endsWith("/calldata")) calldataRequests.push(url.pathname);
   });
 
   await page.goto("/");
@@ -670,6 +672,30 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     `/address/${address}#code`,
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();
+  const addressMethod = page.getByLabel(
+    "valueWithAnIntentionallyLongMethodName(uint256,address)",
+  );
+  await expect(addressMethod).toHaveText("valueWithAnIntentionallyLongMethodName");
+  await addressMethod.hover();
+  await expect(addressMethod).toHaveAttribute(
+    "title",
+    "valueWithAnIntentionallyLongMethodName(uint256,address)",
+  );
+  await expect(addressMethod).toHaveCSS("text-overflow", "ellipsis");
+  const addressTransactionsScroller = page.locator(
+    '.table-scroll[aria-label="Transactions"]',
+  );
+  await addressTransactionsScroller.focus();
+  await expect(addressTransactionsScroller).toBeFocused();
+  const addressMethodOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(addressMethodOverflow).toBeLessThanOrEqual(1);
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.getByRole("columnheader", { name: "方法" })).toBeVisible();
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
+  expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(
@@ -678,6 +704,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Method" })).toHaveCount(0);
   expect(addressWithdrawalRequests).toEqual([]);
   const contractTab = page.getByRole("link", { name: "Contract", exact: true });
   await expect(contractTab).not.toHaveClass(/\bactive\b/);

@@ -8,6 +8,9 @@ when their detailed invariants are not repeated here.
 ## Coding Rule
 
 - Do not preserve backward compatibility.
+- During active development, migrations target the current fresh-database
+  schema. Do not add startup data backfills, legacy-schema adapters, or
+  compatibility readiness states unless the user explicitly requests them.
 - Choose the simplest implementation that fully meets the current requirements.
 - Prefer established, well-maintained libraries over custom implementations.
 - Make architectural decisions for the long term.

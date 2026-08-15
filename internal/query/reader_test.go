@@ -318,19 +318,19 @@ func TestTransactionsUseSnapshotBoundCompositeCursor(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{
 			contains: "inclusion.block_number <= $2::numeric",
-			columns:  columns(12),
+			columns:  columns(17),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1), "direct", "transfer(address,uint256)"},
-				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1), "empty", nil},
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), nil, nil},
+				{testTransactionRawAt(2, 3, 102, 1), testReceiptRawAt(2, 3, 102, 1, "0x1"), "2", testHashBytes(3), int64(1), testTransactionHashBytes(102), true, "1", "0", testBlockRaw(2, 3, 2, 1), true, "direct", testAddressBytes(1), testHashBytes(4), "transfer(address,uint256)", "verified", "verified"},
+				{testTransactionRawAt(2, 3, 101, 0), testReceiptRawAt(2, 3, 101, 0, "0x1"), "2", testHashBytes(3), int64(0), testTransactionHashBytes(101), true, "1", "0", testBlockRaw(2, 3, 2, 1), true, "empty", nil, nil, nil, nil, nil},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), false, nil, nil, nil, nil, nil, nil},
 			},
 		},
 		queryExpectation{contains: "SELECT EXISTS", columns: columns(1), rows: [][]driver.Value{{true}}},
 		queryExpectation{
 			contains: "inclusion.tx_index < $3",
-			columns:  columns(12),
+			columns:  columns(17),
 			rows: [][]driver.Value{
-				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), "eip7702_delegate", "setValue(uint256)"},
+				{testTransactionRawAt(1, 2, 100, 0), testReceiptRawAt(1, 2, 100, 0, "0x1"), "1", testHashBytes(2), int64(0), testTransactionHashBytes(100), true, "1", "0", testBlockRaw(1, 2, 1, 0), true, "eip7702_delegate", testAddressBytes(2), testHashBytes(5), "setValue(uint256)", "code_hash", "high"},
 			},
 		},
 	)
@@ -939,6 +939,12 @@ func testHash(value byte) string { return fmt.Sprintf("0x%064x", value) }
 
 func testHashBytes(value byte) []byte {
 	result := make([]byte, 32)
+	result[len(result)-1] = value
+	return result
+}
+
+func testAddressBytes(value byte) []byte {
+	result := make([]byte, common.AddressLength)
 	result[len(result)-1] = value
 	return result
 }

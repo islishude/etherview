@@ -91,7 +91,7 @@ func (r *PostgresReader) AddressTransactions(
 	defer rows.Close() //nolint:errcheck
 	records := make([]transactionRecord, 0, limit+1)
 	for rows.Next() {
-		record, scanErr := r.scanTransaction(rows, cursor.SnapshotNumber)
+		record, scanErr := r.scanTransactionWithMethod(rows, cursor.SnapshotNumber)
 		if scanErr != nil {
 			return nil, "", scanErr
 		}
@@ -102,6 +102,12 @@ func (r *PostgresReader) AddressTransactions(
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", fmt.Errorf("iterate canonical address transaction page: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, "", fmt.Errorf("close canonical address transaction page: %w", err)
+	}
+	if err := r.projectTransactionMethods(ctx, tx, records); err != nil {
+		return nil, "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, "", fmt.Errorf("commit stable address transaction query: %w", err)
@@ -130,18 +136,6 @@ func (r *PostgresReader) AddressTransactions(
 	}
 	return items, next, nil
 }
-
-const addressTransactionColumns = `
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.raw`
 
 const addressTransactionCandidatesFirst = `
     SELECT candidate.block_number, candidate.block_hash, candidate.tx_index, candidate.tx_hash
@@ -189,7 +183,7 @@ const addressTransactionCandidatesAfter = `
 
 const listAddressTransactionsFirstSQL = `
 WITH candidates AS (` + addressTransactionCandidatesFirst + `)
-SELECT ` + addressTransactionColumns + `
+SELECT ` + listTransactionsWithMethodColumnsSQL + `
 FROM candidates
 JOIN transaction_inclusions AS inclusion
   ON inclusion.chain_id = $1::numeric
@@ -211,12 +205,13 @@ JOIN receipts AS receipt
  AND receipt.block_hash = inclusion.block_hash
  AND receipt.tx_index = inclusion.tx_index
 LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
+` + transactionMethodJoinsSQL + `
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
 LIMIT $4`
 
 const listAddressTransactionsSQL = `
 WITH candidates AS (` + addressTransactionCandidatesAfter + `)
-SELECT ` + addressTransactionColumns + `
+SELECT ` + listTransactionsWithMethodColumnsSQL + `
 FROM candidates
 JOIN transaction_inclusions AS inclusion
   ON inclusion.chain_id = $1::numeric
@@ -238,5 +233,6 @@ JOIN receipts AS receipt
  AND receipt.block_hash = inclusion.block_hash
  AND receipt.tx_index = inclusion.tx_index
 LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
+` + transactionMethodJoinsSQL + `
 ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC
 LIMIT $5`

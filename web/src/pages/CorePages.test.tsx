@@ -758,6 +758,49 @@ describe("core explorer pages", () => {
     }
   });
 
+  it("classifies an exact-address decoded call when execution identity is unavailable", async () => {
+    const calldata = `0xa9059cbb${"0".repeat(24)}${"44".repeat(20)}${"0".repeat(63)}c`;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          input: calldata,
+          execution: { context_address: address, resolution: "unavailable" },
+          decoding: {
+            status: "decoded", function_name: "transfer", signature: "transfer(address,uint256)",
+            inputs: [
+              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}` },
+              { name: "amount", type: "uint256", value: "12" },
+            ],
+            candidates: [], confidence: "verified",
+            abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("Contract interaction", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Transaction action unavailable", { exact: true })).not.toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByText("More details"));
+    expect(await screen.findByRole("region", {
+      name: "Decoded calldata · transfer(address,uint256)",
+    })).toBeVisible();
+    expect(screen.getByText("Execution evidence unavailable", { exact: true })).toBeVisible();
+  });
+
   it("decodes an ordinary call from its transaction-time EIP-7702 delegate", async () => {
     const delegatedAddress = `0x${"66".repeat(20)}`;
     const delegateAddress = `0x${"77".repeat(20)}`;
@@ -1989,6 +2032,8 @@ describe("core explorer pages", () => {
           value: "1000000000000000000",
           gas: "21000",
           input: "0x",
+          method: "transferTokensWithAnIntentionallyLongMethodName",
+          method_signature: "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
           completeness: completeness(),
           finality: "safe",
           canonical: true,
@@ -2117,7 +2162,19 @@ describe("core explorer pages", () => {
     expect(selfDirection).toBeVisible();
     const transactionRow = selfDirection.closest("tr");
     if (!transactionRow) throw new Error("address transaction row is missing");
-    expect(screen.queryByRole("columnheader", { name: "Method" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Method" })).toBeVisible();
+    const addressMethod = within(transactionRow).getByText(
+      "transferTokensWithAnIntentionallyLongMethodName",
+    );
+    expect(addressMethod).toHaveClass("transaction-method");
+    expect(addressMethod).toHaveAttribute(
+      "aria-label",
+      "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+    );
+    expect(addressMethod).toHaveAttribute(
+      "title",
+      "transferTokensWithAnIntentionallyLongMethodName(address,uint256)",
+    );
     expect(
       within(transactionRow).queryByRole("link", { name: shorten(address) }),
     ).not.toBeInTheDocument();
@@ -2133,6 +2190,7 @@ describe("core explorer pages", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "Internal Transactions" }));
     const createdLabel = await screen.findByText("Created address");
+    expect(screen.queryByRole("columnheader", { name: "Method" })).not.toBeInTheDocument();
     expect(createdLabel).toBeVisible();
     const internalRow = createdLabel.closest("tr");
     if (!internalRow) throw new Error("address internal transaction row is missing");

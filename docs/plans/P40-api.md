@@ -38,6 +38,8 @@ the agreed Etherscan V2 subset.
 | P40-T15 | done | P40-T14 | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests |
 | P40-T16 | done | P40-T12 | Snapshot-stable canonical address withdrawal history ordered by numeric withdrawal index | migration, OpenAPI, query, cursor, reorg, handler, billing-inventory, and integration tests |
 | P40-T17 | done | P40-T16, P20-T13 | Exact transaction-list method projection from published execution identity and ABI results | OpenAPI, query, canonicality, projection, generation, and integration tests |
+| P40-T18 | done | P30-T17, P40-T17 | Verified-selector-backed Method projection for global and address transaction lists | OpenAPI, exact identity, collision, pagination, integration, and generation tests |
+| P40-T19 | done | P30-T17, P40-T18 | Resolve verified address-range selectors for lists and calldata when state-diff omits an unchanged direct call target; remove development-only selector backfill compatibility | focused query/catalog, PostgreSQL, Preview, schema, and common gates |
 
 ## Acceptance
 
@@ -62,6 +64,40 @@ the agreed Etherscan V2 subset.
 None.
 
 ## Evidence
+
+- P40-T19 fixes direct calls that change no target state and are therefore
+  omitted by Geth's diff-mode prestate tracer. A completed canonical
+  `state_diff@2` now permits only exact-address, block-range-covered verified
+  selector candidates when the target execution row is absent. List and
+  `/calldata` reads remain bounded and read-only, require exact calldata
+  decode/re-encode, and fail closed on selector collision or overlapping code
+  identities; proxy, Diamond, EIP-7702, and same-code routing still require
+  their stronger execution identities. PostgreSQL integration deletes the
+  direct execution row and proves both list Method and decoded calldata without
+  ABI replay. After `make recreate-preview`, transaction
+  `0x10f389ab775e8cf12e2e66ab44c60ecf88744a80afcfe1928d240ea7a3cb846a`
+  returns `testExecution`, its full canonical tuple signature, one decoded
+  top-level tuple input, verified confidence, and exact-address source in both
+  global/address lists and `/calldata`. The transaction detail action also
+  treats a unique verified decode as a contract interaction while keeping the
+  unavailable execution-identity evidence explicit; the focused Web test and
+  the rebuilt Preview page verify the decoded signature and tuple input.
+  Focused Go tests, owned PostgreSQL 18
+  `make test-integration`, production-image `make test-schema-e2e`,
+  `make recreate-preview`, the host-authorized aggregate `make check`,
+  `make plan-check`, and `git diff --check` pass.
+
+- P40-T18 projects global and address-list methods from one repeatable-read
+  request using exact published execution identities and a bounded selector
+  candidate query. It never reads a complete ABI or writes on the read path;
+  exact calldata re-encoding, source priority, selector collision ambiguity,
+  proxy, Diamond, same-code history, EIP-7702 identity, native transfer,
+  creation, short input, and raw selector fallbacks fail closed. PostgreSQL 18
+  integration proves `0xa9059cbb` before verification and `transfer` plus the
+  canonical signature on the next global and address request after atomic
+  verification publication without abi@3 replay. Generated Go/TypeScript
+  contracts, `make generate-check`, and the host-authorized aggregate
+  `make check` pass.
 
 - P40-T17 adds optional generated `method` and `method_signature` transaction
   fields and guarantees `method` on the global transaction list. One

@@ -75,6 +75,13 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_results`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_contracts`, 1)
 	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_function_selector_sets
+		WHERE verification_job_id = $1::uuid AND status = 'complete'
+		  AND function_count = 0`, 1, job.ID)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_function_selectors
+		WHERE verification_job_id = $1::uuid`, 0, job.ID)
+	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verified_contracts
 		WHERE match_type = 'full' AND code_hash = $1
 		  AND verification_job_id = $2::uuid`, 1, codeHash, job.ID)
@@ -87,6 +94,27 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		DELETE FROM verification_results WHERE job_id = $1::uuid`, job.ID); err == nil {
 		t.Fatal("immutable verifier-v2 result accepted a delete")
 	}
+}
+
+func TestVerifiedSelectorIndexMarksMalformedVerifiedABIUnavailable(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
+	address := mustBytes(t, testAddress(729))
+	codeHash := mustBytes(t, testHash(7_299))
+	insertVerifiedContractFixture(
+		t, ctx, db, address, codeHash, 1, nil, "0.8.30", "Malformed",
+		`[{"type":"function","name":"broken","inputs":[{"type":"tuple"}]}]`, `{}`, `{}`,
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_function_selector_sets
+		WHERE chain_id = 1 AND address = $1 AND code_hash = $2
+		  AND status = 'invalid' AND function_count = 0
+		  AND warning = 'verified_abi_invalid'`, 1, address, codeHash)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_function_selectors
+		WHERE chain_id = 1 AND address = $1 AND code_hash = $2`, 0, address, codeHash)
 }
 
 func TestVerifierV2RejectsAddressPublicationAfterCanonicalIdentityChanges(t *testing.T) {

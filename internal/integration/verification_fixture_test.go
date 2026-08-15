@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/islishude/etherview/internal/verifiedselector"
 )
 
 // insertVerifiedContractFixture creates a coherent verifier-v2 job, immutable
@@ -166,6 +167,12 @@ func insertVerifiedContractFixture(
 		requestDigest[:], fileName, contractName, compilerVersion, abi, sources, settings,
 	); err != nil {
 		t.Fatalf("insert sourced verified-contract fixture: %v", err)
+	}
+	if err := verifiedselector.Persist(ctx, tx, verifiedselector.Identity{
+		JobID: jobID, RequestDigest: requestDigest[:], ChainID: "1",
+		Address: address, CodeHash: codeHash, ValidFromBlock: validFrom,
+	}, []byte(abi)); err != nil {
+		t.Fatalf("insert verified selector fixture: %v", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE verification_jobs

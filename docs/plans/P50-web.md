@@ -83,6 +83,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T56 | done | P40-T16, P50-T55 | Lazy address withdrawal history and exact Ether display for address and block withdrawals | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T58 | done | P30-T15, P50-T57, P70-T29 | Sort verification compiler versions by ascending semantic version instead of lexical text | compiler catalog, PostgreSQL, generated contract, frontend, embedded browser, and common gates |
+| P50-T59 | done | P40-T18, P50-T58 | Add the shared compact Method column to address transaction activity | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -113,6 +114,18 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T59 reuses the global compact Method cell immediately after Hash in the
+  address Transactions table only. Focused Web tests pass all 48 cases; the
+  host-authorized embedded Chromium suite passes all 19 flows with English and
+  Chinese headers, full-signature title and accessible name, 12rem ellipsis,
+  keyboard-focusable table scrolling, no per-row calldata request, no Method
+  column in other address activity tables, and no page overflow at 390px.
+  Production runtime E2E passes monolith and distributed topologies; real
+  Hardhat 3 verification E2E passes both topologies and proves a historical
+  Clone initialization changes from its raw selector to `initialize` with the
+  full canonical signature immediately after implementation verification. The
+  host-authorized aggregate `make check` passes all common gates.
 
 - P50-T58 replaces textual compiler catalog ordering with ascending SemVer
   precedence, retains exact long-version strings with deterministic build

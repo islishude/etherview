@@ -499,7 +499,10 @@ func main() {
 			writeNotFound(response)
 			return
 		}
-		writeEnvelope(response, []any{transaction(testTransactionHash, secondHash, "2", "safe")})
+		item := transaction(testTransactionHash, secondHash, "2", "safe")
+		item["method"] = "valueWithAnIntentionallyLongMethodName"
+		item["method_signature"] = "valueWithAnIntentionallyLongMethodName(uint256,address)"
+		writeEnvelope(response, []any{item})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/withdrawals", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {

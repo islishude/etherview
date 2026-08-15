@@ -4178,10 +4178,10 @@ type Transaction struct {
 	// MaxPriorityFeePerGas A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	MaxPriorityFeePerGas *Quantity `json:"max_priority_fee_per_gas,omitempty"`
 
-	// Method Transaction-list display method. GET /transactions always returns this projection; other Transaction-bearing resources may omit it.
+	// Method Transaction-list display method. GET /transactions and GET /addresses/{address}/transactions always return this projection; other Transaction-bearing resources may omit it.
 	Method *string `json:"method,omitempty"`
 
-	// MethodSignature Full canonical ABI function signature when method came from one uniquely decoded published calldata result.
+	// MethodSignature Full canonical ABI function signature when method came from one uniquely decoded published or verified-selector calldata result.
 	MethodSignature *string `json:"method_signature,omitempty"`
 
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.

@@ -316,7 +316,7 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			t.Errorf("enrichment migration missing %q", fragment)
 		}
 	}
-	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL, geasVerificationSQL string
+	var runtimeSQL, coverageSQL, abiSQL, statusWriterSQL, addressActivitySQL, verifierV2SQL, proxyInteractionSQL, proxyCoverageRangesSQL, uupsObservationSQL, uupsBindingSQL, proxyHistoryEpochSQL, delegatedAccountsSQL, geasVerificationSQL, selectorIndexSQL string
 	for _, migration := range migrations {
 		switch migration.Version {
 		case "0006_runtime_events":
@@ -345,6 +345,19 @@ func TestMigrationsContainHashKeyedCoreAndRangePartitions(t *testing.T) {
 			delegatedAccountsSQL = migration.SQL
 		case "0044_geas_verification":
 			geasVerificationSQL = migration.SQL
+		case "0046_verified_function_selectors":
+			selectorIndexSQL = migration.SQL
+		}
+	}
+	for _, fragment := range []string{
+		"CREATE TABLE verified_function_selector_sets",
+		"CREATE TABLE verified_function_selectors",
+		"chain_id, code_hash, selector",
+		"PRIMARY KEY (verification_job_id, selector, signature)",
+		"ON DELETE CASCADE",
+	} {
+		if !strings.Contains(selectorIndexSQL, fragment) {
+			t.Errorf("verified selector migration missing %q", fragment)
 		}
 	}
 	for _, fragment := range []string{

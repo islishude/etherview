@@ -58,14 +58,79 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	implementationCode := crypto.Keccak256Hash(implementationRuntime)
 	insertABICodeObservation(t, ctx, db, reference, direct, directCode)
 	insertABICodeObservation(t, ctx, db, reference, proxy, proxyCode)
-	insertABIVerifiedContract(t, ctx, db, direct, directCode)
-	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
 	insertABIProxyObservation(t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode)
 	insertABISignatureCandidates(t, ctx, db)
 	publishABIStateDiff(t, ctx, db, reference, map[common.Address][]byte{
 		direct: directRuntime, proxy: proxyRuntime,
 	})
 	publishABITrace(t, ctx, db, reference, block, proxy, recipient, caller)
+	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeVerification, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list transactions before verification: %v", err)
+	}
+	if len(beforeVerification) == 0 || beforeVerification[0].Method == nil ||
+		*beforeVerification[0].Method != "0xa9059cbb" || beforeVerification[0].MethodSignature != nil {
+		t.Fatalf("pre-verification method projection = %+v", beforeVerification)
+	}
+	insertABIVerifiedContract(t, ctx, db, direct, directCode)
+	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
+	afterVerification, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list transactions after verification without ABI replay: %v", err)
+	}
+	if len(afterVerification) == 0 || afterVerification[0].Method == nil ||
+		*afterVerification[0].Method != "transfer" || afterVerification[0].MethodSignature == nil ||
+		*afterVerification[0].MethodSignature != "transfer(address,uint256)" {
+		t.Fatalf("post-verification selector method projection = %+v", afterVerification)
+	}
+	txHash := block.Block.Transactions()[0].Hash()
+	execFixture(t, ctx, db, `
+		DELETE FROM transaction_execution_code_resolutions
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND context_address = $3`, mustBytes(t, reference.Hash), txHash[:], mustBytes(t, direct))
+	withoutExecutionIdentity, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list transactions with state-diff-omitted direct target: %v", err)
+	}
+	if len(withoutExecutionIdentity) == 0 || withoutExecutionIdentity[0].Method == nil ||
+		*withoutExecutionIdentity[0].Method != "transfer" ||
+		withoutExecutionIdentity[0].MethodSignature == nil ||
+		*withoutExecutionIdentity[0].MethodSignature != "transfer(address,uint256)" {
+		t.Fatalf("verified address-range selector method projection = %+v", withoutExecutionIdentity)
+	}
+	addressTransactions, _, err := transactionReader.AddressTransactions(ctx, direct.String(), "", 10)
+	if err != nil {
+		t.Fatalf("list address transactions from verified selector index: %v", err)
+	}
+	if len(addressTransactions) == 0 || addressTransactions[0].Method == nil ||
+		*addressTransactions[0].Method != "transfer" || addressTransactions[0].MethodSignature == nil ||
+		*addressTransactions[0].MethodSignature != "transfer(address,uint256)" {
+		t.Fatalf("address verified selector method projection = %+v", addressTransactions)
+	}
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calldata, err := catalogReader.TransactionCalldata(ctx, "1", txHash.String())
+	if err != nil {
+		t.Fatalf("decode verified address-range calldata without execution identity: %v", err)
+	}
+	if calldata.Execution.Resolution != "unavailable" || calldata.Decoding.Status != "decoded" ||
+		calldata.Decoding.FunctionName != "transfer" || calldata.Decoding.Signature != "transfer(address,uint256)" ||
+		len(calldata.Decoding.Inputs) != 2 {
+		t.Fatalf("verified address-range calldata projection = %+v", calldata)
+	}
+	execFixture(t, ctx, db, `
+		INSERT INTO transaction_execution_code_resolutions (
+			chain_id, block_number, block_hash, transaction_hash, transaction_index,
+			context_address, execution_address, execution_code_hash, resolution,
+			evidence_source, canonical
+		) VALUES (1, $1::numeric, $2, $3, 0, $4, $4, $5, 'direct', 'prestate_tracer', TRUE)`,
+		fmt.Sprint(reference.Number), mustBytes(t, reference.Hash), txHash[:], mustBytes(t, direct), directCode[:])
 
 	job := abiIntegrationJob(t, reference)
 	result, err := processor.Process(ctx, job)
@@ -106,27 +171,19 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		"trace_revert:0":        "decoded:proxy_implementation:high",
 		"trace_revert:1":        "decoded:builtin:high",
 	})
-	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
 	unpublished, _, err := transactionReader.Transactions(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("list transactions before ABI publication: %v", err)
 	}
-	if len(unpublished) == 0 || unpublished[0].Method == nil || *unpublished[0].Method != "0xa9059cbb" ||
-		unpublished[0].MethodSignature != nil {
-		t.Fatalf("unpublished ABI method projection = %+v", unpublished)
+	if len(unpublished) == 0 || unpublished[0].Method == nil || *unpublished[0].Method != "transfer" ||
+		unpublished[0].MethodSignature == nil || *unpublished[0].MethodSignature != "transfer(address,uint256)" {
+		t.Fatalf("verified selector method projection before abi@3 publication = %+v", unpublished)
 	}
-	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	txHash := block.Block.Transactions()[0].Hash().String()
+	txHashText := txHash.String()
 	assertProjectedLog := func(label string) {
 		t.Helper()
 		page, readErr := catalogReader.TransactionLogs(ctx, catalog.TransactionResourceRequest{
-			ChainID: "1", TransactionHash: txHash, Limit: 10,
+			ChainID: "1", TransactionHash: txHashText, Limit: 10,
 		})
 		if readErr != nil {
 			t.Fatalf("%s transaction logs: %v", label, readErr)

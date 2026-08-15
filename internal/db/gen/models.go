@@ -1669,6 +1669,30 @@ type VerifiedContractProxyArtifact struct {
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type VerifiedFunctionSelector struct {
+	VerificationJobID pgtype.UUID    `db:"verification_job_id" json:"verification_job_id"`
+	ChainID           pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address           []byte         `db:"address" json:"address"`
+	CodeHash          []byte         `db:"code_hash" json:"code_hash"`
+	Selector          []byte         `db:"selector" json:"selector"`
+	Signature         string         `db:"signature" json:"signature"`
+	FunctionName      string         `db:"function_name" json:"function_name"`
+	AbiEntry          []byte         `db:"abi_entry" json:"abi_entry"`
+}
+
+type VerifiedFunctionSelectorSet struct {
+	VerificationJobID pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	RequestDigest     []byte             `db:"request_digest" json:"request_digest"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address           []byte             `db:"address" json:"address"`
+	CodeHash          []byte             `db:"code_hash" json:"code_hash"`
+	ValidFromBlock    pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
+	Status            string             `db:"status" json:"status"`
+	FunctionCount     int32              `db:"function_count" json:"function_count"`
+	Warning           string             `db:"warning" json:"warning"`
+	IndexedAt         pgtype.Timestamptz `db:"indexed_at" json:"indexed_at"`
+}
+
 type VerifiedProxyBinding struct {
 	ChainID                 pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	ProxyAddress            []byte             `db:"proxy_address" json:"proxy_address"`

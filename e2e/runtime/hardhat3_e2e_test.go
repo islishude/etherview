@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
@@ -397,6 +398,13 @@ func runHardhat3Mode(
 	waitHardhatCanonicalTip(t, ctx, h)
 
 	h.enterPhase("production CLI API key and first real compiler")
+	cloneInitialization := deployment.Transactions["standardCloneInitialization"]
+	initializeSignature := "initialize(address,uint256)"
+	initializeSelector := "0x" + fmt.Sprintf("%x", crypto.Keccak256([]byte(initializeSignature))[:4])
+	assertHardhatHistoricalMethod(
+		t, ctx, h, deployment.Clones.Standard, cloneInitialization.Hash,
+		initializeSelector, "",
+	)
 	waitHardhatCompilerCatalog(t, ctx, h)
 	apiKey := createHardhatAPIKey(t, ctx, h)
 	submitAndWaitHardhatYul(t, ctx, h, apiKey)
@@ -411,6 +419,10 @@ func runHardhat3Mode(
 	}
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v1",
 		"contracts/Implementation.sol:Implementation", deployment.Implementation, nil)
+	assertHardhatHistoricalMethod(
+		t, ctx, h, deployment.Clones.Standard, cloneInitialization.Hash,
+		"initialize", initializeSignature,
+	)
 	cacheAfterReuse := inspectHardhatCompilerCache(t, ctx, h)
 	if cacheAfterReuse != cacheBefore {
 		t.Fatalf("compiler cache was reinstalled after same-version reuse: before=%#v after=%#v",
@@ -555,6 +567,34 @@ func runHardhat3Mode(
 	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy, deployment.Diamond.Address)
 	h.writeJSONArtifact(mode+"-proxy-summary.json", snapshot)
 	return snapshot
+}
+
+func assertHardhatHistoricalMethod(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	address, transactionHash, method, signature string,
+) {
+	t.Helper()
+	var response gen.TransactionListResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+address+"/transactions?limit=100", &response)
+	for _, transaction := range response.Data {
+		if !strings.EqualFold(string(transaction.Hash), transactionHash) {
+			continue
+		}
+		if transaction.Method == nil || *transaction.Method != method {
+			t.Fatalf("historical method for %s = %v, want %q", transactionHash, transaction.Method, method)
+		}
+		if signature == "" {
+			if transaction.MethodSignature != nil {
+				t.Fatalf("pre-verification historical signature for %s = %v", transactionHash, transaction.MethodSignature)
+			}
+		} else if transaction.MethodSignature == nil || *transaction.MethodSignature != signature {
+			t.Fatalf("historical signature for %s = %v, want %q", transactionHash, transaction.MethodSignature, signature)
+		}
+		return
+	}
+	t.Fatalf("historical transaction %s absent from address %s", transactionHash, address)
 }
 
 func inspectHardhatCompilerCache(

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -89,8 +90,18 @@ func (catalog *Postgres) TransactionCalldata(
 		result.Decoding.Status = "not_applicable"
 		result.Decoding.Warning = "transaction-time execution code is empty"
 	} else if result.Execution.Resolution == "unavailable" {
-		result.Decoding.Status = "unavailable"
-		result.Decoding.Warning = "exact transaction-time execution code is unavailable"
+		decoded, found, err := decodeVerifiedAddressSelectorCalldata(
+			ctx, tx, chainID, blockNumber, blockHash, *wire.To(), wire.Data(),
+		)
+		if err != nil {
+			return TransactionCalldata{}, err
+		}
+		if found {
+			result.Decoding = decoded
+		} else {
+			result.Decoding.Status = "unavailable"
+			result.Decoding.Warning = "exact transaction-time execution code is unavailable"
+		}
 	} else if err := catalog.decodeTransactionCalldata(ctx, tx, blockNumber, blockHash, transactionHash, wire.Data(), &result); err != nil {
 		return TransactionCalldata{}, err
 	}
@@ -98,6 +109,106 @@ func (catalog *Postgres) TransactionCalldata(
 		return TransactionCalldata{}, err
 	}
 	return result, nil
+}
+
+const maxVerifiedAddressSelectorCandidates = 32
+
+func decodeVerifiedAddressSelectorCalldata(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID string,
+	blockNumber uint64,
+	blockHash []byte,
+	address common.Address,
+	input []byte,
+) (TransactionCalldataDecoding, bool, error) {
+	if len(input) < 4 {
+		return TransactionCalldataDecoding{}, false, nil
+	}
+	rows, err := tx.QueryContext(ctx, transactionVerifiedAddressSelectorsSQL,
+		chainID, address[:], strconv.FormatUint(blockNumber, 10), input[:4],
+		maxVerifiedAddressSelectorCandidates+1,
+	)
+	if err != nil {
+		return TransactionCalldataDecoding{}, false, fmt.Errorf("query verified address calldata selectors: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	identityBlockHash := common.BytesToHash(blockHash)
+	matches := make(map[string]enrich.DecodeResult)
+	signatures := make(map[string]struct{})
+	overflow := false
+	candidateCount := 0
+	for rows.Next() {
+		var codeHashBytes, abiEntry []byte
+		var storedSignature string
+		if err := rows.Scan(&codeHashBytes, &storedSignature, &abiEntry); err != nil {
+			return TransactionCalldataDecoding{}, false, fmt.Errorf("scan verified address calldata selector: %w", err)
+		}
+		candidateCount++
+		if candidateCount > maxVerifiedAddressSelectorCandidates {
+			overflow = true
+			continue
+		}
+		if len(codeHashBytes) != common.HashLength {
+			return TransactionCalldataDecoding{}, false, ErrCorruptData
+		}
+		signature, exact := enrich.DecodeVerifiedFunctionCalldata(abiEntry, input)
+		if !exact {
+			continue
+		}
+		if signature != storedSignature {
+			return TransactionCalldataDecoding{}, false, ErrCorruptData
+		}
+		codeHash := common.BytesToHash(codeHashBytes)
+		identity := enrich.ABIIdentity{
+			ChainID: chainID, Address: address, CodeHash: codeHash,
+			BlockNumber: blockNumber, BlockHash: identityBlockHash,
+		}
+		validTo := blockNumber
+		binding := enrich.ABIBinding{
+			Identity: identity, Source: enrich.ABISourceVerified,
+			SourceAddress: address, SourceCodeHash: codeHash,
+			ValidFromBlock: blockNumber, ValidToBlock: &validTo,
+		}
+		document := make([]byte, 0, len(abiEntry)+2)
+		document = append(document, '[')
+		document = append(document, abiEntry...)
+		document = append(document, ']')
+		registry := enrich.NewABIRegistry()
+		if err := registry.RegisterJSON(binding, document); err != nil {
+			return TransactionCalldataDecoding{}, false, ErrCorruptData
+		}
+		decoded := registry.DecodeCalldata(identity, input)
+		if decoded.Status != enrich.DecodeDecoded || decoded.Signature != storedSignature {
+			return TransactionCalldataDecoding{}, false, ErrCorruptData
+		}
+		matches[storedSignature+"\x00"+codeHash.Hex()] = decoded
+		signatures[storedSignature] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return TransactionCalldataDecoding{}, false, fmt.Errorf("iterate verified address calldata selectors: %w", err)
+	}
+	if overflow || len(matches) > 1 {
+		candidates := make([]string, 0, len(signatures))
+		for signature := range signatures {
+			candidates = append(candidates, signature)
+		}
+		sort.Strings(candidates)
+		return TransactionCalldataDecoding{
+			Status: "ambiguous", Inputs: []ABIValue{}, Candidates: candidates,
+			Warning: "multiple verified address selector candidates decode this calldata",
+		}, true, nil
+	}
+	for _, decoded := range matches {
+		call := publicTraceCall(enrich.CallDecodeResult{
+			Input: decoded, ReturnStatus: enrich.ReturnNotApplicable,
+		})
+		result := transactionCalldataDecoding(call)
+		result.Warning = "decoded from the exact verified address range because execution identity is unavailable"
+		return result, true, nil
+	}
+	return TransactionCalldataDecoding{}, false, nil
 }
 
 func (catalog *Postgres) loadTransactionExecution(
@@ -280,3 +391,26 @@ WHERE decoding.chain_id = $1::numeric
         AND published.stage_version = 3
         AND published.state = 'complete'
   )`
+
+const transactionVerifiedAddressSelectorsSQL = `
+SELECT indexed.code_hash, selector.signature, selector.abi_entry
+FROM verified_function_selector_sets AS indexed
+JOIN verified_contracts AS verified
+  ON verified.chain_id = indexed.chain_id
+ AND verified.address = indexed.address
+ AND verified.code_hash = indexed.code_hash
+ AND verified.valid_from_block = indexed.valid_from_block
+ AND verified.verification_job_id = indexed.verification_job_id
+JOIN verified_function_selectors AS selector
+  ON selector.verification_job_id = indexed.verification_job_id
+ AND selector.chain_id = indexed.chain_id
+ AND selector.address = indexed.address
+ AND selector.code_hash = indexed.code_hash
+WHERE indexed.chain_id = $1::numeric
+  AND indexed.address = $2
+  AND indexed.status = 'complete'
+  AND indexed.valid_from_block <= $3::numeric
+  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
+  AND selector.selector = $4
+ORDER BY selector.signature, indexed.code_hash, indexed.verification_job_id
+LIMIT $5`

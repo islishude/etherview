@@ -2238,9 +2238,9 @@ export interface components {
             max_fee_per_blob_gas?: components["schemas"]["Quantity"];
             max_fee_per_gas?: components["schemas"]["Quantity"];
             max_priority_fee_per_gas?: components["schemas"]["Quantity"];
-            /** @description Transaction-list display method. GET /transactions always returns this projection; other Transaction-bearing resources may omit it. */
+            /** @description Transaction-list display method. GET /transactions and GET /addresses/{address}/transactions always return this projection; other Transaction-bearing resources may omit it. */
             method?: string;
-            /** @description Full canonical ABI function signature when method came from one uniquely decoded published calldata result. */
+            /** @description Full canonical ABI function signature when method came from one uniquely decoded published or verified-selector calldata result. */
             method_signature?: string;
             nonce: components["schemas"]["Quantity"];
             /** @enum {string} */

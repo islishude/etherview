@@ -150,6 +150,7 @@ func TestTransactionCalldataMissingExecutionResolutionFailsClosed(t *testing.T) 
 			[]driver.Value{"complete", int64(8)},
 		)},
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
+		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
 	if err != nil {
@@ -158,6 +159,44 @@ func TestTransactionCalldataMissingExecutionResolutionFailsClosed(t *testing.T) 
 	if result.Execution.Resolution != "unavailable" || result.Execution.ContextAddress != contextAddress.Hex() ||
 		result.Decoding.Status != "unavailable" || result.Execution.Address != "" || result.Execution.CodeHash != "" {
 		t.Fatalf("calldata=%+v", result)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataUsesVerifiedAddressSelectorWhenExecutionResolutionIsMissing(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	input := append([]byte{0x55, 0x24, 0x10, 0x77}, make([]byte, 32)...)
+	input[len(input)-1] = 42
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, input)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xdd, common.HashLength)
+	abiEntry := []byte(`{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}`)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
+		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
+			[]driver.Value{codeHash, "setValue(uint256)", abiEntry},
+		)},
+	)
+	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Execution.Resolution != "unavailable" || result.Decoding.Status != "decoded" ||
+		result.Decoding.Signature != "setValue(uint256)" || result.Decoding.FunctionName != "setValue" ||
+		result.Decoding.Confidence != "verified" || len(result.Decoding.Inputs) != 1 ||
+		result.Decoding.Inputs[0].Name != "value" || result.Decoding.Inputs[0].Value != "42" {
+		t.Fatalf("calldata=%+v", result)
+	}
+	if result.Decoding.ABISource == nil || result.Decoding.ABISource.Kind != "exact_address" ||
+		result.Decoding.ABISource.Address != contextAddress.Hex() ||
+		result.Decoding.ABISource.CodeHash != common.BytesToHash(codeHash).Hex() {
+		t.Fatalf("ABI source=%+v", result.Decoding.ABISource)
 	}
 	assertCatalogConsumed(t, backend)
 }

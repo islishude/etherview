@@ -48,6 +48,7 @@ SSRF-safe.
 | P30-T14 | done | P30-T13 | Runner-platform-aware compiler catalog discovery and exact platform provenance | platform/catalog/provenance regressions |
 | P30-T15 | done | P20-T13, P30-T14 | Bind verified OpenZeppelin 5.6.1 proxy, implementation, and management artifacts to exact immutable runtime identities and invalidate stale interaction bindings | verifier, PostgreSQL, immutable-source, upgrade/reorg, and Hardhat fixture tests |
 | P30-T16 | done | P30-T14, P63 | Allow authenticated canonical Genesis predeploys to use runtime-only native and Etherscan-compatible address verification without fabricating creation evidence | target-resolution, publication-fence, PostgreSQL, and compatibility regressions |
+| P30-T17 | done | P30-T16, P40-T17 | Persist verified function selector indexes atomically for newly successful verification results | migration, parser, publication, invalid/empty ABI, and PostgreSQL tests |
 
 ## Acceptance
 
@@ -101,6 +102,16 @@ SSRF-safe.
 None.
 
 ## Evidence
+
+- P30-T17 adds migration `0046_verified_function_selectors`, a bounded shared
+  tuple-aware ABI normalizer, atomic selector publication, completed empty or
+  invalid set markers. New verification publication and selector projection
+  commit in one transaction. Active-development migrations target fresh
+  databases and intentionally provide no legacy selector backfill or
+  compatibility readiness state. PostgreSQL 18 integration proves empty and
+  malformed ABI handling, atomic publication, and cascade-consistent
+  publication removal; production-image schema E2E passes fresh migration and
+  status checks.
 
 - P30-T16: native and Etherscan-compatible address submission now share one
   target resolver. It prefers valid transaction creation facts and otherwise

@@ -31,6 +31,17 @@ type transactionRecord struct {
 	BlockHash   common.Hash
 	Index       uint64
 	Hash        common.Hash
+	method      transactionMethodContext
+}
+
+type transactionMethodContext struct {
+	stateDiffComplete   bool
+	executionResolution sql.NullString
+	executionAddress    []byte
+	executionCodeHash   []byte
+	decodedSignature    sql.NullString
+	decodedSource       sql.NullString
+	decodedConfidence   sql.NullString
 }
 
 func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string, limit int) ([]gen.Transaction, string, error) {
@@ -84,6 +95,12 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 	if err := rows.Err(); err != nil {
 		return nil, "", fmt.Errorf("iterate canonical transaction page: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, "", fmt.Errorf("close canonical transaction page: %w", err)
+	}
+	if err := r.projectTransactionMethods(ctx, tx, records); err != nil {
+		return nil, "", err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, "", fmt.Errorf("commit stable transaction query: %w", err)
 	}
@@ -120,11 +137,14 @@ func (r *PostgresReader) scanTransactionWithMethod(
 	var blockHashBytes, transactionHashBytes []byte
 	var transactionIndex int64
 	var canonical bool
-	var safeHeight, finalizedHeight, executionResolution, methodSignature sql.NullString
+	var safeHeight, finalizedHeight sql.NullString
+	var method transactionMethodContext
 	if err := scanner.Scan(
 		&transactionJSON, &receiptJSON, &blockNumberText, &blockHashBytes, &transactionIndex,
 		&transactionHashBytes, &canonical, &safeHeight, &finalizedHeight, &blockRaw,
-		&executionResolution, &methodSignature,
+		&method.stateDiffComplete, &method.executionResolution,
+		&method.executionAddress, &method.executionCodeHash,
+		&method.decodedSignature, &method.decodedSource, &method.decodedConfidence,
 	); err != nil {
 		return transactionRecord{}, fmt.Errorf("scan transaction with method: %w", err)
 	}
@@ -135,7 +155,6 @@ func (r *PostgresReader) scanTransactionWithMethod(
 	if err != nil {
 		return transactionRecord{}, err
 	}
-	projectTransactionMethod(&model, executionResolution, methodSignature)
 	blockNumber, err := parseDecimalUint64(blockNumberText)
 	if err != nil {
 		return transactionRecord{}, err
@@ -150,7 +169,7 @@ func (r *PostgresReader) scanTransactionWithMethod(
 	}
 	return transactionRecord{
 		Model: model, BlockNumber: blockNumber, BlockHash: blockHash,
-		Index: uint64(transactionIndex), Hash: transactionHash,
+		Index: uint64(transactionIndex), Hash: transactionHash, method: method,
 	}, nil
 }
 
@@ -165,7 +184,7 @@ func projectTransactionMethod(
 	}
 	if methodSignature.Valid {
 		open := strings.IndexByte(methodSignature.String, '(')
-		if open > 0 && len(methodSignature.String) <= 4096 {
+		if validTransactionMethodSignature(methodSignature.String) {
 			method := methodSignature.String[:open]
 			model.Method = &method
 			model.MethodSignature = &methodSignature.String
@@ -183,6 +202,11 @@ func projectTransactionMethod(
 	}
 	method = strings.ToLower(method)
 	model.Method = &method
+}
+
+func validTransactionMethodSignature(signature string) bool {
+	open := strings.IndexByte(signature, '(')
+	return open > 0 && len(signature) <= 4096 && strings.HasSuffix(signature, ")")
 }
 
 func (r *PostgresReader) currentTransactionCursor(ctx context.Context, tx *sql.Tx) (transactionCursor, error) {
@@ -359,9 +383,23 @@ const listTransactionsWithMethodColumnsSQL = `
     TRUE,
     finality.safe_number::text,
     finality.finalized_number::text,
-    block.raw,
-    execution.resolution,
-    decoding.signature`
+	block.raw,
+	EXISTS (
+	    SELECT 1
+	    FROM published_block_stage_results AS published_state_diff
+	    WHERE published_state_diff.chain_id = inclusion.chain_id
+	      AND published_state_diff.block_number = inclusion.block_number
+	      AND published_state_diff.block_hash = inclusion.block_hash
+	      AND published_state_diff.stage = 'state_diff'
+	      AND published_state_diff.stage_version = 2
+	      AND published_state_diff.state = 'complete'
+	),
+	execution.resolution,
+	execution.execution_address,
+	execution.execution_code_hash,
+	decoding.signature,
+	decoding.source,
+	decoding.confidence`
 
 const listTransactionsWithMethodFirstSQL = `
 SELECT ` + listTransactionsWithMethodColumnsSQL + `
