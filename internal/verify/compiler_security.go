@@ -20,13 +20,34 @@ import (
 const (
 	defaultCompilerArtifactBytes = int64(200 << 20)
 	maximumCompilerArtifactBytes = int64(1 << 30)
+	compilerCacheValidationTries = 8
 	defaultCompilerInputBytes    = 5 << 20
 	defaultCompilerOutputBytes   = 64 << 20
 	defaultCompilerTimeout       = 2 * time.Minute
 )
 
+type compilerCacheFileValidation uint8
+
+const (
+	compilerCacheFileInvalid compilerCacheFileValidation = iota
+	compilerCacheFileValid
+	compilerCacheFileIdentityChanged
+)
+
 type outboundResolver interface {
 	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
+}
+
+type compilerCacheFileOperations struct {
+	lstat func(string) (os.FileInfo, error)
+	open  func(string) (*os.File, error)
+	hash  func(*os.File, int64) ([sha256.Size]byte, error)
+}
+
+var operatingSystemCompilerCacheFileOperations = compilerCacheFileOperations{
+	lstat: os.Lstat,
+	open:  os.Open,
+	hash:  hashCompilerCacheFile,
 }
 
 func validateCompilerArtifact(
@@ -75,24 +96,91 @@ func secureCompilerCacheRoot(root string) error {
 }
 
 func validCompilerCacheFile(path string, expected [sha256.Size]byte, maximum int64) bool {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o400 || info.Size() < 1 || info.Size() > maximum {
-		return false
+	return validCompilerCacheFileUsing(
+		operatingSystemCompilerCacheFileOperations,
+		path,
+		expected,
+		maximum,
+	)
+}
+
+func validCompilerCacheFileUsing(
+	operations compilerCacheFileOperations,
+	path string,
+	expected [sha256.Size]byte,
+	maximum int64,
+) bool {
+	for range compilerCacheValidationTries {
+		switch validateCompilerCacheFile(operations, path, expected, maximum) {
+		case compilerCacheFileValid:
+			return true
+		case compilerCacheFileInvalid:
+			return false
+		case compilerCacheFileIdentityChanged:
+			continue
+		}
 	}
-	file, err := os.Open(path)
+	return false
+}
+
+func validateCompilerCacheFile(
+	operations compilerCacheFileOperations,
+	path string,
+	expected [sha256.Size]byte,
+	maximum int64,
+) compilerCacheFileValidation {
+	if operations.lstat == nil || operations.open == nil || operations.hash == nil {
+		return compilerCacheFileInvalid
+	}
+	info, err := operations.lstat(path)
+	if err != nil || !validCompilerCacheFileInfo(info, maximum) {
+		return compilerCacheFileInvalid
+	}
+	file, err := operations.open(path)
 	if err != nil {
-		return false
+		return compilerCacheFileInvalid
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o400 {
-		return false
+	if err != nil || !validCompilerCacheFileInfo(opened, maximum) {
+		return compilerCacheFileInvalid
 	}
+	if !os.SameFile(info, opened) {
+		return compilerCacheFileIdentityChanged
+	}
+	digest, err := operations.hash(file, maximum)
+	if err != nil {
+		return compilerCacheFileInvalid
+	}
+	after, err := operations.lstat(path)
+	if err != nil || !validCompilerCacheFileInfo(after, maximum) {
+		return compilerCacheFileInvalid
+	}
+	if !os.SameFile(opened, after) {
+		return compilerCacheFileIdentityChanged
+	}
+	if digest != expected {
+		return compilerCacheFileInvalid
+	}
+	return compilerCacheFileValid
+}
+
+func hashCompilerCacheFile(
+	file *os.File,
+	maximum int64,
+) ([sha256.Size]byte, error) {
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, io.LimitReader(file, maximum+1)); err != nil {
-		return false
+		return [sha256.Size]byte{}, err
 	}
-	return opened.Size() <= maximum && string(hasher.Sum(nil)) == string(expected[:])
+	var digest [sha256.Size]byte
+	copy(digest[:], hasher.Sum(nil))
+	return digest, nil
+}
+
+func validCompilerCacheFileInfo(info os.FileInfo, maximum int64) bool {
+	return info != nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o400 &&
+		info.Size() >= 1 && info.Size() <= maximum
 }
 
 func restrictedOutboundClient(

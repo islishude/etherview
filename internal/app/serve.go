@@ -711,7 +711,11 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	}
 
 	if roleSet[components.RoleAPI] && cfg.Features.Verification {
-		compiler, err := verificationCompiler(cfg, compilerCatalog)
+		compilerCacheLocker, err := verify.NewPostgresCompilerCacheInstallLocker(db)
+		if err != nil {
+			return err
+		}
+		compiler, err := verificationCompiler(cfg, compilerCatalog, compilerCacheLocker)
 		if err != nil {
 			return err
 		}

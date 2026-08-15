@@ -11,9 +11,16 @@ import (
 	"github.com/islishude/etherview/internal/verify"
 )
 
-func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (verify.Compiler, error) {
+func verificationCompiler(
+	cfg config.Config,
+	catalog *verify.CompilerCatalog,
+	installLocker verify.CompilerCacheInstallLocker,
+) (verify.Compiler, error) {
 	if catalog == nil {
 		return nil, errors.New("verification compiler catalog is unavailable")
+	}
+	if installLocker == nil {
+		return nil, errors.New("verification compiler cache install locker is unavailable")
 	}
 	solcJS := &verify.SolcJSCompiler{
 		Catalog:      catalog,
@@ -23,6 +30,7 @@ func verificationCompiler(cfg config.Config, catalog *verify.CompilerCatalog) (v
 		Cache: &verify.CompilerCache{
 			Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
 			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
+			InstallLocker:              installLocker,
 		},
 		Timeout: cfg.Verification.Timeout, MaxInputBytes: cfg.Verification.MaxInputBytes,
 		MaxOutputBytes: cfg.Verification.MaxOutputBytes,

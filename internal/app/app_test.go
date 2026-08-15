@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,16 @@ import (
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/verify"
 )
+
+type appCompilerCacheInstallLocker struct{}
+
+func (appCompilerCacheInstallLocker) WithCompilerCacheInstallLock(
+	_ context.Context,
+	_ [sha256.Size]byte,
+	action func() error,
+) error {
+	return action()
+}
 
 type appPinger struct{ err error }
 
@@ -459,7 +470,8 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	cfg.Verification.MaxOutputBytes = 5678
 	cfg.Verification.UnsafeAllowPrivateDownloadNetworks = true
 
-	compiler, err := verificationCompiler(cfg, &verify.CompilerCatalog{})
+	installLocker := appCompilerCacheInstallLocker{}
+	compiler, err := verificationCompiler(cfg, &verify.CompilerCatalog{}, installLocker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +491,8 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	if solcJS.Cache == nil ||
 		solcJS.Cache.Root != cfg.Verification.CacheDirectory ||
 		solcJS.Cache.Timeout != cfg.Verification.Timeout ||
-		solcJS.Cache.UnsafeAllowPrivateNetworks != cfg.Verification.UnsafeAllowPrivateDownloadNetworks {
+		solcJS.Cache.UnsafeAllowPrivateNetworks != cfg.Verification.UnsafeAllowPrivateDownloadNetworks ||
+		solcJS.Cache.InstallLocker == nil {
 		t.Fatalf("verification compiler cache configuration = %#v", solcJS.Cache)
 	}
 	if router.Geas == nil || router.Geas.Path != cfg.Verification.GeasPath ||
@@ -489,9 +502,13 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 		t.Fatalf("Geas compiler configuration = %#v", router.Geas)
 	}
 
-	if _, err := verificationCompiler(cfg, nil); err == nil ||
+	if _, err := verificationCompiler(cfg, nil, installLocker); err == nil ||
 		!strings.Contains(err.Error(), "catalog is unavailable") {
 		t.Fatalf("nil verification catalog error = %v", err)
+	}
+	if _, err := verificationCompiler(cfg, &verify.CompilerCatalog{}, nil); err == nil ||
+		!strings.Contains(err.Error(), "install locker is unavailable") {
+		t.Fatalf("nil compiler cache install locker error = %v", err)
 	}
 }
 

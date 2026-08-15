@@ -3,7 +3,9 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +18,62 @@ import (
 	"testing"
 	"time"
 )
+
+type trackingCompilerCacheInstallLocker struct {
+	mu           sync.Mutex
+	locks        map[[sha256.Size]byte]*sync.Mutex
+	path         string
+	calls        int
+	active       int
+	maximum      int
+	observations []os.FileInfo
+}
+
+func (locker *trackingCompilerCacheInstallLocker) WithCompilerCacheInstallLock(
+	_ context.Context,
+	digest [sha256.Size]byte,
+	action func() error,
+) error {
+	locker.mu.Lock()
+	if locker.locks == nil {
+		locker.locks = make(map[[sha256.Size]byte]*sync.Mutex)
+	}
+	keyLock := locker.locks[digest]
+	if keyLock == nil {
+		keyLock = &sync.Mutex{}
+		locker.locks[digest] = keyLock
+	}
+	locker.mu.Unlock()
+
+	keyLock.Lock()
+	defer keyLock.Unlock()
+	locker.mu.Lock()
+	locker.calls++
+	locker.active++
+	locker.maximum = max(locker.maximum, locker.active)
+	locker.mu.Unlock()
+	err := action()
+	locker.mu.Lock()
+	defer locker.mu.Unlock()
+	locker.active--
+	if err == nil && locker.path != "" {
+		if info, statErr := os.Lstat(locker.path); statErr == nil {
+			locker.observations = append(locker.observations, info)
+		}
+	}
+	return err
+}
+
+type failingCompilerCacheInstallLocker struct{ calls atomic.Int32 }
+
+func (locker *failingCompilerCacheInstallLocker) WithCompilerCacheInstallLock(
+	context.Context,
+	[sha256.Size]byte,
+	func() error,
+) error {
+	locker.calls.Add(1)
+	return errors.New("install lock should not be used")
+}
 
 type fixedOutboundResolver struct {
 	addresses []net.IPAddr
@@ -52,6 +110,7 @@ func TestCompilerDownloadRejectsRedirectsAndPrivateDNS(t *testing.T) {
 
 	cache := CompilerCache{
 		Root:                       t.TempDir(),
+		InstallLocker:              testCompilerCacheInstallLocker,
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
 	}
@@ -101,6 +160,7 @@ func TestCompilerCacheBoundsDeclaredAndStreamingArtifacts(t *testing.T) {
 			defer server.Close()
 			cache := CompilerCache{
 				Root:                       t.TempDir(),
+				InstallLocker:              testCompilerCacheInstallLocker,
 				unsafeAllowHTTP:            true,
 				UnsafeAllowPrivateNetworks: true,
 			}
@@ -124,7 +184,7 @@ func TestCompilerCacheRejectsUnsafeRootAndInstallsReadOnlyEntry(t *testing.T) {
 		if err := os.Symlink(t.TempDir(), root); err != nil {
 			t.Fatal(err)
 		}
-		cache := CompilerCache{Root: root}
+		cache := CompilerCache{Root: root, InstallLocker: testCompilerCacheInstallLocker}
 		entry := compilerCatalogEntry("https://compiler.example/artifact", payload, 1<<20)
 		if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil ||
 			!strings.Contains(err.Error(), "non-symlink directory") {
@@ -139,6 +199,7 @@ func TestCompilerCacheRejectsUnsafeRootAndInstallsReadOnlyEntry(t *testing.T) {
 		defer server.Close()
 		cache := CompilerCache{
 			Root:                       t.TempDir(),
+			InstallLocker:              testCompilerCacheInstallLocker,
 			unsafeAllowHTTP:            true,
 			UnsafeAllowPrivateNetworks: true,
 		}
@@ -166,6 +227,7 @@ func TestCompilerCacheSerializesConcurrentInstall(t *testing.T) {
 	defer server.Close()
 	cache := CompilerCache{
 		Root:                       t.TempDir(),
+		InstallLocker:              testCompilerCacheInstallLocker,
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
 	}
@@ -201,6 +263,7 @@ func TestCompilerCachePersistsAcrossInstances(t *testing.T) {
 	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
 	first := CompilerCache{
 		Root:                       root,
+		InstallLocker:              testCompilerCacheInstallLocker,
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
 	}
@@ -213,6 +276,7 @@ func TestCompilerCachePersistsAcrossInstances(t *testing.T) {
 
 	second := CompilerCache{
 		Root:                       root,
+		InstallLocker:              testCompilerCacheInstallLocker,
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
 	}
@@ -222,6 +286,62 @@ func TestCompilerCachePersistsAcrossInstances(t *testing.T) {
 	}
 	if reused != installed || hits.Load() != 1 {
 		t.Fatalf("reused path=%q installed=%q downloads=%d", reused, installed, hits.Load())
+	}
+}
+
+func TestCompilerCacheValidHitDoesNotAcquireInstallLock(t *testing.T) {
+	payload := []byte("persistent compiler JavaScript")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	root := t.TempDir()
+	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
+	first := CompilerCache{
+		Root: root, InstallLocker: testCompilerCacheInstallLocker,
+		unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
+	}
+	installed, err := first.EnsureCatalogEntry(context.Background(), entry)
+	if err != nil {
+		server.Close()
+		t.Fatal(err)
+	}
+	server.Close()
+
+	locker := &failingCompilerCacheInstallLocker{}
+	second := CompilerCache{
+		Root: root, InstallLocker: locker,
+		unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
+	}
+	reused, err := second.EnsureCatalogEntry(context.Background(), entry)
+	if err != nil || reused != installed || locker.calls.Load() != 0 {
+		t.Fatalf("reused=%q installed=%q lock calls=%d error=%v",
+			reused, installed, locker.calls.Load(), err)
+	}
+}
+
+func TestCompilerCacheCleansTemporaryFileAfterInstallLockFailure(t *testing.T) {
+	payload := []byte("compiler JavaScript")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+	root := t.TempDir()
+	locker := &failingCompilerCacheInstallLocker{}
+	cache := CompilerCache{
+		Root: root, InstallLocker: locker,
+		unsafeAllowHTTP: true, UnsafeAllowPrivateNetworks: true,
+	}
+	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
+	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil ||
+		err.Error() != "install lock should not be used" {
+		t.Fatalf("install lock failure = %v", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 || locker.calls.Load() != 1 {
+		t.Fatalf("cache entries=%d lock calls=%d", len(entries), locker.calls.Load())
 	}
 }
 
@@ -241,12 +361,17 @@ func TestCompilerCacheAllowsIndependentConcurrentInstall(t *testing.T) {
 
 	root := t.TempDir()
 	entry := compilerCatalogEntry(server.URL, payload, 1<<20)
+	locker := &trackingCompilerCacheInstallLocker{
+		path: filepath.Join(root, string(entry.Language)+"-sha256-"+
+			hex.EncodeToString(entry.ArtifactSHA256[:])+".js"),
+	}
 	results := make(chan string, 2)
 	errorsFound := make(chan error, 2)
 	for range 2 {
 		go func() {
 			cache := CompilerCache{
 				Root:                       root,
+				InstallLocker:              locker,
 				unsafeAllowHTTP:            true,
 				UnsafeAllowPrivateNetworks: true,
 			}
@@ -281,6 +406,108 @@ func TestCompilerCacheAllowsIndependentConcurrentInstall(t *testing.T) {
 	if !validCompilerCacheFile(installed, entry.ArtifactSHA256, entry.MaxBytes) {
 		t.Fatal("concurrent installation did not leave one valid compiler artifact")
 	}
+	locker.mu.Lock()
+	defer locker.mu.Unlock()
+	if locker.calls != 2 || locker.maximum != 1 || len(locker.observations) != 2 ||
+		!os.SameFile(locker.observations[0], locker.observations[1]) {
+		t.Fatalf("install lock calls=%d maximum=%d observations=%d",
+			locker.calls, locker.maximum, len(locker.observations))
+	}
+}
+
+func TestCompilerCacheFileValidationRetriesIdentityChanges(t *testing.T) {
+	payload := []byte("compiler JavaScript")
+	digest := sha256.Sum256(payload)
+
+	t.Run("between lstat and open", func(t *testing.T) {
+		path := installCompilerCacheTestFile(t, t.TempDir(), "artifact.js", payload)
+		replacement := installCompilerCacheTestFile(t, filepath.Dir(path), "replacement.js", payload)
+		operations := operatingSystemCompilerCacheFileOperations
+		var opens atomic.Int32
+		operations.open = func(name string) (*os.File, error) {
+			if opens.Add(1) == 1 {
+				if err := os.Rename(replacement, path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return os.Open(name)
+		}
+		if !validCompilerCacheFileUsing(operations, path, digest, 1<<20) || opens.Load() != 2 {
+			t.Fatalf("validation result=false opens=%d", opens.Load())
+		}
+	})
+
+	t.Run("during digest read", func(t *testing.T) {
+		path := installCompilerCacheTestFile(t, t.TempDir(), "artifact.js", payload)
+		replacement := installCompilerCacheTestFile(t, filepath.Dir(path), "replacement.js", payload)
+		operations := operatingSystemCompilerCacheFileOperations
+		var hashes atomic.Int32
+		operations.hash = func(file *os.File, maximum int64) ([sha256.Size]byte, error) {
+			got, err := hashCompilerCacheFile(file, maximum)
+			if hashes.Add(1) == 1 {
+				if renameErr := os.Rename(replacement, path); renameErr != nil {
+					t.Fatal(renameErr)
+				}
+			}
+			return got, err
+		}
+		if !validCompilerCacheFileUsing(operations, path, digest, 1<<20) || hashes.Load() != 2 {
+			t.Fatalf("validation result=false hashes=%d", hashes.Load())
+		}
+	})
+
+	t.Run("bounded repeated replacement", func(t *testing.T) {
+		root := t.TempDir()
+		path := installCompilerCacheTestFile(t, root, "artifact.js", payload)
+		operations := operatingSystemCompilerCacheFileOperations
+		var opens atomic.Int32
+		operations.open = func(name string) (*os.File, error) {
+			attempt := opens.Add(1)
+			replacement := installCompilerCacheTestFile(
+				t, root, fmt.Sprintf("replacement-%d.js", attempt), payload,
+			)
+			if err := os.Rename(replacement, path); err != nil {
+				t.Fatal(err)
+			}
+			return os.Open(name)
+		}
+		if validCompilerCacheFileUsing(operations, path, digest, 1<<20) ||
+			opens.Load() != compilerCacheValidationTries {
+			t.Fatalf("validation result=true opens=%d", opens.Load())
+		}
+	})
+
+	t.Run("stable digest mismatch does not retry", func(t *testing.T) {
+		path := installCompilerCacheTestFile(t, t.TempDir(), "artifact.js", payload)
+		operations := operatingSystemCompilerCacheFileOperations
+		var opens atomic.Int32
+		operations.open = func(name string) (*os.File, error) {
+			opens.Add(1)
+			return os.Open(name)
+		}
+		if validCompilerCacheFileUsing(
+			operations, path, sha256.Sum256([]byte("different")), 1<<20,
+		) || opens.Load() != 1 {
+			t.Fatalf("validation result=true opens=%d", opens.Load())
+		}
+	})
+}
+
+func installCompilerCacheTestFile(
+	t *testing.T,
+	root string,
+	name string,
+	payload []byte,
+) string {
+	t.Helper()
+	path := filepath.Join(root, name)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestRestrictedOutboundDialRejectsResolverFailureWithoutDetails(t *testing.T) {

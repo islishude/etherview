@@ -193,6 +193,10 @@ the six application containers while preserving PostgreSQL, Geth, and the
 project-scoped `compiler-cache` named volume. Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.
+The API downloads a cold miss before coordination, then uses a digest-scoped
+writer PostgreSQL session advisory lock only for destination recheck, atomic
+installation, and final validation. Every process sharing this volume must use
+the same writer database lock domain.
 `make stop-preview` removes the deployment and all project volumes, including
 the rebuildable compiler cache. For manual cache reclamation, stop every
 `all`/`api` process mounting the volume before removing it; the next compiler

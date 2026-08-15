@@ -70,7 +70,8 @@ func (compiler *SolcJSCompiler) paths() (string, string, string) {
 }
 
 func (compiler *SolcJSCompiler) ValidateRuntime(ctx context.Context) error {
-	if compiler == nil || compiler.Catalog == nil || compiler.Cache == nil {
+	if compiler == nil || compiler.Catalog == nil || compiler.Cache == nil ||
+		compiler.Cache.InstallLocker == nil {
 		return errors.New("solc-js compiler runtime is incomplete")
 	}
 	nodePath, wrapperPath, manifestPath := compiler.paths()

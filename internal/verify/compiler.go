@@ -126,6 +126,7 @@ type CompilerCache struct {
 	Root                       string
 	Timeout                    time.Duration
 	UnsafeAllowPrivateNetworks bool
+	InstallLocker              CompilerCacheInstallLocker
 	unsafeHTTPClient           *http.Client
 	unsafeAllowHTTP            bool
 	resolver                   outboundResolver
@@ -142,6 +143,9 @@ func (cache *CompilerCache) EnsureCatalogEntry(
 		!versionPattern.MatchString(entry.Version) ||
 		entry.ArtifactSHA256 == [sha256.Size]byte{} {
 		return "", errors.New("catalog compiler entry is invalid")
+	}
+	if cache.InstallLocker == nil {
+		return "", errors.New("compiler cache install locker is unavailable")
 	}
 	artifact := CompilerArtifact{
 		URL:      entry.ArtifactURL,
@@ -232,18 +236,28 @@ func (cache *CompilerCache) ensureArtifact(
 	if err := temporary.Close(); err != nil {
 		return "", errors.New("close compiler artifact")
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		// A separate API replica may have installed the same digest while this
-		// process downloaded it. Filesystems differ on whether rename replaces
-		// an existing destination, so accept only the completely revalidated
-		// content-addressed winner.
+	if err := cache.InstallLocker.WithCompilerCacheInstallLock(ctx, digest, func() error {
+		// Independent API replicas may have downloaded the same cold miss while
+		// this process staged its authenticated temporary file. Revalidate after
+		// acquiring the writer-backed install lock and reuse the winner.
 		if validCompilerCacheFile(path, digest, maximum) {
-			return path, nil
+			return nil
 		}
-		return "", errors.New("install compiler artifact")
-	}
-	if !validCompilerCacheFile(path, digest, maximum) {
-		return "", errors.New("installed compiler artifact is unsafe")
+		if err := os.Rename(temporaryPath, path); err != nil {
+			// Retain a defensive winner check for an operator mounting one cache
+			// through different PostgreSQL lock domains or a lock session lost
+			// during installation. Only fully authenticated content is accepted.
+			if validCompilerCacheFile(path, digest, maximum) {
+				return nil
+			}
+			return errors.New("install compiler artifact")
+		}
+		if !validCompilerCacheFile(path, digest, maximum) {
+			return errors.New("installed compiler artifact is unsafe")
+		}
+		return nil
+	}); err != nil {
+		return "", err
 	}
 	return path, nil
 }

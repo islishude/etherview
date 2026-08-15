@@ -105,7 +105,9 @@ replace a required `make test-e2e` pass.
   The first real compilation populates the Compose named cache volume; the
   harness force-recreates the compiler-owning service, submits another job for
   the same version, and proves the identical artifact survives without a new
-  installation.
+  installation. Final cold-cache installation is serialized by the writer
+  PostgreSQL advisory-lock domain; downloads remain outside that lock and a
+  validated persistent hit does not acquire it.
   No application or test client receives a Docker socket or CLI. The test
   fails when the official catalog or compiler cannot be downloaded. CI builds
   and exercises the native production image independently on AMD64 and ARM64;

@@ -98,7 +98,9 @@ func TestSolcJSCompilerRequiresExplicitRelocatableRuntimePaths(t *testing.T) {
 	t.Run("missing paths", func(t *testing.T) {
 		compiler := &SolcJSCompiler{
 			Catalog: &CompilerCatalog{},
-			Cache:   &CompilerCache{Root: t.TempDir()},
+			Cache: &CompilerCache{
+				Root: t.TempDir(), InstallLocker: testCompilerCacheInstallLocker,
+			},
 		}
 		if err := compiler.ValidateRuntime(context.Background()); err == nil ||
 			!strings.Contains(err.Error(), "runtime paths must be absolute and clean") {
@@ -109,8 +111,10 @@ func TestSolcJSCompilerRequiresExplicitRelocatableRuntimePaths(t *testing.T) {
 	t.Run("relocated runtime", func(t *testing.T) {
 		nodePath, wrapperPath, manifestPath := writeTestSolcJSRuntime(t)
 		compiler := &SolcJSCompiler{
-			Catalog:        &CompilerCatalog{},
-			Cache:          &CompilerCache{Root: t.TempDir()},
+			Catalog: &CompilerCatalog{},
+			Cache: &CompilerCache{
+				Root: t.TempDir(), InstallLocker: testCompilerCacheInstallLocker,
+			},
 			NodePath:       nodePath,
 			WrapperPath:    wrapperPath,
 			ManifestPath:   manifestPath,

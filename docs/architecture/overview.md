@@ -548,10 +548,15 @@ size alone is not sufficient justification to weaken those invariants.
   identity, compiler digest, executor kind/policy, and executor digest, then
   atomically binds that complete identity under the worker lease.
   An artifact is streamed into a same-directory temporary file, authenticated,
-  installed under its digest, and revalidated before every use. Compose keeps
-  this rebuildable cache across application replacement; Helm may mount one
-  operator-owned shared PVC or retain its default memory-backed cache. Cache
-  persistence never overrides catalog freshness or provenance. See
+  then installed under its digest while holding a writer PostgreSQL session
+  advisory lock only for the final destination recheck, rename, and stable-file
+  validation. Replicas may download one cold miss concurrently, but lock
+  waiters do not retain a writer connection between attempts and a cache hit
+  does not acquire the lock. Compose keeps this rebuildable cache across
+  application replacement; Helm may mount one operator-owned shared PVC or
+  retain its default memory-backed cache. Every replica sharing one cache must
+  use the same writer database lock domain. Cache persistence never overrides
+  catalog freshness or provenance. See
   [ADR-0037](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md).
 - Native address verification also accepts a bounded inline Geas v0.3.3 source
   filesystem with a required runtime entrypoint and optional creation

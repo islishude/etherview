@@ -67,6 +67,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T36 | done | P70-T08, P40-T10, P50-T12 | Mark authenticated genesis allocation addresses as the explicit address-origin source | OpenAPI, generated contracts, query, API, frontend, and common gates |
 | P70-T37 | done | P60, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
 | P70-T38 | done | P60, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
+| P70-T39 | done | P70-T38 | Serialize shared solc-js cache installation with writer PostgreSQL advisory locks and stable file snapshots | cache concurrency, PostgreSQL integration, persistence, and common gates |
 
 ## Acceptance
 
@@ -111,6 +112,10 @@ and user/operator evidence sufficient for a production public release.
 - [x] P70-T38: every cache hit remains size-, mode-, type-, and SHA-256-checked;
       independent replicas may download one cold miss concurrently but can
       install only the same authenticated digest through atomic replacement.
+- [x] P70-T39: shared-cache replicas use one digest-scoped writer PostgreSQL
+      session advisory lock only for final installation, return contended
+      connections before retrying, and accept only a stable fully validated
+      file snapshot without holding a transaction or connection across HTTP.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -308,6 +313,22 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T39 implementation and verification: every compiler cache requires an
+  install locker, and production injects the writer PostgreSQL implementation.
+  Digest-scoped session advisory locks are acquired with nonblocking polling;
+  contended connections return to the pool before retry, the owning connection
+  remains pinned only around destination revalidation and atomic installation,
+  and outcome-uncertain unlocks discard that session. File validation now
+  accepts only one stable inode snapshot across `Lstat`, open metadata,
+  SHA-256, and final `Lstat`, with at most eight full retries exclusively for
+  identity changes. The independent-instance concurrency regression passes
+  1000 repetitions and `go test -race ./internal/verify` passes. `make
+  test-integration` passes against owned PostgreSQL 18 with independent pools
+  covering same/different digests, cancellation, pool availability, session
+  release, and failed-unlock connection discard. `make compose-check`, `make
+  helm-check`, both topologies of `make test-hardhat3-e2e`, the aggregate `make
+  check`, and `git diff --check` pass.
 
 - P70-T38 implementation and verification: ADR-0037 defines authenticated
   compiler artifacts as persistent but rebuildable performance data without

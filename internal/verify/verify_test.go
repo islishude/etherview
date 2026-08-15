@@ -67,6 +67,7 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	defer server.Close()
 	cache := CompilerCache{
 		Root:                       t.TempDir(),
+		InstallLocker:              testCompilerCacheInstallLocker,
 		unsafeAllowHTTP:            true,
 		UnsafeAllowPrivateNetworks: true,
 	}
@@ -229,7 +230,9 @@ func TestRequestValidationRejectsInvalidEtherscanMetadata(t *testing.T) {
 
 func TestCompilerCacheUsesSafeFilename(t *testing.T) {
 	t.Parallel()
-	cache := CompilerCache{Root: filepath.Join(t.TempDir(), "cache")}
+	cache := CompilerCache{
+		Root: filepath.Join(t.TempDir(), "cache"), InstallLocker: testCompilerCacheInstallLocker,
+	}
 	if _, err := cache.EnsureCatalogEntry(context.Background(), CatalogEntry{
 		Language:       LanguageSolidity,
 		Version:        "../../bad",

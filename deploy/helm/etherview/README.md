@@ -242,18 +242,24 @@ same claim is mounted by every selected `all` or `api` replica; multi-node
 replicas therefore require storage supporting their concurrent read/write
 mounts (normally RWX), same-directory atomic rename, coherent reads, and Unix
 ownership/modes for UID/GID 65532. The chart never creates or deletes the
-claim. The `sizeLimit` value applies only to the default `emptyDir`.
+claim. Every Pod sharing that claim must use the same writer PostgreSQL
+database: final installation is serialized by a digest-scoped session advisory
+lock from that writer pool, while downloads occur before lock acquisition and
+may overlap. Do not mount one claim into releases backed by different writer
+databases. The `sizeLimit` value applies only to the default `emptyDir`.
 The default `fsGroupChangePolicy: OnRootMismatch` prevents later Pod mounts
 from recursively broadening the mode-0400 artifact files after the volume root
 has been initialized; an operator override must preserve that property.
 
 Cached files are still validated for ordinary-file type, read-only mode, byte
 limit, and catalog SHA-256 before every use. Persistence does not bypass
-catalog freshness. Do not back up this cache or delete entries while any
-compiler owner mounts it; stop those Pods, clear the rebuildable claim, then
-restart them to download required versions again. Monitor and size the PVC at
-the storage layer because automatic eviction could remove a compiler pinned by
-an older durable job generation.
+catalog freshness. A valid cache hit does not acquire a database lock; a cold
+installation briefly reserves one writer connection only for destination
+recheck, rename, and final validation. Do not back up this cache or delete
+entries while any compiler owner mounts it; stop those Pods, clear the
+rebuildable claim, then restart them to download required versions again.
+Monitor and size the PVC at the storage layer because automatic eviction could
+remove a compiler pinned by an older durable job generation.
 
 `config.verification.node_path`, `wrapper_path`, and `manifest_path` default to
 that bundled runtime and may select alternate absolute paths supplied by a
