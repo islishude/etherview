@@ -36,7 +36,7 @@ func (stage Stage) Version() int {
 	case StageTrace:
 		return 3
 	case StageStateDiff:
-		return 2
+		return 3
 	case StageCore, StageToken:
 		return 1
 	default:

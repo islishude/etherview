@@ -144,6 +144,7 @@ func TestExecutorReindexMapsSupportedStagesToCanonicalBlockJobs(t *testing.T) {
 	t.Parallel()
 	for _, stage := range []enrich.StageID{
 		enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.StatsStage, enrich.TraceStage,
+		enrich.StateDiffStage,
 	} {
 		t.Run(stage.Name, func(t *testing.T) {
 			t.Parallel()

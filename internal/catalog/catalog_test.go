@@ -656,6 +656,126 @@ func TestTransactionTraceEmptyExecutionIsNotApplicable(t *testing.T) {
 	assertCatalogConsumed(t, backend)
 }
 
+func TestTransactionTraceUsesVerifiedAddressSelectorWhenDirectExecutionIsUnavailable(t *testing.T) {
+	row := traceRow("", nil, 0, "CALL")
+	input := []byte{0x85, 0x7e, 0xa7, 0xa6}
+	panicOutput := append([]byte{0x4e, 0x48, 0x7b, 0x71}, make([]byte, 32)...)
+	panicOutput[len(panicOutput)-1] = 0x12
+	row[10], row[11], row[12] = input, panicOutput, "division or modulo by zero"
+	row[13], row[14], row[15], row[16], row[17] = true, true, nil, nil, "unavailable"
+	codeHash := bytesOf(0x44, 32)
+	abiEntry := []byte(`{"type":"function","name":"triggerDivisionByZero","inputs":[],"outputs":[]}`)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
+			[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		traceStageStep("complete"),
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", check: func(arguments []driver.NamedValue) error {
+			if len(arguments) != 5 || arguments[3].Value != "state_diff" {
+				return fmt.Errorf("state-diff publication arguments=%v", arguments)
+			}
+			return nil
+		}, rows: catalogRows(2, []driver.Value{"complete", int64(8)})},
+		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
+			[]driver.Value{codeHash, "triggerDivisionByZero()", abiEntry})},
+	)
+	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
+	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
+		t.Fatalf("trace=%+v err=%v", trace, err)
+	}
+	frame, decoded := trace.Frames[0], trace.Frames[0].Decoding
+	if frame.Execution == nil || frame.Execution.Resolution != "unavailable" || frame.Execution.Address != "" ||
+		decoded.Status != "decoded" || decoded.FunctionName != "triggerDivisionByZero" ||
+		decoded.Signature != "triggerDivisionByZero()" || decoded.OutputStatus != "not_applicable" ||
+		decoded.Confidence != "verified" || len(decoded.Inputs) != 0 || len(decoded.Outputs) != 0 ||
+		decoded.ABISource == nil || decoded.ABISource.Kind != "exact_address" ||
+		decoded.ABISource.Address != "0x2222222222222222222222222222222222222222" ||
+		decoded.ABISource.CodeHash != "0x"+strings.Repeat("44", 32) ||
+		!strings.Contains(decoded.Warning, "exact verified address range") {
+		t.Fatalf("verified selector trace frame=%+v", frame)
+	}
+	if decoded.Revert == nil || decoded.Revert.Status != "decoded" ||
+		decoded.Revert.ErrorName != "Panic" || decoded.Revert.Signature != "Panic(uint256)" ||
+		len(decoded.Revert.Arguments) != 1 || fmt.Sprint(decoded.Revert.Arguments[0].Value) != "18" ||
+		decoded.Revert.ABISource == nil || decoded.Revert.ABISource.Kind != "builtin" {
+		t.Fatalf("verified selector trace revert=%+v", decoded.Revert)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionTraceVerifiedAddressSelectorDecodesStaticCallOutput(t *testing.T) {
+	row := traceRow("", nil, 0, "STATICCALL")
+	input := []byte{0x3f, 0xa4, 0xf2, 0x45}
+	output := make([]byte, 32)
+	output[len(output)-1] = 42
+	row[10], row[11], row[15], row[16], row[17] = input, output, nil, nil, "unavailable"
+	codeHash := bytesOf(0x55, 32)
+	abiEntry := []byte(`{"type":"function","name":"value","inputs":[],"outputs":[{"name":"","type":"uint256"}]}`)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
+			[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+		traceStageStep("complete"),
+		catalogQueryStep{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)})},
+		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
+			[]driver.Value{codeHash, "value()", abiEntry})},
+	)
+	trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
+	if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil {
+		t.Fatalf("trace=%+v err=%v", trace, err)
+	}
+	decoded := trace.Frames[0].Decoding
+	if decoded.Status != "decoded" || decoded.Signature != "value()" ||
+		decoded.OutputStatus != "decoded" || len(decoded.Outputs) != 1 ||
+		fmt.Sprint(decoded.Outputs[0].Value) != "42" || decoded.ABISource == nil ||
+		decoded.ABISource.Kind != "exact_address" {
+		t.Fatalf("verified selector static call=%+v", decoded)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionTraceVerifiedAddressFallbackRequiresDirectCallAndCompleteStateDiff(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		callType         string
+		withStage        bool
+		executionAddress []byte
+		wantStatus       string
+	}{
+		{name: "delegatecall", callType: "DELEGATECALL", wantStatus: "unknown"},
+		{name: "known unresolved delegate", callType: "CALL", executionAddress: bytesOf(0x33, 20), wantStatus: "unavailable"},
+		{name: "missing state diff", callType: "CALL", withStage: true, wantStatus: "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := traceRow("", nil, 0, test.callType)
+			row[10] = []byte{0x85, 0x7e, 0xa7, 0xa6}
+			row[15], row[16], row[17] = test.executionAddress, nil, "unavailable"
+			steps := []catalogQueryStep{
+				{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(3,
+					[]driver.Value{"100", bytesOf(0xaa, 32), "0"})},
+				traceStageStep("complete"),
+				{contains: "FROM normalized_traces", rows: catalogRows(18, row)},
+			}
+			if len(test.executionAddress) != 0 {
+				steps = append(steps, emptyTraceABISteps()...)
+			}
+			if test.withStage {
+				steps = append(steps, catalogQueryStep{
+					contains: "FROM published_block_stage_results", rows: catalogRows(2),
+				})
+			}
+			catalog, backend := openCatalog(t, steps...)
+			trace, err := catalog.TransactionTrace(context.Background(), "1", "0x"+strings.Repeat("bb", 32))
+			if err != nil || len(trace.Frames) != 1 || trace.Frames[0].Decoding == nil ||
+				trace.Frames[0].Decoding.Status != test.wantStatus {
+				t.Fatalf("trace=%+v err=%v", trace, err)
+			}
+			assertCatalogConsumed(t, backend)
+		})
+	}
+}
+
 func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *testing.T) {
 	row := traceRow("", nil, 0, "CALL")
 	row[10] = []byte{}

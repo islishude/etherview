@@ -348,7 +348,7 @@ LEFT JOIN transaction_execution_code_resolutions AS execution
        AND published_state_diff.block_number = execution.block_number
        AND published_state_diff.block_hash = execution.block_hash
        AND published_state_diff.stage = 'state_diff'
-       AND published_state_diff.stage_version = 2
+       AND published_state_diff.stage_version = 3
        AND published_state_diff.state = 'complete'
  )
 LEFT JOIN abi_decodings AS decoding
@@ -391,7 +391,7 @@ const listTransactionsWithMethodColumnsSQL = `
 	      AND published_state_diff.block_number = inclusion.block_number
 	      AND published_state_diff.block_hash = inclusion.block_hash
 	      AND published_state_diff.stage = 'state_diff'
-	      AND published_state_diff.stage_version = 2
+	      AND published_state_diff.stage_version = 3
 	      AND published_state_diff.state = 'complete'
 	),
 	execution.resolution,

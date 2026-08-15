@@ -6,14 +6,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -29,6 +32,36 @@ type stateDiffBlockFailureService struct {
 	blockHash       common.Hash
 	transactionHash common.Hash
 	calls           int
+}
+
+type stateDiffCompletePrestateService struct {
+	blockHash       common.Hash
+	transactionHash common.Hash
+	diffModes       []bool
+}
+
+func (service *stateDiffCompletePrestateService) TraceBlockByHash(
+	_ context.Context,
+	blockHash common.Hash,
+	config map[string]any,
+) (json.RawMessage, error) {
+	if blockHash != service.blockHash {
+		return nil, fmt.Errorf("state difference block hash = %s, want %s", blockHash, service.blockHash)
+	}
+	tracerConfig, _ := config["tracerConfig"].(map[string]any)
+	diffMode, ok := tracerConfig["diffMode"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("state difference trace omitted diffMode")
+	}
+	service.diffModes = append(service.diffModes, diffMode)
+	result := json.RawMessage(`{}`)
+	if diffMode {
+		result = json.RawMessage(`{"pre":{},"post":{}}`)
+	}
+	return marshalIntegrationBlockTraceResults(
+		[]common.Hash{service.transactionHash},
+		func(common.Hash) (json.RawMessage, error) { return result, nil },
+	)
 }
 
 func (service *stateDiffBlockFailureService) TraceBlockByHash(
@@ -286,7 +319,104 @@ func TestStateDiffStageBlockItemFailurePublishesUnavailableAtomically(t *testing
 		WHERE chain_id = 1 AND block_hash = $1`, 0, mustBytes(t, reference.Hash))
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM block_journals
-		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'state_diff@2'`, 0, mustBytes(t, reference.Hash))
+		WHERE chain_id = 1 AND block_hash = $1 AND stage = 'state_diff@3'`, 0, mustBytes(t, reference.Hash))
+}
+
+func TestStateDiffStageCompletePrestatePublishesNativeTransferProjection(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := testAddress(66_000)
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number: 0, ParentHash: testHash(0), ExtraData: []byte("complete-prestate-native-transfer"),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType, To: &destination, Value: big.NewInt(0),
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "complete-prestate-native-transfer"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerFixtureIdentities(
+		testHash(66_001), bundle.Block.Hash(), testHash(66_002), bundle.Block.Transactions()[0].Hash(),
+	)
+	commitCanonical(t, ctx, repository, bundle)
+	reference := mustBlockRef(t, bundle)
+	blockHash, err := enrich.ParseWord(reference.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionHash := bundle.Block.Transactions()[0].Hash()
+	service := &stateDiffCompletePrestateService{
+		blockHash: bundle.Block.Hash(), transactionHash: transactionHash,
+	}
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "state-diff-complete-prestate", Client: newIntegrationRPCClient(t, "debug", service),
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeTrace: true},
+		Capabilities: ethrpc.CapabilityReport{Methods: map[string]ethrpc.Availability{
+			ethrpc.CapabilityDebugTrace: ethrpc.AvailabilityAvailable,
+		}},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewStateDiffRPCProcessor(db, pool, enrich.StateDiffLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueued, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.StateDiffStage, ChainID: "1", BlockHash: blockHash,
+		BlockNumber: reference.Number, MaxAttempts: 1,
+	})
+	if err != nil || !enqueued.Created {
+		t.Fatalf("enqueue state difference job = %+v, err=%v", enqueued, err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "state-diff-complete-prestate", LeaseDuration: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err := worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("process state difference job=%t err=%v", processed, err)
+	}
+	assertEnrichmentJobTerminal(t, ctx, db, enqueued.Job.ID, "succeeded", 1)
+	if fmt.Sprint(service.diffModes) != "[true false]" {
+		t.Fatalf("state difference diff modes = %v, want [true false]", service.diffModes)
+	}
+	execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at = clock_timestamp()`)
+	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactions, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transactions) != 1 || transactions[0].Method == nil || *transactions[0].Method != "Native Transfer" {
+		t.Fatalf("transaction projection = %+v", transactions)
+	}
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calldata, err := catalogReader.TransactionCalldata(ctx, "1", transactionHash.Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calldata.Execution.Resolution != "empty" || calldata.Decoding.Status != "not_applicable" || calldata.Input != "0x" {
+		t.Fatalf("transaction calldata projection = %+v", calldata)
+	}
 }
 
 func traceStageBundle(t *testing.T, twoTransactions bool) chainbundle.Bundle {

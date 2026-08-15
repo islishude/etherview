@@ -28,11 +28,11 @@ type proxyStateDiffService struct {
 func (service *proxyStateDiffService) TraceBlockByHash(
 	ctx context.Context,
 	blockHash common.Hash,
-	_ map[string]any,
+	options map[string]any,
 ) (json.RawMessage, error) {
 	service.calls++
 	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
-		return service.raw, nil
+		return integrationPrestateTraceResult(service.raw, options)
 	})
 }
 
@@ -232,8 +232,8 @@ func TestStateDiffRequeuesProxyOnlyForCodeAndExactERC1967Slots(t *testing.T) {
 	assertStageDetail(t, ctx, db, word, "proxy", "state_diff_coverage", "complete")
 	assertStageDetail(t, ctx, db, word, "proxy", "trace_coverage", "complete")
 	assertStageDetail(t, ctx, db, word, "proxy", "history_coverage", "complete")
-	if service.calls != 2 {
-		t.Fatalf("StateDiff RPC calls=%d want=2", service.calls)
+	if service.calls != 4 {
+		t.Fatalf("StateDiff RPC calls=%d want=4", service.calls)
 	}
 }
 

@@ -20,7 +20,7 @@ arbitrary executable SQL would create a second migration and security surface.
 ## Decision
 
 - Every successful or stale production `proxy@2`, `abi@3`, `token@1`,
-  `stats@3`, `trace@3`, and `state_diff@2`
+  `stats@3`, `trace@3`, and `state_diff@3`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
 - The journal, `block_stage_results` row, and all output written by that stage
@@ -118,3 +118,9 @@ Migration `0040` extends the `state_diff@2` journal with authorization and
 transaction execution-code relations; `trace@3` journals normalized frames and
 trace-log attribution. Reorg, replay, refresh, and cleanup therefore move these
 facts with their exact block hash.
+
+Migration `0047` supersedes the current StateDiff witness with
+`state_diff@3`. Its complete-prestate supplement changes only how the same
+versioned authorization and execution-code relations are derived; their
+journal identity, lease fence, reorg behavior, and controlled relation set are
+unchanged.

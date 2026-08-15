@@ -390,6 +390,10 @@ etherview reindex --config /etc/etherview/config.yaml \
   --from 0 --to 12000010 --stage trace \
   --reason "publish trace v3 execution identities and constructor decoding"
 
+etherview reindex --config /etc/etherview/config.yaml \
+  --from 0 --to 12000010 --stage state_diff \
+  --reason "publish state_diff v3 complete-prestate execution identities"
+
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
 
@@ -412,12 +416,15 @@ the range as proxy-interaction complete. Nodes that reject `withLog` with
 `-32602` still publish the call tree, but their logs remain visibly on the
 conservative address fallback path.
 
-Migration `0040` is another explicit bounded cutover. Run `reindex --stage
-state_diff` for the chosen canonical range and wait for `state_diff@2`. Its
-completion requests `trace@3`; after Trace publishes, wait for `proxy@2` and
-then `abi@3`, then rebuild the affected coverage range. The migration never
-enqueues unbounded history, and operators must not substitute block-end or
-`latest` code for unavailable transaction prestate.
+Migration `0040` originally introduced the transaction execution-code rows and
+`state_diff@2`. Migration `0047` is the current explicit bounded cutover: it
+changes the public witness to `state_diff@3` and clears proxy-interaction
+coverage that depended on the superseded version, but it never enqueues
+history. Run `reindex --stage state_diff` for the chosen canonical range and
+wait for `state_diff@3`. Its completion requests `trace@3`; after Trace
+publishes, wait for `proxy@2` and then `abi@3`, then rebuild and verify the
+affected coverage range. Operators must not substitute block-end or `latest`
+code for unavailable transaction prestate.
 
 ### Proxy detection V2 shadow rollout
 

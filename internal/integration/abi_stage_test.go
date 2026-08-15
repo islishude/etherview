@@ -125,6 +125,34 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		t.Fatalf("verified address-range calldata projection = %+v", calldata)
 	}
 	execFixture(t, ctx, db, `
+		UPDATE normalized_traces
+		SET execution_address = NULL, execution_code_hash = NULL,
+		    execution_resolution = 'unavailable'
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = ''`, mustBytes(t, reference.Hash), txHash[:])
+	trace, err := catalogReader.TransactionTrace(ctx, "1", txHash.String())
+	if err != nil {
+		t.Fatalf("decode verified address-range Trace call without execution identity: %v", err)
+	}
+	if len(trace.Frames) == 0 || trace.Frames[0].Execution == nil ||
+		trace.Frames[0].Execution.Resolution != "unavailable" || trace.Frames[0].Decoding == nil ||
+		trace.Frames[0].Decoding.Status != "decoded" ||
+		trace.Frames[0].Decoding.FunctionName != "transfer" ||
+		trace.Frames[0].Decoding.Signature != "transfer(address,uint256)" ||
+		trace.Frames[0].Decoding.OutputStatus != "unavailable" ||
+		len(trace.Frames[0].Decoding.Inputs) != 2 ||
+		trace.Frames[0].Decoding.ABISource == nil ||
+		trace.Frames[0].Decoding.ABISource.Kind != "exact_address" {
+		t.Fatalf("verified address-range Trace projection execution=%+v decoding=%+v",
+			trace.Frames[0].Execution, trace.Frames[0].Decoding)
+	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces
+		SET execution_address = $3, execution_code_hash = $4,
+		    execution_resolution = 'direct'
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = ''`, mustBytes(t, reference.Hash), txHash[:], mustBytes(t, direct), directCode[:])
+	execFixture(t, ctx, db, `
 		INSERT INTO transaction_execution_code_resolutions (
 			chain_id, block_number, block_hash, transaction_hash, transaction_index,
 			context_address, execution_address, execution_code_hash, resolution,
@@ -873,10 +901,10 @@ type abiStateDiffService struct {
 }
 
 func (service *abiStateDiffService) TraceBlockByHash(
-	ctx context.Context, blockHash common.Hash, _ map[string]any,
+	ctx context.Context, blockHash common.Hash, options map[string]any,
 ) (json.RawMessage, error) {
 	return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
-		return service.raw, nil
+		return integrationPrestateTraceResult(service.raw, options)
 	})
 }
 

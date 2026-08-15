@@ -57,6 +57,7 @@ const (
 	// another compiler or network dependency into this test.
 	noCBORCreationBytecode = "0x6080604052348015600e575f5ffd5b50603e80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
 	noCBORRuntimeBytecode  = "0x6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
+	nativeTransferTarget   = "0x00000000000000000000000000000000000000F0"
 )
 
 type fixture struct {
@@ -126,6 +127,9 @@ type apiSnapshot struct {
 	CalldataInput             string
 	CalldataResolution        string
 	CalldataStatus            string
+	NativeMethod              string
+	NativeCalldataResolution  string
+	NativeCalldataStatus      string
 	ChartAvailable            bool
 	SPA                       bool
 	SSE                       bool
@@ -742,8 +746,8 @@ func (h *harness) initializeFixture(ctx context.Context) {
 		}
 	}
 	h.fixture.nativeHash = h.sendTransaction(ctx, map[string]any{
-		"from": h.fixture.accounts[0], "to": h.fixture.accounts[1],
-		"value": "0x5", "gas": "0x5208", "gasPrice": "0x3b9aca00",
+		"from": h.fixture.accounts[0], "to": nativeTransferTarget,
+		"value": "0x0", "gas": "0x5208", "gasPrice": "0x3b9aca00",
 	})
 	delegateAHash := h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "data": noCBORCreationBytecode,
@@ -1284,10 +1288,34 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/trace", &trace)
 	var calldata gen.TransactionCalldataResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash+"/calldata", &calldata)
-	if string(calldata.Data.Execution.Resolution) != "unavailable" ||
+	expectedRuntimeHash := crypto.Keccak256Hash(common.FromHex(noCBORRuntimeBytecode)).Hex()
+	if string(calldata.Data.Execution.Resolution) != "direct" ||
 		!strings.EqualFold(calldata.Data.Execution.ContextAddress, h.fixture.contractAddress) ||
-		string(calldata.Data.Decoding.Status) != "unavailable" {
-		h.t.Fatalf("transaction calldata execution = %#v", calldata.Data.Execution)
+		calldata.Data.Execution.Address == nil ||
+		!strings.EqualFold(string(*calldata.Data.Execution.Address), h.fixture.contractAddress) ||
+		calldata.Data.Execution.CodeHash == nil ||
+		!strings.EqualFold(string(*calldata.Data.Execution.CodeHash), expectedRuntimeHash) ||
+		calldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusUnknown {
+		h.t.Fatalf("transaction calldata = %#v", calldata.Data)
+	}
+	var nativeCalldata gen.TransactionCalldataResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/calldata", &nativeCalldata)
+	if nativeCalldata.Data.Input != "0x" ||
+		nativeCalldata.Data.Execution.Resolution != gen.TraceExecutionResolutionEmpty ||
+		!strings.EqualFold(string(nativeCalldata.Data.Execution.ContextAddress), nativeTransferTarget) ||
+		nativeCalldata.Data.Execution.Address != nil || nativeCalldata.Data.Execution.CodeHash != nil ||
+		nativeCalldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusNotApplicable {
+		h.t.Fatalf("native transfer calldata = %#v", nativeCalldata.Data)
+	}
+	nativeMethod := ""
+	for _, transaction := range transactions.Data {
+		if strings.EqualFold(string(transaction.Hash), h.fixture.nativeHash) && transaction.Method != nil {
+			nativeMethod = *transaction.Method
+			break
+		}
+	}
+	if nativeMethod != "Native Transfer" {
+		h.t.Fatalf("native transfer list method = %q", nativeMethod)
 	}
 	eip7702 := h.captureEIP7702API(ctx)
 	chart := h.requireHTTPStatus(ctx, "/api/v1/stats/charts/overview", http.StatusOK)
@@ -1323,7 +1351,9 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		CreationAddress: creationAddress, FailedStatus: failedStatus,
 		TraceState: string(trace.Data.State), CalldataInput: calldata.Data.Input,
 		CalldataResolution: string(calldata.Data.Execution.Resolution),
-		CalldataStatus:     string(calldata.Data.Decoding.Status), ChartAvailable: true,
+		CalldataStatus:     string(calldata.Data.Decoding.Status),
+		NativeMethod:       nativeMethod, NativeCalldataResolution: string(nativeCalldata.Data.Execution.Resolution),
+		NativeCalldataStatus: string(nativeCalldata.Data.Decoding.Status), ChartAvailable: true,
 		SPA: bytes.Contains(body, []byte("<div id=\"root\">")), SSE: true,
 		AuthorityType:             eip7702.authorityType,
 		HasDelegationHistory:      eip7702.hasDelegationHistory,

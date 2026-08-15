@@ -162,8 +162,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   through the catalog API and verification page; its targeted, PostgreSQL,
   browser, race, security, license, and deployment gates pass. P50-T59 reuses
   the compact bilingual Method cell in address Transactions only, with
-  full-signature disclosure and responsive/accessibility coverage.
-- P59-T01 is complete: `trace@2` binds validated callTracer logs to exact execution
+  full-signature disclosure and responsive/accessibility coverage. P50-T60
+  restores the shared localized Direction/方向 heading instead of exposing the
+  `table.direction` resource key.
+- P59-T01 through P59-T03 are complete. P59-T03 extends the exact
+  verified-address fallback used by calldata reads to direct Trace calls whose
+  unchanged target is omitted by completed state-diff evidence, while indirect
+  and unresolved delegated execution stay fail-closed.
+  `trace@2` binds validated callTracer logs to exact execution
   frames while retaining emitter identity, decodes call inputs, successful
   outputs, and direct reverts with candidate-bound provenance, and keeps
   trace-cache payloads free of ABI projections. Migration `0039`, bounded
@@ -175,9 +181,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   exact-runtime artifact as `code_hash`/`high` without backdating verified
   address provenance; the reported Preview transaction now decodes all four
   exact-trace-attributed logs.
-- P61 is complete: migration `0040` and `state_diff@2` preserve and replay
+- P61 is complete: migrations `0040` and `0047` plus `state_diff@3` preserve and replay
   type-4 authorization outcomes into canonical delegation and transaction-time
-  execution-code facts; `trace@3` and `abi@3` expose exact EIP-7702 execution
+  execution-code facts, including unchanged top-level targets recovered from
+  one same-endpoint, exact-block complete-prestate request; `trace@3` and
+  `abi@3` expose exact EIP-7702 execution
   identity and verified CREATE/CREATE2 constructor decoding without changing
   raw context, emitter, initcode, input, or output. Generated authorization and
   delegation APIs plus the bilingual delegated-EOA interaction surface use a
@@ -189,7 +197,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   redundant History action while retaining the dedicated History tab. P61-T13
   adds embedded-production browser coverage and real signed Prague/Anvil
   type-4 transaction coverage across authorization outcomes, transaction-time
-  delegate identity, clearing, and canonical reorg retention. PostgreSQL,
+  delegate identity, clearing, and canonical reorg retention. P61-T14 restores
+  Native Transfer list and transaction-action projection when diff-only
+  prestate evidence omits an unchanged empty target. PostgreSQL,
   browser, monolith/six-role runtime, real Hardhat verification, and common-gate
   results remain in [P61 evidence](docs/plans/P61-eip7702-delegated-accounts.md#evidence).
 - P62 is complete: migration `0043` replaces the singular implementation

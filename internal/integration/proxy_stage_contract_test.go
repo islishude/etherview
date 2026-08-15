@@ -1035,7 +1035,9 @@ func (service *proxyTraceService) TraceBlockByHash(
 	}
 	if options["tracer"] == "prestateTracer" {
 		return marshalIntegrationBlockTraceResults(hashes, func(common.Hash) (json.RawMessage, error) {
-			return json.RawMessage(`{"pre":{},"post":{}}`), nil
+			return integrationPrestateTraceResult(
+				json.RawMessage(`{"pre":{},"post":{}}`), options,
+			)
 		})
 	}
 	transaction := service.block.Block.Transactions()[0]

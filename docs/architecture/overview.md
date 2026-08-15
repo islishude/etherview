@@ -330,14 +330,20 @@ of the callback. The routing and lag contract is specified in
   independent direct-revert data; successful children remain output-decodable
   even when an ancestor later rolls back; see
   [ADR-0033](../decisions/ADR-0033-trace-bound-log-attribution-and-call-decoding.md).
-- `state_diff@2` calls `debug_traceBlockByHash` once with `prestateTracer` and
+- `state_diff@3` first calls `debug_traceBlockByHash` with `prestateTracer` and
   `diffMode=true`, then replays geth-owned EIP-7702 authorization tuples against
   each exact ordered transaction item and publishes first-hop execution-code
-  identity. It has no per-transaction debug fallback. A missing block method,
-  recognized unavailable history, missing item evidence, or any failed item
-  makes the whole stage unavailable or failed without partial rows or journal;
-  contradictory nonce/code evidence fails permanently rather than consulting
-  block-end or latest state. See
+  identity. If diff-only evidence omits or cannot resolve any top-level call
+  target, the same endpoint receives one additional exact-block
+  `debug_traceBlockByHash` with complete prestate. Its transaction order and
+  hashes are bound independently, and only the top-level target plus a present
+  first-hop delegate may supplement execution identity; an absent target proves
+  empty code, while an absent delegate remains unavailable. It has no
+  per-transaction debug fallback. A missing block method, recognized unavailable
+  history, missing item evidence, or any failed item makes the whole stage
+  unavailable or failed without partial rows or journal; contradictory
+  nonce/code evidence fails permanently rather than consulting block-end or
+  latest state. See
   [ADR-0034](../decisions/ADR-0034-eip7702-execution-identity-and-constructor-decoding.md).
 - `abi@3` consumes existing canonical code and proxy observations. PostgreSQL
   claim selection and the production processor both require the exact

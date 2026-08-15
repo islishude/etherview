@@ -101,6 +101,6 @@ independently of source would let guessed material be published as verified.
   `verified`. Raw log bytes remain available for every status.
 
 ADR-0034 extends this boundary in `abi@3`: calls bind to the execution
-address/code hash proven by `state_diff@2`, while constructors require a full
+address/code hash proven by `state_diff@3`, while constructors require a full
 verified creation match and exact persisted argument suffix. EIP-7702 never
 changes the call/storage context or invents proxy provenance.

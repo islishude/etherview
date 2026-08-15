@@ -673,6 +673,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Direction" })).toBeVisible();
   const addressMethod = page.getByLabel(
     "valueWithAnIntentionallyLongMethodName(uint256,address)",
   );
@@ -694,6 +695,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(addressMethodOverflow).toBeLessThanOrEqual(1);
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByRole("columnheader", { name: "方法" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "方向" })).toBeVisible();
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
   expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);

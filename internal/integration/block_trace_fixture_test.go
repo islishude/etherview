@@ -68,3 +68,30 @@ func marshalDatabaseBlockTraceResults(
 	}
 	return marshalIntegrationBlockTraceResults(hashes, result)
 }
+
+func integrationPrestateTraceResult(
+	stateDiff json.RawMessage,
+	options map[string]any,
+) (json.RawMessage, error) {
+	tracerConfig, ok := options["tracerConfig"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("prestate trace fixture omitted tracerConfig")
+	}
+	diffMode, ok := tracerConfig["diffMode"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("prestate trace fixture omitted diffMode")
+	}
+	if diffMode {
+		return append(json.RawMessage(nil), stateDiff...), nil
+	}
+	var envelope struct {
+		Pre json.RawMessage `json:"pre"`
+	}
+	if err := json.Unmarshal(stateDiff, &envelope); err != nil {
+		return nil, fmt.Errorf("decode prestate trace fixture: %w", err)
+	}
+	if len(envelope.Pre) == 0 {
+		return nil, fmt.Errorf("prestate trace fixture omitted pre")
+	}
+	return append(json.RawMessage(nil), envelope.Pre...), nil
+}

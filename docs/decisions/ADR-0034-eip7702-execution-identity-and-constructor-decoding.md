@@ -14,7 +14,7 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 
 ## Decision
 
-- `state_diff@2` binds each raw geth type-4 transaction to its exact ordered
+- `state_diff@3` binds each raw geth type-4 transaction to its exact ordered
   `txHash` item in one endpoint's `debug_traceBlockByHash` pre/post-state
   response. The complete response is rejected before publication if any item
   is missing, reordered, duplicated, malformed, or failed. It uses
@@ -23,6 +23,14 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   ordinary-code rejection, zero-address clearing, and repeated authorities.
   Applied nonce/code results must agree with the provider's post-state. Missing
   exact evidence is unavailable; contradictory evidence fails permanently.
+- When the diff-mode response omits or cannot resolve a transaction's
+  top-level target, the same endpoint receives one additional block-level
+  `prestateTracer` request with `diffMode=false`, still bound to the exact block,
+  transaction count, order, and hashes. Only that top-level target and a
+  present first-hop delegate may supplement execution evidence. A target absent
+  from complete prestate has empty code; a delegation designator whose delegate
+  account is absent remains unavailable. No height, block-end state, `latest`,
+  or per-transaction fallback is permitted.
 - Authorization rows retain the raw tuple, recovered authority when available,
   signature status, application status, and a stable skip reason. Transaction
   execution-code rows retain the call context, first-hop code address/hash, and
@@ -50,6 +58,21 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   argument suffix. The ABI arguments must unpack and re-encode byte-for-byte.
   Constructors have no successful outputs; direct failure retains independent
   custom-error or builtin `Error`/`Panic` decoding when the required ABI exists.
+- A completed canonical `state_diff@3` may still omit an unchanged nested
+  direct-call target because complete-prestate supplementation is restricted to
+  the transaction's top-level target. It may therefore leave a public Trace
+  `CALL` or `STATICCALL` frame with
+  `resolution=unavailable` and no execution address or code hash. In that exact
+  case only, the read-time projection may use bounded, block-range-covered
+  verified function-selector entries for the frame's call-context address. It
+  must decode and re-encode the complete calldata byte-for-byte and fail closed
+  on selector collisions, overlapping verified code identities, or candidate
+  overflow. The frame keeps its unavailable execution evidence; this fallback
+  never applies to `DELEGATECALL`, `CALLCODE`, a known-but-unresolved EIP-7702
+  delegate, proxy or Diamond routing, same-code reuse, selectorless calldata,
+  or an incomplete state-diff publication. A uniquely selected function entry
+  may decode its declared successful outputs and decoder-local builtin reverts;
+  custom errors still require a complete execution-bound ABI candidate.
 - Transaction calldata uses the final execution-code row produced after all
   authorization tuples for that transaction have been applied in order. Thus a
   successful re-delegation of the transaction's `to` authority uses the new
@@ -90,7 +113,9 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
 ## Consequences
 
 Historical support requires an explicit bounded `state_diff` reindex, followed
-by `trace`, `proxy`, and `abi` replay. Migration `0040` creates storage and
-changes version contracts but never enqueues unbounded history. Authorization
+by `trace`, `proxy`, and `abi` replay. Migration `0040` creates storage;
+migration `0047` advances the current witness to `state_diff@3` and invalidates
+superseded proxy-interaction coverage. Neither migration enqueues unbounded
+history. Authorization
 creation/signing/revocation, opcode/raw trace persistence, EIP-7851, EIP-8202,
 and proxy authority inferred from arbitrary delegatecall remain out of scope.

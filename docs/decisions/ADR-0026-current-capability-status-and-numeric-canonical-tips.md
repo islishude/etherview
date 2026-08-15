@@ -29,7 +29,7 @@ ambiguous pattern existed in two historical ABI observation lookups.
   absent Trace RPC is `unavailable`.
 - This status does not claim gap-free historical Trace coverage.
   Transaction-level state differences retain their independent
-  `state_diff@2` publication state and do not redefine
+  `state_diff@3` publication state and do not redefine
   `completeness.state`.
 - Status reads bind core coverage, the indexed block identity, and its Trace
   publication in one PostgreSQL statement snapshot. A result for an orphaned

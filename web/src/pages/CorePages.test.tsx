@@ -511,6 +511,7 @@ describe("core explorer pages", () => {
     {
       name: "empty-calldata contract calls",
       input: "0x",
+      value: "1",
       resolution: "direct",
       english: "Contract interaction",
       chinese: "调用合约",
@@ -518,6 +519,7 @@ describe("core explorer pages", () => {
     {
       name: "non-empty-calldata EOA transactions",
       input: "0x1234",
+      value: "1",
       resolution: "empty",
       english: "EOA transaction",
       chinese: "EOA 交易",
@@ -525,12 +527,14 @@ describe("core explorer pages", () => {
     {
       name: "ordinary native transfers",
       input: "0x",
+      value: "0",
       resolution: "empty",
       english: "Native asset transfer",
       chinese: "原生资产转账",
     },
   ] as const)("classifies $name from transaction-time execution code", async ({
     input,
+    value,
     resolution,
     english,
     chinese,
@@ -543,7 +547,7 @@ describe("core explorer pages", () => {
       if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
         return envelope({
           hash: transactionHash, block_hash: canonicalHash, block_number: "12",
-          transaction_index: 0, from: delegatedAddress, to: address, nonce: "1", value: "1",
+          transaction_index: 0, from: delegatedAddress, to: address, nonce: "1", value,
           gas: "21000", input, status: "success", canonical: true,
           finality: "safe", completeness: completeness(),
         });
@@ -2163,6 +2167,8 @@ describe("core explorer pages", () => {
     const transactionRow = selfDirection.closest("tr");
     if (!transactionRow) throw new Error("address transaction row is missing");
     expect(screen.getByRole("columnheader", { name: "Method" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Direction" })).toBeVisible();
+    expect(screen.queryByRole("columnheader", { name: "table.direction" })).not.toBeInTheDocument();
     const addressMethod = within(transactionRow).getByText(
       "transferTokensWithAnIntentionallyLongMethodName",
     );

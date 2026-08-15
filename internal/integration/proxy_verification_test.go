@@ -2431,7 +2431,7 @@ func (service *proxyVerificationCoverageRPCService) TraceBlockByHash(
 ) (json.RawMessage, error) {
 	if options["tracer"] == "prestateTracer" {
 		return marshalDatabaseBlockTraceResults(ctx, service.db, blockHash, func(common.Hash) (json.RawMessage, error) {
-			return service.stateDiff, nil
+			return integrationPrestateTraceResult(service.stateDiff, options)
 		})
 	}
 	return (&derivedTraceService{db: service.db}).TraceBlockByHash(ctx, blockHash, options)
@@ -2526,7 +2526,7 @@ func publishProxyVerificationInteractionCoverage(
 		FROM published_block_stage_results
 		WHERE chain_id = 1 AND block_hash = $1
 		  AND state = 'complete'
-		  AND (stage, stage_version) IN (('trace', 3), ('state_diff', 2))`,
+		  AND (stage, stage_version) IN (('trace', 3), ('state_diff', 3))`,
 		2, block.Hash.Bytes(),
 	)
 }

@@ -113,6 +113,18 @@ func (catalog *Postgres) TransactionCalldata(
 
 const maxVerifiedAddressSelectorCandidates = 32
 
+type verifiedAddressSelectorMatch struct {
+	identity enrich.ABIIdentity
+	registry *enrich.ABIRegistry
+	input    enrich.DecodeResult
+}
+
+type verifiedAddressSelectorSelection struct {
+	match      *verifiedAddressSelectorMatch
+	candidates []string
+	ambiguous  bool
+}
+
 func decodeVerifiedAddressSelectorCalldata(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -122,20 +134,52 @@ func decodeVerifiedAddressSelectorCalldata(
 	address common.Address,
 	input []byte,
 ) (TransactionCalldataDecoding, bool, error) {
-	if len(input) < 4 {
+	selection, err := loadVerifiedAddressSelectorSelection(
+		ctx, tx, chainID, blockNumber, blockHash, address, input,
+	)
+	if err != nil {
+		return TransactionCalldataDecoding{}, false, err
+	}
+	if selection.ambiguous {
+		return TransactionCalldataDecoding{
+			Status: "ambiguous", Inputs: []ABIValue{}, Candidates: selection.candidates,
+			Warning: "multiple verified address selector candidates decode this calldata",
+		}, true, nil
+	}
+	if selection.match == nil {
 		return TransactionCalldataDecoding{}, false, nil
+	}
+	call := publicTraceCall(enrich.CallDecodeResult{
+		Input: selection.match.input, ReturnStatus: enrich.ReturnNotApplicable,
+	})
+	result := transactionCalldataDecoding(call)
+	result.Warning = "decoded from the exact verified address range because execution identity is unavailable"
+	return result, true, nil
+}
+
+func loadVerifiedAddressSelectorSelection(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID string,
+	blockNumber uint64,
+	blockHash []byte,
+	address common.Address,
+	input []byte,
+) (verifiedAddressSelectorSelection, error) {
+	if len(input) < 4 {
+		return verifiedAddressSelectorSelection{}, nil
 	}
 	rows, err := tx.QueryContext(ctx, transactionVerifiedAddressSelectorsSQL,
 		chainID, address[:], strconv.FormatUint(blockNumber, 10), input[:4],
 		maxVerifiedAddressSelectorCandidates+1,
 	)
 	if err != nil {
-		return TransactionCalldataDecoding{}, false, fmt.Errorf("query verified address calldata selectors: %w", err)
+		return verifiedAddressSelectorSelection{}, fmt.Errorf("query verified address function selectors: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck
 
 	identityBlockHash := common.BytesToHash(blockHash)
-	matches := make(map[string]enrich.DecodeResult)
+	matches := make(map[string]verifiedAddressSelectorMatch)
 	signatures := make(map[string]struct{})
 	overflow := false
 	candidateCount := 0
@@ -143,7 +187,7 @@ func decodeVerifiedAddressSelectorCalldata(
 		var codeHashBytes, abiEntry []byte
 		var storedSignature string
 		if err := rows.Scan(&codeHashBytes, &storedSignature, &abiEntry); err != nil {
-			return TransactionCalldataDecoding{}, false, fmt.Errorf("scan verified address calldata selector: %w", err)
+			return verifiedAddressSelectorSelection{}, fmt.Errorf("scan verified address function selector: %w", err)
 		}
 		candidateCount++
 		if candidateCount > maxVerifiedAddressSelectorCandidates {
@@ -151,14 +195,14 @@ func decodeVerifiedAddressSelectorCalldata(
 			continue
 		}
 		if len(codeHashBytes) != common.HashLength {
-			return TransactionCalldataDecoding{}, false, ErrCorruptData
+			return verifiedAddressSelectorSelection{}, ErrCorruptData
 		}
 		signature, exact := enrich.DecodeVerifiedFunctionCalldata(abiEntry, input)
 		if !exact {
 			continue
 		}
 		if signature != storedSignature {
-			return TransactionCalldataDecoding{}, false, ErrCorruptData
+			return verifiedAddressSelectorSelection{}, ErrCorruptData
 		}
 		codeHash := common.BytesToHash(codeHashBytes)
 		identity := enrich.ABIIdentity{
@@ -177,17 +221,19 @@ func decodeVerifiedAddressSelectorCalldata(
 		document = append(document, ']')
 		registry := enrich.NewABIRegistry()
 		if err := registry.RegisterJSON(binding, document); err != nil {
-			return TransactionCalldataDecoding{}, false, ErrCorruptData
+			return verifiedAddressSelectorSelection{}, ErrCorruptData
 		}
 		decoded := registry.DecodeCalldata(identity, input)
 		if decoded.Status != enrich.DecodeDecoded || decoded.Signature != storedSignature {
-			return TransactionCalldataDecoding{}, false, ErrCorruptData
+			return verifiedAddressSelectorSelection{}, ErrCorruptData
 		}
-		matches[storedSignature+"\x00"+codeHash.Hex()] = decoded
+		matches[storedSignature+"\x00"+codeHash.Hex()] = verifiedAddressSelectorMatch{
+			identity: identity, registry: registry, input: decoded,
+		}
 		signatures[storedSignature] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return TransactionCalldataDecoding{}, false, fmt.Errorf("iterate verified address calldata selectors: %w", err)
+		return verifiedAddressSelectorSelection{}, fmt.Errorf("iterate verified address function selectors: %w", err)
 	}
 	if overflow || len(matches) > 1 {
 		candidates := make([]string, 0, len(signatures))
@@ -195,20 +241,13 @@ func decodeVerifiedAddressSelectorCalldata(
 			candidates = append(candidates, signature)
 		}
 		sort.Strings(candidates)
-		return TransactionCalldataDecoding{
-			Status: "ambiguous", Inputs: []ABIValue{}, Candidates: candidates,
-			Warning: "multiple verified address selector candidates decode this calldata",
-		}, true, nil
+		return verifiedAddressSelectorSelection{candidates: candidates, ambiguous: true}, nil
 	}
-	for _, decoded := range matches {
-		call := publicTraceCall(enrich.CallDecodeResult{
-			Input: decoded, ReturnStatus: enrich.ReturnNotApplicable,
-		})
-		result := transactionCalldataDecoding(call)
-		result.Warning = "decoded from the exact verified address range because execution identity is unavailable"
-		return result, true, nil
+	for _, match := range matches {
+		selected := match
+		return verifiedAddressSelectorSelection{match: &selected}, nil
 	}
-	return TransactionCalldataDecoding{}, false, nil
+	return verifiedAddressSelectorSelection{}, nil
 }
 
 func (catalog *Postgres) loadTransactionExecution(

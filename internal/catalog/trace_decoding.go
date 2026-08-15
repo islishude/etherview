@@ -16,7 +16,10 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 )
 
-const maxReadTimeTraceABIIdentities = 1024
+const (
+	maxReadTimeTraceABIIdentities           = 1024
+	maxReadTimeTraceVerifiedSelectorLookups = 1024
+)
 
 type persistedTraceDecoding struct {
 	objectKind                        string
@@ -100,6 +103,8 @@ func (catalog *Postgres) decorateTraceFrames(
 		}
 	}
 	loaded := make(map[common.Address]traceRegistryResult)
+	stateDiffChecked, stateDiffComplete := false, false
+	verifiedSelectorLookups := 0
 	for index := range trace.Frames {
 		frame := &trace.Frames[index]
 		if frame.CallType == "CREATE" || frame.CallType == "CREATE2" {
@@ -116,6 +121,53 @@ func (catalog *Postgres) decorateTraceFrames(
 			continue
 		}
 		frame.Decoding = unavailableTraceCallDecoding(frame.DirectReverted, "no ABI is available for the call target at this block")
+		if directVerifiedAddressTraceFallback(frame) {
+			input, err := decodeTraceData(*frame.Input)
+			if err != nil {
+				return ErrCorruptData
+			}
+			if len(input) >= 4 {
+				if !stateDiffChecked {
+					state, _, stateErr := transactionStageState(
+						ctx, tx, identity.ChainID, identity.BlockNumber, blockHash, true, StageStateDiff,
+					)
+					if stateErr != nil {
+						return stateErr
+					}
+					stateDiffChecked, stateDiffComplete = true, state == StageComplete
+				}
+				if stateDiffComplete {
+					if verifiedSelectorLookups >= maxReadTimeTraceVerifiedSelectorLookups {
+						frame.Decoding.Status = "unknown"
+						frame.Decoding.Warning = "read-time verified selector lookup limit exceeded"
+						continue
+					}
+					verifiedSelectorLookups++
+					contextBytes, decodeErr := decodeFixedHex(frame.Execution.ContextAddress, common.AddressLength)
+					if decodeErr != nil {
+						return ErrCorruptData
+					}
+					var output []byte
+					if frame.Output != nil {
+						output, decodeErr = decodeTraceData(*frame.Output)
+						if decodeErr != nil {
+							return ErrCorruptData
+						}
+					}
+					decoding, found, decodeErr := decodeVerifiedAddressSelectorTraceCall(
+						ctx, tx, identity.ChainID, blockNumber, blockHash,
+						common.BytesToAddress(contextBytes), input, output, frame.DirectReverted,
+					)
+					if decodeErr != nil {
+						return decodeErr
+					}
+					if found {
+						frame.Decoding = decoding
+						continue
+					}
+				}
+			}
+		}
 		if frame.Execution == nil || frame.Execution.Address == "" || frame.Input == nil {
 			frame.Decoding.Status = "unknown"
 			frame.Decoding.Warning = "call frame has no exact execution code identity or calldata"
@@ -432,6 +484,71 @@ func callLikeTraceType(value string) bool {
 	default:
 		return false
 	}
+}
+
+func directVerifiedAddressTraceFallback(frame *TraceFrame) bool {
+	if frame == nil || frame.Execution == nil || frame.Input == nil ||
+		frame.Execution.Resolution != "unavailable" || frame.Execution.Address != "" {
+		return false
+	}
+	return frame.CallType == "CALL" || frame.CallType == "STATICCALL"
+}
+
+func decodeVerifiedAddressSelectorTraceCall(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID string,
+	blockNumber uint64,
+	blockHash []byte,
+	address common.Address,
+	input, output []byte,
+	directReverted bool,
+) (*TraceCallDecoding, bool, error) {
+	selection, err := loadVerifiedAddressSelectorSelection(
+		ctx, tx, chainID, blockNumber, blockHash, address, input,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	if selection.ambiguous {
+		outputStatus := string(enrich.ReturnUnknown)
+		if directReverted {
+			outputStatus = string(enrich.ReturnNotApplicable)
+		}
+		decoding := &TraceCallDecoding{
+			Kind: "function", Status: "ambiguous", Inputs: []ABIValue{},
+			OutputStatus: outputStatus, Outputs: []ABIValue{},
+			Candidates: selection.candidates,
+			Warning:    "multiple verified address selector candidates decode this call frame",
+		}
+		if directReverted {
+			decoding.Revert = publicTraceRevert(enrich.NewABIRegistry().DecodeBuiltinRevert(output))
+		}
+		return decoding, true, nil
+	}
+	if selection.match == nil {
+		return nil, false, nil
+	}
+	decoded := selection.match.registry.DecodeCall(
+		selection.match.identity, input, output, directReverted,
+	)
+	if decoded.Input.Status != enrich.DecodeDecoded ||
+		decoded.Input.Signature != selection.match.input.Signature {
+		return nil, false, ErrCorruptData
+	}
+	result := publicTraceCall(decoded)
+	const warning = "decoded from the exact verified address range because execution identity is unavailable"
+	if result.Warning == "" {
+		result.Warning = warning
+	} else {
+		result.Warning += "; " + warning
+	}
+	if directReverted {
+		result.Revert = publicTraceRevert(
+			selection.match.registry.DecodeRevert(selection.match.identity, output),
+		)
+	}
+	return result, true, nil
 }
 
 type traceRegistryResult struct {

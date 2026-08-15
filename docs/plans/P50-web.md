@@ -84,6 +84,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T57 | done | P40-T17, P50-T56 | Compact transaction-list Method column with full-signature disclosure and exact fallback labels | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T58 | done | P30-T15, P50-T57, P70-T29 | Sort verification compiler versions by ascending semantic version instead of lexical text | compiler catalog, PostgreSQL, generated contract, frontend, embedded browser, and common gates |
 | P50-T59 | done | P40-T18, P50-T58 | Add the shared compact Method column to address transaction activity | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
+| P50-T60 | done | P50-T59 | Restore the localized Direction column heading across address activity tables | focused frontend, bilingual embedded browser, and common gates |
 
 ## Acceptance
 
@@ -108,12 +109,22 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Pending and replaced hashes provide a retention-bounded basic detail
       preview, automatic inclusion transition, direct replacement links, and
       icon-plus-text transaction statuses across all transaction surfaces.
+- [x] Address activity tables render the Direction heading through the English
+      and Chinese catalogs instead of exposing an untranslated resource key.
 
 ## Current Blockers
 
 None.
 
 ## Evidence
+
+- P50-T60 adds the missing shared `table.direction` catalog entry as
+  `Direction` and `方向`. The focused CorePages suite passes 49/49 and rejects
+  the literal resource key; the host-authorized embedded Chromium suite passes
+  all 19 flows while asserting both localized address-table headings. All
+  `make check` constituents pass: aggregate runs cover plan, generation, lint,
+  and ordinary/race tests, while `make security-check`, `make license-check`,
+  and `make deployment-check` independently pass their complete gates.
 
 - P50-T59 reuses the global compact Method cell immediately after Hash in the
   address Transactions table only. Focused Web tests pass all 48 cases; the

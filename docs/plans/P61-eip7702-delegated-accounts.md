@@ -49,6 +49,7 @@ this plan.
 | P61-T11 | done | P61-T10 | Order canonical delegation history by its numeric chain position and replace cleared-address Code content with a lazy current-status surface | Catalog, PostgreSQL, generated API, Web, browser, Preview, and common gates |
 | P61-T12 | done | P61-T11 | Remove the redundant History action from the cleared-address Status surface while retaining the dedicated History tab | Web, browser, generation, and common gates |
 | P61-T13 | done | P61-T12 | Add production-browser and real Prague/Anvil EIP-7702 transaction E2E coverage across authorization outcomes, transaction-time execution identity, clearing, and reorg canonicality | browser, runtime, topology-parity, and common gates |
+| P61-T14 | done | P61-T13, P40-T19, P50-T59 | Recover exact top-level execution identity when diff-only prestate evidence omits an unchanged target, including Native Transfer list and transaction-action projection | state-diff, query, Catalog, Web, PostgreSQL, browser, Preview, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -66,7 +67,7 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       retain raw initcode; malformed or inexact matches are explicit.
 - [x] Public authorization/delegation APIs, generated clients, and bilingual
       delegated-account interaction use writer-authoritative freshness fences.
-- [x] Bounded rollback and rollout rebuild `state_diff@2`, then `trace@3`,
+- [x] Bounded rollback and rollout rebuild `state_diff@3`, then `trace@3`,
       `proxy@2`, and `abi@3` without migration-time historical enqueue.
 - [x] Delegated-account binding, interaction, and history panels reuse the
       responsive Web layout and pagination contracts without changing API or
@@ -81,6 +82,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       `fallback` entries rather than reporting an unknown function selector.
 - [x] Trace frames with exact empty execution code report ABI decoding as not
       applicable, including ordinary native transfers to EOAs.
+- [x] An unchanged top-level target omitted by diff-only prestate evidence is
+      resolved from the same endpoint's exact complete prestate; absent targets
+      become Native Transfer evidence while absent delegates remain unavailable.
 - [x] Clearing the current delegation preserves a writer-authoritative,
       canonical-history address entry that opens History directly without
       eagerly loading current binding or artifact data.
@@ -297,3 +301,27 @@ None.
   host-authorized writable-cache `make check` passes generation, vet/lint,
   ordinary and race tests, Web 301/301, vulnerability/secret/license checks,
   Buildx/Compose validation, and Helm lint/render.
+- P61-T14 advances the projection to `state_diff@3`. When diff-only
+  `prestateTracer` evidence omits a top-level target, the processor makes one
+  bounded second request to the same endpoint and exact block hash for complete
+  prestate, validates the exact transaction count, order, and hashes, and
+  supplements only top-level target and first-hop EIP-7702 delegate identities.
+  An absent target in complete prestate proves empty code; an absent delegate
+  remains unavailable. Per-transaction, height, block-end, and latest-state
+  fallbacks remain forbidden.
+- Migration `0047` moves coverage refreshes to `state_diff@3` and invalidates
+  dependent proxy coverage without an unbounded migration enqueue. Maintenance,
+  observability, query, Catalog, and integration fixtures use the same current
+  stage. A bounded live replay of Preview block 1338 makes transaction
+  `0x8ab722f0ac5e6255da08962fb383bc02875bb692bcc72947067546b10a4a657f`
+  project `Native Transfer`, empty/not-applicable calldata, and “Native asset
+  transfer” instead of an unavailable action.
+- Focused Catalog, enrichment, query, maintenance, and observability tests pass;
+  the focused CorePages suite passes 49/49. `make test-integration` passes all
+  packages against runner-owned PostgreSQL 18 (`internal/integration` 159.766s)
+  with migration `0047`. Host-authorized `make test-e2e` passes 19/19. The final
+  rebuilt production Runtime E2E passes monolith (32.62s) and complete six-role
+  distributed (40.91s), including the zero-value empty-input nonexistent target
+  regression. All `make check` constituents pass through the aggregate plan,
+  generation, lint, and ordinary/race phases plus independent complete security,
+  license, and deployment targets; `git diff --check` passes.

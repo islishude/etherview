@@ -14,24 +14,32 @@ lease fences would also let stale work survive a replay or reorganization.
 
 ## Decision
 
-- `state_diff@2` is an independent optional enrichment stage. It calls
-  `debug_traceBlockByHash` once for the job's exact block hash with geth's
-  `prestateTracer` in diff mode. It never calls `debug_traceTransaction` and
-  never falls back to an unpinned height, `latest`, a browser provider, or an
-  on-demand public-request RPC call.
+- `state_diff@3` is an independent optional enrichment stage. It first calls
+  `debug_traceBlockByHash` for the job's exact block hash with geth's
+  `prestateTracer` in diff mode. If any top-level call target has no execution
+  identity or remains unavailable, it makes one additional block-level call on
+  the same endpoint and exact block hash with complete prestate. It never calls
+  `debug_traceTransaction` and never falls back to an unpinned height,
+  `latest`, a browser provider, or an on-demand public-request RPC call.
 - One block attempt acquires one trace-capable endpoint. Every transaction is
   identified from the exact stored block inclusion before the external call.
-  The block response must be a non-null array with exactly one item per stored
-  inclusion in the same order and with the same `txHash`; malformed, missing,
-  duplicate, reordered, or item-error responses cannot publish a partial state
-  difference or journal. The stage copies bounded inputs, closes database
-  reads, performs RPC, then rechecks canonicality, lease ownership, and
-  generation while atomically publishing the result.
+  Every requested block response must be a non-null array with exactly one item
+  per stored inclusion in the same order and with the same `txHash`; malformed,
+  missing, duplicate, reordered, or item-error responses cannot publish a
+  partial state difference or journal. The stage copies bounded inputs, closes
+  database reads, performs RPC, then rechecks canonicality, lease ownership,
+  and generation while atomically publishing the result.
 - Normalization accepts only canonical addresses, quantities, bytecode, storage
   keys, and storage words after strict hostile-input validation. Per-transaction
   and per-block limits cover payload bytes, accounts, storage slots, code bytes,
   and total normalized values. Provider bodies and nested errors never enter
   logs, durable result details, or public errors.
+- Complete prestate supplements only a transaction's top-level target and, when
+  present, its first-hop EIP-7702 delegate. Absence of the top-level target from
+  the complete prestate is exact empty-account evidence. A delegation
+  designator whose delegate account is absent remains unavailable. Unrelated
+  accounts are validated and budgeted but never become execution identity, and
+  complete prestate does not create additional state-change rows.
 - State changes are flattened into immutable rows keyed by chain, block number,
   block hash, transaction hash, account address, field kind, and optional
   storage key. Rows retain orphan history through their block hash and
@@ -65,3 +73,8 @@ ADR-0034 upgrades this stage to `state_diff@2`. Each exact transaction-bound
 item in the block-level pre/post response proves EIP-7702 tuple application and
 execution-code identity; absent evidence is unavailable and a nonce/code
 contradiction is permanent.
+
+Migration `0047` upgrades the current witness to `state_diff@3` so an unchanged
+top-level target omitted by diff mode is resolved from exact complete prestate.
+Existing `state_diff@2` output remains historical and requires an explicit
+bounded reindex before it can satisfy current public completeness.

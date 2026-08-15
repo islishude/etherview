@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	StateDiffStage        = StageID{Name: "state_diff", Version: 2}
+	StateDiffStage        = StageID{Name: "state_diff", Version: 3}
 	ErrStateDiffLimit     = errors.New("state difference exceeds configured limit")
 	errStateDiffRPCAbsent = errors.New("state difference RPC capability unavailable")
 )
@@ -211,24 +211,26 @@ func (processor *StateDiffRPCProcessor) fetch(
 	transactions []stateDiffTransaction,
 	budget *stateDiffBudget,
 ) error {
-	var raw json.RawMessage
-	if err := caller.CallContext(ctx, &raw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
+	expected := make([]common.Hash, len(transactions))
+	for index := range transactions {
+		expected[index] = transactions[index].hash
+	}
+	var diffRaw json.RawMessage
+	if err := caller.CallContext(ctx, &diffRaw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
 		"tracer":       "prestateTracer",
 		"tracerConfig": map[string]any{"diffMode": true},
 	}); err != nil {
 		return sanitizeTraceRPCError(err)
 	}
-	if err := budget.add(len(raw), normalizedStateDiffCounts{}, processor.limits); err != nil {
+	if err := budget.add(len(diffRaw), normalizedStateDiffCounts{}, processor.limits); err != nil {
 		return Permanent(err)
 	}
-	expected := make([]common.Hash, len(transactions))
-	for index := range transactions {
-		expected[index] = transactions[index].hash
-	}
-	results, err := decodeBlockTraceResults(raw, expected)
+	results, err := decodeBlockTraceResults(diffRaw, expected)
 	if err != nil {
 		return Permanent(fmt.Errorf("decode state difference block response: %w", err))
 	}
+	evidenceByTransaction := make([]transactionStateEvidence, len(transactions))
+	needsFullPrestate := false
 	for index := range transactions {
 		if results[index].err != nil {
 			return results[index].err
@@ -245,6 +247,7 @@ func (processor *StateDiffRPCProcessor) fetch(
 		if err != nil {
 			return Permanent(fmt.Errorf("decode transaction state evidence: %w", err))
 		}
+		evidenceByTransaction[index] = evidence
 		authorities, executions, err := deriveEIP7702Evidence(
 			job.ChainID, transactions[index].tx, transactions[index].sender, evidence,
 		)
@@ -253,8 +256,105 @@ func (processor *StateDiffRPCProcessor) fetch(
 		}
 		transactions[index].authorities = authorities
 		transactions[index].executions = executions
+		needsFullPrestate = needsFullPrestate || transactionNeedsFullPrestate(
+			transactions[index].tx, executions,
+		)
+	}
+	if !needsFullPrestate {
+		return nil
+	}
+	var prestateRaw json.RawMessage
+	if err := caller.CallContext(ctx, &prestateRaw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
+		"tracer":       "prestateTracer",
+		"tracerConfig": map[string]any{"diffMode": false},
+	}); err != nil {
+		return sanitizeTraceRPCError(err)
+	}
+	if err := budget.add(len(prestateRaw), normalizedStateDiffCounts{}, processor.limits); err != nil {
+		return Permanent(err)
+	}
+	prestateResults, err := decodeBlockTraceResults(prestateRaw, expected)
+	if err != nil {
+		return Permanent(fmt.Errorf("decode complete prestate block response: %w", err))
+	}
+	for index := range transactions {
+		if prestateResults[index].err != nil {
+			return prestateResults[index].err
+		}
+		if !transactionNeedsFullPrestate(
+			transactions[index].tx, transactions[index].executions,
+		) {
+			continue
+		}
+		prestate, counts, err := decodeTransactionPrestate(
+			prestateResults[index].result, processor.limits,
+		)
+		if err != nil {
+			return Permanent(fmt.Errorf("decode transaction complete prestate: %w", err))
+		}
+		if err := budget.add(0, counts, processor.limits); err != nil {
+			return Permanent(err)
+		}
+		evidence := evidenceByTransaction[index]
+		supplementTransactionExecutionEvidence(transactions[index].tx, &evidence, prestate)
+		authorities, executions, err := deriveEIP7702Evidence(
+			job.ChainID, transactions[index].tx, transactions[index].sender, evidence,
+		)
+		if err != nil {
+			return Permanent(fmt.Errorf("derive complete-prestate EIP-7702 evidence: %w", err))
+		}
+		transactions[index].authorities = authorities
+		transactions[index].executions = executions
 	}
 	return nil
+}
+
+func transactionNeedsFullPrestate(
+	tx *types.Transaction,
+	executions []executionCodeResolution,
+) bool {
+	if tx == nil || tx.To() == nil {
+		return false
+	}
+	for _, execution := range executions {
+		if execution.context == *tx.To() {
+			return execution.resolution == "unavailable"
+		}
+	}
+	return true
+}
+
+func supplementTransactionExecutionEvidence(
+	tx *types.Transaction,
+	evidence *transactionStateEvidence,
+	prestate map[common.Address]stateAccountEvidence,
+) {
+	if tx == nil || tx.To() == nil || evidence == nil {
+		return
+	}
+	if evidence.pre == nil {
+		evidence.pre = make(map[common.Address]stateAccountEvidence)
+	}
+	target := *tx.To()
+	account, exists := evidence.pre[target]
+	if !exists {
+		account = cloneStateAccountEvidence(prestate[target])
+		evidence.pre[target] = account
+	}
+	delegate, delegated := types.ParseDelegation(account.code)
+	if !delegated {
+		return
+	}
+	if _, exists := evidence.pre[delegate]; exists {
+		return
+	}
+	if delegateAccount, exists := prestate[delegate]; exists {
+		evidence.pre[delegate] = cloneStateAccountEvidence(delegateAccount)
+	}
+}
+
+func cloneStateAccountEvidence(account stateAccountEvidence) stateAccountEvidence {
+	return stateAccountEvidence{nonce: account.nonce, code: append([]byte(nil), account.code...)}
 }
 
 func (processor *StateDiffRPCProcessor) transactions(
@@ -372,6 +472,69 @@ func decodeTransactionStateEvidence(raw json.RawMessage) (transactionStateEviden
 		}
 	}
 	return evidence, nil
+}
+
+func decodeTransactionPrestate(
+	raw json.RawMessage,
+	limits StateDiffLimits,
+) (map[common.Address]stateAccountEvidence, normalizedStateDiffCounts, error) {
+	if len(raw) > limits.MaxPayloadBytes {
+		return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wire); err != nil || wire == nil {
+		return nil, normalizedStateDiffCounts{}, errors.New("invalid complete prestate JSON")
+	}
+	if len(wire) > limits.MaxAccounts {
+		return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
+	}
+	counts := normalizedStateDiffCounts{accounts: len(wire)}
+	result := make(map[common.Address]stateAccountEvidence, len(wire))
+	for addressText, rawAccount := range wire {
+		address, err := ethrpc.ParseAddress(addressText)
+		if err != nil {
+			return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains invalid account address")
+		}
+		if _, exists := result[address]; exists {
+			return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains duplicate account address")
+		}
+		accountWire, err := decodeStateAccount(rawAccount)
+		if err != nil {
+			return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains invalid account")
+		}
+		if accountWire.Balance != nil {
+			balance := canonicalStateQuantity(accountWire.Balance)
+			if balance == nil || *balance == "" {
+				return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains invalid quantity")
+			}
+			counts.text += len(*balance)
+		}
+		account, err := decodeStateAccountEvidence(accountWire)
+		if err != nil {
+			return nil, normalizedStateDiffCounts{}, err
+		}
+		counts.code += len(account.code)
+		counts.slots += len(accountWire.Storage)
+		counts.text += len(addressText)
+		if counts.code > limits.MaxCodeBytes || counts.slots > limits.MaxStorageSlots ||
+			counts.text > limits.MaxTextBytes {
+			return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
+		}
+		for keyText, valueText := range accountWire.Storage {
+			if _, err := ethrpc.ParseHash(keyText); err != nil {
+				return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains invalid storage key")
+			}
+			if _, err := ethrpc.ParseHash(valueText); err != nil {
+				return nil, normalizedStateDiffCounts{}, errors.New("complete prestate contains invalid storage value")
+			}
+			counts.text += len(keyText) + len(valueText)
+			if counts.text > limits.MaxTextBytes {
+				return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
+			}
+		}
+		result[address] = account
+	}
+	return result, counts, nil
 }
 
 func decodeStateAccountEvidence(wire stateAccountWire) (stateAccountEvidence, error) {

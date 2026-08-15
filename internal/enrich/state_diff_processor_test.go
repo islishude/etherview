@@ -15,7 +15,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-func TestStateDiffRPCProcessorFetchesWholeBlockOnce(t *testing.T) {
+func TestStateDiffRPCProcessorUsesCompletePrestateForOmittedTopLevelTargets(t *testing.T) {
 	t.Parallel()
 	job := Job{ID: "state-block", Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(530), BlockNumber: 530}
 	firstHash, secondHash := uintWord(531), uintWord(532)
@@ -25,24 +25,107 @@ func TestStateDiffRPCProcessorFetchesWholeBlockOnce(t *testing.T) {
 		{hash: secondHash, tx: types.NewTx(&types.LegacyTx{To: &secondTarget}), sender: testAddress(0x42)},
 	}
 	diff := json.RawMessage(`{"pre":{},"post":{}}`)
+	completePrestates := []json.RawMessage{
+		json.RawMessage(`{}`),
+		json.RawMessage(`{"` + secondTarget.Hex() + `":{"balance":"0x0","nonce":"0x0","code":"0x6000","storage":{}}}`),
+	}
+	call := 0
 	caller := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
 		if method != debugTraceBlockByHashMethod || hash != job.BlockHash.String() {
 			return nil, errors.New("unexpected state difference RPC request")
 		}
-		return repeatedBlockTraceResponse(t, diff, firstHash, secondHash), nil
+		call++
+		if call == 1 {
+			return repeatedBlockTraceResponse(t, diff, firstHash, secondHash), nil
+		}
+		return blockTraceResponse(
+			t, []common.Hash{firstHash, secondHash}, completePrestates, nil,
+		), nil
 	}}
 	processor := &StateDiffRPCProcessor{limits: DefaultStateDiffLimits()}
 	if err := processor.fetch(t.Context(), caller, job, transactions, &stateDiffBudget{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(caller.calls) != 1 || caller.calls[0].method != debugTraceBlockByHashMethod ||
+	if len(caller.calls) != 2 || caller.calls[0].method != debugTraceBlockByHashMethod ||
 		caller.calls[0].tracer != "prestateTracer" || caller.calls[0].diffMode == nil || !*caller.calls[0].diffMode {
+		t.Fatalf("calls=%+v", caller.calls)
+	}
+	if caller.calls[1].method != debugTraceBlockByHashMethod ||
+		caller.calls[1].tracer != "prestateTracer" || caller.calls[1].diffMode == nil || *caller.calls[1].diffMode {
 		t.Fatalf("calls=%+v", caller.calls)
 	}
 	for index := range transactions {
 		if len(transactions[index].changes) != 0 {
 			t.Fatalf("transaction %d changes=%+v", index, transactions[index].changes)
 		}
+	}
+	if got := executionResolutionForContext(transactions[0].executions, firstTarget); got != "empty" {
+		t.Fatalf("omitted EOA execution resolution = %q, want empty", got)
+	}
+	if got := executionResolutionForContext(transactions[1].executions, secondTarget); got != "direct" {
+		t.Fatalf("unchanged contract execution resolution = %q, want direct", got)
+	}
+}
+
+func executionResolutionForContext(executions []executionCodeResolution, context common.Address) string {
+	for _, execution := range executions {
+		if execution.context == context {
+			return execution.resolution
+		}
+	}
+	return ""
+}
+
+func TestStateDiffRPCProcessorSkipsCompletePrestateWhenDiffProvesTarget(t *testing.T) {
+	t.Parallel()
+	job := Job{ID: "state-diff-target", Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(533), BlockNumber: 533}
+	transactionHash, target := uintWord(534), testAddress(0x35)
+	transaction := stateDiffTransaction{
+		hash:   transactionHash,
+		tx:     types.NewTx(&types.LegacyTx{To: &target}),
+		sender: testAddress(0x45),
+	}
+	diff := json.RawMessage(`{"pre":{"` + target.Hex() + `":{"balance":"0x1"}},"post":{"` + target.Hex() + `":{"balance":"0x2"}}}`)
+	caller := &traceTestCaller{handler: func(string, string) (json.RawMessage, error) {
+		return repeatedBlockTraceResponse(t, diff, transactionHash), nil
+	}}
+	processor := &StateDiffRPCProcessor{limits: DefaultStateDiffLimits()}
+	transactions := []stateDiffTransaction{transaction}
+	if err := processor.fetch(t.Context(), caller, job, transactions, &stateDiffBudget{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(caller.calls) != 1 || caller.calls[0].diffMode == nil || !*caller.calls[0].diffMode {
+		t.Fatalf("calls=%+v", caller.calls)
+	}
+	if got := executionResolutionForContext(transactions[0].executions, target); got != "empty" {
+		t.Fatalf("execution resolution = %q, want empty", got)
+	}
+}
+
+func TestCompletePrestateSupplementKeepsMissingDelegatedCodeUnavailable(t *testing.T) {
+	t.Parallel()
+	authority, delegate := testAddress(0x71), testAddress(0x72)
+	tx := types.NewTx(&types.LegacyTx{To: &authority})
+	evidence := transactionStateEvidence{pre: map[common.Address]stateAccountEvidence{
+		authority: {code: types.AddressToDelegation(delegate)},
+	}}
+	supplementTransactionExecutionEvidence(tx, &evidence, map[common.Address]stateAccountEvidence{})
+	_, executions, err := deriveEIP7702Evidence("1", tx, testAddress(0x73), evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := executionResolutionForContext(executions, authority); got != "unavailable" {
+		t.Fatalf("delegated execution resolution = %q, want unavailable", got)
+	}
+}
+
+func TestDecodeTransactionPrestateRejectsMalformedUnrelatedEvidence(t *testing.T) {
+	t.Parallel()
+	_, _, err := decodeTransactionPrestate(json.RawMessage(
+		`{"0x0000000000000000000000000000000000000071":{"storage":{"0x01":"0x02"}}}`,
+	), DefaultStateDiffLimits())
+	if err == nil || !strings.Contains(err.Error(), "invalid storage key") {
+		t.Fatalf("error = %v, want invalid storage key", err)
 	}
 }
 

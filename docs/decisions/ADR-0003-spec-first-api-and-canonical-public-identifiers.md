@@ -151,7 +151,7 @@ authoritative empty result.
   exposes candidates without selecting one signature or argument set.
 - `GET /api/v1/transactions/{hash}/calldata` is the native transaction-input
   projection. One read-only repeatable-read snapshot binds the canonical
-  inclusion and raw input to a published `state_diff@2` execution-code
+  inclusion and raw input to a published `state_diff@3` execution-code
   resolution, then exposes that exact context, execution address/code hash,
   ABI source, confidence, warning, and one of `decoded`, `ambiguous`, `unknown`,
   `malformed`, `unavailable`, or `not_applicable`. A missing exact historical
