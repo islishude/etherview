@@ -38,6 +38,7 @@ const BILLABLE_OPERATIONS = [
   "getTransaction",
   "listPendingTransactions",
   "getTransactionCalldata",
+  "getTransactionFailure",
   "getTransactionTrace",
   "listTransactionInternalTransactions",
   "listTransactionTokenTransfers",

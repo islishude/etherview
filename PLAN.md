@@ -167,7 +167,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   `table.direction` resource key. P50-T61 keeps Address Transactions status
   and finality badges in a consistent vertical layout with responsive browser
   coverage.
-- P59-T01 through P59-T03 are complete. P59-T03 extends the exact
+- P59 is complete. P59-T05 keeps Solidity builtin failures concise while
+  preserving structured custom-error arguments. P59-T04 exposes the canonical
+  root failure as a dedicated
+  API resource and renders bounded, provenance-aware custom and Solidity
+  builtin error decoding in transaction Overview. P59-T03 extends the exact
   verified-address fallback used by calldata reads to direct Trace calls whose
   unchanged target is omitted by completed state-diff evidence, while indirect
   and unresolved delegated execution stay fail-closed.

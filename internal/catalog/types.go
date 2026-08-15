@@ -447,6 +447,26 @@ type TransactionCalldataDecoding struct {
 	Warning      string
 }
 
+type TransactionFailure struct {
+	Identity   TransactionResourceIdentity
+	Error      string
+	RevertData *string
+	Execution  *TraceExecution
+	Decoding   TransactionFailureDecoding
+}
+
+type TransactionFailureDecoding struct {
+	Status     string
+	ErrorName  string
+	Signature  string
+	Reason     *string
+	Arguments  []TransactionCalldataInput
+	Candidates []string
+	ABISource  *ABISource
+	Confidence string
+	Warning    string
+}
+
 type TransactionResourceRequest struct {
 	ChainID         string
 	TransactionHash string
@@ -595,6 +615,7 @@ type Reader interface {
 	AggregateStats(context.Context, AggregateStatsRequest) (AggregateStats, error)
 	TransactionTrace(context.Context, string, string) (TransactionTrace, error)
 	TransactionCalldata(context.Context, string, string) (TransactionCalldata, error)
+	TransactionFailure(context.Context, string, string) (TransactionFailure, error)
 	TransactionInternalTransactions(context.Context, TransactionResourceRequest) (TransactionInternalTransactionPage, error)
 	TransactionTokenEvents(context.Context, TransactionResourceRequest) (TransactionTokenEventPage, error)
 	TransactionLogs(context.Context, TransactionResourceRequest) (TransactionLogPage, error)

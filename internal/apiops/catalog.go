@@ -126,6 +126,8 @@ var catalog = []Spec{
 		pathParameter("hash", ParameterHash)),
 	spec("getTransactionCalldata", "GET", "/transactions/{hash}/calldata", true,
 		pathParameter("hash", ParameterHash)),
+	spec("getTransactionFailure", "GET", "/transactions/{hash}/failure", true,
+		pathParameter("hash", ParameterHash)),
 	spec("listPendingTransactions", "GET", "/pending", true,
 		cursorParameter(), limitParameter("25")),
 	spec("getTransactionTrace", "GET", "/transactions/{hash}/trace", true,

@@ -135,6 +135,9 @@ type apiSnapshot struct {
 	ContractType              string
 	CreationAddress           string
 	FailedStatus              string
+	FailureState              string
+	FailureDecodingStatus     string
+	FailureError              string
 	TraceState                string
 	CalldataInput             string
 	CalldataResolution        string
@@ -1325,6 +1328,16 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/trace", &trace)
 	var calldata gen.TransactionCalldataResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash+"/calldata", &calldata)
+	var failure gen.TransactionFailureResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.failedHash+"/failure", &failure)
+	if failure.Data.State != gen.TransactionFailureStateComplete ||
+		failure.Data.Decoding.Status != gen.TransactionFailureDecodingStatusUnknown ||
+		failure.Data.Error == "" || failure.Data.TransactionHash != gen.Hash(strings.ToLower(h.fixture.failedHash)) ||
+		failedTransaction.BlockHash == nil || failure.Data.BlockHash != *failedTransaction.BlockHash ||
+		failedTransaction.TransactionIndex == nil ||
+		failure.Data.TransactionIndex != gen.Quantity(strconv.Itoa(*failedTransaction.TransactionIndex)) {
+		h.t.Fatalf("transaction failure = %#v", failure.Data)
+	}
 	expectedRuntimeHash := crypto.Keccak256Hash(common.FromHex(noCBORRuntimeBytecode)).Hex()
 	if string(calldata.Data.Execution.Resolution) != "direct" ||
 		!strings.EqualFold(calldata.Data.Execution.ContextAddress, h.fixture.contractAddress) ||
@@ -1406,6 +1419,8 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		BlockHashes: blockHashes, TransactionHashes: transactionHashes,
 		FromType: string(from.Data.Type), ContractType: string(contract.Data.Type),
 		CreationAddress: creationAddress, FailedStatus: failedStatus,
+		FailureState:          string(failure.Data.State),
+		FailureDecodingStatus: string(failure.Data.Decoding.Status), FailureError: failure.Data.Error,
 		TraceState: string(trace.Data.State), CalldataInput: calldata.Data.Input,
 		CalldataResolution:        string(calldata.Data.Execution.Resolution),
 		CalldataStatus:            string(calldata.Data.Decoding.Status),

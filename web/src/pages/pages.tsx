@@ -33,6 +33,7 @@ import {
   useTokens,
   useTransaction,
   useTransactionCalldata,
+  useTransactionFailure,
   useTransactionInternalTransactions,
   useTransactionAuthorizations,
   useTransactionLogs,
@@ -64,6 +65,7 @@ import type {
   TransactionDetail,
   TransactionLog,
   TransactionCalldata as TransactionCalldataResource,
+  TransactionFailure as TransactionFailureResource,
   TransactionSummary,
   VerificationJob,
   VerificationMatchDetails,
@@ -87,6 +89,7 @@ import {
   type TransactionVisualStatus,
 } from "@/components/TransactionStatus";
 import { QueryNotice } from "@/components/QueryNotice";
+import { flattenFailureArguments } from "@/components/failureFormat";
 import {
   flattenLogArgument,
   formatTopicValue,
@@ -1253,6 +1256,86 @@ function TransactionCalldata({
   );
 }
 
+function TransactionFailureReason({
+  resource,
+  loading,
+  error,
+  identityCurrent,
+}: {
+  resource?: TransactionFailureResource;
+  loading: boolean;
+  error?: unknown;
+  identityCurrent: boolean;
+}) {
+  const { t } = useTranslation();
+  const builtin = resource?.decoding.status === "decoded"
+    && resource.decoding.abi_source?.kind === "builtin";
+  const arguments_ = useMemo(() => {
+    if (!resource || resource.decoding.status !== "decoded"
+      || resource.decoding.abi_source?.kind === "builtin") return undefined;
+    try {
+      return flattenFailureArguments(formatTransactionCalldataInputs(resource.decoding.arguments));
+    } catch {
+      return null;
+    }
+  }, [resource]);
+
+  if (loading) return <QueryNotice compact loading />;
+  if (error) return <QueryNotice compact error={error} />;
+  if (!resource || !identityCurrent) {
+    return <p className="capability-panel" role="status">{t("state.transactionIdentityChanged")}</p>;
+  }
+
+  const decoded = resource.decoding.status === "decoded" && arguments_ !== null;
+  const directError = builtin ? resource.decoding.reason ?? resource.error : undefined;
+  return (
+    <section className="transaction-failure" aria-label={t("detail.failureReason")}>
+      {directError !== undefined ? (
+        <CopyableField value={directError}><code>{directError}</code></CopyableField>
+      ) : decoded && resource.decoding.signature ? (
+        <strong className="transaction-failure-signature"><code>{resource.decoding.signature}</code></strong>
+      ) : (
+        <CopyableField value={resource.error}><code>{resource.error}</code></CopyableField>
+      )}
+      {arguments_ && arguments_.rows.length > 0 && (
+        <div className="transaction-failure-table-scroll" tabIndex={0}>
+          <div className="transaction-failure-table" role="table" aria-label={t("detail.failureArguments")}>
+            <div className="transaction-failure-row transaction-failure-header" role="row">
+              <span role="columnheader">{t("detail.argumentName")}</span>
+              <span role="columnheader">{t("detail.argumentType")}</span>
+              <span role="columnheader">{t("detail.argumentData")}</span>
+            </div>
+            {arguments_.rows.map((row, index) => (
+              <div className="transaction-failure-row" role="row" key={`${row.path}:${index}`}>
+                <code className="transaction-failure-name" role="cell">{row.path}</code>
+                <code className="transaction-failure-type" role="cell">{row.type}</code>
+                <span className="transaction-failure-data" role="cell">
+                  <CopyableField value={row.data}><code>{row.data}</code></CopyableField>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {arguments_?.truncated && (
+        <p className="quiet transaction-failure-warning" role="status">{t("detail.failureArgumentsTruncated")}</p>
+      )}
+      {arguments_ === null && (
+        <p className="capability-panel" role="status">{t("detail.failureStructureUnavailable")}</p>
+      )}
+      {resource.decoding.warning && (
+        <p className="quiet transaction-failure-warning">{resource.decoding.warning}</p>
+      )}
+      {!builtin && resource.revert_data !== undefined && (
+        <details className="transaction-more-details transaction-failure-raw">
+          <summary>{t("detail.revertData")}</summary>
+          <CopyableField value={resource.revert_data}><code>{resource.revert_data}</code></CopyableField>
+        </details>
+      )}
+    </section>
+  );
+}
+
 function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
@@ -1276,6 +1359,9 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
   const calldataEnabled = included && activeTab === "overview"
     && Boolean(transaction.data?.to);
   const calldata = useTransactionCalldata(hash, calldataEnabled);
+  const failureEnabled = included && activeTab === "overview"
+    && transaction.data?.status === "failed";
+  const failure = useTransactionFailure(hash, failureEnabled);
   const internalPager = useCursorHistory(`transaction-internal-transactions:${hash}`);
   const tokenPager = useCursorHistory(`transaction-token-transfers:${hash}`);
   const logPager = useCursorHistory(`transaction-logs:${hash}`);
@@ -1319,6 +1405,13 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     : undefined;
   const calldataIdentityRetryPending = calldataIdentityRetryKey !== undefined
     && lastIdentityRetry.current !== calldataIdentityRetryKey;
+  const failureIdentityCurrent = failure.data === undefined || transaction.data === undefined
+    || transactionFailureIdentityMatches(transaction.data, failure.data);
+  const failureIdentityRetryKey = !failureIdentityCurrent && transaction.data && failure.data
+    ? transactionFailureRetryKey(transaction.data, failure.data)
+    : undefined;
+  const failureIdentityRetryPending = failureIdentityRetryKey !== undefined
+    && lastIdentityRetry.current !== failureIdentityRetryKey;
   const transactionActionEvidence: TransactionActionEvidence = !transaction.data?.to
     ? { state: "unavailable" }
     : calldata.isPending || !calldataIdentityCurrent
@@ -1372,6 +1465,18 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
     calldataEnabled,
     calldataIdentityCurrent,
     calldataIdentityRetryKey,
+    transaction,
+  ]);
+  useEffect(() => {
+    if (!failureEnabled || failureIdentityCurrent || failureIdentityRetryKey === undefined ||
+      lastIdentityRetry.current === failureIdentityRetryKey) return;
+    lastIdentityRetry.current = failureIdentityRetryKey;
+    void Promise.all([transaction.refetch(), failure.refetch()]);
+  }, [
+    failure,
+    failureEnabled,
+    failureIdentityCurrent,
+    failureIdentityRetryKey,
     transaction,
   ]);
   const stateGroups = useMemo(() => {
@@ -1499,6 +1604,17 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                   <TransactionDetailRow label={t("table.status")}>
                     <TransactionStatusBadge transaction={transaction.data} />
                   </TransactionDetailRow>
+                  {transaction.data.status === "failed" && (
+                    <TransactionDetailRow label={t("detail.failureReason")} wide>
+                      <TransactionFailureReason
+                        error={failure.error}
+                        identityCurrent={failureIdentityCurrent}
+                        loading={failure.isPending || !failureIdentityCurrent &&
+                          (failure.isFetching || failureIdentityRetryPending)}
+                        resource={failure.data}
+                      />
+                    </TransactionDetailRow>
+                  )}
                   <TransactionDetailRow label={t("table.block")}>
                     {transaction.data.block_hash ? (
                       <span className="transaction-inline-values">
@@ -2488,6 +2604,36 @@ function transactionCalldataRetryKey(
     resource.input,
     transaction.to,
     resource.execution.context_address,
+  ].join(":").toLowerCase();
+}
+
+function transactionFailureIdentityMatches(
+  transaction: TransactionSummary,
+  resource: TransactionFailureResource,
+): boolean {
+  return resource.state === "complete"
+    && Boolean(transaction.block_hash)
+    && resource.transaction_hash.toLowerCase() === transaction.hash.toLowerCase()
+    && resource.block_hash.toLowerCase() === transaction.block_hash?.toLowerCase()
+    && resource.block_number === transaction.block_number
+    && resource.transaction_index === String(transaction.transaction_index);
+}
+
+function transactionFailureRetryKey(
+  transaction: TransactionSummary,
+  resource: TransactionFailureResource,
+): string | undefined {
+  if (!transaction.block_hash) return undefined;
+  return [
+    "failure",
+    transaction.hash,
+    resource.transaction_hash,
+    transaction.block_hash,
+    resource.block_hash,
+    transaction.block_number,
+    resource.block_number,
+    String(transaction.transaction_index),
+    resource.transaction_index,
   ].join(":").toLowerCase();
 }
 

@@ -672,6 +672,7 @@
                   "getTransaction",
                   "listPendingTransactions",
                   "getTransactionCalldata",
+                  "getTransactionFailure",
                   "getTransactionTrace",
                   "listTransactionInternalTransactions",
                   "listTransactionAuthorizations",

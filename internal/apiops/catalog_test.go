@@ -352,6 +352,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getToken",
 		"getTransaction",
 		"getTransactionCalldata",
+		"getTransactionFailure",
 		"getTransactionTrace",
 		"getVerifierJob",
 		"listAddressDelegations",

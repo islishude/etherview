@@ -54,6 +54,24 @@ projected reliably.
   function identity. Its decoding status is `not_applicable`, including an
   ordinary native transfer to an EOA, and it does not trigger ABI lookup or an
   unknown-selector warning.
+- A canonical failed receipt has one dedicated root-failure resource, fenced
+  to the same transaction, block hash, transaction index, completed `trace@3`
+  generation, and repeatable-read snapshot. It reads only the normalized root
+  frame. Custom errors require the root's exact transaction-time execution
+  address and code hash and use the same bounded ABI registry as trace revert
+  decoding. Solidity `Error(string)` and `Panic(uint256)` are recognized
+  without a contract ABI; their human-readable reason is produced by geth's
+  `abi.UnpackRevert`. Missing, successful, non-root, inherited-only, or
+  contradictory failure evidence fails closed rather than guessing.
+- The transaction Overview presents a decoded root failure independently of
+  the calldata disclosure. Recursive error arguments are bounded and flattened
+  to leaf-only `Name / Type / Data` rows. Names use jq-style paths without a
+  leading dot: named top-level values keep their names, unnamed top-level
+  values use `[index]`, and tuple/array descendants append `[index]`. Raw root
+  error text and revert bytes remain available for custom errors. Solidity
+  builtin `Error(string)` and `Panic(uint256)` instead render only the decoded
+  error text and omit the ABI signature, argument table, and raw revert-data
+  disclosure.
 - Public Trace reads attach persisted-first, bounded PostgreSQL-only ABI
   projection inside one repeatable-read snapshot. The schema-v2 S3 object
   contains only normalized raw call frames; it never contains ABI projection.

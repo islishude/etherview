@@ -30,6 +30,7 @@ export type AddressWithdrawal = components["schemas"]["AddressWithdrawal"];
 export type TransactionSummary = components["schemas"]["Transaction"];
 export type TransactionDetail = components["schemas"]["TransactionDetail"];
 export type TransactionCalldata = components["schemas"]["TransactionCalldata"];
+export type TransactionFailure = components["schemas"]["TransactionFailure"];
 export type HomeSnapshotResponse = components["schemas"]["HomeSnapshotResponse"];
 export type PendingTransaction = components["schemas"]["PendingTransaction"];
 export type PendingMeta = components["schemas"]["PendingMeta"];

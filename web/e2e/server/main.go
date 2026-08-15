@@ -177,6 +177,11 @@ func main() {
 			writeEnvelope(response, includedTransactionDetail(item))
 		case secondTransactionHash:
 			writeEnvelope(response, includedTransactionDetail(contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized")))
+		case failedTxHash:
+			item := transaction(failedTxHash, testHash, "1", "finalized")
+			item["status"] = "failed"
+			item["input"] = "0x85bb7d69"
+			writeEnvelope(response, includedTransactionDetail(item))
 		case delegationTransactionHash:
 			writeEnvelope(response, includedTransactionDetail(setCodeTransaction(delegationTransactionHash, 1, delegatedCalldata())))
 		case clearingTransactionHash:
@@ -184,6 +189,40 @@ func main() {
 		default:
 			writeNotFound(response)
 		}
+	})
+	mux.HandleFunc("GET /api/v1/transactions/{hash}/failure", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("hash") != failedTxHash {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "block_number": "1", "block_hash": testHash,
+			"transaction_hash": failedTxHash, "transaction_index": "0", "state": "complete",
+			"error": "execution reverted", "revert_data": "0x85bb7d69",
+			"execution": map[string]any{
+				"context_address": testAddress, "address": testAddress,
+				"code_hash": testHash, "resolution": "direct",
+			},
+			"decoding": map[string]any{
+				"status": "decoded", "error_name": "TransferRejected",
+				"signature": "TransferRejected(address,uint256,(address,uint256),uint256[],uint8[3][])",
+				"arguments": []any{
+					map[string]any{"name": "sender", "type": "address", "value": testAddress, "components": []any{}},
+					map[string]any{"name": "amount", "type": "uint256", "value": "42", "components": []any{}},
+					map[string]any{
+						"name": "pair", "type": "tuple", "value": []any{testAddress, "7"},
+						"components": []any{
+							map[string]any{"name": "account", "type": "address", "components": []any{}},
+							map[string]any{"name": "value", "type": "uint256", "components": []any{}},
+						},
+					},
+					map[string]any{"name": "values", "type": "uint256[]", "value": []any{"1", "2"}, "components": []any{}},
+					map[string]any{"name": "items", "type": "uint8[3][]", "value": []any{[]any{"3", "4", "5"}}, "components": []any{}},
+				},
+				"candidates": []any{"TransferRejected(address,uint256,(address,uint256),uint256[],uint8[3][])"},
+				"abi_source": map[string]any{"kind": "exact_address", "address": testAddress, "code_hash": testHash},
+			},
+		})
 	})
 	mux.HandleFunc("GET /api/v1/transactions/{hash}/calldata", func(response http.ResponseWriter, request *http.Request) {
 		switch request.PathValue("hash") {

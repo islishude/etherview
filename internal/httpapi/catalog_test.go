@@ -26,6 +26,8 @@ type fakeCatalog struct {
 	traceErr     error
 	calldata     catalog.TransactionCalldata
 	calldataErr  error
+	failure      catalog.TransactionFailure
+	failureErr   error
 	txTokens     catalog.TransactionTokenEventPage
 	txInternal   catalog.TransactionInternalTransactionPage
 	txLogs       catalog.TransactionLogPage
@@ -78,6 +80,10 @@ func (fake *fakeCatalog) TransactionTrace(context.Context, string, string) (cata
 
 func (fake *fakeCatalog) TransactionCalldata(context.Context, string, string) (catalog.TransactionCalldata, error) {
 	return fake.calldata, fake.calldataErr
+}
+
+func (fake *fakeCatalog) TransactionFailure(context.Context, string, string) (catalog.TransactionFailure, error) {
+	return fake.failure, fake.failureErr
 }
 
 func (fake *fakeCatalog) TransactionTokenEvents(_ context.Context, request catalog.TransactionResourceRequest) (catalog.TransactionTokenEventPage, error) {
@@ -542,6 +548,66 @@ func TestTransactionCalldataRejectsContractCreation(t *testing.T) {
 		http.MethodGet, "/api/v1/transactions/"+hash+"/calldata", nil,
 	))
 	if recorder.Code != http.StatusUnprocessableEntity || !strings.Contains(recorder.Body.String(), `"code":"calldata_not_applicable"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestTransactionFailureExposesStructuredRootRevert(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("55", 32)
+	blockHash := "0x" + strings.Repeat("66", 32)
+	target := "0x" + strings.Repeat("77", 20)
+	codeHash := "0x" + strings.Repeat("88", 32)
+	revertData := "0x4e487b71" + strings.Repeat("0", 62) + "12"
+	reason := "division or modulo by zero"
+	fake := &fakeCatalog{failure: catalog.TransactionFailure{
+		Identity: catalog.TransactionResourceIdentity{
+			ChainID: "11155111", BlockNumber: "12", BlockHash: blockHash,
+			TransactionHash: hash, TransactionIndex: "3", State: catalog.StageComplete,
+		},
+		Error: "execution reverted", RevertData: &revertData,
+		Execution: &catalog.TraceExecution{
+			ContextAddress: target, Address: target, CodeHash: codeHash, Resolution: "direct",
+		},
+		Decoding: catalog.TransactionFailureDecoding{
+			Status: "decoded", ErrorName: "Panic", Signature: "Panic(uint256)", Reason: &reason,
+			Arguments: []catalog.TransactionCalldataInput{{
+				Name: "code", Type: "uint256", Value: "18",
+				Components: []catalog.TransactionCalldataParameter{},
+			}},
+			Candidates: []string{}, ABISource: &catalog.ABISource{Kind: "builtin"},
+		},
+	}}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodGet, "/api/v1/transactions/"+hash+"/failure", nil,
+	))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.TransactionFailureResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Data.Error != "execution reverted" || response.Data.RevertData == nil ||
+		*response.Data.RevertData != revertData || response.Data.Decoding.Reason == nil ||
+		*response.Data.Decoding.Reason != reason || len(response.Data.Decoding.Arguments) != 1 ||
+		response.Data.Decoding.Arguments[0].Components == nil || response.Data.Execution == nil ||
+		response.Data.Execution.CodeHash == nil || *response.Data.Execution.CodeHash != codeHash {
+		t.Fatalf("data=%+v", response.Data)
+	}
+}
+
+func TestTransactionFailureRejectsNonFailedTransaction(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + strings.Repeat("55", 32)
+	fake := &fakeCatalog{failureErr: catalog.ErrNotApplicable}
+	recorder := httptest.NewRecorder()
+	testCatalogHandler(t, fake).ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodGet, "/api/v1/transactions/"+hash+"/failure", nil,
+	))
+	if recorder.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(recorder.Body.String(), `"code":"failure_not_applicable"`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }

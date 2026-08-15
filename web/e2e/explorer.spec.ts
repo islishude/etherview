@@ -24,6 +24,7 @@ const codeHash = "0x111111111111111111111111111111111111111111111111111111111111
 const secondBlockHash = "0x2222222222222222222222222222222222222222222222222222222222222222";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
 const compoundTransactionHash = `0x${"ab".repeat(32)}`;
+const failedTransactionHash = `0x${"d".repeat(64)}`;
 const pendingTransactionHash = `0x${"c".repeat(64)}`;
 const predecessorTransactionHash = `0x${"9".repeat(64)}`;
 const replacementTransactionHash = `0x${"8".repeat(64)}`;
@@ -253,6 +254,52 @@ test("transaction calldata renders a localized responsive recursive struct tree"
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${address}/verification`);
   expect(requestedPaths).not.toContain(`/api/v1/contracts/${address}/proxy`);
   expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/delegation`);
+});
+
+test("failed transaction renders decoded custom error leaves in Name Type Data columns", async ({ page }) => {
+  await page.goto(`/tx/${failedTransactionHash}`);
+
+  const table = page.getByRole("table", { name: "Failure arguments" });
+  await expect(table.getByRole("columnheader")).toHaveText(["Name", "Type", "Data"]);
+  for (const name of ["sender", "amount", "pair[0]", "pair[1]", "values[1]", "items[0][2]"]) {
+    await expect(table.getByText(name, { exact: true })).toBeVisible();
+  }
+  await expect(table.getByText("pair", { exact: true })).toHaveCount(0);
+  await expect(table.getByText("items[0]", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(
+    "TransferRejected(address,uint256,(address,uint256),uint256[],uint8[3][])",
+    { exact: true },
+  )).toBeVisible();
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("table", { name: "失败参数" }).getByRole("columnheader"))
+    .toHaveText(["名称", "类型", "数据"]);
+  await assertA11yAndNoOverflow(page, "decoded transaction failure in Chinese at 390px");
+});
+
+test("Solidity builtin failure renders concise error text without an ABI table", async ({ page }) => {
+  await page.route(`**/api/v1/transactions/${failedTransactionHash}/failure`, async (route) => {
+    await fulfillAPIEnvelope(route, {
+      chain_id: "1", block_number: "1", block_hash: codeHash,
+      transaction_hash: failedTransactionHash, transaction_index: "0", state: "complete",
+      error: "execution reverted", revert_data: `0x4e487b71${"0".repeat(62)}12`,
+      decoding: {
+        status: "decoded", error_name: "Panic", signature: "Panic(uint256)",
+        reason: "division or modulo by zero",
+        arguments: [{ name: "code", type: "uint256", value: "18", components: [] }],
+        candidates: [], abi_source: { kind: "builtin" },
+      },
+    });
+  });
+
+  await page.goto(`/tx/${failedTransactionHash}`);
+  await expect(page.getByText("division or modulo by zero", { exact: true })).toBeVisible();
+  await expect(page.getByText("Panic(uint256)", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("table", { name: "Failure arguments" })).toHaveCount(0);
+  await expect(page.getByText("code", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("18", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Revert data", { exact: true })).toHaveCount(0);
 });
 
 test("mempool details poll from pending through replacement to inclusion with accessible status icons", async ({

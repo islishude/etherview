@@ -1701,6 +1701,78 @@ func (e TransactionCalldataDecodingStatus) Valid() bool {
 	}
 }
 
+// Defines values for TransactionFailureState.
+const (
+	TransactionFailureStateComplete    TransactionFailureState = "complete"
+	TransactionFailureStateFailed      TransactionFailureState = "failed"
+	TransactionFailureStateMissing     TransactionFailureState = "missing"
+	TransactionFailureStateUnavailable TransactionFailureState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TransactionFailureState enum.
+func (e TransactionFailureState) Valid() bool {
+	switch e {
+	case TransactionFailureStateComplete:
+		return true
+	case TransactionFailureStateFailed:
+		return true
+	case TransactionFailureStateMissing:
+		return true
+	case TransactionFailureStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionFailureDecodingConfidence.
+const (
+	TransactionFailureDecodingConfidenceGuess    TransactionFailureDecodingConfidence = "guess"
+	TransactionFailureDecodingConfidenceHigh     TransactionFailureDecodingConfidence = "high"
+	TransactionFailureDecodingConfidenceVerified TransactionFailureDecodingConfidence = "verified"
+)
+
+// Valid indicates whether the value is a known member of the TransactionFailureDecodingConfidence enum.
+func (e TransactionFailureDecodingConfidence) Valid() bool {
+	switch e {
+	case TransactionFailureDecodingConfidenceGuess:
+		return true
+	case TransactionFailureDecodingConfidenceHigh:
+		return true
+	case TransactionFailureDecodingConfidenceVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransactionFailureDecodingStatus.
+const (
+	TransactionFailureDecodingStatusAmbiguous   TransactionFailureDecodingStatus = "ambiguous"
+	TransactionFailureDecodingStatusDecoded     TransactionFailureDecodingStatus = "decoded"
+	TransactionFailureDecodingStatusMalformed   TransactionFailureDecodingStatus = "malformed"
+	TransactionFailureDecodingStatusUnavailable TransactionFailureDecodingStatus = "unavailable"
+	TransactionFailureDecodingStatusUnknown     TransactionFailureDecodingStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the TransactionFailureDecodingStatus enum.
+func (e TransactionFailureDecodingStatus) Valid() bool {
+	switch e {
+	case TransactionFailureDecodingStatusAmbiguous:
+		return true
+	case TransactionFailureDecodingStatusDecoded:
+		return true
+	case TransactionFailureDecodingStatusMalformed:
+		return true
+	case TransactionFailureDecodingStatusUnavailable:
+		return true
+	case TransactionFailureDecodingStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TransactionInternalTransactionsState.
 const (
 	TransactionInternalTransactionsStateComplete    TransactionInternalTransactionsState = "complete"
@@ -4310,6 +4382,57 @@ type TransactionDetail struct {
 	union json.RawMessage
 }
 
+// TransactionFailure defines model for TransactionFailure.
+type TransactionFailure struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId    Quantity                   `json:"chain_id"`
+	Decoding   TransactionFailureDecoding `json:"decoding"`
+	Error      string                     `json:"error"`
+	Execution  *TraceExecution            `json:"execution,omitempty"`
+	RevertData *string                    `json:"revert_data,omitempty"`
+	State      TransactionFailureState    `json:"state"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// TransactionFailureState defines model for TransactionFailure.State.
+type TransactionFailureState string
+
+// TransactionFailureDecoding defines model for TransactionFailureDecoding.
+type TransactionFailureDecoding struct {
+	AbiSource  *ABISource                            `json:"abi_source,omitempty"`
+	Arguments  []TransactionCalldataInput            `json:"arguments"`
+	Candidates []string                              `json:"candidates"`
+	Confidence *TransactionFailureDecodingConfidence `json:"confidence,omitempty"`
+	ErrorName  *string                               `json:"error_name,omitempty"`
+	Reason     *string                               `json:"reason,omitempty"`
+	Signature  *string                               `json:"signature,omitempty"`
+	Status     TransactionFailureDecodingStatus      `json:"status"`
+	Warning    *string                               `json:"warning,omitempty"`
+}
+
+// TransactionFailureDecodingConfidence defines model for TransactionFailureDecoding.Confidence.
+type TransactionFailureDecodingConfidence string
+
+// TransactionFailureDecodingStatus defines model for TransactionFailureDecoding.Status.
+type TransactionFailureDecodingStatus string
+
+// TransactionFailureResponse defines model for TransactionFailureResponse.
+type TransactionFailureResponse struct {
+	Data TransactionFailure `json:"data"`
+	Meta Meta               `json:"meta"`
+}
+
 // TransactionInternalTransaction defines model for TransactionInternalTransaction.
 type TransactionInternalTransaction struct {
 	CallType string `json:"call_type"`
@@ -5232,6 +5355,12 @@ type ListTransactionAuthorizationsParams struct {
 
 // GetTransactionCalldataParams defines parameters for GetTransactionCalldata.
 type GetTransactionCalldataParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetTransactionFailureParams defines parameters for GetTransactionFailure.
+type GetTransactionFailureParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

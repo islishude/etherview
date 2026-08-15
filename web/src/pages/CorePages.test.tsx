@@ -756,6 +756,7 @@ describe("core explorer pages", () => {
       await user.click(within(raw).getByRole("button", { name: "Copy" }));
       expect(writeText).toHaveBeenCalledWith(calldata);
       expect(requested).toContain(`/api/v1/transactions/${transactionHash}/calldata`);
+      expect(requested).not.toContain(`/api/v1/transactions/${transactionHash}/failure`);
       expect(requested).not.toContain(`/api/v1/contracts/${address}/verification`);
       expect(requested).not.toContain(`/api/v1/contracts/${address}/proxy`);
     } finally {
@@ -1482,6 +1483,191 @@ describe("core explorer pages", () => {
     expect(within(toRow).getByText("Contract creation")).toBeVisible();
     expect(within(toRow).queryByRole("link")).not.toBeInTheDocument();
     expect(within(toRow).queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
+  });
+
+  it("renders custom failure arguments as Name Type Data jq-style leaf rows", async () => {
+    const requested: string[] = [];
+    const revertData = `0x${"de".repeat(68)}`;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "100000", input: "0x12345678", status: "failed", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          error: "execution reverted", revert_data: revertData,
+          execution: {
+            context_address: delegatedAddress, address: delegatedAddress,
+            code_hash: delegateCodeHash, resolution: "direct",
+          },
+          decoding: {
+            status: "decoded",
+            error_name: "Complex",
+            signature: "Complex(address,uint256,bool,(address,uint16),uint256[],uint256[][])",
+            arguments: [
+              { name: "sender", type: "address", value: address, components: [] },
+              { name: "amount", type: "uint256", value: "42", components: [] },
+              { name: "", type: "bool", value: true, components: [] },
+              {
+                name: "pair", type: "tuple", value: [delegatedAddress, "7"], components: [
+                  { name: "owner", type: "address", components: [] },
+                  { name: "value", type: "uint16", components: [] },
+                ],
+              },
+              { name: "values", type: "uint256[]", value: ["8", "9"], components: [] },
+              {
+                name: "items", type: "uint256[][]", value: [["10", "11", "12"]], components: [],
+              },
+            ],
+            candidates: [], confidence: "verified",
+            abi_source: { kind: "exact_address", address: delegatedAddress, code_hash: delegateCodeHash },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    const table = await screen.findByRole("table", { name: "Failure arguments" });
+    expect(within(table).getByText("Name", { exact: true })).toBeVisible();
+    expect(within(table).getByText("Type", { exact: true })).toBeVisible();
+    expect(within(table).getByText("Data", { exact: true })).toBeVisible();
+    for (const path of ["sender", "amount", "[2]", "pair[0]", "pair[1]", "values[1]", "items[0][2]"]) {
+      expect(within(table).getByText(path, { exact: true })).toBeVisible();
+    }
+    for (const composite of ["pair", "values", "items", "items[0]"]) {
+      expect(within(table).queryByText(composite, { exact: true })).not.toBeInTheDocument();
+    }
+    expect(within(table).getAllByText("address", { exact: true })).toHaveLength(2);
+    expect(within(table).getByText("42", { exact: true })).toBeVisible();
+    expect(screen.getByText("Complex(address,uint256,bool,(address,uint16),uint256[],uint256[][])")).toBeVisible();
+    expect(screen.getByText("Revert data", { exact: true })).toBeVisible();
+    const statusRow = screen.getByText("Status", { exact: true }).closest(".transaction-detail-row");
+    const failureRow = screen.getByText("Failure reason", { exact: true }).closest(".transaction-detail-row");
+    expect(statusRow?.nextElementSibling).toBe(failureRow);
+    expect(requested).toContain(`/api/v1/transactions/${transactionHash}/failure`);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await screen.findByRole("table", { name: "失败参数" })).toBeVisible();
+    expect(screen.getByText("失败原因", { exact: true })).toBeVisible();
+  });
+
+  it("renders Solidity Panic as concise error text without an ABI table", async () => {
+    let failureRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "100000", input: "0x12345678", status: "failed", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
+        failureRequests += 1;
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          error: "execution reverted", revert_data: `0x4e487b71${"0".repeat(62)}12`,
+          decoding: {
+            status: "decoded", error_name: "Panic", signature: "Panic(uint256)",
+            reason: "division or modulo by zero",
+            arguments: [{ name: "code", type: "uint256", value: "18", components: [] }],
+            candidates: [], abi_source: { kind: "builtin" },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("division or modulo by zero")).toBeVisible();
+    expect(screen.queryByText("Panic(uint256)", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
+    expect(screen.queryByText("code", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("18", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Revert data", { exact: true })).not.toBeInTheDocument();
+    expect(failureRequests).toBe(1);
+  });
+
+  it("renders Solidity Error string as concise revert text without an ABI table", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "100000", input: "0x12345678", status: "failed", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          error: "execution reverted", revert_data: "0x08c379a0",
+          decoding: {
+            status: "decoded", error_name: "Error", signature: "Error(string)",
+            reason: "insufficient balance",
+            arguments: [{ name: "message", type: "string", value: "insufficient balance", components: [] }],
+            candidates: [], abi_source: { kind: "builtin" },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    expect(await screen.findByText("insufficient balance")).toBeVisible();
+    expect(screen.queryByText("Error(string)", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
+    expect(screen.queryByText("message", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Revert data", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("refetches a mismatched failure identity once and then fails closed", async () => {
+    let failureRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: delegatedAddress, nonce: "1", value: "0",
+          gas: "100000", input: "0x12345678", status: "failed", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/failure`) {
+        failureRequests += 1;
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: orphanHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          error: "execution reverted",
+          decoding: { status: "unknown", arguments: [], candidates: [] },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await waitFor(() => expect(failureRequests).toBe(2));
+    expect(await screen.findByText(
+      "The canonical transaction inclusion changed. Refreshing this tab will load the new block identity.",
+    )).toBeVisible();
+    expect(screen.queryByRole("table", { name: "Failure arguments" })).not.toBeInTheDocument();
   });
 
   it("renders transaction type 2 as a semantic label", async () => {

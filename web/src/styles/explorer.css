@@ -1491,6 +1491,101 @@ tbody tr:hover {
   }
 }
 
+.transaction-failure {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.transaction-failure-signature,
+.transaction-failure-signature code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.transaction-failure-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.transaction-failure-table-scroll:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.transaction-failure-table {
+  min-width: 42rem;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.transaction-failure-row {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(9rem, 0.7fr) minmax(20rem, 1.55fr);
+  min-height: 2.45rem;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-failure-row:last-child {
+  border-bottom: 0;
+}
+
+.transaction-failure-header {
+  min-height: 2.15rem;
+  background: var(--surface-raised);
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.transaction-failure-row > [role="cell"],
+.transaction-failure-row > [role="columnheader"] {
+  min-width: 0;
+  padding: 0.48rem 0.65rem;
+}
+
+.transaction-failure-name,
+.transaction-failure-type,
+.transaction-failure-data code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.transaction-failure-type {
+  color: var(--text-soft);
+}
+
+.transaction-failure-data {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.transaction-failure-data .copyable-field {
+  max-width: 100%;
+}
+
+.transaction-failure-warning {
+  margin: 0;
+}
+
+.transaction-failure-raw {
+  margin-top: 0;
+}
+
+.transaction-failure-raw .copyable-field,
+.transaction-failure-raw code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 .transaction-tab-panel {
   display: grid;
   gap: 1rem;

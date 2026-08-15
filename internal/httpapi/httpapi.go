@@ -377,6 +377,7 @@ func (h *Handler) routes() {
 	h.handleBillable("listPendingTransactions", h.pendingTransactions)
 	if h.catalog != nil {
 		h.handleBillable("getTransactionCalldata", h.transactionCalldata)
+		h.handleBillable("getTransactionFailure", h.transactionFailure)
 		h.handleBillable("getTransactionTrace", h.transactionTrace)
 		h.handleBillable("listTransactionInternalTransactions", h.transactionInternalTransactions)
 		h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
@@ -1772,6 +1773,27 @@ func (h *Handler) transactionCalldata(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TransactionCalldataResponse{Data: transactionCalldataModel(item), Meta: h.meta(r)})
 }
 
+func (h *Handler) transactionFailure(w http.ResponseWriter, r *http.Request) {
+	hash := strings.ToLower(r.PathValue("hash"))
+	if !hashPattern.MatchString(hash) {
+		writeError(w, r, http.StatusBadRequest, "invalid_transaction_hash", "transaction hash must be 32 bytes", nil)
+		return
+	}
+	item, err := h.catalog.TransactionFailure(r.Context(), h.chainID(), hash)
+	if err != nil {
+		switch {
+		case errors.Is(err, catalog.ErrNotApplicable):
+			writeError(w, r, http.StatusUnprocessableEntity, "failure_not_applicable", "transaction failure decoding is not applicable", nil)
+		case errors.Is(err, catalog.ErrCorruptData):
+			writeError(w, r, http.StatusServiceUnavailable, "failure_inconsistent", "transaction failure data is temporarily unavailable", nil)
+		default:
+			h.handleCatalogError(w, r, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.TransactionFailureResponse{Data: transactionFailureModel(item), Meta: h.meta(r)})
+}
+
 func (h *Handler) transactionTokenTransfers(w http.ResponseWriter, r *http.Request) {
 	request, ok := h.transactionResourceRequest(w, r)
 	if !ok {
@@ -3048,6 +3070,49 @@ func transactionCalldataModel(item catalog.TransactionCalldata) gen.TransactionC
 		TransactionIndex: item.Identity.TransactionIndex, State: gen.TransactionCalldataState(item.Identity.State),
 		Input: item.Input, Execution: execution, Decoding: decoding,
 	}
+}
+
+func transactionFailureModel(item catalog.TransactionFailure) gen.TransactionFailure {
+	decoding := gen.TransactionFailureDecoding{
+		Status:     gen.TransactionFailureDecodingStatus(item.Decoding.Status),
+		Arguments:  transactionCalldataInputsModel(item.Decoding.Arguments),
+		Candidates: append([]string{}, item.Decoding.Candidates...),
+		AbiSource:  abiSourceModel(item.Decoding.ABISource), Reason: item.Decoding.Reason,
+	}
+	if item.Decoding.ErrorName != "" {
+		decoding.ErrorName = &item.Decoding.ErrorName
+	}
+	if item.Decoding.Signature != "" {
+		decoding.Signature = &item.Decoding.Signature
+	}
+	if item.Decoding.Confidence != "" {
+		confidence := gen.TransactionFailureDecodingConfidence(item.Decoding.Confidence)
+		decoding.Confidence = &confidence
+	}
+	if item.Decoding.Warning != "" {
+		decoding.Warning = &item.Decoding.Warning
+	}
+	result := gen.TransactionFailure{
+		ChainId: item.Identity.ChainID, BlockNumber: item.Identity.BlockNumber,
+		BlockHash: item.Identity.BlockHash, TransactionHash: item.Identity.TransactionHash,
+		TransactionIndex: item.Identity.TransactionIndex,
+		State:            gen.TransactionFailureState(item.Identity.State), Error: item.Error,
+		RevertData: item.RevertData, Decoding: decoding,
+	}
+	if item.Execution != nil {
+		execution := gen.TraceExecution{
+			ContextAddress: item.Execution.ContextAddress,
+			Resolution:     gen.TraceExecutionResolution(item.Execution.Resolution),
+		}
+		if item.Execution.Address != "" {
+			execution.Address = &item.Execution.Address
+		}
+		if item.Execution.CodeHash != "" {
+			execution.CodeHash = &item.Execution.CodeHash
+		}
+		result.Execution = &execution
+	}
+	return result
 }
 
 func traceCallDecodingModel(value *catalog.TraceCallDecoding) *gen.TraceCallDecoding {

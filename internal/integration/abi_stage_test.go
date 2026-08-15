@@ -126,6 +126,40 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	customErrorSelector := enrich.SignatureSelector("Unauthorized(address)")
+	customErrorData := append(append([]byte(nil), customErrorSelector[:]...), abiAddressWord(t, caller)...)
+	execFixture(t, ctx, db, `
+		UPDATE receipts
+		SET raw = jsonb_set(raw, '{status}', '"0x0"'::jsonb)
+		WHERE chain_id = 1 AND block_hash = $1 AND tx_hash = $2`,
+		mustBytes(t, reference.Hash), txHash[:])
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces
+		SET output = $3, error = 'execution reverted', direct_reverted = TRUE, reverted = TRUE
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = ''`, mustBytes(t, reference.Hash), txHash[:], customErrorData)
+	failure, err := catalogReader.TransactionFailure(ctx, "1", txHash.String())
+	if err != nil {
+		t.Fatalf("decode exact custom transaction failure: %v", err)
+	}
+	if failure.Decoding.Status != "decoded" || failure.Decoding.ErrorName != "Unauthorized" ||
+		failure.Decoding.Signature != "Unauthorized(address)" || failure.Decoding.Reason != nil ||
+		len(failure.Decoding.Arguments) != 1 || failure.Decoding.Arguments[0].Name != "caller" ||
+		failure.Decoding.Arguments[0].Type != "address" || failure.Decoding.ABISource == nil ||
+		failure.Decoding.ABISource.Kind != "exact_address" || failure.Execution == nil ||
+		failure.Execution.CodeHash != directCode.Hex() {
+		t.Fatalf("exact custom transaction failure projection = %+v", failure)
+	}
+	execFixture(t, ctx, db, `
+		UPDATE receipts
+		SET raw = jsonb_set(raw, '{status}', '"0x1"'::jsonb)
+		WHERE chain_id = 1 AND block_hash = $1 AND tx_hash = $2`,
+		mustBytes(t, reference.Hash), txHash[:])
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces
+		SET output = '\x'::bytea, error = NULL, direct_reverted = FALSE, reverted = FALSE
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = ''`, mustBytes(t, reference.Hash), txHash[:])
 	calldata, err := catalogReader.TransactionCalldata(ctx, "1", txHash.String())
 	if err != nil {
 		t.Fatalf("decode verified address-range calldata without execution identity: %v", err)
