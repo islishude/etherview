@@ -30,6 +30,25 @@ type abiCandidateSet struct {
 	anonymousEvents []abiEntry
 }
 
+func decodedParameterShape(parameter abiParameter) DecodedParameter {
+	components := make([]DecodedParameter, len(parameter.Components))
+	for index, component := range parameter.Components {
+		components[index] = decodedParameterShape(component)
+	}
+	return DecodedParameter{
+		Name: parameter.Name, Type: parameter.Type, InternalType: parameter.InternalType,
+		Components: components,
+	}
+}
+
+func decodedArgumentForParameter(parameter abiParameter, value any) DecodedArgument {
+	shape := decodedParameterShape(parameter)
+	return DecodedArgument{
+		Name: shape.Name, Type: shape.Type, InternalType: shape.InternalType,
+		Components: shape.Components, Indexed: parameter.Indexed, Value: value,
+	}
+}
+
 func NewABIRegistry() *ABIRegistry {
 	return &ABIRegistry{
 		limits:   DefaultDecodeLimits(),
@@ -134,7 +153,7 @@ func (registry *ABIRegistry) decodeConstructors(entries []abiEntry, payload []by
 		}
 		arguments := make([]DecodedArgument, len(values))
 		for index, value := range values {
-			arguments[index] = DecodedArgument{Name: entry.inputs[index].Name, Type: entry.inputs[index].Type, Value: value}
+			arguments[index] = decodedArgumentForParameter(entry.inputs[index], value)
 		}
 		decoded = append(decoded, decodedABICandidate{entry: entry, arguments: arguments})
 	}
@@ -230,9 +249,7 @@ func (registry *ABIRegistry) DecodeCall(identity ABIIdentity, input, output []by
 	result.ReturnStatus = ReturnDecoded
 	result.Returns = make([]DecodedArgument, len(values))
 	for index, value := range values {
-		result.Returns[index] = DecodedArgument{
-			Name: selected.outputs[index].Name, Type: selected.outputs[index].Type, Value: value,
-		}
+		result.Returns[index] = decodedArgumentForParameter(selected.outputs[index], value)
 	}
 	return result
 }
@@ -386,11 +403,7 @@ func (registry *ABIRegistry) decodeCallablesWithEntry(kind ABIKind, selector [4]
 		}
 		arguments := make([]DecodedArgument, len(values))
 		for index, value := range values {
-			arguments[index] = DecodedArgument{
-				Name:  entry.inputs[index].Name,
-				Type:  entry.inputs[index].Type,
-				Value: value,
-			}
+			arguments[index] = decodedArgumentForParameter(entry.inputs[index], value)
 		}
 		decoded = append(decoded, decodedABICandidate{entry: entry, arguments: arguments})
 	}
@@ -563,7 +576,7 @@ func (registry *ABIRegistry) decodeEvent(entry abiEntry, topics []common.Hash, d
 	arguments := make([]DecodedArgument, len(entry.inputs))
 	topicIndex, dataIndex := signatureTopics, 0
 	for index, input := range entry.inputs {
-		argument := DecodedArgument{Name: input.Name, Type: input.Type, Indexed: input.Indexed}
+		argument := decodedArgumentForParameter(input, nil)
 		if !input.Indexed {
 			argument.Value = nonIndexedValues[dataIndex]
 			dataIndex++

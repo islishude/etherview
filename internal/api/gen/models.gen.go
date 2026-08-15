@@ -4270,7 +4270,7 @@ type TransactionCalldataDecoding struct {
 	Candidates   []string                               `json:"candidates"`
 	Confidence   *TransactionCalldataDecodingConfidence `json:"confidence,omitempty"`
 	FunctionName *string                                `json:"function_name,omitempty"`
-	Inputs       []ABIValue                             `json:"inputs"`
+	Inputs       []TransactionCalldataInput             `json:"inputs"`
 	Signature    *string                                `json:"signature,omitempty"`
 	Status       TransactionCalldataDecodingStatus      `json:"status"`
 	Warning      *string                                `json:"warning,omitempty"`
@@ -4281,6 +4281,23 @@ type TransactionCalldataDecodingConfidence string
 
 // TransactionCalldataDecodingStatus defines model for TransactionCalldataDecoding.Status.
 type TransactionCalldataDecodingStatus string
+
+// TransactionCalldataInput defines model for TransactionCalldataInput.
+type TransactionCalldataInput struct {
+	Components   []TransactionCalldataParameter `json:"components"`
+	InternalType *string                        `json:"internal_type,omitempty"`
+	Name         string                         `json:"name"`
+	Type         string                         `json:"type"`
+	Value        interface{}                    `json:"value"`
+}
+
+// TransactionCalldataParameter defines model for TransactionCalldataParameter.
+type TransactionCalldataParameter struct {
+	Components   []TransactionCalldataParameter `json:"components"`
+	InternalType *string                        `json:"internal_type,omitempty"`
+	Name         string                         `json:"name"`
+	Type         string                         `json:"type"`
+}
 
 // TransactionCalldataResponse defines model for TransactionCalldataResponse.
 type TransactionCalldataResponse struct {

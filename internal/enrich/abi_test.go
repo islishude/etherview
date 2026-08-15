@@ -3,11 +3,14 @@ package enrich
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -314,6 +317,98 @@ func TestABIRegistryDecodesTupleAndDynamicArray(t *testing.T) {
 	result := registry.DecodeCalldata(identity, append(selectorBytes("mix((uint256,address),uint256[])"), payload...))
 	if result.Status != DecodeDecoded || len(result.Arguments) != 2 {
 		t.Fatalf("tuple/array result=%+v", result)
+	}
+}
+
+func TestABIRegistryRetainsValidatedCalldataParameterStructure(t *testing.T) {
+	t.Parallel()
+	identity := testABIIdentity(43, 403, 4003)
+	registry := NewABIRegistry()
+	abiJSON := `[{
+	  "type":"function","name":"configure","inputs":[
+	    {"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[
+	      {"name":"owner","type":"address"},
+	      {"name":"rules","type":"tuple[]","internalType":"struct Fixture.Rule[]","components":[
+	        {"name":"threshold","type":"uint16"},{"name":"","type":"bool"}
+	      ]}
+	    ]},
+	    {"name":"matrix","type":"uint256[][2]"},
+	    {"name":"batches","type":"tuple[]","internalType":"struct Fixture.Batch[]","components":[
+	      {"name":"recipient","type":"address"},{"name":"amount","type":"int32"}
+	    ]}
+	  ],"outputs":[]
+	}]`
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(abiJSON)); err != nil {
+		t.Fatal(err)
+	}
+	packingABI := strings.Replace(abiJSON, `{"name":"","type":"bool"}`, `{"name":"enabled","type":"bool"}`, 1)
+	parsed, err := gethabi.JSON(strings.NewReader(packingABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type rule struct {
+		Threshold uint16
+		Enabled   bool
+	}
+	type config struct {
+		Owner common.Address
+		Rules []rule
+	}
+	type batch struct {
+		Recipient common.Address
+		Amount    int32
+	}
+	payload, err := parsed.Methods["configure"].Inputs.Pack(
+		config{Owner: testAddress(1), Rules: []rule{{Threshold: 7, Enabled: true}}},
+		[2][]*big.Int{{}, {big.NewInt(9), big.NewInt(10)}},
+		[]batch{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := registry.DecodeCalldata(identity, append(parsed.Methods["configure"].ID, payload...))
+	if result.Status != DecodeDecoded || len(result.Arguments) != 3 {
+		t.Fatalf("decoded=%+v", result)
+	}
+	configArgument := result.Arguments[0]
+	if configArgument.InternalType != "struct Fixture.Config" || len(configArgument.Components) != 2 ||
+		configArgument.Components[0].Name != "owner" || configArgument.Components[0].Components == nil ||
+		configArgument.Components[1].Type != "tuple[]" ||
+		configArgument.Components[1].InternalType != "struct Fixture.Rule[]" ||
+		len(configArgument.Components[1].Components) != 2 ||
+		configArgument.Components[1].Components[1].Name != "" {
+		t.Fatalf("config shape=%+v", configArgument)
+	}
+	if result.Arguments[1].Type != "uint256[][2]" || result.Arguments[1].Components == nil ||
+		len(result.Arguments[1].Components) != 0 || result.Arguments[2].InternalType != "struct Fixture.Batch[]" ||
+		len(result.Arguments[2].Components) != 2 {
+		t.Fatalf("array shapes=%+v", result.Arguments)
+	}
+	values, ok := result.Arguments[1].Value.([]any)
+	if !ok || len(values) != 2 || len(values[0].([]any)) != 0 || len(values[1].([]any)) != 2 {
+		t.Fatalf("matrix value=%#v", result.Arguments[1].Value)
+	}
+	stored, err := json.Marshal(result.Arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(stored, []byte("internalType")) || bytes.Contains(stored, []byte("components")) {
+		t.Fatalf("abi@3 persisted value shape changed: %s", stored)
+	}
+}
+
+func TestABIRegistryRejectsUnboundedOrContradictoryParameterMetadata(t *testing.T) {
+	t.Parallel()
+	identity := testABIIdentity(44, 404, 4004)
+	for _, abiJSON := range []string{
+		`[{"type":"function","name":"bad","inputs":[{"name":"value","type":"uint256","components":[{"name":"nested","type":"uint8"}]}]}]`,
+		`[{"type":"function","name":"bad","inputs":[{"name":"value","type":"uint256","internalType":" uint256"}]}]`,
+		`[{"type":"function","name":"bad","inputs":[{"name":"value","type":"uint256","internalType":"` + strings.Repeat("x", DefaultDecodeLimits().MaxSignatureBytes+1) + `"}]}]`,
+	} {
+		registry := NewABIRegistry()
+		if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(abiJSON)); err == nil {
+			t.Fatalf("accepted invalid parameter metadata: %.120s", abiJSON)
+		}
 	}
 }
 

@@ -50,6 +50,7 @@ this plan.
 | P61-T12 | done | P61-T11 | Remove the redundant History action from the cleared-address Status surface while retaining the dedicated History tab | Web, browser, generation, and common gates |
 | P61-T13 | done | P61-T12 | Add production-browser and real Prague/Anvil EIP-7702 transaction E2E coverage across authorization outcomes, transaction-time execution identity, clearing, and reorg canonicality | browser, runtime, topology-parity, and common gates |
 | P61-T14 | done | P61-T13, P40-T19, P50-T59 | Recover exact top-level execution identity when diff-only prestate evidence omits an unchanged target, including Native Transfer list and transaction-action projection | state-diff, query, Catalog, Web, PostgreSQL, browser, Preview, and common gates |
+| P61-T15 | done | P61-T14 | Restore exact transaction-time ABI component metadata and bounded recursive Decoded calldata rendering without current-state fallback | ABI/Catalog/API contracts, Web transformation and DOM, PostgreSQL, browser, runtime, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -97,6 +98,9 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
       topologies cover type-4 authorization outcomes, transaction-time
       execution identity, clearing, and canonical reorg retention without host
       signing tools or current-state fallback.
+- [x] Transaction calldata reprojects recursive tuple and array shape from the
+      exact transaction-time ABI, renders a bounded bilingual tree, and fails
+      closed on missing or contradictory structure without hiding raw bytes.
 
 ## Current Blockers
 
@@ -325,3 +329,25 @@ None.
   regression. All `make check` constituents pass through the aggregate plan,
   generation, lint, and ordinary/race phases plus independent complete security,
   license, and deployment targets; `git diff --check` passes.
+- P61-T15 restores the dedicated recursive transaction-calldata contract while
+  leaving Trace `ABIValue` unchanged. Catalog reprojects component metadata from
+  the exact transaction-time address/code-hash ABI source in one repeatable-read
+  snapshot, accepts ADR-0009 late high-confidence improvements, and fails closed
+  when persisted facts lack or contradict their recorded ABI source.
+- The Web renderer strictly pairs recursive ABI structure with decoded values,
+  enforces depth and 4096-node budgets, uses named tuple/struct fields and
+  localized array counts, and retains complete raw calldata when decoded
+  structure is unavailable. Embedded-browser coverage verifies English and
+  Chinese, 390px layout, keyboard operation, accessibility, and the absence of
+  current verification, proxy, or delegation requests.
+- Focused Go tests pass for Enrich, Catalog, and HTTP API. `make web-test` passes
+  30 files and 334 tests; `make web-lint`, `make web-build`, `make
+  generate-check`, and `make plan-check` pass. `make test-integration` passes
+  against runner-owned PostgreSQL 18 (`internal/integration` 155.589s), `make
+  test-e2e` passes 20/20 Chromium tests, and `make test-runtime-e2e` passes the
+  monolith and complete six-role topology in 77.304s.
+- The aggregate `make check` passed generation, vet/lint, ordinary and race
+  tests, Web tests, vulnerability, secret, audit, and license gates before its
+  final Docker validation was prevented by Docker Desktop's configured
+  `http.docker.internal` proxy DNS failure. Repeated image builds were stopped
+  at the user's direction after all scoped test suites had passed.

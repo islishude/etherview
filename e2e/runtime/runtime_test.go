@@ -55,9 +55,20 @@ const (
 	// internal/verify/testdata/compiler/solidity/output.no-cbor.json. Deploying
 	// it exercises receipt-authenticated contract creation without introducing
 	// another compiler or network dependency into this test.
-	noCBORCreationBytecode = "0x6080604052348015600e575f5ffd5b50603e80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
-	noCBORRuntimeBytecode  = "0x6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
-	nativeTransferTarget   = "0x00000000000000000000000000000000000000F0"
+	noCBORCreationBytecode   = "0x6080604052348015600e575f5ffd5b50603e80601a5f395ff3fe6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
+	noCBORRuntimeBytecode    = "0x6080604052348015600e575f5ffd5b50600436106026575f3560e01c80633fa4f24514602a575b5f5ffd5b600760405190815260200160405180910390f3"
+	nativeTransferTarget     = "0x00000000000000000000000000000000000000F0"
+	runtimeCompoundSignature = "configure((address,uint256),uint8[2][])"
+	runtimeCompoundABIEntry  = `{"type":"function","name":"configure","inputs":[{"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[{"name":"owner","type":"address"},{"name":"amount","type":"uint256"}]},{"name":"pairs","type":"uint8[2][]"}],"outputs":[]}`
+	runtimeCompoundCalldata  = "0xe967f546" +
+		"0000000000000000000000004444444444444444444444444444444444444444" +
+		"000000000000000000000000000000000000000000000000000000000000002a" +
+		"0000000000000000000000000000000000000000000000000000000000000060" +
+		"0000000000000000000000000000000000000000000000000000000000000002" +
+		"0000000000000000000000000000000000000000000000000000000000000001" +
+		"0000000000000000000000000000000000000000000000000000000000000002" +
+		"0000000000000000000000000000000000000000000000000000000000000003" +
+		"0000000000000000000000000000000000000000000000000000000000000004"
 )
 
 type fixture struct {
@@ -75,6 +86,7 @@ type fixture struct {
 	pendingNonce           uint64
 	creationHash           string
 	failedHash             string
+	compoundHash           string
 	contractAddress        string
 	delegateA              string
 	delegateB              string
@@ -127,6 +139,8 @@ type apiSnapshot struct {
 	CalldataInput             string
 	CalldataResolution        string
 	CalldataStatus            string
+	CompoundCalldataSignature string
+	CompoundCalldataShape     string
 	NativeMethod              string
 	NativeCalldataResolution  string
 	NativeCalldataStatus      string
@@ -558,9 +572,14 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		}
 		h.assertCurrentDelegation(ctx, h.fixture.delegateB)
 		h.assertCanonicalDelegationHistory(ctx, []string{"delegated"}, []string{h.fixture.delegationHash})
+		h.insertRuntimeCompoundSignature(ctx)
 		h.fixture.failedHash = h.sendTransaction(ctx, map[string]any{
 			"from": h.fixture.accounts[0], "to": h.fixture.contractAddress,
 			"data": "0xffffffff", "gas": "0x186a0", "gasPrice": "0x3b9aca00",
+		})
+		h.fixture.compoundHash = h.sendTransaction(ctx, map[string]any{
+			"from": h.fixture.accounts[0], "to": h.fixture.contractAddress,
+			"data": runtimeCompoundCalldata, "gas": "0x30d40", "gasPrice": "0x3b9aca00",
 		})
 		h.fixture.redelegationAuth = h.signAuthorization(
 			h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateA), 1,
@@ -581,6 +600,10 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		failedReceipt := h.waitReceipt(ctx, h.fixture.failedHash)
 		if failedReceipt.Status != "0x0" {
 			t.Fatalf("failed call receipt status = %s, want 0x0", failedReceipt.Status)
+		}
+		compoundReceipt := h.waitReceipt(ctx, h.fixture.compoundHash)
+		if compoundReceipt.Status != "0x0" {
+			t.Fatalf("compound calldata receipt status = %s, want 0x0", compoundReceipt.Status)
 		}
 		for name, hash := range map[string]string{
 			"redelegation":   h.fixture.redelegationHash,
@@ -825,6 +848,20 @@ func (h *harness) connectDatabase(ctx context.Context) {
 		err := h.db.Ping(ctx)
 		return err == nil, fmt.Sprint(err), err
 	})
+}
+
+func (h *harness) insertRuntimeCompoundSignature(ctx context.Context) {
+	h.t.Helper()
+	selector := common.FromHex(runtimeCompoundCalldata[:10])
+	if len(selector) != 4 {
+		h.t.Fatalf("compound calldata selector length = %d", len(selector))
+	}
+	if _, err := h.db.Exec(ctx, `
+		INSERT INTO abi_signature_candidates (kind, identifier, signature, abi_entry)
+		VALUES ('function', $1, $2, $3::jsonb)
+		ON CONFLICT DO NOTHING`, selector, runtimeCompoundSignature, []byte(runtimeCompoundABIEntry)); err != nil {
+		h.t.Fatalf("insert compound ABI signature candidate: %v", err)
+	}
 }
 
 func (h *harness) resolveAPI(ctx context.Context) {
@@ -1298,6 +1335,26 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		calldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusUnknown {
 		h.t.Fatalf("transaction calldata = %#v", calldata.Data)
 	}
+	var compoundCalldata gen.TransactionCalldataResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.compoundHash+"/calldata", &compoundCalldata)
+	compoundInputs := compoundCalldata.Data.Decoding.Inputs
+	if compoundCalldata.Data.Input != runtimeCompoundCalldata ||
+		compoundCalldata.Data.Execution.Resolution != gen.TraceExecutionResolutionDirect ||
+		compoundCalldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusDecoded ||
+		compoundCalldata.Data.Decoding.Signature == nil ||
+		*compoundCalldata.Data.Decoding.Signature != runtimeCompoundSignature ||
+		len(compoundInputs) != 2 || compoundInputs[0].InternalType == nil ||
+		*compoundInputs[0].InternalType != "struct Fixture.Config" ||
+		len(compoundInputs[0].Components) != 2 || compoundInputs[0].Components[0].Name != "owner" ||
+		compoundInputs[0].Components[1].Name != "amount" ||
+		compoundInputs[1].Components == nil || len(compoundInputs[1].Components) != 0 {
+		h.t.Fatalf("compound transaction calldata = %#v", compoundCalldata.Data)
+	}
+	compoundShape := fmt.Sprintf(
+		"%s:%s:%s:%d|%s:%d",
+		compoundInputs[0].Name, compoundInputs[0].Type, *compoundInputs[0].InternalType,
+		len(compoundInputs[0].Components), compoundInputs[1].Type, len(compoundInputs[1].Components),
+	)
 	var nativeCalldata gen.TransactionCalldataResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.nativeHash+"/calldata", &nativeCalldata)
 	if nativeCalldata.Data.Input != "0x" ||
@@ -1350,9 +1407,11 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		FromType: string(from.Data.Type), ContractType: string(contract.Data.Type),
 		CreationAddress: creationAddress, FailedStatus: failedStatus,
 		TraceState: string(trace.Data.State), CalldataInput: calldata.Data.Input,
-		CalldataResolution: string(calldata.Data.Execution.Resolution),
-		CalldataStatus:     string(calldata.Data.Decoding.Status),
-		NativeMethod:       nativeMethod, NativeCalldataResolution: string(nativeCalldata.Data.Execution.Resolution),
+		CalldataResolution:        string(calldata.Data.Execution.Resolution),
+		CalldataStatus:            string(calldata.Data.Decoding.Status),
+		CompoundCalldataSignature: runtimeCompoundSignature,
+		CompoundCalldataShape:     compoundShape,
+		NativeMethod:              nativeMethod, NativeCalldataResolution: string(nativeCalldata.Data.Execution.Resolution),
 		NativeCalldataStatus: string(nativeCalldata.Data.Decoding.Status), ChartAvailable: true,
 		SPA: bytes.Contains(body, []byte("<div id=\"root\">")), SSE: true,
 		AuthorityType:             eip7702.authorityType,

@@ -493,8 +493,19 @@ func TestTransactionCalldataExposesExactDelegatedExecution(t *testing.T) {
 			ContextAddress: authority, Address: delegate, CodeHash: codeHash, Resolution: "eip7702_delegate",
 		},
 		Decoding: catalog.TransactionCalldataDecoding{
-			Status: "decoded", FunctionName: "setValue", Signature: "setValue(uint256)",
-			Inputs: []catalog.ABIValue{{Name: "value", Type: "uint256", Value: "42"}}, Candidates: []string{},
+			Status: "decoded", FunctionName: "setValue", Signature: "setValue(uint256,(address,uint16[]))",
+			Inputs: []catalog.TransactionCalldataInput{{
+				Name: "value", Type: "uint256", Value: "42",
+				Components: []catalog.TransactionCalldataParameter{},
+			}, {
+				Name: "config", Type: "tuple", InternalType: "struct Fixture.Config",
+				Value: []any{delegate, []any{"7", "8"}},
+				Components: []catalog.TransactionCalldataParameter{{
+					Name: "owner", Type: "address", Components: []catalog.TransactionCalldataParameter{},
+				}, {
+					Name: "", Type: "uint16[]", Components: []catalog.TransactionCalldataParameter{},
+				}},
+			}}, Candidates: []string{},
 			ABISource:  &catalog.ABISource{Kind: "exact_address", Address: delegate, CodeHash: codeHash},
 			Confidence: "verified",
 		},
@@ -512,7 +523,12 @@ func TestTransactionCalldataExposesExactDelegatedExecution(t *testing.T) {
 	}
 	if response.Data.Execution.Resolution != "eip7702_delegate" || response.Data.Execution.Address == nil ||
 		*response.Data.Execution.Address != delegate || response.Data.Decoding.Signature == nil ||
-		*response.Data.Decoding.Signature != "setValue(uint256)" || len(response.Data.Decoding.Inputs) != 1 {
+		*response.Data.Decoding.Signature != "setValue(uint256,(address,uint16[]))" ||
+		len(response.Data.Decoding.Inputs) != 2 || response.Data.Decoding.Inputs[0].Components == nil ||
+		response.Data.Decoding.Inputs[1].InternalType == nil ||
+		*response.Data.Decoding.Inputs[1].InternalType != "struct Fixture.Config" ||
+		len(response.Data.Decoding.Inputs[1].Components) != 2 ||
+		response.Data.Decoding.Inputs[1].Components[0].Components == nil {
 		t.Fatalf("data=%+v", response.Data)
 	}
 }

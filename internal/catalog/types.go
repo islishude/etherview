@@ -370,6 +370,21 @@ type ABIValue struct {
 	Value any
 }
 
+type TransactionCalldataParameter struct {
+	Name         string
+	Type         string
+	InternalType string
+	Components   []TransactionCalldataParameter
+}
+
+type TransactionCalldataInput struct {
+	Name         string
+	Type         string
+	Value        any
+	InternalType string
+	Components   []TransactionCalldataParameter
+}
+
 type ABISource struct {
 	Kind     string
 	Address  string
@@ -425,7 +440,7 @@ type TransactionCalldataDecoding struct {
 	Status       string
 	FunctionName string
 	Signature    string
-	Inputs       []ABIValue
+	Inputs       []TransactionCalldataInput
 	Candidates   []string
 	ABISource    *ABISource
 	Confidence   string

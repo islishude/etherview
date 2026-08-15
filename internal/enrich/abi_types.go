@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -119,10 +120,11 @@ func (source ABISource) validate() error {
 }
 
 type abiParameter struct {
-	Name       string         `json:"name"`
-	Type       string         `json:"type"`
-	Indexed    bool           `json:"indexed,omitempty"`
-	Components []abiParameter `json:"components,omitempty"`
+	Name         string         `json:"name"`
+	Type         string         `json:"type"`
+	InternalType string         `json:"internalType,omitempty"`
+	Indexed      bool           `json:"indexed,omitempty"`
+	Components   []abiParameter `json:"components,omitempty"`
 }
 
 type abiEntryJSON struct {
@@ -173,11 +175,24 @@ const (
 )
 
 type DecodedArgument struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Indexed bool   `json:"indexed"`
-	Hashed  bool   `json:"hashed"`
-	Value   any    `json:"value"`
+	Name         string             `json:"name"`
+	Type         string             `json:"type"`
+	InternalType string             `json:"-"`
+	Components   []DecodedParameter `json:"-"`
+	Indexed      bool               `json:"indexed"`
+	Hashed       bool               `json:"hashed"`
+	Value        any                `json:"value"`
+}
+
+// DecodedParameter is the validated recursive ABI shape selected for a
+// decoded value. It is intentionally excluded from persisted DecodedArgument
+// JSON so abi@3 storage remains value-only; exact readers rebuild this shape
+// from the block-bound ABI candidate that decoded the calldata.
+type DecodedParameter struct {
+	Name         string
+	Type         string
+	InternalType string
+	Components   []DecodedParameter
 }
 
 type DecodeResult struct {
@@ -464,6 +479,46 @@ func canonicalParameter(parameter abiParameter) (string, error) {
 	return result.String(), nil
 }
 
+func validateABIParameter(parameter abiParameter, depth int, limits DecodeLimits) error {
+	if depth > limits.MaxDepth {
+		return errors.New("ABI parameter nesting exceeds limit")
+	}
+	for _, field := range []struct{ label, value string }{
+		{label: "name", value: parameter.Name},
+		{label: "type", value: parameter.Type},
+		{label: "internalType", value: parameter.InternalType},
+	} {
+		if !utf8.ValidString(field.value) || len(field.value) > limits.MaxSignatureBytes {
+			return fmt.Errorf("ABI parameter %s exceeds text limit", field.label)
+		}
+	}
+	if parameter.Type != strings.TrimSpace(parameter.Type) {
+		return errors.New("ABI parameter type contains surrounding whitespace")
+	}
+	if parameter.InternalType != strings.TrimSpace(parameter.InternalType) {
+		return errors.New("ABI parameter internalType contains surrounding whitespace")
+	}
+	base, dimensions, err := splitArrayDimensions(parameter.Type)
+	if err != nil {
+		return err
+	}
+	if depth+len(dimensions) > limits.MaxDepth {
+		return errors.New("ABI parameter nesting exceeds limit")
+	}
+	if len(parameter.Components) > limits.MaxArguments {
+		return errors.New("ABI tuple contains too many components")
+	}
+	if base != "tuple" && len(parameter.Components) != 0 {
+		return errors.New("non-tuple ABI parameter declares components")
+	}
+	for index, component := range parameter.Components {
+		if err := validateABIParameter(component, depth+len(dimensions)+1, limits); err != nil {
+			return fmt.Errorf("tuple component %d: %w", index, err)
+		}
+	}
+	return nil
+}
+
 func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiEntry, error) {
 	if err := source.validate(); err != nil {
 		return nil, err
@@ -525,6 +580,9 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 			entry.outputsKnown = true
 			entry.outputTypes = make([]*abiType, len(entry.outputs))
 			for outputIndex, output := range entry.outputs {
+				if err := validateABIParameter(output, 1, limits); err != nil {
+					return nil, fmt.Errorf("ABI entry %s output %d: %w", item.Name, outputIndex, err)
+				}
 				if _, err := canonicalParameter(output); err != nil {
 					return nil, fmt.Errorf("ABI entry %s output %d: %w", item.Name, outputIndex, err)
 				}
@@ -537,6 +595,9 @@ func parseABIEntries(data []byte, source ABISource, limits DecodeLimits) ([]abiE
 		}
 		canonicalInputs := make([]string, len(item.Inputs))
 		for inputIndex, input := range item.Inputs {
+			if err := validateABIParameter(input, 1, limits); err != nil {
+				return nil, fmt.Errorf("ABI entry %s input %d: %w", item.Name, inputIndex, err)
+			}
 			canonical, err := canonicalParameter(input)
 			if err != nil {
 				return nil, fmt.Errorf("ABI entry %s input %d: %w", item.Name, inputIndex, err)

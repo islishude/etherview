@@ -430,6 +430,44 @@ export function formatAbiResult(
 }
 
 /**
+ * Validates and snapshots the transaction-time calldata projection returned by
+ * the API. Unlike Viem results, public integer values are decimal strings and
+ * tuple values are always positional arrays. Shape/value disagreements fail
+ * closed before any partial tree is rendered.
+ */
+export function formatTransactionCalldataInputs(
+  value: unknown,
+): readonly FormattedAbiOutput[] {
+  const schemaBudget = new AbiBudget();
+  const values = snapshotArray(value, "$calldata", 256, "INVALID_ABI", schemaBudget);
+  const parsed = values.map((item, index) =>
+    parseTransactionCalldataParameter(item, `$calldata[${index}]`, schemaBudget, 0, true),
+  );
+  const valueBudget = new ValueBudget(ABI_LIMITS.outputNodes);
+  const outputs = parsed.map(({ parameter, value: rawValue }, index) => {
+    const formatted = formatTransactionCalldataValue(
+      parameter,
+      rawValue,
+      `$calldata[${index}].value`,
+      0,
+      valueBudget,
+      schemaBudget,
+    );
+    const output = {
+      index,
+      name: parameter.name ?? "",
+      type: parameter.type,
+      value: formatted,
+      display: formattedValueText(formatted),
+    };
+    return Object.freeze(parameter.internalType === undefined
+      ? output
+      : { ...output, internalType: parameter.internalType });
+  });
+  return Object.freeze(outputs);
+}
+
+/**
  * Decodes only bounded revert hex. Unknown selectors and malformed payloads are
  * intentionally indistinguishable and return undefined; provider errors never
  * cross this helper.
@@ -869,6 +907,257 @@ function parseScalar(type: string, value: string, path: string): unknown {
     throw new AbiFormError("INVALID_ABI_VALUE", path);
   }
   return parsed;
+}
+
+function parseTransactionCalldataParameter(
+  value: unknown,
+  path: string,
+  budget: AbiBudget,
+  depth: number,
+  includeValue: boolean,
+): Readonly<{ parameter: AbiParameter; value: unknown }> {
+  budget.addParameter(path);
+  if (depth > ABI_LIMITS.depth) {
+    throw new AbiFormError("ABI_LIMIT_EXCEEDED", path);
+  }
+  const record = snapshotRecord(value, path, budget);
+  const allowed = new Set(["name", "type", "internal_type", "components"]);
+  if (includeValue) allowed.add("value");
+  assertAllowedKeys(record, allowed, path);
+  if (!record.has("name") || !record.has("type") || !record.has("components") ||
+    (includeValue && !record.has("value"))) {
+    throw new AbiFormError("INVALID_ABI", path);
+  }
+
+  const name = requiredString(record, "name", path, budget);
+  if (name !== "" && (!identifierPattern.test(name) || textEncoder.encode(name).byteLength > 4096)) {
+    throw new AbiFormError("INVALID_ABI", `${path}.name`);
+  }
+  const type = requiredString(record, "type", path, budget);
+  const parsedType = parseTransactionCalldataType(type, `${path}.type`);
+  if (depth + parsedType.dimensions.length > ABI_LIMITS.depth) {
+    throw new AbiFormError("ABI_LIMIT_EXCEEDED", `${path}.type`);
+  }
+  let internalType: string | undefined;
+  if (record.has("internal_type")) {
+    internalType = requiredString(record, "internal_type", path, budget);
+    if (internalType === "" || internalType.trim() !== internalType ||
+      textEncoder.encode(internalType).byteLength > 4096) {
+      throw new AbiFormError("INVALID_ABI", `${path}.internal_type`);
+    }
+  }
+
+  const rawComponents = snapshotArray(
+    record.get("components"),
+    `${path}.components`,
+    256,
+    "INVALID_ABI",
+    budget,
+  );
+  if (parsedType.base === "tuple" && rawComponents.length === 0) {
+    throw new AbiFormError("INVALID_ABI", `${path}.components`);
+  }
+  if (parsedType.base !== "tuple" && rawComponents.length !== 0) {
+    throw new AbiFormError("INVALID_ABI", `${path}.components`);
+  }
+  const components = rawComponents.map((component, index) =>
+    parseTransactionCalldataParameter(
+      component,
+      `${path}.components[${index}]`,
+      budget,
+      depth + parsedType.dimensions.length + 1,
+      false,
+    ).parameter,
+  );
+
+  const parameter: Record<string, unknown> = { name, type };
+  if (internalType !== undefined) parameter.internalType = internalType;
+  if (parsedType.base === "tuple") parameter.components = Object.freeze(components);
+  return Object.freeze({ parameter: Object.freeze(parameter) as AbiParameter, value: record.get("value") });
+}
+
+function parseTransactionCalldataType(type: string, path: string): ParsedAbiType {
+  if (textEncoder.encode(type).byteLength > 4096 || type.trim() !== type) {
+    throw new AbiFormError("INVALID_ABI", path);
+  }
+  let remaining = type;
+  const dimensions: ArrayDimension[] = [];
+  while (remaining.endsWith("]")) {
+    const match = /^(.*)\[([0-9]*)\]$/u.exec(remaining);
+    if (!match || match[1] === undefined || match[2] === undefined) {
+      throw new AbiFormError("INVALID_ABI", path);
+    }
+    let length: number | null = null;
+    if (match[2] !== "") {
+      if (!/^[1-9][0-9]*$/u.test(match[2])) {
+        throw new AbiFormError("INVALID_ABI", path);
+      }
+      length = Number(match[2]);
+      if (!Number.isSafeInteger(length) || length > ABI_LIMITS.outputNodes) {
+        throw new AbiFormError("ABI_LIMIT_EXCEEDED", path);
+      }
+    }
+    dimensions.push(Object.freeze({ length, suffix: `[${match[2]}]` }));
+    remaining = match[1];
+    if (dimensions.length > ABI_LIMITS.depth) {
+      throw new AbiFormError("ABI_LIMIT_EXCEEDED", path);
+    }
+  }
+  if (remaining.includes("[") || remaining.includes("]") ||
+    (remaining !== "function" && !validBaseType(remaining))) {
+    throw new AbiFormError("INVALID_ABI", path);
+  }
+  return Object.freeze({ base: remaining, dimensions: Object.freeze(dimensions) });
+}
+
+function formatTransactionCalldataValue(
+  parameter: AbiParameter,
+  value: unknown,
+  path: string,
+  depth: number,
+  nodeBudget: ValueBudget,
+  byteBudget: AbiBudget,
+): FormattedAbiValue {
+  nodeBudget.add(path);
+  if (depth > ABI_LIMITS.depth) {
+    throw new AbiFormError("ABI_VALUE_LIMIT_EXCEEDED", path);
+  }
+  const array = outerArray(parameter.type);
+  if (array) {
+    const values = snapshotArray(
+      value,
+      path,
+      array.length ?? ABI_LIMITS.outputNodes,
+      "INVALID_ABI_VALUE",
+      byteBudget,
+    );
+    if (array.length !== null && values.length !== array.length) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    const element = parameterWithType(parameter, array.elementType);
+    const items = values.map((item, index) => formatTransactionCalldataValue(
+      element,
+      item,
+      `${path}[${index}]`,
+      depth + 1,
+      nodeBudget,
+      byteBudget,
+    ));
+    const result = { kind: "array" as const, type: parameter.type, items: Object.freeze(items) };
+    return Object.freeze(parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType });
+  }
+
+  const parsed = parseTransactionCalldataType(parameter.type, path);
+  if (parsed.base === "tuple") {
+    const components = "components" in parameter ? parameter.components : undefined;
+    if (!components) throw new AbiFormError("INVALID_ABI", path);
+    const values = snapshotArray(value, path, components.length, "INVALID_ABI_VALUE", byteBudget);
+    if (values.length !== components.length) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    const fields = components.map((component, index) => {
+      const field = {
+        index,
+        name: component.name ?? "",
+        type: component.type,
+        value: formatTransactionCalldataValue(
+          component,
+          values[index],
+          `${path}.${index}`,
+          depth + 1,
+          nodeBudget,
+          byteBudget,
+        ),
+      };
+      return Object.freeze(component.internalType === undefined
+        ? field
+        : { ...field, internalType: component.internalType });
+    });
+    const result = { kind: "tuple" as const, type: parameter.type, fields: Object.freeze(fields) };
+    return Object.freeze(parameter.internalType === undefined
+      ? result
+      : { ...result, internalType: parameter.internalType });
+  }
+
+  const result = {
+    kind: "scalar" as const,
+    type: parameter.type,
+    text: formatTransactionCalldataScalar(parsed.base, value, path, byteBudget),
+  };
+  return Object.freeze(parameter.internalType === undefined
+    ? result
+    : { ...result, internalType: parameter.internalType });
+}
+
+function formatTransactionCalldataScalar(
+  type: string,
+  value: unknown,
+  path: string,
+  budget: AbiBudget,
+): string {
+  const integer = /^(u?int)([0-9]*)$/u.exec(type);
+  if (integer) {
+    if (typeof value !== "string") throw new AbiFormError("INVALID_ABI_VALUE", path);
+    budget.addBytes(value, path);
+    const signed = integer[1] === "int";
+    const bits = integer[2] === "" ? 256 : Number(integer[2]);
+    const pattern = signed ? decimalSignedPattern : decimalUnsignedPattern;
+    if (!pattern.test(value) || value === "-0" || value.length > 80) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    const parsed = BigInt(value);
+    const minimum = signed ? -(1n << BigInt(bits - 1)) : 0n;
+    const maximum = signed ? (1n << BigInt(bits - 1)) - 1n : (1n << BigInt(bits)) - 1n;
+    if (parsed < minimum || parsed > maximum) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    return value;
+  }
+  if (type === "bool") {
+    if (typeof value !== "boolean") throw new AbiFormError("INVALID_ABI_VALUE", path);
+    return String(value);
+  }
+  if (type === "address") {
+    if (typeof value !== "string" || !isAddress(value, { strict: false })) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    budget.addBytes(value, path);
+    return getAddress(value);
+  }
+  if (type === "string") {
+    if (typeof value !== "string") throw new AbiFormError("INVALID_ABI_VALUE", path);
+    budget.addBytes(value, path);
+    if (textEncoder.encode(value).byteLength > ABI_LIMITS.stringBytes) {
+      throw new AbiFormError("ABI_VALUE_LIMIT_EXCEEDED", path);
+    }
+    return value;
+  }
+  if (type === "function") {
+    if (typeof value !== "string" || !validHex(value, 24, 24)) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    budget.addBytes(value, path);
+    return value.toLowerCase();
+  }
+  if (type === "bytes") {
+    if (typeof value !== "string" || !validHex(value, 0, ABI_LIMITS.bytesLength)) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    budget.addBytes(value, path);
+    return value.toLowerCase();
+  }
+  const bytes = /^bytes([0-9]+)$/u.exec(type);
+  if (bytes?.[1] !== undefined) {
+    const length = Number(bytes[1]);
+    if (typeof value !== "string" || !validHex(value, length, length)) {
+      throw new AbiFormError("INVALID_ABI_VALUE", path);
+    }
+    budget.addBytes(value, path);
+    return value.toLowerCase();
+  }
+  throw new AbiFormError("INVALID_ABI", path);
 }
 
 function formatParameterValues(

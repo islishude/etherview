@@ -38,6 +38,7 @@ const (
 	secondHash                = "0x2222222222222222222222222222222222222222222222222222222222222222"
 	orphanHash                = "0x3333333333333333333333333333333333333333333333333333333333333333"
 	testTransactionHash       = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	compoundTransactionHash   = "0xabababababababababababababababababababababababababababababababab"
 	secondTransactionHash     = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	pendingTransactionHash    = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 	delegationTransactionHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
@@ -169,6 +170,10 @@ func main() {
 		switch request.PathValue("hash") {
 		case testTransactionHash:
 			writeEnvelope(response, includedTransactionDetail(transaction(testTransactionHash, secondHash, "2", "safe")))
+		case compoundTransactionHash:
+			item := transaction(compoundTransactionHash, secondHash, "2", "safe")
+			item["input"] = compoundCalldata()
+			writeEnvelope(response, includedTransactionDetail(item))
 		case secondTransactionHash:
 			writeEnvelope(response, includedTransactionDetail(contractCreationTransaction(secondTransactionHash, testHash, "1", "finalized")))
 		case delegationTransactionHash:
@@ -199,6 +204,39 @@ func main() {
 					"confidence": "high",
 				},
 			})
+		case compoundTransactionHash:
+			writeEnvelope(response, map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+				"transaction_hash": compoundTransactionHash, "transaction_index": "0", "state": "complete",
+				"input": compoundCalldata(),
+				"execution": map[string]any{
+					"context_address": testAddress, "address": testAddress,
+					"code_hash": testHash, "resolution": "direct",
+				},
+				"decoding": map[string]any{
+					"status": "decoded", "function_name": "configure",
+					"signature": "configure((address,uint256),uint8[2][])",
+					"inputs": []any{
+						map[string]any{
+							"name": "config", "type": "tuple", "internal_type": "struct Fixture.Config",
+							"value": []any{"0x4444444444444444444444444444444444444444", "42"},
+							"components": []any{
+								map[string]any{"name": "owner", "type": "address", "components": []any{}},
+								map[string]any{"name": "amount", "type": "uint256", "components": []any{}},
+							},
+						},
+						map[string]any{
+							"name": "pairs", "type": "uint8[2][]",
+							"value": []any{[]any{"1", "2"}, []any{"3", "4"}}, "components": []any{},
+						},
+					},
+					"candidates": []any{"configure((address,uint256),uint8[2][])"},
+					"abi_source": map[string]any{
+						"kind": "exact_address", "address": testAddress, "code_hash": testHash,
+					},
+					"confidence": "verified",
+				},
+			})
 		case delegationTransactionHash:
 			writeEnvelope(response, map[string]any{
 				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
@@ -210,7 +248,9 @@ func main() {
 				},
 				"decoding": map[string]any{
 					"status": "decoded", "function_name": "setValue", "signature": "setValue(uint256)",
-					"inputs":     []any{map[string]any{"name": "value", "type": "uint256", "value": "42"}},
+					"inputs": []any{map[string]any{
+						"name": "value", "type": "uint256", "value": "42", "components": []any{},
+					}},
 					"candidates": []any{"setValue(uint256)"},
 					"abi_source": map[string]any{
 						"kind": "exact_address", "address": delegatedDelegate, "code_hash": testHash,
@@ -898,6 +938,18 @@ func setCodeTransaction(hash string, transactionIndex int, input string) map[str
 
 func delegatedCalldata() string {
 	return "0x55241077000000000000000000000000000000000000000000000000000000000000002a"
+}
+
+func compoundCalldata() string {
+	return "0xe967f546" +
+		"0000000000000000000000004444444444444444444444444444444444444444" +
+		"000000000000000000000000000000000000000000000000000000000000002a" +
+		"0000000000000000000000000000000000000000000000000000000000000060" +
+		"0000000000000000000000000000000000000000000000000000000000000002" +
+		"0000000000000000000000000000000000000000000000000000000000000001" +
+		"0000000000000000000000000000000000000000000000000000000000000002" +
+		"0000000000000000000000000000000000000000000000000000000000000003" +
+		"0000000000000000000000000000000000000000000000000000000000000004"
 }
 
 func transactionAuthorizations(hash, transactionIndex string, items []any) map[string]any {

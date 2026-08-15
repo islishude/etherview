@@ -2274,11 +2274,24 @@ export interface components {
             /** @enum {string} */
             confidence?: "verified" | "high" | "guess";
             function_name?: string;
-            inputs: components["schemas"]["ABIValue"][];
+            inputs: components["schemas"]["TransactionCalldataInput"][];
             signature?: string;
             /** @enum {string} */
             status: "decoded" | "ambiguous" | "unknown" | "malformed" | "unavailable" | "not_applicable";
             warning?: string;
+        };
+        TransactionCalldataInput: {
+            components: components["schemas"]["TransactionCalldataParameter"][];
+            internal_type?: string;
+            name: string;
+            type: string;
+            value: unknown;
+        };
+        TransactionCalldataParameter: {
+            components: components["schemas"]["TransactionCalldataParameter"][];
+            internal_type?: string;
+            name: string;
+            type: string;
         };
         TransactionCalldataResponse: {
             data: components["schemas"]["TransactionCalldata"];

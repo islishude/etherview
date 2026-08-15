@@ -94,6 +94,12 @@ import {
   type LogArgumentRow,
   type TopicDisplayMode,
 } from "@/components/logFormat";
+import {
+  formatTransactionCalldataInputs,
+  type FormattedAbiField,
+  type FormattedAbiOutput,
+  type FormattedAbiValue,
+} from "@/contracts/abi";
 
 const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
@@ -908,46 +914,182 @@ function FeeSettings({ entries, locale }: {
   </span>;
 }
 
-function calldataDecodedValue(value: unknown, type: string, locale: string): string {
+function calldataStructName(internalType: string | undefined): string | undefined {
+  if (!internalType?.startsWith("struct ")) return undefined;
+  const name = internalType.slice("struct ".length).replace(/\[[0-9]*\]/gu, "");
+  return name.split(".").at(-1) || undefined;
+}
+
+function calldataDisplayType(
+  type: string,
+  internalType: string | undefined,
+  kind: FormattedAbiValue["kind"],
+): string {
+  const structName = calldataStructName(internalType);
+  if (kind === "tuple" && structName) return structName;
+  if (kind === "array" && structName) return `${structName}${type.slice("tuple".length)}`;
+  return type;
+}
+
+function calldataScalarValue(value: string, type: string, locale: string): string {
   const baseType = type.replace(/\[[0-9]*\]/gu, "");
   if (typeof value === "string" && /^(?:u?int)(?:[0-9]*)$/u.test(baseType)) {
     return formatInteger(value, locale);
   }
-  return formatLogArgument(value);
+  return value;
 }
 
-function TransactionCalldataValues({
+function CalldataValueTree({
   signature,
-  values,
+  args,
   locale,
   columnLabels,
+  itemCountLabel,
 }: {
   signature: string;
-  values: TransactionCalldataResource["decoding"]["inputs"];
+  args: readonly FormattedAbiOutput[];
   locale: string;
   columnLabels: Readonly<{ index: string; params: string; type: string; data: string }>;
+  itemCountLabel: (count: number) => string;
 }) {
   return (
     <div className="calldata-value-tree">
       <div className="calldata-table-scroll">
-        <div className="calldata-table" role="table" aria-label={signature}>
-          <div className="calldata-table-row calldata-table-header" role="row">
-            <span role="columnheader">{columnLabels.index}</span>
-            <span role="columnheader">{columnLabels.params}</span>
-            <span role="columnheader">{columnLabels.type}</span>
-            <span role="columnheader">{columnLabels.data}</span>
+        <div className="calldata-table" role="group" aria-label={signature}>
+          <div className="calldata-table-row calldata-table-header">
+            <span>{columnLabels.index}</span>
+            <span>{columnLabels.params}</span>
+            <span>{columnLabels.type}</span>
+            <span>{columnLabels.data}</span>
           </div>
-        {values.map((value, index) => (
-          <div className="calldata-table-row calldata-scalar calldata-depth-0" role="row" key={`${value.name}:${value.type}:${index}`}>
-            <span className="calldata-row-index" role="cell">{index + 1}</span>
-            <span className="calldata-row-name" role="cell">{value.name || `#${index}`}</span>
-            <small className="calldata-row-type" role="cell">{value.type}</small>
-            <code className="calldata-row-data" role="cell">{calldataDecodedValue(value.value, value.type, locale)}</code>
-          </div>
+        {args.map((argument) => (
+          <CalldataField
+            field={argument}
+            key={`${argument.index}:${argument.name}:${argument.type}`}
+            locale={locale}
+            depth={0}
+            rowIndex={String(argument.index + 1)}
+            itemCountLabel={itemCountLabel}
+          />
         ))}
         </div>
       </div>
     </div>
+  );
+}
+
+function CalldataField({
+  field,
+  locale,
+  depth,
+  label,
+  prefix,
+  rowIndex,
+  itemCountLabel,
+}: {
+  field: FormattedAbiField;
+  locale: string;
+  depth: number;
+  label?: string;
+  prefix?: string;
+  rowIndex?: string;
+  itemCountLabel: (count: number) => string;
+}) {
+  return (
+    <CalldataValueNode
+      label={label ?? (prefix ? `${prefix}.${field.name || `#${field.index}`}` : field.name || `#${field.index}`)}
+      locale={locale}
+      depth={depth}
+      type={field.type}
+      internalType={field.internalType}
+      value={field.value}
+      rowIndex={rowIndex}
+      itemCountLabel={itemCountLabel}
+    />
+  );
+}
+
+function CalldataValueNode({
+  label,
+  locale,
+  depth,
+  type,
+  internalType,
+  value,
+  rowIndex,
+  itemCountLabel,
+}: {
+  label: string;
+  locale: string;
+  depth: number;
+  type: string;
+  internalType?: string;
+  value: FormattedAbiValue;
+  rowIndex?: string;
+  itemCountLabel: (count: number) => string;
+}) {
+  if (value.kind === "scalar") {
+    return (
+      <div className={`calldata-table-row calldata-scalar calldata-depth-${Math.min(depth, 6)}`}>
+        <span className="calldata-row-index">{rowIndex}</span>
+        <span className="calldata-row-name">{label}</span>
+        <small className="calldata-row-type">{type}</small>
+        <code className="calldata-row-data">{calldataScalarValue(value.text, type, locale)}</code>
+      </div>
+    );
+  }
+
+  const displayType = calldataDisplayType(value.type, value.internalType ?? internalType, value.kind);
+  const itemCount = value.kind === "array" ? value.items.length : value.fields.length;
+  return (
+    <details
+      className={`calldata-composite calldata-${value.kind} calldata-depth-${Math.min(depth, 6)}`}
+      open={depth < 3}
+    >
+      <summary
+        className="calldata-table-row calldata-node-summary"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          const details = event.currentTarget.parentElement;
+          if (details instanceof HTMLDetailsElement) details.open = !details.open;
+        }}
+      >
+        <span className="calldata-row-index">{rowIndex}</span>
+        <span className="calldata-row-name">{label}</span>
+        <small className="calldata-row-type">{displayType}</small>
+        <span className="calldata-row-data calldata-item-count">
+          {value.kind === "array" ? itemCountLabel(itemCount) : ""}
+        </span>
+      </summary>
+      <div className="calldata-tree-children">
+        {value.kind === "array"
+          ? value.items.map((item, index) => (
+              <CalldataValueNode
+                key={`${label}:${index}`}
+                label={`#${index}`}
+                locale={locale}
+                depth={depth + 1}
+                type={item.type}
+                internalType={item.internalType}
+                value={item}
+                rowIndex=""
+                itemCountLabel={itemCountLabel}
+              />
+            ))
+          : value.fields.map((child) => (
+              <CalldataField
+                field={child}
+                key={`${label}:${child.index}:${child.name}:${child.type}`}
+                locale={locale}
+                depth={depth + 1}
+                prefix={depth === 0 ? label : undefined}
+                rowIndex=""
+                itemCountLabel={itemCountLabel}
+              />
+            ))}
+      </div>
+    </details>
   );
 }
 
@@ -973,6 +1115,14 @@ function TransactionCalldata({
     && resource.input.toLowerCase() === input.toLowerCase()
     && resource.execution.context_address.toLowerCase() === targetAddress.toLowerCase();
   const decoding = resourceCurrent ? resource.decoding : undefined;
+  const decodedArgs = useMemo(() => {
+    if (decoding?.status !== "decoded") return undefined;
+    try {
+      return formatTransactionCalldataInputs(decoding.inputs);
+    } catch {
+      return null;
+    }
+  }, [decoding]);
   const [rawMode, setRawMode] = useState<"hex" | "utf8">("hex");
   const [utf8Unavailable, setUtf8Unavailable] = useState(false);
   useEffect(() => {
@@ -1037,15 +1187,18 @@ function TransactionCalldata({
                 </div>
               )}
             </div>
-            {decoding.inputs.length > 0 ? (
-              <TransactionCalldataValues
-                values={decoding.inputs}
+            {decodedArgs === null ? (
+              <p className="capability-panel" role="status">{t("detail.calldataStructureUnavailable")}</p>
+            ) : decodedArgs && decodedArgs.length > 0 ? (
+              <CalldataValueTree
+                args={decodedArgs}
                 columnLabels={{
                   index: t("detail.calldataIndex"),
                   params: t("detail.calldataParams"),
                   type: t("detail.calldataType"),
                   data: t("detail.calldataData"),
                 }}
+                itemCountLabel={(count) => t("detail.calldataArrayItems", { count })}
                 locale={i18n.resolvedLanguage ?? "en"}
                 signature={decoding.signature}
               />

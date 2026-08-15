@@ -88,6 +88,19 @@ constructor boundary is not recoverable from runtime bytecode equality alone.
   before `fallback`, while incomplete or unmatched selectors may select only a
   declared `fallback`. Current delegation and emitter ABI remain prohibited
   substitutes.
+- The transaction-calldata read projection rebuilds recursive parameter shape
+  from the same block-, execution-address-, and code-hash-bound ABI candidate
+  inside its repeatable-read snapshot. Public inputs carry the selected
+  parameter's `name`, canonical `type`, optional validated `internalType`, and
+  recursive tuple components while persisted `abi@3` arguments remain the
+  value-only decoding fact. A persisted decoded fact without a corresponding
+  exact ABI, or a value/signature disagreement after re-decoding the same ABI
+  source, is corrupt data. A later higher-confidence candidate may improve the
+  read result under ADR-0009. The verified-address selector fallback projects
+  shape only from its uniquely selected stored ABI entry. No path consults
+  current verification, proxy, or delegation state, and no missing or
+  contradictory shape degrades to flat JSON. Trace retains its generic
+  `ABIValue` contract.
 - Trace object storage schema v3 contains only normalized raw frames. Current
   delegation, constructor, and ABI projections are attached from a PostgreSQL
   repeatable-read snapshot. The current delegation endpoint is served through

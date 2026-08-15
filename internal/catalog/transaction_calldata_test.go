@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
+	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -22,6 +24,7 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 	blockHash := bytesOf(0xaa, common.HashLength)
 	codeHash := bytesOf(0xbb, common.HashLength)
 	arguments := []byte(`[{"name":"value","type":"uint256","value":"42"}]`)
+	abiJSON := []byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`)
 	contextAddress := *wire.To()
 
 	catalog, backend := openCatalog(t,
@@ -48,6 +51,9 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 				delegateB[:], codeHash, "not_applicable", []byte(`[]`),
 			}),
 		},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", delegateB[:], codeHash, make([]byte, 32), "0", nil},
+		)},
 	)
 
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -65,9 +71,10 @@ func TestTransactionCalldataUsesFinalEIP7702ExecutionIdentity(t *testing.T) {
 func TestTransactionCalldataUsesDelegatedExecutionForTypeTwoCall(t *testing.T) {
 	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
 	delegate := common.HexToAddress("0x4000000000000000000000000000000000000004")
-	wire, raw := catalogDynamicFeeTransaction(t, contextAddress)
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, []byte{0x3f, 0xa4, 0xf2, 0x45})
 	blockHash := bytesOf(0xaa, common.HashLength)
 	codeHash := bytesOf(0xcc, common.HashLength)
+	abiJSON := []byte(`[{"type":"function","name":"value","inputs":[],"outputs":[]}]`)
 	catalog, backend := openCatalog(t,
 		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
 			[]driver.Value{"100", blockHash, int64(0), raw},
@@ -83,6 +90,9 @@ func TestTransactionCalldataUsesDelegatedExecutionForTypeTwoCall(t *testing.T) {
 				"decoded", "value()", "verified", "verified", []byte(`[]`), []byte(`[]`), "",
 				delegate[:], codeHash, delegate[:], codeHash, "not_applicable", []byte(`[]`),
 			},
+		)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", delegate[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -232,6 +242,7 @@ func TestTransactionCalldataPreservesPublishedDecodingStates(t *testing.T) {
 						contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
 					},
 				)},
+				catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9)},
 			)
 			result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
 			if err != nil {
@@ -266,9 +277,16 @@ func TestTransactionCalldataUsesExactReadTimeABIWhenPublicationIsWeak(t *testing
 		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
 			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
 		)},
-		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
+		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
+			[]driver.Value{
+				"decoded", "setValue(uint256)", "signature_database", "guess",
+				[]byte(`[{"name":"value","type":"uint256","value":"42"}]`), []byte(`[]`), "",
+				contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
+			},
+		)},
 		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
 			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+			[]driver.Value{codeHash, abiJSON, "signature_database", "signature_database", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
 		)},
 	)
 	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
@@ -278,6 +296,172 @@ func TestTransactionCalldataUsesExactReadTimeABIWhenPublicationIsWeak(t *testing
 	if result.Decoding.Status != "decoded" || result.Decoding.Signature != "setValue(uint256)" ||
 		len(result.Decoding.Inputs) != 1 || result.Decoding.Inputs[0].Value != "42" {
 		t.Fatalf("calldata=%+v", result)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataProjectsExactRecursiveParameterStructure(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	abiJSON := `[{"type":"function","name":"configure","inputs":[
+		{"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[
+			{"name":"owner","type":"address"},{"name":"","type":"uint16[]"}
+		]},
+		{"name":"matrix","type":"uint256[][2]"}
+	],"outputs":[]}]`
+	packingABI := strings.Replace(abiJSON, `{"name":"","type":"uint16[]"}`, `{"name":"values","type":"uint16[]"}`, 1)
+	type config struct {
+		Owner  common.Address
+		Values []uint16
+	}
+	input := catalogABIInput(t, packingABI, "configure",
+		config{Owner: contextAddress, Values: []uint16{7, 8}},
+		[2][]*big.Int{{}, {big.NewInt(9), big.NewInt(10)}},
+	)
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, input)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xee, common.HashLength)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
+			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+		)},
+		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, []byte(abiJSON), "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+		)},
+	)
+	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Decoding.Status != "decoded" || len(result.Decoding.Inputs) != 2 {
+		t.Fatalf("calldata=%+v", result)
+	}
+	configInput := result.Decoding.Inputs[0]
+	if configInput.InternalType != "struct Fixture.Config" || len(configInput.Components) != 2 ||
+		configInput.Components[0].Name != "owner" || configInput.Components[0].Components == nil ||
+		configInput.Components[1].Name != "" || configInput.Components[1].Type != "uint16[]" {
+		t.Fatalf("config input=%+v", configInput)
+	}
+	if result.Decoding.Inputs[1].Type != "uint256[][2]" ||
+		result.Decoding.Inputs[1].Components == nil || len(result.Decoding.Inputs[1].Components) != 0 {
+		t.Fatalf("matrix input=%+v", result.Decoding.Inputs[1])
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataSelectorFallbackProjectsStoredABIEntryStructure(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	abiEntry := `{"type":"function","name":"setConfig","inputs":[{"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[{"name":"value","type":"uint256"},{"name":"owner","type":"address"}]}],"outputs":[]}`
+	type config struct {
+		Value *big.Int
+		Owner common.Address
+	}
+	input := catalogABIInput(t, "["+abiEntry+"]", "setConfig", config{Value: big.NewInt(42), Owner: contextAddress})
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, input)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xdd, common.HashLength)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5)},
+		catalogQueryStep{contains: "FROM verified_function_selector_sets AS indexed", rows: catalogRows(3,
+			[]driver.Value{codeHash, "setConfig((uint256,address))", []byte(abiEntry)},
+		)},
+	)
+	result, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Decoding.Status != "decoded" || len(result.Decoding.Inputs) != 1 ||
+		result.Decoding.Inputs[0].InternalType != "struct Fixture.Config" ||
+		len(result.Decoding.Inputs[0].Components) != 2 ||
+		result.Decoding.Inputs[0].Components[1].Name != "owner" {
+		t.Fatalf("calldata=%+v", result)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataFailsClosedWhenPersistedDecodeSourceHasNoExactABI(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	input := append([]byte{0x55, 0x24, 0x10, 0x77}, make([]byte, 32)...)
+	input[len(input)-1] = 42
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, input)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xee, common.HashLength)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
+			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+		)},
+		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
+			[]driver.Value{
+				"decoded", "setValue(uint256)", "signature_database", "guess",
+				[]byte(`[{"name":"value","type":"uint256","value":"42"}]`), []byte(`[]`), "",
+				contextAddress[:], codeHash, nil, nil, "not_applicable", []byte(`[]`),
+			},
+		)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{
+				codeHash,
+				[]byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`),
+				"verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil,
+			},
+		)},
+	)
+	_, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if !errors.Is(err, ErrCorruptData) {
+		t.Fatalf("error=%v", err)
+	}
+	assertCatalogConsumed(t, backend)
+}
+
+func TestTransactionCalldataFailsClosedOnSameSourceValueContradiction(t *testing.T) {
+	contextAddress := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	input := append([]byte{0x55, 0x24, 0x10, 0x77}, make([]byte, 32)...)
+	input[len(input)-1] = 42
+	wire, raw := catalogDynamicFeeTransactionWithData(t, contextAddress, input)
+	blockHash := bytesOf(0xaa, common.HashLength)
+	codeHash := bytesOf(0xee, common.HashLength)
+	abiJSON := []byte(`[{"type":"function","name":"setValue","inputs":[{"name":"value","type":"uint256"}],"outputs":[]}]`)
+	catalog, backend := openCatalog(t,
+		catalogQueryStep{contains: "FROM transaction_inclusions AS inclusion", rows: catalogRows(4,
+			[]driver.Value{"100", blockHash, int64(0), raw},
+		)},
+		catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(2,
+			[]driver.Value{"complete", int64(8)},
+		)},
+		catalogQueryStep{contains: "FROM transaction_execution_code_resolutions", rows: catalogRows(5,
+			[]driver.Value{contextAddress[:], contextAddress[:], codeHash, "direct", "prestate_tracer"},
+		)},
+		catalogQueryStep{contains: "decoding.object_kind = 'transaction_calldata'", rows: catalogRows(13,
+			[]driver.Value{
+				"decoded", "setValue(uint256)", "verified", "verified",
+				[]byte(`[{"name":"value","type":"uint256","value":"41"}]`), []byte(`[]`), "",
+				contextAddress[:], codeHash, contextAddress[:], codeHash, "not_applicable", []byte(`[]`),
+			},
+		)},
+		catalogQueryStep{contains: "WITH target_code AS", rows: catalogRows(9,
+			[]driver.Value{codeHash, abiJSON, "verified", "exact_address", contextAddress[:], codeHash, make([]byte, 32), "0", nil},
+		)},
+	)
+	_, err := catalog.TransactionCalldata(context.Background(), "1", wire.Hash().Hex())
+	if !errors.Is(err, ErrCorruptData) {
+		t.Fatalf("error=%v", err)
 	}
 	assertCatalogConsumed(t, backend)
 }
@@ -331,10 +515,12 @@ func catalogSetCodeTransaction(t *testing.T, delegates []common.Address) (*types
 			t.Fatal(err)
 		}
 	}
+	data := append([]byte{0x55, 0x24, 0x10, 0x77}, make([]byte, 32)...)
+	data[len(data)-1] = 42
 	wire := types.NewTx(&types.SetCodeTx{
 		ChainID: uint256.NewInt(1), Nonce: 4, GasTipCap: uint256.NewInt(1),
 		GasFeeCap: uint256.NewInt(2), Gas: 100_000, To: authority,
-		Value: uint256.NewInt(0), Data: append([]byte{0x55, 0x24, 0x10, 0x77}, make([]byte, 32)...),
+		Value: uint256.NewInt(0), Data: data,
 		AuthList: authorizations,
 	})
 	return catalogSignAndEncodeTransaction(t, wire, 100, common.BytesToHash(bytesOf(0xaa, common.HashLength)), 3)
@@ -386,4 +572,21 @@ func catalogSignAndEncodeTransaction(
 		t.Fatal(err)
 	}
 	return signed, encoded
+}
+
+func catalogABIInput(t *testing.T, abiJSON, methodName string, values ...any) []byte {
+	t.Helper()
+	parsed, err := gethabi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	method, exists := parsed.Methods[methodName]
+	if !exists {
+		t.Fatalf("ABI method %s is missing", methodName)
+	}
+	payload, err := method.Inputs.Pack(values...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(append([]byte(nil), method.ID...), payload...)
 }

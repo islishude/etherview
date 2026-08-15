@@ -23,6 +23,7 @@ const diamondInitAddress = "0xd300000000000000000000000000000000000003";
 const codeHash = "0x1111111111111111111111111111111111111111111111111111111111111111";
 const secondBlockHash = "0x2222222222222222222222222222222222222222222222222222222222222222";
 const decodedTransactionHash = `0x${"a".repeat(64)}`;
+const compoundTransactionHash = `0x${"ab".repeat(32)}`;
 const pendingTransactionHash = `0x${"c".repeat(64)}`;
 const predecessorTransactionHash = `0x${"9".repeat(64)}`;
 const replacementTransactionHash = `0x${"8".repeat(64)}`;
@@ -210,6 +211,48 @@ test("transaction calldata separates decoded evidence from the read-only raw val
   await expect(rawChinese.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue("0x3fa4f245");
   await expect(rawChinese.getByRole("button", { name: "按 UTF-8 查看" })).toBeVisible();
   await assertAccessibleRoute(page, `/tx/${decodedTransactionHash}`);
+});
+
+test("transaction calldata renders a localized responsive recursive struct tree", async ({ page }) => {
+  const requestedPaths: string[] = [];
+  page.on("request", (request) => requestedPaths.push(new URL(request.url()).pathname));
+
+  await page.goto(`/tx/${compoundTransactionHash}`);
+  await activateInView(page.getByText("More details", { exact: true }));
+  const decoded = page.getByRole("region", {
+    name: "Decoded calldata · configure((address,uint256),uint8[2][])",
+  });
+  await expect(decoded.getByText("Config", { exact: true })).toBeVisible();
+  await expect(decoded.getByText("config.owner", { exact: true })).toBeVisible();
+  await expect(decoded.getByText("config.amount", { exact: true })).toBeVisible();
+  await expect(decoded.getByText("2 items", { exact: true })).not.toHaveCount(0);
+  await expect(decoded.getByText("#0", { exact: true })).not.toHaveCount(0);
+  await expect(decoded.getByText("42", { exact: true })).toBeVisible();
+  await expect(decoded.getByText('[["1","2"],["3","4"]]', { exact: true })).toHaveCount(0);
+
+  const array = decoded.locator("details.calldata-array.calldata-depth-0").first();
+  const summary = array.locator(":scope > summary");
+  await expect(array).toHaveAttribute("open", "");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(array).not.toHaveAttribute("open", "");
+  await expect(summary).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(array).toHaveAttribute("open", "");
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const decodedChinese = page.getByRole("region", {
+    name: "已解码 calldata · configure((address,uint256),uint8[2][])",
+  });
+  await expect(decodedChinese.getByText("2 项", { exact: true })).not.toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "原始 calldata（十六进制）" }))
+    .toHaveValue(/^0xe967f546/u);
+  await assertA11yAndNoOverflow(page, "recursive calldata tree in Chinese at 390px");
+
+  expect(requestedPaths).not.toContain(`/api/v1/contracts/${address}/verification`);
+  expect(requestedPaths).not.toContain(`/api/v1/contracts/${address}/proxy`);
+  expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/delegation`);
 });
 
 test("mempool details poll from pending through replacement to inclusion with accessible status icons", async ({

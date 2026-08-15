@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 
@@ -81,7 +82,7 @@ func (catalog *Postgres) TransactionCalldata(
 			TransactionIndex: strconv.FormatInt(transactionIndex, 10), State: StageComplete,
 		},
 		Input:    "0x" + hex.EncodeToString(wire.Data()),
-		Decoding: TransactionCalldataDecoding{Inputs: []ABIValue{}, Candidates: []string{}},
+		Decoding: TransactionCalldataDecoding{Inputs: []TransactionCalldataInput{}, Candidates: []string{}},
 	}
 	if err := catalog.loadTransactionExecution(ctx, tx, chainID, blockNumberText, blockHash, transactionHash, *wire.To(), &result); err != nil {
 		return TransactionCalldata{}, err
@@ -142,17 +143,14 @@ func decodeVerifiedAddressSelectorCalldata(
 	}
 	if selection.ambiguous {
 		return TransactionCalldataDecoding{
-			Status: "ambiguous", Inputs: []ABIValue{}, Candidates: selection.candidates,
+			Status: "ambiguous", Inputs: []TransactionCalldataInput{}, Candidates: selection.candidates,
 			Warning: "multiple verified address selector candidates decode this calldata",
 		}, true, nil
 	}
 	if selection.match == nil {
 		return TransactionCalldataDecoding{}, false, nil
 	}
-	call := publicTraceCall(enrich.CallDecodeResult{
-		Input: selection.match.input, ReturnStatus: enrich.ReturnNotApplicable,
-	})
-	result := transactionCalldataDecoding(call)
+	result := transactionCalldataDecoding(selection.match.input)
 	result.Warning = "decoded from the exact verified address range because execution identity is unavailable"
 	return result, true, nil
 }
@@ -312,13 +310,18 @@ func (catalog *Postgres) decodeTransactionCalldata(
 	if err != nil {
 		return err
 	}
-	if persisted != nil && persisted.strongFor(executionAddress) {
-		decoded, err := persisted.publicCall(false)
+	var persistedCall *TraceCallDecoding
+	if persisted != nil {
+		if len(persisted.targetAddress) != common.AddressLength ||
+			common.BytesToAddress(persisted.targetAddress) != executionAddress ||
+			len(persisted.targetCodeHash) != common.HashLength ||
+			common.BytesToHash(persisted.targetCodeHash) != executionCodeHash {
+			return ErrCorruptData
+		}
+		persistedCall, err = persisted.publicCall(false)
 		if err != nil {
 			return err
 		}
-		result.Decoding = transactionCalldataDecoding(decoded)
-		return nil
 	}
 
 	registryResult, err := loadTraceRegistry(
@@ -328,12 +331,11 @@ func (catalog *Postgres) decodeTransactionCalldata(
 		return err
 	}
 	if registryResult.registry == nil {
-		if persisted != nil {
-			decoded, err := persisted.publicCall(false)
-			if err != nil {
-				return err
+		if persistedCall != nil {
+			if persistedCall.Status == string(enrich.DecodeDecoded) || len(persistedCall.Inputs) != 0 {
+				return ErrCorruptData
 			}
-			result.Decoding = transactionCalldataDecoding(decoded)
+			result.Decoding = transactionCalldataStoredDecoding(persistedCall)
 			return nil
 		}
 		result.Decoding.Status = "unavailable"
@@ -343,11 +345,20 @@ func (catalog *Postgres) decodeTransactionCalldata(
 	if registryResult.identity.CodeHash != executionCodeHash {
 		return ErrCorruptData
 	}
+	if persistedCall != nil && persistedCall.Status == string(enrich.DecodeDecoded) {
+		if err := validatePersistedTransactionCalldata(
+			registryResult, input, persistedCall,
+		); err != nil {
+			return err
+		}
+	}
 	decoded := registryResult.registry.DecodeCalldata(registryResult.identity, input)
-	call := publicTraceCall(enrich.CallDecodeResult{
-		Input: decoded, ReturnStatus: enrich.ReturnNotApplicable, Returns: []enrich.DecodedArgument{},
-	})
-	result.Decoding = transactionCalldataDecoding(call)
+	if persistedCall != nil && persistedCall.Status == string(enrich.DecodeDecoded) {
+		if decoded.Status != enrich.DecodeDecoded && decoded.Status != enrich.DecodeAmbiguous {
+			return ErrCorruptData
+		}
+	}
+	result.Decoding = transactionCalldataDecoding(decoded)
 	return nil
 }
 
@@ -377,12 +388,95 @@ func loadPersistedTransactionCalldata(
 	return value, nil
 }
 
-func transactionCalldataDecoding(value *TraceCallDecoding) TransactionCalldataDecoding {
+func sameABISource(left, right *ABISource) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func validatePersistedTransactionCalldata(
+	registryResult traceRegistryResult,
+	input []byte,
+	persisted *TraceCallDecoding,
+) error {
+	if persisted == nil || persisted.ABISource == nil {
+		return ErrCorruptData
+	}
+	candidates := make([]logABICandidate, 0, len(registryResult.candidates))
+	for _, candidate := range registryResult.candidates {
+		if candidate.sourceKind == persisted.ABISource.Kind &&
+			candidate.address.Hex() == persisted.ABISource.Address &&
+			candidate.codeHash.Hex() == persisted.ABISource.CodeHash {
+			candidates = append(candidates, candidate)
+		}
+	}
+	if len(candidates) == 0 {
+		return ErrCorruptData
+	}
+	registry, err := traceRegistryForCandidates(registryResult.identity, candidates)
+	if err != nil {
+		return ErrCorruptData
+	}
+	decoded := registry.DecodeCalldata(registryResult.identity, input)
+	if decoded.Status != enrich.DecodeDecoded {
+		return ErrCorruptData
+	}
+	fresh := publicTraceCall(enrich.CallDecodeResult{
+		Input: decoded, ReturnStatus: enrich.ReturnNotApplicable, Returns: []enrich.DecodedArgument{},
+	})
+	if !sameABISource(persisted.ABISource, fresh.ABISource) ||
+		persisted.Signature != fresh.Signature ||
+		persisted.FunctionName != fresh.FunctionName ||
+		persisted.Confidence != fresh.Confidence ||
+		!reflect.DeepEqual(persisted.Inputs, fresh.Inputs) {
+		return ErrCorruptData
+	}
+	return nil
+}
+
+func transactionCalldataDecoding(decoded enrich.DecodeResult) TransactionCalldataDecoding {
+	result := TransactionCalldataDecoding{
+		Status: string(decoded.Status), FunctionName: decoded.Name, Signature: decoded.Signature,
+		Inputs:     transactionCalldataInputs(decoded.Arguments),
+		Candidates: append([]string(nil), decoded.Candidates...),
+		ABISource:  publicDecodeSource(decoded), Confidence: string(decoded.Confidence), Warning: decoded.Warning,
+	}
+	if decoded.Status == enrich.DecodeAmbiguous {
+		result.FunctionName, result.Signature = "", ""
+		result.Inputs, result.ABISource = []TransactionCalldataInput{}, nil
+	}
+	return result
+}
+
+func transactionCalldataStoredDecoding(value *TraceCallDecoding) TransactionCalldataDecoding {
 	return TransactionCalldataDecoding{
 		Status: value.Status, FunctionName: value.FunctionName, Signature: value.Signature,
-		Inputs: append([]ABIValue(nil), value.Inputs...), Candidates: append([]string(nil), value.Candidates...),
+		Inputs: []TransactionCalldataInput{}, Candidates: append([]string(nil), value.Candidates...),
 		ABISource: value.ABISource, Confidence: value.Confidence, Warning: value.Warning,
 	}
+}
+
+func transactionCalldataInputs(values []enrich.DecodedArgument) []TransactionCalldataInput {
+	result := make([]TransactionCalldataInput, len(values))
+	for index, value := range values {
+		result[index] = TransactionCalldataInput{
+			Name: value.Name, Type: value.Type, Value: value.Value, InternalType: value.InternalType,
+			Components: transactionCalldataParameters(value.Components),
+		}
+	}
+	return result
+}
+
+func transactionCalldataParameters(values []enrich.DecodedParameter) []TransactionCalldataParameter {
+	result := make([]TransactionCalldataParameter, len(values))
+	for index, value := range values {
+		result[index] = TransactionCalldataParameter{
+			Name: value.Name, Type: value.Type, InternalType: value.InternalType,
+			Components: transactionCalldataParameters(value.Components),
+		}
+	}
+	return result
 }
 
 const transactionCalldataIdentitySQL = `

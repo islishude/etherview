@@ -3024,9 +3024,10 @@ func transactionCalldataModel(item catalog.TransactionCalldata) gen.TransactionC
 		execution.CodeHash = &item.Execution.CodeHash
 	}
 	decoding := gen.TransactionCalldataDecoding{
-		Status: gen.TransactionCalldataDecodingStatus(item.Decoding.Status),
-		Inputs: abiValuesModel(item.Decoding.Inputs), Candidates: append([]string{}, item.Decoding.Candidates...),
-		AbiSource: abiSourceModel(item.Decoding.ABISource),
+		Status:     gen.TransactionCalldataDecodingStatus(item.Decoding.Status),
+		Inputs:     transactionCalldataInputsModel(item.Decoding.Inputs),
+		Candidates: append([]string{}, item.Decoding.Candidates...),
+		AbiSource:  abiSourceModel(item.Decoding.ABISource),
 	}
 	if item.Decoding.FunctionName != "" {
 		decoding.FunctionName = &item.Decoding.FunctionName
@@ -3106,6 +3107,36 @@ func abiValuesModel(values []catalog.ABIValue) []gen.ABIValue {
 	result := make([]gen.ABIValue, len(values))
 	for index, value := range values {
 		result[index] = gen.ABIValue{Name: value.Name, Type: value.Type, Value: value.Value}
+	}
+	return result
+}
+
+func transactionCalldataInputsModel(values []catalog.TransactionCalldataInput) []gen.TransactionCalldataInput {
+	result := make([]gen.TransactionCalldataInput, len(values))
+	for index, value := range values {
+		result[index] = gen.TransactionCalldataInput{
+			Name: value.Name, Type: value.Type, Value: value.Value,
+			Components: transactionCalldataParametersModel(value.Components),
+		}
+		if value.InternalType != "" {
+			result[index].InternalType = &value.InternalType
+		}
+	}
+	return result
+}
+
+func transactionCalldataParametersModel(
+	values []catalog.TransactionCalldataParameter,
+) []gen.TransactionCalldataParameter {
+	result := make([]gen.TransactionCalldataParameter, len(values))
+	for index, value := range values {
+		result[index] = gen.TransactionCalldataParameter{
+			Name: value.Name, Type: value.Type,
+			Components: transactionCalldataParametersModel(value.Components),
+		}
+		if value.InternalType != "" {
+			result[index].InternalType = &value.InternalType
+		}
 	}
 	return result
 }

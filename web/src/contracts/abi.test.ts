@@ -19,6 +19,7 @@ import {
   decodeCalldata,
   decodeRevert,
   formatAbiResult,
+  formatTransactionCalldataInputs,
   mergeCalldataResults,
   parseAbiArguments,
   parseVerifiedABI,
@@ -254,6 +255,98 @@ describe("calldata decoding", () => {
       selector: "0x12345678",
       signatures: ["f(uint256)", "g(uint256)"],
     });
+  });
+});
+
+describe("transaction calldata projection", () => {
+  it("pairs scalar, named struct, anonymous tuple, and nested array values", () => {
+    const formatted = formatTransactionCalldataInputs([
+      { name: "count", type: "uint256", value: "42", components: [] },
+      {
+        name: "config",
+        type: "tuple",
+        internal_type: "struct Fixture.Config",
+        components: [
+          { name: "owner", type: "address", components: [] },
+          { name: "", type: "uint16[][2]", components: [] },
+        ],
+        value: [addressA, [["1", "2"], []]],
+      },
+      {
+        name: "batches",
+        type: "tuple[][2]",
+        internal_type: "struct Fixture.Batch[][2]",
+        components: [
+          { name: "recipient", type: "address", components: [] },
+          { name: "amount", type: "int32", components: [] },
+        ],
+        value: [[[addressB, "-7"]], []],
+      },
+    ]);
+
+    expect(formatted[0]).toEqual(expect.objectContaining({
+      index: 0,
+      name: "count",
+      display: "42",
+      value: { kind: "scalar", type: "uint256", text: "42" },
+    }));
+    expect(formatted[1]).toEqual(expect.objectContaining({
+      name: "config",
+      internalType: "struct Fixture.Config",
+      display: `(owner: ${getAddress(addressA)}, 1: [[1, 2], []])`,
+    }));
+    expect(formatted[1]?.value).toEqual(expect.objectContaining({
+      kind: "tuple",
+      internalType: "struct Fixture.Config",
+      fields: [
+        expect.objectContaining({ name: "owner", type: "address" }),
+        expect.objectContaining({ name: "", type: "uint16[][2]" }),
+      ],
+    }));
+    expect(formatted[2]?.value).toEqual(expect.objectContaining({
+      kind: "array",
+      type: "tuple[][2]",
+      internalType: "struct Fixture.Batch[][2]",
+      items: [
+        expect.objectContaining({ kind: "array", items: [expect.objectContaining({ kind: "tuple" })] }),
+        expect.objectContaining({ kind: "array", items: [] }),
+      ],
+    }));
+    expect(Object.isFrozen(formatted)).toBe(true);
+  });
+
+  it("fails closed when parameter shape and positional values disagree", () => {
+    for (const value of [
+      [{ name: "value", type: "uint256", value: "1" }],
+      [{ name: "value", type: "uint256", value: "1", components: [{ name: "x", type: "uint8", components: [] }] }],
+      [{ name: "pair", type: "tuple", value: ["1"], components: [
+        { name: "x", type: "uint8", components: [] },
+        { name: "y", type: "uint8", components: [] },
+      ] }],
+      [{ name: "values", type: "uint8[2]", value: ["1"], components: [] }],
+      [{ name: "pair", type: "tuple", value: { x: "1" }, components: [
+        { name: "x", type: "uint8", components: [] },
+      ] }],
+    ]) {
+      expect(() => formatTransactionCalldataInputs(value)).toThrowError(AbiFormError);
+    }
+  });
+
+  it("enforces the recursive depth and 4096-node browser budgets", () => {
+    expect(() => formatTransactionCalldataInputs([{
+      name: "deep",
+      type: `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`,
+      value: [],
+      components: [],
+    }])).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+
+    const within = Array.from({ length: ABI_LIMITS.outputNodes - 1 }, () => "1");
+    expect(formatTransactionCalldataInputs([{
+      name: "values", type: "uint256[]", value: within, components: [],
+    }])[0]?.value).toEqual(expect.objectContaining({ kind: "array", items: expect.any(Array) }));
+    expect(() => formatTransactionCalldataInputs([{
+      name: "values", type: "uint256[]", value: [...within, "1"], components: [],
+    }])).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
   });
 });
 

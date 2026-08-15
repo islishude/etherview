@@ -1312,7 +1312,6 @@ tbody tr:hover {
   color: var(--text-soft);
   font-size: 0.78rem;
   font-weight: 500;
-  opacity: 0.82;
   user-select: none;
 }
 

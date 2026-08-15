@@ -3,17 +3,21 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -30,6 +34,13 @@ const integrationTokenABI = `[
   {"type":"event","name":"Transfer","inputs":[{"name":"from","type":"address","indexed":true},{"name":"to","type":"address","indexed":true},{"name":"amount","type":"uint256"}]},
   {"type":"error","name":"Unauthorized","inputs":[{"name":"caller","type":"address"}]}
 ]`
+
+const integrationCompoundABI = `[{"type":"function","name":"configure","inputs":[
+  {"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[
+    {"name":"owner","type":"address"},{"name":"amount","type":"uint256"}
+  ]},
+  {"name":"pairs","type":"uint8[2][]"}
+],"outputs":[]}]`
 
 func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 	db := newMigratedPostgres(t)
@@ -312,6 +323,111 @@ func publishABIStage(
 	}
 	processOne(t, ctx, worker)
 	assertJobStatus(t, ctx, db, enqueued.Job.ID, "succeeded")
+}
+
+func TestTransactionCalldataPersistsValuesAndReprojectsExactCompoundABI(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(81_000), testHash(0), testHash(81_001), "compound-calldata-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	target := testAddress(810)
+	type config struct {
+		Owner  common.Address
+		Amount *big.Int
+	}
+	parsed, err := gethabi.JSON(strings.NewReader(integrationCompoundABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	method := parsed.Methods["configure"]
+	arguments, err := method.Inputs.Pack(
+		config{Owner: target, Amount: big.NewInt(42)},
+		[][2]uint8{{1, 2}, {3, 4}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := append(append([]byte(nil), method.ID...), arguments...)
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number: 1, ParentHash: genesis.Block.Hash(), ExtraData: []byte("compound-calldata"),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType, To: &target, Data: input,
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "compound-calldata"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitCanonical(t, ctx, repository, bundle)
+	reference := mustBlockRef(t, bundle)
+	runtime := []byte{0x60, 0x42}
+	codeHash := crypto.Keccak256Hash(runtime)
+	insertABICodeObservation(t, ctx, db, reference, target, codeHash)
+	publishABIStateDiff(t, ctx, db, reference, map[common.Address][]byte{target: runtime})
+	publishABITrace(t, ctx, db, reference, bundle, target, testAddress(811), testAddress(812))
+	publishABIProxyStage(t, ctx, db, reference, map[string]proxyContractState{
+		target.String(): {code: common.CopyBytes(runtime)},
+	})
+	insertVerifiedContractFixture(
+		t, ctx, db, mustBytes(t, target), mustBytes(t, codeHash), 0, nil,
+		"0.8.30", "Compound", integrationCompoundABI, `{}`, `{}`,
+	)
+	publishABIStage(t, ctx, db, processor, reference)
+
+	transactionHash := bundle.Block.Transactions()[0].Hash()
+	var persistedArguments []byte
+	if err := db.QueryRowContext(ctx, `
+		SELECT arguments
+		FROM abi_decodings
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND object_kind = 'transaction_calldata' AND canonical`,
+		mustBytes(t, reference.Hash), transactionHash[:],
+	).Scan(&persistedArguments); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(persistedArguments, []byte("components")) ||
+		bytes.Contains(persistedArguments, []byte("internalType")) {
+		t.Fatalf("abi@3 arguments unexpectedly contain projection shape: %s", persistedArguments)
+	}
+
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calldata, err := catalogReader.TransactionCalldata(ctx, "1", transactionHash.Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calldata.Execution.Resolution != "direct" || calldata.Execution.Address != target.Hex() ||
+		calldata.Execution.CodeHash != codeHash.Hex() || calldata.Decoding.Status != "decoded" ||
+		calldata.Decoding.Signature != "configure((address,uint256),uint8[2][])" ||
+		len(calldata.Decoding.Inputs) != 2 ||
+		calldata.Decoding.Inputs[0].InternalType != "struct Fixture.Config" ||
+		len(calldata.Decoding.Inputs[0].Components) != 2 ||
+		calldata.Decoding.Inputs[1].Components == nil || len(calldata.Decoding.Inputs[1].Components) != 0 {
+		t.Fatalf("compound calldata projection = %+v", calldata)
+	}
+
+	execFixture(t, ctx, db, `
+		UPDATE abi_decodings
+		SET arguments = '[{"name":"config","type":"tuple","value":[]}]'::jsonb
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND object_kind = 'transaction_calldata'`,
+		mustBytes(t, reference.Hash), transactionHash[:])
+	if _, err := catalogReader.TransactionCalldata(ctx, "1", transactionHash.Hex()); !errors.Is(err, catalog.ErrCorruptData) {
+		t.Fatalf("contradictory persisted calldata error = %v", err)
+	}
 }
 
 func TestABILateSameAddressVerificationDecodesEarlierSameCodeLog(t *testing.T) {

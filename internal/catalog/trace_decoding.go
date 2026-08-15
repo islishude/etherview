@@ -552,8 +552,9 @@ func decodeVerifiedAddressSelectorTraceCall(
 }
 
 type traceRegistryResult struct {
-	identity enrich.ABIIdentity
-	registry *enrich.ABIRegistry
+	identity   enrich.ABIIdentity
+	registry   *enrich.ABIRegistry
+	candidates []logABICandidate
 }
 
 func loadTraceRegistry(
@@ -572,15 +573,29 @@ func loadTraceRegistry(
 		return traceRegistryResult{identity: identity}, nil
 	}
 	if len(candidates) > maxReadTimeLogABICandidates {
-		return traceRegistryResult{identity: identity}, nil
+		return traceRegistryResult{identity: identity, candidates: candidates}, nil
 	}
+	registry, err := traceRegistryForCandidates(identity, candidates)
+	if err != nil {
+		if errors.Is(err, ErrCorruptData) {
+			return traceRegistryResult{}, err
+		}
+		return traceRegistryResult{identity: identity, candidates: candidates}, nil
+	}
+	return traceRegistryResult{identity: identity, registry: registry, candidates: candidates}, nil
+}
+
+func traceRegistryForCandidates(
+	identity enrich.ABIIdentity,
+	candidates []logABICandidate,
+) (*enrich.ABIRegistry, error) {
 	registry := enrich.NewABIRegistry()
 	for _, candidate := range candidates {
 		var validTo *uint64
 		if candidate.validTo.Valid {
 			value, err := strconv.ParseUint(candidate.validTo.String, 10, 64)
 			if err != nil {
-				return traceRegistryResult{}, ErrCorruptData
+				return nil, ErrCorruptData
 			}
 			validTo = &value
 		}
@@ -589,10 +604,10 @@ func loadTraceRegistry(
 			SourceAddress: candidate.address, SourceCodeHash: candidate.codeHash,
 			ValidFromBlock: candidate.validFrom, ValidToBlock: validTo,
 		}, candidate.abi); err != nil {
-			return traceRegistryResult{identity: identity}, nil
+			return nil, err
 		}
 	}
-	return traceRegistryResult{identity: identity, registry: registry}, nil
+	return registry, nil
 }
 
 func loadPersistedTraceDecodings(

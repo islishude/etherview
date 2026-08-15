@@ -715,8 +715,8 @@ describe("core explorer pages", () => {
           decoding: {
             status: "decoded", function_name: "transfer", signature: "transfer(address,uint256)",
             inputs: [
-              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}` },
-              { name: "amount", type: "uint256", value: "12" },
+              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}`, components: [] },
+              { name: "amount", type: "uint256", value: "12", components: [] },
             ],
             candidates: [], confidence: "verified",
             abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
@@ -736,9 +736,10 @@ describe("core explorer pages", () => {
       const decoded = await screen.findByRole("region", { name: "Decoded calldata · transfer(address,uint256)" });
       const raw = screen.getByRole("region", { name: "Raw calldata" });
       expect(within(decoded).getAllByText("transfer(address,uint256)")).toHaveLength(1);
-      expect(within(decoded).getByRole("columnheader", { name: "Params" })).toBeVisible();
-      expect(within(decoded).getByRole("columnheader", { name: "Type" })).toBeVisible();
-      expect(within(decoded).getByRole("columnheader", { name: "Data" })).toBeVisible();
+      const tree = within(decoded).getByRole("group", { name: "transfer(address,uint256)" });
+      expect(within(tree).getByText("Params", { exact: true })).toBeVisible();
+      expect(within(tree).getByText("Type", { exact: true })).toBeVisible();
+      expect(within(tree).getByText("Data", { exact: true })).toBeVisible();
       const evidence = within(decoded).getByLabelText("ABI evidence");
       expect(within(evidence).getByText("Transaction-time execution")).toBeVisible();
       expect(within(evidence).getByText("Direct code")).toBeVisible();
@@ -760,6 +761,136 @@ describe("core explorer pages", () => {
     } finally {
       writeText.mockRestore();
     }
+  });
+
+  it("renders named structs and nested arrays as a bounded keyboard tree in both locales", async () => {
+    const calldata = "0x12345678";
+    const requested: string[] = [];
+    const nestedValue = [
+      `0x${"44".repeat(20)}`,
+      [["7", true, [["1"], []]], ["8", false, []]],
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      requested.push(url.pathname);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete",
+          input: calldata,
+          execution: { context_address: address, address, code_hash: canonicalHash, resolution: "direct" },
+          decoding: {
+            status: "decoded", function_name: "configure",
+            signature: "configure((address,(uint16,bool,uint8[][])[]),uint256[][2])",
+            inputs: [
+              {
+                name: "config", type: "tuple", internal_type: "struct Fixture.Config",
+                components: [
+                  { name: "owner", type: "address", components: [] },
+                  {
+                    name: "rules", type: "tuple[]", internal_type: "struct Fixture.Rule[]",
+                    components: [
+                      { name: "threshold", type: "uint16", components: [] },
+                      { name: "enabled", type: "bool", components: [] },
+                      { name: "buckets", type: "uint8[][]", components: [] },
+                    ],
+                  },
+                ],
+                value: nestedValue,
+              },
+              { name: "matrix", type: "uint256[][2]", value: [[], ["9", "10"]], components: [] },
+            ],
+            candidates: [], confidence: "verified",
+            abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("More details"));
+    const decoded = await screen.findByRole("region", {
+      name: "Decoded calldata · configure((address,(uint16,bool,uint8[][])[]),uint256[][2])",
+    });
+    expect(within(decoded).getByText("config.owner", { exact: true })).toBeVisible();
+    expect(within(decoded).getByText("config.rules", { exact: true })).toBeVisible();
+    expect(within(decoded).getAllByText("#0", { exact: true }).length).toBeGreaterThan(0);
+    expect(within(decoded).getByText("Config", { exact: true })).toBeVisible();
+    expect(within(decoded).getByText("Rule[]", { exact: true })).toBeVisible();
+    expect(within(decoded).getAllByText("2 items", { exact: true }).length).toBeGreaterThan(0);
+    expect(within(decoded).getByText("10", { exact: true })).toBeVisible();
+    expect(within(decoded).queryByText(JSON.stringify(nestedValue), { exact: true })).not.toBeInTheDocument();
+
+    const shallow = decoded.querySelector<HTMLDetailsElement>("details.calldata-depth-2");
+    const deep = decoded.querySelector<HTMLDetailsElement>("details.calldata-depth-3");
+    expect(shallow?.open).toBe(true);
+    expect(deep?.open).toBe(false);
+    const deepSummary = deep?.querySelector<HTMLElement>("summary");
+    if (!deep || !deepSummary) throw new Error("deep calldata summary missing");
+    deepSummary.focus();
+    await user.keyboard("{Enter}");
+    expect(deep.open).toBe(true);
+    expect(deepSummary).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "切换到中文" }));
+    expect(await within(decoded).findAllByText("2 项", { exact: true })).not.toHaveLength(0);
+    expect(screen.getByRole("textbox", { name: "原始 calldata（十六进制）" })).toHaveValue(calldata);
+    expect(requested).not.toContain(`/api/v1/contracts/${address}/verification`);
+    expect(requested).not.toContain(`/api/v1/contracts/${address}/proxy`);
+    expect(requested).not.toContain(`/api/v1/addresses/${address}/delegation`);
+  });
+
+  it("keeps raw calldata when a decoded parameter response is structurally inconsistent", async () => {
+    const calldata = "0x12345678";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url.pathname === "/api/v1/config") return configResponse();
+      if (url.pathname === `/api/v1/transactions/${transactionHash}`) {
+        return envelope({
+          hash: transactionHash, block_hash: canonicalHash, block_number: "12",
+          transaction_index: 0, from: address, to: address, nonce: "1", value: "0",
+          gas: "21000", input: calldata, status: "success", canonical: true,
+          finality: "safe", completeness: completeness(),
+        });
+      }
+      if (url.pathname === `/api/v1/transactions/${transactionHash}/calldata`) {
+        return envelope({
+          chain_id: "1", block_number: "12", block_hash: canonicalHash,
+          transaction_hash: transactionHash, transaction_index: "0", state: "complete", input: calldata,
+          execution: { context_address: address, address, code_hash: canonicalHash, resolution: "direct" },
+          decoding: {
+            status: "decoded", function_name: "broken", signature: "broken((uint256,bool))",
+            inputs: [{
+              name: "pair", type: "tuple", value: ["1"],
+              components: [
+                { name: "value", type: "uint256", components: [] },
+                { name: "enabled", type: "bool", components: [] },
+              ],
+            }],
+            candidates: [], confidence: "verified",
+            abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
+          },
+        });
+      }
+      return notFound();
+    }));
+
+    renderExplorer(`/tx/${transactionHash}`);
+    await userEvent.setup().click(await screen.findByText("More details"));
+    expect(await screen.findByText("Decoded parameter structure is unavailable. Raw calldata remains available below.")).toBeVisible();
+    expect(screen.queryByText('["1"]', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(calldata);
   });
 
   it("classifies an exact-address decoded call when execution identity is unavailable", async () => {
@@ -784,8 +915,8 @@ describe("core explorer pages", () => {
           decoding: {
             status: "decoded", function_name: "transfer", signature: "transfer(address,uint256)",
             inputs: [
-              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}` },
-              { name: "amount", type: "uint256", value: "12" },
+              { name: "recipient", type: "address", value: `0x${"44".repeat(20)}`, components: [] },
+              { name: "amount", type: "uint256", value: "12", components: [] },
             ],
             candidates: [], confidence: "verified",
             abi_source: { kind: "exact_address", address, code_hash: canonicalHash },
@@ -832,7 +963,7 @@ describe("core explorer pages", () => {
           },
           decoding: {
             status: "decoded", function_name: "setValue", signature: "setValue(uint256)",
-            inputs: [{ name: "value", type: "uint256", value: "42" }], candidates: [],
+            inputs: [{ name: "value", type: "uint256", value: "42", components: [] }], candidates: [],
             confidence: "verified",
             abi_source: { kind: "exact_address", address: delegateAddress, code_hash: canonicalHash },
           },
