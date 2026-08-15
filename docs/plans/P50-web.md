@@ -87,6 +87,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T60 | done | P50-T59 | Restore the localized Direction column heading across address activity tables | focused frontend, bilingual embedded browser, and common gates |
 | P50-T61 | done | P50-T60 | Keep Address Transactions status and finality badges in a consistent vertical layout | focused stylesheet, frontend, and embedded browser regressions |
 | P50-T62 | done | P50-T18, P50-T60 | Authorize CodeMirror runtime styles with a per-SPA-shell CSP nonce | Go handler, frontend, embedded Chromium, and common gates |
+| P50-T63 | done | P50-T62 | Move Address Transactions Finality into an independent final column without changing other activity tables | focused frontend, responsive, accessibility, embedded browser, and common gates |
 
 ## Acceptance
 
@@ -111,9 +112,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Pending and replaced hashes provide a retention-bounded basic detail
       preview, automatic inclusion transition, direct replacement links, and
       icon-plus-text transaction statuses across all transaction surfaces.
-- [x] Address Transactions status and finality badges use the same vertical
-      layout for success and failed rows without changing other transaction
-      surfaces.
+- [x] Address Transactions keeps Status and Finality in separate columns, with
+      Finality last and the global transaction amount heading; other activity
+      tables and transaction surfaces remain unchanged.
 - [x] Address activity tables render the Direction heading through the English
       and Chinese catalogs instead of exposing an untranslated resource key.
 
@@ -956,3 +957,10 @@ None.
 - P50-T52 verification passes the focused stylesheet suite (5 tests), the
   complete frontend suite (29 files, 301 tests), TypeScript lint, production
   build, `make generate-check`, `make plan-check`, and `git diff --check`.
+- P50-T63 keeps Address Transactions columns ordered through Value and a final
+  Finality column, renders Status without a nested finality badge, and uses
+  `Value (ETH)` to match the global transaction table. Internal Transactions,
+  Withdrawals, ERC-20, NFT, and Assets tables retain their existing columns.
+  Focused CorePages/styles tests pass 60/60, TypeScript lint and production
+  build pass, `make generate-check`, `make plan-check`, and `git diff --check`
+  pass, and host-authorized `make test-e2e` passes all 22 browser flows.

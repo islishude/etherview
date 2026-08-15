@@ -164,9 +164,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   the compact bilingual Method cell in address Transactions only, with
   full-signature disclosure and responsive/accessibility coverage. P50-T60
   restores the shared localized Direction/方向 heading instead of exposing the
-  `table.direction` resource key. P50-T61 keeps Address Transactions status
-  and finality badges in a consistent vertical layout with responsive browser
-  coverage.
+  `table.direction` resource key. P50-T61 established consistent status and
+  finality presentation for Address Transactions. P50-T63 moves Finality into
+  an independent final column, aligns the transaction amount heading with the
+  global table, and leaves other address activity tables unchanged.
 - P59 is complete. P59-T05 keeps Solidity builtin failures concise while
   preserving structured custom-error arguments. P59-T04 exposes the canonical
   root failure as a dedicated

@@ -762,6 +762,10 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     `/address/${address}#code`,
   );
   await expect(page.getByRole("link", { name: /0xaaaaaa…aaaaaa/ })).toBeVisible();
+  const addressTransactionsTable = page.getByRole("table", { name: "Transactions" });
+  expect(await addressTransactionsTable.getByRole("columnheader").allTextContents()).toEqual([
+    "Hash", "Method", "Block", "Timestamp", "Status", "From", "Direction", "To", "Value (ETH)", "Finality",
+  ]);
   await expect(page.getByRole("columnheader", { name: "Method" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Direction" })).toBeVisible();
   const addressMethod = page.getByLabel(
@@ -780,26 +784,12 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(addressStatusGroups).toHaveCount(2);
   await expect(addressStatusGroups.nth(0).locator('[data-status="success"]')).toBeVisible();
   await expect(addressStatusGroups.nth(1).locator('[data-status="failed"]')).toBeVisible();
-  for (const index of [0, 1]) {
-    const layout = await addressStatusGroups.nth(index).evaluate((element) => {
-      const children = Array.from(element.children);
-      const first = children[0]?.getBoundingClientRect();
-      const second = children[1]?.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        flexDirection: style.flexDirection,
-        flexWrap: style.flexWrap,
-        alignItems: style.alignItems,
-        childTopDelta: first && second ? second.top - first.top : null,
-        childLeftDelta: first && second ? second.left - first.left : null,
-      };
-    });
-    expect(layout.flexDirection).toBe("column");
-    expect(layout.flexWrap).toBe("nowrap");
-    expect(layout.alignItems).toBe("flex-start");
-    expect(layout.childTopDelta).toBeGreaterThan(0);
-    expect(Math.abs(layout.childLeftDelta ?? Number.NaN)).toBeLessThanOrEqual(1);
-  }
+  await expect(addressStatusGroups.nth(0).locator(".finality-badge")).toHaveCount(0);
+  await expect(addressStatusGroups.nth(1).locator(".finality-badge")).toHaveCount(0);
+  const addressFinalityCells = addressTransactionsTable.locator("tbody tr td:last-child");
+  await expect(addressFinalityCells).toHaveCount(2);
+  await expect(addressFinalityCells.nth(0).locator(".finality-badge")).toBeVisible();
+  await expect(addressFinalityCells.nth(1).locator(".finality-badge")).toBeVisible();
   const addressTransactionsScroller = page.locator(
     '.table-scroll[aria-label="Transactions"]',
   );
@@ -812,6 +802,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   await expect(page.getByRole("columnheader", { name: "方法" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "方向" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "最终性" })).toBeVisible();
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
   expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);
@@ -823,6 +814,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Method" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Finality" })).toHaveCount(0);
   expect(addressWithdrawalRequests).toEqual([]);
   const contractTab = page.getByRole("link", { name: "Contract", exact: true });
   await expect(contractTab).not.toHaveClass(/\bactive\b/);

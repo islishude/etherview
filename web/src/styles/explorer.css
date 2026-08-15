@@ -1131,12 +1131,6 @@ tbody tr:hover {
   align-items: center;
 }
 
-.address-activity-table .transaction-status-group {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-}
-
 .transaction-status.success {
   color: var(--brand-strong);
   background: var(--brand-soft);

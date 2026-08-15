@@ -2483,6 +2483,16 @@ describe("core explorer pages", () => {
     expect(selfDirection).toBeVisible();
     const transactionRow = selfDirection.closest("tr");
     if (!transactionRow) throw new Error("address transaction row is missing");
+    const transactionTable = transactionRow.closest("table");
+    if (!transactionTable) throw new Error("address transaction table is missing");
+    expect(within(transactionTable).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Hash", "Method", "Block", "Timestamp", "Status", "From", "Direction", "To", "Value (ETH)", "Finality",
+    ]);
+    const transactionCells = within(transactionRow).getAllByRole("cell");
+    expect(transactionCells).toHaveLength(10);
+    expect(transactionCells[4]?.querySelector('[data-status="success"]')).not.toBeNull();
+    expect(transactionCells[4]?.querySelector(".transaction-status-group")?.childElementCount).toBe(1);
+    expect(within(transactionCells[9]!).getByText("Safe", { exact: true })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Method" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Direction" })).toBeVisible();
     expect(screen.queryByRole("columnheader", { name: "table.direction" })).not.toBeInTheDocument();
@@ -2517,6 +2527,7 @@ describe("core explorer pages", () => {
     expect(createdLabel).toBeVisible();
     const internalRow = createdLabel.closest("tr");
     if (!internalRow) throw new Error("address internal transaction row is missing");
+    expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
     expect(
       within(internalRow).queryByRole("link", { name: shorten(address) }),
     ).not.toBeInTheDocument();
@@ -2532,6 +2543,7 @@ describe("core explorer pages", () => {
 
     await user.click(screen.getByRole("link", { name: "Withdrawals" }));
     const withdrawalTable = await screen.findByRole("table", { name: "Withdrawals" });
+    expect(within(withdrawalTable).queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
     const withdrawalRows = within(withdrawalTable).getAllByRole("row").slice(1);
     expect(withdrawalRows).toHaveLength(2);
     expect(withdrawalRows[0]).toHaveTextContent("10");
@@ -2548,11 +2560,16 @@ describe("core explorer pages", () => {
 
     await user.click(screen.getByRole("link", { name: "ERC-20 Transfers" }));
     expect(await screen.findByText("1.2345", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-transfers`);
+
+    await user.click(screen.getByRole("link", { name: "NFT Transfers" }));
+    expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Assets" }));
     expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();
     expect(await screen.findByText("Asset Token")).toBeVisible();
+    expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
     expect(screen.getByText("123.45 AST")).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);

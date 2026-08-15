@@ -2527,7 +2527,13 @@ function MempoolTransactionOverview({
   );
 }
 
-function TransactionStatusBadge({ transaction }: { transaction: TransactionSummary }) {
+function TransactionStatusBadge({
+  transaction,
+  showFinality = true,
+}: {
+  transaction: TransactionSummary;
+  showFinality?: boolean;
+}) {
   const { t } = useTranslation();
   const state = !transaction.canonical
     ? "orphan"
@@ -2539,7 +2545,7 @@ function TransactionStatusBadge({ transaction }: { transaction: TransactionSumma
       label={state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)}
       status={state}
     />
-    {transaction.canonical && transaction.finality === "finalized"
+    {showFinality && transaction.canonical && transaction.finality === "finalized"
       ? <span className="finality-badge finalized">{finalityLabel(transaction.finality, t)}</span>
       : null}
   </span>;
@@ -3217,7 +3223,9 @@ function AddressTransactions({
       {items && items.length > 0 ? (
         <AddressActivityTable
           label={t("addressTab.transactions")}
+          finality
           method
+          nativeAmountLabel="value"
           nativeSymbol={nativeSymbol}
           status
         >
@@ -3235,7 +3243,7 @@ function AddressTransactions({
                     signature: transaction.method_signature,
                   }}
                 />
-                <td><TransactionStatusBadge transaction={transaction} /></td>
+                <td><TransactionStatusBadge showFinality={false} transaction={transaction} /></td>
                 <AddressCell address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
@@ -3246,6 +3254,7 @@ function AddressTransactions({
                   currentAddress={address}
                 />
                 <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
+                <td><FinalityBadge finality={transaction.finality} /></td>
               </tr>
             );
           })}
@@ -3517,16 +3526,20 @@ function AddressActivitySection({
 function AddressActivityTable({
   action,
   children,
+  finality,
   label,
   method,
+  nativeAmountLabel,
   nativeSymbol,
   status,
   token,
 }: {
   action?: boolean;
   children: React.ReactNode;
+  finality?: boolean;
   label: string;
   method?: boolean;
+  nativeAmountLabel?: "amount" | "value";
   nativeSymbol?: string;
   status?: boolean;
   token?: boolean;
@@ -3551,8 +3564,11 @@ function AddressActivityTable({
             <th>
               {token
                 ? t("detail.amountOrTokenID")
-                : t("detail.nativeAmount", { symbol: nativeSymbol ?? "" })}
+                : nativeAmountLabel === "value"
+                  ? t("table.value", { symbol: nativeSymbol ?? "" })
+                  : t("detail.nativeAmount", { symbol: nativeSymbol ?? "" })}
             </th>
+            {finality ? <th>{t("table.finality")}</th> : null}
           </tr>
         </thead>
         <tbody>{children}</tbody>
