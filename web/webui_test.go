@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -98,8 +99,91 @@ func TestIndexAndDeepLinks(t *testing.T) {
 				t.Errorf("Cache-Control = %q, want %q", got, noStoreCache)
 			}
 			assertSecurityHeaders(t, response.Header())
+			assertShellResponse(t, response)
 			if !strings.Contains(response.Body.String(), `<div id="root"></div>`) {
 				t.Error("response does not contain SPA root")
+			}
+		})
+	}
+}
+
+func TestShellNonceIsFreshAndShellResponsesHaveNoETag(t *testing.T) {
+	t.Parallel()
+
+	shell := func(method, path string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, path, nil)
+		request.Header.Set("Accept", "text/html")
+		response := httptest.NewRecorder()
+		NewHandler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, want %d", method, path, response.Code, http.StatusOK)
+		}
+		return response
+	}
+
+	first := shell(http.MethodGet, "/")
+	second := shell(http.MethodGet, "/")
+	deepLink := shell(http.MethodGet, "/contracts/verified")
+	firstNonce := assertShellResponse(t, first)
+	secondNonce := assertShellResponse(t, second)
+	deepLinkNonce := assertShellResponse(t, deepLink)
+	if firstNonce == secondNonce {
+		t.Fatalf("consecutive shell responses reused CSP nonce %q", firstNonce)
+	}
+	if firstNonce == deepLinkNonce || secondNonce == deepLinkNonce {
+		t.Fatalf("deep-link shell reused a prior CSP nonce %q", deepLinkNonce)
+	}
+
+	head := shell(http.MethodHead, "/")
+	assertShellHeaders(t, head.Header())
+	if head.Body.Len() != 0 {
+		t.Errorf("HEAD shell body length = %d, want 0", head.Body.Len())
+	}
+}
+
+func TestShellNonceFailuresFailClosed(t *testing.T) {
+	t.Parallel()
+
+	validShell := fstest.MapFS{
+		"index.html": {Data: []byte(`<!doctype html><html><head></head><body><div id="root"></div></body></html>`)},
+	}
+	failedGenerators := &handler{
+		assets: validShell,
+		nonceGenerator: func() (string, error) {
+			return "", fmt.Errorf("test RNG failure")
+		},
+	}
+	failedInjection := &handler{
+		assets: fstest.MapFS{
+			"index.html": {Data: []byte(`<div id="root"></div>`)},
+		},
+		nonceGenerator: func() (string, error) {
+			return strings.Repeat("A", 43), nil
+		},
+	}
+
+	for name, shellHandler := range map[string]*handler{
+		"rng":       failedGenerators,
+		"injection": failedInjection,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.Header.Set("Accept", "text/html")
+			shellHandler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+			}
+			if got := response.Header().Get("Cache-Control"); got != noStoreCache {
+				t.Errorf("Cache-Control = %q, want %q", got, noStoreCache)
+			}
+			assertSecurityHeaders(t, response.Header())
+			assertNoCSPNonce(t, response.Header())
+			if strings.Contains(response.Body.String(), `<div id="root"></div>`) {
+				t.Error("failed shell response contains SPA content")
 			}
 		})
 	}
@@ -135,6 +219,7 @@ func TestEmbeddedSVGBrandIconIsTheFavicon(t *testing.T) {
 		t.Errorf("favicon Cache-Control = %q, want %q", got, immutableCache)
 	}
 	assertSecurityHeaders(t, response.Header())
+	assertNoCSPNonce(t, response.Header())
 }
 
 func TestHashedAssetCachingAndETag(t *testing.T) {
@@ -155,6 +240,9 @@ func TestHashedAssetCachingAndETag(t *testing.T) {
 	if etag == "" {
 		t.Fatal("ETag is empty")
 	}
+	if got := response.Header().Get("Content-Security-Policy"); got != contentSecurityPolicy {
+		t.Errorf("asset CSP = %q, want baseline %q", got, contentSecurityPolicy)
+	}
 
 	conditional := httptest.NewRequest(http.MethodGet, "/"+asset, nil)
 	conditional.Header.Set("If-None-Match", etag)
@@ -167,6 +255,9 @@ func TestHashedAssetCachingAndETag(t *testing.T) {
 		t.Errorf("conditional Cache-Control = %q, want %q", got, immutableCache)
 	}
 	assertSecurityHeaders(t, notModified.Header())
+	if got := notModified.Header().Get("Content-Security-Policy"); got != contentSecurityPolicy {
+		t.Errorf("conditional asset CSP = %q, want baseline %q", got, contentSecurityPolicy)
+	}
 
 	headRequest := httptest.NewRequest(http.MethodHead, "/"+asset, nil)
 	headResponse := httptest.NewRecorder()
@@ -181,6 +272,9 @@ func TestHashedAssetCachingAndETag(t *testing.T) {
 		t.Errorf("HEAD ETag = %q, want %q", got, etag)
 	}
 	assertSecurityHeaders(t, headResponse.Header())
+	if got := headResponse.Header().Get("Content-Security-Policy"); got != contentSecurityPolicy {
+		t.Errorf("HEAD asset CSP = %q, want baseline %q", got, contentSecurityPolicy)
+	}
 }
 
 func TestOnlyViteContentHashedAssetsAreImmutable(t *testing.T) {
@@ -236,6 +330,7 @@ func TestOnlyExactHashedFilesReceiveImmutableCaching(t *testing.T) {
 				t.Errorf("Cache-Control = %q, want %q", got, test.wantCache)
 			}
 			assertSecurityHeaders(t, response.Header())
+			assertNoCSPNonce(t, response.Header())
 		})
 	}
 }
@@ -268,6 +363,7 @@ func TestNoFallbackForReservedOrAssetRequests(t *testing.T) {
 			t.Errorf("%s Cache-Control = %q, want %q", path, got, noStoreCache)
 		}
 		assertSecurityHeaders(t, response.Header())
+		assertNoCSPNonce(t, response.Header())
 	}
 }
 
@@ -362,5 +458,40 @@ func assertSecurityHeaders(t *testing.T, header http.Header) {
 	}
 	if got := header.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
+func assertShellResponse(t *testing.T, response *httptest.ResponseRecorder) string {
+	t.Helper()
+	nonce := assertShellHeaders(t, response.Header())
+	match := regexp.MustCompile(`<meta name="` + cspNonceMetaName + `" content="([A-Za-z0-9_-]{43})">`).FindStringSubmatch(response.Body.String())
+	if len(match) != 2 {
+		t.Fatalf("shell HTML does not contain one valid %s meta nonce", cspNonceMetaName)
+	}
+	if match[1] != nonce {
+		t.Fatalf("shell meta nonce = %q, CSP nonce = %q", match[1], nonce)
+	}
+	return nonce
+}
+
+func assertShellHeaders(t *testing.T, header http.Header) string {
+	t.Helper()
+	if got := header.Get("Cache-Control"); got != noStoreCache {
+		t.Errorf("shell Cache-Control = %q, want %q", got, noStoreCache)
+	}
+	if got := header.Get("ETag"); got != "" {
+		t.Errorf("shell ETag = %q, want empty", got)
+	}
+	matches := regexp.MustCompile(`'nonce-([A-Za-z0-9_-]{43})'`).FindAllStringSubmatch(header.Get("Content-Security-Policy"), -1)
+	if len(matches) != 1 {
+		t.Fatalf("shell CSP does not contain exactly one valid nonce: %q", header.Get("Content-Security-Policy"))
+	}
+	return matches[0][1]
+}
+
+func assertNoCSPNonce(t *testing.T, header http.Header) {
+	t.Helper()
+	if strings.Contains(header.Get("Content-Security-Policy"), "'nonce-") {
+		t.Errorf("non-shell CSP unexpectedly contains a nonce: %q", header.Get("Content-Security-Policy"))
 	}
 }

@@ -893,7 +893,7 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await assertA11yAndNoOverflow(page, "delegated account in Chinese narrow mode");
   expect(pageErrors).toEqual([]);
-  expect(consoleErrors.filter((message) => !message.startsWith("Applying inline style violates the following Content Security Policy directive"))).toEqual([]);
+  expect(consoleErrors).toEqual([]);
 });
 
 test("cleared delegated accounts open canonical history without loading current binding", async ({ page }) => {
@@ -995,6 +995,14 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
   await expect(page.getByText("verification_success", { exact: true })).toBeVisible();
 
+  const sourcePageErrors: string[] = [];
+  const sourceConsoleErrors: string[] = [];
+  const onSourcePageError = (error: Error) => sourcePageErrors.push(error.message);
+  const onSourceConsole = (message: import("@playwright/test").ConsoleMessage) => {
+    if (message.type() === "error") sourceConsoleErrors.push(message.text());
+  };
+  page.on("pageerror", onSourcePageError);
+  page.on("console", onSourceConsole);
   await page.goto(`/address/${address}#code`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
   await expect(
@@ -1034,6 +1042,17 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByLabel(/API key/iu)).toHaveCount(0);
   await expect(page.getByLabel(/calldata/iu)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Load verification" })).toHaveCount(0);
+
+  await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.locator(".source-editor")).toHaveCount(1);
+  await activateInView(page.getByRole("button", { name: "切换颜色主题" }));
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
+  expect(sourcePageErrors).toEqual([]);
+  expect(sourceConsoleErrors).toEqual([]);
+  page.off("pageerror", onSourcePageError);
+  page.off("console", onSourceConsole);
 
   await page.goto("/charts");
   await expect(page.getByRole("heading", { name: "Overview stats", level: 2 })).toBeVisible();
@@ -1308,8 +1327,17 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   expect(policy).toContain("frame-ancestors 'none'");
   expect(policy).not.toContain("'unsafe-inline'");
   expect(policy).not.toContain("'unsafe-eval'");
+  expect(policy).not.toContain("http:");
+  expect(policy).not.toContain("https:");
+  const nonceMatch = policy.match(/'nonce-([A-Za-z0-9_-]{43})'/u);
+  expect(nonceMatch).not.toBeNull();
+  const shellNonce = nonceMatch?.[1] ?? "";
+  const basePolicy = policy.replace(/ 'nonce-[^']+'/u, "");
+  expect(document.headers()["etag"]).toBeUndefined();
 
   const html = await document.text();
+  const metaNonce = html.match(/<meta name="etherview-csp-nonce" content="([A-Za-z0-9_-]{43})">/u)?.[1];
+  expect(metaNonce).toBe(shellNonce);
   const entrypoints = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
     ([, target]) => target,
   );
@@ -1322,6 +1350,7 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   expect(asset.status()).toBe(200);
   expect(asset.headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
   expect(asset.headers()["etag"]).toMatch(/^"[a-f0-9]{64}"$/);
+  expect(asset.headers()["content-security-policy"]).toBe(basePolicy);
   expect(asset.headers()["x-content-type-options"]).toBe("nosniff");
 
   const notModified = await request.get(entrypoints[0], {
@@ -1331,19 +1360,21 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   expect(notModified.headers()["cache-control"]).toBe(
     "public, max-age=31536000, immutable",
   );
-  expect(notModified.headers()["content-security-policy"]).toBe(policy);
+  expect(notModified.headers()["content-security-policy"]).toBe(basePolicy);
   expect(notModified.headers()["x-content-type-options"]).toBe("nosniff");
 
   const missingAPI = await request.get("/api/v1/not-a-route", {
     headers: { Accept: "text/html" },
   });
   expect(missingAPI.status()).toBe(404);
+  expect(missingAPI.headers()["content-security-policy"]).toBe(basePolicy);
   expect(await missingAPI.text()).not.toContain('<div id="root"></div>');
 
   for (const missingAsset of ["/robots.txt", "/assets/missing.js", "/module.wasm"]) {
     const response = await request.get(missingAsset, { headers: { Accept: "text/html" } });
     expect(response.status()).toBe(404);
     expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(response.headers()["content-security-policy"]).toBe(basePolicy);
     expect(await response.text()).not.toContain('<div id="root"></div>');
   }
 
@@ -1352,17 +1383,20 @@ test("embedded server isolates SPA fallback and serves only hashed immutable ass
   });
   expect(refusedHTML.status()).toBe(404);
   expect(refusedHTML.headers()["cache-control"]).toBe("no-store");
+  expect(refusedHTML.headers()["content-security-policy"]).toBe(basePolicy);
   expect(await refusedHTML.text()).not.toContain('<div id="root"></div>');
 
   const headDeepLink = await request.head("/blocks/not-an-asset", {
     headers: { Accept: "text/html" },
   });
   expect(headDeepLink.status()).toBe(404);
+  expect(headDeepLink.headers()["content-security-policy"]).toBe(basePolicy);
 
   const postDeepLink = await request.post("/blocks/1", {
     headers: { Accept: "text/html" },
   });
   expect(postDeepLink.status()).toBe(405);
+  expect(postDeepLink.headers()["content-security-policy"]).toBe(basePolicy);
 });
 
 test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewport", async ({

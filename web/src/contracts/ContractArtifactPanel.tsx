@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 
 import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp } from "@/components/format";
+import { getDocumentCSPNonce } from "@/csp";
 
 import { decodeConstructorArguments } from "./abi";
 import type { VerifiedContractArtifact } from "./proxy";
@@ -508,6 +509,7 @@ function SourceWorkspace({
       : language === "yul"
         ? yulLanguage
         : [];
+    const cspNonce = getDocumentCSPNonce();
     const view = new EditorView({
       state: EditorState.create({
         doc: selected.content,
@@ -522,6 +524,7 @@ function SourceWorkspace({
           EditorView.contentAttributes.of({
             "aria-label": t("contracts.artifact.readOnlyEditor", { file: selected.name }),
           }),
+          ...(cspNonce ? [EditorView.cspNonce.of(cspNonce)] : []),
           ...(wrap ? [EditorView.lineWrapping] : []),
           languageExtension,
         ],

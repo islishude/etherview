@@ -36,6 +36,16 @@ worker dependencies.
   starts with `default-src 'none'`, enumerates only required same-origin
   resource types, permits `data:` only for wallet-provided images, and contains
   neither `unsafe-inline`, `unsafe-eval`, nor an external network origin.
+- Each `GET` or `HEAD` response that serves the SPA shell (the root or an HTML
+  navigation fallback) generates a fresh, unpredictable
+  32-byte CSPRNG nonce encoded with base64url. The handler injects that raw
+  nonce into trusted shell head metadata and adds only the matching
+  `'nonce-<value>'` source to `style-src`. CodeMirror reads the metadata and
+  supplies the raw value through `EditorView.cspNonce` for its generated style
+  element. This is the sole intended inline-style exception: application
+  scripts, arbitrary inline CSS, and inline style attributes remain forbidden;
+  `style-src-attr` is not relaxed, and resources/errors retain the baseline
+  CSP without a nonce.
 - The baseline shell keeps semantic landmarks, a keyboard skip link, visible
   language and theme controls at narrow widths, reduced-motion behavior, and
   an exact-value alternative for charts. Vitest runs deterministic semantic
@@ -46,7 +56,9 @@ worker dependencies.
 
 Adding an inline bootstrap, external resource, worker, iframe, or new browser
 resource type requires an explicit revision of this decision and its CSP tests.
-New public routes under a reserved namespace remain protected even before a
-route handler exists. A developer-server rendering or source-tree scan alone
-cannot satisfy the browser boundary: cache, fallback, and header regressions are
-tested against the embedded Go artifact.
+Only the trusted, per-response CodeMirror runtime style may consume the shell
+nonce; no other inline style or script may do so. New public routes under a
+reserved namespace remain protected even before a route handler exists. A
+developer-server rendering or source-tree scan alone cannot satisfy the browser
+boundary: cache, fallback, nonce, and header regressions are tested against the
+embedded Go artifact.

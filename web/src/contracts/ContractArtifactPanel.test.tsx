@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  document.querySelector('meta[name="etherview-csp-nonce"]')?.remove();
   Reflect.deleteProperty(document, "fullscreenEnabled");
   Reflect.deleteProperty(document, "fullscreenElement");
   Reflect.deleteProperty(document, "exitFullscreen");
@@ -251,6 +252,21 @@ describe("ContractArtifactPanel", () => {
     expect(editorShell).not.toBeNull();
     await user.click(within(editorShell as HTMLElement).getByRole("button", { name: "Copy" }));
     expect(writeText).toHaveBeenCalledWith("library Library { function value() internal pure returns (uint256) { return 1; } }");
+  });
+
+  it("applies the current document CSP nonce to CodeMirror runtime styles", () => {
+    const nonce = "A".repeat(43);
+    const meta = document.createElement("meta");
+    meta.name = "etherview-csp-nonce";
+    meta.content = nonce;
+    document.head.append(meta);
+
+    render(<ContractArtifactPanel artifact={fixtureArtifact()} />);
+
+    expect(document.head.querySelector(`style[nonce="${nonce}"]`)).not.toBeNull();
+    expect(screen.getByRole("textbox", {
+      name: "Read-only source editor for src/Example.sol",
+    })).toHaveAttribute("contenteditable", "false");
   });
 
   it("supports directory toggling and keyboard tree navigation", async () => {

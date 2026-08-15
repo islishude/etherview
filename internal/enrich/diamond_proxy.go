@@ -641,8 +641,7 @@ func newDiamondLimitError(reason, message string) error {
 }
 
 func diamondLimitReason(err error) string {
-	var limit diamondLimitError
-	if errors.As(err, &limit) {
+	if limit, ok := errors.AsType[diamondLimitError](err); ok {
 		return limit.reason
 	}
 	return "limit-exceeded"

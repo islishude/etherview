@@ -1,12 +1,15 @@
-// Package webui serves the immutable, embedded Etherview single-page application.
+// Package webui serves the embedded Etherview single-page application.
 package webui
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -20,6 +23,8 @@ const (
 	contentSecurityPolicy = "default-src 'none'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'none'; img-src 'self' data:; manifest-src 'self'; media-src 'self'; object-src 'none'; script-src 'self'; style-src 'self'; worker-src 'none'"
 	immutableCache        = "public, max-age=31536000, immutable"
 	noStoreCache          = "no-store"
+	cspNonceBytes         = 32
+	cspNonceMetaName      = "etherview-csp-nonce"
 )
 
 //go:embed dist
@@ -31,7 +36,7 @@ var distribution = mustSub(embedded, "dist")
 // intentionally never receive the index fallback, so a missing backend route
 // cannot be disguised as a successful HTML response.
 func NewHandler() http.Handler {
-	return &handler{assets: distribution}
+	return &handler{assets: distribution, nonceGenerator: generateCSPNonce}
 }
 
 // Assets exposes the read-only embedded distribution for diagnostics and tests.
@@ -40,7 +45,8 @@ func Assets() fs.FS {
 }
 
 type handler struct {
-	assets fs.FS
+	assets         fs.FS
+	nonceGenerator func() (string, error)
 }
 
 // RoutePattern classifies the catch-all web handler without returning a raw
@@ -87,7 +93,7 @@ func (h *handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 
 	if name == "" {
-		h.serveFile(response, request, "index.html", false)
+		h.serveShell(response, request)
 		return
 	}
 
@@ -105,7 +111,39 @@ func (h *handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	h.serveFile(response, request, "index.html", false)
+	h.serveShell(response, request)
+}
+
+func (h *handler) serveShell(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	contents, err := fs.ReadFile(h.assets, "index.html")
+	if err != nil {
+		notFound(response, request)
+		return
+	}
+
+	nonceGenerator := h.nonceGenerator
+	if nonceGenerator == nil {
+		nonceGenerator = generateCSPNonce
+	}
+	nonce, err := nonceGenerator()
+	if err != nil || !validCSPNonce(nonce) {
+		shellFailure(response)
+		return
+	}
+	contents, err = injectCSPNonce(contents, nonce)
+	if err != nil {
+		shellFailure(response)
+		return
+	}
+
+	response.Header().Set("Cache-Control", noStoreCache)
+	response.Header().Del("ETag")
+	response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	response.Header().Set("Content-Security-Policy", contentSecurityPolicyWithNonce(nonce))
+	http.ServeContent(response, request, "index.html", time.Time{}, bytes.NewReader(contents))
 }
 
 func (h *handler) serveFile(
@@ -143,6 +181,53 @@ func (h *handler) serveFile(
 	}
 
 	http.ServeContent(response, request, name, time.Time{}, bytes.NewReader(contents))
+}
+
+func generateCSPNonce() (string, error) {
+	raw := make([]byte, cspNonceBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate CSP nonce: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func validCSPNonce(nonce string) bool {
+	if len(nonce) != base64.RawURLEncoding.EncodedLen(cspNonceBytes) {
+		return false
+	}
+	for _, character := range []byte(nonce) {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && character != '-' && character != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func injectCSPNonce(contents []byte, nonce string) ([]byte, error) {
+	const closingHead = "</head>"
+	if bytes.Count(contents, []byte(closingHead)) != 1 ||
+		bytes.Contains(contents, []byte(`name="`+cspNonceMetaName+`"`)) {
+		return nil, fmt.Errorf("inject CSP nonce metadata into shell")
+	}
+	index := bytes.Index(contents, []byte(closingHead))
+	metadata := []byte("\n    <meta name=\"" + cspNonceMetaName + "\" content=\"" + html.EscapeString(nonce) + "\">\n")
+	result := make([]byte, 0, len(contents)+len(metadata))
+	result = append(result, contents[:index]...)
+	result = append(result, metadata...)
+	result = append(result, contents[index:]...)
+	return result, nil
+}
+
+func contentSecurityPolicyWithNonce(nonce string) string {
+	return strings.Replace(contentSecurityPolicy, "style-src 'self'", "style-src 'self' 'nonce-"+nonce+"'", 1)
+}
+
+func shellFailure(response http.ResponseWriter) {
+	response.Header().Set("Cache-Control", noStoreCache)
+	response.Header().Del("ETag")
+	http.Error(response, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
 func setSecurityHeaders(header http.Header) {

@@ -86,6 +86,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T59 | done | P40-T18, P50-T58 | Add the shared compact Method column to address transaction activity | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T60 | done | P50-T59 | Restore the localized Direction column heading across address activity tables | focused frontend, bilingual embedded browser, and common gates |
 | P50-T61 | done | P50-T60 | Keep Address Transactions status and finality badges in a consistent vertical layout | focused stylesheet, frontend, and embedded browser regressions |
+| P50-T62 | done | P50-T18, P50-T60 | Authorize CodeMirror runtime styles with a per-SPA-shell CSP nonce | Go handler, frontend, embedded Chromium, and common gates |
 
 ## Acceptance
 
@@ -121,6 +122,21 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T62 generates a fresh 32-byte CSPRNG base64url nonce for each root or
+  HTML-fallback shell response, injects the matching trusted head metadata, and
+  adds the nonce only to `style-src`; shell responses remain `no-store` without
+  ETags, while assets, errors, reserved paths, and API-shaped responses retain
+  the baseline CSP. RNG and shell-injection failures return 500 without SPA
+  content. CodeMirror receives the raw document nonce through
+  `EditorView.cspNonce`, while missing dev/test metadata remains supported.
+  The focused Go handler tests, CodeMirror panel tests (13/13), complete Web
+  suite (30 files, 336 tests), TypeScript lint/build, `make generate-check`,
+  `make plan-check`, `git diff --check`, and final host-authorized `make
+  test-e2e` (20/20 flows, including unfiltered console errors on delegated
+  panels and verified-source file/theme/language changes) pass. The complete
+  host-authorized `make check` also passes all common, race, security, license,
+  and deployment gates.
 
 - P50-T61 scopes the shared status-group override to Address Transactions so
   success and failed rows keep both execution and finalized badges stacked in
