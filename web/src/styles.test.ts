@@ -62,4 +62,15 @@ describe("shared button layout", () => {
     expect(rawCalldataRule?.groups?.body).toMatch(/\bwhite-space:\s*pre-wrap;/u);
     expect(rawCalldataRule?.groups?.body).toMatch(/\bword-break:\s*break-word;/u);
   });
+
+  it("stacks address transaction status badges consistently", () => {
+    const stylesheet = readStylesheet("styles/explorer.css");
+    const statusRule = stylesheet.match(
+      /\.address-activity-table\s+\.transaction-status-group\s*\{(?<body>[^}]*)\}/u,
+    );
+
+    expect(statusRule?.groups?.body).toMatch(/\bflex-direction:\s*column;/u);
+    expect(statusRule?.groups?.body).toMatch(/\bflex-wrap:\s*nowrap;/u);
+    expect(statusRule?.groups?.body).toMatch(/\balign-items:\s*flex-start;/u);
+  });
 });

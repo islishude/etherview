@@ -164,7 +164,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   the compact bilingual Method cell in address Transactions only, with
   full-signature disclosure and responsive/accessibility coverage. P50-T60
   restores the shared localized Direction/方向 heading instead of exposing the
-  `table.direction` resource key.
+  `table.direction` resource key. P50-T61 keeps Address Transactions status
+  and finality badges in a consistent vertical layout with responsive browser
+  coverage.
 - P59-T01 through P59-T03 are complete. P59-T03 extends the exact
   verified-address fallback used by calldata reads to direct Trace calls whose
   unchanged target is omitted by completed state-diff evidence, while indirect

@@ -41,6 +41,7 @@ const (
 	compoundTransactionHash   = "0xabababababababababababababababababababababababababababababababab"
 	secondTransactionHash     = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	pendingTransactionHash    = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	failedTxHash              = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	delegationTransactionHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	clearingTransactionHash   = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	parentHash                = "0x0000000000000000000000000000000000000000000000000000000000000000"
@@ -539,10 +540,13 @@ func main() {
 			writeNotFound(response)
 			return
 		}
-		item := transaction(testTransactionHash, secondHash, "2", "safe")
+		item := transaction(testTransactionHash, secondHash, "2", "finalized")
 		item["method"] = "valueWithAnIntentionallyLongMethodName"
 		item["method_signature"] = "valueWithAnIntentionallyLongMethodName(uint256,address)"
-		writeEnvelope(response, []any{item})
+		failedItem := transaction(failedTxHash, testHash, "1", "finalized")
+		failedItem["status"] = "failed"
+		failedItem["method"] = "disperseToken"
+		writeEnvelope(response, []any{item, failedItem})
 	})
 	mux.HandleFunc("GET /api/v1/addresses/{address}/withdrawals", func(response http.ResponseWriter, request *http.Request) {
 		if request.PathValue("address") != testAddress {

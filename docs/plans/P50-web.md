@@ -85,6 +85,7 @@ injected EIP-1193 wallet for all contract reads and writes.
 | P50-T58 | done | P30-T15, P50-T57, P70-T29 | Sort verification compiler versions by ascending semantic version instead of lexical text | compiler catalog, PostgreSQL, generated contract, frontend, embedded browser, and common gates |
 | P50-T59 | done | P40-T18, P50-T58 | Add the shared compact Method column to address transaction activity | focused frontend, bilingual, responsive, accessibility, embedded browser, and common gates |
 | P50-T60 | done | P50-T59 | Restore the localized Direction column heading across address activity tables | focused frontend, bilingual embedded browser, and common gates |
+| P50-T61 | done | P50-T60 | Keep Address Transactions status and finality badges in a consistent vertical layout | focused stylesheet, frontend, and embedded browser regressions |
 
 ## Acceptance
 
@@ -109,6 +110,9 @@ injected EIP-1193 wallet for all contract reads and writes.
 - [x] Pending and replaced hashes provide a retention-bounded basic detail
       preview, automatic inclusion transition, direct replacement links, and
       icon-plus-text transaction statuses across all transaction surfaces.
+- [x] Address Transactions status and finality badges use the same vertical
+      layout for success and failed rows without changing other transaction
+      surfaces.
 - [x] Address activity tables render the Direction heading through the English
       and Chinese catalogs instead of exposing an untranslated resource key.
 
@@ -117,6 +121,14 @@ injected EIP-1193 wallet for all contract reads and writes.
 None.
 
 ## Evidence
+
+- P50-T61 scopes the shared status-group override to Address Transactions so
+  success and failed rows keep both execution and finalized badges stacked in
+  the same order. The stylesheet test passes 6/6, focused CorePages plus style
+  tests pass 57/57, TypeScript lint and production build pass, and the embedded
+  Playwright suite passes all 20 flows including the 390px two-row layout and
+  no document overflow. `make generate-check`, `make plan-check`, and
+  `git diff --check` pass.
 
 - P50-T60 adds the missing shared `table.direction` catalog entry as
   `Direction` and `方向`. The focused CorePages suite passes 49/49 and rejects

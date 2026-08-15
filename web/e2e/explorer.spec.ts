@@ -727,6 +727,32 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
     "valueWithAnIntentionallyLongMethodName(uint256,address)",
   );
   await expect(addressMethod).toHaveCSS("text-overflow", "ellipsis");
+  const addressStatusGroups = page.locator(
+    '.table-scroll[aria-label="Transactions"] .transaction-status-group',
+  );
+  await expect(addressStatusGroups).toHaveCount(2);
+  await expect(addressStatusGroups.nth(0).locator('[data-status="success"]')).toBeVisible();
+  await expect(addressStatusGroups.nth(1).locator('[data-status="failed"]')).toBeVisible();
+  for (const index of [0, 1]) {
+    const layout = await addressStatusGroups.nth(index).evaluate((element) => {
+      const children = Array.from(element.children);
+      const first = children[0]?.getBoundingClientRect();
+      const second = children[1]?.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        flexDirection: style.flexDirection,
+        flexWrap: style.flexWrap,
+        alignItems: style.alignItems,
+        childTopDelta: first && second ? second.top - first.top : null,
+        childLeftDelta: first && second ? second.left - first.left : null,
+      };
+    });
+    expect(layout.flexDirection).toBe("column");
+    expect(layout.flexWrap).toBe("nowrap");
+    expect(layout.alignItems).toBe("flex-start");
+    expect(layout.childTopDelta).toBeGreaterThan(0);
+    expect(Math.abs(layout.childLeftDelta ?? Number.NaN)).toBeLessThanOrEqual(1);
+  }
   const addressTransactionsScroller = page.locator(
     '.table-scroll[aria-label="Transactions"]',
   );
