@@ -18,16 +18,16 @@ import (
 func TestSolcJSCancellationTerminatesWholeProcessGroup(t *testing.T) {
 	root := t.TempDir()
 	childPIDPath := filepath.Join(root, "child-pid")
-	fakeNode := writeFakeNode(t, fmt.Sprintf(
-		"#!/bin/sh\nsleep 30 &\nchild=$!\nprintf '%%s' \"$child\" > %s\nwait \"$child\"\n",
+	fakeExecutor := writeFakeExecutor(t, fmt.Sprintf(
+		"#!/bin/sh\n/bin/sleep 30 &\nchild=$!\nprintf '%%s' \"$child\" > %s\nwait \"$child\"\n",
 		shellQuote(childPIDPath),
 	))
-	compiler := fakeSolcJSCompiler(fakeNode)
+	compiler := fakeSolcJSCompiler(fakeExecutor)
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
 		_, err := compiler.run(
-			ctx, filepath.Dir(fakeNode), fakeNode, "0.8.36", []byte(`{}`), false,
+			ctx, filepath.Dir(fakeExecutor), fakeExecutor, "0.8.36", []byte(`{}`), false,
 		)
 		result <- err
 	}()

@@ -605,40 +605,30 @@ func inspectHardhatCompilerCache(
 	t.Helper()
 	path := "/var/lib/etherview/compilers/cache/solidity-sha256-" +
 		hardhatCompilerDigest + ".js"
-	script := `
-import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-const path = process.argv[1];
-const stat = statSync(path, { bigint: true });
-process.stdout.write(JSON.stringify({
-  path,
-  sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
-  size: stat.size.toString(),
-  inode: stat.ino.toString(),
-  mode: Number(stat.mode & 0o777n).toString(8).padStart(3, "0"),
-  modified_ns: stat.mtimeNs.toString(),
-  changed_ns: stat.ctimeNs.toString(),
-}));
-`
 	output, err := h.project.Run(
 		ctx,
-		"exec", "-T", "-e", "LD_LIBRARY_PATH=/opt/etherview/compiler/lib",
-		h.apiService,
-		"/usr/local/bin/node",
-		"--permission",
-		"--disable-sigusr1",
-		"--no-addons",
-		"--no-global-search-paths",
-		"--allow-fs-read="+path,
-		"--input-type=module",
-		"--eval", script,
-		path,
+		"run", "--rm", "--no-deps", "hardhat", "node", "cache-inspect.mjs", path,
 	)
 	if err != nil {
 		t.Fatalf("inspect compiler cache: %v", err)
 	}
+	const inspectionPrefix = "ETHERVIEW_CACHE_INSPECTION_V1="
+	var payload []byte
+	for line := range bytes.SplitSeq(output, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte(inspectionPrefix)) {
+			continue
+		}
+		if payload != nil {
+			t.Fatalf("multiple compiler cache inspection records in %q", output)
+		}
+		payload = bytes.TrimPrefix(line, []byte(inspectionPrefix))
+	}
+	if payload == nil {
+		t.Fatalf("compiler cache inspection record absent from %q", output)
+	}
 	var file hardhatCompilerCacheFile
-	if err := json.Unmarshal(output, &file); err != nil {
+	if err := json.Unmarshal(payload, &file); err != nil {
 		t.Fatalf("decode compiler cache inspection: %v", err)
 	}
 	if file.Path != path || file.SHA256 != hardhatCompilerDigest ||

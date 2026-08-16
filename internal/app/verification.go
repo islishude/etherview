@@ -24,9 +24,7 @@ func verificationCompiler(
 	}
 	solcJS := &verify.SolcJSCompiler{
 		Catalog:      catalog,
-		NodePath:     cfg.Verification.NodePath,
-		WrapperPath:  cfg.Verification.WrapperPath,
-		ManifestPath: cfg.Verification.ManifestPath,
+		ExecutorPath: cfg.Verification.ExecutorPath,
 		Cache: &verify.CompilerCache{
 			Root: cfg.Verification.CacheDirectory, Timeout: cfg.Verification.Timeout,
 			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,

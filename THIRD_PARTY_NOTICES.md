@@ -5,6 +5,23 @@ files remain the authoritative inventory; this notice calls out dependencies
 whose redistribution terms require material beyond Etherview's Apache-2.0
 license.
 
+## Node SEA and solc-js runtime
+
+- Runtime: Node.js 26.7.0 Single Executable Application
+- Bundled protocol dependency: `solc@0.8.36`
+- Build-only bundler: `esbuild@0.28.2`
+- Upstreams: <https://nodejs.org/>, <https://github.com/ethereum/solc-js>, and
+  <https://github.com/evanw/esbuild>
+
+The production image includes the Node SEA license at
+`/licenses/solcjs-runtime/node-LICENSE.txt`, the bundled npm packages' license
+texts, and Debian copyright records for every private ELF library that the
+build discovers outside the final distroless base rootfs. The canonical runtime
+manifest records each transitive SONAME, provider, package version, resolution
+path, and license digest. Base-provided libraries are bound by the final OCI
+image and its license inventory; `esbuild` is used only while constructing the
+SEA and is not copied into production.
+
 ## go-ethereum library
 
 - Module: `github.com/ethereum/go-ethereum`

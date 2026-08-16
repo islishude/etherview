@@ -19,9 +19,7 @@ x-etherview-api-env: &etherview-api-env
   <<: *etherview-app-env
   ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
   ETHERVIEW_VERIFICATION_WORKER_COUNT:
-  ETHERVIEW_VERIFICATION_NODE_PATH:
-  ETHERVIEW_VERIFICATION_WRAPPER_PATH:
-  ETHERVIEW_VERIFICATION_MANIFEST_PATH:
+  ETHERVIEW_VERIFICATION_EXECUTOR_PATH:
   ETHERVIEW_VERIFICATION_GEAS_PATH:
   # Docker Desktop fake-IP DNS maps public compiler hosts into 198.18/15.
   # This Preview-only escape hatch retains exact HTTPS-origin, TLS, size, and

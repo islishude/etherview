@@ -33,9 +33,7 @@ const (
 	maximumRuntimeBackfillWorkers     = 64
 	maximumRuntimeBackfillBatchBlocks = 256
 
-	defaultVerificationNodePath     = "/usr/local/bin/node"
-	defaultVerificationWrapperPath  = "/opt/etherview/compiler/compile.mjs"
-	defaultVerificationManifestPath = "/opt/etherview/compiler/runtime-manifest.json"
+	defaultVerificationExecutorPath = "/opt/etherview/solcjs/etherview-solcjs"
 	defaultVerificationGeasPath     = "/usr/local/bin/etherview-geas-compiler"
 )
 
@@ -210,9 +208,7 @@ type VerificationConfig struct {
 	WorkerCount            int               `yaml:"worker_count"`
 	Timeout                time.Duration     `yaml:"timeout"`
 	CacheDirectory         string            `yaml:"cache_directory"`
-	NodePath               string            `yaml:"node_path"`
-	WrapperPath            string            `yaml:"wrapper_path"`
-	ManifestPath           string            `yaml:"manifest_path"`
+	ExecutorPath           string            `yaml:"executor_path"`
 	GeasPath               string            `yaml:"geas_path"`
 	CatalogURLs            map[string]string `yaml:"catalog_urls"`
 	AllowedDownloadOrigins []string          `yaml:"allowed_download_origins"`
@@ -389,9 +385,7 @@ func Default() Config {
 			WorkerCount:    1,
 			Timeout:        2 * time.Minute,
 			CacheDirectory: "/var/lib/etherview/compilers/cache",
-			NodePath:       defaultVerificationNodePath,
-			WrapperPath:    defaultVerificationWrapperPath,
-			ManifestPath:   defaultVerificationManifestPath,
+			ExecutorPath:   defaultVerificationExecutorPath,
 			GeasPath:       defaultVerificationGeasPath,
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
@@ -908,14 +902,14 @@ func (c Config) ValidateForRoles(roles []string) error {
 		} else if !filepath.IsAbs(c.Verification.CacheDirectory) ||
 			filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
 			errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
+		} else if !safeNodePermissionPath(c.Verification.CacheDirectory) {
+			errs = append(errs, errors.New("verification.cache_directory contains characters unsafe for Node permissions"))
 		}
 		for _, runtimePath := range []struct {
 			name  string
 			value string
 		}{
-			{name: "node_path", value: c.Verification.NodePath},
-			{name: "wrapper_path", value: c.Verification.WrapperPath},
-			{name: "manifest_path", value: c.Verification.ManifestPath},
+			{name: "executor_path", value: c.Verification.ExecutorPath},
 			{name: "geas_path", value: c.Verification.GeasPath},
 		} {
 			if strings.TrimSpace(runtimePath.value) == "" {
@@ -987,6 +981,15 @@ func validateCompilerCatalogConfig(cfg VerificationConfig) error {
 		}
 	}
 	return nil
+}
+
+func safeNodePermissionPath(value string) bool {
+	for _, character := range value {
+		if character < 0x20 || character == 0x7f || character == '*' || character == ',' {
+			return false
+		}
+	}
+	return true
 }
 
 func validatePublicOrigin(raw string) error {
@@ -1531,9 +1534,7 @@ func applyEnvironmentForRoles(
 		}
 	}
 	setString(lookup, "COMPILER_CACHE_DIRECTORY", &cfg.Verification.CacheDirectory)
-	setString(lookup, "VERIFICATION_NODE_PATH", &cfg.Verification.NodePath)
-	setString(lookup, "VERIFICATION_WRAPPER_PATH", &cfg.Verification.WrapperPath)
-	setString(lookup, "VERIFICATION_MANIFEST_PATH", &cfg.Verification.ManifestPath)
+	setString(lookup, "VERIFICATION_EXECUTOR_PATH", &cfg.Verification.ExecutorPath)
 	setString(lookup, "VERIFICATION_GEAS_PATH", &cfg.Verification.GeasPath)
 	if value, ok := lookup(envPrefix + "VERIFICATION_SOLIDITY_CATALOG_URL"); ok {
 		if value = strings.TrimSpace(value); value != "" {

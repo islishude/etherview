@@ -121,7 +121,7 @@ Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
 The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
-and execution. Each compile starts a fresh Node subprocess with a minimal
+and execution. Each compile starts a fresh Node 26.7.0 SEA subprocess with a minimal
 environment, private temporary directory, read-only permissions, bounded
 heap/input/output/time, and process-group cleanup. The subprocess receives no
 network, child-process, worker, addon, WASI, FFI, or inspector permission.
@@ -136,16 +136,14 @@ SHA-256, and self-test. Each requested runtime/optional creation entrypoint is
 assembled twice from an in-memory source filesystem before exact bytecode
 matching.
 
-The trusted runtime locations are explicit under `verification.node_path`,
-`verification.wrapper_path`, `verification.manifest_path`, and
-`verification.geas_path`, with matching
-`ETHERVIEW_VERIFICATION_NODE_PATH`,
-`ETHERVIEW_VERIFICATION_WRAPPER_PATH`, and
-`ETHERVIEW_VERIFICATION_MANIFEST_PATH`, and
+The trusted runtime locations are explicit under `verification.executor_path`
+and `verification.geas_path`, with matching
+`ETHERVIEW_VERIFICATION_EXECUTOR_PATH` and
 `ETHERVIEW_VERIFICATION_GEAS_PATH` overrides. Defaults point at the
-runtime bundled in the production image. Alternate absolute clean paths must
-identify one coherent read-only tree whose manifest covers the configured Node
-binary and wrapper and whose fixed identity and self-test still pass. Standard
+runtime bundled in the production image. An alternate absolute clean executor
+path must identify one coherent read-only SEA tree; its sibling
+`runtime-manifest.json` and `lib/` directory are fixed by layout and must pass
+the complete identity, file-set, checksum, and self-test validation. Standard
 Compose and Helm deployments do not add a runtime volume; use a trusted host
 installation or custom image when relocating these files. Keep every
 API-capable replica on the same runtime manifest digest, and drain bound
@@ -377,9 +375,10 @@ metric staleness, alerts, and repair/reindex response.
 
 The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
-stage contains the application binary plus an exact Node 26.5.0 executable,
-the read-only solc-js wrapper/dependency tree, its canonical runtime manifest,
-and the read-only Geas v0.3.3 helper. It contains no npm, npx, corepack, shell,
+stage contains the application binary plus one read-only Node 26.7.0 SEA, its
+canonical runtime manifest and automatically discovered private ELF libraries,
+and the read-only Geas v0.3.3 helper. It contains no general Node executable,
+npm, wrapper source, package metadata, `node_modules`, npx, corepack, shell,
 native solc, Vyper, Go toolchain, or source tree.
 
 `make docker-image-check` enforces that boundary by inspecting the configured

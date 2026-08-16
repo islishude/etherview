@@ -49,7 +49,7 @@ Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
-API verification workers -> restricted Node subprocess -> approved solc-js catalogs/artifacts
+API verification workers -> restricted Node SEA -> approved solc-js catalogs/artifacts
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
@@ -576,10 +576,12 @@ size alone is not sufficient justification to weaken those invariants.
   published. The helper's exact Go module checksum and executable digest bind
   once under the job lease without a compiler catalog. See
   [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
-- The production image includes an exact Node 26.5.0 executable, the
-  `solc@0.8.36` wrapper dependency, and a canonical read-only runtime manifest.
-  Startup verifies every manifest path and digest and performs a permission
-  self-test. Each deterministic compilation is a separate subprocess with a
+- The production image includes one Node 26.7.0 SEA containing the
+  `solc@0.8.36` wrapper protocol, plus a canonical read-only runtime manifest
+  and any target-rootfs-missing ELF libraries discovered recursively at build
+  time. It contains no general Node executable, npm tree, wrapper source, or
+  bundled default compiler. Startup verifies every manifest path and digest and
+  performs a permission self-test. Each deterministic compilation is a separate subprocess with a
   minimal environment, private temporary directory, 384 MiB V8 heap,
   input/output/time bounds, and whole-process-group termination. The subprocess
   may read only its runtime and selected compiler artifact and receives no
@@ -592,7 +594,8 @@ size alone is not sufficient justification to weaken those invariants.
   with an unbound artifact. Geas, proxy, or Sourcify jobs may continue. There is no
   standalone runner, runner network, native compiler fallback, or CPU-platform
   selection. See
-  [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md).
+  [ADR-0031](../decisions/ADR-0031-api-owned-solc-js-executor.md) and
+  [ADR-0040](../decisions/ADR-0040-sea-packaged-solcjs-executor.md).
 - Sourcify v2 remains an optional interoperability adapter rather than a local
   trust root. Calling its dedicated verification endpoint is explicit source
   publication consent. Bounded asynchronous polling returns an external result

@@ -53,9 +53,7 @@ func TestDefaultCompilerCatalogUsesAutomaticSolidityPlatform(t *testing.T) {
 func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	if cfg.Verification.NodePath != defaultVerificationNodePath ||
-		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
-		cfg.Verification.ManifestPath != defaultVerificationManifestPath ||
+	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath ||
 		cfg.Verification.GeasPath != defaultVerificationGeasPath {
 		t.Fatalf("unexpected default verification runtime paths: %#v", cfg.Verification)
 	}
@@ -65,17 +63,13 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	if err := decoder.Decode(&cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Verification.NodePath != defaultVerificationNodePath ||
-		cfg.Verification.WrapperPath != defaultVerificationWrapperPath ||
-		cfg.Verification.ManifestPath != defaultVerificationManifestPath ||
+	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath ||
 		cfg.Verification.GeasPath != defaultVerificationGeasPath {
-		t.Fatalf("legacy YAML cleared verification runtime defaults: %#v", cfg.Verification)
+		t.Fatalf("partial YAML cleared verification runtime defaults: %#v", cfg.Verification)
 	}
 
 	overrides := map[string]string{
-		"ETHERVIEW_VERIFICATION_NODE_PATH":     "/custom/bin/node",
-		"ETHERVIEW_VERIFICATION_WRAPPER_PATH":  "/custom/runtime/compile.mjs",
-		"ETHERVIEW_VERIFICATION_MANIFEST_PATH": "/custom/runtime/runtime-manifest.json",
+		"ETHERVIEW_VERIFICATION_EXECUTOR_PATH": "/custom/runtime/etherview-solcjs",
 		"ETHERVIEW_VERIFICATION_GEAS_PATH":     "/custom/bin/etherview-geas-compiler",
 	}
 	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
@@ -84,9 +78,7 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Verification.NodePath != overrides["ETHERVIEW_VERIFICATION_NODE_PATH"] ||
-		cfg.Verification.WrapperPath != overrides["ETHERVIEW_VERIFICATION_WRAPPER_PATH"] ||
-		cfg.Verification.ManifestPath != overrides["ETHERVIEW_VERIFICATION_MANIFEST_PATH"] ||
+	if cfg.Verification.ExecutorPath != overrides["ETHERVIEW_VERIFICATION_EXECUTOR_PATH"] ||
 		cfg.Verification.GeasPath != overrides["ETHERVIEW_VERIFICATION_GEAS_PATH"] {
 		t.Fatalf("verification runtime environment override was not applied: %#v", cfg.Verification)
 	}
@@ -100,25 +92,32 @@ func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.
 		field     string
 	}{
 		{
-			name: "empty node",
+			name: "empty executor",
 			configure: func(verification *VerificationConfig) {
-				verification.NodePath = ""
+				verification.ExecutorPath = ""
 			},
-			field: "verification.node_path",
+			field: "verification.executor_path",
 		},
 		{
-			name: "relative wrapper",
+			name: "relative executor",
 			configure: func(verification *VerificationConfig) {
-				verification.WrapperPath = "runtime/compile.mjs"
+				verification.ExecutorPath = "runtime/etherview-solcjs"
 			},
-			field: "verification.wrapper_path",
+			field: "verification.executor_path",
 		},
 		{
-			name: "unclean manifest",
+			name: "unclean executor",
 			configure: func(verification *VerificationConfig) {
-				verification.ManifestPath = "/opt/etherview/compiler/../runtime-manifest.json"
+				verification.ExecutorPath = "/opt/etherview/solcjs/../etherview-solcjs"
 			},
-			field: "verification.manifest_path",
+			field: "verification.executor_path",
+		},
+		{
+			name: "unsafe cache wildcard",
+			configure: func(verification *VerificationConfig) {
+				verification.CacheDirectory = "/var/lib/etherview/compiler*cache"
+			},
+			field: "verification.cache_directory",
 		},
 		{
 			name: "relative Geas helper",
@@ -1391,6 +1390,9 @@ func TestRemovedCompilerYAMLFieldsAreUnknown(t *testing.T) {
 		"verification:\n  runner_endpoint: http://compiler-runner:8091\n",
 		"verification:\n  runner_image: image@sha256:deadbeef\n",
 		"verification:\n  artifacts: {}\n",
+		"verification:\n  node_path: /usr/local/bin/node\n",
+		"verification:\n  wrapper_path: /opt/etherview/compiler/compile.mjs\n",
+		"verification:\n  manifest_path: /opt/etherview/compiler/runtime-manifest.json\n",
 	} {
 		var cfg Config
 		decoder := yaml.NewDecoder(strings.NewReader(document))
@@ -1398,6 +1400,25 @@ func TestRemovedCompilerYAMLFieldsAreUnknown(t *testing.T) {
 		if err := decoder.Decode(&cfg); err == nil {
 			t.Fatalf("removed compiler field was accepted: %s", document)
 		}
+	}
+}
+
+func TestRemovedCompilerEnvironmentPathsAreIgnored(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	removed := map[string]string{
+		"ETHERVIEW_VERIFICATION_NODE_PATH":     "/custom/bin/node",
+		"ETHERVIEW_VERIFICATION_WRAPPER_PATH":  "/custom/compile.mjs",
+		"ETHERVIEW_VERIFICATION_MANIFEST_PATH": "/custom/runtime-manifest.json",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := removed[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Verification.ExecutorPath != defaultVerificationExecutorPath {
+		t.Fatalf("removed environment changed executor path: %q", cfg.Verification.ExecutorPath)
 	}
 }
 

@@ -23,6 +23,7 @@ and user/operator evidence sufficient for a production public release.
 - [ADR-0030: API-integrated verifier and self-contained runner](../decisions/ADR-0030-api-integrated-verifier-and-self-contained-runner.md)
 - [ADR-0031: API-owned architecture-neutral solc-js executor](../decisions/ADR-0031-api-owned-solc-js-executor.md)
 - [ADR-0037: Rebuildable persistent solc-js artifact cache](../decisions/ADR-0037-persistent-solcjs-artifact-cache.md)
+- [ADR-0040: SEA-packaged solc-js executor](../decisions/ADR-0040-sea-packaged-solcjs-executor.md)
 - [Testing](../testing.md)
 
 ## Work Items
@@ -68,6 +69,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T37 | done | P60, P70-T10 | Suppress routine HTTP access logs for operational health endpoints while retaining telemetry and failure signals | observability regression tests and common gates |
 | P70-T38 | done | P60, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
 | P70-T39 | done | P70-T38 | Serialize shared solc-js cache installation with writer PostgreSQL advisory locks and stable file snapshots | cache concurrency, PostgreSQL integration, persistence, and common gates |
+| P70-T40 | done | P70-T29, P70-T32, P70-T38, P70-T39 | Package the trusted solc-js protocol as one Node SEA with generated target-rootfs ELF closure and one relocatable executor path | ADR, manifest, subprocess, config, image, cache persistence, and real compiler gates |
 
 ## Acceptance
 
@@ -116,6 +118,17 @@ and user/operator evidence sufficient for a production public release.
       session advisory lock only for final installation, return contended
       connections before retrying, and accept only a stable fully validated
       file snapshot without holding a transaction or connection across HTTP.
+- [x] P70-T40: production packages the trusted protocol and `solc/wrapper` as
+      one Node 26.7.0 SEA while keeping checksum-authenticated versioned
+      soljson artifacts in the persistent external cache.
+- [x] P70-T40: build-time target-rootfs analysis discovers, classifies,
+      attributes, copies, manifests, and revalidates every transitive ELF
+      dependency without a SONAME allowlist; the final image contains no
+      general Node, npm, wrapper source, package metadata, or `node_modules`.
+- [x] P70-T40: configuration exposes only one relocatable executor path, Go
+      strictly validates the canonical complete runtime tree and permissions,
+      and existing executor kind/policy, cache identity, bounds, timeout, and
+      process-group cleanup semantics remain unchanged.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -313,6 +326,41 @@ P70-T08, and P70-T09 are all complete; the v1 release cannot close before
 those gates.
 
 ## Evidence
+
+- P70-T40 implementation: accepted ADR-0040 supersedes only ADR-0031's runtime
+  packaging and launch surface. An exact-lockfile `esbuild@0.28.2` CommonJS
+  bundle embeds the trusted protocol and `solc/wrapper` in a Node 26.7.0 SEA
+  without a default soljson. The SEA accepts only exact self-test or compile
+  invocations, embeds the fixed permission/heap policy, and accepts from Go
+  only one escaped exact artifact read permission. `pax-utils` `lddtree`
+  discovers the complete host-native ELF closure against the copied final
+  distroless rootfs, attributes every provider and license, copies only
+  dereferenced missing libraries, emits the canonical
+  `etherview-solcjs-sea-runtime-v1` manifest, and revalidates the assembled
+  closure without a SONAME allowlist.
+- P70-T40 runtime and deployment evidence: Go exposes only
+  `verification.executor_path` / `ETHERVIEW_VERIFICATION_EXECUTOR_PATH`, derives
+  the sibling manifest and `lib/`, strictly validates the canonical complete
+  read-only tree, and retains `node_solcjs_v1`, `trusted_subprocess`, bounded
+  I/O/time, private temporary directories, and process-group cleanup. Compose,
+  Preview, Helm, examples, image checks, notices, and the Hardhat cache probe
+  use the one-path layout; the read-only test client proves SHA-256, inode,
+  mode, size, mtime, and ctime survive compiler-owner replacement. No database
+  migration or cache backfill was added.
+- P70-T40 verification: focused ordinary and race tests pass for
+  `internal/verify`, `internal/config`, and `internal/app`; `make check` passes
+  generation, lint, all Go ordinary/race tests, 341 web tests, security,
+  license, Dockerfile, Compose, and Helm gates. `make docker-build
+  docker-image-check` passes natively on ARM64, including SEA self-test, a real
+  Solidity 0.8.36 compile, version/import/permission negative cases, removed
+  dependency and conflicting-SONAME failures, exact rootfs inventory, and
+  read-only no-capability execution. Final-image `make
+  test-runtime-e2e-prebuilt`, `make test-hardhat3-e2e-prebuilt`, and `make
+  test-foundry-e2e-prebuilt` pass both monolith and distributed topologies;
+  the corresponding full Hardhat and Foundry targets also pass. The maintained
+  CI matrix builds, image-checks, and exercises the real compiler on native
+  AMD64 and ARM64 runners. `make plan-check` and `git diff --check` pass after
+  the evidence update.
 
 - P70-T39 implementation and verification: every compiler cache requires an
   install locker, and production injects the writer PostgreSQL implementation.

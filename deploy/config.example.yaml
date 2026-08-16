@@ -176,15 +176,13 @@ verification:
   timeout: 2m
   # Every API/all replica runs this many durable verification consumers.
   worker_count: 1
-  # API/all owns an architecture-native Node subprocess and stores only
+  # API/all owns an architecture-native Node SEA subprocess and stores only
   # checksum-addressed official solc-js artifacts in this private rebuildable
   # cache. The standard Compose deployment mounts it from a named volume.
   cache_directory: /var/lib/etherview/compilers/cache
-  # These paths may be relocated by a trusted host or custom image. They must
-  # identify one read-only runtime covered by the configured manifest.
-  node_path: /usr/local/bin/node
-  wrapper_path: /opt/etherview/compiler/compile.mjs
-  manifest_path: /opt/etherview/compiler/runtime-manifest.json
+  # These paths may be relocated by a trusted host or custom image. The SEA
+  # executor derives its sibling manifest and private lib directory.
+  executor_path: /opt/etherview/solcjs/etherview-solcjs
   geas_path: /usr/local/bin/etherview-geas-compiler
   catalog_urls:
     # "auto" always selects the official architecture-neutral

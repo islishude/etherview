@@ -270,11 +270,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   a manifest-digest-pinned client, offline Solidity 0.8.30 preflight, strict
   `/v2/api?chainid=1` submission, duplicate-job prevention, and normalized
   monolith/split provenance parity. Its native AMD64 and ARM64 CI matrix passed
-  on PR #20's exact implementation head, completing P70-T31. P70-T32 makes the
-  trusted Node, wrapper, and manifest paths explicit file/environment
-  configuration without adding a runtime mount or weakening manifest identity;
-  focused, deployment, production-image, common, and real Hardhat
-  monolith/split gates pass locally on ARM64. P70-T38 retains the authenticated
+  on PR #20's exact implementation head, completing P70-T31. P70-T32
+  established an explicit operator-selected runtime location without adding a
+  runtime mount or weakening manifest identity. P70-T40 now replaces the
+  separate Node/wrapper/runtime tree with one Node 26.7.0 SEA, one executor
+  path, and an automatically discovered, attributed, and revalidated
+  target-rootfs ELF closure; focused, deployment, production-image, common,
+  runtime, Hardhat, and Foundry monolith/split gates pass locally on ARM64,
+  while the maintained native AMD64/ARM64 CI matrices exercise the same image
+  and real compiler paths. P70-T38 retains the authenticated
   solc-js artifact cache across application replacement without changing
   compiler trust or catalog-freshness semantics; cache concurrency, Compose,
   Helm, image, real Hardhat/Foundry, runtime, and common gates pass locally on

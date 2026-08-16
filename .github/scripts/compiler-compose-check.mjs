@@ -16,10 +16,7 @@ const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
 const runtimePathEnvironment = {
-  ETHERVIEW_VERIFICATION_NODE_PATH: "/custom/bin/node",
-  ETHERVIEW_VERIFICATION_WRAPPER_PATH: "/custom/runtime/compile.mjs",
-  ETHERVIEW_VERIFICATION_MANIFEST_PATH:
-    "/custom/runtime/runtime-manifest.json",
+  ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
 };
 const expectRuntimePathOverride =

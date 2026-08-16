@@ -80,6 +80,17 @@ const buildVolumes = (hardhat.volumes ?? []).filter((volume) =>
 );
 assert.equal(buildVolumes.length, 1, "Hardhat build state must use one filesystem");
 assert.equal(buildVolumes[0].target, "/workspace/build", "Hardhat build volume");
+const cacheInspectionMounts = volumeMounts(hardhat).filter(
+  (mount) => mount.target === cachePath,
+);
+assert.equal(cacheInspectionMounts.length, 1, "Hardhat compiler cache inspection mount");
+assert.equal(cacheInspectionMounts[0].type, "volume", "Hardhat compiler cache mount type");
+assert.equal(cacheInspectionMounts[0].source, "compiler-cache", "Hardhat compiler cache source");
+assert.equal(
+  cacheInspectionMounts[0].read_only,
+  true,
+  "Hardhat compiler cache inspection must be read-only",
+);
 
 function tmpfsTargets(service) {
   return (service.tmpfs ?? []).map((entry) =>

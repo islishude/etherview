@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">= 26.5.0"
+    "node": "26.7.0"
+  },
+  "scripts": {
+    "build:sea": "node build-sea.mjs"
   },
   "dependencies": {
     "solc": "0.8.36"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   },
   "overrides": {
     "tmp": "0.2.7"

@@ -1,11 +1,13 @@
 # ADR-0016: Compiler Supply Chain and Sandbox
 
 Status: superseded by [ADR-0024](ADR-0024-verifier-v2-workflow.md) and
-[ADR-0031](ADR-0031-api-owned-solc-js-executor.md)
+[ADR-0031](ADR-0031-api-owned-solc-js-executor.md), with runtime packaging
+superseded by [ADR-0040](ADR-0040-sea-packaged-solcjs-executor.md)
 
 The process/container runner design below is historical. Current production
 uses checksum-pinned `emscripten-wasm32` solc-js artifacts in an API-owned,
-permission-restricted Node subprocess and does not select a CPU platform.
+permission-restricted Node SEA subprocess and does not select a compiler CPU
+platform.
 
 ## Context
 

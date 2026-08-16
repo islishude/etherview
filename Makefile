@@ -280,6 +280,8 @@ license-check: license-tool-check web-install compiler-install
 	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
 	@test -f THIRD_PARTY_NOTICES.md || { echo "license-check: third-party notices are missing"; exit 1; }
 	@grep -Eq '^COPY .*THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md$$' Dockerfile || { echo "license-check: production image must include third-party notices"; exit 1; }
+	@grep -Fq '## Node SEA and solc-js runtime' THIRD_PARTY_NOTICES.md || { echo "license-check: Node SEA notice is missing"; exit 1; }
+	@grep -Eq '^COPY --from=compiler-builder .* /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime$$' Dockerfile || { echo "license-check: production image must include SEA runtime licenses"; exit 1; }
 	@test -f licenses/holiman-bloomfilter-MIT.txt || { echo "license-check: checked-in bloomfilter license is missing"; exit 1; }
 	@grep -Eq '^COPY --from=go-builder .* /licenses /licenses$$' Dockerfile || { echo "license-check: production image must include reviewed geth licenses"; exit 1; }
 	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in third-party licenses"; exit 1; }
@@ -310,26 +312,20 @@ compose-check:
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
-	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
-		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
-		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=monolith \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/compiler-compose-check.mjs
-	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
-		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
-		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
 		ETHERVIEW_COMPOSE_TOPOLOGY=distributed \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \
 		$(NODE) .github/scripts/compiler-compose-check.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --quiet
-	@ETHERVIEW_VERIFICATION_NODE_PATH=/custom/bin/node \
-		ETHERVIEW_VERIFICATION_WRAPPER_PATH=/custom/runtime/compile.mjs \
-		ETHERVIEW_VERIFICATION_MANIFEST_PATH=/custom/runtime/runtime-manifest.json \
+	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
 		DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml config --format json | \
 		ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE=true \

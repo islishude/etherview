@@ -101,7 +101,7 @@ replace a required `make test-e2e` pass.
   proxy, and checks normalized public/persistent parity. The `all` or `api`
   process consumes the durable job, resolves and checksum-validates the
   architecture-independent `emscripten-wasm32` artifact, and runs each bounded
-  Standard JSON compilation in a fresh permission-restricted Node subprocess.
+  Standard JSON compilation in a fresh permission-restricted Node SEA subprocess.
   The first real compilation populates the Compose named cache volume; the
   harness force-recreates the compiler-owning service, submits another job for
   the same version, and proves the identical artifact survives without a new
@@ -178,11 +178,13 @@ replace a required `make test-e2e` pass.
   writer-backed stale-settlement alerts.
 - `make docker-build docker-image-check`: build the production target for the
   Docker host architecture, run it with the numeric non-root identity and
-  hardened runtime flags, validate the exact Node/compiler runtime manifest
-  and self-test, and scan its exported root filesystem. The image contains the
-  pinned Node executable, read-only solc-js wrapper/dependency tree, and the
-  read-only Geas v0.3.3 helper, but no
-  npm, npx, corepack, shell, Go toolchain, native solc, or Vyper payload.
+  hardened runtime flags, validate the exact SEA/compiler runtime manifest,
+  recursive ELF closure, and self-test, and scan its exported root filesystem.
+  The image contains one read-only Node 26.7.0 SEA, only the automatically
+  discovered private libraries missing from the final base rootfs, and the
+  read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
+  package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
+  native solc, or Vyper payload.
   It also validates the non-root-owned mode-0750 compiler cache seed directory
   used when Docker initializes the persistent named volume.
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18

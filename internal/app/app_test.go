@@ -460,9 +460,7 @@ func TestPublicVerificationServiceHonorsSecuritySwitch(t *testing.T) {
 func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Verification.NodePath = "/custom/bin/node"
-	cfg.Verification.WrapperPath = "/custom/runtime/compile.mjs"
-	cfg.Verification.ManifestPath = "/custom/runtime/runtime-manifest.json"
+	cfg.Verification.ExecutorPath = "/custom/runtime/etherview-solcjs"
 	cfg.Verification.GeasPath = "/custom/bin/etherview-geas-compiler"
 	cfg.Verification.CacheDirectory = "/custom/cache"
 	cfg.Verification.Timeout = 17 * time.Second
@@ -480,9 +478,7 @@ func TestVerificationCompilerUsesCompleteConfiguration(t *testing.T) {
 		t.Fatalf("verification compiler type = %T", compiler)
 	}
 	solcJS := router.SolcJS
-	if solcJS.NodePath != cfg.Verification.NodePath ||
-		solcJS.WrapperPath != cfg.Verification.WrapperPath ||
-		solcJS.ManifestPath != cfg.Verification.ManifestPath ||
+	if solcJS.ExecutorPath != cfg.Verification.ExecutorPath ||
 		solcJS.Timeout != cfg.Verification.Timeout ||
 		solcJS.MaxInputBytes != cfg.Verification.MaxInputBytes ||
 		solcJS.MaxOutputBytes != cfg.Verification.MaxOutputBytes {

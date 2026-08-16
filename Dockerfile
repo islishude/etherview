@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 
+FROM gcr.io/distroless/base-debian13:nonroot AS production-base
+
 FROM node:26.7.0-slim AS web-builder
 WORKDIR /src
 COPY web/package.json web/package-lock.json web/.npmrc ./web/
@@ -11,27 +13,31 @@ COPY web/src ./web/src
 RUN npm --prefix api run generate:api && npm --prefix web run build
 
 FROM node:26.7.0-slim AS compiler-builder
-WORKDIR /opt/etherview/compiler
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends binutils pax-utils \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src/compiler
 COPY compiler/package.json compiler/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-COPY compiler/compile.mjs ./compile.mjs
-COPY compiler/build-manifest.mjs /tmp/build-manifest.mjs
-RUN mkdir -p lib \
-    && for library in libatomic.so.1 libstdc++.so.6 libgcc_s.so.1; do \
-    library_path="$(ldd /usr/local/bin/node | awk -v name="$library" '$1 == name { print $3 }')"; \
-    test -f "$library_path"; \
-    cp -L "$library_path" "lib/$library"; \
-    done \
-    && rm -rf node_modules/.bin \
-    && test -z "$(find . -type l -print -quit)" \
-    && node /tmp/build-manifest.mjs \
-    /usr/local/bin/node \
-    /opt/etherview/compiler \
-    /opt/etherview/compiler/runtime-manifest.json \
-    && find /opt/etherview/compiler -type d -exec chmod 0555 {} + \
-    && find /opt/etherview/compiler -type f -exec chmod 0444 {} + \
-    && chmod 0555 /opt/etherview \
+    npm ci --ignore-scripts --no-audit --no-fund
+COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
+COPY --from=production-base / /target-rootfs/
+RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
+    && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
+    && test -f /usr/local/LICENSE \
+    && cp /usr/local/LICENSE /opt/etherview/licenses/solcjs-runtime/node-LICENSE.txt \
+    && find node_modules -mindepth 2 -maxdepth 2 -type f \
+       \( -iname 'license' -o -iname 'license.*' -o -iname 'copying' -o -iname 'copying.*' \) \
+       -exec sh -c 'package="$(basename "$(dirname "$1")")"; extension="$(basename "$1")"; cp "$1" "/opt/etherview/licenses/solcjs-runtime/${package}-${extension}"' _ {} \; \
+    && node build-runtime.mjs \
+       /opt/etherview/solcjs/etherview-solcjs \
+       /target-rootfs \
+       /opt/etherview/licenses/solcjs-runtime \
+    && node test-elf-runtime.mjs /target-rootfs \
+    && install -d -m 1777 /target-rootfs/tmp \
+    && node test-sea.mjs /target-rootfs node_modules/solc/soljson.js \
+    && install -d -m 0755 /solcjs-runtime-copy \
+    && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
 FROM golang:1.26.6 AS go-builder
@@ -62,7 +68,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
     && cp "$geas_module_dir/LICENSE" /licenses/geas-LGPL-3.0.txt
 
-FROM gcr.io/distroless/base-debian13:nonroot AS production
+FROM production-base AS production
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -79,8 +85,8 @@ COPY --from=go-builder --chown=nonroot:nonroot /licenses /licenses
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
-COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0555 /usr/local/bin/node /usr/local/bin/node
-COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview /opt/etherview
+COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
+COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
 USER 65532:65532
 EXPOSE 8080 9090

@@ -32,6 +32,7 @@ services:
     volumes:
       - hardhat-build:/workspace/build
       - ${ETHERVIEW_HARDHAT3_ARTIFACT_DIR}:/e2e-output
+      - compiler-cache:/var/lib/etherview/compilers:ro
 
 volumes:
   hardhat-build:

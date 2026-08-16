@@ -229,9 +229,9 @@ runbook for the evidence boundary and tuning formula.
 Public source verification requires NetworkPolicy. The selected `all` or `api`
 Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
-fresh permission-restricted Node subprocess. The exact Node executable,
-solc-js wrapper/dependency tree, and canonical read-only runtime manifest are
-part of the production image for its native architecture. There is no runner
+fresh permission-restricted Node 26.7.0 SEA subprocess. The single SEA,
+canonical read-only runtime manifest, and automatically discovered private ELF
+libraries are part of the production image for its native architecture. There is no runner
 Deployment, Service, image value, runtime class, native compiler fallback, or
 CPU-platform setting.
 
@@ -261,13 +261,13 @@ rebuildable claim, then restart them to download required versions again.
 Monitor and size the PVC at the storage layer because automatic eviction could
 remove a compiler pinned by an older durable job generation.
 
-`config.verification.node_path`, `wrapper_path`, and `manifest_path` default to
-that bundled runtime and may select alternate absolute paths supplied by a
-trusted custom image. The chart deliberately provides no external compiler
-runtime volume. All three paths must describe one read-only manifest-covered
-runtime with the fixed Node/wrapper identity, every `all` or `api` replica must
-use the same manifest digest, and executor-bound jobs must be drained before a
-path change and replica restart.
+`config.verification.executor_path` defaults to the bundled SEA and may select
+an alternate absolute path supplied by a trusted custom image. The chart
+deliberately provides no external compiler runtime volume. The executor's
+sibling manifest and `lib/` directory must describe one complete read-only
+runtime with the fixed SEA identity, every `all` or `api` replica must use the
+same manifest digest, and executor-bound jobs must be drained before a path
+change and replica restart.
 
 `config.verification.geas_path` defaults to the bundled read-only Geas v0.3.3
 helper. Startup requires its exact module checksum, executable digest, and
