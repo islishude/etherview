@@ -34,7 +34,7 @@ assert.ok(
 assertNoPlatform(config, "compose.preview.yaml");
 
 const geth = requireService("geth");
-assert.equal(geth.image, "ethereum/client-go:stable", "Preview Geth image");
+assert.equal(geth.image, "ethereum/client-go:v1.17.5", "Preview Geth image");
 assert.deepEqual(
   geth.entrypoint,
   ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"],
