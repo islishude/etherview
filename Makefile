@@ -44,6 +44,8 @@ PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
 PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
+PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
+PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate-check start-preview recreate-preview
@@ -61,6 +63,7 @@ PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
 	test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
+	preview-genesis-check preview-genesis-refresh preview-genesis-runtime \
 	start-preview stop-preview recreate-preview
 
 go-build: web-build
@@ -305,7 +308,7 @@ docker-image-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-image-check: docker is required"; exit 1; }
 	DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" deploy/check-image.sh
 
-compose-check:
+compose-check: preview-genesis-check
 	@DOCKER="$(DOCKER)" $(COMPOSE) version >/dev/null 2>&1 || { echo "compose-check: Docker Compose is required"; exit 1; }
 	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "compose-check: Node.js is required for rendered environment checks"; exit 1; }
 	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
@@ -422,15 +425,34 @@ preview-cert-check:
 		exit 1; \
 	}
 
-start-preview: preview-cert-check docker-build
-	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+preview-genesis-check:
+	@command -v "$(NODE)" >/dev/null 2>&1 || { echo "preview-genesis-check: Node.js is required"; exit 1; }
+	$(NODE) --test .github/scripts/update-preview-genesis-timestamp.test.mjs
+
+preview-genesis-refresh:
+	@$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
+		"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
+
+start-preview: preview-cert-check preview-genesis-refresh docker-build
+	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 
 stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
-recreate-preview: preview-cert-check docker-build
-	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+preview-genesis-runtime:
+	@test -r "$(PREVIEW_GENESIS_RUNTIME)" || \
+		$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
+			"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
+
+recreate-preview: preview-cert-check preview-genesis-runtime docker-build
+	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
-	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
+	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		GETH_GENESIS_FILE="$${GETH_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \
+		ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)

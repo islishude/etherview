@@ -70,6 +70,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T38 | done | P60, P70-T29 | Persist checksum-addressed solc-js artifacts across application replacement without changing compiler trust or catalog-freshness semantics | cache concurrency, Compose/Helm, image, real compiler restart, and common gates |
 | P70-T39 | done | P70-T38 | Serialize shared solc-js cache installation with writer PostgreSQL advisory locks and stable file snapshots | cache concurrency, PostgreSQL integration, persistence, and common gates |
 | P70-T40 | done | P70-T29, P70-T32, P70-T38, P70-T39 | Package the trusted solc-js protocol as one Node SEA with generated target-rootfs ELF closure and one relocatable executor path | ADR, manifest, subprocess, config, image, cache persistence, and real compiler gates |
+| P70-T41 | done | P70-T35 | Render a per-start Preview Genesis runtime copy from the checked-in template while preserving persistent-volume identity semantics | script, Makefile, Compose, and Preview runtime checks |
 
 ## Acceptance
 
@@ -129,6 +130,14 @@ and user/operator evidence sufficient for a production public release.
       strictly validates the canonical complete runtime tree and permissions,
       and existing executor kind/policy, cache identity, bounds, timeout, and
       process-group cleanup semantics remain unchanged.
+- [x] P70-T41: `make start-preview` renders the ignored
+      `.local/preview-genesis.json` runtime copy from the default
+      `deploy/preview.genesis.json` template with a lowercase hexadecimal
+      Unix-seconds timestamp before the Docker build and Compose startup; it
+      preserves all other Genesis bytes, never modifies the template, leaves
+      custom Genesis overrides unchanged, and keeps `recreate-preview` from
+      refreshing an existing runtime timestamp; neither target removes
+      persistent Preview volumes automatically.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -361,6 +370,22 @@ those gates.
   CI matrix builds, image-checks, and exercises the real compiler on native
   AMD64 and ARM64 runners. `make plan-check` and `git diff --check` pass after
   the evidence update.
+
+- P70-T41 implementation and verification: the raw-preserving Node renderer
+  validates JSON, the single top-level hexadecimal timestamp, and unsigned
+  64-bit bounds before writing only the ignored runtime copy; its four tests
+  cover current-time output, byte preservation with an unchanged template,
+  invalid input without output, and runtime-copy reuse without rewriting.
+  `make preview-genesis-check`, `make compose-check`, `make plan-check`,
+  `make -n start-preview`, `make -n recreate-preview`, and `git diff --check`
+  pass. A clean host Preview run of `make stop-preview` followed by `make
+  start-preview` explicitly removed the prior volumes, rendered runtime
+  timestamp `0x6a8145ba` before the Docker build, mounted the same runtime file
+  into Geth and all six application roles, and matched it to block 0 through
+  RPC (`0xacaf07faca487f2c18a1bbe9033c04f0e1e20ee0ab3f654b8b3b6dc3cf62955f`);
+  PostgreSQL and all six application roles were healthy, the checked-in
+  template hash stayed `7ad874579f417170d52a388eb3fd9aafa1dc661b5bcbd5182a915ee412efc997`,
+  and `start-preview` itself did not remove volumes.
 
 - P70-T39 implementation and verification: every compiler cache requires an
   install locker, and production injects the writer PostgreSQL implementation.

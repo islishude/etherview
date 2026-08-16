@@ -49,8 +49,16 @@ ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
 Preview mounts that pair read-only only into the API service. Its public
 listener is `https://etherview.localhost:8080`, while
 `http://localhost:9090` remains the plain HTTP operations listener. The start
-and recreate targets only preflight the files; they do not modify the host
-trust store.
+target renders an ignored `.local/preview-genesis.json` runtime copy from the
+checked-in `deploy/preview.genesis.json` template at the beginning of the
+target, before the Docker build and Compose startup. Only the runtime copy gets
+the current Unix-seconds timestamp; the template is never modified by Preview
+startup. Because this changes the Genesis block hash, run `make stop-preview`
+before starting a previously created Preview again; the start target does not
+automatically remove its persistent volumes. `make recreate-preview` reuses the
+existing runtime copy (creating it once if missing) without refreshing its
+timestamp, and custom Genesis-file overrides are left unchanged. The start and
+recreate targets do not modify the host trust store.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the

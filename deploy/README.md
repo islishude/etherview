@@ -104,8 +104,18 @@ under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
 `127.0.0.1`, and `::1`. It also
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
-`make start-preview` and `make recreate-preview` only check that those three
-public/certificate assets exist; they never modify the host trust store.
+`make start-preview` begins by rendering an ignored
+`.local/preview-genesis.json` runtime copy from the checked-in
+`deploy/preview.genesis.json` template before the Docker build and Compose
+startup; the value is the current Unix time in seconds encoded as a lowercase
+hex quantity. The checked-in template is never modified by Preview startup.
+Since that changes the Genesis block hash, run `make stop-preview` before
+starting a previously created Preview again so its persistent Geth and
+PostgreSQL volumes are removed explicitly. The target does not remove those
+volumes for you, and `make recreate-preview` reuses the existing runtime copy
+(creating it once if missing) without refreshing its timestamp. Custom
+Genesis-file overrides are left unchanged. Both targets only check that the
+three public/certificate assets exist and never modify the host trust store.
 Preview mounts only the certificate pair read-only into the API role. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is
