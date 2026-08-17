@@ -447,9 +447,11 @@ stop-preview:
 	@DOCKER="$(DOCKER)" $(COMPOSE) -f compose.preview.yaml down --volumes --remove-orphans
 
 preview-genesis-runtime:
-	@test -r "$(PREVIEW_GENESIS_RUNTIME)" || \
-		$(NODE) .github/scripts/update-preview-genesis-timestamp.mjs \
-			"$(PREVIEW_GENESIS_TEMPLATE)" "$(PREVIEW_GENESIS_RUNTIME)"
+	@if { test -z "$${ETHERVIEW_GENESIS_FILE:-}" || test -z "$${GETH_GENESIS_FILE:-}"; } && \
+		! test -r "$(PREVIEW_GENESIS_RUNTIME)"; then \
+		echo "Preview runtime Genesis missing; run 'make start-preview' before 'make recreate-preview'"; \
+		exit 1; \
+	fi
 
 recreate-preview: preview-cert-check preview-genesis-runtime docker-build
 	@ETHERVIEW_GENESIS_FILE="$${ETHERVIEW_GENESIS_FILE:-$(PREVIEW_GENESIS_RUNTIME)}" \

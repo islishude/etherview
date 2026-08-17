@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { writeGenesisWithTimestamp } from "./update-preview-genesis-timestamp.mjs";
 
@@ -78,4 +79,60 @@ test("reuses an unchanged runtime copy without rewriting it", () => {
     assert.equal(second.changed, false);
     assert.equal(fs.statSync(destinationPath).mtimeMs, writtenAt);
   });
+});
+
+test("the recreate prerequisite never creates or rewrites Genesis", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-preview-recreate-test-"));
+  const runtimePath = path.join(directory, "runtime.json");
+  const makeArgs = [
+    "--no-print-directory",
+    "preview-genesis-runtime",
+    `PREVIEW_GENESIS_RUNTIME=${runtimePath}`,
+  ];
+  const environment = {
+    ...process.env,
+    ETHERVIEW_GENESIS_FILE: "",
+    GETH_GENESIS_FILE: "",
+  };
+
+  try {
+    const missing = spawnSync("make", makeArgs, {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+      env: environment,
+    });
+    assert.notEqual(missing.status, 0);
+    assert.match(
+      `${missing.stdout}${missing.stderr}`,
+      /Preview runtime Genesis missing; run 'make start-preview'/,
+    );
+    assert.equal(fs.existsSync(runtimePath), false);
+
+    const original = '{\n  "timestamp": "0x1"\n}\n';
+    fs.writeFileSync(runtimePath, original, "utf8");
+    const writtenAt = fs.statSync(runtimePath).mtimeMs;
+    const existing = spawnSync("make", makeArgs, {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+      env: environment,
+    });
+    assert.equal(existing.status, 0, `${existing.stdout}${existing.stderr}`);
+    assert.equal(fs.readFileSync(runtimePath, "utf8"), original);
+    assert.equal(fs.statSync(runtimePath).mtimeMs, writtenAt);
+
+    fs.rmSync(runtimePath);
+    const custom = spawnSync("make", makeArgs, {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+      env: {
+        ...environment,
+        ETHERVIEW_GENESIS_FILE: "/custom/app-genesis.json",
+        GETH_GENESIS_FILE: "/custom/geth-genesis.json",
+      },
+    });
+    assert.equal(custom.status, 0, `${custom.stdout}${custom.stderr}`);
+    assert.equal(fs.existsSync(runtimePath), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

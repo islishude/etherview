@@ -113,9 +113,12 @@ Since that changes the Genesis block hash, run `make stop-preview` before
 starting a previously created Preview again so its persistent Geth and
 PostgreSQL volumes are removed explicitly. The target does not remove those
 volumes for you, and `make recreate-preview` reuses the existing runtime copy
-(creating it once if missing) without refreshing its timestamp. Custom
-Genesis-file overrides are left unchanged. Both targets only check that the
-three public/certificate assets exist and never modify the host trust store.
+without refreshing its timestamp. If that default runtime copy is missing,
+`make recreate-preview` fails with an instruction to run `make start-preview`;
+it never creates or modifies a Genesis file. Complete custom Genesis-file
+overrides are left unchanged and do not require the default runtime copy. Both
+targets only check that the three public/certificate assets exist and never
+modify the host trust store.
 The template funds both the browser fixture account and Geth's upstream
 development address `0x71562b71999873db5b286df957af199ec94617f7`.
 Preview does not override `--miner.pending.feeRecipient`, so Geth imports and
