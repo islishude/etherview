@@ -281,6 +281,41 @@ fields `genesisState.url`, `genesisState.sha256`, and
 configuration. The remote source adds no database migration, public API change,
 or SPA protocol change.
 
+## S3 trace-cache credentials
+
+The S3-compatible trace cache is enabled only when `adapters.s3_endpoint` and
+`adapters.s3_bucket` are set. A complete
+`ETHERVIEW_S3_ACCESS_KEY(_FILE)`/`ETHERVIEW_S3_SECRET_KEY(_FILE)` pair plus an
+optional session token is an explicit highest-precedence override. When that
+pair is absent, only `all`/`api` loads the AWS SDK default chain: AWS
+environment credentials, Web Identity, shared configuration/profile, container
+credentials, then EC2 instance role. Temporary credentials are cached and
+refreshed by the SDK without a process restart.
+
+Empty explicit keys never mean anonymous access. Missing, expired, malformed,
+or unreachable credentials produce a bounded redacted cache failure and the
+request uses the PostgreSQL trace projection. They do not withdraw readiness.
+The existing `adapters.operation_timeout` bounds both credential retrieval and
+the object operation. A malformed default-chain configuration may fail API
+startup as a static configuration error; ordinary absence remains lazy until
+the first cache operation.
+
+Compose passes explicit Etherview and standard AWS credential inputs only to
+the `all`/`api` service. File paths named by AWS variables must be mounted into
+the container with the same absolute path. For Helm, enable the dedicated
+`s3ServiceAccount` instead of annotating the shared account. IRSA uses the
+dedicated account's annotations. For EKS Pod Identity, create the AWS
+association separately and set `eksPodIdentity=true`; the chart then permits
+only the API-capable Pod to reach the fixed EKS agent addresses on TCP/80.
+Other roles retain no S3 Secret or credential-agent egress. Keep EC2 IMDS
+blocked for Kubernetes workloads.
+
+If IRSA must call STS while `networkPolicy.allowExternalHTTPS=false`, place
+only reviewed regional STS CIDRs in `networkPolicy.runtimeHTTPSCIDRs`. Do not
+add internet-wide or link-local ranges. After changing credential source,
+restart the `all`/`api` Deployment and confirm trace-cache hits while
+PostgreSQL remains authoritative.
+
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm

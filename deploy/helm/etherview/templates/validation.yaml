@@ -56,11 +56,30 @@
 {{- $s3Access := .Values.externalSecret.s3AccessKeyRemoteKey | trim }}
 {{- $s3Secret := .Values.externalSecret.s3SecretKeyRemoteKey | trim }}
 {{- $s3Session := .Values.externalSecret.s3SessionTokenRemoteKey | trim }}
+{{- $s3Endpoint := .Values.config.adapters.s3_endpoint | trim }}
 {{- if ne (empty $s3Access) (empty $s3Secret) }}
 {{- fail "externalSecret S3 access and secret remote keys must be configured together" }}
 {{- end }}
 {{- if and (not (empty $s3Session)) (empty $s3Access) }}
 {{- fail "externalSecret.s3SessionTokenRemoteKey requires the S3 access and secret remote keys" }}
+{{- end }}
+{{- if and (or (not (empty $s3Access)) (not (empty $s3Secret)) (not (empty $s3Session))) (empty $s3Endpoint) }}
+{{- fail "ExternalSecret S3 credential remote keys require config.adapters.s3_endpoint" }}
+{{- end }}
+{{- if .Values.s3ServiceAccount.enabled }}
+{{- if empty $s3Endpoint }}
+{{- fail "s3ServiceAccount.enabled requires config.adapters.s3_endpoint" }}
+{{- end }}
+{{- if and (not .Values.s3ServiceAccount.create) (empty (.Values.s3ServiceAccount.name | trim)) }}
+{{- fail "s3ServiceAccount.name is required when s3ServiceAccount.create is false" }}
+{{- end }}
+{{- if and (not .Values.s3ServiceAccount.create) (not (empty .Values.s3ServiceAccount.annotations)) }}
+{{- fail "s3ServiceAccount.annotations require s3ServiceAccount.create" }}
+{{- end }}
+{{- else }}
+{{- if or .Values.s3ServiceAccount.eksPodIdentity (not (empty (.Values.s3ServiceAccount.name | trim))) (not (empty .Values.s3ServiceAccount.annotations)) }}
+{{- fail "disabled s3ServiceAccount must not configure a name, annotations, or EKS Pod Identity" }}
+{{- end }}
 {{- end }}
 {{- if or .Values.config.features.user_auth .Values.config.features.x402_billing }}
 {{- $publicURL := .Values.config.server.public_url | trim }}

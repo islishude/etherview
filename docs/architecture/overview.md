@@ -69,6 +69,9 @@ runtime-status model behind an event generation, and S3-compatible storage
 caches only exact-generation normalized transaction traces. Every adapter has
 a bounded PostgreSQL fallback and is detailed in
 [ADR-0015](../decisions/ADR-0015-disposable-runtime-accelerators.md).
+S3 uses an explicit static override or the refreshable AWS default credential
+chain only inside `all`/`api`; absence of usable credentials cannot withdraw
+readiness or turn object storage into a correctness dependency.
 
 PostgreSQL stores all correctness-critical facts, canonical mappings, stage
 state, jobs, leases, and outbox records. Optional systems may reduce latency or

@@ -31,6 +31,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 | P60-T07 | done | P60-T05 | Add exact NFT identity and redacted network diagnostics to durable metadata transition logs | metadata, netpolicy, observability, Preview, and common gates |
 | P60-T08 | done | P60-T05, P60-T07 | Add exact bounded operational context to worker, lifecycle, request, RPC, and optional-adapter logs | focused race, PostgreSQL integration, runtime topology, and common gates |
 | P60-T09 | done | P60-T07, P60-T08 | Preserve a closed, redacted metadata failure reason and the final retry code when attempts are exhausted | metadata and observability regressions plus common gates |
+| P60-T10 | done | P60-T02, P60-T04 | Add AWS default credential discovery and API-role-scoped workload identity for the S3 trace cache | credential-chain, refresh, redaction, Compose, Helm, and common gates |
 
 ## Acceptance
 
@@ -116,6 +117,15 @@ deployments, observable health, safe migrations, and operator repair tooling.
       TLS, request, policy, or generic transport reason; retry exhaustion also
       retains the preceding stable transition code without logging nested
       errors or credential-bearing URL text.
+- [x] P60-T10: complete explicit static S3 credentials remain the highest
+      precedence override; otherwise the cache uses the AWS SDK default
+      credential chain with bounded automatic refresh and no anonymous mode.
+- [x] P60-T10: missing, expired, or unreachable discovered credentials degrade
+      only the disposable S3 cache, retain redacted errors and PostgreSQL
+      fallback, and never change readiness or correctness.
+- [x] P60-T10: Compose and Helm expose S3 credentials or workload identity only
+      to `all`/`api`; Helm supports a dedicated S3 ServiceAccount plus bounded
+      EKS Pod Identity agent egress without reopening EC2 IMDS to other roles.
 
 ## Current Blockers
 
@@ -123,6 +133,29 @@ None. The longer capacity, security, conformance, and release evidence remains
 owned by P70 and is not implied by P60 completion.
 
 ## Evidence
+
+- P60-T10: the MinIO S3-compatible object path now receives either the existing
+  complete static V4 override or an AWS SDK v2 default-chain provider. The AWS
+  cache remains authoritative for source selection, concurrent refresh, and
+  expiry; each lookup is bounded by the adapter operation timeout. Missing or
+  unsafe providers return only the stable S3 cache error and never send an
+  anonymous request. Environment, shared-profile, EKS token-file/container,
+  rotation, precedence, no-credential, unsafe-URI, and checksum regressions
+  pass.
+- P60-T10 role/deployment evidence: final-role config loading clears and never
+  reads S3 Secret files outside `all`/`api`. Compose render checks keep both
+  explicit Etherview keys and standard AWS variables out of migrations and
+  non-API services. Helm monolith/distributed renders prove API-only static
+  Secret injection, dedicated created or external S3 ServiceAccounts, IRSA
+  annotations, exact EKS IPv4/IPv6 agent egress on TCP/80, and negative
+  validation for incomplete or disabled identity configuration.
+- P60-T10 verification: focused ordinary and race-enabled tests plus `go vet`
+  pass for `internal/accelerator`, `internal/config`, and `internal/app`.
+  `make toolchain-check`, `make compose-check`, `make helm-check`,
+  `make generate-check`, `make lint`, `make test`, `make test-race`,
+  `make security-check`, `make license-check`, and `make deployment-check`
+  pass on 2026-08-17. The security gate reports no reachable Go
+  vulnerabilities, no secret leaks, and no high-severity npm findings.
 
 - P60-T09: request-local HTTP trace and safe-dial state now classify DNS
   lookup/timeout, connection refusal/timeout/unreachability, TLS handshake,

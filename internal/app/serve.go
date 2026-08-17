@@ -471,7 +471,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		var traceCache accelerator.BlobStore
 		if cfg.Adapters.S3Endpoint != "" {
-			traceCache, err = accelerator.NewS3BlobStore(cfg.Adapters.S3Endpoint, accelerator.S3Options{
+			traceCache, err = accelerator.NewS3BlobStore(ctx, cfg.Adapters.S3Endpoint, accelerator.S3Options{
 				Bucket: cfg.Adapters.S3Bucket, Prefix: cfg.Adapters.S3Prefix, Region: cfg.Adapters.S3Region,
 				AccessKey: cfg.Adapters.S3AccessKey, SecretKey: cfg.Adapters.S3SecretKey,
 				SessionToken: cfg.Adapters.S3SessionToken, PathStyle: cfg.Adapters.S3PathStyle,

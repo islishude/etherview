@@ -44,6 +44,30 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
+{{- if and .Values.networkPolicy.enabled .Values.s3ServiceAccount.enabled .Values.s3ServiceAccount.eksPodIdentity }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "etherview.fullname" . }}-s3-credentials
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "etherview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ ternary "all" "api" (eq .Values.mode "monolith") }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 169.254.170.23/32
+        - ipBlock:
+            cidr: fd00:ec2::23/128
+      ports:
+        - protocol: TCP
+          port: 80
+{{- end }}
 {{- if and .Values.networkPolicy.enabled .Values.config.features.verification }}
 ---
 apiVersion: networking.k8s.io/v1

@@ -71,6 +71,8 @@
     "genesisState",
     "compilerCache",
     "mode",
+    "serviceAccount",
+    "s3ServiceAccount",
     "roles",
     "resources",
     "deploymentStrategy",
@@ -87,6 +89,42 @@
     "mode": {
       "type": "string",
       "enum": ["monolith", "distributed"]
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "annotations", "name"],
+      "properties": {
+        "create": {"type": "boolean"},
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        }
+      }
+    },
+    "s3ServiceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "create", "annotations", "name", "eksPodIdentity"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "create": {"type": "boolean"},
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "eksPodIdentity": {"type": "boolean"}
+      }
     },
     "apiTLS": {
       "type": "object",

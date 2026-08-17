@@ -34,6 +34,16 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# Optional AWS workload identity used only by the all/api role when the S3
+# trace cache is configured. IRSA uses annotations; EKS Pod Identity associates
+# the resulting name out of band and enables its exact link-local egress below.
+s3ServiceAccount:
+  enabled: false
+  create: true
+  annotations: {}
+  name: ""
+  eksPodIdentity: false
+
 podAnnotations: {}
 podLabels: {}
 podSecurityContext:
@@ -399,8 +409,10 @@ config:
     s3_bucket: ""
     s3_prefix: etherview
     s3_region: ""
-    # Credentials are injected from secrets.existingSecret and must remain
-    # empty in this ConfigMap-backed section.
+    # An optional complete static override is injected from
+    # secrets.existingSecret. When absent, all/api uses the AWS default
+    # credential chain and may select s3ServiceAccount workload identity.
+    # These ConfigMap-backed fields must remain empty.
     s3_access_key: ""
     s3_secret_key: ""
     s3_session_token: ""

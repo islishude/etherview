@@ -52,8 +52,19 @@ correctness implementation and break the PostgreSQL-only deployment.
   affect job or stage completion.
 - Accelerator clients are not constructed when their URL/endpoint is empty.
   Static configuration errors fail validation, while endpoint reachability is
-  not a startup or `doctor` requirement. Credential-bearing URLs and S3 keys
-  use environment/secret inputs and raw backend errors are never logged.
+  not a startup or `doctor` requirement. A complete Etherview S3 access/secret
+  pair and optional session token is the highest-precedence explicit override.
+  Otherwise the AWS SDK default credential chain selects environment, shared
+  profile, Web Identity, container, or EC2 role credentials and remains the
+  concurrency-safe expiry and refresh authority. Empty explicit keys select
+  that chain, never anonymous access. Discovery and refresh use the bounded S3
+  operation timeout; failure is a redacted cache error followed by the same
+  PostgreSQL fallback.
+- Only `all` and `api` construct the S3 client or read its explicit Secret
+  files. Compose and Helm keep static keys out of migrations and non-API roles.
+  Helm can select a dedicated S3 ServiceAccount for those API-capable Pods;
+  optional EKS Pod Identity egress reaches only the fixed agent addresses on
+  TCP/80 and does not open EC2 IMDS to the other roles.
 - Object storage does not hold raw RPC traces, durable job/outbox payloads,
   verification inputs or results, metadata documents, or NFT media. In
   particular it does not alter ADR-0005's no-permanent-media-mirror boundary.

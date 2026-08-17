@@ -250,6 +250,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   unknown transport failures into closed reasons and retains the preceding
   retry code when an attempt budget is exhausted, without restoring raw nested
   errors.
+  P60-T10 adds the refreshable AWS default credential chain behind an explicit
+  static S3 override, removes implicit anonymous requests, and scopes Compose
+  and Helm credentials, dedicated workload identity, and EKS agent egress to
+  `all`/`api` without changing PostgreSQL fallback or readiness.
 - P65's SIWE session, wallet, profile, and administrator work is complete.
   P65-T09 adds scoped user-owned API keys and the tabbed `/account` workspace;
   PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race,

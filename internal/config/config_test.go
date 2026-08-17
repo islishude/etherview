@@ -933,6 +933,30 @@ func TestAcceleratorSecretsSupportFileEnvironment(t *testing.T) {
 	}
 }
 
+func TestS3SecretFilesAreReadOnlyForTheFinalAPIRole(t *testing.T) {
+	for _, name := range []string{
+		"ETHERVIEW_S3_ACCESS_KEY", "ETHERVIEW_S3_SECRET_KEY", "ETHERVIEW_S3_SESSION_TOKEN",
+	} {
+		unsetHostEnvironment(t, name)
+	}
+	t.Setenv("ETHERVIEW_S3_ENDPOINT", "http://127.0.0.1:9000")
+	t.Setenv("ETHERVIEW_S3_BUCKET", "etherview-cache")
+	t.Setenv("ETHERVIEW_S3_ACCESS_KEY_FILE", "/does/not/exist/s3-access")
+	t.Setenv("ETHERVIEW_S3_SECRET_KEY_FILE", "/does/not/exist/s3-secret")
+
+	cfg, err := LoadForRoles("", []string{"sync"})
+	if err != nil {
+		t.Fatalf("sync role read S3 Secret files: %v", err)
+	}
+	if cfg.Adapters.S3AccessKey != "" || cfg.Adapters.S3SecretKey != "" || cfg.Adapters.S3SessionToken != "" {
+		t.Fatalf("sync role retained S3 credentials: %#v", cfg.Adapters)
+	}
+	if _, err := LoadForRoles("", []string{"api"}); err == nil ||
+		!strings.Contains(err.Error(), "S3_") || !strings.Contains(err.Error(), "_FILE") {
+		t.Fatalf("api role did not read S3 Secret files: %v", err)
+	}
+}
+
 func TestValidateAggregatesErrorsAndDoesNotRequireGenesisDuringBootstrap(t *testing.T) {
 	t.Parallel()
 	cfg := Default()

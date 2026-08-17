@@ -1563,12 +1563,9 @@ func applyEnvironmentForRoles(
 	setString(lookup, "X402_ASSET_EIP712_VERSION", &cfg.Billing.AssetEIP712Version)
 	setString(lookup, "X402_RECIPIENT", &cfg.Billing.Recipient)
 	for name, target := range map[string]*string{
-		"NATS_URL":         &cfg.Adapters.NATSURL,
-		"REDIS_URL":        &cfg.Adapters.RedisURL,
-		"S3_ENDPOINT":      &cfg.Adapters.S3Endpoint,
-		"S3_ACCESS_KEY":    &cfg.Adapters.S3AccessKey,
-		"S3_SECRET_KEY":    &cfg.Adapters.S3SecretKey,
-		"S3_SESSION_TOKEN": &cfg.Adapters.S3SessionToken,
+		"NATS_URL":    &cfg.Adapters.NATSURL,
+		"REDIS_URL":   &cfg.Adapters.RedisURL,
+		"S3_ENDPOINT": &cfg.Adapters.S3Endpoint,
 	} {
 		value, err := lookupValueOrFile(name, lookup, readFile)
 		if err != nil {
@@ -1577,6 +1574,25 @@ func applyEnvironmentForRoles(
 		if value != "" {
 			*target = value
 		}
+	}
+	if apiRole && cfg.Adapters.S3Endpoint != "" {
+		for name, target := range map[string]*string{
+			"S3_ACCESS_KEY":    &cfg.Adapters.S3AccessKey,
+			"S3_SECRET_KEY":    &cfg.Adapters.S3SecretKey,
+			"S3_SESSION_TOKEN": &cfg.Adapters.S3SessionToken,
+		} {
+			value, err := lookupValueOrFile(name, lookup, readFile)
+			if err != nil {
+				return err
+			}
+			if value != "" {
+				*target = value
+			}
+		}
+	} else {
+		cfg.Adapters.S3AccessKey = ""
+		cfg.Adapters.S3SecretKey = ""
+		cfg.Adapters.S3SessionToken = ""
 	}
 	setString(lookup, "ADAPTER_NAMESPACE", &cfg.Adapters.Namespace)
 	setString(lookup, "S3_BUCKET", &cfg.Adapters.S3Bucket)

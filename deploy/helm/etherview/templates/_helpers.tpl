@@ -40,6 +40,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
+{{- define "etherview.s3ServiceAccountName" -}}
+{{- if .Values.s3ServiceAccount.create }}
+{{- default (printf "%s-s3" (include "etherview.fullname" .) | trunc 63 | trimSuffix "-") .Values.s3ServiceAccount.name }}
+{{- else }}
+{{- .Values.s3ServiceAccount.name }}
+{{- end }}
+{{- end }}
+
 {{- define "etherview.image" -}}
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}

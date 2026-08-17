@@ -14,6 +14,8 @@
 {{- end }}
 {{- if $enabled }}
 {{- $apiCapable := or (eq $roleName "all") (eq $roleName "api") }}
+{{- $s3Configured := not (empty ($root.Values.config.adapters.s3_endpoint | trim)) }}
+{{- $s3WorkloadIdentity := and $apiCapable $s3Configured $root.Values.s3ServiceAccount.enabled }}
 {{- $apiTLS := and $root.Values.apiTLS.enabled $apiCapable }}
 {{- $apiPortName := ternary "https" "http" $apiTLS }}
 ---
@@ -52,7 +54,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "etherview.serviceAccountName" $root }}
+      serviceAccountName: {{ ternary (include "etherview.s3ServiceAccountName" $root) (include "etherview.serviceAccountName" $root) $s3WorkloadIdentity }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
       securityContext:
@@ -167,6 +169,7 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.redisURLKey | quote }}
                   optional: true
+            {{- if and $apiCapable $s3Configured }}
             - name: ETHERVIEW_S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -185,6 +188,7 @@ spec:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.s3SessionTokenKey | quote }}
                   optional: true
+            {{- end }}
             - name: ETHERVIEW_OTLP_TRACE_ENDPOINT
               valueFrom:
                 secretKeyRef:

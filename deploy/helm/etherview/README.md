@@ -45,9 +45,9 @@ runtime keys are:
 | `x402FacilitatorHeadersKey` | `x402-facilitator-headers` | optional bounded facilitator-header JSON; billing-enabled `all`/`api` containers only |
 | `natsURLKey` | `nats-url` | optional NATS URL |
 | `redisURLKey` | `redis-url` | optional Redis URL |
-| `s3AccessKeyKey` | `s3-access-key` | optional S3 access key |
-| `s3SecretKeyKey` | `s3-secret-key` | optional S3 secret key |
-| `s3SessionTokenKey` | `s3-session-token` | optional S3 session token |
+| `s3AccessKeyKey` | `s3-access-key` | optional explicit S3 access-key override; `all`/`api` only |
+| `s3SecretKeyKey` | `s3-secret-key` | optional explicit S3 secret-key override; `all`/`api` only |
+| `s3SessionTokenKey` | `s3-session-token` | optional explicit S3 session-token override; `all`/`api` only |
 | `otlpTraceEndpointKey` | `otlp-trace-endpoint` | optional OTLP/HTTP trace collector origin |
 | `otlpTraceHeadersKey` | `otlp-trace-headers` | optional OTLP collector authorization headers |
 
@@ -64,7 +64,9 @@ secret keys must be configured together. Inline `config.database.url`,
 rejected by the chart schema. Both database URLs must stay empty in the
 ConfigMap. RPC endpoints and NATS/Redis URLs are likewise kept empty there. S3
 access keys, secret keys, and session tokens are also schema-locked to empty
-values; all are supplied through Secret-backed environment variables. The OTLP
+values; an optional complete override is supplied through Secret-backed
+environment variables. Without it, the application uses the AWS SDK default
+credential chain and does not fall back to anonymous requests. The OTLP
 endpoint is locked to empty for the same reason; trace headers are injected
 only from the optional Secret key and must never be written to chart values or
 logs. `config.user_auth` accepts only the public lifetimes and size bounds; it
@@ -116,6 +118,24 @@ kubectl rollout restart deployment \
 The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
+
+## S3 workload identity
+
+`config.adapters.s3_endpoint` and `s3_bucket` explicitly enable the disposable
+trace cache. A complete Secret-backed Etherview access/secret pair takes
+precedence; otherwise `all`/`api` discovers refreshable credentials through the
+AWS default chain. Non-API roles, migration Jobs, and schema init containers do
+not receive S3 keys or construct the client.
+
+Set `s3ServiceAccount.enabled=true` to isolate AWS identity from the chart's
+shared account. With `create=true`, the chart creates `<release>-s3`; set
+annotations such as `eks.amazonaws.com/role-arn` for IRSA. With `create=false`,
+`name` must identify an operator-created ServiceAccount. EKS Pod Identity
+associations remain an operator action outside Helm; set `eksPodIdentity=true`
+to add an API-role-only NetworkPolicy permitting TCP/80 to
+`169.254.170.23/32` and `fd00:ec2::23/128`. The ordinary Kubernetes API token
+remains unmounted. When IRSA needs STS and broad HTTPS egress is disabled, add
+only the reviewed regional STS ranges to `networkPolicy.runtimeHTTPSCIDRs`.
 
 ## Process-native API TLS
 

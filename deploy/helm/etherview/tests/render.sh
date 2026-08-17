@@ -482,6 +482,8 @@ external_secret="$temporary_dir/external-secret.yaml"
   --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
   --set-string externalSecret.natsURLRemoteKey=runtime/nats-url \
   --set-string externalSecret.redisURLRemoteKey=runtime/redis-url \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access \
   --set-string externalSecret.s3SecretKeyRemoteKey=runtime/s3-secret \
   --set-string externalSecret.s3SessionTokenRemoteKey=runtime/s3-session \
@@ -497,6 +499,70 @@ for secret_key in database-read-url session-pepper nats-url redis-url s3-access-
 done
 assert_occurrences "$external_secret" "name: ETHERVIEW_SESSION_PEPPER" 1
 assert_component_occurrences "$external_secret" all "name: ETHERVIEW_SESSION_PEPPER" 1
+
+s3_monolith="$temporary_dir/s3-monolith.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  >"$s3_monolith"
+for variable in ETHERVIEW_S3_ACCESS_KEY ETHERVIEW_S3_SECRET_KEY ETHERVIEW_S3_SESSION_TOKEN; do
+  assert_occurrences "$s3_monolith" "name: $variable" 1
+  assert_component_occurrences "$s3_monolith" all "name: $variable" 1
+done
+
+s3_distributed="$temporary_dir/s3-distributed.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  >"$s3_distributed"
+for variable in ETHERVIEW_S3_ACCESS_KEY ETHERVIEW_S3_SECRET_KEY ETHERVIEW_S3_SESSION_TOKEN; do
+  assert_occurrences "$s3_distributed" "name: $variable" 1
+  assert_component_occurrences "$s3_distributed" api "name: $variable" 1
+  for role in sync enrich trace metadata maintenance; do
+    assert_component_occurrences "$s3_distributed" "$role" "name: $variable" 0
+  done
+done
+
+s3_irsa="$temporary_dir/s3-irsa.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  --set s3ServiceAccount.enabled=true \
+  --set-string 's3ServiceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::123456789012:role/etherview-s3' \
+  >"$s3_irsa"
+assert_kind_count "$s3_irsa" ServiceAccount 2
+assert_resource_occurrences "$s3_irsa" etherview-s3 'eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/etherview-s3' 1
+assert_component_occurrences "$s3_irsa" all "serviceAccountName: etherview-s3" 1
+
+s3_eks_identity="$temporary_dir/s3-eks-identity.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  --set s3ServiceAccount.enabled=true \
+  --set s3ServiceAccount.eksPodIdentity=true \
+  >"$s3_eks_identity"
+assert_kind_count "$s3_eks_identity" ServiceAccount 2
+assert_kind_count "$s3_eks_identity" NetworkPolicy 2
+assert_component_occurrences "$s3_eks_identity" api "serviceAccountName: etherview-s3" 1
+assert_resource_occurrences "$s3_eks_identity" etherview-s3-credentials "app.kubernetes.io/component: api" 1
+assert_resource_occurrences "$s3_eks_identity" etherview-s3-credentials "cidr: 169.254.170.23/32" 1
+assert_resource_occurrences "$s3_eks_identity" etherview-s3-credentials "cidr: fd00:ec2::23/128" 1
+assert_resource_occurrences "$s3_eks_identity" etherview-s3-credentials "port: 80" 1
+assert_resource_occurrences "$s3_eks_identity" etherview-s3-credentials "app.kubernetes.io/component: sync" 0
+
+s3_external_identity="$temporary_dir/s3-external-identity.yaml"
+"$helm_bin" template etherview "$chart_dir" \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  --set s3ServiceAccount.enabled=true \
+  --set s3ServiceAccount.create=false \
+  --set-string s3ServiceAccount.name=external-s3 \
+  >"$s3_external_identity"
+assert_kind_count "$s3_external_identity" ServiceAccount 1
+assert_component_occurrences "$s3_external_identity" api "serviceAccountName: external-s3" 1
 
 external_secret_without_reader="$temporary_dir/external-secret-without-reader.yaml"
 "$helm_bin" template etherview "$chart_dir" \
@@ -768,7 +834,21 @@ expect_render_failure invalid-log-level \
 expect_render_failure invalid-log-format \
   --set-string config.observability.log_format=console
 expect_render_failure incomplete-s3-external-secret \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
   --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access
+expect_template_failure s3-external-secret-without-endpoint \
+  --set-string externalSecret.s3AccessKeyRemoteKey=runtime/s3-access \
+  --set-string externalSecret.s3SecretKeyRemoteKey=runtime/s3-secret
+expect_template_failure s3-service-account-without-endpoint \
+  --set s3ServiceAccount.enabled=true
+expect_template_failure external-s3-service-account-without-name \
+  --set-string config.adapters.s3_endpoint=https://s3.example.com \
+  --set-string config.adapters.s3_bucket=etherview-cache \
+  --set s3ServiceAccount.enabled=true \
+  --set s3ServiceAccount.create=false
+expect_template_failure disabled-s3-service-account-with-name \
+  --set-string s3ServiceAccount.name=unexpected
 expect_render_failure auth-without-public-origin \
   --set config.features.user_auth=true
 expect_render_failure auth-with-non-root-public-url \

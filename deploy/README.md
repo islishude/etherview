@@ -26,6 +26,13 @@ reference.
 Set the commented `ETHERVIEW_NATS_URL`, `ETHERVIEW_REDIS_URL`, and S3 variables
 only when using them. The application remains ready when any accelerator is
 unreachable; create the configured S3 bucket before expecting trace-cache hits.
+The explicit Etherview S3 access/secret pair is the highest-precedence local
+override. If it is absent, `all`/`api` uses the AWS SDK default credential chain
+and refreshes temporary environment, profile, Web Identity, container, or EC2
+role credentials. Compose passes standard AWS variables only to API-capable
+services when the operator sets them; file-based sources also need an explicit
+read-only mount. Missing credentials do not enable anonymous writes and degrade
+only the disposable trace cache.
 To route API reads to a replica, set `ETHERVIEW_DATABASE_READ_URL` in `.env`.
 Reader pool sizes default to the mounted YAML file: either edit
 `database.read_max_connections` and `database.read_min_connections` there or
@@ -312,6 +319,14 @@ Secret values are never rendered into a ConfigMap or chart defaults, and
 non-secret lifetimes and size limits; an inline session pepper is rejected.
 Auth-enabled Helm releases must set `config.server.public_url` to a root HTTPS
 origin (loopback development is the only HTTP exception).
+
+S3 static Secret keys are optional explicit overrides and are injected only
+into `all`/`api` when `config.adapters.s3_endpoint` is set. For AWS workload
+identity, enable `s3ServiceAccount`; the chart creates or selects a dedicated
+ServiceAccount for those API-capable Pods while migrations and other roles keep
+the shared account. IRSA uses its annotations. EKS Pod Identity associations
+are created outside the chart; setting `eksPodIdentity=true` adds only the
+fixed link-local agent egress required by the SDK.
 
 Billing-enabled releases likewise require the public origin, fingerprint key,
 fixed HTTPS facilitator origin on port 443, and explicit facilitator CIDRs. The fingerprint

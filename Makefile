@@ -314,6 +314,26 @@ compose-check: preview-genesis-check
 	@test ! -e compose.tls.yaml || { echo "compose-check: compose.tls.yaml must remain removed"; exit 1; }
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --quiet
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --quiet
+	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
+		ETHERVIEW_S3_SECRET_KEY=compose-secret \
+		ETHERVIEW_S3_SESSION_TOKEN=compose-session \
+		AWS_ACCESS_KEY_ID=aws-access \
+		AWS_SECRET_ACCESS_KEY=aws-secret \
+		AWS_SESSION_TOKEN=aws-session \
+		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
+		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile monolith config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=monolith $(NODE) .github/scripts/s3-compose-check.mjs
+	@ETHERVIEW_S3_ACCESS_KEY=compose-access \
+		ETHERVIEW_S3_SECRET_KEY=compose-secret \
+		ETHERVIEW_S3_SESSION_TOKEN=compose-session \
+		AWS_ACCESS_KEY_ID=aws-access \
+		AWS_SECRET_ACCESS_KEY=aws-secret \
+		AWS_SESSION_TOKEN=aws-session \
+		AWS_CONTAINER_CREDENTIALS_FULL_URI=http://169.254.170.23/v1/credentials \
+		AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE=/run/aws/pod-identity-token \
+		DOCKER="$(DOCKER)" $(COMPOSE) --profile distributed config --format json | \
+		ETHERVIEW_COMPOSE_TOPOLOGY=distributed $(NODE) .github/scripts/s3-compose-check.mjs
 	DOCKER="$(DOCKER)" $(COMPOSE) --profile accelerators config --quiet
 	@ETHERVIEW_VERIFICATION_EXECUTOR_PATH=/custom/runtime/etherview-solcjs \
 		ETHERVIEW_VERIFICATION_GEAS_PATH=/custom/bin/etherview-geas-compiler \
