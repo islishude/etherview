@@ -977,6 +977,10 @@ test("capability pages survive the embedded binary boundary in both accessible t
   page,
 }) => {
   test.setTimeout(120_000);
+  const nftImageURL = "https://media.example.invalid/nft.png?token=fixture";
+  await page.context().route("https://media.example.invalid/**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/plain", body: "external fixture" });
+  });
   const externalRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).origin !== "http://127.0.0.1:4173") {
@@ -991,8 +995,45 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await expect(page.getByRole("heading", { name: "Example Collectible", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
   await activateInView(page.getByRole("link", { name: "1", exact: true }));
-  await expect(page.getByRole("heading", { name: "NFT instance", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Example Collectible #1", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "NFT instance", exact: true, level: 2 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
+  const metadataRegion = page.getByRole("region", { name: "NFT metadata" });
+  await expect(metadataRegion.getByText("Plain fixture metadata; no image is embedded.")).toBeVisible();
+  await expect(metadataRegion.locator(".nft-trait dd")).toContainText("9007199254740993");
+  await expect(metadataRegion.locator("img")).toHaveCount(0);
+  const reviewImage = metadataRegion.getByRole("button", {
+    name: `Review unverified external image target ${nftImageURL}`,
+  });
+  await activateInView(reviewImage);
+  const warningDialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  await expect(warningDialog).toBeVisible();
+  await expect(warningDialog.getByRole("alert")).toContainText("connects your browser directly to a third party");
+  expect(externalRequests).toEqual([]);
+  await assertA11yAndNoOverflow(page, "NFT external-link warning in English");
+  const externalLink = warningDialog.getByRole("link", { name: "Open in new tab" });
+  await expect(externalLink).toHaveAttribute("href", nftImageURL);
+  await expect(externalLink).toHaveAttribute("target", "_blank");
+  await expect(externalLink).toHaveAttribute("rel", "external noopener noreferrer");
+  await expect(externalLink).toHaveAttribute("referrerpolicy", "no-referrer");
+  const popupPromise = page.waitForEvent("popup");
+  await externalLink.click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState("domcontentloaded");
+  expect(popup.url()).toBe(nftImageURL);
+  await popup.close();
+  externalRequests.length = 0;
+
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  const chineseMetadataRegion = page.getByRole("region", { name: "NFT 元数据" });
+  await activateInView(chineseMetadataRegion.getByRole("button", {
+    name: `检查未经验证的外部图片目标 ${nftImageURL}`,
+  }));
+  const chineseWarning = page.getByRole("dialog", { name: "打开未经验证的外部链接？" });
+  await expect(chineseWarning.getByRole("alert")).toContainText("由浏览器直接连接第三方");
+  expect(externalRequests).toEqual([]);
+  await activateInView(chineseWarning.getByRole("button", { name: "取消" }));
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
 
   await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();

@@ -572,6 +572,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/nfts/{address}/{token_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Returns a bounded display projection of the newest exact NFT metadata observation whose block identity remains canonical. It never returns the metadata source URI, resolved document URI, raw JSON, animation URL, external URL, or image bytes. A returned image URL is an unverified external navigation target, not a media-safety attestation. */
+        get: operations["getNFTMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pending": {
         parameters: {
             query?: never;
@@ -1751,6 +1768,44 @@ export interface components {
             data: components["schemas"]["NFTBalance"][];
             meta: components["schemas"]["Meta"];
         };
+        NFTMetadata: {
+            attributes: components["schemas"]["NFTMetadataAttribute"][];
+            chain_id: components["schemas"]["Quantity"];
+            description?: string;
+            description_truncated: boolean;
+            image: components["schemas"]["NFTMetadataImage"];
+            name?: string;
+            name_truncated: boolean;
+            observation: components["schemas"]["CatalogSnapshot"];
+            omitted_attribute_count: number;
+            state: components["schemas"]["NFTMetadataState"];
+            token_address: components["schemas"]["Address"];
+            token_id: components["schemas"]["Quantity"];
+        };
+        NFTMetadataAttribute: {
+            display_type?: string;
+            trait_type: string;
+            /** @description Exact scalar display text; JSON numbers are never coerced through a JavaScript number. */
+            value: string;
+        };
+        NFTMetadataImage: {
+            /** @enum {string} */
+            source_scheme?: "https" | "ipfs";
+            state: components["schemas"]["NFTMetadataImageState"];
+            /**
+             * Format: uri
+             * @description Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway.
+             */
+            url?: string;
+        };
+        /** @enum {string} */
+        NFTMetadataImageState: "available" | "unavailable" | "missing" | "unsafe" | "unsupported" | "gateway_unavailable";
+        NFTMetadataResponse: {
+            data: components["schemas"]["NFTMetadata"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** @enum {string} */
+        NFTMetadataState: "pending" | "available" | "unavailable" | "unsafe" | "error";
         NFTOwnership: {
             balance: components["schemas"]["Quantity"];
             chain_id: components["schemas"]["Quantity"];
@@ -3741,6 +3796,35 @@ export interface operations {
             422: components["responses"]["Error"];
             502: components["responses"]["Error"];
             503: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getNFTMetadata: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path: {
+                address: components["parameters"]["Address"];
+                token_id: components["schemas"]["Quantity"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current canonical NFT metadata state and bounded display fields. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NFTMetadataResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
             default: components["responses"]["Error"];
         };
     };

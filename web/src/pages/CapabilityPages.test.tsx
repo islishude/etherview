@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import axe from "axe-core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -125,7 +125,7 @@ describe("P50 capability pages", () => {
     expect(firstPageRequests).toBe(2);
   });
 
-  it("discovers exact owner NFT balances without inventing an ERC-1155 owner route", async () => {
+  it("links exact ERC-1155 balances to the shared metadata instance route", async () => {
     const tokenID = "340282366920938463463374607431768211455";
     const balance = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     const cursor = "nft-owner:snapshot+next/page?2";
@@ -168,7 +168,10 @@ describe("P50 capability pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Canonical NFT balances" })).toBeVisible();
     expect(await screen.findByText(tokenID)).toBeVisible();
-    expect(screen.getByText(tokenID).closest("a")).toBeNull();
+    expect(screen.getByText(tokenID).closest("a")).toHaveAttribute(
+      "href",
+      `/nft/${address}/${tokenID}`,
+    );
     expect(screen.getByText(balance)).toBeVisible();
     expect(screen.getByText("Exact RPC observation")).toBeVisible();
     expect(screen.getByText("Exact state reconciled against canonical block 999.")).toBeVisible();
@@ -183,6 +186,150 @@ describe("P50 capability pages", () => {
       `/api/v1/addresses/${owner}/nfts?limit=25&cursor=nft-owner%3Asnapshot%2Bnext%2Fpage%3F2`,
       expect.anything(),
     );
+  });
+
+  it("renders bounded ERC-721 metadata and confirms every external image navigation", async () => {
+    const tokenID = "9007199254740993";
+    const imageURL = "https://media.example/nft/very-long-image-name.png?signature=public-token";
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      requested.push(path);
+      if (path === `/api/v1/tokens/${address}`) {
+        return Response.json({
+          data: { ...tokenContract("Collectible contract"), standard: "erc721" },
+          meta,
+        });
+      }
+      if (path === `/api/v1/nfts/${address}/${tokenID}`) {
+        return Response.json({
+          data: {
+            chain_id: "1", token_address: address, token_id: tokenID,
+            owner, balance: "1", confidence: "rpc_exact",
+            snapshot: { chain_id: "1", block_number: "520", block_hash: blockHash },
+          },
+          meta,
+        });
+      }
+      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+        return Response.json({
+          data: {
+            chain_id: "1", token_address: address, token_id: tokenID,
+            state: "available",
+            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            name: "<img src=x onerror=alert(1)>", name_truncated: false,
+            description: "**plain text only**", description_truncated: true,
+            attributes: [
+              { trait_type: "Level", value: "9007199254740993", display_type: "number" },
+            ],
+            omitted_attribute_count: 2,
+            image: { state: "available", url: imageURL, source_scheme: "https" },
+          },
+          meta,
+        });
+      }
+      return apiError("not_found", 404);
+    }));
+    renderExplorer(`/nft/${address}/${tokenID}`);
+
+    expect(await screen.findByRole("heading", { name: "<img src=x onerror=alert(1)>", level: 1 })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "NFT instance", level: 2 })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
+    const metadataRegion = screen.getByRole("region", { name: "NFT metadata" });
+    expect(within(metadataRegion).getByText("**plain text only**")).toBeVisible();
+    expect(within(metadataRegion).getByText("9007199254740993")).toBeVisible();
+    expect(within(metadataRegion).getByText("2 non-standard or over-limit traits were omitted.")).toBeVisible();
+    expect(within(metadataRegion).queryByRole("img")).toBeNull();
+    expect(document.querySelector("img[src='x']")).toBeNull();
+    expect(requested).not.toContain(`/api/v1/nfts/${address}/${tokenID}/media`);
+    expect(requested.every((path) => path.startsWith("/api/v1/"))).toBe(true);
+
+    const user = userEvent.setup();
+    const review = within(metadataRegion).getByRole("button", {
+      name: `Review unverified external image target ${imageURL}`,
+    });
+    expect(review).toHaveTextContent("media.example/nft/very-long-image-name.png");
+    expect(review).not.toHaveTextContent("signature");
+    await user.click(review);
+    const dialog = screen.getByRole("dialog", { name: "Open an unverified external link?" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("connects your browser directly to a third party");
+    const external = within(dialog).getByRole("link", { name: "Open in new tab" });
+    expect(external).toHaveAttribute("href", imageURL);
+    expect(external).toHaveAttribute("target", "_blank");
+    expect(external).toHaveAttribute("rel", "external noopener noreferrer");
+    expect(external).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(requested.every((path) => path.startsWith("/api/v1/"))).toBe(true);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(review).toHaveFocus();
+    await user.click(review);
+    expect(screen.getByRole("dialog", { name: "Open an unverified external link?" })).toBeVisible();
+  });
+
+  it("supports ERC-1155 metadata without requesting a unique owner", async () => {
+    const tokenID = "42";
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      requested.push(path);
+      if (path === `/api/v1/tokens/${address}`) {
+        return Response.json({
+          data: { ...tokenContract("Shared collectible"), standard: "erc1155" },
+          meta,
+        });
+      }
+      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+        return Response.json({
+          data: {
+            chain_id: "1", token_address: address, token_id: tokenID,
+            state: "available",
+            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            name: "Shared collectible #42", name_truncated: false,
+            description_truncated: false,
+            attributes: [], omitted_attribute_count: 0,
+            image: { state: "missing" },
+          },
+          meta,
+        });
+      }
+      return apiError("not_found", 404);
+    }));
+    renderExplorer(`/nft/${address}/${tokenID}`);
+
+    expect(await screen.findByRole("heading", { name: "Shared collectible #42", level: 1 })).toBeVisible();
+    expect(screen.getByText(/ERC-1155 tokens may have multiple holders/)).toBeVisible();
+    expect(screen.getByText("The metadata document has no image link")).toBeVisible();
+    expect(screen.getByText(/No standard scalar traits are available/)).toBeVisible();
+    expect(requested).not.toContain(`/api/v1/nfts/${address}/${tokenID}`);
+  });
+
+  it("keeps a terminal metadata state distinct from a fabricated document", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path === `/api/v1/tokens/${address}`) {
+        return Response.json({ data: { ...tokenContract("Unsafe collectible"), standard: "erc1155" }, meta });
+      }
+      if (path === `/api/v1/nfts/${address}/7/metadata`) {
+        return Response.json({
+          data: {
+            chain_id: "1", token_address: address, token_id: "7", state: "unsafe",
+            observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            name_truncated: false, description_truncated: false,
+            attributes: [], omitted_attribute_count: 0,
+            image: { state: "unavailable" },
+          },
+          meta,
+        });
+      }
+      return apiError("not_found", 404);
+    }));
+    renderExplorer(`/nft/${address}/7`);
+
+    const metadataRegion = await screen.findByRole("region", { name: "NFT metadata" });
+    expect((await within(metadataRegion).findAllByText("Rejected as unsafe")).length).toBeGreaterThan(0);
+    expect(within(metadataRegion).getByText("No metadata document is inferred from this state.")).toBeVisible();
+    expect(within(metadataRegion).queryByText("Traits")).toBeNull();
   });
 
   it("keeps NFT stage loss distinct from an authoritative empty balance page", async () => {

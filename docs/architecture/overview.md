@@ -653,6 +653,13 @@ size alone is not sufficient justification to weaken those invariants.
   document facts are immutable and retained across reorgs. Media success and
   every early authentication or rate-limit error use no-store, restrictive CSP,
   nosniff, and same-origin resource headers.
+- NFT metadata display is a separate canonical PostgreSQL projection. It
+  returns bounded inert text and scalar traits plus, when syntactically safe, an
+  unverified HTTPS navigation target derived from `image` (with `ipfs://`
+  converted through the configured HTTPS gateway). The embedded SPA never
+  renders or prefetches that target and requires a bilingual confirmation before
+  each opener-free, no-referrer external navigation. The authenticated media
+  proxy remains the only server-side image retrieval path.
 
 ## Operator Recovery Boundary
 

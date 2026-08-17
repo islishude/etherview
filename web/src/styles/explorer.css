@@ -823,13 +823,18 @@ tbody tr:hover {
   background: rgb(0 0 0 / 0.58);
 }
 
-.qr-dialog {
+.qr-dialog,
+.external-link-dialog {
   width: min(28rem, 100%);
   padding: 1.1rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface-raised);
   box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+}
+
+.external-link-dialog {
+  width: min(36rem, 100%);
 }
 
 .qr-dialog-heading {
@@ -860,6 +865,135 @@ tbody tr:hover {
   overflow: auto;
   background: #fff;
   border-radius: 0.5rem;
+}
+
+.nft-metadata-card .detail-grid {
+  margin-bottom: 0;
+}
+
+.nft-metadata-description {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.nft-metadata-truncated {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--warning);
+}
+
+.nft-traits {
+  padding-top: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.nft-traits h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.92rem;
+}
+
+.nft-traits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.nft-trait {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface-raised);
+}
+
+.nft-trait dt,
+.nft-trait dd {
+  overflow-wrap: anywhere;
+}
+
+.nft-trait dt {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.nft-trait dd {
+  margin: 0.22rem 0 0;
+  font-weight: 650;
+}
+
+.nft-trait small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+}
+
+.nft-external-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nft-image-link {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.nft-image-link:hover {
+  color: var(--brand-strong);
+}
+
+.result-kind.warning {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--line));
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.external-link-warning {
+  padding: 0.8rem;
+  margin: 0;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--line));
+  border-radius: 0.5rem;
+  line-height: 1.55;
+}
+
+.external-link-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.external-link-target strong {
+  grid-column: 1 / -1;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.external-link-target span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.external-link-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1rem;
 }
 
 .address-assets {

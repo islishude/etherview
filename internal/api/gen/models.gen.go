@@ -690,6 +690,81 @@ func (e IncludedTransactionDetailKind) Valid() bool {
 	}
 }
 
+// Defines values for NFTMetadataImageSourceScheme.
+const (
+	Https NFTMetadataImageSourceScheme = "https"
+	Ipfs  NFTMetadataImageSourceScheme = "ipfs"
+)
+
+// Valid indicates whether the value is a known member of the NFTMetadataImageSourceScheme enum.
+func (e NFTMetadataImageSourceScheme) Valid() bool {
+	switch e {
+	case Https:
+		return true
+	case Ipfs:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NFTMetadataImageState.
+const (
+	NFTMetadataImageStateAvailable          NFTMetadataImageState = "available"
+	NFTMetadataImageStateGatewayUnavailable NFTMetadataImageState = "gateway_unavailable"
+	NFTMetadataImageStateMissing            NFTMetadataImageState = "missing"
+	NFTMetadataImageStateUnavailable        NFTMetadataImageState = "unavailable"
+	NFTMetadataImageStateUnsafe             NFTMetadataImageState = "unsafe"
+	NFTMetadataImageStateUnsupported        NFTMetadataImageState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the NFTMetadataImageState enum.
+func (e NFTMetadataImageState) Valid() bool {
+	switch e {
+	case NFTMetadataImageStateAvailable:
+		return true
+	case NFTMetadataImageStateGatewayUnavailable:
+		return true
+	case NFTMetadataImageStateMissing:
+		return true
+	case NFTMetadataImageStateUnavailable:
+		return true
+	case NFTMetadataImageStateUnsafe:
+		return true
+	case NFTMetadataImageStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NFTMetadataState.
+const (
+	NFTMetadataStateAvailable   NFTMetadataState = "available"
+	NFTMetadataStateError       NFTMetadataState = "error"
+	NFTMetadataStatePending     NFTMetadataState = "pending"
+	NFTMetadataStateUnavailable NFTMetadataState = "unavailable"
+	NFTMetadataStateUnsafe      NFTMetadataState = "unsafe"
+)
+
+// Valid indicates whether the value is a known member of the NFTMetadataState enum.
+func (e NFTMetadataState) Valid() bool {
+	switch e {
+	case NFTMetadataStateAvailable:
+		return true
+	case NFTMetadataStateError:
+		return true
+	case NFTMetadataStatePending:
+		return true
+	case NFTMetadataStateUnavailable:
+		return true
+	case NFTMetadataStateUnsafe:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PendingTransactionDetailKind.
 const (
 	PendingTransactionDetailKindPending PendingTransactionDetailKind = "pending"
@@ -3465,6 +3540,61 @@ type NFTBalanceListResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// NFTMetadata defines model for NFTMetadata.
+type NFTMetadata struct {
+	Attributes []NFTMetadataAttribute `json:"attributes"`
+
+	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ChainId               Quantity         `json:"chain_id"`
+	Description           *string          `json:"description,omitempty"`
+	DescriptionTruncated  bool             `json:"description_truncated"`
+	Image                 NFTMetadataImage `json:"image"`
+	Name                  *string          `json:"name,omitempty"`
+	NameTruncated         bool             `json:"name_truncated"`
+	Observation           CatalogSnapshot  `json:"observation"`
+	OmittedAttributeCount int              `json:"omitted_attribute_count"`
+	State                 NFTMetadataState `json:"state"`
+
+	// TokenAddress A 20-byte address; responses use the EIP-55 checksum form.
+	TokenAddress Address `json:"token_address"`
+
+	// TokenId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TokenId Quantity `json:"token_id"`
+}
+
+// NFTMetadataAttribute defines model for NFTMetadataAttribute.
+type NFTMetadataAttribute struct {
+	DisplayType *string `json:"display_type,omitempty"`
+	TraitType   string  `json:"trait_type"`
+
+	// Value Exact scalar display text; JSON numbers are never coerced through a JavaScript number.
+	Value string `json:"value"`
+}
+
+// NFTMetadataImage defines model for NFTMetadataImage.
+type NFTMetadataImage struct {
+	SourceScheme *NFTMetadataImageSourceScheme `json:"source_scheme,omitempty"`
+	State        NFTMetadataImageState         `json:"state"`
+
+	// Url Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway.
+	Url *string `json:"url,omitempty"`
+}
+
+// NFTMetadataImageSourceScheme defines model for NFTMetadataImage.SourceScheme.
+type NFTMetadataImageSourceScheme string
+
+// NFTMetadataImageState defines model for NFTMetadataImageState.
+type NFTMetadataImageState string
+
+// NFTMetadataResponse defines model for NFTMetadataResponse.
+type NFTMetadataResponse struct {
+	Data NFTMetadata `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+// NFTMetadataState defines model for NFTMetadataState.
+type NFTMetadataState string
+
 // NFTOwnership defines model for NFTOwnership.
 type NFTOwnership struct {
 	// Balance A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -5310,6 +5440,12 @@ type ListGenesisAccountsParams struct {
 
 // GetNFTOwnerParams defines parameters for GetNFTOwner.
 type GetNFTOwnerParams struct {
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
+
+// GetNFTMetadataParams defines parameters for GetNFTMetadata.
+type GetNFTMetadataParams struct {
 	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
 	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
 }

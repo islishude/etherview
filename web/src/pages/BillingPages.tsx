@@ -56,6 +56,7 @@ const BILLABLE_OPERATIONS = [
   "getToken",
   "listTokenTransfers",
   "getNFTOwner",
+  "getNFTMetadata",
   "getBlockStats",
   "getAggregateStats",
   "getChartOverview",

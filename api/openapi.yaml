@@ -990,6 +990,38 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /nfts/{address}/{token_id}/metadata:
+    get:
+      operationId: getNFTMetadata
+      tags: [tokens, nfts]
+      description: >-
+        Returns a bounded display projection of the newest exact NFT metadata
+        observation whose block identity remains canonical. It never returns
+        the metadata source URI, resolved document URI, raw JSON, animation URL,
+        external URL, or image bytes. A returned image URL is an unverified
+        external navigation target, not a media-safety attestation.
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - $ref: "#/components/parameters/Address"
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Current canonical NFT metadata state and bounded display fields.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NFTMetadataResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        default:
+          $ref: "#/components/responses/Error"
   /nfts/{address}/{token_id}/media:
     get:
       operationId: getNFTMedia
@@ -2039,7 +2071,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 34
+          maxItems: 35
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -2852,6 +2884,87 @@ components:
           $ref: "#/components/schemas/StateConfidence"
         snapshot:
           $ref: "#/components/schemas/CatalogSnapshot"
+    NFTMetadataState:
+      type: string
+      enum: [pending, available, unavailable, unsafe, error]
+    NFTMetadataAttribute:
+      type: object
+      required: [trait_type, value]
+      properties:
+        trait_type:
+          type: string
+          maxLength: 512
+        value:
+          type: string
+          maxLength: 512
+          description: Exact scalar display text; JSON numbers are never coerced through a JavaScript number.
+        display_type:
+          type: string
+          maxLength: 512
+    NFTMetadataImageState:
+      type: string
+      enum: [available, unavailable, missing, unsafe, unsupported, gateway_unavailable]
+    NFTMetadataImage:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/NFTMetadataImageState"
+        url:
+          type: string
+          format: uri
+          maxLength: 4096
+          description: >-
+            Unverified external HTTPS navigation target. HTTPS image values are
+            returned directly; valid IPFS values use the configured HTTPS gateway.
+        source_scheme:
+          type: string
+          enum: [https, ipfs]
+    NFTMetadata:
+      type: object
+      required:
+        - chain_id
+        - token_address
+        - token_id
+        - state
+        - observation
+        - name_truncated
+        - description_truncated
+        - attributes
+        - omitted_attribute_count
+        - image
+      properties:
+        chain_id:
+          $ref: "#/components/schemas/Quantity"
+        token_address:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        state:
+          $ref: "#/components/schemas/NFTMetadataState"
+        observation:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        name:
+          type: string
+          maxLength: 512
+        name_truncated:
+          type: boolean
+        description:
+          type: string
+          maxLength: 16384
+        description_truncated:
+          type: boolean
+        attributes:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/NFTMetadataAttribute"
+        omitted_attribute_count:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        image:
+          $ref: "#/components/schemas/NFTMetadataImage"
     NFTBalance:
       type: object
       required: [chain_id, owner, token_address, token_id, balance, confidence]
@@ -5277,6 +5390,14 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/NFTOwnership"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NFTMetadataResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NFTMetadata"
         meta:
           $ref: "#/components/schemas/Meta"
     NFTBalanceListResponse:

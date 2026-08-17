@@ -25,6 +25,7 @@ import {
   useBlocks,
   useChainStatus,
   useGenesisAccounts,
+  useNFTMetadata,
   useNFTOwnership,
   usePublicConfig,
   useSearchResults,
@@ -60,6 +61,7 @@ import type {
   ChainStatus,
   ERC20Balance,
   NFTBalance,
+  NFTMetadata,
   SearchResult,
   TokenEvent,
   TransactionDetail,
@@ -72,6 +74,7 @@ import type {
   VerificationSuccess,
   VerificationSubmission,
 } from "@/api/types";
+import { ApiError } from "@/api/client";
 import {
   formatGweiFromWei,
   formatEtherFromGwei,
@@ -115,6 +118,26 @@ function formatTokenEventAmount(
   return event.standard === "erc20"
     ? formatTokenAmount(event.amount, event.decimals, locale)
     : formatInteger(event.amount, locale);
+}
+
+function isNFTStandard(standard: string): boolean {
+  return standard === "erc721" || standard === "erc1155";
+}
+
+function NFTTokenIDLink({
+  address,
+  prefix = false,
+  tokenID,
+}: {
+  address: string;
+  prefix?: boolean;
+  tokenID: string;
+}) {
+  return (
+    <Link to="/nft/$address/$tokenID" params={{ address, tokenID }}>
+      <code>{prefix ? `#${tokenID}` : tokenID}</code>
+    </Link>
+  );
 }
 
 function useCursorHistory(identity: string) {
@@ -1949,9 +1972,20 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                         <td>{event.kind}</td>
                         <td><code>{event.from ? shorten(event.from) : "—"}</code></td>
                         <td><code>{event.to ? shorten(event.to) : "—"}</code></td>
-                        <td><code>{event.amount !== undefined
-                          ? formatTokenEventAmount(event, locale)
-                          : formatInteger(event.token_id, locale)}</code></td>
+                        <td>
+                          <span className="table-primary">
+                            {event.amount !== undefined ? (
+                              <code>{formatTokenEventAmount(event, locale)}</code>
+                            ) : event.token_id !== undefined && isNFTStandard(event.standard) ? (
+                              <NFTTokenIDLink address={event.token_address} tokenID={event.token_id} />
+                            ) : (
+                              <code>{formatInteger(event.token_id, locale)}</code>
+                            )}
+                            {event.amount !== undefined && event.token_id !== undefined && isNFTStandard(event.standard) ? (
+                              <small><NFTTokenIDLink address={event.token_address} prefix tokenID={event.token_id} /></small>
+                            ) : null}
+                          </span>
+                        </td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -3466,13 +3500,15 @@ function AddressTokenTransfers({
               <AddressCell address={transfer.to} currentAddress={address} />
               <td>
                 <span className="table-primary">
-                  <code>
-                    {transfer.amount !== undefined
-                      ? formatTokenEventAmount(transfer, locale)
-                      : transfer.token_id !== undefined ? `#${transfer.token_id}` : "—"}
-                  </code>
-                  {transfer.amount !== undefined && transfer.token_id !== undefined
-                    ? <small>#{transfer.token_id}</small>
+                  {transfer.amount !== undefined ? (
+                    <code>{formatTokenEventAmount(transfer, locale)}</code>
+                  ) : transfer.token_id !== undefined && isNFTStandard(transfer.standard) ? (
+                    <NFTTokenIDLink address={transfer.token_address} prefix tokenID={transfer.token_id} />
+                  ) : (
+                    <code>{transfer.token_id !== undefined ? `#${transfer.token_id}` : "—"}</code>
+                  )}
+                  {transfer.amount !== undefined && transfer.token_id !== undefined && isNFTStandard(transfer.standard)
+                    ? <small><NFTTokenIDLink address={transfer.token_address} prefix tokenID={transfer.token_id} /></small>
                     : null}
                 </span>
               </td>
@@ -3838,7 +3874,7 @@ function AddressNFTBalances({
                       <code>{shorten(balance.token_address)}</code>
                     </Link>
                   </td>
-                  <td><code>{balance.token_id}</code></td>
+                  <td><NFTTokenIDLink address={balance.token_address} tokenID={balance.token_id} /></td>
                   <td><code>{balance.balance}</code></td>
                   <td><span className="result-kind">{confidenceLabel(balance.confidence, t)}</span></td>
                 </tr>
@@ -4016,7 +4052,7 @@ function TokenTransfers({
                     </Link>
                   ) : "—"}</td>
                   <td>
-                    {event.token_id && event.standard === "erc721" ? (
+                    {event.token_id && isNFTStandard(event.standard) ? (
                       <Link
                         to="/nft/$address/$tokenID"
                         params={{ address: event.token_address, tokenID: event.token_id }}
@@ -4051,24 +4087,39 @@ function TokenTransfers({
 
 function NFTDetailPage({ address, tokenID }: { address: string; tokenID: string }) {
   const { i18n, t } = useTranslation();
-  const ownership = useNFTOwnership(address, tokenID);
+  const token = useToken(address);
+  const nftMetadata = useNFTMetadata(address, tokenID);
+  const isERC721 = token.data?.standard === "erc721";
+  const ownership = useNFTOwnership(address, tokenID, isERC721);
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
-    <Page title={t("page.nft")} description={`${address} / ${tokenID}`} mono>
-      <QueryNotice loading={ownership.isPending} error={ownership.error} />
-      {ownership.data && (
-        <DetailList label={t("detail.nftOwnership")}>
+    <Page title={nftMetadata.data?.name || t("page.nft")} description={`${address} / ${tokenID}`} mono>
+      <QueryNotice loading={token.isPending} error={token.error} />
+      {token.data && isNFTStandard(token.data.standard) ? (
+        <DetailList label={t("nftMetadata.instance")}>
           <Detail
             label={t("page.token")}
             mono
             value={(
-              <Link to="/token/$address" params={{ address: ownership.data.token_address }}>
-                {ownership.data.token_address}
+              <Link to="/token/$address" params={{ address: token.data.address }}>
+                {token.data.address}
               </Link>
             )}
           />
-          <Detail label={t("detail.tokenID")} value={ownership.data.token_id} />
+          <Detail label={t("detail.tokenID")} value={tokenID} />
+          <Detail label={t("table.standard")} value={tokenStandardLabel(token.data.standard, t)} />
+        </DetailList>
+      ) : null}
+      {token.data && !isNFTStandard(token.data.standard) ? (
+        <div className="query-notice degraded" role="status">
+          <span className="status-dot warning" aria-hidden="true" />
+          <span><strong>{t("nftMetadata.notNFT")}</strong></span>
+        </div>
+      ) : null}
+      {isERC721 ? <QueryNotice loading={ownership.isPending} error={ownership.error} /> : null}
+      {isERC721 && ownership.data ? (
+        <DetailList label={t("detail.nftOwnership")}>
           <Detail
             label={t("detail.owner")}
             mono
@@ -4094,9 +4145,314 @@ function NFTDetailPage({ address, tokenID }: { address: string; tokenID: string 
             )}
           />
         </DetailList>
-      )}
+      ) : null}
+      {token.data?.standard === "erc1155" ? (
+        <section className="panel detail-card" aria-label={t("detail.nftOwnership")}>
+          <h2>{t("detail.nftOwnership")}</h2>
+          <p className="context-note" role="note">{t("nftMetadata.erc1155Ownership")}</p>
+        </section>
+      ) : null}
+      <NFTMetadataPanel
+        data={nftMetadata.data}
+        error={nftMetadata.error}
+        loading={nftMetadata.isPending}
+        locale={locale}
+      />
     </Page>
   );
+}
+
+function NFTMetadataPanel({
+  data,
+  error,
+  loading,
+  locale,
+}: {
+  data?: NFTMetadata;
+  error: unknown;
+  loading: boolean;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="panel detail-card nft-metadata-card" aria-labelledby="nft-metadata-title">
+      <h2 id="nft-metadata-title">{t("nftMetadata.title")}</h2>
+      <NFTMetadataQueryNotice error={error} loading={loading} />
+      {data ? (
+        <>
+          {data.state !== "available" ? (
+            <div className="query-notice degraded compact" role="status">
+              <span className="status-dot warning" aria-hidden="true" />
+              <span>
+                <strong>{nftMetadataStateLabel(data.state, t)}</strong>
+                <small>{t("nftMetadata.stateDetail")}</small>
+              </span>
+            </div>
+          ) : null}
+          <dl className="detail-grid">
+            <Detail label={t("table.status")} value={nftMetadataStateLabel(data.state, t)} />
+            <Detail
+              label={t("detail.observedBlock")}
+              value={formatInteger(data.observation.block_number, locale)}
+            />
+            <Detail
+              label={t("detail.observedBlockHash")}
+              mono
+              value={(
+                <Link to="/blocks/$blockID" params={{ blockID: data.observation.block_hash }}>
+                  {data.observation.block_hash}
+                </Link>
+              )}
+            />
+            {data.state === "available" ? (
+              <>
+                <Detail
+                  label={t("detail.name")}
+                  value={(
+                    <MetadataText value={data.name} truncated={data.name_truncated} />
+                  )}
+                />
+                <Detail
+                  label={t("nftMetadata.description")}
+                  wide
+                  value={(
+                    <MetadataText description value={data.description} truncated={data.description_truncated} />
+                  )}
+                />
+                <Detail
+                  label={t("nftMetadata.imageLink")}
+                  wide
+                  value={data.image.state === "available" && data.image.url ? (
+                    <NFTExternalImageLink url={data.image.url} />
+                  ) : nftMetadataImageStateLabel(data.image.state, t)}
+                />
+              </>
+            ) : null}
+          </dl>
+          {data.state === "available" ? (
+            <div className="nft-traits">
+              <h3>{t("nftMetadata.traits")}</h3>
+              {data.attributes.length > 0 ? (
+                <dl className="nft-traits-grid">
+                  {data.attributes.map((attribute, index) => (
+                    <div className="nft-trait" key={`${attribute.trait_type}:${index}`}>
+                      <dt>{attribute.trait_type}</dt>
+                      <dd>
+                        {attribute.value}
+                        {attribute.display_type ? <small>{attribute.display_type}</small> : null}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="empty-result">{t("nftMetadata.noTraits")}</p>
+              )}
+              {data.omitted_attribute_count > 0 ? (
+                <p className="context-note" role="note">
+                  {t("nftMetadata.omittedTraits", { count: data.omitted_attribute_count })}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function MetadataText({
+  description = false,
+  truncated,
+  value,
+}: {
+  description?: boolean;
+  truncated: boolean;
+  value?: string;
+}) {
+  const { t } = useTranslation();
+  if (!value) return <>—</>;
+  return (
+    <span className={description ? "nft-metadata-description" : undefined}>
+      {value}
+      {truncated ? <small className="nft-metadata-truncated">{t("nftMetadata.textTruncated")}</small> : null}
+    </span>
+  );
+}
+
+function NFTMetadataQueryNotice({ error, loading }: { error: unknown; loading: boolean }) {
+  const { t } = useTranslation();
+  if (loading) return <QueryNotice compact loading />;
+  if (!(error instanceof ApiError)) return <QueryNotice compact error={error} />;
+  const message = (() => {
+    switch (error.code.toLowerCase()) {
+      case "nft_metadata_disabled": return t("nftMetadata.disabled");
+      case "nft_metadata_not_found": return t("nftMetadata.notFound");
+      case "nft_metadata_noncanonical": return t("nftMetadata.noncanonical");
+      default: return undefined;
+    }
+  })();
+  if (!message) return <QueryNotice compact error={error} />;
+  return (
+    <div className="query-notice degraded compact" role="status">
+      <span className="status-dot warning" aria-hidden="true" />
+      <span><strong>{message}</strong></span>
+    </div>
+  );
+}
+
+function NFTExternalImageLink({ url }: { url: string }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const label = externalTargetLabel(url);
+
+  useEffect(() => {
+    if (!open) return;
+    dialogRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      openButtonRef.current?.focus();
+    };
+  }, [open]);
+
+  return (
+    <>
+      <span className="nft-external-link">
+        <button
+          aria-haspopup="dialog"
+          aria-label={t("nftMetadata.reviewImageLink", { target: url })}
+          className="nft-image-link"
+          onClick={() => setOpen(true)}
+          ref={openButtonRef}
+          title={url}
+          type="button"
+        >
+          {label}
+        </button>
+        <CopyButton value={url} />
+        <span className="result-kind warning">{t("nftMetadata.unverifiedLink")}</span>
+      </span>
+      {open ? (
+        <div
+          className="dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setOpen(false);
+          }}
+          role="presentation"
+        >
+          <div
+            aria-describedby="nft-external-link-warning"
+            aria-labelledby="nft-external-link-title"
+            aria-modal="true"
+            className="external-link-dialog"
+            onKeyDown={trapDialogFocus}
+            ref={dialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="qr-dialog-heading">
+              <h2 id="nft-external-link-title">{t("nftMetadata.dialogTitle")}</h2>
+              <button
+                aria-label={t("common.close")}
+                className="dialog-close"
+                onClick={() => setOpen(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <p className="external-link-warning" id="nft-external-link-warning" role="alert">
+              {t("nftMetadata.externalWarning")}
+            </p>
+            <div className="external-link-target">
+              <strong>{t("nftMetadata.target")}</strong>
+              <span>{label}</span>
+              <CopyButton value={url} />
+            </div>
+            <div className="external-link-dialog-actions">
+              <button className="button secondary" onClick={() => setOpen(false)} type="button">
+                {t("nftMetadata.cancel")}
+              </button>
+              <a
+                className="button"
+                href={url}
+                onClick={() => setOpen(false)}
+                referrerPolicy="no-referrer"
+                rel="external noopener noreferrer"
+                target="_blank"
+              >
+                {t("nftMetadata.openExternal")}
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function trapDialogFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+  if (event.key !== "Tab") return;
+  const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>(
+    "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+  )];
+  if (focusable.length === 0) {
+    event.preventDefault();
+    event.currentTarget.focus();
+    return;
+  }
+  const first = focusable[0]!;
+  const last = focusable.at(-1)!;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  } else if (document.activeElement === event.currentTarget) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+}
+
+function externalTargetLabel(value: string): string {
+  try {
+    const parsed = new URL(value);
+    const target = `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+    if ([...target].length <= 64) return target;
+    const characters = [...target];
+    return `${characters.slice(0, 42).join("")}…${characters.slice(-18).join("")}`;
+  } catch {
+    return value;
+  }
+}
+
+function nftMetadataStateLabel(value: NFTMetadata["state"], t: Translate): string {
+  switch (value) {
+    case "available": return t("nftMetadata.state.available");
+    case "pending": return t("nftMetadata.state.pending");
+    case "unavailable": return t("nftMetadata.state.unavailable");
+    case "unsafe": return t("nftMetadata.state.unsafe");
+    case "error": return t("nftMetadata.state.error");
+  }
+}
+
+function nftMetadataImageStateLabel(value: NFTMetadata["image"]["state"], t: Translate): string {
+  switch (value) {
+    case "available": return t("nftMetadata.imageState.available");
+    case "unavailable": return t("nftMetadata.imageState.unavailable");
+    case "missing": return t("nftMetadata.imageState.missing");
+    case "unsafe": return t("nftMetadata.imageState.unsafe");
+    case "unsupported": return t("nftMetadata.imageState.unsupported");
+    case "gateway_unavailable": return t("nftMetadata.imageState.gatewayUnavailable");
+  }
 }
 
 type ChainStatusContext = ChainStatus & {

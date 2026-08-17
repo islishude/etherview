@@ -31,6 +31,7 @@ batch semantics are not core v1 scope.
 | P61 | [EIP-7702 Delegated Accounts](docs/plans/P61-eip7702-delegated-accounts.md) | done | P20, P30, P40, P50, P59, P60 | Exact authorization, execution-code, constructor, API, and delegated-account interaction semantics |
 | P62 | [ERC-2535 Diamond Proxies](docs/plans/P62-erc2535-diamond-proxies.md) | done | P20, P30, P40, P50, P58, P59, P60 | Selector-scoped facet detection, history, ABI resolution, and interaction |
 | P63 | [Geas Contract Verification](docs/plans/P63-geas-contract-verification.md) | done | P30, P40, P50, P60 | Pinned Geas v0.3.3 address verification for multi-file sys-asm contracts |
+| P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50, P60 | Canonical NFT metadata projection and guarded external-image navigation |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys with a tabbed `/account` workspace |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
@@ -227,6 +228,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   standalone and Etherscan submission surfaces remain Solidity-only. Reviewable
   commands and results remain in
   [P63 evidence](docs/plans/P63-geas-contract-verification.md#evidence).
+- P64 is complete: the newest exact canonical ERC-721/ERC-1155 metadata
+  observation is exposed through a bounded native API and rendered as inert
+  text, ordered traits, and a confirmation-gated external image link on the NFT
+  detail route. The existing authenticated media proxy and its SSRF/content
+  boundary remain unchanged. Reviewable commands and results remain in
+  [P64 evidence](docs/plans/P64-nft-metadata-web.md#evidence).
 - P60 is complete: the hardened non-root image, PostgreSQL-only monolith and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling

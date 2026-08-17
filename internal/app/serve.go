@@ -584,10 +584,15 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			MaxBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 		}
 		var (
-			mediaSource metadata.NFTImageSource
-			mediaProxy  *metadata.MediaProxy
+			metadataReader metadata.NFTMetadataReader
+			mediaSource    metadata.NFTImageSource
+			mediaProxy     *metadata.MediaProxy
 		)
 		if cfg.Features.NFTMetadata {
+			metadataReader, err = metadata.NewPostgresMetadataReader(readDB, chainID, cfg.Metadata.IPFSGateway)
+			if err != nil {
+				return err
+			}
 			mediaSource, err = metadata.NewPostgresImageSource(db, chainID)
 			if err != nil {
 				return err
@@ -677,6 +682,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,
 			VerificationTargets: verificationTargets,
+			NFTMetadataReader:   metadataReader,
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,
 			UserAPIKeys: userAPIKeys,

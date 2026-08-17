@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -237,6 +238,119 @@ func TestPostgresNFTMediaSourceRequiresCurrentCanonicalAvailableDocument(t *test
 	}
 	if _, err := source.SelectNFTImage(ctx, address, "42"); !errors.Is(err, metadata.ErrMediaSourceNoncanonical) {
 		t.Fatalf("orphan image error = %v, want ErrMediaSourceNoncanonical", err)
+	}
+}
+
+func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(0, testHash(930), testHash(0), testHash(9_300), "metadata-display-genesis")
+	commitCanonical(t, ctx, core, genesis)
+	genesisHash := genesis.Block.Hash()
+	address := testAddress(931)
+	document := `{"name":"Canonical NFT","description":"plain","image":"ipfs://bafybeigdyrzt1234567890/42.png","attributes":[{"trait_type":"Level","value":9007199254740993}]}`
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO external_metadata (
+			chain_id, resource_kind, resource_key, source_uri, state, document,
+			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+		) VALUES (1, 'nft', 'display:42:0', 'https://metadata.example.invalid/42.json',
+			'available', $4::jsonb, 'https://metadata.example.invalid/42.json',
+			'application/json', $3, octet_length(convert_to($4::text, 'UTF8')),
+			clock_timestamp(), clock_timestamp(), $1, 42, 0, $2, $2)`,
+		mustBytes(t, address), mustBytes(t, genesisHash), mustBytes(t, testHash(932)), document); err != nil {
+		t.Fatalf("insert canonical display metadata: %v", err)
+	}
+	for index, state := range []metadata.State{
+		metadata.StatePending, metadata.StateUnavailable, metadata.StateUnsafe, metadata.StateError,
+	} {
+		tokenID := 43 + index
+		if state == metadata.StatePending {
+			if _, err := db.ExecContext(ctx, `
+				INSERT INTO external_metadata (
+					chain_id, resource_kind, resource_key, source_uri, state,
+					token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+				) VALUES (1, 'nft', $4, 'https://metadata.example.invalid/terminal.json', $5,
+					$1, $3::numeric, 0, $2, $2)`,
+				mustBytes(t, address), mustBytes(t, genesisHash), strconv.Itoa(tokenID), "display:"+strconv.Itoa(tokenID), state); err != nil {
+				t.Fatalf("insert %s display metadata: %v", state, err)
+			}
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO external_metadata (
+				chain_id, resource_kind, resource_key, source_uri, state,
+				last_error_code, last_error, fetched_at, terminal_at,
+				token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+			) VALUES (1, 'nft', $4, 'https://metadata.example.invalid/terminal.json', $5,
+				'terminal', 'bounded', clock_timestamp(), clock_timestamp(),
+				$1, $3::numeric, 0, $2, $2)`,
+			mustBytes(t, address), mustBytes(t, genesisHash), strconv.Itoa(tokenID), "display:"+strconv.Itoa(tokenID), state); err != nil {
+			t.Fatalf("insert %s display metadata: %v", state, err)
+		}
+	}
+
+	reader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.State != metadata.StateAvailable || selected.Name != "Canonical NFT" ||
+		len(selected.Attributes) != 1 || selected.Attributes[0].Value != "9007199254740993" ||
+		selected.Image.URL != "https://ipfs.example/base/ipfs/bafybeigdyrzt1234567890/42.png" ||
+		selected.Observation.BlockHash != genesisHash {
+		t.Fatalf("canonical display selection=%+v err=%v", selected, err)
+	}
+	for index, state := range []metadata.State{
+		metadata.StatePending, metadata.StateUnavailable, metadata.StateUnsafe, metadata.StateError,
+	} {
+		selected, err := reader.NFTMetadata(ctx, address, strconv.Itoa(43+index))
+		if err != nil || selected.State != state || selected.Image.State != metadata.NFTMetadataImageUnavailable || len(selected.Attributes) != 0 {
+			t.Fatalf("%s display selection=%+v err=%v", state, selected, err)
+		}
+	}
+
+	newBlock := testBundle(1, testHash(933), genesisHash, testHash(9_330), "metadata-display-new")
+	commitCanonical(t, ctx, core, newBlock)
+	newHash := newBlock.Block.Hash()
+	newDocument := `{"name":"New canonical NFT","image":"https://media.example/new.png"}`
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO external_metadata (
+			chain_id, resource_kind, resource_key, source_uri, state, document,
+			resolved_uri, media_type, content_hash, content_size, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+		) VALUES (1, 'nft', 'display:42:1', 'https://metadata.example.invalid/42-v2.json',
+			'available', $4::jsonb, 'https://metadata.example.invalid/42-v2.json',
+			'application/json', $3, octet_length(convert_to($4::text, 'UTF8')),
+			clock_timestamp(), clock_timestamp(), $1, 42, 1, $2, $2)`,
+		mustBytes(t, address), mustBytes(t, newHash), mustBytes(t, testHash(934)), newDocument); err != nil {
+		t.Fatalf("insert newer display metadata: %v", err)
+	}
+	selected, err = reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.Name != "New canonical NFT" || selected.Observation.BlockHash != newHash {
+		t.Fatalf("new display selection=%+v err=%v", selected, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.Name != "Canonical NFT" || selected.Observation.BlockHash != genesisHash {
+		t.Fatalf("fallback display selection=%+v err=%v", selected, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.NFTMetadata(ctx, address, "42"); !errors.Is(err, metadata.ErrNFTMetadataNoncanonical) {
+		t.Fatalf("orphan-only display error=%v", err)
+	}
+	if _, err := reader.NFTMetadata(ctx, address, "99"); !errors.Is(err, metadata.ErrNFTMetadataNotFound) {
+		t.Fatalf("missing display error=%v", err)
 	}
 }
 

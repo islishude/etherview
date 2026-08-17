@@ -15,6 +15,7 @@ import type {
   ERC20Balance,
   GenesisAccount,
   NFTBalance,
+  NFTMetadata,
   PendingSnapshot,
   SearchResult,
   TokenContract,
@@ -622,6 +623,21 @@ export function useNFTOwnership(address: string, tokenID: string, enabled = true
     queryFn: async () =>
       requireEnvelope(
         await apiClient.GET("/nfts/{address}/{token_id}", {
+          params: { path: { address, token_id: tokenID } },
+        }),
+      ).data,
+    enabled: enabled && address.length > 0 && tokenID.length > 0,
+    retry: false,
+    staleTime: 10_000,
+  });
+}
+
+export function useNFTMetadata(address: string, tokenID: string, enabled = true) {
+  return useQuery({
+    queryKey: ["nft", address, tokenID, "metadata"],
+    queryFn: async (): Promise<NFTMetadata> =>
+      requireEnvelope(
+        await apiClient.GET("/nfts/{address}/{token_id}/metadata", {
           params: { path: { address, token_id: tokenID } },
         }),
       ).data,

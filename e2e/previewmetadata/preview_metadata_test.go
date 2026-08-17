@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -43,6 +44,7 @@ const (
 	metadataGateway         = "https://ipfs.io"
 	metadataURI             = "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	resolvedMetadataURL     = "https://ipfs.io/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	resolvedImageURL        = "https://ipfs.io/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
 	expectedMetadataSHA256  = "a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d"
 	expectedMetadataBytes   = 205
 	previewDatabasePassword = "etherview-preview-metadata-e2e"
@@ -198,6 +200,7 @@ func (h *harness) run(ctx context.Context) {
 	h.waitTokenContract(ctx, receipt)
 	h.waitSourceObservation(ctx, receipt)
 	metadata := h.waitMetadata(ctx, receipt)
+	h.assertMetadataAPI(ctx, receipt)
 	job := h.waitJob(ctx, receipt)
 	h.assertAttempt(ctx, job.ID)
 	transition := h.assertTransitionLog(ctx, receipt, job)
@@ -434,6 +437,95 @@ func (h *harness) waitMetadata(ctx context.Context, receipt rpcReceipt) metadata
 		h.t.Fatalf("stored metadata document = %s", snapshot.Document)
 	}
 	return snapshot
+}
+
+func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt) {
+	h.t.Helper()
+	path := fmt.Sprintf(
+		"/api/v1/nfts/%s/%s/metadata",
+		receipt.ContractAddress.Hex(),
+		metadataTokenID,
+	)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+path, nil)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	response, err := h.http.Do(request)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer response.Body.Close() //nolint:errcheck
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" {
+		h.t.Fatalf("metadata API status=%d cache=%q body=%s", response.StatusCode, response.Header.Get("Cache-Control"), body)
+	}
+	if bytes.Contains(body, []byte(metadataURI)) || bytes.Contains(body, []byte(resolvedMetadataURL)) ||
+		bytes.Contains(body, []byte(`"animation_url"`)) || bytes.Contains(body, []byte(`"external_url"`)) {
+		h.t.Fatalf("metadata API exposed a forbidden field: %s", body)
+	}
+	var payload struct {
+		Data struct {
+			ChainID               string `json:"chain_id"`
+			TokenAddress          string `json:"token_address"`
+			TokenID               string `json:"token_id"`
+			State                 string `json:"state"`
+			Name                  string `json:"name"`
+			Description           string `json:"description"`
+			NameTruncated         bool   `json:"name_truncated"`
+			DescriptionTruncated  bool   `json:"description_truncated"`
+			Attributes            []any  `json:"attributes"`
+			OmittedAttributeCount int    `json:"omitted_attribute_count"`
+			Observation           struct {
+				ChainID     string `json:"chain_id"`
+				BlockNumber string `json:"block_number"`
+				BlockHash   string `json:"block_hash"`
+			} `json:"observation"`
+			Image struct {
+				State        string `json:"state"`
+				URL          string `json:"url"`
+				SourceScheme string `json:"source_scheme"`
+			} `json:"image"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		h.t.Fatal(err)
+	}
+	data := payload.Data
+	if data.ChainID != previewChainID || !strings.EqualFold(data.TokenAddress, receipt.ContractAddress.Hex()) ||
+		data.TokenID != metadataTokenID || data.State != "available" || data.Name != "No time to explain!" ||
+		data.Description != "I said there was no time to explain, and I stand by that." ||
+		data.NameTruncated || data.DescriptionTruncated || len(data.Attributes) != 0 || data.OmittedAttributeCount != 0 ||
+		data.Observation.ChainID != previewChainID ||
+		data.Observation.BlockNumber != strconv.FormatUint(uint64(receipt.BlockNumber), 10) ||
+		!strings.EqualFold(data.Observation.BlockHash, receipt.BlockHash.Hex()) ||
+		data.Image.State != "available" || data.Image.URL != resolvedImageURL || data.Image.SourceScheme != "ipfs" {
+		h.t.Fatalf("metadata API payload = %#v", data)
+	}
+
+	mediaRequest, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		h.apiURL+strings.TrimSuffix(path, "/metadata")+"/media",
+		nil,
+	)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	mediaResponse, err := h.http.Do(mediaRequest)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer mediaResponse.Body.Close() //nolint:errcheck
+	mediaBody, err := io.ReadAll(mediaResponse.Body)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if mediaResponse.StatusCode != http.StatusUnauthorized || !bytes.Contains(mediaBody, []byte(`"code":"api_key_required"`)) {
+		h.t.Fatalf("anonymous media status=%d body=%s", mediaResponse.StatusCode, mediaBody)
+	}
 }
 
 func (h *harness) waitJob(ctx context.Context, receipt rpcReceipt) jobSnapshot {

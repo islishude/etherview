@@ -38,6 +38,22 @@ with separate invalidation and content-moderation obligations.
   errored, and missing-image states remain explicit and distinct. A reorg may
   select an older retained canonical document; an observation that changes
   during the fetch is rejected instead of returning stale bytes.
+- The native metadata display endpoint is a separate, bounded read projection.
+  It selects the newest exact canonical document in one repeatable-read
+  snapshot and returns only inert name/description text, at most 100 ordered
+  scalar traits, exact observation identity, and a typed image-link state. It
+  never returns raw JSON, the metadata source/resolved URI, `animation_url`, or
+  `external_url`. Terminal metadata states remain visible without fabricating a
+  document; orphan-only and missing histories stay distinct.
+- A displayable `image` value is navigation data, not validated media. Absolute
+  HTTPS values may be returned after rejecting credentials, fragments, control
+  characters, localhost, and non-public IP literals. Valid `ipfs://` values are
+  converted through the configured HTTPS gateway; every other scheme is
+  non-linkable. The SPA never embeds or prefetches the target. It reveals the
+  target host, warns that the NFT author controls the destination, and requires
+  a fresh explicit confirmation before each opener-free, no-referrer external
+  navigation. This boundary does not claim DNS or content safety and does not
+  replace the authenticated media proxy.
 - Each media request fetches the selected URI through the same SSRF-resistant
   HTTPS/IPFS policy. Redirects and every DNS result are checked, environment
   proxies are disabled, private and special-purpose addresses are rejected,
@@ -55,9 +71,11 @@ with separate invalidation and content-moderation obligations.
   services.
 - Media bytes are not persisted. Success and error responses are `no-store`,
   use `nosniff`, a restrictive CSP and same-origin resource policy, and expose
-  only fixed filenames and typed media state. Source and resolved URIs are not
-  returned or logged at the public boundary. These headers wrap authentication
-  and rate limiting, so early rejection responses retain the same boundary.
+  only fixed filenames and typed media state. Metadata document source and
+  resolved URIs are not returned or logged at the public boundary; the separate
+  display projection may return only the reviewed external image navigation
+  target described above. These headers wrap authentication and rate limiting,
+  so early rejection responses retain the same boundary.
 - The media endpoint always requires an authenticated API-key identity before
   database selection or network access. A deployment without configured key
   authentication returns a typed authorization failure and cannot expose this
@@ -71,3 +89,10 @@ DNS answer is surfaced as a typed failure instead of stale content. Supporting
 another scheme, media format, cache, mirror, or client-supplied source requires
 revisiting this security boundary and adding parser, SSRF, size, and active
 content regressions first.
+
+Opening a display link deliberately leaves Etherview. The external site sees a
+direct browser request and may return non-image, malicious, misleading, or
+tracking content despite the syntactic link policy. The mandatory confirmation,
+target disclosure, no-referrer navigation, and lack of automatic loading make
+that user-directed risk explicit without granting the server anonymous outbound
+fetch authority.

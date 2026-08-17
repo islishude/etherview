@@ -47,6 +47,7 @@ export type SearchResult = components["schemas"]["SearchResult"];
 export type TokenContract = components["schemas"]["TokenContract"];
 export type TokenEvent = components["schemas"]["TokenEvent"];
 export type NFTOwnership = components["schemas"]["NFTOwnership"];
+export type NFTMetadata = components["schemas"]["NFTMetadata"];
 export type NFTBalance = components["schemas"]["NFTBalance"];
 export type ERC20Balance = components["schemas"]["ERC20Balance"];
 export type TraceFrame = components["schemas"]["TraceFrame"];

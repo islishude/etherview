@@ -692,6 +692,28 @@ func main() {
 			},
 		})
 	})
+	mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}/metadata", func(response http.ResponseWriter, request *http.Request) {
+		if request.PathValue("address") != testAddress || request.PathValue("token_id") != "1" {
+			writeNotFound(response)
+			return
+		}
+		writeEnvelope(response, map[string]any{
+			"chain_id": "1", "token_address": testAddress, "token_id": "1",
+			"state": "available",
+			"observation": map[string]any{
+				"chain_id": "1", "block_number": "2", "block_hash": secondHash,
+			},
+			"name": "Example Collectible #1", "name_truncated": false,
+			"description": "Plain fixture metadata; no image is embedded.", "description_truncated": false,
+			"attributes": []any{map[string]any{
+				"trait_type": "Level", "value": "9007199254740993", "display_type": "number",
+			}},
+			"omitted_attribute_count": 1,
+			"image": map[string]any{
+				"state": "available", "url": "https://media.example.invalid/nft.png?token=fixture", "source_scheme": "https",
+			},
+		})
+	})
 	mux.HandleFunc("GET /api/v1/pending", func(response http.ResponseWriter, _ *http.Request) {
 		writeEnvelopeMeta(response, []any{map[string]any{
 			"hash": pendingTransactionHash, "from": testAddress, "to": testAddress,

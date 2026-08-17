@@ -199,6 +199,7 @@ type Options struct {
 	Events                *events.Broker
 	HomeSnapshots         HomeSnapshotSource
 	Mempool               mempool.Reader
+	NFTMetadataReader     metadata.NFTMetadataReader
 	NFTMediaSource        metadata.NFTImageSource
 	NFTMediaProxy         *metadata.MediaProxy
 	VerificationReader    VerificationReader
@@ -234,6 +235,7 @@ type Handler struct {
 	events                *events.Broker
 	homeSnapshots         HomeSnapshotSource
 	mempool               mempool.Reader
+	nftMetadataReader     metadata.NFTMetadataReader
 	nftMediaSource        metadata.NFTImageSource
 	nftMediaProxy         *metadata.MediaProxy
 	verificationReader    VerificationReader
@@ -287,6 +289,7 @@ func New(options Options) (*Handler, error) {
 		events:                options.Events,
 		homeSnapshots:         options.HomeSnapshots,
 		mempool:               options.Mempool,
+		nftMetadataReader:     options.NFTMetadataReader,
 		nftMediaSource:        options.NFTMediaSource,
 		nftMediaProxy:         options.NFTMediaProxy,
 		verificationReader:    options.VerificationReader,
@@ -405,6 +408,9 @@ func (h *Handler) routes() {
 	}
 	h.handleBillable("getChartOverview", h.chartOverview)
 	h.handleBillable("getChartMetric", h.chartMetric)
+	// Metadata display remains addressable while the feature is disabled so the
+	// SPA receives a typed capability response rather than a route-level 404.
+	h.handleBillable("getNFTMetadata", h.nftMetadata)
 	// The route remains present when external metadata is disabled so clients
 	// receive a typed capability state instead of a misleading route-level 404.
 	h.mux.HandleFunc("GET /api/v1/nfts/{address}/{token_id}/media", h.nftMedia)
@@ -1402,6 +1408,45 @@ func (h *Handler) nftOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, gen.NFTOwnershipResponse{Data: nftOwnershipModel(item), Meta: h.meta(r)})
+}
+
+func (h *Handler) nftMetadata(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.Features.NFTMetadata || h.nftMetadataReader == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "nft_metadata_disabled", "NFT metadata is disabled", nil)
+		return
+	}
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return
+	}
+	parsedAddress, err := ethrpc.ParseAddress(address)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_address", "address must be 20 bytes", nil)
+		return
+	}
+	tokenID := r.PathValue("token_id")
+	if !canonicalQuantity(tokenID) {
+		writeError(w, r, http.StatusBadRequest, "invalid_token_id", "token_id must be a canonical decimal uint256", nil)
+		return
+	}
+	item, err := h.nftMetadataReader.NFTMetadata(r.Context(), common.Address(parsedAddress), tokenID)
+	if err != nil {
+		switch {
+		case errors.Is(err, metadata.ErrNFTMetadataNotFound):
+			writeError(w, r, http.StatusNotFound, "nft_metadata_not_found", "canonical NFT metadata was not found", nil)
+		case errors.Is(err, metadata.ErrNFTMetadataNoncanonical):
+			writeError(w, r, http.StatusConflict, "nft_metadata_noncanonical", "NFT metadata exists only for a noncanonical block", nil)
+		default:
+			h.logger.ErrorContext(r.Context(), "NFT metadata display query failed",
+				"request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
+			writeError(w, r, http.StatusInternalServerError, "nft_metadata_query_failed", "NFT metadata lookup failed", nil)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.NFTMetadataResponse{
+		Data: nftMetadataModel(h.chainID(), common.Address(parsedAddress).Hex(), tokenID, item),
+		Meta: h.meta(r),
+	})
 }
 
 func (h *Handler) nftMedia(w http.ResponseWriter, r *http.Request) {
@@ -2896,6 +2941,39 @@ func nftOwnershipModel(item catalog.NFTOwnership) gen.NFTOwnership {
 		Owner: item.Owner, Balance: item.Balance, Confidence: gen.StateConfidence(item.Confidence),
 		Snapshot: catalogSnapshotModel(item.Snapshot),
 	}
+}
+
+func nftMetadataModel(chainID, address, tokenID string, item metadata.NFTMetadata) gen.NFTMetadata {
+	attributes := make([]gen.NFTMetadataAttribute, len(item.Attributes))
+	for index := range item.Attributes {
+		attribute := item.Attributes[index]
+		attributes[index] = gen.NFTMetadataAttribute{TraitType: attribute.TraitType, Value: attribute.Value}
+		if attribute.DisplayType != "" {
+			attributes[index].DisplayType = &attribute.DisplayType
+		}
+	}
+	model := gen.NFTMetadata{
+		ChainId: chainID, TokenAddress: address, TokenId: tokenID,
+		State: gen.NFTMetadataState(item.State),
+		Observation: gen.CatalogSnapshot{
+			ChainId: chainID, BlockNumber: quantity(item.Observation.BlockNumber), BlockHash: item.Observation.BlockHash.Hex(),
+		},
+		NameTruncated: item.NameTruncated, DescriptionTruncated: item.DescriptionTruncated,
+		Attributes: attributes, OmittedAttributeCount: item.OmittedAttributeCount,
+		Image: gen.NFTMetadataImage{State: gen.NFTMetadataImageState(item.Image.State)},
+	}
+	if item.Name != "" {
+		model.Name = &item.Name
+	}
+	if item.Description != "" {
+		model.Description = &item.Description
+	}
+	if item.Image.State == metadata.NFTMetadataImageAvailable {
+		model.Image.Url = &item.Image.URL
+		scheme := gen.NFTMetadataImageSourceScheme(item.Image.SourceScheme)
+		model.Image.SourceScheme = &scheme
+	}
+	return model
 }
 
 func nftBalanceModel(item catalog.NFTBalance) gen.NFTBalance {
