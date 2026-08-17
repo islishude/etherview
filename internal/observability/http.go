@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/apiops"
 )
 
 // HTTPOptions configures low-cardinality request metrics, JSON request logs,
@@ -15,6 +17,7 @@ import (
 type HTTPOptions struct {
 	Registry      *Registry
 	Logger        *slog.Logger
+	Component     string
 	Telemetry     *Telemetry
 	SpanSink      SpanSink
 	Now           func() time.Time
@@ -33,6 +36,9 @@ func HTTPMiddleware(next http.Handler, options HTTPOptions) http.Handler {
 	}
 	if options.Logger == nil {
 		options.Logger = slog.Default()
+	}
+	if options.Component == "" {
+		options.Component = "http-api"
 	}
 	if options.Now == nil {
 		options.Now = time.Now
@@ -94,15 +100,31 @@ func HTTPMiddleware(next http.Handler, options HTTPOptions) http.Handler {
 			}
 			finish(status, spanValues)
 			if shouldLogHTTPCompletion(route) {
-				options.Logger.InfoContext(ctx, "HTTP request completed",
-					"method", method,
-					"route", route,
-					"status", writer.status,
-					"result", requestResult(writer.panicked),
-					"duration_ms", duration.Milliseconds(),
-					"trace_id", trace.TraceID,
-					"span_id", trace.SpanID,
-				)
+				requestID := selectedRequestID(writer.Header().Get("X-Request-ID"), trace.TraceID)
+				result := httpRequestResult(writer.status, writer.panicked)
+				level := slog.LevelInfo
+				if writer.status >= http.StatusInternalServerError {
+					level = slog.LevelWarn
+				}
+				if writer.panicked {
+					level = slog.LevelError
+				}
+				attributes := []slog.Attr{
+					slog.String("event", "http_request_completed"),
+					slog.String("component", options.Component),
+					slog.String("request_id", requestID),
+					slog.String("method", method),
+					slog.String("route", route),
+					slog.Int("status", writer.status),
+					slog.String("result", result),
+					slog.Int64("duration_ms", duration.Milliseconds()),
+					slog.String("trace_id", trace.TraceID),
+					slog.String("span_id", trace.SpanID),
+				}
+				if operation := requestOperation(method, route); operation != "" {
+					attributes = append(attributes, slog.String("operation", operation))
+				}
+				options.Logger.LogAttrs(ctx, level, "HTTP request completed", attributes...)
 			}
 			if abort {
 				panic(http.ErrAbortHandler)
@@ -149,11 +171,26 @@ func selectedRequestID(responseValue, traceID string) string {
 	return randomHex(16)
 }
 
-func requestResult(panicked bool) string {
+func httpRequestResult(status int, panicked bool) string {
 	if panicked {
 		return "panic"
 	}
-	return "completed"
+	if status >= http.StatusInternalServerError {
+		return "server_error"
+	}
+	if status >= http.StatusBadRequest {
+		return "client_error"
+	}
+	return "success"
+}
+
+func requestOperation(method, route string) string {
+	for _, operation := range apiops.All() {
+		if operation.Method == method && "/api/v1"+operation.OpenAPIPath == route {
+			return string(operation.ID)
+		}
+	}
+	return ""
 }
 
 func writeOperationalPanicResponse(writer http.ResponseWriter, requestID string) {

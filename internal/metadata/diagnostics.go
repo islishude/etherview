@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"net"
 	"net/http"
@@ -39,6 +40,35 @@ const (
 	FetchPhaseCanonicality  FetchPhase = "canonicality"
 )
 
+// FetchFailureReason is a closed, credential-free diagnosis for one failed
+// hostile-boundary operation. It must never contain text derived from an
+// upstream error, URL, response body, or host.
+type FetchFailureReason string
+
+const (
+	FetchFailureDNSLookupFailed       FetchFailureReason = "dns_lookup_failed"
+	FetchFailureDNSTimeout            FetchFailureReason = "dns_timeout"
+	FetchFailureNetworkPolicyRejected FetchFailureReason = "network_policy_rejected"
+	FetchFailureConnectTimeout        FetchFailureReason = "connect_timeout"
+	FetchFailureConnectionRefused     FetchFailureReason = "connection_refused"
+	FetchFailureNetworkUnreachable    FetchFailureReason = "network_unreachable"
+	FetchFailureTLSHandshakeTimeout   FetchFailureReason = "tls_handshake_timeout"
+	FetchFailureTLSCertificateInvalid FetchFailureReason = "tls_certificate_invalid"
+	FetchFailureTLSProtocolError      FetchFailureReason = "tls_protocol_error"
+	FetchFailureRequestTimeout        FetchFailureReason = "request_timeout"
+	FetchFailureTransportError        FetchFailureReason = "transport_error"
+)
+
+type fetchTransportStage uint8
+
+const (
+	fetchTransportNone fetchTransportStage = iota
+	fetchTransportDNS
+	fetchTransportConnect
+	fetchTransportTLS
+	fetchTransportRequest
+)
+
 // FetchDiagnostic contains only bounded, credential-free facts about one
 // metadata fetch. Arbitrary HTTPS paths are represented by length and digest;
 // RequestPath is populated only for the public IPFS content path.
@@ -67,7 +97,8 @@ type FetchDiagnostic struct {
 	RejectedPrefixes      []string
 	NetworkPolicyBypassed bool
 
-	Phase FetchPhase
+	Phase  FetchPhase
+	Reason FetchFailureReason
 }
 
 type fetchDiagnosticContextKey struct{}
@@ -75,6 +106,7 @@ type fetchDiagnosticContextKey struct{}
 type fetchDiagnosticCollector struct {
 	mu                   sync.Mutex
 	unsafePrivateNetwork bool
+	transportStage       fetchTransportStage
 	diagnostic           FetchDiagnostic
 }
 
@@ -93,6 +125,19 @@ func withFetchDiagnostic(ctx context.Context, collector *fetchDiagnosticCollecto
 			if collector != nil && info.Conn != nil {
 				collector.recordConnectedAddress(info.Conn.RemoteAddr())
 			}
+		},
+		TLSHandshakeStart: func() {
+			collector.setTransportStage(fetchTransportTLS)
+		},
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
+			if err != nil {
+				collector.recordTLSFailure(err)
+				return
+			}
+			collector.setTransportStage(fetchTransportRequest)
+		},
+		WroteRequest: func(httptrace.WroteRequestInfo) {
+			collector.setTransportStage(fetchTransportRequest)
 		},
 	})
 }
@@ -148,6 +193,34 @@ func (collector *fetchDiagnosticCollector) setPhase(phase FetchPhase) {
 	collector.mu.Lock()
 	collector.diagnostic.Phase = phase
 	collector.mu.Unlock()
+}
+
+func (collector *fetchDiagnosticCollector) setFailure(phase FetchPhase, reason FetchFailureReason) {
+	if collector == nil {
+		return
+	}
+	collector.mu.Lock()
+	collector.diagnostic.Phase = phase
+	collector.diagnostic.Reason = reason
+	collector.mu.Unlock()
+}
+
+func (collector *fetchDiagnosticCollector) setTransportStage(stage fetchTransportStage) {
+	if collector == nil {
+		return
+	}
+	collector.mu.Lock()
+	collector.transportStage = stage
+	collector.mu.Unlock()
+}
+
+func (collector *fetchDiagnosticCollector) transportStageSnapshot() fetchTransportStage {
+	if collector == nil {
+		return fetchTransportNone
+	}
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+	return collector.transportStage
 }
 
 func (collector *fetchDiagnosticCollector) allowUnsafePrivateNetworks(allowed bool) {

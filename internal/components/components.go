@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -71,6 +72,7 @@ func (l *Lifecycle) set(state uint32) {
 type RunOptions struct {
 	Lifecycle       *Lifecycle
 	ShutdownTimeout time.Duration
+	Logger          *slog.Logger
 }
 
 // ShutdownTimeoutError identifies services that failed to stop within the
@@ -179,6 +181,7 @@ func Run(ctx context.Context, services []Service) error {
 // shared shutdown budget. A parent cancellation that all services honor is a
 // successful graceful shutdown.
 func RunWithOptions(ctx context.Context, services []Service, options RunOptions) error {
+	startedAt := time.Now()
 	if ctx == nil {
 		return errors.New("component context is nil")
 	}
@@ -225,6 +228,10 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 	for index, service := range services {
 		name := names[index]
 		wg.Go(func() {
+			if options.Logger != nil {
+				options.Logger.DebugContext(runCtx, "component started",
+					"event", "component_started", "component", name)
+			}
 			started <- struct{}{}
 			results <- result{index: index, name: name, err: service.Run(runCtx)}
 		})
@@ -251,6 +258,10 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 		parentDone = nil
 		timeout = time.NewTimer(shutdownTimeout)
 		timeoutC = timeout.C
+		if options.Logger != nil {
+			options.Logger.InfoContext(context.WithoutCancel(ctx), "runtime stopping",
+				"event", "runtime_stopping", "components", len(names))
+		}
 	}
 	recordResult := func(item result) {
 		delete(remaining, item.index)
@@ -259,6 +270,15 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 				runErr = fmt.Errorf("component %s: %w", item.name, ErrUnexpectedExit)
 			} else {
 				runErr = fmt.Errorf("component %s: %w", item.name, item.err)
+			}
+			if options.Logger != nil {
+				code := "component_failed"
+				if item.err == nil {
+					code = "component_unexpected_exit"
+				}
+				options.Logger.ErrorContext(context.WithoutCancel(ctx), "component failed",
+					"event", "component_failed", "component", item.name,
+					"error_code", code, "error_type", fmt.Sprintf("%T", item.err))
 			}
 			beginShutdown()
 			return
@@ -279,6 +299,11 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 			default:
 				ready = true
 				lifecycle.set(lifecycleReady)
+				if options.Logger != nil {
+					options.Logger.InfoContext(ctx, "runtime ready",
+						"event", "runtime_ready", "components", len(names),
+						"duration_ms", time.Since(startedAt).Milliseconds())
+				}
 			}
 		}
 		select {
@@ -295,6 +320,11 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 			}
 			sort.Strings(unfinished)
 			lifecycle.set(lifecycleStopped)
+			if options.Logger != nil {
+				options.Logger.ErrorContext(context.WithoutCancel(ctx), "runtime shutdown timed out",
+					"event", "runtime_shutdown_timeout", "error_code", "shutdown_timeout",
+					"components", unfinished, "duration_ms", time.Since(startedAt).Milliseconds())
+			}
 			return errors.Join(runErr, &ShutdownTimeoutError{After: shutdownTimeout, Components: unfinished})
 		}
 	}
@@ -306,6 +336,10 @@ func RunWithOptions(ctx context.Context, services []Service, options RunOptions)
 	}
 	wg.Wait()
 	lifecycle.set(lifecycleStopped)
+	if options.Logger != nil {
+		options.Logger.InfoContext(context.WithoutCancel(ctx), "runtime stopped",
+			"event", "runtime_stopped", "duration_ms", time.Since(startedAt).Milliseconds())
+	}
 	if runErr != nil {
 		return runErr
 	}

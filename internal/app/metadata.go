@@ -3,6 +3,7 @@ package app
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/islishude/etherview/internal/components"
@@ -11,7 +12,14 @@ import (
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-func registerMetadataWorkers(registry *components.Registry, db *sql.DB, pool *ethrpc.Pool, cfg config.Config, observers ...metadata.FetchObserver) error {
+func registerMetadataWorkers(
+	registry *components.Registry,
+	db *sql.DB,
+	pool *ethrpc.Pool,
+	cfg config.Config,
+	logger *slog.Logger,
+	observers ...metadata.FetchObserver,
+) error {
 	if registry == nil {
 		return fmt.Errorf("register metadata workers: nil component registry")
 	}
@@ -20,7 +28,7 @@ func registerMetadataWorkers(registry *components.Registry, db *sql.DB, pool *et
 		return err
 	}
 	discoverer, err := metadata.NewSourceDiscoverer(repository, pool, metadata.SourceDiscovererOptions{
-		PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts,
+		PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts, Logger: logger,
 	})
 	if err != nil {
 		return err

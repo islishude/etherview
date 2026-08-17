@@ -29,6 +29,8 @@ deployments, observable health, safe migrations, and operator repair tooling.
 | P60-T05 | done | P10, P20, P30-T01, P30-T02, P30-T05, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
 | P60-T06 | done | P10, P20, P30-T07, P40, P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
 | P60-T07 | done | P60-T05 | Add exact NFT identity and redacted network diagnostics to durable metadata transition logs | metadata, netpolicy, observability, Preview, and common gates |
+| P60-T08 | done | P60-T05, P60-T07 | Add exact bounded operational context to worker, lifecycle, request, RPC, and optional-adapter logs | focused race, PostgreSQL integration, runtime topology, and common gates |
+| P60-T09 | done | P60-T07, P60-T08 | Preserve a closed, redacted metadata failure reason and the final retry code when attempts are exhausted | metadata and observability regressions plus common gates |
 
 ## Acceptance
 
@@ -100,6 +102,20 @@ deployments, observable health, safe migrations, and operator repair tooling.
       public IPFS content paths are length-limited, and DNS diagnostics retain
       bounded address counts plus stable private/special-use classifications
       without changing the closed Prometheus result labels.
+- [x] P60-T08: enrichment, trace, state-difference, outbox, verification,
+      metadata, maintenance, Genesis, analytics, sync, lifecycle, HTTP, RPC,
+      mempool, catalog, and optional-adapter logs expose stable component/event
+      identities plus exact bounded job, block, stage, range, result, duration,
+      and retry context. Starts and individual RPC calls remain debug-only;
+      only a deterministically failing trace item carries a transaction hash.
+- [x] P60-T08: HTTP and adapter records retain static route/operation and
+      request/trace correlation without path/query identities, credentials,
+      user/payment data, RPC parameters/results, or raw provider/database error
+      text.
+- [x] P60-T09: metadata network failures expose only a closed DNS, connection,
+      TLS, request, policy, or generic transport reason; retry exhaustion also
+      retains the preceding stable transition code without logging nested
+      errors or credential-bearing URL text.
 
 ## Current Blockers
 
@@ -107,6 +123,36 @@ None. The longer capacity, security, conformance, and release evidence remains
 owned by P70 and is not implied by P60 completion.
 
 ## Evidence
+
+- P60-T09: request-local HTTP trace and safe-dial state now classify DNS
+  lookup/timeout, connection refusal/timeout/unreachability, TLS handshake,
+  certificate/protocol, request timeout, policy rejection, and unknown
+  transport failures without retaining nested error text. Exhausted transition
+  logs preserve `last_code` alongside the terminal `attempts_exhausted` code.
+- P60-T09 verification: focused metadata and observability tests pass under
+  the race detector, including hostile nested-error redaction and closed-reason
+  logging. `make lint`, `make test`, `make generate-check`, `make plan-check`,
+  both staged/unstaged `git diff --check`, and the complete `make check` pass;
+  the aggregate gate includes Go/Web unit and race tests, vulnerability,
+  secret, and license checks, plus Buildx, Compose, and Helm deployment checks.
+
+- P60-T08: durable workers now emit structured `job`, `stage`, `block`,
+  `transition`, and typed `summary` groups after PostgreSQL transitions. Trace
+  and StateDiff preserve one exact failing transaction identity when known;
+  production claims also expose the persisted maximum-attempt budget. Runtime
+  supervision, HTTP/RPC, sync/reorg, source discovery, compiler/Genesis state,
+  mempool, and disposable adapters use stable event/component/error contracts.
+- P60-T08 focused verification: race-enabled tests pass across components,
+  RPC, observability, enrichment, verification, metadata, maintenance,
+  Genesis, mempool, sync, adapters, catalog, analytics, events, HTTP, and app;
+  matching `go vet`, `golangci-lint run ./...`, `make generate-check`,
+  `make plan-check`, and `git diff --check` pass.
+- P60-T08 production verification: `make test-integration-race` passes against
+  a fresh owned PostgreSQL 18 database. `make test-runtime-e2e` passes both the
+  production monolith (29.77s) and complete distributed topology (41.02s),
+  asserting exact trace/state-difference job, stage, block, and summary JSON
+  logs. Final `make check` passes generation, lint, Web/Go unit and race,
+  vulnerability/secret/license, Compose, Helm, and deployment gates.
 
 - P60-T07: the shared metadata client carries one request-local diagnostic
   through URL rewriting, redirects, DNS policy, connection reuse, HTTP/content

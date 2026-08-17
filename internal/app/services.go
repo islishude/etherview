@@ -111,7 +111,7 @@ func (s *operationalService) handler() http.Handler {
 	})
 	observability.MountMetrics(mux, s.registry)
 	return observability.HTTPMiddleware(mux, observability.HTTPOptions{
-		Registry: s.registry, Logger: s.logger, Telemetry: s.telemetry,
+		Registry: s.registry, Logger: s.logger, Component: s.Name(), Telemetry: s.telemetry,
 		Route: func(request *http.Request) string {
 			return observability.MuxRoutePattern(mux, request)
 		},

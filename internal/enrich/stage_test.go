@@ -19,12 +19,11 @@ type testJobQueue struct {
 }
 
 type recordingJobObserver struct {
-	stage  string
-	result string
+	transitions []JobTransition
 }
 
-func (observer *recordingJobObserver) RecordEnrichmentJob(stage, result string) {
-	observer.stage, observer.result = stage, result
+func (observer *recordingJobObserver) RecordEnrichmentJob(transition JobTransition) {
+	observer.transitions = append(observer.transitions, transition)
 }
 
 func (queue *testJobQueue) Claim(context.Context, string, []StageID, time.Duration) (Lease, bool, error) {
@@ -158,8 +157,10 @@ func TestWorkerObservesOnlyDurableJobOutcome(t *testing.T) {
 	if found, err := worker.ProcessOne(t.Context()); err != nil || !found {
 		t.Fatalf("found=%t error=%v", found, err)
 	}
-	if observer.stage != "trace@1" || observer.result != "succeeded" {
-		t.Fatalf("observed stage=%q result=%q", observer.stage, observer.result)
+	if len(observer.transitions) != 2 || observer.transitions[0].Event != JobEventStarted ||
+		observer.transitions[1].Event != JobEventTransitioned ||
+		observer.transitions[1].Job.Stage != stage || observer.transitions[1].Result != "succeeded" {
+		t.Fatalf("observed transitions=%+v", observer.transitions)
 	}
 }
 

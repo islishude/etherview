@@ -48,8 +48,9 @@ func (e *Endpoint) CallContext(ctx context.Context, result any, method string, a
 	if e == nil || e.Client == nil {
 		return errors.New("RPC endpoint client is nil")
 	}
+	startedAt := time.Now()
 	err := e.Client.CallContext(ctx, result, method, args...)
-	e.record(err)
+	e.record(method, 1, boolInt(err == nil), boolInt(err != nil), time.Since(startedAt))
 	return err
 }
 
@@ -57,28 +58,52 @@ func (e *Endpoint) BatchCallContext(ctx context.Context, elements []rpc.BatchEle
 	if e == nil || e.Client == nil {
 		return errors.New("RPC endpoint client is nil")
 	}
+	startedAt := time.Now()
 	err := e.Client.BatchCallContext(ctx, elements)
 	if err != nil {
-		for range elements {
-			e.record(err)
-		}
+		e.record(batchMethod(elements), len(elements), 0, len(elements), time.Since(startedAt))
 		return err
 	}
+	succeeded, failed := 0, 0
 	for index := range elements {
-		e.record(elements[index].Error)
+		if elements[index].Error == nil {
+			succeeded++
+		} else {
+			failed++
+		}
 	}
+	e.record(batchMethod(elements), len(elements), succeeded, failed, time.Since(startedAt))
 	return nil
 }
 
-func (e *Endpoint) record(err error) {
+func (e *Endpoint) record(method string, batchSize, succeeded, failed int, duration time.Duration) {
 	if e == nil || e.observer == nil || !ValidPurpose(e.purpose) {
 		return
 	}
-	result := "success"
-	if err != nil {
-		result = "error"
+	e.observer.RecordRPC(Observation{
+		Endpoint: e.Name, Purpose: e.purpose, Method: method, BatchSize: batchSize,
+		SuccessCount: succeeded, ErrorCount: failed, Duration: duration,
+	})
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
 	}
-	e.observer.RecordRPC(string(e.purpose), result)
+	return 0
+}
+
+func batchMethod(elements []rpc.BatchElem) string {
+	if len(elements) == 0 {
+		return "empty_batch"
+	}
+	method := elements[0].Method
+	for index := 1; index < len(elements); index++ {
+		if elements[index].Method != method {
+			return "mixed_batch"
+		}
+	}
+	return method
 }
 
 type Pool struct {
@@ -214,8 +239,14 @@ func (p *Pool) ReportSuccess(name string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if state := p.find(name); state != nil {
+		previous := state.failures
 		state.failures = 0
 		state.unavailableUntil = time.Time{}
+		if previous > 0 {
+			if observer, ok := p.observer.(EndpointStateObserver); ok {
+				observer.RecordRPCEndpointState(EndpointState{Endpoint: name, State: "recovered"})
+			}
+		}
 	}
 }
 
@@ -225,7 +256,13 @@ func (p *Pool) ReportFailure(name string) {
 	if state := p.find(name); state != nil {
 		state.failures++
 		multiplier := min(time.Duration(state.failures), 6)
-		state.unavailableUntil = p.now().Add(p.failureCooldown * multiplier)
+		cooldown := p.failureCooldown * multiplier
+		state.unavailableUntil = p.now().Add(cooldown)
+		if observer, ok := p.observer.(EndpointStateObserver); ok {
+			observer.RecordRPCEndpointState(EndpointState{
+				Endpoint: name, State: "degraded", ConsecutiveFailures: state.failures, Cooldown: cooldown,
+			})
+		}
 	}
 }
 

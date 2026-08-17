@@ -3,6 +3,8 @@ package metadata
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -120,6 +123,53 @@ func TestMetadataTransportDoesNotInheritEnvironmentProxy(t *testing.T) {
 	transport, ok := client.http.Transport.(*http.Transport)
 	if !ok || transport.Proxy != nil {
 		t.Fatalf("untrusted metadata transport inherited a proxy: %#v", client.http.Transport)
+	}
+}
+
+func TestFetchTransportFailureDiagnosticUsesClosedReason(t *testing.T) {
+	t.Parallel()
+	client, err := New(Policy{}, staticResolver{err: &net.DNSError{
+		Err: "resolver-secret", Name: "host-secret", IsTimeout: true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Fetch(t.Context(), "https://metadata.example/document.json", KindJSON)
+	var failure *FetchError
+	if !errors.As(err, &failure) || failure.Kind != FailureTemporary {
+		t.Fatalf("fetch error=%v classification=%+v", err, failure)
+	}
+	if failure.Diagnostic.Phase != FetchPhaseDNS || failure.Diagnostic.Reason != FetchFailureDNSTimeout {
+		t.Fatalf("diagnostic=%+v", failure.Diagnostic)
+	}
+	if encoded := fmt.Sprintf("%+v", failure.Diagnostic); strings.Contains(encoded, "secret") {
+		t.Fatalf("diagnostic leaked nested DNS error: %s", encoded)
+	}
+}
+
+func TestTransportFailureReasonsAreClosed(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		err   error
+		stage fetchTransportStage
+		want  FetchFailureReason
+	}{
+		{name: "connection refused", err: syscall.ECONNREFUSED, stage: fetchTransportConnect, want: FetchFailureConnectionRefused},
+		{name: "network unreachable", err: syscall.ENETUNREACH, stage: fetchTransportConnect, want: FetchFailureNetworkUnreachable},
+		{name: "connect timeout", err: context.DeadlineExceeded, stage: fetchTransportConnect, want: FetchFailureConnectTimeout},
+		{name: "TLS timeout", err: context.DeadlineExceeded, stage: fetchTransportTLS, want: FetchFailureTLSHandshakeTimeout},
+		{name: "request timeout", err: context.DeadlineExceeded, stage: fetchTransportRequest, want: FetchFailureRequestTimeout},
+		{name: "certificate", err: x509.UnknownAuthorityError{}, stage: fetchTransportTLS, want: FetchFailureTLSCertificateInvalid},
+		{name: "TLS protocol", err: tls.RecordHeaderError{}, stage: fetchTransportTLS, want: FetchFailureTLSProtocolError},
+		{name: "other", err: errors.New("upstream-secret"), stage: fetchTransportRequest, want: FetchFailureTransportError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := classifyTransportFailure(test.err, test.stage); got != test.want {
+				t.Fatalf("reason=%q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

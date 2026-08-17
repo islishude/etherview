@@ -81,9 +81,10 @@ type PollerOptions struct {
 }
 
 type Poller struct {
-	source  Source
-	store   Store
-	options PollerOptions
+	source          Source
+	store           Store
+	options         PollerOptions
+	lastFailureCode string
 }
 
 func NewPoller(source Source, store Store, options PollerOptions) (*Poller, error) {
@@ -116,8 +117,25 @@ func (poller *Poller) Name() string { return "pending-mempool" }
 func (poller *Poller) Run(ctx context.Context) error {
 	for {
 		if err := poller.Cycle(ctx); err != nil && ctx.Err() == nil {
-			poller.options.Logger.WarnContext(ctx, "mempool poll failed; core synchronization remains active",
-				"error_code", pollErrorCode(err), "error_msg", err.Error())
+			code := pollErrorCode(err)
+			level := slog.LevelWarn
+			if code == poller.lastFailureCode {
+				level = slog.LevelDebug
+			}
+			poller.options.Logger.LogAttrs(ctx, level, "mempool poll failed; core synchronization remains active",
+				slog.String("event", "mempool_poll_failed"),
+				slog.String("component", poller.Name()),
+				slog.String("error_code", code),
+				slog.String("error_type", fmt.Sprintf("%T", err)),
+				slog.Int64("retry_in_ms", poller.options.PollInterval.Milliseconds()),
+			)
+			poller.lastFailureCode = code
+		} else if poller.lastFailureCode != "" && ctx.Err() == nil {
+			poller.options.Logger.InfoContext(ctx, "mempool polling recovered",
+				"event", "mempool_poll_recovered", "component", poller.Name(),
+				"previous_error_code", poller.lastFailureCode,
+			)
+			poller.lastFailureCode = ""
 		}
 		timer := time.NewTimer(poller.options.PollInterval)
 		select {
@@ -150,9 +168,18 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 		}
 		return err
 	}
-	if _, err := poller.store.StoreSnapshot(ctx, snapshot); err != nil {
+	info, err := poller.store.StoreSnapshot(ctx, snapshot)
+	if err != nil {
 		return fmt.Errorf("persist mempool snapshot: %w", err)
 	}
+	poller.options.Logger.DebugContext(ctx, "mempool snapshot committed",
+		"event", "mempool_snapshot_committed", "component", poller.Name(),
+		"snapshot", slog.GroupValue(
+			slog.Int64("id", info.ID),
+			slog.String("endpoint", info.Endpoint),
+			slog.Int("transaction_count", info.TransactionCount),
+		),
+	)
 	return nil
 }
 

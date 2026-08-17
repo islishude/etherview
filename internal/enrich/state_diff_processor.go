@@ -195,13 +195,16 @@ func (processor *StateDiffRPCProcessor) Process(ctx context.Context, job Job) (S
 	budget := &stateDiffBudget{}
 	if err := processor.fetch(ctx, endpoint.Client, job, transactions, budget); err != nil {
 		processor.pool.ReportFailure(endpoint.Name)
+		err = withStageDiagnostic(err, StageDiagnostic{Endpoint: endpoint.Name, Phase: "rpc"})
 		if traceCapabilityUnavailable(err) {
 			return StageResult{}, Unavailable(errStateDiffRPCAbsent)
 		}
 		return StageResult{}, err
 	}
 	processor.pool.ReportSuccess(endpoint.Name)
-	return processor.persist(ctx, job, transactions, "complete")
+	result, err := processor.persist(ctx, job, transactions, "complete")
+	result.diagnostic.Endpoint = endpoint.Name
+	return result, err
 }
 
 func (processor *StateDiffRPCProcessor) fetch(
@@ -233,11 +236,18 @@ func (processor *StateDiffRPCProcessor) fetch(
 	needsFullPrestate := false
 	for index := range transactions {
 		if results[index].err != nil {
-			return results[index].err
+			return withStageDiagnostic(results[index].err, StageDiagnostic{
+				Code: "state_diff_transaction_failed", Phase: "diff_prestate",
+				TransactionHash:  transactions[index].hash,
+				TransactionIndex: transactions[index].index, HasTransaction: true,
+			})
 		}
 		changes, counts, err := normalizeStateDiff(results[index].result, processor.limits)
 		if err != nil {
-			return Permanent(fmt.Errorf("normalize transaction state difference: %w", err))
+			return withStageDiagnostic(
+				Permanent(fmt.Errorf("normalize transaction state difference: %w", err)),
+				StageDiagnostic{Code: "state_diff_response_invalid", Phase: "normalize_diff", TransactionHash: transactions[index].hash, TransactionIndex: transactions[index].index, HasTransaction: true},
+			)
 		}
 		if err := budget.add(0, counts, processor.limits); err != nil {
 			return Permanent(err)
@@ -279,7 +289,11 @@ func (processor *StateDiffRPCProcessor) fetch(
 	}
 	for index := range transactions {
 		if prestateResults[index].err != nil {
-			return prestateResults[index].err
+			return withStageDiagnostic(prestateResults[index].err, StageDiagnostic{
+				Code: "state_diff_transaction_failed", Phase: "complete_prestate",
+				TransactionHash:  transactions[index].hash,
+				TransactionIndex: transactions[index].index, HasTransaction: true,
+			})
 		}
 		if !transactionNeedsFullPrestate(
 			transactions[index].tx, transactions[index].executions,

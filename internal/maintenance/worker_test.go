@@ -67,12 +67,11 @@ type memoryRangeExecutor struct {
 }
 
 type recordingRequestObserver struct {
-	operation string
-	result    string
+	transitions []RequestTransition
 }
 
-func (observer *recordingRequestObserver) RecordMaintenanceRequest(operation, result string) {
-	observer.operation, observer.result = operation, result
+func (observer *recordingRequestObserver) RecordMaintenanceRequest(transition RequestTransition) {
+	observer.transitions = append(observer.transitions, transition)
 }
 
 func (executor *memoryRangeExecutor) Repair(_ context.Context, request Request) error {
@@ -136,8 +135,11 @@ func TestWorkerObservesPersistedMaintenanceOutcome(t *testing.T) {
 	if found, err := worker.ProcessOne(t.Context()); err != nil || !found {
 		t.Fatalf("found=%t error=%v", found, err)
 	}
-	if observer.operation != "repair" || observer.result != "succeeded" {
-		t.Fatalf("maintenance observation operation=%q result=%q", observer.operation, observer.result)
+	if len(observer.transitions) != 2 || observer.transitions[0].Event != RequestEventStarted ||
+		observer.transitions[1].Event != RequestEventTransitioned ||
+		observer.transitions[1].Request.Operation != OperationRepair ||
+		observer.transitions[1].Result != "succeeded" {
+		t.Fatalf("maintenance observations=%+v", observer.transitions)
 	}
 }
 

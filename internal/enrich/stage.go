@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -54,6 +55,7 @@ type Job struct {
 	BlockHash   common.Hash
 	BlockNumber uint64
 	Attempt     uint32
+	MaxAttempts uint32
 	// Generation is the durable replay generation claimed by this attempt.
 	// Zero is accepted for direct, non-queue processor fixtures; production
 	// PostgreSQL claims always return a positive generation.
@@ -106,6 +108,50 @@ type StageResult struct {
 	Details     map[string]string `json:"details,omitempty"`
 	Error       string            `json:"error,omitempty"`
 	publication stagePublicationOutcome
+	diagnostic  StageDiagnostic
+}
+
+// StageDiagnostic contains bounded operational context only. It deliberately
+// carries no RPC parameters, response bytes, or nested error text.
+type StageDiagnostic struct {
+	Code             string
+	Phase            string
+	Endpoint         string
+	TransactionHash  common.Hash
+	TransactionIndex uint64
+	HasTransaction   bool
+}
+
+type stageDiagnosticError struct {
+	err        error
+	diagnostic StageDiagnostic
+}
+
+func (err stageDiagnosticError) Error() string { return err.err.Error() }
+func (err stageDiagnosticError) Unwrap() error { return err.err }
+
+func withStageDiagnostic(err error, diagnostic StageDiagnostic) error {
+	if err == nil {
+		return nil
+	}
+	var existing stageDiagnosticError
+	if errors.As(err, &existing) {
+		if diagnostic.Code == "" {
+			diagnostic.Code = existing.diagnostic.Code
+		}
+		if diagnostic.Phase == "" {
+			diagnostic.Phase = existing.diagnostic.Phase
+		}
+		if diagnostic.Endpoint == "" {
+			diagnostic.Endpoint = existing.diagnostic.Endpoint
+		}
+		if !diagnostic.HasTransaction && existing.diagnostic.HasTransaction {
+			diagnostic.TransactionHash = existing.diagnostic.TransactionHash
+			diagnostic.TransactionIndex = existing.diagnostic.TransactionIndex
+			diagnostic.HasTransaction = true
+		}
+	}
+	return stageDiagnosticError{err: err, diagnostic: diagnostic}
 }
 
 func (result StageResult) validateForFinish() error {
@@ -205,6 +251,7 @@ func Permanent(err error) error {
 }
 
 type WorkerOptions struct {
+	ServiceName   string
 	ID            string
 	LeaseDuration time.Duration
 	PollInterval  time.Duration
@@ -216,13 +263,39 @@ type WorkerOptions struct {
 	Observer JobObserver
 }
 
-// JobObserver receives only controlled stage/result values after a durable
-// transition. Implementations must not be given processor or storage errors.
+type JobEvent string
+
+const (
+	JobEventStarted         JobEvent = "started"
+	JobEventTransitioned    JobEvent = "transitioned"
+	JobEventExecutionFailed JobEvent = "execution_failed"
+)
+
+type JobTransition struct {
+	Event      JobEvent
+	Component  string
+	WorkerID   string
+	Job        Job
+	JobStatus  string
+	StageState ResultState
+	Result     string
+	Code       string
+	RetryAfter time.Duration
+	Duration   time.Duration
+	Details    map[string]string
+	Diagnostic StageDiagnostic
+}
+
+// JobObserver receives only controlled job identity, result, and diagnostic
+// fields. Implementations never receive processor or storage error text.
 type JobObserver interface {
-	RecordEnrichmentJob(stage, result string)
+	RecordEnrichmentJob(JobTransition)
 }
 
 func (options *WorkerOptions) defaults() {
+	if options.ServiceName == "" {
+		options.ServiceName = "enrichment-worker"
+	}
 	if options.LeaseDuration <= 0 {
 		options.LeaseDuration = 30 * time.Second
 	}
@@ -245,7 +318,12 @@ type Worker struct {
 	publisher  *PostgresJobQueue
 }
 
-func (*Worker) Name() string { return "enrichment-worker" }
+func (worker *Worker) Name() string {
+	if worker == nil || worker.options.ServiceName == "" {
+		return "enrichment-worker"
+	}
+	return worker.options.ServiceName
+}
 
 func NewWorker(queue JobQueue, processors []Processor, options WorkerOptions) (*Worker, error) {
 	if queue == nil {
@@ -344,8 +422,21 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if processor == nil {
 		return true, fmt.Errorf("queue returned unsupported stage %s", lease.Job.Stage)
 	}
-	if err := worker.handle(ctx, lease, processor); err != nil {
-		worker.observe(lease.Job.Stage, "error")
+	startedAt := time.Now()
+	worker.observe(JobTransition{
+		Event: JobEventStarted, Component: worker.Name(), WorkerID: worker.options.ID,
+		Job: lease.Job,
+	})
+	if err := worker.handle(ctx, lease, processor, startedAt); err != nil {
+		transition := JobTransition{
+			Event: JobEventExecutionFailed, Component: worker.Name(), WorkerID: worker.options.ID,
+			Job: lease.Job, Result: "error", Code: "execution_failed", Duration: time.Since(startedAt),
+		}
+		var diagnostic stageDiagnosticError
+		if errors.As(err, &diagnostic) {
+			transition.Diagnostic = diagnostic.diagnostic
+		}
+		worker.observe(transition)
 		return true, err
 	}
 	return true, nil
@@ -356,7 +447,7 @@ type processResponse struct {
 	err    error
 }
 
-func (worker *Worker) handle(ctx context.Context, lease Lease, processor Processor) error {
+func (worker *Worker) handle(ctx context.Context, lease Lease, processor Processor, startedAt time.Time) error {
 	atomicPublication := worker.publisher != nil && isKnownDerivedStage(lease.Job.Stage)
 	if atomicPublication {
 		lease.heartbeat = &leaseHeartbeatGuard{}
@@ -388,7 +479,7 @@ func (worker *Worker) handle(ctx context.Context, lease Lease, processor Process
 				return fmt.Errorf("renew enrichment lease: %w", err)
 			}
 		case completed := <-response:
-			return worker.record(ctx, lease, completed, atomicPublication)
+			return worker.record(ctx, lease, completed, atomicPublication, startedAt)
 		}
 	}
 }
@@ -405,12 +496,25 @@ func (worker *Worker) renew(ctx context.Context, lease Lease) error {
 	return worker.queue.Renew(ctx, lease, worker.options.LeaseDuration)
 }
 
-func (worker *Worker) record(ctx context.Context, lease Lease, completed processResponse, atomicPublication bool) error {
+func (worker *Worker) record(
+	ctx context.Context,
+	lease Lease,
+	completed processResponse,
+	atomicPublication bool,
+	startedAt time.Time,
+) error {
 	if completed.err == nil {
 		if atomicPublication {
 			switch completed.result.publication {
-			case stagePublicationSucceeded, stagePublicationSuperseded:
-				worker.observe(lease.Job.Stage, "succeeded")
+			case stagePublicationSucceeded:
+				worker.observe(worker.transition(
+					lease.Job, completed.result, "succeeded", "succeeded", "", 0, startedAt,
+				))
+				return nil
+			case stagePublicationSuperseded:
+				worker.observe(worker.transition(
+					lease.Job, completed.result, "queued", "superseded", "superseded", 0, startedAt,
+				))
 				return nil
 			default:
 				return ErrAtomicPublicationRequired
@@ -424,7 +528,9 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 		} else if err := worker.queue.Finish(ctx, lease, completed.result); err != nil {
 			return fmt.Errorf("finish enrichment job: %w", err)
 		} else {
-			worker.observe(lease.Job.Stage, "succeeded")
+			worker.observe(worker.transition(
+				lease.Job, completed.result, "succeeded", "succeeded", "", 0, startedAt,
+			))
 			return nil
 		}
 	}
@@ -435,13 +541,19 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 			if err := worker.finishError(ctx, lease, ResultUnavailable, completed.err); err != nil {
 				return err
 			}
-			worker.observe(lease.Job.Stage, "unavailable")
+			worker.observe(worker.errorTransition(
+				lease.Job, ResultUnavailable, "failed", "unavailable", "capability_unavailable",
+				completed.err, 0, startedAt,
+			))
 			return nil
 		case "permanent":
 			if err := worker.finishError(ctx, lease, ResultFailed, completed.err); err != nil {
 				return err
 			}
-			worker.observe(lease.Job.Stage, "failed")
+			worker.observe(worker.errorTransition(
+				lease.Job, ResultFailed, "failed", "failed", "permanent_failure",
+				completed.err, 0, startedAt,
+			))
 			return nil
 		}
 	}
@@ -453,13 +565,55 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed process
 	if err := worker.queue.Retry(ctx, lease, retry); err != nil {
 		return fmt.Errorf("retry enrichment job: %w", err)
 	}
-	worker.observe(lease.Job.Stage, "retry")
+	result, status, code := "retry", "queued", "retryable_failure"
+	if lease.Job.MaxAttempts > 0 && lease.Job.Attempt >= lease.Job.MaxAttempts {
+		result, status, code = "failed", "failed", "attempts_exhausted"
+	}
+	worker.observe(worker.errorTransition(
+		lease.Job, "", status, result, code, completed.err, retry.After, startedAt,
+	))
 	return nil
 }
 
-func (worker *Worker) observe(stage StageID, result string) {
+func (worker *Worker) transition(
+	job Job,
+	stageResult StageResult,
+	jobStatus, result, code string,
+	retryAfter time.Duration,
+	startedAt time.Time,
+) JobTransition {
+	return JobTransition{
+		Event: JobEventTransitioned, Component: worker.Name(), WorkerID: worker.options.ID,
+		Job: job, JobStatus: jobStatus, StageState: stageResult.State, Result: result,
+		Code: code, RetryAfter: retryAfter, Duration: time.Since(startedAt),
+		Details: maps.Clone(stageResult.Details), Diagnostic: stageResult.diagnostic,
+	}
+}
+
+func (worker *Worker) errorTransition(
+	job Job,
+	stageState ResultState,
+	jobStatus, result, code string,
+	cause error,
+	retryAfter time.Duration,
+	startedAt time.Time,
+) JobTransition {
+	transition := worker.transition(
+		job, StageResult{State: stageState}, jobStatus, result, code, retryAfter, startedAt,
+	)
+	var diagnostic stageDiagnosticError
+	if errors.As(cause, &diagnostic) {
+		transition.Diagnostic = diagnostic.diagnostic
+		if transition.Diagnostic.Code != "" {
+			transition.Code = transition.Diagnostic.Code
+		}
+	}
+	return transition
+}
+
+func (worker *Worker) observe(transition JobTransition) {
 	if worker.options.Observer != nil {
-		worker.options.Observer.RecordEnrichmentJob(stage.String(), result)
+		worker.options.Observer.RecordEnrichmentJob(transition)
 	}
 }
 

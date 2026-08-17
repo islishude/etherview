@@ -68,7 +68,10 @@ func (r *Relay) Run(ctx context.Context) error {
 			}
 			// Database driver errors can contain connection details. The relay is
 			// self-healing, so a bounded type is sufficient for routine logs.
-			r.logger.WarnContext(ctx, "runtime event relay poll failed; retrying", "error_type", fmt.Sprintf("%T", err))
+			r.logger.WarnContext(ctx, "runtime event relay poll failed; retrying",
+				"event", "runtime_event_relay_failed", "component", r.Name(),
+				"after_event_id", r.after, "retry_in_ms", r.pollInterval.Milliseconds(),
+				"error_code", "event_relay_poll_failed", "error_type", fmt.Sprintf("%T", err))
 		}
 		select {
 		case <-ctx.Done():

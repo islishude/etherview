@@ -15,9 +15,27 @@ type WorkerOptions struct {
 	Observer     RequestObserver
 }
 
-// RequestObserver receives only controlled operation/result labels.
+type RequestEvent string
+
+const (
+	RequestEventStarted         RequestEvent = "started"
+	RequestEventTransitioned    RequestEvent = "transitioned"
+	RequestEventExecutionFailed RequestEvent = "execution_failed"
+)
+
+type RequestTransition struct {
+	Event     RequestEvent
+	Component string
+	WorkerID  string
+	Request   Request
+	Result    string
+	Code      string
+	Duration  time.Duration
+}
+
+// RequestObserver receives only controlled request identity and result fields.
 type RequestObserver interface {
-	RecordMaintenanceRequest(operation, result string)
+	RecordMaintenanceRequest(RequestTransition)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -95,11 +113,13 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || !found {
 		return found, err
 	}
+	startedAt := time.Now()
+	worker.observe(lease.Request, RequestEventStarted, "", "", startedAt)
 	if err := lease.Request.Validate(); err != nil {
 		cleanupCtx, cancel := leaseCleanupContext(ctx)
 		defer cancel()
 		_ = worker.repository.Release(cleanupCtx, lease)
-		worker.observe(lease.Request.Operation, "error")
+		worker.observe(lease.Request, RequestEventExecutionFailed, "error", "invalid_request", startedAt)
 		return true, fmt.Errorf("repository returned invalid maintenance request: %w", err)
 	}
 	leaseOpen := true
@@ -116,14 +136,14 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			recordCtx, cancel := leaseCleanupContext(ctx)
 			defer cancel()
 			if failErr := worker.repository.Fail(recordCtx, lease, err); failErr != nil {
-				worker.observe(lease.Request.Operation, "error")
+				worker.observe(lease.Request, RequestEventExecutionFailed, "error", "transition_failed", startedAt)
 				return true, fmt.Errorf("record finalized-range rejection: %w", failErr)
 			}
 			leaseOpen = false
-			worker.observe(lease.Request.Operation, "failed")
+			worker.observe(lease.Request, RequestEventTransitioned, "failed", "finalized_range", startedAt)
 			return true, nil
 		}
-		worker.observe(lease.Request.Operation, "error")
+		worker.observe(lease.Request, RequestEventExecutionFailed, "error", "finality_guard_failed", startedAt)
 		return true, fmt.Errorf("guard maintenance finality: %w", err)
 	}
 
@@ -135,28 +155,36 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		recordCtx, cancel := leaseCleanupContext(ctx)
 		defer cancel()
 		if err := worker.repository.Fail(recordCtx, lease, executionErr); err != nil {
-			worker.observe(lease.Request.Operation, "error")
+			worker.observe(lease.Request, RequestEventExecutionFailed, "error", "transition_failed", startedAt)
 			return true, fmt.Errorf("record maintenance failure: %w", err)
 		}
 		leaseOpen = false
-		worker.observe(lease.Request.Operation, "failed")
+		worker.observe(lease.Request, RequestEventTransitioned, "failed", "execution_failed", startedAt)
 		return true, nil
 	}
 
 	recordCtx, cancel := leaseCleanupContext(ctx)
 	defer cancel()
 	if err := worker.repository.Complete(recordCtx, lease); err != nil {
-		worker.observe(lease.Request.Operation, "error")
+		worker.observe(lease.Request, RequestEventExecutionFailed, "error", "transition_failed", startedAt)
 		return true, fmt.Errorf("complete maintenance request: %w", err)
 	}
 	leaseOpen = false
-	worker.observe(lease.Request.Operation, "succeeded")
+	worker.observe(lease.Request, RequestEventTransitioned, "succeeded", "", startedAt)
 	return true, nil
 }
 
-func (worker *Worker) observe(operation Operation, result string) {
+func (worker *Worker) observe(
+	request Request,
+	event RequestEvent,
+	result, code string,
+	startedAt time.Time,
+) {
 	if worker.options.Observer != nil {
-		worker.options.Observer.RecordMaintenanceRequest(string(operation), result)
+		worker.options.Observer.RecordMaintenanceRequest(RequestTransition{
+			Event: event, Component: worker.Name(), WorkerID: worker.options.WorkerID,
+			Request: request, Result: result, Code: code, Duration: time.Since(startedAt),
+		})
 	}
 }
 

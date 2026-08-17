@@ -97,8 +97,9 @@ type VerificationJob struct {
 }
 
 type VerificationLease struct {
-	Job   VerificationJob
-	Token string
+	Job       VerificationJob
+	Token     string
+	startedAt time.Time
 }
 
 type VerifiedContract struct {

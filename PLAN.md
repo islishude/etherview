@@ -242,6 +242,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   to its exact NFT/block identity and bounded network diagnosis. P60
   completion does not promote P70's security, conformance, long-soak,
   artifact, or release gates.
+  P60-T08 adds exact bounded worker/job/block/stage summaries, transaction
+  identity only for deterministically failing trace items, correlated
+  lifecycle/HTTP/RPC events, and stable degraded-adapter diagnostics across
+  both production topology shapes without weakening existing redaction.
+  P60-T09 classifies metadata DNS, connection, TLS, request, policy, and
+  unknown transport failures into closed reasons and retains the preceding
+  retry code when an attempt budget is exhausted, without restoring raw nested
+  errors.
 - P65's SIWE session, wallet, profile, and administrator work is complete.
   P65-T09 adds scoped user-owned API keys and the tabbed `/account` workspace;
   PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race,

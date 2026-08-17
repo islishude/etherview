@@ -547,7 +547,19 @@ func (catalog *Postgres) validateCachedTrace(identity traceIdentity, trace Trans
 
 func (catalog *Postgres) logTraceCacheBypass(ctx context.Context, message string, err error) {
 	if catalog.logger != nil && err != nil {
-		catalog.logger.WarnContext(ctx, message, "error_type", fmt.Sprintf("%T", err))
+		code, operation := "s3_trace_cache_read_failed", "read"
+		switch {
+		case strings.Contains(message, "object invalid"):
+			code, operation = "s3_trace_cache_object_invalid", "validate"
+		case strings.Contains(message, "encode"):
+			code, operation = "s3_trace_cache_encode_failed", "encode"
+		case strings.Contains(message, "write"):
+			code, operation = "s3_trace_cache_write_failed", "write"
+		}
+		catalog.logger.WarnContext(ctx, message,
+			"event", "optional_adapter_degraded", "component", "transaction-trace-catalog",
+			"adapter", "s3", "operation", operation, "fallback", "postgresql",
+			"error_code", code, "error_type", fmt.Sprintf("%T", err))
 	}
 }
 

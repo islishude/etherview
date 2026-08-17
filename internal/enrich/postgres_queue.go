@@ -1036,13 +1036,14 @@ func scanJob(row rowScanner) (Job, error) {
 		stageName    string
 		stageVersion int64
 		attempt      int64
+		maxAttempts  int64
 		payload      []byte
 		generation   int64
 	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &payload, &generation); err != nil {
+	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation); err != nil {
 		return Job{}, err
 	}
-	return decodeScannedJob(id, chainID, stageName, stageVersion, attempt, payload, generation)
+	return decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
 }
 
 func scanReplayTarget(row rowScanner) (Job, string, error) {
@@ -1052,14 +1053,15 @@ func scanReplayTarget(row rowScanner) (Job, string, error) {
 		stageName    string
 		stageVersion int64
 		attempt      int64
+		maxAttempts  int64
 		payload      []byte
 		generation   int64
 		status       string
 	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &payload, &generation, &status); err != nil {
+	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation, &status); err != nil {
 		return Job{}, "", err
 	}
-	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, payload, generation)
+	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
 	return job, status, err
 }
 
@@ -1070,19 +1072,28 @@ func scanExhaustedJob(row rowScanner) (Job, string, error) {
 		stageName    string
 		stageVersion int64
 		attempt      int64
+		maxAttempts  int64
 		payload      []byte
 		generation   int64
 		reason       string
 	)
-	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &payload, &generation, &reason); err != nil {
+	if err := row.Scan(&id, &chainID, &stageName, &stageVersion, &attempt, &maxAttempts, &payload, &generation, &reason); err != nil {
 		return Job{}, "", err
 	}
-	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, payload, generation)
+	job, err := decodeScannedJob(id, chainID, stageName, stageVersion, attempt, maxAttempts, payload, generation)
 	return job, reason, err
 }
 
-func decodeScannedJob(id int64, chainID, stageName string, stageVersion, attempt int64, payload []byte, generation int64) (Job, error) {
-	if id <= 0 || stageVersion <= 0 || stageVersion > maxPostgresInteger || attempt < 0 || attempt > maxPostgresInteger || generation <= 0 {
+func decodeScannedJob(
+	id int64,
+	chainID, stageName string,
+	stageVersion, attempt, maxAttempts int64,
+	payload []byte,
+	generation int64,
+) (Job, error) {
+	if id <= 0 || stageVersion <= 0 || stageVersion > maxPostgresInteger ||
+		attempt < 0 || attempt > maxPostgresInteger || maxAttempts <= 0 ||
+		maxAttempts > maxPostgresInteger || generation <= 0 {
 		return Job{}, errors.New("durable job contains out-of-range identity or counters")
 	}
 	var decoded durableJobPayload
@@ -1099,7 +1110,8 @@ func decodeScannedJob(id int64, chainID, stageName string, stageVersion, attempt
 	}
 	job := Job{
 		ID: strconv.FormatInt(id, 10), Stage: StageID{Name: stageName, Version: uint32(stageVersion)},
-		ChainID: chainID, BlockHash: blockHash, BlockNumber: blockNumber, Attempt: uint32(attempt), Generation: uint64(generation),
+		ChainID: chainID, BlockHash: blockHash, BlockNumber: blockNumber,
+		Attempt: uint32(attempt), MaxAttempts: uint32(maxAttempts), Generation: uint64(generation),
 	}
 	if err := validateChainID(job.ChainID); err != nil {
 		return Job{}, fmt.Errorf("decode durable job: %w", err)
@@ -1127,10 +1139,10 @@ INSERT INTO durable_jobs (
     priority, max_attempts
 ) VALUES ($1::numeric, $2, $3, $4, $5, $6::jsonb, $7, $8)
 ON CONFLICT (chain_id, kind, idempotency_key) DO NOTHING
-RETURNING id, chain_id::text, stage, stage_version, attempts, payload, requested_generation`
+RETURNING id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation`
 
 const selectExistingJobSQL = `
-SELECT id, chain_id::text, stage, stage_version, attempts, payload, requested_generation
+SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation
 FROM durable_jobs
 WHERE chain_id = $1::numeric AND kind = $2 AND idempotency_key = $3`
 
@@ -1167,7 +1179,7 @@ LIMIT 1`
 const selectExhaustedJobSQL = `
 SELECT exhausted_job.id, exhausted_job.chain_id::text,
        exhausted_job.stage, exhausted_job.stage_version,
-       exhausted_job.attempts, exhausted_job.payload,
+       exhausted_job.attempts, exhausted_job.max_attempts, exhausted_job.payload,
        exhausted_job.claimed_generation,
        COALESCE(exhausted_job.last_error, 'maximum attempts exhausted')
 FROM durable_jobs AS exhausted_job
@@ -1225,7 +1237,7 @@ WHERE id = $1
 const selectClaimCandidateIDSQL = `
 SELECT candidate_job.id, candidate_job.chain_id::text,
        candidate_job.stage, candidate_job.stage_version,
-       candidate_job.attempts, candidate_job.payload,
+       candidate_job.attempts, candidate_job.max_attempts, candidate_job.payload,
        candidate_job.requested_generation
 FROM durable_jobs AS candidate_job
 WHERE candidate_job.kind = 'enrichment'
@@ -1300,7 +1312,7 @@ WHERE job.id = $4
       OR (job.status = 'leased' AND job.lease_expires_at <= clock_timestamp())
   )
 RETURNING job.id, job.chain_id::text, job.stage, job.stage_version,
-          job.attempts, job.payload, job.leased_generation`
+          job.attempts, job.max_attempts, job.payload, job.leased_generation`
 
 const renewJobSQL = `
 UPDATE durable_jobs
@@ -1489,7 +1501,7 @@ WHERE chain_id = $1::numeric
   AND stage_version = $4`
 
 const selectReplayTargetByIDSQL = `
-SELECT id, chain_id::text, stage, stage_version, attempts, payload,
+SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload,
        requested_generation, status
 FROM durable_jobs
 WHERE id = $1

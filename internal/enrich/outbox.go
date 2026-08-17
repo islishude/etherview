@@ -31,6 +31,29 @@ type OutboxDispatcherOptions struct {
 	// PostgreSQL transaction commits and must not block.
 	Wake      <-chan struct{}
 	Published func()
+	Observer  OutboxObserver
+}
+
+type OutboxObserver interface {
+	RecordEnrichmentOutbox(OutboxTransition)
+}
+
+type OutboxTransition struct {
+	Component    string
+	ID           int64
+	ChainID      string
+	Topic        string
+	BlockHash    common.Hash
+	BlockNumber  uint64
+	Attempt      int64
+	Generation   int64
+	Result       string
+	Code         string
+	RetryAfter   time.Duration
+	Duration     time.Duration
+	JobsCreated  int
+	JobsExisting int
+	Stages       []string
 }
 
 func (options *OutboxDispatcherOptions) defaults() {
@@ -64,6 +87,7 @@ type OutboxDispatchResult struct {
 	Topic      string
 	MessageKey string
 	LastError  string
+	Transition *OutboxTransition
 }
 
 type OutboxDispatcher struct {
@@ -143,8 +167,13 @@ func (dispatcher *OutboxDispatcher) Run(ctx context.Context) error {
 			if err := waitContextOrWake(ctx, dispatcher.options.PollInterval, dispatcher.options.Wake); err != nil {
 				return err
 			}
-		} else if result.State == OutboxPublished && dispatcher.options.Published != nil {
-			dispatcher.options.Published()
+		} else {
+			if result.Transition != nil && dispatcher.options.Observer != nil {
+				dispatcher.options.Observer.RecordEnrichmentOutbox(*result.Transition)
+			}
+			if result.State == OutboxPublished && dispatcher.options.Published != nil {
+				dispatcher.options.Published()
+			}
 		}
 	}
 }
@@ -195,6 +224,9 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	if !found {
 		return OutboxDispatchResult{State: OutboxIdle}, nil
 	}
+	startedAt := time.Now()
+	decodedMessage := message
+	_ = decodedMessage.decode()
 	if _, err := tx.ExecContext(ctx, "SAVEPOINT enrichment_dispatch_jobs"); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("create enrichment dispatch savepoint: %w", err)
 	}
@@ -221,6 +253,12 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 		}
 		return OutboxDispatchResult{
 			State: OutboxRetry, Topic: message.Topic, MessageKey: message.MessageKey, LastError: reason,
+			Transition: &OutboxTransition{
+				Component: dispatcher.Name(), ID: message.ID, ChainID: message.ChainID,
+				Topic: message.Topic, BlockHash: decodedMessage.BlockHash, BlockNumber: decodedMessage.BlockNumber,
+				Attempt: message.Attempts + 1, Generation: message.Generation,
+				Result: "retry", Code: "dispatch_failed", RetryAfter: delay, Duration: time.Since(startedAt),
+			},
 		}, nil
 	}
 	if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT enrichment_dispatch_jobs"); err != nil {
@@ -240,7 +278,17 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	if err := tx.Commit(); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("commit enrichment outbox dispatch: %w", err)
 	}
-	return OutboxDispatchResult{State: OutboxPublished, Topic: message.Topic, MessageKey: message.MessageKey}, nil
+	return OutboxDispatchResult{
+		State: OutboxPublished, Topic: message.Topic, MessageKey: message.MessageKey,
+		Transition: &OutboxTransition{
+			Component: dispatcher.Name(), ID: message.ID, ChainID: message.ChainID,
+			Topic: message.Topic, BlockHash: decodedMessage.BlockHash, BlockNumber: decodedMessage.BlockNumber,
+			Attempt: message.Attempts, Generation: message.Generation,
+			Result: audit.Outcome, Duration: time.Since(startedAt),
+			JobsCreated: audit.JobsCreated, JobsExisting: audit.JobsExisting,
+			Stages: append([]string(nil), audit.Stages...),
+		},
+	}, nil
 }
 
 func claimOutboxMessage(ctx context.Context, tx *sql.Tx) (outboxMessage, bool, error) {

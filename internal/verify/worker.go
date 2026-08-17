@@ -27,9 +27,29 @@ type SourcifyWorkflow interface {
 	RunV2(context.Context, JobKind, json.RawMessage) (SourcifyWorkflowResult, error)
 }
 
-// VerificationObserver receives only controlled terminal/result labels.
+type JobEvent string
+
+const (
+	JobEventStarted         JobEvent = "started"
+	JobEventTransitioned    JobEvent = "transitioned"
+	JobEventExecutionFailed JobEvent = "execution_failed"
+)
+
+type JobTransition struct {
+	Event     JobEvent
+	Component string
+	WorkerID  string
+	Job       VerificationJob
+	Result    string
+	Outcome   string
+	ErrorCode ErrorCode
+	Duration  time.Duration
+}
+
+// VerificationObserver receives only controlled job identity and result
+// fields, never source documents, compiler output, or nested errors.
 type VerificationObserver interface {
-	RecordVerificationJob(result string)
+	RecordVerificationJob(JobTransition)
 }
 
 type verificationAvailabilityObserver interface {
@@ -160,9 +180,11 @@ func (worker *Worker) processOneRunnable(
 	if err != nil || !found {
 		return found, err
 	}
+	lease.startedAt = time.Now()
+	worker.observe(lease, JobEventStarted, "", "", "")
 	err = worker.processLease(ctx, lease)
 	if err != nil && ctx.Err() == nil {
-		worker.observe("error")
+		worker.observe(lease, JobEventExecutionFailed, "error", "", "")
 	}
 	return true, err
 }
@@ -197,7 +219,7 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			}
 			return err
 		}
-		worker.observe("succeeded")
+		worker.observe(lease, JobEventTransitioned, "succeeded", "proxy_success", "")
 		return nil
 	}
 	if request.Kind == JobSourcify || request.Kind == JobSourcifyFromEtherscan {
@@ -665,12 +687,12 @@ func (worker *Worker) completeOutcomeV2(
 	}
 	if err := repository.CompleteV2(ctx, lease, kind, encoded); err != nil {
 		if errors.Is(err, ErrTargetNotCanonical) {
-			worker.observe("stale_target")
+			worker.observe(lease, JobEventTransitioned, "stale_target", kind, ErrorTargetNotCanonical)
 			return nil
 		}
 		return err
 	}
-	worker.observe("succeeded")
+	worker.observe(lease, JobEventTransitioned, "succeeded", kind, "")
 	return nil
 }
 
@@ -687,13 +709,22 @@ func (worker *Worker) failLease(ctx context.Context, lease VerificationLease, co
 	case ErrorTargetNotCanonical:
 		result = "stale_target"
 	}
-	worker.observe(result)
+	worker.observe(lease, JobEventTransitioned, result, "", code)
 	return nil
 }
 
-func (worker *Worker) observe(result string) {
+func (worker *Worker) observe(
+	lease VerificationLease,
+	event JobEvent,
+	result, outcome string,
+	code ErrorCode,
+) {
 	if worker.options.Observer != nil {
-		worker.options.Observer.RecordVerificationJob(result)
+		worker.options.Observer.RecordVerificationJob(JobTransition{
+			Event: event, Component: worker.Name(), WorkerID: worker.options.WorkerID,
+			Job: lease.Job, Result: result, Outcome: outcome, ErrorCode: code,
+			Duration: time.Since(lease.startedAt),
+		})
 	}
 }
 

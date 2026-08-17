@@ -79,9 +79,9 @@ func TestOutboxPostgresQueueEnqueuesAndPublishesInOneTransaction(t *testing.T) {
 				insertedStages = append(insertedStages, stageName)
 				payload := []byte(arguments[5].Value.(string))
 				return &fakeSQLRows{
-					columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"},
+					columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
 					values: [][]driver.Value{{
-						int64(100 + len(insertedStages)), "1", stageName, arguments[3].Value.(int64), int64(0), payload, int64(1),
+						int64(100 + len(insertedStages)), "1", stageName, arguments[3].Value.(int64), int64(0), int64(10), payload, int64(1),
 					}},
 				}, nil
 			default:

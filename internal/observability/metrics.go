@@ -645,7 +645,7 @@ func boundedJobStatus(value string) string {
 
 func boundedJobResult(value string) string {
 	switch strings.TrimSpace(value) {
-	case "succeeded", "failed", "unavailable", "retry", "error", "timeout", "resource_exhausted", "ssrf_rejected", "stale_target":
+	case "succeeded", "failed", "unavailable", "retry", "error", "timeout", "resource_exhausted", "ssrf_rejected", "stale_target", "superseded":
 		return strings.TrimSpace(value)
 	default:
 		return "other"

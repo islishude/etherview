@@ -220,7 +220,19 @@ func (wake *NATSWake) runConnected(ctx context.Context, connection *nats.Conn) e
 
 func (wake *NATSWake) logFailure(ctx context.Context, message string, err error) {
 	if wake.logger != nil && err != nil {
-		wake.logger.WarnContext(ctx, message, "error_type", fmt.Sprintf("%T", err))
+		code, operation := "nats_session_failed", "session"
+		switch {
+		case strings.Contains(message, "connect"):
+			code, operation = "nats_connect_failed", "connect"
+		case strings.Contains(message, "callback"):
+			code, operation = "nats_callback_failed", "callback"
+		case strings.Contains(message, "publish"):
+			code, operation = "nats_publish_failed", "publish"
+		}
+		wake.logger.WarnContext(ctx, message,
+			"event", "optional_adapter_degraded", "component", wake.Name(),
+			"adapter", "nats", "operation", operation, "fallback", "postgresql_poll",
+			"error_code", code, "error_type", fmt.Sprintf("%T", err))
 	}
 }
 

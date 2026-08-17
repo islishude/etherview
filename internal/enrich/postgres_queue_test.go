@@ -111,27 +111,27 @@ func openFakeSQLDB(t *testing.T, backend *fakeSQLBackend) *sql.DB {
 func durableJobRow(id, attempt int64, stage StageID, hash common.Hash, block uint64) driver.Rows {
 	payload, _ := json.Marshal(durableJobPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
-		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"},
-		values:  [][]driver.Value{{id, "1", stage.Name, int64(stage.Version), attempt, payload, int64(1)}},
+		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
+		values:  [][]driver.Value{{id, "1", stage.Name, int64(stage.Version), attempt, int64(10), payload, int64(1)}},
 	}
 }
 
 func emptyJobRows() driver.Rows {
-	return &fakeSQLRows{columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"}}
+	return &fakeSQLRows{columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"}}
 }
 
 func emptyReplayTargetRows() driver.Rows {
 	return &fakeSQLRows{columns: []string{
-		"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation", "status",
+		"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation", "status",
 	}}
 }
 
 func replayTargetRow(id, attempt, generation int64, stage StageID, hash common.Hash, block uint64, status string) driver.Rows {
 	payload, _ := json.Marshal(durableJobPayload{BlockHash: hash.String(), BlockNumber: fmt.Sprint(block)})
 	return &fakeSQLRows{
-		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation", "status"},
+		columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation", "status"},
 		values: [][]driver.Value{{
-			id, "1", stage.Name, int64(stage.Version), attempt, payload, generation, status,
+			id, "1", stage.Name, int64(stage.Version), attempt, int64(10), payload, generation, status,
 		}},
 	}
 }
@@ -155,15 +155,15 @@ func TestPostgresEnqueueIsIdempotent(t *testing.T) {
 			if inserts == 1 {
 				storedPayload = []byte(arguments[5].Value.(string))
 				return &fakeSQLRows{
-					columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"},
-					values:  [][]driver.Value{{int64(41), "1", stage.Name, int64(stage.Version), int64(0), storedPayload, int64(1)}},
+					columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
+					values:  [][]driver.Value{{int64(41), "1", stage.Name, int64(stage.Version), int64(0), int64(10), storedPayload, int64(1)}},
 				}, nil
 			}
 			return emptyJobRows(), nil
 		case strings.Contains(query, "FROM durable_jobs"):
 			return &fakeSQLRows{
-				columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "payload", "requested_generation"},
-				values:  [][]driver.Value{{int64(41), "1", stage.Name, int64(stage.Version), int64(0), storedPayload, int64(1)}},
+				columns: []string{"id", "chain_id", "stage", "stage_version", "attempts", "max_attempts", "payload", "requested_generation"},
+				values:  [][]driver.Value{{int64(41), "1", stage.Name, int64(stage.Version), int64(0), int64(10), storedPayload, int64(1)}},
 			}, nil
 		default:
 			return nil, fmt.Errorf("unexpected query: %s", query)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -231,6 +232,8 @@ func (s *Service) runLive(ctx context.Context, backfillWake chan<- struct{}) err
 				return err
 			}
 			logger.WarnContext(ctx, "core sync cycle failed; polling will retry",
+				"event", "core_sync_cycle_failed", "component", s.Name(), "lane", "live",
+				"latest_block", strconv.FormatUint(s.latest.Load(), 10),
 				"error_code", cycleErrorCode(err), "error_type", fmt.Sprintf("%T", err))
 		}
 		if err := s.waitLive(ctx); err != nil {
@@ -253,6 +256,8 @@ func (s *Service) runBackfill(ctx context.Context, wake <-chan struct{}, owner s
 				return err
 			}
 			logger.WarnContext(ctx, "core backfill range failed; retrying from durable coverage",
+				"event", "core_sync_cycle_failed", "component", s.Name(), "lane", "backfill",
+				"latest_block", strconv.FormatUint(s.latest.Load(), 10),
 				"error_code", "backfill_cycle_failed", "error_type", fmt.Sprintf("%T", err))
 		}
 		if didWork && err == nil {
@@ -707,6 +712,32 @@ func (s *Service) publish(result indexer.ApplyResult) {
 	}
 	if result.Disposition == indexer.DispositionReorganized && s.Observer != nil {
 		s.Observer.ObserveReorg(uint64(len(result.Detached)))
+	}
+	attributes := []any{
+		"event", "canonical_chain_transitioned", "component", s.Name(),
+		"disposition", result.Disposition,
+		"new_tip", slog.GroupValue(
+			slog.String("number", strconv.FormatUint(result.NewTip.Number, 10)),
+			slog.String("hash", strings.ToLower(result.NewTip.Hash.Hex())),
+		),
+		"attached_count", len(result.Attached), "detached_count", len(result.Detached),
+	}
+	if result.OldTip != nil {
+		attributes = append(attributes, "old_tip", slog.GroupValue(
+			slog.String("number", strconv.FormatUint(result.OldTip.Number, 10)),
+			slog.String("hash", strings.ToLower(result.OldTip.Hash.Hex())),
+		))
+	}
+	if result.Ancestor != nil {
+		attributes = append(attributes, "ancestor", slog.GroupValue(
+			slog.String("number", strconv.FormatUint(result.Ancestor.Number, 10)),
+			slog.String("hash", strings.ToLower(result.Ancestor.Hash.Hex())),
+		))
+	}
+	if result.Disposition == indexer.DispositionReorganized || result.Disposition == indexer.DispositionInitialized {
+		s.logger().Info("canonical chain transitioned", attributes...)
+	} else {
+		s.logger().Debug("canonical chain transitioned", attributes...)
 	}
 	s.signalEvents()
 }

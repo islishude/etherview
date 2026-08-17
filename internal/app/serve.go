@@ -108,7 +108,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	)
 	if needsRPCForServe(roleSet, cfg) ||
 		(roleSet[components.RoleAPI] && len(cfg.RPC.Endpoints) > 0) {
-		built, err := buildRPC(ctx, cfg, logger, registry)
+		built, err := buildRPC(ctx, cfg, logger, businessObserver)
 		if err != nil {
 			return err
 		}
@@ -392,7 +392,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 		genesisImporter, err := genesisstate.NewImporter(
-			db, cfg.Chain, genesisQueue, cfg.Runtime.PollInterval,
+			db, cfg.Chain, genesisQueue, cfg.Runtime.PollInterval, logger,
 		)
 		if err != nil {
 			return err
@@ -705,7 +705,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return err
 		}
 		publicHandler = observability.HTTPMiddleware(publicHandler, observability.HTTPOptions{
-			Registry: registry, Logger: logger, Telemetry: telemetry,
+			Registry: registry, Logger: logger, Component: "http-api", Telemetry: telemetry,
 			Route: handler.RoutePattern, PanicResponse: httpapi.WriteRecoveredPanicResponse,
 		})
 		apiService := httpapi.NewService(cfg, publicHandler, logger)
@@ -733,7 +733,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			return fmt.Errorf("validate verification compiler runtime: %w", err)
 		}
 		catalogRefresher, err := verify.NewCatalogRefresher(
-			compilerCatalog, cfg.Verification.CatalogRefreshInterval,
+			compilerCatalog, cfg.Verification.CatalogRefreshInterval, logger,
 		)
 		if err != nil {
 			return err
@@ -786,6 +786,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 					natsWake.Signal(accelerator.WakeJobs)
 				}
 			},
+			Observer: businessObserver,
 		})
 		if err != nil {
 			return err
@@ -824,8 +825,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			"35-core-enrichment",
 			"enrichment-worker",
 			cfg.Runtime.WorkerCount,
-			func(index int, _ string) (components.Service, error) {
+			func(index int, serviceName string) (components.Service, error) {
 				return enrich.NewWorker(queue, processors, enrich.WorkerOptions{
+					ServiceName:   serviceName,
 					ID:            runtimeWorkerID(indexedWorkerName("enrich", index)),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, Wake: enrichJobWake,
@@ -859,8 +861,9 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			"37-trace-enrichment",
 			"trace-enrichment-worker",
 			cfg.Runtime.WorkerCount,
-			func(index int, _ string) (components.Service, error) {
+			func(index int, serviceName string) (components.Service, error) {
 				return enrich.NewWorker(queue, []enrich.Processor{traceProcessor, stateDiffProcessor}, enrich.WorkerOptions{
+					ServiceName:   serviceName,
 					ID:            runtimeWorkerID(indexedWorkerName("trace", index)),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, Wake: traceJobWake,
@@ -876,7 +879,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
 			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
 		}
-		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, businessObserver); err != nil {
+		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, logger, businessObserver); err != nil {
 			return err
 		}
 	}
@@ -963,9 +966,12 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 	if err := validateProductionComponentGraph(cfg, roles, wakeEnabled, registeredKeys); err != nil {
 		return err
 	}
-	logger.InfoContext(ctx, "starting Etherview components", "components", serviceNames(services))
+	logger.InfoContext(ctx, "starting Etherview components",
+		"event", "runtime_starting", "components", serviceNames(services),
+		"component_count", len(services),
+	)
 	return components.RunWithOptions(ctx, services, components.RunOptions{
-		Lifecycle: lifecycle, ShutdownTimeout: cfg.Server.ShutdownTimeout,
+		Lifecycle: lifecycle, ShutdownTimeout: cfg.Server.ShutdownTimeout, Logger: logger,
 	})
 }
 

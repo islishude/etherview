@@ -146,13 +146,16 @@ func (processor *TraceRPCProcessor) Process(ctx context.Context, job Job) (Stage
 	source, err := processor.fetch(ctx, endpoint, job, transactions)
 	if err != nil {
 		processor.pool.ReportFailure(endpoint.Name)
+		err = withStageDiagnostic(err, StageDiagnostic{Endpoint: endpoint.Name, Phase: "rpc"})
 		if traceCapabilityUnavailable(err) {
 			return StageResult{}, Unavailable(err)
 		}
 		return StageResult{}, err
 	}
 	processor.pool.ReportSuccess(endpoint.Name)
-	return processor.persist(ctx, job, transactions, source, "complete")
+	result, err := processor.persist(ctx, job, transactions, source, "complete")
+	result.diagnostic.Endpoint = endpoint.Name
+	return result, err
 }
 
 func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) ([]traceTransaction, bool, error) {
@@ -315,17 +318,30 @@ func (processor *TraceRPCProcessor) fetchCallTracer(
 	}
 	for index := range transactions {
 		if results[index].err != nil {
-			return results[index].err
+			return withStageDiagnostic(results[index].err, StageDiagnostic{
+				Code: "trace_transaction_failed", Phase: "call_tracer",
+				TransactionHash:  transactions[index].hash,
+				TransactionIndex: transactions[index].index, HasTransaction: true,
+			})
 		}
 		trace, err := NormalizeCallTracer(results[index].result, processor.limits)
 		if err != nil {
-			return Permanent(fmt.Errorf("normalize callTracer transaction %s: %w", transactions[index].hash, err))
+			return withStageDiagnostic(
+				Permanent(fmt.Errorf("normalize callTracer transaction %s: %w", transactions[index].hash, err)),
+				StageDiagnostic{Code: "trace_response_invalid", Phase: "normalize_call_tracer", TransactionHash: transactions[index].hash, TransactionIndex: transactions[index].index, HasTransaction: true},
+			)
 		}
 		if err := budget.addTrace(trace); err != nil {
-			return Permanent(fmt.Errorf("account callTracer transaction %s: %w", transactions[index].hash, err))
+			return withStageDiagnostic(
+				Permanent(fmt.Errorf("account callTracer transaction %s: %w", transactions[index].hash, err)),
+				StageDiagnostic{Code: "resource_limit", Phase: "account_call_tracer", TransactionHash: transactions[index].hash, TransactionIndex: transactions[index].index, HasTransaction: true},
+			)
 		}
 		if err := validateTransactionRoot(trace, transactions[index]); err != nil {
-			return Permanent(fmt.Errorf("validate callTracer transaction %s: %w", transactions[index].hash, err))
+			return withStageDiagnostic(
+				Permanent(fmt.Errorf("validate callTracer transaction %s: %w", transactions[index].hash, err)),
+				StageDiagnostic{Code: "trace_identity_mismatch", Phase: "validate_call_tracer", TransactionHash: transactions[index].hash, TransactionIndex: transactions[index].index, HasTransaction: true},
+			)
 		}
 		transactions[index].trace = trace
 		applyTraceExecutionResolutions(&transactions[index])
@@ -355,7 +371,11 @@ func (processor *TraceRPCProcessor) fetchTraceAPI(
 	for index := range transactions {
 		var raw json.RawMessage
 		if err := caller.CallContext(ctx, &raw, "trace_transaction", transactions[index].hash.String()); err != nil {
-			return sanitizeTraceRPCError(err)
+			return withStageDiagnostic(sanitizeTraceRPCError(err), StageDiagnostic{
+				Code: "rpc_request_failed", Phase: "trace_transaction",
+				TransactionHash:  transactions[index].hash,
+				TransactionIndex: transactions[index].index, HasTransaction: true,
+			})
 		}
 		if err := budget.addPayload(len(raw)); err != nil {
 			return Permanent(fmt.Errorf("account trace_transaction %s: %w", transactions[index].hash, err))

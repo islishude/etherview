@@ -43,6 +43,14 @@ HTTP, and flushes within the supervisor's bounded shutdown. Collector or
 exporter loss never withdraws readiness. Operator response procedures are in
 the [operations runbook](../operations.md).
 
+Structured operational events share stable component and event identities.
+Durable workers log exact lease-safe job/block context and typed output
+summaries only after the matching transition commits; claim/start and per-RPC
+detail remain debug-only. Trace and state-difference failures may carry one
+exact failing transaction identity, but request logs and adapter diagnostics
+retain the existing authentication, billing, URL, and hostile-error redaction
+boundaries.
+
 ```text
 Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         |       -> enrich/trace/metadata

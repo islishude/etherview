@@ -20,10 +20,19 @@ type WorkerOptions struct {
 	Observer      FetchObserver
 }
 
+type FetchEvent string
+
+const (
+	FetchEventStarted      FetchEvent = "started"
+	FetchEventTransitioned FetchEvent = "transitioned"
+)
+
 // FetchTransition describes one retry or terminal outcome only after its
 // durable PostgreSQL transition succeeds. It contains no raw source URI or
 // nested upstream error.
 type FetchTransition struct {
+	Event       FetchEvent
+	Component   string
 	JobID       int64
 	WorkerID    string
 	NFTContract common.Address
@@ -34,8 +43,11 @@ type FetchTransition struct {
 	MaxAttempts uint32
 	State       State
 	Code        string
+	LastCode    string
 	Result      string
 	Diagnostic  FetchDiagnostic
+	RetryAfter  time.Duration
+	Duration    time.Duration
 }
 
 // FetchObserver receives only controlled, durably persisted metadata
@@ -119,6 +131,8 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 	if err := lease.Validate(); err != nil {
 		return true, fmt.Errorf("metadata repository returned invalid lease: %w", err)
 	}
+	lease.startedAt = time.Now()
+	worker.observeEvent(lease, FetchEventStarted, StatePending, "", "", "", FetchDiagnostic{}, 0)
 	err = worker.processLease(ctx, lease)
 	return true, err
 }
@@ -136,12 +150,12 @@ func (worker *Worker) processLease(ctx context.Context, lease Lease) error {
 	if !current.Resource {
 		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "superseded", "metadata source was superseded by a newer canonical observation",
-		), "unavailable", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
+		), "unavailable", "", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
 	}
 	if !current.Canonical {
 		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "source_block_noncanonical", "metadata source block is no longer canonical",
-		), "unavailable", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
+		), "unavailable", "", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
 	}
 
 	response := make(chan fetchResponse, 1)
@@ -174,14 +188,14 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		if err := validateDocument(completed.result.Body); err != nil {
 			return worker.finish(
 				ctx, lease, terminalOutcome(StateError, "invalid_document", boundedError(err)), "failed",
-				diagnosticWithPhase(diagnostic, FetchPhaseDocument),
+				"", diagnosticWithPhase(diagnostic, FetchPhaseDocument),
 			)
 		}
 		if completed.result.ContentType == "" || completed.result.URL == "" || len(completed.result.URL) > MaxSourceURIBytes {
 			return worker.finish(
 				ctx, lease,
 				terminalOutcome(StateError, "invalid_fetch_result", "safe metadata fetcher returned incomplete source information"),
-				"failed", diagnosticWithPhase(diagnostic, FetchPhaseContent),
+				"failed", "", diagnosticWithPhase(diagnostic, FetchPhaseContent),
 			)
 		}
 		digest := sha256.Sum256(completed.result.Body)
@@ -193,7 +207,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		if err := outcome.validate(); err != nil {
 			return fmt.Errorf("validate fetched metadata outcome: %w", err)
 		}
-		return worker.finish(ctx, lease, outcome, "succeeded", diagnostic)
+		return worker.finish(ctx, lease, outcome, "succeeded", "", diagnostic)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -204,18 +218,24 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		diagnostic = fetchFailure.Diagnostic
 	}
 	if diagnostic.SourceScheme == "" {
-		diagnostic = diagnosticForSource(lease.Request.SourceURI, fallbackFetchPhase(completed.err))
+		diagnostic.SourceScheme = diagnosticForSource(lease.Request.SourceURI, FetchPhaseNone).SourceScheme
+	}
+	if diagnostic.Phase == "" || diagnostic.Phase == FetchPhaseNone {
+		diagnostic.Phase = fallbackFetchPhase(completed.err)
 	}
 	state, code, retry := classifyFetchFailure(completed.err)
 	message := fetchFailureMessage(completed.err)
 	if retry && lease.Attempt < lease.MaxAttempts {
-		if err := worker.repository.Retry(ctx, lease, code, message, worker.retryDelay(lease.Attempt)); err != nil {
+		retryAfter := worker.retryDelay(lease.Attempt)
+		if err := worker.repository.Retry(ctx, lease, code, message, retryAfter); err != nil {
 			return err
 		}
-		worker.observe(lease, StatePending, code, "retry", diagnostic)
+		worker.observeEvent(lease, FetchEventTransitioned, StatePending, code, "", "retry", diagnostic, retryAfter)
 		return nil
 	}
+	lastCode := ""
 	if retry {
+		lastCode = code
 		state = StateError
 		code = "attempts_exhausted"
 		message = "maximum metadata fetch attempts exhausted"
@@ -232,7 +252,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 			result = "resource_exhausted"
 		}
 	}
-	return worker.finish(ctx, lease, terminalOutcome(state, code, message), result, diagnostic)
+	return worker.finish(ctx, lease, terminalOutcome(state, code, message), result, lastCode, diagnostic)
 }
 
 func (worker *Worker) finish(
@@ -240,23 +260,33 @@ func (worker *Worker) finish(
 	lease Lease,
 	outcome Outcome,
 	result string,
+	lastCode string,
 	diagnostic FetchDiagnostic,
 ) error {
 	if err := worker.repository.Finish(ctx, lease, outcome); err != nil {
 		return err
 	}
-	worker.observe(lease, outcome.State, outcome.Code, result, diagnostic)
+	worker.observeEvent(lease, FetchEventTransitioned, outcome.State, outcome.Code, lastCode, result, diagnostic, 0)
 	return nil
 }
 
-func (worker *Worker) observe(lease Lease, state State, code, result string, diagnostic FetchDiagnostic) {
+func (worker *Worker) observeEvent(
+	lease Lease,
+	event FetchEvent,
+	state State,
+	code, lastCode, result string,
+	diagnostic FetchDiagnostic,
+	retryAfter time.Duration,
+) {
 	if worker.options.Observer != nil {
 		worker.options.Observer.RecordMetadataFetch(FetchTransition{
+			Event: event, Component: worker.Name(),
 			JobID: lease.JobID, WorkerID: worker.options.WorkerID,
 			NFTContract: lease.Request.Token, NFTID: lease.Request.TokenID,
 			BlockNumber: lease.Request.BlockNumber, BlockHash: lease.Request.BlockHash,
 			Attempt: lease.Attempt, MaxAttempts: lease.MaxAttempts,
-			State: state, Code: code, Result: result, Diagnostic: diagnostic,
+			State: state, Code: code, LastCode: lastCode, Result: result, Diagnostic: diagnostic,
+			RetryAfter: retryAfter, Duration: time.Since(lease.startedAt),
 		})
 	}
 }

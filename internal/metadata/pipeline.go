@@ -119,6 +119,7 @@ type Lease struct {
 	Request     NFTRequest
 	Attempt     uint32
 	MaxAttempts uint32
+	startedAt   time.Time
 }
 
 func (lease Lease) Validate() error {

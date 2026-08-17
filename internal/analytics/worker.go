@@ -90,7 +90,10 @@ func (worker *RollupWorker) Run(ctx context.Context) error {
 				return ctx.Err()
 			}
 			worker.options.Logger.WarnContext(ctx, "analytics rollup recompute failed",
+				"event", "analytics_rollup_failed", "component", worker.Name(),
 				"error_code", "analytics_rollup_failed",
+				"error_type", fmt.Sprintf("%T", err),
+				"retry_in_ms", worker.options.RetryInterval.Milliseconds(),
 			)
 			if worker.options.Observer != nil {
 				worker.options.Observer.RecordAnalyticsRollup("failed")
@@ -105,6 +108,7 @@ func (worker *RollupWorker) Run(ctx context.Context) error {
 		}
 		if result.Published {
 			worker.options.Logger.InfoContext(ctx, "analytics rollup recompute completed",
+				"event", "analytics_rollup_completed", "component", worker.Name(),
 				"bucket_start", result.BucketStart.UTC().Format(time.RFC3339),
 				"source_generation", result.Generation,
 			)

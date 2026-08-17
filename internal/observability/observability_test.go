@@ -330,6 +330,38 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 	}
 }
 
+func TestHTTPCompletionIncludesRequestAndOperationWithoutPathIdentity(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	logger := NewLogger(LoggerOptions{Writer: &output})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/blocks/{id}", func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("X-Request-ID", "request-42")
+		response.WriteHeader(http.StatusInternalServerError)
+	})
+	handler := HTTPMiddleware(mux, HTTPOptions{
+		Registry: NewRegistry("test", "api"), Logger: logger,
+		Route: func(request *http.Request) string { return MuxRoutePattern(mux, request) },
+	})
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/api/v1/blocks/123456789", nil),
+	)
+	logs := output.String()
+	for _, expected := range []string{
+		`"level":"WARN"`, `"event":"http_request_completed"`,
+		`"request_id":"request-42"`, `"operation":"getBlock"`,
+		`"route":"/api/v1/blocks/{id}"`, `"result":"server_error"`,
+	} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("HTTP log missing %q: %s", expected, logs)
+		}
+	}
+	if strings.Contains(logs, "123456789") {
+		t.Fatalf("HTTP log leaked path identity: %s", logs)
+	}
+}
+
 func TestHTTPMiddlewareSuppressesRoutineHealthAccessLogs(t *testing.T) {
 	registry := NewRegistry("test", "api")
 	sink := &recordingSink{}

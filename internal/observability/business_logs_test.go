@@ -5,9 +5,14 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/enrich"
+	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/metadata"
+	"github.com/islishude/etherview/internal/verify"
 )
 
 func TestBusinessObserverLogsBoundedDurableTransitionsAndPreservesMetrics(t *testing.T) {
@@ -16,16 +21,42 @@ func TestBusinessObserverLogsBoundedDurableTransitionsAndPreservesMetrics(t *tes
 	var output bytes.Buffer
 	observer := NewBusinessObserver(registry, slog.New(slog.NewJSONHandler(&output, nil)))
 
-	observer.RecordEnrichmentJob("state_diff@1", "succeeded")
-	observer.RecordVerificationJob("retry")
+	observer.RecordEnrichmentJob(enrich.JobTransition{
+		Event:     enrich.JobEventTransitioned,
+		Component: "trace-enrichment-worker-01", WorkerID: "trace-worker-01",
+		Job: enrich.Job{ID: "41", Stage: enrich.StateDiffStage, ChainID: "1", BlockNumber: 48,
+			BlockHash: common.HexToHash("0xdbe5e5d7c61b447253523cb300f575de8d48a0a0503542cfb4072e7b95ca0798"),
+			Attempt:   1, MaxAttempts: 10, Generation: 2},
+		JobStatus: "succeeded", StageState: enrich.ResultComplete, Result: "succeeded",
+		Details: map[string]string{"transactions": "2", "changes": "4"},
+	})
+	observer.RecordVerificationJob(verify.JobTransition{
+		Event: verify.JobEventTransitioned, Component: "contract-verification-worker-01",
+		WorkerID: "verify-worker-01", Result: "retry",
+		Job: verify.VerificationJob{ID: "00000000-0000-0000-0000-000000000041",
+			Kind: verify.JobAddress, AttemptCount: 1, MaxAttempts: 3},
+	})
 	observer.RecordMetadataFetch(testMetadataTransition())
-	observer.RecordMaintenanceRequest("repair", "failed")
-	observer.RecordEnrichmentJob("hostile-secret-stage", "hostile-secret-result")
+	observer.RecordMaintenanceRequest(maintenance.RequestTransition{
+		Event: maintenance.RequestEventTransitioned, Component: "maintenance-worker-01",
+		WorkerID: "maintenance-01", Result: "failed", Code: "finalized_range",
+		Request: maintenance.Request{ID: 91, ChainID: "1", Operation: maintenance.OperationRepair,
+			Stage: "core", FromBlock: 10, ToBlock: 20, Reason: "operator request"},
+	})
+	observer.RecordEnrichmentJob(enrich.JobTransition{
+		Event: enrich.JobEventTransitioned, Component: strings.Repeat("x", 129),
+		WorkerID: strings.Repeat("y", 129), Result: "hostile-secret-result",
+		Job: enrich.Job{ID: strings.Repeat("z", 129), Stage: enrich.StageID{Name: "hostile-secret-stage", Version: 1},
+			ChainID: "1", BlockHash: common.HexToHash("0x01")},
+	})
 
 	logs := output.String()
 	for _, expected := range []string{
 		`"msg":"enrichment job transitioned"`,
-		`"stage":"state_diff"`,
+		`"stage":{"name":"state_diff","version":3}`,
+		`"job":{"id":"41","worker":"trace-worker-01","attempt":1,"max_attempts":10,"generation":"2"}`,
+		`"block":{"number":"48","hash":"0xdbe5e5d7c61b447253523cb300f575de8d48a0a0503542cfb4072e7b95ca0798"}`,
+		`"summary":{"changes":4,"transactions":2}`,
 		`"result":"succeeded"`,
 		`"msg":"verification job transitioned"`,
 		`"result":"retry"`,
@@ -39,7 +70,7 @@ func TestBusinessObserverLogsBoundedDurableTransitionsAndPreservesMetrics(t *tes
 		`"network":{"resolved_ips":["198.18.17.210"]`,
 		`"policy_bypassed":true`,
 		`"rejected_prefixes":["198.18.0.0/15"]`,
-		`"failure":{"phase":"network_policy"}`,
+		`"failure":{"phase":"network_policy","reason":"network_policy_rejected"}`,
 		`"msg":"maintenance request transitioned"`,
 		`"operation":"repair"`,
 		`"level":"INFO"`,
@@ -90,6 +121,7 @@ func testMetadataTransition() metadata.FetchTransition {
 			RejectedReasons: []string{"special_use"}, RejectedPrefixes: []string{"198.18.0.0/15"},
 			NetworkPolicyBypassed: true,
 			Phase:                 metadata.FetchPhaseNetworkPolicy,
+			Reason:                metadata.FetchFailureNetworkPolicyRejected,
 		},
 	}
 }
@@ -102,6 +134,7 @@ func TestMetadataTransitionLogRejectsUnboundedOrSecretBearingFields(t *testing.T
 	transition.WorkerID = "worker\nworker-secret"
 	transition.NFTID = "nft-secret"
 	transition.Code = "code-secret"
+	transition.LastCode = "last-code-secret"
 	transition.Result = "result-secret"
 	transition.Diagnostic = metadata.FetchDiagnostic{
 		SourceScheme: "scheme-secret", RequestMethod: "POST", RequestScheme: "ftp",
@@ -113,11 +146,12 @@ func TestMetadataTransitionLogRejectsUnboundedOrSecretBearingFields(t *testing.T
 		RejectedReasons:  []string{"reason-secret", "special_use"},
 		RejectedPrefixes: []string{"prefix-secret", "198.18.0.0/15"},
 		Phase:            "phase-secret",
+		Reason:           "failure-reason-secret",
 	}
 	observer.RecordMetadataFetch(transition)
 	logs := output.String()
 	for _, forbidden := range []string{
-		"worker-secret", "nft-secret", "code-secret", "result-secret", "scheme-secret",
+		"worker-secret", "nft-secret", "code-secret", "last-code-secret", "result-secret", "scheme-secret",
 		"host-secret", "credential-secret", "path-secret", "query-secret", "ip-secret",
 		"rejected-secret", "reason-secret", "prefix-secret", "phase-secret",
 	} {
@@ -126,10 +160,10 @@ func TestMetadataTransitionLogRejectsUnboundedOrSecretBearingFields(t *testing.T
 		}
 	}
 	for _, expected := range []string{
-		`"worker":"unknown"`, `"id":"unknown"`, `"code":"other"`, `"result":"other"`,
+		`"worker":"unknown"`, `"id":"unknown"`, `"code":"other","last_code":"other"`, `"result":"other"`,
 		`"resolved_ips":["198.18.17.210"]`, `"rejected_reasons":["special_use"]`,
 		`"policy_bypassed":false`,
-		`"failure":{"phase":"other"}`,
+		`"failure":{"phase":"other","reason":"other"}`,
 	} {
 		if !strings.Contains(logs, expected) {
 			t.Fatalf("metadata log missing %q: %s", expected, logs)
@@ -161,6 +195,29 @@ func TestMetadataTransitionLogPreservesSafeGroupsThroughProductionRedactor(t *te
 				t.Fatalf("safe metadata identity was redacted from %s log: %s", format, logs)
 			}
 		})
+	}
+}
+
+func TestMetadataExhaustionLogPreservesLastCodeAndClosedReason(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	observer := NewBusinessObserver(nil, slog.New(slog.NewJSONHandler(&output, nil)))
+	transition := testMetadataTransition()
+	transition.State = metadata.StateError
+	transition.Code = "attempts_exhausted"
+	transition.LastCode = "temporary_fetch_error"
+	transition.Result = "failed"
+	transition.Diagnostic.Phase = metadata.FetchPhaseTransport
+	transition.Diagnostic.Reason = metadata.FetchFailureTLSHandshakeTimeout
+	observer.RecordMetadataFetch(transition)
+	logs := output.String()
+	for _, expected := range []string{
+		`"transition":{"state":"error","code":"attempts_exhausted","last_code":"temporary_fetch_error"}`,
+		`"failure":{"phase":"transport","reason":"tls_handshake_timeout"}`,
+	} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("metadata exhaustion log missing %q: %s", expected, logs)
+		}
 	}
 }
 
@@ -210,5 +267,85 @@ func TestBusinessObserverUsesInfoOnlyForNonFailureOutcomes(t *testing.T) {
 				t.Fatalf("businessLogLevel(%q)=%s want=%s", test.result, got, test.level)
 			}
 		})
+	}
+}
+
+func TestEnrichmentLogsDebugStartAndExactFailureTransactionWithoutErrorText(t *testing.T) {
+	t.Parallel()
+	job := enrich.Job{
+		ID: "73", Stage: enrich.TraceStage, ChainID: "1", BlockNumber: 99,
+		BlockHash: common.HexToHash("0x99"), Attempt: 2, MaxAttempts: 10, Generation: 4,
+	}
+	var infoOutput bytes.Buffer
+	infoObserver := NewBusinessObserver(nil, slog.New(slog.NewJSONHandler(&infoOutput, nil)))
+	infoObserver.RecordEnrichmentJob(enrich.JobTransition{
+		Event: enrich.JobEventStarted, Component: "trace-enrichment-worker-01",
+		WorkerID: "trace-worker-01", Job: job,
+	})
+	if infoOutput.Len() != 0 {
+		t.Fatalf("INFO emitted job start: %s", infoOutput.String())
+	}
+
+	var debugOutput bytes.Buffer
+	debugObserver := NewBusinessObserver(nil, slog.New(slog.NewJSONHandler(
+		&debugOutput, &slog.HandlerOptions{Level: slog.LevelDebug},
+	)))
+	debugObserver.RecordEnrichmentJob(enrich.JobTransition{
+		Event: enrich.JobEventStarted, Component: "trace-enrichment-worker-01",
+		WorkerID: "trace-worker-01", Job: job,
+	})
+	transactionHash := common.HexToHash("0x1234")
+	debugObserver.RecordEnrichmentJob(enrich.JobTransition{
+		Event: enrich.JobEventTransitioned, Component: "trace-enrichment-worker-01",
+		WorkerID: "trace-worker-01", Job: job, JobStatus: "failed",
+		StageState: enrich.ResultFailed, Result: "failed", Code: "trace_response_invalid",
+		Duration: 125 * time.Millisecond,
+		Diagnostic: enrich.StageDiagnostic{
+			Code: "trace_response_invalid", Phase: "normalize_call_tracer", Endpoint: "archive-01",
+			TransactionHash: transactionHash, TransactionIndex: 3, HasTransaction: true,
+		},
+	})
+	logs := debugOutput.String()
+	for _, expected := range []string{
+		`"msg":"enrichment job started"`, `"event":"enrichment_job_started"`,
+		`"transaction":{"hash":"` + strings.ToLower(transactionHash.Hex()) + `","index":"3"}`,
+		`"rpc":{"endpoint":"archive-01"}`, `"failure":{"phase":"normalize_call_tracer"}`,
+		`"duration_ms":125`,
+	} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("enrichment logs missing %q:\n%s", expected, logs)
+		}
+	}
+	if strings.Contains(logs, "provider-secret") {
+		t.Fatalf("enrichment log leaked error text: %s", logs)
+	}
+}
+
+func TestRPCLogsBoundedMethodAndEndpointStateWithoutParameters(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	observer := NewBusinessObserver(nil, slog.New(slog.NewJSONHandler(
+		&output, &slog.HandlerOptions{Level: slog.LevelDebug},
+	)))
+	observer.RecordRPC(ethrpc.Observation{
+		Endpoint: "archive-01", Purpose: ethrpc.PurposeTrace,
+		Method: "debug_traceBlockByHash", BatchSize: 1, SuccessCount: 1,
+		Duration: 15 * time.Millisecond,
+	})
+	observer.RecordRPCEndpointState(ethrpc.EndpointState{
+		Endpoint: "archive-01", State: "degraded", ConsecutiveFailures: 2, Cooldown: 10 * time.Second,
+	})
+	logs := output.String()
+	for _, expected := range []string{
+		`"event":"rpc_request_completed"`, `"endpoint":"archive-01"`,
+		`"method":"debug_traceBlockByHash"`, `"duration_ms":15`,
+		`"event":"rpc_endpoint_degraded"`, `"cooldown_ms":10000`,
+	} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("RPC logs missing %q:\n%s", expected, logs)
+		}
+	}
+	if strings.Contains(logs, "0xparameter-secret") {
+		t.Fatalf("RPC logs exposed parameters: %s", logs)
 	}
 }

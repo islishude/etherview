@@ -633,6 +633,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	if calls := h.rpcProxy.transactionTraces.Load(); calls != 0 {
 		t.Fatalf("RPC fixture adapter observed %d debug_traceTransaction calls, want 0", calls)
 	}
+	h.assertOperationalLogs(ctx)
 
 	result := modeResult{
 		durable: h.captureDurable(ctx),
@@ -645,6 +646,37 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.validateProcessNativeTLS(ctx)
 	}
 	return result
+}
+
+func (h *harness) assertOperationalLogs(ctx context.Context) {
+	services := []string{"etherview"}
+	if h.mode == "distributed" {
+		services = []string{"enrich", "trace"}
+	}
+	arguments := append([]string{"logs", "--no-color"}, services...)
+	output, err := h.project.Run(ctx, arguments...)
+	if err != nil {
+		h.t.Fatalf("read operational logs: %v", err)
+	}
+	logs := string(output)
+	for _, expected := range []string{
+		`"event":"runtime_ready"`,
+		`"event":"enrichment_job_transitioned"`,
+		`"job":{"id":`,
+		`"stage":{"name":"trace","version":3}`,
+		`"stage":{"name":"state_diff","version":3}`,
+		`"block":{"number":"` + strconv.FormatUint(h.fixture.finalHeight, 10) + `","hash":"` + strings.ToLower(h.fixture.finalHash) + `"}`,
+		`"summary":{`,
+	} {
+		if !strings.Contains(logs, expected) {
+			h.t.Fatalf("operational logs missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{"error_msg", "provider-secret", "database-url-redacted"} {
+		if strings.Contains(logs, forbidden) {
+			h.t.Fatalf("operational logs contain forbidden field/value %q", forbidden)
+		}
+	}
 }
 
 func runtimeEnvironment(root string, baseTimestamp uint64) map[string]string {

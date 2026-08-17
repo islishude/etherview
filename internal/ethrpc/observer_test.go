@@ -16,8 +16,9 @@ func (metricService) BlockNumber(context.Context) (hexutil.Uint64, error) {
 
 type metricObserver struct{ values map[string]int }
 
-func (observer *metricObserver) RecordRPC(purpose, result string) {
-	observer.values[purpose+":"+result]++
+func (observer *metricObserver) RecordRPC(observation Observation) {
+	observer.values[string(observation.Purpose)+":success"] += observation.SuccessCount
+	observer.values[string(observation.Purpose)+":error"] += observation.ErrorCount
 }
 
 func TestEndpointObservesRPCOutcomesByAcquiredPurpose(t *testing.T) {

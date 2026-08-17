@@ -170,6 +170,7 @@ func (housekeeper *CatalogHousekeeper) Run(ctx context.Context) error {
 		if err == nil {
 			if result.Ran {
 				housekeeper.logger.InfoContext(ctx, "catalog maintenance sweep completed",
+					"event", "catalog_maintenance_completed", "component", housekeeper.Name(),
 					"minimum_generation", result.MinGeneration,
 					"deleted_observations", result.Deleted,
 				)
@@ -181,7 +182,9 @@ func (housekeeper *CatalogHousekeeper) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		housekeeper.logger.WarnContext(ctx, "catalog maintenance sweep failed", "error_code", "catalog_maintenance_failed")
+		housekeeper.logger.WarnContext(ctx, "catalog maintenance sweep failed",
+			"event", "catalog_maintenance_failed", "component", housekeeper.Name(),
+			"error_code", "catalog_maintenance_failed", "retry_in_ms", retry.Milliseconds())
 		delay = retry
 		if retry < housekeeper.options.Interval {
 			if retry >= housekeeper.options.Interval/2 {

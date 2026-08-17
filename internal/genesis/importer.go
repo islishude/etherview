@@ -11,9 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -60,6 +62,7 @@ type Importer struct {
 	block        *types.Block
 	queue        *enrich.PostgresJobQueue
 	pollInterval time.Duration
+	logger       *slog.Logger
 }
 
 type remoteImportCheckpoint struct {
@@ -72,6 +75,7 @@ func NewImporter(
 	chain config.ChainConfig,
 	queue *enrich.PostgresJobQueue,
 	pollInterval time.Duration,
+	loggers ...*slog.Logger,
 ) (*Importer, error) {
 	if db == nil {
 		return nil, errors.New("genesis importer database is nil")
@@ -91,6 +95,10 @@ func NewImporter(
 	importer := &Importer{
 		db: db, chainID: strconv.FormatUint(chain.ID, 10), chainNumber: chain.ID,
 		file: chain.GenesisFile, queue: queue, pollInterval: pollInterval,
+	}
+	importer.logger = slog.Default()
+	if len(loggers) > 0 && loggers[0] != nil {
+		importer.logger = loggers[0]
 	}
 	if chain.GenesisHash != "" {
 		configuredHash, err := parseHashText(chain.GenesisHash)
@@ -466,6 +474,12 @@ func (importer *Importer) recordRemoteFailure(
 	); err != nil {
 		return fmt.Errorf("publish genesis remote source failure: %w", err)
 	}
+	importer.logger.WarnContext(ctx, "genesis state import transitioned",
+		"event", "genesis_state_transitioned", "component", importer.Name(),
+		"source", "https", "transition", slog.GroupValue(
+			slog.String("state", string(kind)), slog.String("code", code),
+		),
+	)
 	return cause
 }
 
@@ -486,6 +500,12 @@ func (importer *Importer) markUnavailable(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("publish unavailable genesis state: %w", err)
 	}
+	importer.logger.InfoContext(ctx, "genesis state import transitioned",
+		"event", "genesis_state_transitioned", "component", importer.Name(),
+		"source", "none", "transition", slog.GroupValue(
+			slog.String("state", "unavailable"), slog.String("code", "genesis_file_not_configured"),
+		),
+	)
 	return nil
 }
 
@@ -649,6 +669,21 @@ func (importer *Importer) importOnceUsing(
 	if err := tx.Commit(); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("commit genesis state import: %w", err)
 	}
+	source := "file"
+	if importer.remote != nil {
+		source = "https"
+	}
+	importer.logger.InfoContext(ctx, "genesis state import transitioned",
+		"event", "genesis_state_transitioned", "component", importer.Name(),
+		"source", source,
+		"block", slog.GroupValue(
+			slog.String("number", "0"), slog.String("hash", strings.ToLower(reference.Hex())),
+			slog.String("state_root", strings.ToLower(stateRoot.Hex())),
+		),
+		"document_sha256", fmt.Sprintf("%x", importer.digest),
+		"account_count", len(importer.spec.Alloc),
+		"transition", slog.GroupValue(slog.String("state", "complete")),
+	)
 	return reference, stateRoot, nil
 }
 

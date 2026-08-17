@@ -93,6 +93,31 @@ and `span_id`. Boundary failures use stable `error_code` and `error_type`
 fields. Raw RPC, PostgreSQL, compiler, metadata, panic, URL credential,
 authorization-header, and exporter errors are not log attributes.
 
+Every production record has a stable `event` and, when emitted by a long-lived
+service, `component`. Runtime supervision emits `runtime_starting`,
+`runtime_ready`, `runtime_stopping`, and `runtime_stopped`; individual component
+starts are debug-only, while an unexpected exit names the failed component and
+exposes only a stable code and error type. Repeated healthy polls are not info
+logs.
+
+Durable enrichment results use `job`, `stage`, `block`, `transition`, and
+`summary` groups. `job` contains the durable ID, worker, attempt budget, and
+generation; `block` contains the exact decimal number and full lowercase hash;
+`transition` distinguishes the committed job status from the published stage
+state and reports retry delay when applicable. `summary` contains only the
+stage's closed, typed counters and outcome fields. Trace and state-difference
+failures include a `transaction` hash/index only when the failing item is known;
+successful block jobs never list every transaction. Claimed-job starts and
+individual RPC calls are debug-only. RPC diagnostics contain only endpoint
+name, purpose, method, batch counts, and duration, never parameters or results.
+
+HTTP completion records include `request_id`, static native operation when
+known, bounded mux route, result class, status, duration, and trace correlation.
+They deliberately exclude path/query identities, request bodies, API-key
+prefixes, users, payers, payments, and facilitator data. Adapter degradation
+uses stable adapter/operation/fallback codes. Do not add `error_msg`, raw
+provider text, or nested errors when extending these records.
+
 The active PostgreSQL sync-status reporter emits an `info` progress record only
 when its latest, indexed, highest-covered, lag, backfill-complete, or ready
 state changes. `observability.sync_progress_log_interval` limits those records
@@ -121,6 +146,13 @@ failure.phase=network_policy` while the Prometheus result remains
 `ssrf_rejected`. When the explicit Preview metadata exception accepts that
 fake-IP route, the successful durable record instead includes
 `network.policy_bypassed=true`; ordinary public DNS leaves it `false`.
+Transport failures additionally expose one closed `failure.reason` such as
+`dns_timeout`, `connection_refused`, `network_unreachable`,
+`tls_handshake_timeout`, `tls_certificate_invalid`, or `request_timeout`.
+Unknown transport failures use `transport_error`; arbitrary nested error text
+never becomes a reason. A terminal retry exhaustion retains
+`transition.code=attempts_exhausted` and adds the preceding stable retry code as
+`transition.last_code`, so the retry class is not lost.
 
 OTLP/HTTP tracing is off when `observability.otlp_trace_endpoint` is empty. To
 enable it, supply an origin such as `https://collector.example:4318` through

@@ -466,6 +466,15 @@ func (accelerator *RedisAccelerator) logBypass(ctx context.Context, message stri
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		accelerator.logger.WarnContext(ctx, message, "error_type", fmt.Sprintf("%T", err))
+		code, operation, fallback := "redis_cache_bypass", "cache", "postgresql"
+		if strings.Contains(message, "rate limiter") {
+			code, operation, fallback = "redis_rate_limiter_fallback", "rate_limit", "process_local"
+		} else if strings.Contains(message, "invalidation") {
+			code, operation = "redis_cache_invalidation_bypass", "invalidate"
+		}
+		accelerator.logger.WarnContext(ctx, message,
+			"event", "optional_adapter_degraded", "component", "redis-accelerator",
+			"adapter", "redis", "operation", operation, "fallback", fallback,
+			"error_code", code, "error_type", fmt.Sprintf("%T", err))
 	}
 }

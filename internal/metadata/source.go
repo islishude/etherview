@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"strings"
@@ -102,12 +103,14 @@ type NFTSourceRepository interface {
 type SourceDiscovererOptions struct {
 	PollInterval time.Duration
 	MaxAttempts  uint32
+	Logger       *slog.Logger
 }
 
 type SourceDiscoverer struct {
 	repository NFTSourceRepository
 	pool       *ethrpc.Pool
 	options    SourceDiscovererOptions
+	logger     *slog.Logger
 }
 
 func NewSourceDiscoverer(repository NFTSourceRepository, pool *ethrpc.Pool, options SourceDiscovererOptions) (*SourceDiscoverer, error) {
@@ -126,7 +129,10 @@ func NewSourceDiscoverer(repository NFTSourceRepository, pool *ethrpc.Pool, opti
 	if options.MaxAttempts > MaximumMaxAttempts {
 		return nil, fmt.Errorf("NFT metadata max attempts exceeds %d", MaximumMaxAttempts)
 	}
-	return &SourceDiscoverer{repository: repository, pool: pool, options: options}, nil
+	if options.Logger == nil {
+		options.Logger = slog.Default()
+	}
+	return &SourceDiscoverer{repository: repository, pool: pool, options: options, logger: options.Logger}, nil
 }
 
 func (*SourceDiscoverer) Name() string { return "metadata-source-discovery" }
@@ -153,6 +159,7 @@ func (discoverer *SourceDiscoverer) Run(ctx context.Context) error {
 }
 
 func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, error) {
+	startedAt := time.Now()
 	candidate, found, err := discoverer.repository.NextNFTSource(ctx)
 	if err != nil || !found {
 		return false, err
@@ -162,11 +169,13 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 	}
 	endpoint, err := discoverer.pool.Acquire(ethrpc.PurposeState)
 	if err != nil {
+		discoverer.logSource(ctx, candidate, "retry", "endpoint_unavailable", "", startedAt, slog.LevelDebug)
 		return false, nil
 	}
 	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, endpoint, candidate)
 	if retry {
 		discoverer.pool.ReportFailure(endpoint.Name)
+		discoverer.logSource(ctx, candidate, "retry", "rpc_request_failed", endpoint.Name, startedAt, slog.LevelDebug)
 		return false, nil
 	}
 	discoverer.pool.ReportSuccess(endpoint.Name)
@@ -175,12 +184,17 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 		return true, err
 	}
 	if !canonical {
+		discoverer.logSource(ctx, candidate, "stale", "source_block_noncanonical", endpoint.Name, startedAt, slog.LevelInfo)
 		return true, nil
 	}
 	if unavailableCode != "" {
-		return true, discoverer.repository.RecordNFTSource(ctx, NFTSourceObservation{
+		err := discoverer.repository.RecordNFTSource(ctx, NFTSourceObservation{
 			Candidate: candidate, State: NFTSourceUnavailable, ErrorCode: unavailableCode,
 		})
+		if err == nil {
+			discoverer.logSource(ctx, candidate, "unavailable", unavailableCode, endpoint.Name, startedAt, slog.LevelInfo)
+		}
+		return true, err
 	}
 	request := NFTRequest{
 		ChainID: candidate.ChainID, Token: candidate.Token, TokenID: candidate.TokenID,
@@ -195,7 +209,29 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 	}); err != nil {
 		return true, err
 	}
+	discoverer.logSource(ctx, candidate, "found", "", endpoint.Name, startedAt, slog.LevelInfo)
 	return true, nil
+}
+
+func (discoverer *SourceDiscoverer) logSource(
+	ctx context.Context,
+	candidate NFTSourceCandidate,
+	result, code, endpoint string,
+	startedAt time.Time,
+	level slog.Level,
+) {
+	if discoverer == nil || discoverer.logger == nil {
+		return
+	}
+	discoverer.logger.LogAttrs(ctx, level, "metadata source discovery transitioned",
+		slog.String("event", "metadata_source_transitioned"),
+		slog.String("component", discoverer.Name()),
+		slog.Group("nft", slog.String("contract", strings.ToLower(candidate.Token.Hex())), slog.String("id", candidate.TokenID), slog.String("standard", string(candidate.Standard))),
+		slog.Group("block", slog.String("number", strconv.FormatUint(candidate.BlockNumber, 10)), slog.String("hash", strings.ToLower(candidate.BlockHash.Hex()))),
+		slog.Group("transition", slog.String("result", result), slog.String("code", code)),
+		slog.Group("rpc", slog.String("endpoint", endpoint)),
+		slog.Int64("duration_ms", time.Since(startedAt).Milliseconds()),
+	)
 }
 
 var (

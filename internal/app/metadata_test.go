@@ -29,7 +29,7 @@ func TestRegisterMetadataWorkersUseUniqueDurableSafeWorkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := registerMetadataWorkers(registry, &sql.DB{}, pool, cfg); err != nil {
+	if err := registerMetadataWorkers(registry, &sql.DB{}, pool, cfg, nil); err != nil {
 		t.Fatal(err)
 	}
 	services, err := registry.Build([]components.Role{components.RoleMetadata})

@@ -116,7 +116,11 @@ func (feed *HomeFeed) Run(ctx context.Context) error {
 		feed.logger.WarnContext(
 			ctx,
 			"home snapshot refresh failed; retrying",
+			"event", "home_snapshot_refresh_failed",
+			"component", feed.Name(),
+			"error_code", "home_snapshot_refresh_failed",
 			"error_type", fmt.Sprintf("%T", err),
+			"retry_in_ms", backoff.Milliseconds(),
 		)
 		timer := time.NewTimer(backoff)
 		select {

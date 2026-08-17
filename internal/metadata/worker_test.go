@@ -88,10 +88,10 @@ func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
 	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
 		t.Fatalf("processed=%t error=%v", processed, err)
 	}
-	if len(observer.transitions) != 1 {
+	if len(observer.transitions) != 2 || observer.transitions[0].Event != FetchEventStarted {
 		t.Fatalf("metadata observations=%v", observer.transitions)
 	}
-	transition := observer.transitions[0]
+	transition := observer.transitions[1]
 	request := repository.lease.Request
 	if transition.Result != "succeeded" || transition.State != StateAvailable || transition.Code != "" ||
 		transition.JobID != repository.lease.JobID || transition.WorkerID != "test-worker" ||
@@ -165,8 +165,9 @@ func TestWorkerClassifiesTerminalFetchFailures(t *testing.T) {
 
 func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	t.Parallel()
+	diagnostic := FetchDiagnostic{Phase: FetchPhaseTransport, Reason: FetchFailureTLSHandshakeTimeout}
 	fetcher := fetcherFunc(func(context.Context, string, Kind) (Result, error) {
-		return Result{}, &FetchError{Kind: FailureTemporary, Err: errors.New("temporary")}
+		return Result{}, &FetchError{Kind: FailureTemporary, Err: errors.New("temporary"), Diagnostic: diagnostic}
 	})
 	retryRepository := readyFakeRepository(t, 2)
 	worker := newTestWorker(t, retryRepository, fetcher)
@@ -181,7 +182,14 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	}
 
 	exhaustedRepository := readyFakeRepository(t, 3)
-	worker = newTestWorker(t, exhaustedRepository, fetcher)
+	observer := &recordingFetchObserver{}
+	worker, err := NewWorker(exhaustedRepository, fetcher, WorkerOptions{
+		WorkerID: "test-worker", LeaseDuration: time.Second, PollInterval: time.Millisecond,
+		RetryBase: time.Millisecond, RetryMaximum: 10 * time.Millisecond, Observer: observer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
 		t.Fatalf("processed=%t err=%v", processed, err)
 	}
@@ -191,6 +199,11 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	}
 	if strings.Contains(exhaustedRepository.finished[0].Message, "temporary") {
 		t.Fatalf("exhausted outcome persisted nested upstream text: %+v", exhaustedRepository.finished[0])
+	}
+	if len(observer.transitions) != 2 || observer.transitions[1].Code != "attempts_exhausted" ||
+		observer.transitions[1].LastCode != "temporary_fetch_error" ||
+		observer.transitions[1].Diagnostic.Reason != FetchFailureTLSHandshakeTimeout {
+		t.Fatalf("exhausted transition=%+v", observer.transitions)
 	}
 }
 
@@ -218,10 +231,10 @@ func TestWorkerObservesRetryOnlyAfterDurableTransition(t *testing.T) {
 	if processed, processErr := worker.ProcessOnce(t.Context()); processErr != nil || !processed {
 		t.Fatalf("processed=%t err=%v", processed, processErr)
 	}
-	if len(observer.transitions) != 1 {
+	if len(observer.transitions) != 2 || observer.transitions[0].Event != FetchEventStarted {
 		t.Fatalf("transitions=%+v", observer.transitions)
 	}
-	transition := observer.transitions[0]
+	transition := observer.transitions[1]
 	if transition.Result != "retry" || transition.State != StatePending ||
 		transition.Code != "temporary_fetch_error" || transition.Diagnostic.RequestHost != "ipfs.io" {
 		t.Fatalf("transition=%+v", transition)
@@ -270,7 +283,7 @@ func TestWorkerDoesNotObserveFailedPersistence(t *testing.T) {
 			if !processed || processErr == nil {
 				t.Fatalf("processed=%t err=%v", processed, processErr)
 			}
-			if len(observer.transitions) != 0 {
+			if len(observer.transitions) != 1 || observer.transitions[0].Event != FetchEventStarted {
 				t.Fatalf("failed persistence emitted transitions=%+v", observer.transitions)
 			}
 		})

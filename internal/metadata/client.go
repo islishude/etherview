@@ -4,6 +4,8 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/islishude/etherview/internal/netpolicy"
@@ -189,7 +192,7 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, e
 		if classified, ok := errors.AsType[*FetchError](err); ok {
 			return Result{}, fetchErrorWithDiagnostic(classified, collector.snapshot())
 		}
-		collector.setPhase(FetchPhaseTransport)
+		collector.recordTransportFailure(err)
 		return Result{}, fetchFailureWithDiagnostic(
 			FailureTemporary, fmt.Errorf("fetch metadata: %w", err), collector.snapshot(),
 		)
@@ -342,15 +345,17 @@ func (c *Client) safeDial(ctx context.Context, network, address string) (net.Con
 	collector := fetchDiagnosticFromContext(ctx)
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		collector.setPhase(FetchPhaseTransport)
+		collector.setFailure(FetchPhaseTransport, FetchFailureTransportError)
 		return nil, fmt.Errorf("split metadata address: %w", err)
 	}
+	collector.setTransportStage(fetchTransportDNS)
 	addresses, err := c.resolver.LookupIPAddr(ctx, host)
 	if err != nil || len(addresses) == 0 {
-		collector.setPhase(FetchPhaseDNS)
 		if err != nil {
+			collector.recordTransportFailure(err)
 			return nil, fmt.Errorf("resolve metadata host: %w", err)
 		}
+		collector.setFailure(FetchPhaseDNS, FetchFailureDNSLookupFailed)
 		return nil, errors.New("resolve metadata host: resolver returned no addresses")
 	}
 	collector.recordResolved(addresses)
@@ -367,11 +372,12 @@ func (c *Client) safeDial(ctx context.Context, network, address string) (net.Con
 		}
 	}
 	if len(safe) != len(addresses) || len(safe) == 0 {
-		collector.setPhase(FetchPhaseNetworkPolicy)
+		collector.setFailure(FetchPhaseNetworkPolicy, FetchFailureNetworkPolicyRejected)
 		return nil, fetchFailure(FailureUnsafeURL, errors.New("metadata host resolves to a disallowed network"))
 	}
 	dialer := net.Dialer{Timeout: c.policy.Timeout, KeepAlive: 30 * time.Second}
 	var dialErr error
+	collector.setTransportStage(fetchTransportConnect)
 	for _, candidate := range safe {
 		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
 		if err == nil {
@@ -380,8 +386,85 @@ func (c *Client) safeDial(ctx context.Context, network, address string) (net.Con
 		}
 		dialErr = err
 	}
-	collector.setPhase(FetchPhaseTransport)
+	collector.recordTransportFailure(dialErr)
 	return nil, fmt.Errorf("dial metadata host: %w", dialErr)
+}
+
+func (collector *fetchDiagnosticCollector) recordTLSFailure(err error) {
+	collector.setFailure(FetchPhaseTransport, classifyTransportFailure(err, fetchTransportTLS))
+}
+
+func (collector *fetchDiagnosticCollector) recordTransportFailure(err error) {
+	if collector == nil {
+		return
+	}
+	diagnostic := collector.snapshot()
+	if diagnostic.Reason != "" {
+		return
+	}
+	stage := collector.transportStageSnapshot()
+	collector.setFailure(
+		transportFailurePhase(err, stage),
+		classifyTransportFailure(err, stage),
+	)
+}
+
+func transportFailurePhase(err error, stage fetchTransportStage) FetchPhase {
+	var dnsError *net.DNSError
+	if stage == fetchTransportDNS || errors.As(err, &dnsError) {
+		return FetchPhaseDNS
+	}
+	return FetchPhaseTransport
+}
+
+func classifyTransportFailure(err error, stage fetchTransportStage) FetchFailureReason {
+	var dnsError *net.DNSError
+	if errors.As(err, &dnsError) {
+		if dnsError.IsTimeout {
+			return FetchFailureDNSTimeout
+		}
+		return FetchFailureDNSLookupFailed
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return FetchFailureConnectionRefused
+	}
+	if errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) {
+		return FetchFailureNetworkUnreachable
+	}
+	var unknownAuthority x509.UnknownAuthorityError
+	var hostnameError x509.HostnameError
+	var certificateInvalid x509.CertificateInvalidError
+	if errors.As(err, &unknownAuthority) || errors.As(err, &hostnameError) || errors.As(err, &certificateInvalid) {
+		return FetchFailureTLSCertificateInvalid
+	}
+	var recordHeaderError tls.RecordHeaderError
+	if errors.As(err, &recordHeaderError) {
+		return FetchFailureTLSProtocolError
+	}
+	if errors.Is(err, context.DeadlineExceeded) || isTimeoutError(err) {
+		switch stage {
+		case fetchTransportDNS:
+			return FetchFailureDNSTimeout
+		case fetchTransportConnect:
+			return FetchFailureConnectTimeout
+		case fetchTransportTLS:
+			return FetchFailureTLSHandshakeTimeout
+		default:
+			return FetchFailureRequestTimeout
+		}
+	}
+	if stage == fetchTransportDNS {
+		return FetchFailureDNSLookupFailed
+	}
+	if stage == fetchTransportTLS {
+		return FetchFailureTLSProtocolError
+	}
+	return FetchFailureTransportError
+}
+
+func isTimeoutError(err error) bool {
+	var networkError net.Error
+	return errors.As(err, &networkError) && networkError.Timeout()
 }
 
 func fetchFailureWithDiagnostic(kind FailureKind, err error, diagnostic FetchDiagnostic) error {
