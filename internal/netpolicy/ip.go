@@ -6,27 +6,67 @@ import (
 	"net/netip"
 )
 
+// IPClassification is a closed diagnostic category for an outbound-address
+// decision. It is safe to expose in structured operational logs.
+type IPClassification string
+
+const (
+	IPClassificationPublic         IPClassification = "public"
+	IPClassificationInvalid        IPClassification = "invalid"
+	IPClassificationPrivate        IPClassification = "private"
+	IPClassificationLoopback       IPClassification = "loopback"
+	IPClassificationLinkLocal      IPClassification = "link_local"
+	IPClassificationUnspecified    IPClassification = "unspecified"
+	IPClassificationNonGlobal      IPClassification = "non_global_unicast"
+	IPClassificationSpecialPurpose IPClassification = "special_use"
+)
+
+// IPDecision is the public-network policy decision for one address. Prefix is
+// populated only when a fixed IANA special-purpose exclusion matched.
+type IPDecision struct {
+	Allowed        bool
+	Classification IPClassification
+	Prefix         string
+}
+
 // PublicIP reports whether an address is safe for an outbound request that
 // must not reach operator, cloud-metadata, documentation, transition, or other
 // special-purpose networks.
 func PublicIP(ip net.IP) bool {
+	return ClassifyIP(ip).Allowed
+}
+
+// ClassifyIP applies the exact PublicIP policy while retaining a stable,
+// bounded explanation for operator diagnostics.
+func ClassifyIP(ip net.IP) IPDecision {
 	address, ok := netip.AddrFromSlice(ip)
 	if !ok {
-		return false
+		return IPDecision{Classification: IPClassificationInvalid}
 	}
 	address = address.Unmap()
-	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() ||
-		address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() || address.IsUnspecified() {
-		return false
+	switch {
+	case address.IsUnspecified():
+		return IPDecision{Classification: IPClassificationUnspecified}
+	case address.IsLoopback():
+		return IPDecision{Classification: IPClassificationLoopback}
+	case address.IsPrivate():
+		return IPDecision{Classification: IPClassificationPrivate}
+	case address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast():
+		return IPDecision{Classification: IPClassificationLinkLocal}
+	case !address.IsGlobalUnicast():
+		return IPDecision{Classification: IPClassificationNonGlobal}
 	}
 	// IsGlobalUnicast deliberately includes addresses that are not public
 	// Internet destinations, so apply the IANA special-purpose exclusions too.
 	for _, prefix := range nonPublicSpecialPrefixes {
 		if prefix.Contains(address) {
-			return false
+			return IPDecision{
+				Classification: IPClassificationSpecialPurpose,
+				Prefix:         prefix.String(),
+			}
 		}
 	}
-	return true
+	return IPDecision{Allowed: true, Classification: IPClassificationPublic}
 }
 
 var nonPublicSpecialPrefixes = []netip.Prefix{

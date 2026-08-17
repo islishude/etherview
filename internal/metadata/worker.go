@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type WorkerOptions struct {
@@ -18,9 +20,28 @@ type WorkerOptions struct {
 	Observer      FetchObserver
 }
 
-// FetchObserver receives only controlled metadata result labels.
+// FetchTransition describes one retry or terminal outcome only after its
+// durable PostgreSQL transition succeeds. It contains no raw source URI or
+// nested upstream error.
+type FetchTransition struct {
+	JobID       int64
+	WorkerID    string
+	NFTContract common.Address
+	NFTID       string
+	BlockNumber uint64
+	BlockHash   common.Hash
+	Attempt     uint32
+	MaxAttempts uint32
+	State       State
+	Code        string
+	Result      string
+	Diagnostic  FetchDiagnostic
+}
+
+// FetchObserver receives only controlled, durably persisted metadata
+// transitions.
 type FetchObserver interface {
-	RecordMetadataFetch(result string)
+	RecordMetadataFetch(FetchTransition)
 }
 
 func (options *WorkerOptions) defaults() {
@@ -99,9 +120,6 @@ func (worker *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 		return true, fmt.Errorf("metadata repository returned invalid lease: %w", err)
 	}
 	err = worker.processLease(ctx, lease)
-	if err != nil && ctx.Err() == nil {
-		worker.observe("error")
-	}
 	return true, err
 }
 
@@ -118,12 +136,12 @@ func (worker *Worker) processLease(ctx context.Context, lease Lease) error {
 	if !current.Resource {
 		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "superseded", "metadata source was superseded by a newer canonical observation",
-		), "unavailable")
+		), "unavailable", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
 	}
 	if !current.Canonical {
 		return worker.finish(ctx, lease, terminalOutcome(
 			StateUnavailable, "source_block_noncanonical", "metadata source block is no longer canonical",
-		), "unavailable")
+		), "unavailable", diagnosticForSource(lease.Request.SourceURI, FetchPhaseCanonicality))
 	}
 
 	response := make(chan fetchResponse, 1)
@@ -148,12 +166,23 @@ func (worker *Worker) processLease(ctx context.Context, lease Lease) error {
 }
 
 func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchResponse) error {
+	diagnostic := completed.result.Diagnostic
+	if diagnostic.SourceScheme == "" {
+		diagnostic = diagnosticForSource(lease.Request.SourceURI, FetchPhaseNone)
+	}
 	if completed.err == nil {
 		if err := validateDocument(completed.result.Body); err != nil {
-			return worker.finish(ctx, lease, terminalOutcome(StateError, "invalid_document", boundedError(err)), "failed")
+			return worker.finish(
+				ctx, lease, terminalOutcome(StateError, "invalid_document", boundedError(err)), "failed",
+				diagnosticWithPhase(diagnostic, FetchPhaseDocument),
+			)
 		}
 		if completed.result.ContentType == "" || completed.result.URL == "" || len(completed.result.URL) > MaxSourceURIBytes {
-			return worker.finish(ctx, lease, terminalOutcome(StateError, "invalid_fetch_result", "safe metadata fetcher returned incomplete source information"), "failed")
+			return worker.finish(
+				ctx, lease,
+				terminalOutcome(StateError, "invalid_fetch_result", "safe metadata fetcher returned incomplete source information"),
+				"failed", diagnosticWithPhase(diagnostic, FetchPhaseContent),
+			)
 		}
 		digest := sha256.Sum256(completed.result.Body)
 		outcome := Outcome{
@@ -164,19 +193,26 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		if err := outcome.validate(); err != nil {
 			return fmt.Errorf("validate fetched metadata outcome: %w", err)
 		}
-		return worker.finish(ctx, lease, outcome, "succeeded")
+		return worker.finish(ctx, lease, outcome, "succeeded", diagnostic)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
+	var fetchFailure *FetchError
+	if errors.As(completed.err, &fetchFailure) {
+		diagnostic = fetchFailure.Diagnostic
+	}
+	if diagnostic.SourceScheme == "" {
+		diagnostic = diagnosticForSource(lease.Request.SourceURI, fallbackFetchPhase(completed.err))
+	}
 	state, code, retry := classifyFetchFailure(completed.err)
 	message := fetchFailureMessage(completed.err)
 	if retry && lease.Attempt < lease.MaxAttempts {
 		if err := worker.repository.Retry(ctx, lease, code, message, worker.retryDelay(lease.Attempt)); err != nil {
 			return err
 		}
-		worker.observe("retry")
+		worker.observe(lease, StatePending, code, "retry", diagnostic)
 		return nil
 	}
 	if retry {
@@ -196,20 +232,49 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 			result = "resource_exhausted"
 		}
 	}
-	return worker.finish(ctx, lease, terminalOutcome(state, code, message), result)
+	return worker.finish(ctx, lease, terminalOutcome(state, code, message), result, diagnostic)
 }
 
-func (worker *Worker) finish(ctx context.Context, lease Lease, outcome Outcome, result string) error {
+func (worker *Worker) finish(
+	ctx context.Context,
+	lease Lease,
+	outcome Outcome,
+	result string,
+	diagnostic FetchDiagnostic,
+) error {
 	if err := worker.repository.Finish(ctx, lease, outcome); err != nil {
 		return err
 	}
-	worker.observe(result)
+	worker.observe(lease, outcome.State, outcome.Code, result, diagnostic)
 	return nil
 }
 
-func (worker *Worker) observe(result string) {
+func (worker *Worker) observe(lease Lease, state State, code, result string, diagnostic FetchDiagnostic) {
 	if worker.options.Observer != nil {
-		worker.options.Observer.RecordMetadataFetch(result)
+		worker.options.Observer.RecordMetadataFetch(FetchTransition{
+			JobID: lease.JobID, WorkerID: worker.options.WorkerID,
+			NFTContract: lease.Request.Token, NFTID: lease.Request.TokenID,
+			BlockNumber: lease.Request.BlockNumber, BlockHash: lease.Request.BlockHash,
+			Attempt: lease.Attempt, MaxAttempts: lease.MaxAttempts,
+			State: state, Code: code, Result: result, Diagnostic: diagnostic,
+		})
+	}
+}
+
+func fallbackFetchPhase(err error) FetchPhase {
+	var failure *FetchError
+	if !errors.As(err, &failure) {
+		return FetchPhaseTransport
+	}
+	switch failure.Kind {
+	case FailureUnsafeURL:
+		return FetchPhaseURL
+	case FailureUnsafeContent, FailureTooLarge, FailureInvalid:
+		return FetchPhaseContent
+	case FailureUnavailable:
+		return FetchPhaseHTTP
+	default:
+		return FetchPhaseTransport
 	}
 }
 

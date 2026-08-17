@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -16,7 +17,8 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 	}
 	var preview struct {
 		Metadata struct {
-			IPFSGateway string `yaml:"ipfs_gateway"`
+			IPFSGateway                string `yaml:"ipfs_gateway"`
+			UnsafeAllowPrivateNetworks bool   `yaml:"unsafe_allow_private_networks"`
 		} `yaml:"metadata"`
 		Features struct {
 			Verification bool `yaml:"verification"`
@@ -63,7 +65,35 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 			preview.Metadata.IPFSGateway,
 		)
 	}
+	if preview.Metadata.UnsafeAllowPrivateNetworks {
+		t.Fatal("Preview YAML must keep the metadata private-network exception disabled")
+	}
 	if preview.Features.Sourcify {
 		t.Fatal("Preview Sourcify must remain disabled")
+	}
+}
+
+func TestPreviewGenesisFundsGethUnlockedDeveloperAccount(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../deploy/preview.genesis.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var genesis struct {
+		Alloc map[string]struct {
+			Balance string `json:"balance"`
+		} `json:"alloc"`
+	}
+	if err := json.Unmarshal(data, &genesis); err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []string{
+		"71562b71999873db5b286df957af199ec94617f7",
+		"f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+	} {
+		allocation, ok := genesis.Alloc[address]
+		if !ok || allocation.Balance == "" || allocation.Balance == "0x0" {
+			t.Fatalf("Preview Genesis allocation %s = %#v", address, allocation)
+		}
 	}
 }

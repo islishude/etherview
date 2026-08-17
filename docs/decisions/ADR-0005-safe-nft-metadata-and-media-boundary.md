@@ -43,6 +43,16 @@ with separate invalidation and content-moderation obligations.
   proxies are disabled, private and special-purpose addresses are rejected,
   response size and time are bounded, and only PNG, JPEG, GIF, WebP, and AVIF
   bytes with matching signatures are returned.
+- `metadata.unsafe_allow_private_networks` is a default-off, development-only
+  exception for a metadata-only worker. Role validation rejects it for `all`,
+  `api`, mixed roles, or a disabled NFT-metadata feature. The checked-in
+  Preview enables it only in the split `metadata` process so Docker Desktop's
+  fake-IP proxy may carry a public HTTPS/IPFS request; API media fetches, base
+  Compose, and Helm remain strict. URL, TLS, redirect, time, size, content, and
+  document validation are unchanged, and a successful non-public connection
+  records the bounded `network.policy_bypassed=true` diagnostic. This escape
+  hatch is not a production SSRF policy or an authorization to target private
+  services.
 - Media bytes are not persisted. Success and error responses are `no-store`,
   use `nosniff`, a restrictive CSP and same-origin resource policy, and expose
   only fixed filenames and typed media state. Source and resolved URIs are not

@@ -9,6 +9,8 @@ const tlsTargets = ["/run/etherview-tls/tls.crt", "/run/etherview-tls/tls.key"];
 const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeMetadataEnvironment =
+  "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
 const runtimePathEnvironment = {
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
@@ -54,8 +56,6 @@ assert.deepEqual(
     "--ws.port=8546",
     "--ws.api=eth,net,web3,debug,txpool,dev",
     "--ws.origins=*",
-    "--miner.pending.feeRecipient",
-    "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   ],
   "Preview Geth command",
 );
@@ -130,6 +130,11 @@ for (const role of roles) {
     service.environment?.[unsafeDownloadEnvironment],
     role === "api" ? "true" : undefined,
     `${role} Preview fake-IP download exception scope`,
+  );
+  assert.equal(
+    service.environment?.[unsafeMetadataEnvironment],
+    role === "metadata" ? "true" : undefined,
+    `${role} Preview metadata fake-IP exception scope`,
   );
   for (const [key, expected] of Object.entries(runtimePathEnvironment)) {
     assert.equal(

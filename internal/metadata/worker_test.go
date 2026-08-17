@@ -19,6 +19,7 @@ type fakeRepository struct {
 	renewals  int
 	claimErr  error
 	finishErr error
+	retryErr  error
 }
 
 type fakeRetry struct {
@@ -57,7 +58,7 @@ func (repository *fakeRepository) Retry(_ context.Context, _ Lease, code, messag
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	repository.retries = append(repository.retries, fakeRetry{code: code, message: message, after: after})
-	return nil
+	return repository.retryErr
 }
 
 type fetcherFunc func(context.Context, string, Kind) (Result, error)
@@ -66,10 +67,10 @@ func (fetcher fetcherFunc) Fetch(ctx context.Context, rawURL string, kind Kind) 
 	return fetcher(ctx, rawURL, kind)
 }
 
-type recordingFetchObserver struct{ results []string }
+type recordingFetchObserver struct{ transitions []FetchTransition }
 
-func (observer *recordingFetchObserver) RecordMetadataFetch(result string) {
-	observer.results = append(observer.results, result)
+func (observer *recordingFetchObserver) RecordMetadataFetch(transition FetchTransition) {
+	observer.transitions = append(observer.transitions, transition)
 }
 
 func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
@@ -87,8 +88,18 @@ func TestWorkerObservesPersistedMetadataOutcome(t *testing.T) {
 	if processed, err := worker.ProcessOnce(t.Context()); err != nil || !processed {
 		t.Fatalf("processed=%t error=%v", processed, err)
 	}
-	if len(observer.results) != 1 || observer.results[0] != "succeeded" {
-		t.Fatalf("metadata observations=%v", observer.results)
+	if len(observer.transitions) != 1 {
+		t.Fatalf("metadata observations=%v", observer.transitions)
+	}
+	transition := observer.transitions[0]
+	request := repository.lease.Request
+	if transition.Result != "succeeded" || transition.State != StateAvailable || transition.Code != "" ||
+		transition.JobID != repository.lease.JobID || transition.WorkerID != "test-worker" ||
+		transition.NFTContract != request.Token || transition.NFTID != request.TokenID ||
+		transition.BlockNumber != request.BlockNumber || transition.BlockHash != request.BlockHash ||
+		transition.Attempt != repository.lease.Attempt || transition.MaxAttempts != repository.lease.MaxAttempts ||
+		transition.Diagnostic.SourceScheme != "https" {
+		t.Fatalf("metadata transition=%+v", transition)
 	}
 }
 
@@ -180,6 +191,89 @@ func TestWorkerRetriesTemporaryFailureThenExhausts(t *testing.T) {
 	}
 	if strings.Contains(exhaustedRepository.finished[0].Message, "temporary") {
 		t.Fatalf("exhausted outcome persisted nested upstream text: %+v", exhaustedRepository.finished[0])
+	}
+}
+
+func TestWorkerObservesRetryOnlyAfterDurableTransition(t *testing.T) {
+	t.Parallel()
+	diagnostic := FetchDiagnostic{
+		SourceScheme: "ipfs", RequestMethod: "GET", RequestScheme: "https",
+		RequestHost: "ipfs.io", RequestPort: "443",
+		RequestPath: "/ipfs/Qma3sC19HbnWHqeLgcsQnR7Kvgus4oPQirXNH7QYBeACaq/0",
+		Phase:       FetchPhaseTransport,
+	}
+	fetcher := fetcherFunc(func(context.Context, string, Kind) (Result, error) {
+		return Result{}, &FetchError{Kind: FailureTemporary, Err: errors.New("nested secret"), Diagnostic: diagnostic}
+	})
+	repository := readyFakeRepository(t, 1)
+	observer := &recordingFetchObserver{}
+	worker, err := NewWorker(repository, fetcher, WorkerOptions{
+		WorkerID: "metadata-worker-01", LeaseDuration: time.Second,
+		PollInterval: time.Millisecond, RetryBase: time.Millisecond,
+		RetryMaximum: 10 * time.Millisecond, Observer: observer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, processErr := worker.ProcessOnce(t.Context()); processErr != nil || !processed {
+		t.Fatalf("processed=%t err=%v", processed, processErr)
+	}
+	if len(observer.transitions) != 1 {
+		t.Fatalf("transitions=%+v", observer.transitions)
+	}
+	transition := observer.transitions[0]
+	if transition.Result != "retry" || transition.State != StatePending ||
+		transition.Code != "temporary_fetch_error" || transition.Diagnostic.RequestHost != "ipfs.io" {
+		t.Fatalf("transition=%+v", transition)
+	}
+}
+
+func TestWorkerDoesNotObserveFailedPersistence(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		attempt   uint32
+		fetcher   Fetcher
+		configure func(*fakeRepository)
+	}{
+		{
+			name:    "finish",
+			attempt: 1,
+			fetcher: fetcherFunc(func(_ context.Context, rawURL string, _ Kind) (Result, error) {
+				return Result{URL: rawURL, ContentType: "application/json", Body: []byte(`{"name":"NFT"}`)}, nil
+			}),
+			configure: func(repository *fakeRepository) { repository.finishErr = errors.New("database unavailable") },
+		},
+		{
+			name:    "retry",
+			attempt: 1,
+			fetcher: fetcherFunc(func(context.Context, string, Kind) (Result, error) {
+				return Result{}, &FetchError{Kind: FailureTemporary, Err: errors.New("network unavailable")}
+			}),
+			configure: func(repository *fakeRepository) { repository.retryErr = errors.New("database unavailable") },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := readyFakeRepository(t, test.attempt)
+			test.configure(repository)
+			observer := &recordingFetchObserver{}
+			worker, err := NewWorker(repository, test.fetcher, WorkerOptions{
+				WorkerID: "metadata-worker-01", LeaseDuration: time.Second,
+				PollInterval: time.Millisecond, RetryBase: time.Millisecond,
+				RetryMaximum: 10 * time.Millisecond, Observer: observer,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			processed, processErr := worker.ProcessOnce(t.Context())
+			if !processed || processErr == nil {
+				t.Fatalf("processed=%t err=%v", processed, processErr)
+			}
+			if len(observer.transitions) != 0 {
+				t.Fatalf("failed persistence emitted transitions=%+v", observer.transitions)
+			}
+		})
 	}
 }
 

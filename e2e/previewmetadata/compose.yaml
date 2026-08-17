@@ -1,0 +1,11 @@
+services:
+  postgres:
+    ports:
+      - target: 5432
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+  metadata:
+    environment:
+      ETHERVIEW_LOG_FORMAT: json

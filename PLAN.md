@@ -231,8 +231,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   split-role deployments, replica failover, bounded capacity controls,
   disposable accelerators, telemetry, migration safety, and operator tooling
   pass their targeted runtime, integration, race, Helm, and short-load
-  evidence. P60 completion does not promote P70's security, conformance,
-  long-soak, artifact, or release gates.
+  evidence. P60-T07 additionally binds every durable metadata transition log
+  to its exact NFT/block identity and bounded network diagnosis. P60
+  completion does not promote P70's security, conformance, long-soak,
+  artifact, or release gates.
 - P65's SIWE session, wallet, profile, and administrator work is complete.
   P65-T09 adds scoped user-owned API keys and the tabbed `/account` workspace;
   PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race,
@@ -282,7 +284,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   solc-js artifact cache across application replacement without changing
   compiler trust or catalog-freshness semantics; cache concurrency, Compose,
   Helm, image, real Hardhat/Foundry, runtime, and common gates pass locally on
-  ARM64.
+  ARM64. P70-T15 now completes Preview public verification and one exact
+  public-IPFS NFT metadata fetch, including scoped Docker fake-IP diagnostics,
+  one-attempt PostgreSQL persistence, and metadata-worker restart stability.
   P66 live-payment evidence still gates conformance, security, release CI,
   documentation, and artifact work.
 

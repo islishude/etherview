@@ -28,6 +28,7 @@ deployments, observable health, safe migrations, and operator repair tooling.
 | P60-T04 | done | P60-T01, P60-T02 | Helm role deployments, HPA, migration job, secrets, network policy | Helm lint/render tests |
 | P60-T05 | done | P10, P20, P30-T01, P30-T02, P30-T05, P40 | Structured logs, OpenTelemetry, Prometheus metrics, alerts, admin/repair | observability tests |
 | P60-T06 | done | P10, P20, P30-T07, P40, P50 | Backfill tuning, HA/failover, cache/rate policy, reference capacity profile | soak/load tests |
+| P60-T07 | done | P60-T05 | Add exact NFT identity and redacted network diagnostics to durable metadata transition logs | metadata, netpolicy, observability, Preview, and common gates |
 
 ## Acceptance
 
@@ -91,6 +92,14 @@ deployments, observable health, safe migrations, and operator repair tooling.
       throughput, latency, error, response-size, origin, and wall-clock
       boundaries. The short 40 RPS Compose profiles pass; the 500 RPS,
       30-minute release report remains P70-T04 work.
+- [x] P60-T07: every metadata retry or terminal log follows its matching
+      durable transition and identifies the exact job, worker, NFT contract,
+      token ID, attempt, and canonical block number/hash without exposing a
+      raw source URI or nested upstream error.
+- [x] P60-T07: HTTPS paths and queries remain hidden behind bounded metadata,
+      public IPFS content paths are length-limited, and DNS diagnostics retain
+      bounded address counts plus stable private/special-use classifications
+      without changing the closed Prometheus result labels.
 
 ## Current Blockers
 
@@ -98,6 +107,23 @@ None. The longer capacity, security, conformance, and release evidence remains
 owned by P70 and is not implied by P60 completion.
 
 ## Evidence
+
+- P60-T07: the shared metadata client carries one request-local diagnostic
+  through URL rewriting, redirects, DNS policy, connection reuse, HTTP/content
+  validation, and durable retry/finish outcomes. The structured business log
+  adds exact job/NFT/block identity and bounded request/network groups while
+  retaining the existing closed `etherview_metadata_fetches_total` labels.
+- P60-T07 verification: `CGO_ENABLED=1 GOCACHE=/tmp/etherview-codex-go-build
+  go test ./internal/metadata ./internal/netpolicy ./internal/observability
+  ./internal/app -count=1` and the matching `go test -race` pass. The same tree
+  passes `make lint`, `make plan-check`, and both staged/unstaged
+  `git diff --check`; P70-T15 retains the explicit live Preview metadata fetch
+  that exercises these diagnostics against Docker fake-IP or public DNS.
+- P60-T07 live closure: P70-T15's Go-owned Preview gate emitted the exact
+  durable success identity and diagnosed Docker's `198.18.0.0/15` route with
+  `network.policy_bypassed=true`, while retaining one attempt across metadata
+  worker recreation. The full integration, runtime E2E, production-image, and
+  aggregate common gates pass on the same implementation tree.
 
 - P60-T01: the production `Backend.Serve` assembly builds the actual registry,
   compares its exact keys with the feature-aware manifest, and runs those same

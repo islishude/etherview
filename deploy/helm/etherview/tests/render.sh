@@ -244,6 +244,8 @@ assert_contains "$monolith" 'args: ["serve", "--config", "/etc/etherview/config.
 assert_contains "$monolith" "log_level: info"
 assert_contains "$monolith" "log_format: json"
 assert_contains "$monolith" "sync_progress_log_interval: 30s"
+assert_contains "$monolith" "unsafe_allow_private_networks: false"
+assert_not_contains "$monolith" "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS"
 assert_contains "$monolith" "fsGroupChangePolicy: OnRootMismatch"
 assert_occurrences "$monolith" "name: schema-compatibility" 1
 assert_occurrences "$monolith" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 1
@@ -395,6 +397,8 @@ assert_not_contains "$monitor_one" "app.kubernetes.io/instance: etherview-blue"
 assert_occurrences "$distributed" "name: schema-compatibility" 6
 assert_occurrences "$distributed" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 6
 assert_not_contains "$distributed" "name: etherview-all"
+assert_contains "$distributed" "unsafe_allow_private_networks: false"
+assert_not_contains "$distributed" "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS"
 assert_contains "$distributed_service" "app.kubernetes.io/component: api"
 for role in api sync enrich trace metadata maintenance; do
   assert_contains "$distributed" "name: etherview-$role"

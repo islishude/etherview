@@ -44,7 +44,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T12 | done | P20, P60 | Align durable stage-name validation with the deployed `state_diff@1` manifest | focused stage validation and Compose runtime smoke |
 | P70-T13 | done | P50, P60 | Split the full-stack Preview Compose deployment into all seven runtime roles | Compose render assertions and Preview runtime smoke |
 | P70-T14 | done | P10, P60 | Add reporter-fenced rate-limited sync progress and durable worker outcome logs | focused logging, race, deployment, and Preview tests |
-| P70-T15 | in_progress | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with the architecture-neutral compiler runtime | Compose render, production-image boundary, and Preview runtime tests |
+| P70-T15 | done | P30-T02, P60, P70-T13 | Enable Preview public verification and NFT metadata with the architecture-neutral compiler runtime | Compose render, production-image boundary, and Preview runtime tests |
 | P70-T16 | done | P20, P40, P50, P60 | Etherscan-inspired execution analytics with `stats@3`, reorg-safe hourly rollups, native history APIs, and overview/detail charts | stage, migration, API, browser, reorg, load, and production Compose E2E |
 | P70-T17 | done | P20, P40, P50, P60 | Report current Trace and historical-state capability accurately and select exact state/ABI observations by numeric block height | PostgreSQL, API, browser, ABI, reorg, and Preview tests |
 | P70-T18 | done | P40-T10, P50-T12 | Release validation for address origins, exact ERC-20 balances, and the add-network browser flow | PostgreSQL integration and embedded Playwright E2E |
@@ -105,6 +105,14 @@ and user/operator evidence sufficient for a production public release.
       report a completed durable transition; API request logging remains the
       existing per-request boundary and catalog success is logged only after an
       executed sweep.
+- [x] P70-T15: `metadata.unsafe_allow_private_networks` defaults off and is
+      accepted only by a metadata-only NFT worker; Preview enables it only in
+      that split process while API media, other roles, base Compose, and Helm
+      retain the strict public-network policy.
+- [x] P70-T15: the explicit Go-owned Preview gate deploys the reviewed ERC-721
+      fixture and persists the fixed public IPFS JSON in one attempt with exact
+      block identity, bytes, SHA-256, bounded network evidence, and no refetch
+      after metadata-worker recreation.
 - [x] P70-T37: routine completion logs are suppressed for exactly
       `/health/live` and `/health/ready`; their HTTP metrics and traces remain
       recorded, ordinary API completion logs remain enabled, and panic logs are
@@ -299,11 +307,13 @@ monitoring. Running the exact 500 RPS/30-minute target there and preserving the
 load report, resource peaks, monitoring data, and tuning guide clears the
 blocker.
 
-P70-T15 remains in progress only for one bounded public NFT metadata fetch. Its
-Preview compiler portion now passes through P70-T29: a fresh host-native ARM64
-Preview kept all six application roles stable without a runner, resolved 105
-official Solidity entries, and verified a deployed Solidity 0.8.30 contract
-through the public HTTPS compatibility endpoint.
+P70-T15 is complete. P60-T07 supplies exact durable NFT identity and bounded
+network diagnostics, and the Go-owned Preview gate now proves one exact public
+IPFS fetch through Docker fake-IP plus restart-stable persistence. Its Preview
+compiler portion passes through P70-T29: a fresh host-native ARM64 Preview kept
+all six application roles stable without a runner, resolved 105 official
+Solidity entries, and verified a deployed Solidity 0.8.30 contract through the
+public HTTPS compatibility endpoint.
 
 P70-T27 is complete: the real Hardhat CLI proxy workflow, including Solidity,
 Yul, upgrade invalidation, and rebinding, passes in both monolith and
@@ -713,6 +723,52 @@ those gates.
   metadata now use the documented `https://localhost:8080` browser origin,
   preserving exact SIWE origin checks and the localhost wallet-RPC exception.
   Focused config/origin, HTTP API, and race tests plus Compose rendering pass.
+- P70-T15 implementation: configuration and role validation expose the
+  default-off metadata private-network exception only to a metadata-only NFT
+  worker. Preview scopes the environment override to `metadata`; its API media
+  client, other roles, mounted YAML, base Compose, and Helm remain strict. The
+  request-local diagnostic records `network.policy_bypassed` without adding a
+  metric label or weakening HTTPS, redirect, size, content, document, or
+  canonicality validation.
+- P70-T15 live-gate implementation: `make test-preview-metadata` owns a unique
+  full Preview Compose project, fresh volumes, random loopback ports, the
+  existing trusted certificate and production image, a reviewed solc 0.8.30
+  ERC-721 creation artifact, and the fixed official IPFS CID. Its Go assertions
+  cover exact token/source/job block identity, one 205-byte
+  `application/json` attempt with SHA-256
+  `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`,
+  structured public-or-Docker-fake-IP evidence, durable PostgreSQL state, and
+  restart without refetch. The target is explicit and excluded from ordinary
+  `make check`.
+- P70-T15 Preview transaction fixture: the Genesis template now funds Geth's
+  upstream development address alongside the browser account, and Compose no
+  longer replaces it with an address lacking a keystore key. Geth therefore
+  imports and unlocks its built-in ephemeral developer account, letting the
+  gate use `eth_sendTransaction` without a repository-owned private key. The
+  tracked template change intentionally creates a new block-zero identity and
+  retains P70-T41's explicit persistent-volume reset boundary.
+- P70-T15 verification: focused ordinary and race tests pass for
+  metadata, netpolicy, observability, config, application wiring, and the
+  build-tagged gate. `make compose-check` proves the exact Preview/base role
+  scope; `make helm-check` passes lint, rendering, and the default-off chart
+  regression; `make test-integration` passes after one exact rerun following a
+  transient independently passing solc-js self-test; and
+  `make test-runtime-e2e` passes the monolith and six-role production
+  topologies. `make docker-image-check` passes on native ARM64, and
+  `make check`, `make plan-check`, and `git diff --check` pass.
+- P70-T15 live evidence: `make test-preview-metadata` passed against the
+  host-native production image
+  `sha256:89e9239070456ef3cbe9b782ec38a9a4b2f4dc25fcdb0ddf93347ba234d9f9ed`
+  from dirty implementation revision
+  `806da0649cf4b2b12ac11f840d9791e92d90951c`. The deployed ERC-721
+  `0x3a220f351252089d385b29beca14e27f204c296a` token `1` was included in block
+  4 at
+  `0xfc6b3a480aa307abddf3c3bd40e8648eb7a22d6ae48d62ad71bb43aa4b9763b9`.
+  Its fixed CID returned exactly 205 `application/json` bytes with SHA-256
+  `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`
+  in one attempt. Docker Desktop fake-IP required the explicitly scoped
+  `network.policy_bypassed=true`; the gate rejected every other non-public
+  class and proved metadata-worker recreation did not add an attempt.
 - Historical pre-0031 P70-T15 implementation: Preview enabled public
   verification and NFT metadata,
   injects the same exact local runner content digest into API provenance and

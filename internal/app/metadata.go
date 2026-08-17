@@ -58,5 +58,6 @@ func newMetadataClient(cfg config.Config) (*metadata.Client, error) {
 	return metadata.New(metadata.Policy{
 		Timeout: cfg.Metadata.FetchTimeout, MaxBytes: int64(cfg.Metadata.MaxDocumentBytes),
 		MaxRedirects: cfg.Metadata.MaxRedirects, IPFSGateway: cfg.Metadata.IPFSGateway,
+		UnsafeAllowPrivateNetworks: cfg.Metadata.UnsafeAllowPrivateNetworks,
 	}, nil)
 }

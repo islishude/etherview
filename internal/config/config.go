@@ -168,10 +168,11 @@ type ObservabilityConfig struct {
 // gateway is optional; without it, ipfs:// resources become explicitly
 // unavailable while direct HTTPS metadata continues to work.
 type MetadataConfig struct {
-	FetchTimeout     time.Duration `yaml:"fetch_timeout"`
-	MaxDocumentBytes int           `yaml:"max_document_bytes"`
-	MaxRedirects     int           `yaml:"max_redirects"`
-	IPFSGateway      string        `yaml:"ipfs_gateway"`
+	FetchTimeout               time.Duration `yaml:"fetch_timeout"`
+	MaxDocumentBytes           int           `yaml:"max_document_bytes"`
+	MaxRedirects               int           `yaml:"max_redirects"`
+	IPFSGateway                string        `yaml:"ipfs_gateway"`
+	UnsafeAllowPrivateNetworks bool          `yaml:"unsafe_allow_private_networks"`
 }
 
 type FeatureConfig struct {
@@ -879,6 +880,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 	needsVerificationWorker := false
 	needsVerificationReadAuth := false
 	needsAPI := false
+	metadataOnly := len(normalized) == 1 && normalized[0] == "metadata" && c.Features.NFTMetadata
 	for _, role := range normalized {
 		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
 			needsRPC = true
@@ -929,6 +931,11 @@ func (c Config) ValidateForRoles(roles []string) error {
 	if c.Verification.UnsafeAllowPrivateDownloadNetworks && !needsVerificationWorker {
 		errs = append(errs, errors.New(
 			"verification.unsafe_allow_private_download_networks requires an api verification worker",
+		))
+	}
+	if c.Metadata.UnsafeAllowPrivateNetworks && !metadataOnly {
+		errs = append(errs, errors.New(
+			"metadata.unsafe_allow_private_networks requires a metadata-only NFT metadata worker",
 		))
 	}
 	if needsVerificationReadAuth && len(c.Security.APIKeyPepper) < 32 {
@@ -1761,6 +1768,7 @@ func applyEnvironmentForRoles(
 		"FEATURE_DIAMOND_PROXY_DETECTION":                     &cfg.Features.DiamondProxyDetection,
 		"FEATURE_PROXY_DETECTION_V2_PUBLIC":                   &cfg.Features.ProxyDetectionV2Public,
 		"PUBLIC_VERIFICATION":                                 &cfg.Security.PublicVerification,
+		"METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS":              &cfg.Metadata.UnsafeAllowPrivateNetworks,
 		"VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS": &cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
 		"S3_PATH_STYLE":                                       &cfg.Adapters.S3PathStyle,
 		"OTLP_TRACE_INSECURE":                                 &cfg.Observability.OTLPTraceInsecure,

@@ -25,3 +25,36 @@ func TestPublicIPRejectsSpecialPurposeNetworks(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyIPExplainsPolicyWithoutChangingDecision(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		ip             string
+		allowed        bool
+		classification IPClassification
+		prefix         string
+	}{
+		{ip: "198.18.17.210", classification: IPClassificationSpecialPurpose, prefix: "198.18.0.0/15"},
+		{ip: "10.0.0.1", classification: IPClassificationPrivate},
+		{ip: "127.0.0.1", classification: IPClassificationLoopback},
+		{ip: "169.254.169.254", classification: IPClassificationLinkLocal},
+		{ip: "0.0.0.0", classification: IPClassificationUnspecified},
+		{ip: "224.0.0.1", classification: IPClassificationLinkLocal},
+		{ip: "239.0.0.1", classification: IPClassificationNonGlobal},
+		{ip: "1.1.1.1", allowed: true, classification: IPClassificationPublic},
+	}
+	for _, test := range tests {
+		t.Run(test.ip, func(t *testing.T) {
+			ip := net.ParseIP(test.ip)
+			decision := ClassifyIP(ip)
+			if decision.Allowed != test.allowed || decision.Classification != test.classification ||
+				decision.Prefix != test.prefix || PublicIP(ip) != test.allowed {
+				t.Fatalf("ClassifyIP(%s)=%+v PublicIP=%t", test.ip, decision, PublicIP(ip))
+			}
+		})
+	}
+	invalid := ClassifyIP(net.IP{1, 2, 3})
+	if invalid.Allowed || invalid.Classification != IPClassificationInvalid || invalid.Prefix != "" {
+		t.Fatalf("invalid decision=%+v", invalid)
+	}
+}

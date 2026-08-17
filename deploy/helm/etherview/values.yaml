@@ -305,6 +305,13 @@ config:
     trace_export_timeout: 5s
     metrics_refresh_interval: 15s
     sync_progress_log_interval: 30s
+  metadata:
+    fetch_timeout: 10s
+    max_document_bytes: 2097152
+    max_redirects: 3
+    ipfs_gateway: ""
+    # Preview-only development escape hatch; the chart keeps it disabled.
+    unsafe_allow_private_networks: false
   features:
     trace: false
     mempool: false

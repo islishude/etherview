@@ -59,6 +59,21 @@ automatically remove its persistent volumes. `make recreate-preview` reuses the
 existing runtime copy (creating it once if missing) without refreshing its
 timestamp, and custom Genesis-file overrides are left unchanged. The start and
 recreate targets do not modify the host trust store.
+The template preallocates Geth's upstream development address alongside the
+browser fixture account. Preview leaves the pending fee recipient unset so
+Geth imports and unlocks its built-in ephemeral development account; local
+`eth_sendTransaction` therefore needs no repository-owned key. This changes
+the tracked template's block-zero identity once and remains strictly a
+development boundary.
+
+Preview keeps `metadata.unsafe_allow_private_networks=false` in its mounted
+YAML and overrides it only in the split metadata worker. This development-only
+exception lets a public IPFS request traverse Docker Desktop's `198.18/15`
+fake-IP proxy; API NFT media and every other role remain strict. Run
+`make test-preview-metadata` after `make preview-cert` for the isolated live
+acceptance gate. It uses a unique Compose project and fresh volumes, requires
+one exact fixed-CID fetch, permits no private route other than the diagnosed
+Docker fake-IP, and proves a metadata-worker restart does not refetch.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the
@@ -86,6 +101,26 @@ to one per interval (default `30s`, configurable from `1s` through `1h`);
 are coalesced into the next record, idle heads do not produce heartbeats, and
 non-reporter sync replicas stay silent. Durable worker outcomes remain
 event-driven and are not delayed by this interval.
+
+`metadata fetch transitioned` is emitted only after the corresponding retry or
+terminal outcome commits. Its `job`, `nft`, `block`, and `transition` groups
+identify the exact attempt and canonical observation. `source.scheme` and the
+`request`/`network`/`failure` groups diagnose the bounded hostile-network
+boundary without exposing the raw source URI or nested error. For an IPFS
+source, `request.path` may contain only the public `/ipfs/<CID>/<path>` content
+path and is omitted above 1024 bytes. Arbitrary HTTPS and redirect paths are
+represented only by `path_length` and `path_sha256`; query values, userinfo,
+fragments, and configured gateway path prefixes are never logged. DNS arrays
+retain at most eight unique addresses and report their total and truncation.
+For example, Docker fake-IP rejection includes
+`nft.contract=0x... nft.id=0 transition.code=unsafe_url
+request.host=ipfs.io network.resolved_ips=[198.18.17.210]
+network.rejected_reasons=[special_use]
+network.rejected_prefixes=[198.18.0.0/15]
+failure.phase=network_policy` while the Prometheus result remains
+`ssrf_rejected`. When the explicit Preview metadata exception accepts that
+fake-IP route, the successful durable record instead includes
+`network.policy_bypassed=true`; ordinary public DNS leaves it `false`.
 
 OTLP/HTTP tracing is off when `observability.otlp_trace_endpoint` is empty. To
 enable it, supply an origin such as `https://collector.example:4318` through

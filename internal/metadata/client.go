@@ -45,8 +45,9 @@ const (
 // the original human-readable message for operator diagnostics; callers must
 // not persist or log raw URLs from nested transport errors.
 type FetchError struct {
-	Kind FailureKind
-	Err  error
+	Kind       FailureKind
+	Err        error
+	Diagnostic FetchDiagnostic
 }
 
 func (err *FetchError) Error() string {
@@ -97,6 +98,7 @@ type Result struct {
 	ContentType string
 	Body        []byte
 	FetchedAt   time.Time
+	Diagnostic  FetchDiagnostic
 }
 
 func New(policy Policy, resolver Resolver) (*Client, error) {
@@ -129,10 +131,23 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 		Transport: transport,
 		Timeout:   policy.Timeout,
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			collector := fetchDiagnosticFromContext(request.Context())
+			if collector == nil && len(via) > 0 {
+				collector = fetchDiagnosticFromContext(via[0].Context())
+			}
+			if collector != nil {
+				collector.setTarget(request.URL, "", true)
+			}
 			if len(via) >= policy.MaxRedirects {
+				if collector != nil {
+					collector.setPhase(FetchPhaseRedirect)
+				}
 				return fetchFailure(FailureUnsafeURL, errors.New("metadata redirect limit exceeded"))
 			}
 			if err := client.validateURL(request.URL); err != nil {
+				if collector != nil {
+					collector.setPhase(FetchPhaseRedirect)
+				}
 				return fetchFailure(FailureUnsafeURL, err)
 			}
 			return nil
@@ -148,54 +163,90 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 }
 
 func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, error) {
-	resolved, err := c.resolveURL(rawURL)
+	collector := newFetchDiagnosticCollector(rawURL)
+	collector.allowUnsafePrivateNetworks(c.policy.UnsafeAllowPrivateNetworks)
+	target, err := c.resolveTarget(rawURL)
 	if err != nil {
+		collector.setPhase(FetchPhaseURL)
 		if classified, ok := errors.AsType[*FetchError](err); ok {
-			return Result{}, classified
+			return Result{}, fetchErrorWithDiagnostic(classified, collector.snapshot())
 		}
-		return Result{}, fetchFailure(FailureUnsafeURL, err)
+		return Result{}, fetchFailureWithDiagnostic(FailureUnsafeURL, err, collector.snapshot())
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, resolved.String(), nil)
+	collector.setTarget(target.URL, target.PublicIPFSPath, false)
+	requestCtx := withFetchDiagnostic(ctx, collector)
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, target.URL.String(), nil)
 	if err != nil {
-		return Result{}, fetchFailure(FailureUnsafeURL, fmt.Errorf("create metadata request: %w", err))
+		collector.setPhase(FetchPhaseURL)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureUnsafeURL, fmt.Errorf("create metadata request: %w", err), collector.snapshot(),
+		)
 	}
 	request.Header.Set("Accept", acceptHeader(kind))
 	request.Header.Set("User-Agent", c.policy.UserAgent)
 	response, err := c.http.Do(request)
 	if err != nil {
 		if classified, ok := errors.AsType[*FetchError](err); ok {
-			return Result{}, classified
+			return Result{}, fetchErrorWithDiagnostic(classified, collector.snapshot())
 		}
-		return Result{}, fetchFailure(FailureTemporary, fmt.Errorf("fetch metadata: %w", err))
+		collector.setPhase(FetchPhaseTransport)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureTemporary, fmt.Errorf("fetch metadata: %w", err), collector.snapshot(),
+		)
 	}
 	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		collector.setPhase(FetchPhaseHTTP)
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
 		kind := FailureUnavailable
 		if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
 			response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
 			kind = FailureTemporary
 		}
-		return Result{}, fetchFailure(kind, fmt.Errorf("metadata server returned HTTP %d", response.StatusCode))
+		return Result{}, fetchFailureWithDiagnostic(
+			kind, fmt.Errorf("metadata server returned HTTP %d", response.StatusCode), collector.snapshot(),
+		)
 	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || !allowedContentType(kind, strings.ToLower(mediaType)) {
-		return Result{}, fetchFailure(FailureUnsafeContent, fmt.Errorf("metadata content type %q is not allowed for %s", response.Header.Get("Content-Type"), kind))
+		collector.setPhase(FetchPhaseContent)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureUnsafeContent,
+			fmt.Errorf("metadata content type %q is not allowed for %s", response.Header.Get("Content-Type"), kind),
+			collector.snapshot(),
+		)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, c.policy.MaxBytes+1))
 	if err != nil {
-		return Result{}, fetchFailure(FailureTemporary, fmt.Errorf("read metadata: %w", err))
+		collector.setPhase(FetchPhaseContent)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureTemporary, fmt.Errorf("read metadata: %w", err), collector.snapshot(),
+		)
 	}
 	if int64(len(body)) > c.policy.MaxBytes {
-		return Result{}, fetchFailure(FailureTooLarge, errors.New("metadata response exceeds size limit"))
+		collector.setPhase(FetchPhaseContent)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureTooLarge, errors.New("metadata response exceeds size limit"), collector.snapshot(),
+		)
 	}
 	if kind == KindJSON && !json.Valid(body) {
-		return Result{}, fetchFailure(FailureInvalid, errors.New("metadata response is not valid JSON"))
+		collector.setPhase(FetchPhaseContent)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureInvalid, errors.New("metadata response is not valid JSON"), collector.snapshot(),
+		)
 	}
 	if kind == KindImage && !validImageSignature(mediaType, body) {
-		return Result{}, fetchFailure(FailureUnsafeContent, errors.New("metadata image bytes do not match the declared safe image type"))
+		collector.setPhase(FetchPhaseContent)
+		return Result{}, fetchFailureWithDiagnostic(
+			FailureUnsafeContent,
+			errors.New("metadata image bytes do not match the declared safe image type"),
+			collector.snapshot(),
+		)
 	}
-	return Result{URL: response.Request.URL.String(), ContentType: mediaType, Body: body, FetchedAt: time.Now().UTC()}, nil
+	return Result{
+		URL: response.Request.URL.String(), ContentType: mediaType, Body: body,
+		FetchedAt: time.Now().UTC(), Diagnostic: collector.snapshot(),
+	}, nil
 }
 
 func validImageSignature(mediaType string, body []byte) bool {
@@ -224,13 +275,27 @@ func validImageSignature(mediaType string, body []byte) bool {
 }
 
 func (c *Client) resolveURL(rawURL string) (*url.URL, error) {
+	target, err := c.resolveTarget(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return target.URL, nil
+}
+
+type resolvedMetadataTarget struct {
+	URL            *url.URL
+	PublicIPFSPath string
+}
+
+func (c *Client) resolveTarget(rawURL string) (resolvedMetadataTarget, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
-		return nil, errors.New("invalid metadata URL")
+		return resolvedMetadataTarget{}, errors.New("invalid metadata URL")
 	}
+	publicIPFSPath := ""
 	if parsed.Scheme == "ipfs" {
 		if c.policy.IPFSGateway == "" {
-			return nil, fetchFailure(FailureUnavailable, errors.New("IPFS metadata is unavailable without a gateway"))
+			return resolvedMetadataTarget{}, fetchFailure(FailureUnavailable, errors.New("IPFS metadata is unavailable without a gateway"))
 		}
 		cid := parsed.Host
 		if cid == "" {
@@ -243,17 +308,18 @@ func (c *Client) resolveURL(rawURL string) (*url.URL, error) {
 			}
 		}
 		if !cidPattern.MatchString(cid) || containsParentSegment(parsed.Path) {
-			return nil, errors.New("invalid IPFS CID or path")
+			return resolvedMetadataTarget{}, errors.New("invalid IPFS CID or path")
 		}
+		publicIPFSPath = path.Join("/ipfs", cid, parsed.Path)
 		gateway, _ := url.Parse(c.policy.IPFSGateway)
-		gateway.Path = path.Join(gateway.Path, "ipfs", cid, parsed.Path)
+		gateway.Path = path.Join(gateway.Path, publicIPFSPath)
 		gateway.RawQuery = parsed.RawQuery
 		parsed = gateway
 	}
 	if err := c.validateURL(parsed); err != nil {
-		return nil, err
+		return resolvedMetadataTarget{}, err
 	}
-	return parsed, nil
+	return resolvedMetadataTarget{URL: parsed, PublicIPFSPath: publicIPFSPath}, nil
 }
 
 func (c *Client) validateURL(parsed *url.URL) error {
@@ -273,21 +339,35 @@ func (c *Client) validateURL(parsed *url.URL) error {
 }
 
 func (c *Client) safeDial(ctx context.Context, network, address string) (net.Conn, error) {
+	collector := fetchDiagnosticFromContext(ctx)
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
+		collector.setPhase(FetchPhaseTransport)
 		return nil, fmt.Errorf("split metadata address: %w", err)
 	}
 	addresses, err := c.resolver.LookupIPAddr(ctx, host)
 	if err != nil || len(addresses) == 0 {
-		return nil, fmt.Errorf("resolve metadata host: %w", err)
+		collector.setPhase(FetchPhaseDNS)
+		if err != nil {
+			return nil, fmt.Errorf("resolve metadata host: %w", err)
+		}
+		return nil, errors.New("resolve metadata host: resolver returned no addresses")
 	}
+	collector.recordResolved(addresses)
 	var safe []net.IPAddr
 	for _, candidate := range addresses {
-		if c.policy.UnsafeAllowPrivateNetworks || publicIP(candidate.IP) {
+		decision := netpolicy.ClassifyIP(candidate.IP)
+		if decision.Allowed {
+			safe = append(safe, candidate)
+			continue
+		}
+		if c.policy.UnsafeAllowPrivateNetworks {
+			collector.recordNetworkPolicyBypass()
 			safe = append(safe, candidate)
 		}
 	}
 	if len(safe) != len(addresses) || len(safe) == 0 {
+		collector.setPhase(FetchPhaseNetworkPolicy)
 		return nil, fetchFailure(FailureUnsafeURL, errors.New("metadata host resolves to a disallowed network"))
 	}
 	dialer := net.Dialer{Timeout: c.policy.Timeout, KeepAlive: 30 * time.Second}
@@ -295,11 +375,27 @@ func (c *Client) safeDial(ctx context.Context, network, address string) (net.Con
 	for _, candidate := range safe {
 		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
 		if err == nil {
+			collector.recordConnectedIP(candidate.IP)
 			return connection, nil
 		}
 		dialErr = err
 	}
+	collector.setPhase(FetchPhaseTransport)
 	return nil, fmt.Errorf("dial metadata host: %w", dialErr)
+}
+
+func fetchFailureWithDiagnostic(kind FailureKind, err error, diagnostic FetchDiagnostic) error {
+	return &FetchError{Kind: kind, Err: err, Diagnostic: diagnostic}
+}
+
+func fetchErrorWithDiagnostic(failure *FetchError, diagnostic FetchDiagnostic) error {
+	if failure == nil {
+		return fetchFailureWithDiagnostic(FailureTemporary, errors.New("metadata fetch failed"), diagnostic)
+	}
+	if failure.Diagnostic.SourceScheme != "" {
+		diagnostic = failure.Diagnostic
+	}
+	return &FetchError{Kind: failure.Kind, Err: failure.Err, Diagnostic: diagnostic}
 }
 
 func publicIP(ip net.IP) bool {

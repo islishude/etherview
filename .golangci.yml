@@ -9,6 +9,7 @@ run:
     - integration
     - hardhat3verify
     - runtimee2e
+    - previewmetadatae2e
     - foundrye2e
     - hardhat3e2e
 

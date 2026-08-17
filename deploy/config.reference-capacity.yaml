@@ -46,6 +46,13 @@ observability:
   metrics_refresh_interval: 5s
   sync_progress_log_interval: 30s
 
+metadata:
+  fetch_timeout: 10s
+  max_document_bytes: 2097152
+  max_redirects: 3
+  ipfs_gateway: ""
+  unsafe_allow_private_networks: false
+
 features:
   trace: false
   mempool: false

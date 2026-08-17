@@ -15,6 +15,8 @@ const applicationServices =
 const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const unsafeMetadataEnvironment =
+  "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
 const runtimePathEnvironment = {
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH: "/custom/runtime/etherview-solcjs",
   ETHERVIEW_VERIFICATION_GEAS_PATH: "/custom/bin/etherview-geas-compiler",
@@ -44,6 +46,10 @@ for (const [name, service] of Object.entries(config.services)) {
   assert.ok(
     !Object.hasOwn(service.environment ?? {}, unsafeDownloadEnvironment),
     `${name} must not receive the Preview/E2E-only unsafe download escape hatch`,
+  );
+  assert.ok(
+    !Object.hasOwn(service.environment ?? {}, unsafeMetadataEnvironment),
+    `${name} must not receive the Preview-only metadata network escape hatch`,
   );
   if (name !== compilerOwner) {
     for (const key of Object.keys(runtimePathEnvironment)) {

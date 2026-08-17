@@ -116,6 +116,12 @@ volumes for you, and `make recreate-preview` reuses the existing runtime copy
 (creating it once if missing) without refreshing its timestamp. Custom
 Genesis-file overrides are left unchanged. Both targets only check that the
 three public/certificate assets exist and never modify the host trust store.
+The template funds both the browser fixture account and Geth's upstream
+development address `0x71562b71999873db5b286df957af199ec94617f7`.
+Preview does not override `--miner.pending.feeRecipient`, so Geth imports and
+unlocks its built-in ephemeral development account and `eth_sendTransaction`
+works without a repository-owned private key. This account is development-only
+and is not a production signing facility.
 Preview mounts only the certificate pair read-only into the API role. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is
@@ -190,11 +196,24 @@ public-IP validation. Transparent or fake-IP DNS that maps public hosts into
 the RFC 2544 benchmarking range `198.18.0.0/15` is rejected by default. The
 checked-in Preview passes
 `ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS=true` only to
-`api` so Docker Desktop's fake-IP proxy can be used. The exception never
-broadens the HTTPS origin allowlist, disables TLS, permits redirects, or skips
-artifact size/SHA-256 checks; it is absent from the other Preview roles, base
-Compose, and Helm. Do not enable it in production or use it to admit an
-unreviewed compiler origin.
+`api` so Docker Desktop's fake-IP proxy can be used for compiler downloads. It
+also passes `ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS=true` only to the
+split `metadata` worker. The mounted YAML, API NFT media path, other Preview
+roles, base Compose, and Helm keep
+`metadata.unsafe_allow_private_networks=false`. Role validation rejects this
+metadata exception for `all`, `api`, or mixed-role processes. The exceptions
+never broaden the HTTPS origin allowlist, disable TLS, permit unchecked
+redirects, or skip artifact/document size and integrity checks. Do not enable
+either exception in production or use it to target private services or admit
+an unreviewed compiler origin.
+
+Run `make test-preview-metadata` after `make preview-cert` for the fixed public
+CID/SHA-256 acceptance gate. The Go-owned target uses a unique Preview Compose
+project, a reviewed precompiled ERC-721 fixture, fresh volumes, and no internal
+metadata server. It requires one exact durable fetch, accepts only public IPs
+or Docker's `198.18.0.0/15` fake-IP with
+`network.policy_bypassed=true`, recreates the metadata role, and proves the
+attempt is not repeated. It is intentionally not part of `make check`.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
 the six application containers while preserving PostgreSQL, Geth, and the

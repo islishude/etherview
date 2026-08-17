@@ -48,7 +48,7 @@ PREVIEW_GENESIS_TEMPLATE := deploy/preview.genesis.json
 PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate-check start-preview recreate-preview
+.NOTPARALLEL: check generate-check start-preview recreate-preview test-preview-metadata
 
 .PHONY: \
 	check compose-check deployment-check \
@@ -61,7 +61,7 @@ PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
 	test-hardhat3-e2e-prebuilt test-hardhat3-offline-compile hardhat3-client-image-build \
 	test-foundry-e2e test-foundry-e2e-prebuilt test-foundry-offline-compile foundry-client-image-build \
-	test-schema-e2e test-soak test-x402-testnet \
+	test-preview-metadata test-schema-e2e test-soak test-x402-testnet \
 	web-build web-generate web-install web-lint web-test preview-cert preview-cert-check \
 	preview-genesis-check preview-genesis-refresh preview-genesis-runtime \
 	start-preview stop-preview recreate-preview
@@ -387,6 +387,10 @@ test-runtime-e2e-prebuilt:
 	}
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=runtimee2e ./e2e/runtime
+
+test-preview-metadata: preview-cert-check preview-genesis-refresh docker-build
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -tags=previewmetadatae2e ./e2e/previewmetadata
 
 helm-check:
 	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "helm-check: helm is required"; exit 1; }

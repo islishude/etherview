@@ -243,6 +243,21 @@ replace a required `make test-e2e` pass.
   working tree first.
   Verification, Sourcify, and pricing stay disabled because they require
   separately approved compiler or external-service boundaries.
+- `make test-preview-metadata`: rebuild the host-native production image and
+  run a Go-owned, public-IPFS acceptance gate against a unique full Preview
+  Compose project with fresh volumes and random loopback ports. It uses the
+  fixed CIDv1 `/metadata.json` documented by IPFS, a reviewed solc 0.8.30
+  ERC-721 creation artifact, Geth's unlocked development account, and the
+  trusted local Preview certificate. The gate requires exact ERC-721/source/
+  durable-job block identity, one successful attempt, `application/json`, 205
+  bytes, SHA-256
+  `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`,
+  bounded structured network evidence, and restart-stable persistence. Public
+  DNS is accepted directly; only Docker fake-IP `198.18.0.0/15` may use the
+  Preview metadata exception. Other private routes, alternate gateways,
+  retries, content drift, and internal fixtures fail. Run `make preview-cert`
+  once first. This live external-service gate is explicit and is not included
+  in `make check`.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
   30-second smoke with p95, error-rate, throughput, and final core-lag
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the

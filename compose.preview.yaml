@@ -85,8 +85,6 @@ services:
       - --ws.port=8546
       - --ws.api=eth,net,web3,debug,txpool,dev
       - --ws.origins=*
-      - --miner.pending.feeRecipient
-      - "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
     volumes:
       - geth-data:/gethdata
       - ./deploy/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
@@ -164,6 +162,9 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: metadata
+      # Docker Desktop may map this public IPFS gateway to 198.18/15. Keep the
+      # explicit unsafe exception scoped to this Preview metadata worker only.
+      ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true"
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     restart: unless-stopped
