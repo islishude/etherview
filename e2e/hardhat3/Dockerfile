@@ -1,4 +1,4 @@
-FROM node:26.7.0-sliw
+FROM node:26.7.0-slim
 
 WORKDIR /workspace
 
