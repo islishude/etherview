@@ -153,6 +153,58 @@ test("verification compiler versions preserve semantic order", async ({ page }) 
   await assertA11yAndNoOverflow(page, "semantic compiler version order");
 });
 
+test("ENS primary names stay snapshot-stable, disclose addresses, and normalize search", async ({ page }) => {
+  const snapshots: string[] = [];
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json() as { data: { features: Record<string, boolean> } };
+    payload.data.features.ens = true;
+    await route.fulfill({ response, json: payload });
+  });
+  await page.route("**/api/v1/address-names**", async (route) => {
+    const url = new URL(route.request().url());
+    const snapshot = url.searchParams.get("snapshot");
+    snapshots.push(snapshot ?? "<initial>");
+    const addresses = (url.searchParams.get("addresses") ?? "").split(",").filter(Boolean);
+    await fulfillAPIEnvelope(route, {
+      snapshot: snapshot ?? "ens-browser-snapshot",
+      items: addresses.map((value) => value.toLowerCase() === address.toLowerCase()
+        ? {
+            address: value,
+            state: "resolved",
+            primary_name: {
+              name: "alice-with-an-intentionally-long-name.custom",
+              source: "custom_ens",
+            },
+          }
+        : { address: value, state: "not_found" }),
+    });
+  });
+  await page.route("**/api/v1/search**", async (route) => {
+    await fulfillAPIEnvelope(route, []);
+  });
+
+  await page.goto(`/address/${address}`);
+  const primary = page.getByText("alice-with-an-intentionally-long-name.custom", { exact: true }).first();
+  await expect(primary).toBeVisible();
+  await expect(primary).toHaveAttribute("title", "alice-with-an-intentionally-long-name.custom");
+  await expect(page.getByText("Custom ENS", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTitle(address).first()).toBeVisible();
+
+  expect(snapshots).toContain("<initial>");
+
+  await page.goto("/transactions");
+
+  const search = page.getByRole("searchbox", { name: "Search" });
+  await search.fill("RaFFY🚴‍♂️.eTh");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page).toHaveURL(/q=raffy/);
+  await expect(page.getByText("raffy🚴‍♂.eth", { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertA11yAndNoOverflow(page, "ENS primary-name search at 390px");
+});
+
 test("transaction calldata separates decoded evidence from the read-only raw value", async ({ page }) => {
   const traceRequests: string[] = [];
   const internalTransactionRequests: string[] = [];

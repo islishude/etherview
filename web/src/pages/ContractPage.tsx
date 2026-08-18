@@ -11,6 +11,7 @@ import { isAddress } from "viem";
 
 import { ApiError } from "@/api/client";
 import { QueryNotice } from "@/components/QueryNotice";
+import { AddressIdentity } from "@/ens/AddressIdentity";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
 import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
 import {
@@ -576,9 +577,7 @@ function DiamondCutHistory({
               <li key={cut.cut_index}>
                 <div className="history-card-heading">
                   <strong>{diamondCutActionLabel(cut.action, t)}</strong>
-                  <Link hash="code" search={{}} to="/address/$address" params={{ address: cut.facet_address }}>
-                    <code>{cut.facet_address}</code>
-                  </Link>
+                  <AddressIdentity address={cut.facet_address} compact={false} contract />
                 </div>
                 <div className="diamond-selector-list">
                   {cut.selectors.map((selector) => <code key={selector}>{selector}</code>)}
@@ -589,9 +588,7 @@ function DiamondCutHistory({
           <div className="history-evidence">
             <p>
               <small>{t("contracts.diamond.initTarget")}: </small>
-              <Link hash="code" search={{}} to="/address/$address" params={{ address: item.init_address }}>
-                <code>{item.init_address}</code>
-              </Link>
+              <AddressIdentity address={item.init_address} compact={false} contract />
             </p>
             <p><small>{t("contracts.diamond.initCalldata")}: </small><code>{item.init_calldata}</code></p>
           </div>
@@ -761,9 +758,7 @@ function IdentityFact({
       <dd>
         {identity ? (
           <>
-            <Link hash="code" search={{}} to="/address/$address" params={{ address: identity.address }}>
-              <code>{identity.address}</code>
-            </Link>{" "}
+            <AddressIdentity address={identity.address} compact={false} contract />{" "}
             <small>{proxyVerificationLabel(identity.verification_state, t)}</small>
           </>
         ) : "—"}
@@ -851,11 +846,9 @@ function UpgradeHistory({
             <span>{upgradeEvidenceLabel(item.evidence_type, t)}</span>
           </div>
           <p className="history-transition">
-            <code>{item.old_implementation?.address ?? "—"}</code>
+            {item.old_implementation ? <AddressIdentity address={item.old_implementation.address} compact={false} contract /> : <code>—</code>}
             <span aria-hidden="true">→</span>
-            <Link hash="code" search={{}} to="/address/$address" params={{ address: item.new_implementation.address }}>
-              <code>{item.new_implementation.address}</code>
-            </Link>
+            <AddressIdentity address={item.new_implementation.address} compact={false} contract />
           </p>
           <HistoryIdentity
             blockHash={item.block_hash}
@@ -870,9 +863,7 @@ function UpgradeHistory({
             {item.emitter_address ? (
               <p>
                 <small>{t("contracts.history.emitter")}: </small>
-                <Link hash="code" search={{}} to="/address/$address" params={{ address: item.emitter_address }}>
-                  <code>{item.emitter_address}</code>
-                </Link>
+                <AddressIdentity address={item.emitter_address} compact={false} contract />
               </p>
             ) : null}
             {item.beacon ? (
@@ -931,9 +922,7 @@ function InitializationHistory({
         <article className="history-card" key={`${item.transaction_hash}:${item.log_index}`}>
           <div className="history-card-heading">
             <strong>{t("contracts.initializations.version", { version: item.version })}</strong>
-            <Link hash="code" search={{}} to="/address/$address" params={{ address: item.implementation.address }}>
-              <code>{item.implementation.address}</code>
-            </Link>
+            <AddressIdentity address={item.implementation.address} compact={false} contract />
           </div>
           <HistoryIdentity
             blockHash={item.block_hash}
@@ -1043,9 +1032,7 @@ function HistoryAddressFact({
   return (
     <p>
       <small>{label}: </small>
-      <Link hash="code" search={{}} to="/address/$address" params={{ address: identity.address }}>
-        <code>{identity.address}</code>
-      </Link>
+      <AddressIdentity address={identity.address} compact={false} contract />
       {identity.verification_state ? (
         <> <small>{proxyVerificationLabel(identity.verification_state, t)}</small></>
       ) : null}

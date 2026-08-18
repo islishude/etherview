@@ -60,6 +60,27 @@ func (e APIKeyScope) Valid() bool {
 	}
 }
 
+// Defines values for AddressNameLookupState.
+const (
+	AddressNameLookupStateNotFound    AddressNameLookupState = "not_found"
+	AddressNameLookupStateResolved    AddressNameLookupState = "resolved"
+	AddressNameLookupStateUnavailable AddressNameLookupState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AddressNameLookupState enum.
+func (e AddressNameLookupState) Valid() bool {
+	switch e {
+	case AddressNameLookupStateNotFound:
+		return true
+	case AddressNameLookupStateResolved:
+		return true
+	case AddressNameLookupStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddressOriginKind.
 const (
 	BlockFeeRecipient AddressOriginKind = "block_fee_recipient"
@@ -780,6 +801,24 @@ func (e PendingTransactionDetailKind) Valid() bool {
 	}
 }
 
+// Defines values for PrimaryNameSource.
+const (
+	PrimaryNameSourceCustomEns PrimaryNameSource = "custom_ens"
+	PrimaryNameSourceEns       PrimaryNameSource = "ens"
+)
+
+// Valid indicates whether the value is a known member of the PrimaryNameSource enum.
+func (e PrimaryNameSource) Valid() bool {
+	switch e {
+	case PrimaryNameSourceCustomEns:
+		return true
+	case PrimaryNameSourceEns:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProxyArtifactKind.
 const (
 	ProxyArtifactKindBeaconProxy        ProxyArtifactKind = "beacon_proxy"
@@ -1353,6 +1392,24 @@ func (e SearchResultKind) Valid() bool {
 	case SearchResultKindToken:
 		return true
 	case SearchResultKindTransaction:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SearchResultNameSource.
+const (
+	SearchResultNameSourceCustomEns SearchResultNameSource = "custom_ens"
+	SearchResultNameSourceEns       SearchResultNameSource = "ens"
+)
+
+// Valid indicates whether the value is a known member of the SearchResultNameSource enum.
+func (e SearchResultNameSource) Valid() bool {
+	switch e {
+	case SearchResultNameSourceCustomEns:
+		return true
+	case SearchResultNameSourceEns:
 		return true
 	default:
 		return false
@@ -2494,6 +2551,32 @@ type AddressInternalTransactionListResponse struct {
 	Meta Meta                         `json:"meta"`
 }
 
+// AddressNameLookup defines model for AddressNameLookup.
+type AddressNameLookup struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address     Address                `json:"address"`
+	Code        *string                `json:"code,omitempty"`
+	PrimaryName *PrimaryName           `json:"primary_name,omitempty"`
+	State       AddressNameLookupState `json:"state"`
+}
+
+// AddressNameLookupState defines model for AddressNameLookup.State.
+type AddressNameLookupState string
+
+// AddressNamePage defines model for AddressNamePage.
+type AddressNamePage struct {
+	Items []AddressNameLookup `json:"items"`
+
+	// Snapshot A bounded server-issued traversal token that clients must not decode or construct.
+	Snapshot OpaqueCursor `json:"snapshot"`
+}
+
+// AddressNamePageResponse defines model for AddressNamePageResponse.
+type AddressNamePageResponse struct {
+	Data AddressNamePage `json:"data"`
+	Meta Meta            `json:"meta"`
+}
+
 // AddressOrigin defines model for AddressOrigin.
 type AddressOrigin struct {
 	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
@@ -2543,13 +2626,13 @@ type AddressSummary struct {
 	Delegation   *DelegationBinding `json:"delegation,omitempty"`
 
 	// HasDelegationHistory Whether canonical applied EIP-7702 delegation history exists at this address snapshot.
-	HasDelegationHistory bool    `json:"has_delegation_history"`
-	Name                 *string `json:"name,omitempty"`
+	HasDelegationHistory bool `json:"has_delegation_history"`
 
 	// Nonce A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	Nonce  Quantity           `json:"nonce"`
-	Origin *AddressOrigin     `json:"origin,omitempty"`
-	Type   AddressSummaryType `json:"type"`
+	Nonce       Quantity           `json:"nonce"`
+	Origin      *AddressOrigin     `json:"origin,omitempty"`
+	PrimaryName *PrimaryName       `json:"primary_name,omitempty"`
+	Type        AddressSummaryType `json:"type"`
 }
 
 // AddressSummaryType defines model for AddressSummary.Type.
@@ -3704,6 +3787,15 @@ type PendingTransactionListResponse struct {
 	Meta PendingMeta          `json:"meta"`
 }
 
+// PrimaryName defines model for PrimaryName.
+type PrimaryName struct {
+	Name   string            `json:"name"`
+	Source PrimaryNameSource `json:"source"`
+}
+
+// PrimaryNameSource defines model for PrimaryName.Source.
+type PrimaryNameSource string
+
 // ProxyArtifactKind defines model for ProxyArtifactKind.
 type ProxyArtifactKind string
 
@@ -4078,15 +4170,19 @@ type SearchResponse struct {
 
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
-	Canonical *bool            `json:"canonical,omitempty"`
-	Key       string           `json:"key"`
-	Kind      SearchResultKind `json:"kind"`
-	Label     string           `json:"label"`
-	Rank      int              `json:"rank"`
+	Canonical  *bool                   `json:"canonical,omitempty"`
+	Key        string                  `json:"key"`
+	Kind       SearchResultKind        `json:"kind"`
+	Label      string                  `json:"label"`
+	NameSource *SearchResultNameSource `json:"name_source,omitempty"`
+	Rank       int                     `json:"rank"`
 }
 
 // SearchResultKind defines model for SearchResult.Kind.
 type SearchResultKind string
+
+// SearchResultNameSource defines model for SearchResult.NameSource.
+type SearchResultNameSource string
 
 // SessionRevocation defines model for SessionRevocation.
 type SessionRevocation struct {
@@ -5243,6 +5339,15 @@ type PaymentRequired = ErrorResponse
 
 // VerificationAccepted defines model for VerificationAccepted.
 type VerificationAccepted = VerificationJobResponse
+
+// ListAddressNamesParams defines parameters for ListAddressNames.
+type ListAddressNamesParams struct {
+	Addresses string        `form:"addresses" json:"addresses"`
+	Snapshot  *OpaqueCursor `form:"snapshot,omitempty" json:"snapshot,omitempty"`
+
+	// PAYMENTSIGNATURE A single x402 v2 exact-EVM payment payload for this canonical resource.
+	PAYMENTSIGNATURE *PaymentSignature `json:"PAYMENT-SIGNATURE,omitempty"`
+}
 
 // GetAddressParams defines parameters for GetAddress.
 type GetAddressParams struct {

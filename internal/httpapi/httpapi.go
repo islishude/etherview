@@ -32,6 +32,7 @@ import (
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/config"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/mempool"
@@ -46,6 +47,7 @@ var (
 	ErrUnavailable   = errors.New("capability unavailable")
 	ErrNotReady      = errors.New("not ready")
 	ErrInvalidCursor = errors.New("invalid or stale cursor")
+	ErrInvalidInput  = errors.New("invalid input")
 )
 
 // CapabilityUnavailableError carries only controlled machine identifiers that
@@ -131,6 +133,11 @@ type AddressActivityReader interface {
 	AddressWithdrawals(context.Context, string, string, int) ([]gen.AddressWithdrawal, string, error)
 }
 
+type AddressNameReader interface {
+	ResolveCurrentPrimary(context.Context, common.Address) (ensresolver.PrimaryResolution, error)
+	ResolveAddressBatch(context.Context, []common.Address, string) ([]ensresolver.PrimaryResolution, string, error)
+}
+
 type AddressEnrichmentActivityReader interface {
 	AddressInternalTransactions(context.Context, catalog.AddressActivityRequest) (catalog.AddressInternalTransactionPage, error)
 	AddressERC20Transfers(context.Context, catalog.AddressActivityRequest) (catalog.AddressTokenTransferPage, error)
@@ -190,6 +197,7 @@ type Options struct {
 	Reader                Reader
 	TransactionReader     TransactionReader
 	AddressActivities     AddressActivityReader
+	AddressNames          AddressNameReader
 	Genesis               GenesisReader
 	Catalog               catalog.Reader
 	Analytics             AnalyticsReader
@@ -225,6 +233,7 @@ type Handler struct {
 	reader                Reader
 	transactionReader     TransactionReader
 	addressActivities     AddressActivityReader
+	addressNames          AddressNameReader
 	addressEnrichment     AddressEnrichmentActivityReader
 	genesis               GenesisReader
 	catalog               catalog.Reader
@@ -280,6 +289,7 @@ func New(options Options) (*Handler, error) {
 		reader:                options.Reader,
 		transactionReader:     options.TransactionReader,
 		addressActivities:     options.AddressActivities,
+		addressNames:          options.AddressNames,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
 		analytics:             options.Analytics,
@@ -327,6 +337,9 @@ func New(options Options) (*Handler, error) {
 	}
 	if h.cfg.Features.X402Billing && h.billing == nil {
 		return nil, errors.New("enabled x402 billing requires a writer-backed dispatcher")
+	}
+	if h.cfg.Features.ENS && h.addressNames == nil {
+		return nil, errors.New("enabled ENS requires a writer-backed name service")
 	}
 	if h.cfg.Features.UserAuth {
 		origin, err := userauth.CanonicalPublicOrigin(h.cfg.Server.PublicURL)
@@ -389,6 +402,7 @@ func (h *Handler) routes() {
 		h.handleBillable("listTransactionAuthorizations", h.transactionAuthorizations)
 	}
 	h.handleBillable("getAddress", h.address)
+	h.handleBillable("listAddressNames", h.addressNamesPage)
 	h.handleBillable("getAddressDelegation", h.addressDelegation)
 	h.handleBillable("listAddressTransactions", h.addressTransactions)
 	h.handleBillable("listAddressWithdrawals", h.addressWithdrawals)
@@ -845,6 +859,7 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		"sourcify":         h.cfg.Features.Sourcify,
 		"nft_metadata":     h.cfg.Features.NFTMetadata,
 		"pricing":          h.cfg.Features.Pricing,
+		"ens":              h.cfg.Features.ENS,
 		"user_auth":        h.cfg.Features.UserAuth,
 		"user_api_keys":    h.cfg.Features.UserAPIKeys,
 		"x402_billing":     h.cfg.Features.X402Billing,
@@ -1153,7 +1168,120 @@ func (h *Handler) address(w http.ResponseWriter, r *http.Request) {
 		h.handleReaderError(w, r, err)
 		return
 	}
+	if h.cfg.Features.ENS && h.addressNames != nil {
+		parsed := common.HexToAddress(address)
+		if primary, primaryErr := h.addressNames.ResolveCurrentPrimary(r.Context(), parsed); primaryErr == nil &&
+			primary.Outcome == ensresolver.OutcomeResolved {
+			item.PrimaryName = primaryNameModel(primary)
+		}
+	}
 	writeJSON(w, http.StatusOK, gen.AddressResponse{Data: item, Meta: h.meta(r)})
+}
+
+func (h *Handler) addressNamesPage(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.Features.ENS || h.addressNames == nil {
+		h.handleReaderError(w, r, NewCapabilityUnavailableError("name", "unavailable", "not_configured"))
+		return
+	}
+	raw := r.URL.Query().Get("addresses")
+	if len(raw) < 42 || len(raw) > 4299 {
+		writeError(w, r, http.StatusBadRequest, "invalid_addresses", "addresses must contain 1 to 100 comma-separated addresses", nil)
+		return
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) == 0 || len(parts) > 100 {
+		writeError(w, r, http.StatusBadRequest, "invalid_addresses", "addresses must contain 1 to 100 comma-separated addresses", nil)
+		return
+	}
+	addresses := make([]common.Address, len(parts))
+	seen := make(map[common.Address]struct{}, len(parts))
+	for index, part := range parts {
+		if !addressPattern.MatchString(part) {
+			writeError(w, r, http.StatusBadRequest, "invalid_addresses", "every address must contain exactly 20 bytes", nil)
+			return
+		}
+		address := common.HexToAddress(part)
+		if _, duplicate := seen[address]; duplicate {
+			writeError(w, r, http.StatusBadRequest, "duplicate_address", "addresses must be unique", nil)
+			return
+		}
+		seen[address] = struct{}{}
+		addresses[index] = address
+	}
+	snapshot := r.URL.Query().Get("snapshot")
+	if len(snapshot) > maximumOpaqueCursorLength {
+		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "snapshot is too long", nil)
+		return
+	}
+	resolved, nextSnapshot, err := h.addressNames.ResolveAddressBatch(r.Context(), addresses, snapshot)
+	if err != nil {
+		h.handleENSReaderError(w, r, err)
+		return
+	}
+	if len(resolved) != len(addresses) || nextSnapshot == "" || len(nextSnapshot) > maximumOpaqueCursorLength {
+		h.handleReaderError(w, r, errors.New("ENS address-name service returned an invalid batch"))
+		return
+	}
+	items := make([]gen.AddressNameLookup, len(resolved))
+	for index, value := range resolved {
+		if value.Address != addresses[index] {
+			h.handleReaderError(w, r, errors.New("ENS address-name service reordered a batch"))
+			return
+		}
+		address, checksumErr := checksumAddress(value.Address.Hex())
+		if checksumErr != nil {
+			h.handleReaderError(w, r, checksumErr)
+			return
+		}
+		item := gen.AddressNameLookup{Address: address}
+		switch {
+		case value.Outcome == ensresolver.OutcomeResolved:
+			item.State = gen.AddressNameLookupStateResolved
+			item.PrimaryName = primaryNameModel(value)
+			if item.PrimaryName == nil {
+				h.handleReaderError(w, r, errors.New("ENS address-name service returned an invalid primary name"))
+				return
+			}
+		case value.Outcome == ensresolver.OutcomeNoRecord:
+			item.State = gen.AddressNameLookupStateNotFound
+		case value.Code != "":
+			item.State = gen.AddressNameLookupStateUnavailable
+			code := value.Code
+			item.Code = &code
+		default:
+			h.handleReaderError(w, r, errors.New("ENS address-name service returned an invalid outcome"))
+			return
+		}
+		items[index] = item
+	}
+	writeJSON(w, http.StatusOK, gen.AddressNamePageResponse{
+		Data: gen.AddressNamePage{Items: items, Snapshot: nextSnapshot}, Meta: h.meta(r),
+	})
+}
+
+func primaryNameModel(value ensresolver.PrimaryResolution) *gen.PrimaryName {
+	if value.Outcome != ensresolver.OutcomeResolved || value.Name == "" {
+		return nil
+	}
+	source := gen.PrimaryNameSource(value.Source)
+	if !source.Valid() {
+		return nil
+	}
+	return &gen.PrimaryName{Name: value.Name, Source: source}
+}
+
+func (h *Handler) handleENSReaderError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, ensresolver.ErrSnapshotInvalid) {
+		h.handleReaderError(w, r, ErrInvalidCursor)
+		return
+	}
+	var resolution *ensresolver.ResolutionError
+	if errors.As(err, &resolution) {
+		capability, state, code := resolution.CapabilityDetails()
+		h.handleReaderError(w, r, NewCapabilityUnavailableError(capability, state, code))
+		return
+	}
+	h.handleReaderError(w, r, err)
 }
 
 func (h *Handler) addressTransactions(w http.ResponseWriter, r *http.Request) {
@@ -2814,6 +2942,8 @@ func (h *Handler) handleReaderError(w http.ResponseWriter, r *http.Request, err 
 		writeError(w, r, http.StatusServiceUnavailable, "not_ready", "indexed data is not ready", nil)
 	case errors.Is(err, ErrInvalidCursor):
 		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or stale after a canonical change", nil)
+	case errors.Is(err, ErrInvalidInput):
+		writeError(w, r, http.StatusUnprocessableEntity, "invalid_query", "query input is invalid", nil)
 	default:
 		h.logger.ErrorContext(r.Context(), "query failed", "request_id", requestIDFrom(r.Context()), "error_type", fmt.Sprintf("%T", err))
 		writeError(w, r, http.StatusInternalServerError, "query_failed", "query failed", nil)

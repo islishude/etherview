@@ -37,6 +37,60 @@ func (q *Queries) DeleteExpiredAdapterObservations(ctx context.Context, chainID 
 	return deleted_count, err
 }
 
+const deleteExpiredENSAddressNameSnapshots = `-- name: DeleteExpiredENSAddressNameSnapshots :one
+WITH expired AS MATERIALIZED (
+    SELECT snapshot.id
+    FROM ens_address_name_snapshots AS snapshot
+    WHERE snapshot.chain_id = $1::numeric
+      AND snapshot.expires_at <= $2::timestamptz
+    ORDER BY snapshot.expires_at, snapshot.id
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+), deleted AS (
+    DELETE FROM ens_address_name_snapshots AS snapshot
+    USING expired
+    WHERE snapshot.id = expired.id
+    RETURNING 1
+)
+SELECT count(*)::bigint AS deleted_count FROM deleted
+`
+
+func (q *Queries) DeleteExpiredENSAddressNameSnapshots(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
+	row := q.db.QueryRow(ctx, deleteExpiredENSAddressNameSnapshots, chainID, expiredBefore, deleteLimit)
+	var deleted_count int64
+	err := row.Scan(&deleted_count)
+	return deleted_count, err
+}
+
+const deleteExpiredENSResolutionGenerations = `-- name: DeleteExpiredENSResolutionGenerations :one
+WITH expired AS MATERIALIZED (
+    SELECT generation.id
+    FROM ens_resolution_generations AS generation
+    WHERE generation.chain_id = $1::numeric
+      AND generation.retain_until <= $2::timestamptz
+      AND NOT EXISTS (
+          SELECT 1 FROM ens_address_name_snapshots AS snapshot
+          WHERE snapshot.generation_id = generation.id
+      )
+    ORDER BY generation.retain_until, generation.id
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+), deleted AS (
+    DELETE FROM ens_resolution_generations AS generation
+    USING expired
+    WHERE generation.id = expired.id
+    RETURNING 1
+)
+SELECT count(*)::bigint AS deleted_count FROM deleted
+`
+
+func (q *Queries) DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
+	row := q.db.QueryRow(ctx, deleteExpiredENSResolutionGenerations, chainID, expiredBefore, deleteLimit)
+	var deleted_count int64
+	err := row.Scan(&deleted_count)
+	return deleted_count, err
+}
+
 const pruneSearchCatalog = `-- name: PruneSearchCatalog :one
 SELECT prune_search_catalog(
     $1::numeric,

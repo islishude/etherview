@@ -717,12 +717,10 @@ func TestExternalAdapterConfigurationIsHTTPSAndBounded(t *testing.T) {
 	for _, mutate := range []func(*Config){
 		func(cfg *Config) { cfg.Features.Pricing = true },
 		func(cfg *Config) { cfg.Adapters.PriceBaseURL = "http://price.example/v1" },
-		func(cfg *Config) { cfg.Adapters.NameBaseURL = "https://user:secret@name.example/v1" },
 		func(cfg *Config) { cfg.Adapters.FetchTimeout = 0 },
 		func(cfg *Config) { cfg.Adapters.MaxResponseBytes = 8<<20 + 1 },
 		func(cfg *Config) { cfg.Adapters.MaxRedirects = 6 },
 		func(cfg *Config) { cfg.Adapters.PriceFreshness = 25 * time.Hour },
-		func(cfg *Config) { cfg.Adapters.NameFreshness = 31 * 24 * time.Hour },
 		func(cfg *Config) { cfg.Adapters.FailureTTL = 2 * time.Hour },
 	} {
 		cfg := Default()
@@ -734,12 +732,95 @@ func TestExternalAdapterConfigurationIsHTTPSAndBounded(t *testing.T) {
 	cfg := Default()
 	cfg.Features.Pricing = true
 	cfg.Adapters.PriceBaseURL = "https://price.example/v1"
-	cfg.Adapters.NameBaseURL = "https://name.example/v1"
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	if !validS3Bucket("123") {
 		t.Fatal("purely numeric, non-IP S3 bucket was rejected")
+	}
+}
+
+func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
+	t.Parallel()
+	if Default().Features.ENS {
+		t.Fatal("ENS must be disabled by default")
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "gateway credentials", mutate: func(cfg *Config) {
+			cfg.ENS.OfficialGateways = []string{"https://user:secret@ccip.example"}
+		}},
+		{name: "gateway private scheme", mutate: func(cfg *Config) {
+			cfg.ENS.OfficialGateways = []string{"http://ccip.example"}
+		}},
+		{name: "snapshot shorter than generation", mutate: func(cfg *Config) {
+			cfg.ENS.SnapshotTTL = cfg.ENS.ResolutionFreshness - time.Second
+		}},
+		{name: "oversized response", mutate: func(cfg *Config) { cfg.ENS.MaxResponseBytes = 8<<20 + 1 }},
+		{name: "unbounded depth", mutate: func(cfg *Config) { cfg.ENS.MaxCCIPDepth = 9 }},
+		{name: "unbounded batch", mutate: func(cfg *Config) { cfg.ENS.MaxBatchAddresses = 101 }},
+		{name: "partial custom deployment", mutate: func(cfg *Config) {
+			cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
+		}},
+		{name: "zero custom deployment", mutate: func(cfg *Config) {
+			cfg.ENS.Custom.Registry = "0x0000000000000000000000000000000000000000"
+			cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
+		}},
+		{name: "noncanonical coin type", mutate: func(cfg *Config) {
+			cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
+			cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
+			cfg.ENS.Custom.CoinType = "060"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "ens.") && !strings.Contains(err.Error(), "ENS") {
+				t.Fatalf("invalid ENS config passed: %#v error=%v", cfg.ENS, err)
+			}
+		})
+	}
+	cfg := Default()
+	cfg.Features.ENS = true
+	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
+	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
+	cfg.ENS.Custom.CoinType = "60"
+	cfg.ENS.Custom.Gateways = []string{"https://custom-ccip.example/v1"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestENSRPCEnvironmentIsSecretOnlyAndAPIScoped(t *testing.T) {
+	values := map[string]string{
+		"ETHERVIEW_FEATURE_ENS":                   "true",
+		"ETHERVIEW_ENS_RPC_URLS":                  "https://mainnet.example",
+		"ETHERVIEW_ENS_OFFICIAL_GATEWAYS":         "https://one.example,https://two.example",
+		"ETHERVIEW_ENS_CUSTOM_REGISTRY":           "0x1111111111111111111111111111111111111111",
+		"ETHERVIEW_ENS_CUSTOM_UNIVERSAL_RESOLVER": "0x2222222222222222222222222222222222222222",
+	}
+	lookup := func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+	api := Default()
+	if err := applyEnvironmentForRoles(&api, lookup, os.ReadFile, []string{"api"}); err != nil {
+		t.Fatal(err)
+	}
+	if !api.Features.ENS || len(api.ENS.OfficialRPCEndpoints) != 1 ||
+		!reflect.DeepEqual(api.ENS.OfficialRPCEndpoints[0].Purposes, []string{"state"}) ||
+		len(api.ENS.OfficialGateways) != 2 || api.ENS.Custom.UniversalResolver == "" {
+		t.Fatalf("API ENS environment = %#v", api.ENS)
+	}
+	worker := Default()
+	if err := applyEnvironmentForRoles(&worker, lookup, os.ReadFile, []string{"maintenance"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(worker.ENS.OfficialRPCEndpoints) != 0 {
+		t.Fatalf("non-API role retained ENS RPC secrets: %#v", worker.ENS.OfficialRPCEndpoints)
 	}
 }
 

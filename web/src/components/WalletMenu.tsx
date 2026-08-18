@@ -11,11 +11,14 @@ import { walletErrorTranslationKey } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 import { AddNetworkControl } from "./AddNetworkControl";
 import { SIWELoginControl } from "./SIWELoginControl";
+import { usePrimaryName } from "@/ens/AddressNamesProvider";
 
 export function WalletMenu() {
   const { t } = useTranslation();
   const wallet = useWallet();
   const auth = useAuth();
+  const walletPrimaryName = usePrimaryName(wallet.active?.account ?? "");
+  const authPrimaryName = usePrimaryName(auth.session.user?.address ?? "");
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const summaryRef = useRef<HTMLElement | null>(null);
@@ -84,7 +87,7 @@ export function WalletMenu() {
           ref={summaryRef}
         >
           <span className={wallet.active ? "status-dot success" : "status-dot"} aria-hidden="true" />
-          {wallet.active ? shorten(wallet.active.account, 6, 4) : t("actions.connect")}
+          {wallet.active ? walletPrimaryName?.name ?? shorten(wallet.active.account, 6, 4) : t("actions.connect")}
         </summary>
         <div className="wallet-popover">
           <div className="popover-heading">
@@ -93,6 +96,7 @@ export function WalletMenu() {
           </div>
           {wallet.active ? (
             <>
+              {walletPrimaryName ? <bdi className="address-primary-name">{walletPrimaryName.name}</bdi> : null}
               <code className="wallet-account">{wallet.active.account}</code>
               <button
                 className="button secondary full"
@@ -164,6 +168,7 @@ export function WalletMenu() {
                     <span>
                       <strong>
                         {auth.session.user.display_name ??
+                          authPrimaryName?.name ??
                           shorten(auth.session.user.address, 6, 4)}
                       </strong>
                       <small>{t(`auth.role.${auth.session.user.role}`)}</small>

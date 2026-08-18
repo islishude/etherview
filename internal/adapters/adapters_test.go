@@ -43,26 +43,6 @@ func TestAdapterDecodersEnforceCanonicalValuesIdentityAndFreshness(t *testing.T)
 		}
 	}
 
-	nameJSON := []byte(`{"name":"alice.eth","address":"0x52908400098527886e0f7030069857d2e4169ee7","registry":"0xde709f2102306220921060314715629080e2fb77","block_number":"10","block_hash":"0x000000000000000000000000000000000000000000000000000000000000000a","observed_at":"2026-07-20T09:59:00Z"}`)
-	name, err := decodeNameObservation(nameJSON, "alice.eth", now, 5*time.Minute)
-	if err != nil || name.Name != "alice.eth" || name.BlockNumber != "10" {
-		t.Fatalf("name=%+v error=%v", name, err)
-	}
-	if _, err := decodeNameObservation(nameJSON, "bob.eth", now, 5*time.Minute); err == nil {
-		t.Fatal("mismatched name identity was accepted")
-	}
-	for _, blockNumber := range []string{"", "00", "01", "+1", "-1", "1.0", strings.Repeat("9", 79)} {
-		invalid := []byte(strings.Replace(string(nameJSON), `"block_number":"10"`, `"block_number":"`+blockNumber+`"`, 1))
-		if _, err := decodeNameObservation(invalid, "alice.eth", now, 5*time.Minute); err == nil {
-			t.Fatalf("invalid name block number %q was accepted", blockNumber)
-		}
-	}
-	for _, blockNumber := range []string{"0", strings.Repeat("9", 78)} {
-		valid := []byte(strings.Replace(string(nameJSON), `"block_number":"10"`, `"block_number":"`+blockNumber+`"`, 1))
-		if _, err := decodeNameObservation(valid, "alice.eth", now, 5*time.Minute); err != nil {
-			t.Fatalf("canonical name block number %q was rejected: %v", blockNumber, err)
-		}
-	}
 }
 
 func TestCapabilityErrorsAndFetchClassificationNeverExposeNestedText(t *testing.T) {
@@ -75,22 +55,6 @@ func TestCapabilityErrorsAndFetchClassificationNeverExposeNestedText(t *testing.
 	code, state := classifyFetchFailure(&metadata.FetchError{Kind: metadata.FailureUnsafeURL, Err: errors.New(secret)})
 	if code != "unsafe_url" || state != "unavailable" || stringContains(code, secret) {
 		t.Fatalf("code=%q state=%q", code, state)
-	}
-}
-
-func TestNameProviderKeyIsStableIsolatedAndDoesNotExposeURL(t *testing.T) {
-	t.Parallel()
-	secretURL := "https://name.example/v1?token=operator-secret"
-	first := nameProviderKey(secretURL)
-	if first != nameProviderKey(secretURL) {
-		t.Fatal("name provider key is not stable")
-	}
-	if first == nameProviderKey("https://name.example/v2?token=operator-secret") {
-		t.Fatal("different provider URLs share a cache namespace")
-	}
-	if !strings.HasPrefix(first, "sha256:") || len(first) != len("sha256:")+64 ||
-		strings.Contains(first, "operator-secret") || strings.Contains(first, "name.example") {
-		t.Fatalf("unsafe name provider key %q", first)
 	}
 }
 

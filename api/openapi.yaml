@@ -672,6 +672,41 @@ paths:
           $ref: "#/components/responses/PaymentRequired"
         default:
           $ref: "#/components/responses/Error"
+  /address-names:
+    get:
+      operationId: listAddressNames
+      tags: [addresses, ens]
+      parameters:
+        - $ref: "#/components/parameters/PaymentSignature"
+        - name: addresses
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 42
+            maxLength: 4299
+            pattern: '^0x[0-9a-fA-F]{40}(,0x[0-9a-fA-F]{40}){0,99}$'
+        - name: snapshot
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OpaqueCursor"
+      responses:
+        "200":
+          description: Snapshot-stable current primary names in request order; individual unavailable entries retain their exact addresses.
+          headers:
+            PAYMENT-RESPONSE:
+              $ref: "#/components/headers/PaymentResponse"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressNamePageResponse"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "503":
+          $ref: "#/components/responses/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}:
     get:
       operationId: getAddress
@@ -2071,7 +2106,7 @@ components:
           $ref: "#/components/schemas/Address"
         routes:
           type: array
-          maxItems: 35
+          maxItems: 36
           items:
             $ref: "#/components/schemas/BillingRoutePrice"
     BillingPayment:
@@ -2586,8 +2621,8 @@ components:
           $ref: "#/components/schemas/Hash"
         at_block:
           $ref: "#/components/schemas/Hash"
-        name:
-          type: string
+        primary_name:
+          $ref: "#/components/schemas/PrimaryName"
         origin:
           $ref: "#/components/schemas/AddressOrigin"
         completeness:
@@ -3969,6 +4004,49 @@ components:
           type: integer
         canonical:
           type: boolean
+        name_source:
+          type: string
+          enum: [ens, custom_ens]
+    PrimaryName:
+      type: object
+      additionalProperties: false
+      required: [name, source]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        source:
+          type: string
+          enum: [ens, custom_ens]
+    AddressNameLookup:
+      type: object
+      additionalProperties: false
+      required: [address, state]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        state:
+          type: string
+          enum: [resolved, not_found, unavailable]
+        primary_name:
+          $ref: "#/components/schemas/PrimaryName"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 128
+    AddressNamePage:
+      type: object
+      additionalProperties: false
+      required: [items, snapshot]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AddressNameLookup"
+        snapshot:
+          $ref: "#/components/schemas/OpaqueCursor"
     VerifierLanguage:
       type: string
       enum: [solidity, yul, geas]
@@ -5303,6 +5381,15 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AddressSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AddressNamePageResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AddressNamePage"
         meta:
           $ref: "#/components/schemas/Meta"
     AddressInternalTransactionListResponse:

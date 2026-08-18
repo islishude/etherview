@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/enrich"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/metadata"
@@ -74,6 +75,30 @@ func (observer *BusinessObserver) RecordRPCEndpointState(state ethrpc.EndpointSt
 		"event", "rpc_endpoint_recovered", "component", "rpc-client",
 		"rpc", slog.GroupValue(slog.String("endpoint", boundedMetadataText(state.Endpoint, 128))),
 	)
+}
+
+func (observer *BusinessObserver) RecordENS(observation ensresolver.MetricObservation) {
+	if observer != nil && observer.registry != nil {
+		observer.registry.RecordENS(string(observation.Source), observation.Direction, observation.Outcome)
+	}
+	logger := slog.Default()
+	if observer != nil && observer.logger != nil {
+		logger = observer.logger
+	}
+	logger.Debug("ENS resolution completed",
+		"event", "ens_resolution_completed", "component", "ens-resolver",
+		"source", boundedENSMetricValue(string(observation.Source), "ens", "custom_ens"),
+		"direction", boundedENSMetricValue(observation.Direction, "forward", "primary"),
+		"outcome", boundedENSMetricValue(observation.Outcome, "resolved", "not_found", "error", "cache_hit"),
+		"duration_ms", max(observation.Duration.Milliseconds(), 0),
+	)
+}
+
+func boundedENSMetricValue(value string, allowed ...string) string {
+	if slices.Contains(allowed, value) {
+		return value
+	}
+	return "other"
 }
 
 func boundedRPCMethod(method string) string {

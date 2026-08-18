@@ -20,6 +20,7 @@ x-app-environment: &app-environment
   ETHERVIEW_FEATURE_USER_AUTH:
   ETHERVIEW_FEATURE_USER_API_KEYS:
   ETHERVIEW_FEATURE_X402_BILLING:
+  ETHERVIEW_FEATURE_ENS:
   ETHERVIEW_USER_AUTH_API_KEY_RATE:
   ETHERVIEW_USER_AUTH_API_KEY_BURST:
   ETHERVIEW_USER_AUTH_MAX_ACTIVE_API_KEYS:
@@ -53,6 +54,8 @@ x-api-environment: &api-environment
   # feature is disabled and the operator leaves them unset.
   ETHERVIEW_X402_FINGERPRINT_PEPPER:
   ETHERVIEW_X402_FACILITATOR_HEADERS:
+  # Dedicated Ethereum Mainnet RPC credentials are visible only to API/all.
+  ETHERVIEW_ENS_RPC_URLS:
   ETHERVIEW_VERIFICATION_WORKER_COUNT:
   # Trusted runtime path overrides are scoped to the compiler-owning process.
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH:

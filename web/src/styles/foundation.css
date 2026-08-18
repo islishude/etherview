@@ -226,10 +226,11 @@ code {
 }
 
 .global-search {
+  position: relative;
   width: min(100%, 570px);
   justify-self: center;
   display: flex;
-  overflow: hidden;
+  overflow: visible;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -261,6 +262,17 @@ code {
   background: var(--brand-strong);
   border: 0;
   cursor: pointer;
+  border-radius: 0 999px 999px 0;
+}
+
+.global-search-error {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 1rem;
+  z-index: 2;
+  color: var(--negative);
+  font-size: 0.7rem;
+  white-space: nowrap;
 }
 
 .header-controls {

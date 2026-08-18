@@ -613,6 +613,59 @@ type Eip7702AuthorizationsP01000000 struct {
 	Canonical            bool           `db:"canonical" json:"canonical"`
 }
 
+type EnsAddressNameSnapshot struct {
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	GenerationID int64              `db:"generation_id" json:"generation_id"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+type EnsNameObservation struct {
+	ID               int64              `db:"id" json:"id"`
+	GenerationID     int64              `db:"generation_id" json:"generation_id"`
+	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Source           string             `db:"source" json:"source"`
+	Direction        string             `db:"direction" json:"direction"`
+	LookupKey        string             `db:"lookup_key" json:"lookup_key"`
+	Outcome          string             `db:"outcome" json:"outcome"`
+	Name             *string            `db:"name" json:"name"`
+	Address          []byte             `db:"address" json:"address"`
+	Resolver         []byte             `db:"resolver" json:"resolver"`
+	ReverseResolver  []byte             `db:"reverse_resolver" json:"reverse_resolver"`
+	ObservedAt       pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	PublicationNonce int64              `db:"publication_nonce" json:"publication_nonce"`
+}
+
+type EnsResolutionFailure struct {
+	ID           int64              `db:"id" json:"id"`
+	GenerationID int64              `db:"generation_id" json:"generation_id"`
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Source       string             `db:"source" json:"source"`
+	Direction    string             `db:"direction" json:"direction"`
+	LookupKey    string             `db:"lookup_key" json:"lookup_key"`
+	Code         string             `db:"code" json:"code"`
+	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+type EnsResolutionGeneration struct {
+	ID                  int64              `db:"id" json:"id"`
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	PolicyKey           string             `db:"policy_key" json:"policy_key"`
+	CoinType            pgtype.Numeric     `db:"coin_type" json:"coin_type"`
+	OfficialEndpoint    string             `db:"official_endpoint" json:"official_endpoint"`
+	OfficialBlockNumber pgtype.Numeric     `db:"official_block_number" json:"official_block_number"`
+	OfficialBlockHash   []byte             `db:"official_block_hash" json:"official_block_hash"`
+	CustomEndpoint      *string            `db:"custom_endpoint" json:"custom_endpoint"`
+	CustomCoinType      pgtype.Numeric     `db:"custom_coin_type" json:"custom_coin_type"`
+	CustomBlockNumber   pgtype.Numeric     `db:"custom_block_number" json:"custom_block_number"`
+	CustomBlockHash     []byte             `db:"custom_block_hash" json:"custom_block_hash"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	FreshUntil          pgtype.Timestamptz `db:"fresh_until" json:"fresh_until"`
+	RetainUntil         pgtype.Timestamptz `db:"retain_until" json:"retain_until"`
+}
+
 type Erc1155BalanceReconciliation struct {
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	TokenAddress []byte             `db:"token_address" json:"token_address"`
@@ -829,18 +882,6 @@ type MempoolTransactionReplacement struct {
 
 type Migration0031VyperJob struct {
 	ID pgtype.UUID `db:"id" json:"id"`
-}
-
-type NameRecord struct {
-	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Registry    []byte             `db:"registry" json:"registry"`
-	Name        string             `db:"name" json:"name"`
-	Address     []byte             `db:"address" json:"address"`
-	Resolver    []byte             `db:"resolver" json:"resolver"`
-	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
-	Canonical   bool               `db:"canonical" json:"canonical"`
-	ObservedAt  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
 type NftMetadataSourceObservation struct {
@@ -1204,6 +1245,8 @@ type SearchCatalogDocument struct {
 	VerificationMatchType     *string            `db:"verification_match_type" json:"verification_match_type"`
 	VerificationRequestDigest []byte             `db:"verification_request_digest" json:"verification_request_digest"`
 	VerificationJobID         pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	NameObservationID         *int64             `db:"name_observation_id" json:"name_observation_id"`
+	NameSource                *string            `db:"name_source" json:"name_source"`
 }
 
 type SearchCatalogGeneration struct {

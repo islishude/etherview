@@ -96,3 +96,17 @@ the fixture at
 The nested v2 module archive does not include the repository-root license file.
 The exact reviewed text is checked into this repository and included in the
 production image at `/licenses/holiman-bloomfilter-MIT.txt`.
+
+## go-base36
+
+- Module: `github.com/multiformats/go-base36`
+- Reviewed version: `v0.1.0`
+- Copyright: Protocol Labs
+- License: Apache-2.0 OR MIT
+- Upstream: <https://github.com/multiformats/go-base36>
+
+The module's permissive-license-stack notice is not classified by the license
+scanner. The automated gate pins the exact module checksum, verifies the
+upstream and checked-in notice hashes, and includes the reviewed text in the
+production image at
+`/licenses/multiformats-go-base36-Apache-2.0-OR-MIT.md`.

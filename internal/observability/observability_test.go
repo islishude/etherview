@@ -273,6 +273,7 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 	registry.ObserveReorg(2)
 	registry.RecordSyncHalt("finalized_reorg")
 	registry.RecordRPC("head", "error")
+	registry.RecordENS("custom_ens", "primary", "resolved")
 	registry.SetJobsPending("trace", 9)
 	registry.RecordMetadataFetch("ssrf_rejected")
 	registry.ObserveProxyDetectionRun(2*time.Millisecond, 1, 1, 0, 0, 0, 0, true)
@@ -307,6 +308,7 @@ func TestMetricsAndHTTPMiddleware(t *testing.T) {
 		`etherview_sync_halted{reason="finalized_reorg"} 1`,
 		`etherview_http_requests_total{method="GET",route="/api/v1/blocks/{id}",status="201"} 1`,
 		`etherview_rpc_requests_total{purpose="head",result="error"} 1`,
+		`etherview_ens_resolutions_total{source="custom_ens",direction="primary",outcome="resolved"} 1`,
 		`etherview_jobs_pending{queue="trace"} 9`,
 		`etherview_metadata_fetches_total{result="ssrf_rejected"} 1`,
 		`etherview_proxy_detection_rpc_calls_total{method="eth_getCode"} 1`,

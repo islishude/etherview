@@ -389,6 +389,52 @@ tbody tr:hover {
   font-size: 0.72rem;
 }
 
+.address-identity {
+  min-width: 0;
+  display: inline-grid;
+  gap: 0.12rem;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.address-primary-name-row {
+  min-width: 0;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.address-primary-name {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+
+.address-identity-value {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.address-identity:not(.has-primary-name) .address-identity-value {
+  color: inherit;
+  font-size: inherit;
+}
+
+.custom-ens-badge {
+  flex: none;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .table-secondary {
   display: block;
   margin-top: 0.2rem;

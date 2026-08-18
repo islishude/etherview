@@ -15,6 +15,10 @@ EXPECTED_LIBRARY_LICENSE_HEADER_SHA256="f51c38bc07a6bd41262ce3b0a65a9bef3d8efff9
 EXPECTED_BLOOMFILTER_VERSION="v2.0.3"
 EXPECTED_BLOOMFILTER_LICENSE_SHA256="f9e93a3c8d61e448bffac8f9c1d45b6418494ab2b683b13425158b9826dab048"
 BLOOMFILTER_LICENSE_PATH="licenses/holiman-bloomfilter-MIT.txt"
+EXPECTED_BASE36_VERSION="v0.1.0"
+EXPECTED_BASE36_SUM="h1:JR6TyF7JjGd3m6FbLU2cOxhC0Li8z8dLNGQ89tUg4F4="
+EXPECTED_BASE36_LICENSE_SHA256="b5f1f21b1eea5d68df829130c545b431e9c277dd73f68a777e641e44c7fa2f0e"
+BASE36_LICENSE_PATH="licenses/multiformats-go-base36-Apache-2.0-OR-MIT.md"
 EXPECTED_GEAS_VERSION="v0.3.3"
 EXPECTED_GEAS_SUM="h1:CtVkRXysF+1gf1L0MgisG4vcr/Zv/uf8ukq/uqiUEUs="
 EXPECTED_GEAS_LICENSE_SHA256="da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
@@ -110,6 +114,28 @@ if [ "$actual_bloomfilter_license_sha256" != "$EXPECTED_BLOOMFILTER_LICENSE_SHA2
   exit 1
 fi
 
+base36_version="$("$GO_BIN" list -m -f '{{.Version}}' github.com/multiformats/go-base36)"
+base36_sum="$("$GO_BIN" list -m -f '{{.Sum}}' github.com/multiformats/go-base36)"
+base36_module_dir="$("$GO_BIN" list -m -f '{{.Dir}}' github.com/multiformats/go-base36)"
+base36_replacement="$("$GO_BIN" list -m -f '{{if .Replace}}{{.Replace.Path}}{{end}}' github.com/multiformats/go-base36)"
+if [ "$base36_version" != "$EXPECTED_BASE36_VERSION" ] || [ "$base36_sum" != "$EXPECTED_BASE36_SUM" ]; then
+  echo "license-check: go-base36 review covers $EXPECTED_BASE36_VERSION at its exact module sum" >&2
+  exit 1
+fi
+if [ -n "$base36_replacement" ] || [ -z "$base36_module_dir" ] || [ ! -d "$base36_module_dir" ]; then
+  echo "license-check: go-base36 module replacement or missing module directory" >&2
+  exit 1
+fi
+if [ "$(sha256_file "$base36_module_dir/LICENSE.md")" != "$EXPECTED_BASE36_LICENSE_SHA256" ]; then
+  echo "license-check: upstream go-base36 license changed for $EXPECTED_BASE36_VERSION" >&2
+  exit 1
+fi
+if [ ! -f "$BASE36_LICENSE_PATH" ] ||
+   [ "$(sha256_file "$BASE36_LICENSE_PATH")" != "$EXPECTED_BASE36_LICENSE_SHA256" ]; then
+  echo "license-check: checked-in go-base36 license changed for $EXPECTED_BASE36_VERSION" >&2
+  exit 1
+fi
+
 geas_version="$("$GO_BIN" list -m -f '{{.Version}}' github.com/fjl/geas)"
 geas_sum="$("$GO_BIN" list -m -f '{{.Sum}}' github.com/fjl/geas)"
 geas_module_dir="$("$GO_BIN" list -m -f '{{.Dir}}' github.com/fjl/geas)"
@@ -139,6 +165,10 @@ if ! printf '%s\n' "$dependencies" | grep -qx 'github.com/ethereum/go-ethereum';
 fi
 if ! printf '%s\n' "$dependencies" | grep -qx 'github.com/holiman/bloomfilter/v2'; then
   echo "license-check: the reviewed bloomfilter exception is no longer used" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$dependencies" | grep -qx 'github.com/multiformats/go-base36'; then
+  echo "license-check: the reviewed go-base36 exception is no longer used" >&2
   exit 1
 fi
 if ! printf '%s\n' "$dependencies" | grep -qx 'github.com/fjl/geas/asm'; then
@@ -174,6 +204,14 @@ if [ "$reported_bloomfilter_license" != "$expected_bloomfilter_license" ]; then
 	exit 1
 fi
 
+reported_base36_license="$(printf '%s\n' "$reported_licenses" |
+	awk -F, '$1 == "github.com/multiformats/go-base36" {print}')"
+expected_base36_license='github.com/multiformats/go-base36,Unknown,Unknown'
+if [ "$reported_base36_license" != "$expected_base36_license" ]; then
+	echo "license-check: go-base36 scanner attribution changed" >&2
+	exit 1
+fi
+
 reported_geas_license="$(printf '%s\n' "$reported_licenses" |
 	awk -F, '$1 == "github.com/fjl/geas" {print}')"
 expected_geas_license="github.com/fjl/geas,https://github.com/fjl/geas/blob/$EXPECTED_GEAS_VERSION/LICENSE,LGPL-3.0"
@@ -189,6 +227,9 @@ fi
 # the non-cmd dependency graph. bloomfilter/v2 omits its repository-root MIT
 # license from the nested v2 module archive, so its exception is separately
 # fenced to the reviewed version, exact checked-in license text, dependency
+# graph, and scanner result. go-base36 ships an exact Apache-2.0 OR MIT notice
+# that the scanner does not classify; its exception is fenced to one module
+# version and checksum, both upstream and checked-in notice hashes, dependency
 # graph, and scanner result. Geas is similarly fenced to one module version,
 # exact module checksum and LGPL text, dependency graph, and scanner result.
 # Everything else remains subject to the repository's normal permissive-license
@@ -196,5 +237,6 @@ fi
 exec "$GO_LICENSES_BIN" check "$@" \
   --ignore github.com/ethereum/go-ethereum \
   --ignore github.com/holiman/bloomfilter/v2 \
+  --ignore github.com/multiformats/go-base36 \
   --ignore github.com/fjl/geas \
   --allowed_licenses=0BSD,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0

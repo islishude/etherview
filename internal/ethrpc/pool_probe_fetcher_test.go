@@ -68,6 +68,13 @@ func TestPoolSelectsPurposeAndSkipsCoolingOrUnavailableHistory(t *testing.T) {
 	if _, err := pool.Acquire(PurposeTrace); err == nil {
 		t.Fatal("Acquire(trace) succeeded without a trace endpoint")
 	}
+	sticky, err := pool.AcquireNamed(PurposeHead, first.Name)
+	if err != nil || sticky.Name != first.Name {
+		t.Fatalf("sticky endpoint = %#v, %v", sticky, err)
+	}
+	if _, err := pool.AcquireNamed(PurposeState, first.Name); err == nil {
+		t.Fatal("sticky lookup crossed purpose boundary")
+	}
 }
 
 func TestProbeEndpointUsesGethHeadersAndPurposeCapabilities(t *testing.T) {

@@ -360,10 +360,26 @@ func insertRefreshFixtures(t *testing.T, ctx context.Context, db *sql.DB, bundle
 		) VALUES (1, $1, $2, 'erc20', 'high', 'complete', $3, $4)`,
 		tokenAddress, codeHash, reference.Number, blockHash)
 	execFixture(t, ctx, db, `
-		INSERT INTO name_records (
-			chain_id, registry, name, address, block_number, block_hash, canonical
-		) VALUES (1, $1, 'integration.eth', $2, $3, $4, TRUE)`,
-		tokenAddress, ownerAddress, reference.Number, blockHash)
+		WITH generation AS (
+			INSERT INTO ens_resolution_generations (
+				chain_id, policy_key, coin_type,
+				official_endpoint, official_block_number, official_block_hash,
+				custom_endpoint, custom_coin_type, custom_block_number, custom_block_hash,
+				created_at, fresh_until, retain_until
+			) VALUES (
+				1, 'sha256:integration-refresh', 60,
+				'mainnet', 1, $1,
+				'custom', 60, $2, $1,
+				now(), now() + interval '1 hour', now() + interval '2 hours'
+			) RETURNING id
+		)
+		INSERT INTO ens_name_observations (
+			generation_id, chain_id, source, direction, lookup_key, outcome,
+			name, address, resolver, observed_at
+		)
+		SELECT id, 1, 'custom_ens', 'forward', 'integration.eth', 'resolved',
+			'integration.eth', $3, $4, now()
+		FROM generation`, blockHash, reference.Number, ownerAddress, tokenAddress)
 }
 
 func assertRefreshFixtures(
@@ -393,13 +409,18 @@ func assertRefreshFixtures(
 	for _, table := range []string{
 		"contract_code_observations",
 		"proxy_observations",
-		"name_records",
 	} {
 		assertRowCount(t, ctx, db,
 			fmt.Sprintf(`SELECT count(*) FROM %s WHERE chain_id = 1 AND block_hash = $1`, table),
 			stateObservationCount, blockHash,
 		)
 	}
+	assertRowCount(t, ctx, db, `SELECT count(*)
+		FROM ens_name_observations AS observation
+		JOIN ens_resolution_generations AS generation ON generation.id = observation.generation_id
+		WHERE observation.chain_id = 1 AND generation.custom_block_hash = $1`,
+		stateObservationCount, blockHash,
+	)
 	assertRowCount(t, ctx, db,
 		`SELECT count(*) FROM token_contracts WHERE chain_id = 1 AND observed_block_hash = $1`,
 		stateObservationCount, blockHash,

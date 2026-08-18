@@ -110,6 +110,14 @@ spec:
             - name: ETHERVIEW_SERVER_TLS_KEY_FILE
               value: /run/etherview-tls/tls.key
             {{- end }}
+            {{- if $root.Values.config.features.ens }}
+            - name: ETHERVIEW_ENS_RPC_URLS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret | quote }}
+                  key: {{ $root.Values.secrets.ensRPCURLsKey | quote }}
+                  optional: true
+            {{- end }}
             {{- end }}
             - name: ETHERVIEW_RPC_URLS
               valueFrom:

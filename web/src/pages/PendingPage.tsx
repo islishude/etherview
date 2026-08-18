@@ -8,6 +8,7 @@ import type { PendingMeta, PendingTransaction } from "@/api/types";
 import { formatInteger, formatNativeAmount, formatTimestamp, shorten } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
 import { TransactionStatus } from "@/components/TransactionStatus";
+import { AddressIdentity } from "@/ens/AddressIdentity";
 import { Page } from "@/pages/pages";
 
 const PAGE_SIZE = 25;
@@ -221,16 +222,10 @@ function PendingTable({
                 </Link>
               </td>
               <td><TransactionStatus label={t("transactionStatus.pending")} status="pending" /></td>
-              <td>
-                <Link to="/address/$address" params={{ address: transaction.from }}>
-                  <code title={transaction.from}>{shorten(transaction.from)}</code>
-                </Link>
-              </td>
+              <td><AddressIdentity address={transaction.from} /></td>
               <td>
                 {transaction.to ? (
-                  <Link to="/address/$address" params={{ address: transaction.to }}>
-                    <code title={transaction.to}>{shorten(transaction.to)}</code>
-                  </Link>
+                  <AddressIdentity address={transaction.to} />
                 ) : (
                   t("common.contractCreation")
                 )}

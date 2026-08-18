@@ -28,6 +28,7 @@ type Kind string
 const (
 	KindJSON  Kind = "json"
 	KindImage Kind = "image"
+	KindCCIP  Kind = "ccip"
 )
 
 // FailureKind is a stable, non-secret classification for hostile or
@@ -86,6 +87,7 @@ type Policy struct {
 	MaxRedirects               int
 	IPFSGateway                string
 	AllowHTTP                  bool
+	NoRedirects                bool
 	UnsafeAllowPrivateNetworks bool
 	UserAgent                  string
 }
@@ -141,7 +143,7 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 			if collector != nil {
 				collector.setTarget(request.URL, "", true)
 			}
-			if len(via) >= policy.MaxRedirects {
+			if policy.NoRedirects || len(via) >= policy.MaxRedirects {
 				if collector != nil {
 					collector.setPhase(FetchPhaseRedirect)
 				}
@@ -166,6 +168,19 @@ func New(policy Policy, resolver Resolver) (*Client, error) {
 }
 
 func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, error) {
+	return c.fetch(ctx, rawURL, kind, http.MethodGet, nil)
+}
+
+// PostJSON uses the same DNS/IP/redirect/content bounds as Fetch while
+// allowing protocol clients such as CCIP-Read to send a bounded JSON request.
+func (c *Client) PostJSON(ctx context.Context, rawURL string, requestBody []byte, kind Kind) (Result, error) {
+	if !json.Valid(requestBody) {
+		return Result{}, fetchFailure(FailureInvalid, errors.New("request body is not valid JSON"))
+	}
+	return c.fetch(ctx, rawURL, kind, http.MethodPost, requestBody)
+}
+
+func (c *Client) fetch(ctx context.Context, rawURL string, kind Kind, method string, requestBody []byte) (Result, error) {
 	collector := newFetchDiagnosticCollector(rawURL)
 	collector.allowUnsafePrivateNetworks(c.policy.UnsafeAllowPrivateNetworks)
 	target, err := c.resolveTarget(rawURL)
@@ -178,7 +193,7 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, e
 	}
 	collector.setTarget(target.URL, target.PublicIPFSPath, false)
 	requestCtx := withFetchDiagnostic(ctx, collector)
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, target.URL.String(), nil)
+	request, err := http.NewRequestWithContext(requestCtx, method, target.URL.String(), bytes.NewReader(requestBody))
 	if err != nil {
 		collector.setPhase(FetchPhaseURL)
 		return Result{}, fetchFailureWithDiagnostic(
@@ -187,6 +202,9 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, kind Kind) (Result, e
 	}
 	request.Header.Set("Accept", acceptHeader(kind))
 	request.Header.Set("User-Agent", c.policy.UserAgent)
+	if method == http.MethodPost {
+		request.Header.Set("Content-Type", "application/json")
+	}
 	response, err := c.http.Do(request)
 	if err != nil {
 		if classified, ok := errors.AsType[*FetchError](err); ok {
@@ -499,6 +517,9 @@ func acceptHeader(kind Kind) string {
 	if kind == KindImage {
 		return "image/avif,image/webp,image/png,image/jpeg,image/gif"
 	}
+	if kind == KindCCIP {
+		return "application/json,application/*+json,text/plain,application/octet-stream"
+	}
 	return "application/json,application/*+json"
 }
 
@@ -510,6 +531,10 @@ func allowedContentType(kind Kind, value string) bool {
 		default:
 			return false
 		}
+	}
+	if kind == KindCCIP {
+		return value == "text/plain" || value == "application/octet-stream" || value == "application/json" ||
+			strings.HasPrefix(value, "application/") && strings.HasSuffix(value, "+json")
 	}
 	return value == "application/json" || strings.HasPrefix(value, "application/") && strings.HasSuffix(value, "+json")
 }

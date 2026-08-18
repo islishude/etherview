@@ -15,6 +15,7 @@ import {
 import { classHighlighter } from "@lezer/highlight";
 import { solidity } from "@replit/codemirror-lang-solidity";
 import { Link } from "@tanstack/react-router";
+import { AddressIdentity } from "@/ens/AddressIdentity";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -285,9 +286,7 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 			{artifact.resolution === "code_hash" ? (
 				<p className="chain-warning" role="status">
 					{t("contracts.artifact.similarMatch")}{" "}
-					<Link hash="code" params={{ address: artifact.source.address }} search={{}} to="/address/$address">
-						<code>{artifact.source.address}</code>
-					</Link>
+					<AddressIdentity address={artifact.source.address} compact={false} contract />
 				</p>
 			) : null}
       <header className="artifact-hero">

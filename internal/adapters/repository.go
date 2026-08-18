@@ -12,7 +12,7 @@ import (
 	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -110,22 +110,6 @@ func (r repository) failure(
 func uint64Numeric(value uint64) pgtype.Numeric {
 	integer := new(big.Int).SetUint64(value)
 	return pgtype.Numeric{Int: integer, Valid: true}
-}
-
-func decimalNumeric(value string) (pgtype.Numeric, error) {
-	if value == "" || len(value) > 78 || len(value) > 1 && value[0] == '0' {
-		return pgtype.Numeric{}, errors.New("invalid non-negative decimal quantity")
-	}
-	for _, character := range value {
-		if character < '0' || character > '9' {
-			return pgtype.Numeric{}, errors.New("invalid non-negative decimal quantity")
-		}
-	}
-	integer := new(big.Int)
-	if _, ok := integer.SetString(value, 10); !ok {
-		return pgtype.Numeric{}, errors.New("invalid non-negative decimal quantity")
-	}
-	return pgtype.Numeric{Int: integer, Valid: true}, nil
 }
 
 func timestamptz(value time.Time) pgtype.Timestamptz {

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { QueryNotice } from "@/components/QueryNotice";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
 import { ContractArtifactPanel } from "@/contracts/ContractArtifactPanel";
+import { AddressIdentity } from "@/ens/AddressIdentity";
 import {
   useAddressDelegation,
   useAddressDelegationHistory,
@@ -269,12 +270,10 @@ function DelegatedCodePanel({
           <>
             <p className="capability-panel context-note" role="note">{t("delegation.securityWarning")}</p>
             <dl className="detail-grid">
-              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><code>{binding.authority}</code></dd></div>
+              <div className="detail-item"><dt>{t("delegation.authority")}</dt><dd><AddressIdentity address={binding.authority} compact={false} link={false} /></dd></div>
               <div className="detail-item"><dt>{t("delegation.status")}</dt><dd>{t(`delegation.statuses.${binding.status}`)}</dd></div>
               <div className="detail-item"><dt>{t("delegation.delegate")}</dt><dd>{binding.delegate ? (
-                <Link to="/address/$address" params={{ address: binding.delegate }} search={{ tab: "transactions" }}>
-                  <code>{binding.delegate}</code>
-                </Link>
+                <AddressIdentity address={binding.delegate} activity compact={false} />
               ) : "—"}</dd></div>
               <div className="detail-item"><dt>{t("delegation.codeHash")}</dt><dd><code>{binding.delegate_code_hash ?? "—"}</code></dd></div>
               <div className="detail-item wide"><dt>{t("delegation.snapshot")}</dt><dd>

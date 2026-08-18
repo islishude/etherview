@@ -425,9 +425,23 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			nftState       catalog.NFTStateReconciler
 			erc20State     catalog.ERC20StateReconciler
 			nameResolver   query.NameResolver
+			addressNames   httpapi.AddressNameReader
 			priceProvider  etherscan.PriceProvider
 		)
-		if cfg.Adapters.NameBaseURL != "" || cfg.Features.Pricing {
+		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
+			// Canonical state is a correctness fence around external RPC reads
+			// and exact observation writes. It must not inherit replica lag.
+			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
+		}
+		ensService, err := newENSService(ctx, db, cfg, rpcBuild, canonicalState, businessObserver, logger)
+		if err != nil {
+			return err
+		}
+		if ensService != nil {
+			nameResolver = ensService
+			addressNames = ensService
+		}
+		if cfg.Features.Pricing {
 			adapterClient, clientErr := metadata.New(metadata.Policy{
 				Timeout: cfg.Adapters.FetchTimeout, MaxBytes: int64(cfg.Adapters.MaxResponseBytes),
 				MaxRedirects: cfg.Adapters.MaxRedirects, UserAgent: "etherview-adapters/1",
@@ -435,33 +449,19 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			if clientErr != nil {
 				return fmt.Errorf("configure external adapters: %w", clientErr)
 			}
-			if cfg.Adapters.NameBaseURL != "" {
-				nameResolver, err = adapters.NewPostgresNameService(db, cfg.Chain.ID, adapterClient, adapters.NameOptions{
-					BaseURL: cfg.Adapters.NameBaseURL, Freshness: cfg.Adapters.NameFreshness,
-					FailureTTL: cfg.Adapters.FailureTTL,
-				})
-				if err != nil {
-					return fmt.Errorf("configure name adapter: %w", err)
-				}
+			priceService, priceErr := adapters.NewPostgresPriceService(db, cfg.Chain.ID, adapterClient, adapters.PriceOptions{
+				BaseURL: cfg.Adapters.PriceBaseURL, Freshness: cfg.Adapters.PriceFreshness,
+				FailureTTL: cfg.Adapters.FailureTTL,
+			})
+			if priceErr != nil {
+				return fmt.Errorf("configure price adapter: %w", priceErr)
 			}
-			if cfg.Features.Pricing {
-				priceService, priceErr := adapters.NewPostgresPriceService(db, cfg.Chain.ID, adapterClient, adapters.PriceOptions{
-					BaseURL: cfg.Adapters.PriceBaseURL, Freshness: cfg.Adapters.PriceFreshness,
-					FailureTTL: cfg.Adapters.FailureTTL,
-				})
-				if priceErr != nil {
-					return fmt.Errorf("configure price adapter: %w", priceErr)
-				}
-				priceProvider = func(callbackCtx context.Context) (etherscan.NativePrice, error) {
-					price, quoteErr := priceService.NativePrice(callbackCtx)
-					return etherscan.NativePrice{USD: price.USD, BTC: price.BTC, ObservedAt: price.ObservedAt}, quoteErr
-				}
+			priceProvider = func(callbackCtx context.Context) (etherscan.NativePrice, error) {
+				price, quoteErr := priceService.NativePrice(callbackCtx)
+				return etherscan.NativePrice{USD: price.USD, BTC: price.BTC, ObservedAt: price.ObservedAt}, quoteErr
 			}
 		}
 		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
-			// Canonical state is a correctness fence around external RPC reads
-			// and exact observation writes. It must not inherit replica lag.
-			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
 			stateReconciler, stateErr := state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
 			if stateErr != nil {
 				return stateErr
@@ -672,7 +672,8 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
-			Genesis: reader, Catalog: catalogReader, Web: webui.NewHandler(),
+			AddressNames: addressNames,
+			Genesis:      reader, Catalog: catalogReader, Web: webui.NewHandler(),
 			Analytics: analyticsReader,
 			ProxyReader: newProxyReaderAdapter(
 				writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,

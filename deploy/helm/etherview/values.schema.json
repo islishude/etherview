@@ -313,6 +313,7 @@
         "databaseURLKey",
         "databaseReadURLKey",
         "rpcURLsKey",
+        "ensRPCURLsKey",
         "apiKeyPepperKey",
         "sessionPepperKey",
         "x402FingerprintPepperKey",
@@ -330,6 +331,7 @@
         "databaseURLKey": {"$ref": "#/$defs/secretKey"},
         "databaseReadURLKey": {"$ref": "#/$defs/secretKey"},
         "rpcURLsKey": {"$ref": "#/$defs/secretKey"},
+        "ensRPCURLsKey": {"$ref": "#/$defs/secretKey"},
         "apiKeyPepperKey": {"$ref": "#/$defs/secretKey"},
         "sessionPepperKey": {"$ref": "#/$defs/secretKey"},
         "x402FingerprintPepperKey": {"$ref": "#/$defs/secretKey"},
@@ -354,6 +356,7 @@
         "databaseURLRemoteKey",
         "databaseReadURLRemoteKey",
         "rpcURLsRemoteKey",
+        "ensRPCURLsRemoteKey",
         "apiKeyPepperRemoteKey",
         "sessionPepperRemoteKey",
         "x402FingerprintPepperRemoteKey",
@@ -382,6 +385,7 @@
         "databaseURLRemoteKey": {"type": "string", "minLength": 1},
         "databaseReadURLRemoteKey": {"type": "string"},
         "rpcURLsRemoteKey": {"type": "string", "minLength": 1},
+        "ensRPCURLsRemoteKey": {"type": "string"},
         "apiKeyPepperRemoteKey": {"type": "string", "minLength": 1},
         "sessionPepperRemoteKey": {"type": "string"},
         "x402FingerprintPepperRemoteKey": {"type": "string"},
@@ -409,6 +413,7 @@
         "security",
         "user_auth",
         "billing",
+        "ens",
         "verification",
         "sourcify",
         "adapters"
@@ -550,8 +555,9 @@
         },
         "features": {
           "type": "object",
-          "required": ["user_auth", "user_api_keys", "x402_billing"],
+          "required": ["ens", "user_auth", "user_api_keys", "x402_billing"],
           "properties": {
+            "ens": {"type": "boolean"},
             "user_auth": {"type": "boolean"},
             "user_api_keys": {"type": "boolean"},
             "x402_billing": {"type": "boolean"}
@@ -718,6 +724,7 @@
                   "listAddressInternalTransactions",
                   "listAddressERC20Transfers",
                   "listAddressNFTTransfers",
+                  "listAddressNames",
                   "listAddressERC20Balances",
                   "listAddressNFTBalances",
                   "listTokens",
@@ -749,6 +756,44 @@
                 }
               }
             }
+          }
+        },
+        "ens": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "official_gateways", "custom", "resolution_freshness",
+            "snapshot_ttl", "failure_ttl", "request_timeout",
+            "max_response_bytes", "max_ccip_depth",
+            "max_batch_addresses", "max_concurrency"
+          ],
+          "properties": {
+            "official_gateways": {
+              "type": "array", "minItems": 1, "maxItems": 4,
+              "items": {"type": "string", "format": "uri", "pattern": "^https://"}
+            },
+            "custom": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["registry", "universal_resolver", "coin_type", "gateways"],
+              "properties": {
+                "registry": {"type": "string"},
+                "universal_resolver": {"type": "string"},
+                "coin_type": {"type": "string"},
+                "gateways": {
+                  "type": "array", "maxItems": 4,
+                  "items": {"type": "string", "format": "uri", "pattern": "^https://"}
+                }
+              }
+            },
+            "resolution_freshness": {"type": "string", "minLength": 2},
+            "snapshot_ttl": {"type": "string", "minLength": 2},
+            "failure_ttl": {"type": "string", "minLength": 2},
+            "request_timeout": {"type": "string", "minLength": 2},
+            "max_response_bytes": {"type": "integer", "minimum": 1, "maximum": 8388608},
+            "max_ccip_depth": {"type": "integer", "minimum": 1, "maximum": 8},
+            "max_batch_addresses": {"type": "integer", "minimum": 1, "maximum": 100},
+            "max_concurrency": {"type": "integer", "minimum": 1, "maximum": 16}
           }
         },
         "observability": {

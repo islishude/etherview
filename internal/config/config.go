@@ -56,6 +56,7 @@ type Config struct {
 	Sourcify      SourcifyConfig      `yaml:"sourcify"`
 	UserAuth      UserAuthConfig      `yaml:"user_auth"`
 	Billing       BillingConfig       `yaml:"billing"`
+	ENS           ENSConfig           `yaml:"ens"`
 	Adapters      AdapterConfig       `yaml:"adapters"`
 }
 
@@ -183,6 +184,7 @@ type FeatureConfig struct {
 	Sourcify               bool `yaml:"sourcify"`
 	NFTMetadata            bool `yaml:"nft_metadata"`
 	Pricing                bool `yaml:"pricing"`
+	ENS                    bool `yaml:"ens"`
 	UserAuth               bool `yaml:"user_auth"`
 	UserAPIKeys            bool `yaml:"user_api_keys"`
 	X402Billing            bool `yaml:"x402_billing"`
@@ -190,6 +192,30 @@ type FeatureConfig struct {
 	SafeProxyDetection     bool `yaml:"safe_proxy_detection"`
 	DiamondProxyDetection  bool `yaml:"diamond_proxy_detection"`
 	ProxyDetectionV2Public bool `yaml:"proxy_detection_v2_public"`
+}
+
+// ENSConfig bounds the optional current-name capability. OfficialRPCEndpoints
+// is secret-only and is populated from ETHERVIEW_ENS_RPC_URLS(_FILE), never
+// from ConfigMap-backed YAML.
+type ENSConfig struct {
+	OfficialRPCEndpoints []RPCEndpoint   `yaml:"-"`
+	OfficialGateways     []string        `yaml:"official_gateways"`
+	Custom               ENSCustomConfig `yaml:"custom"`
+	ResolutionFreshness  time.Duration   `yaml:"resolution_freshness"`
+	SnapshotTTL          time.Duration   `yaml:"snapshot_ttl"`
+	FailureTTL           time.Duration   `yaml:"failure_ttl"`
+	RequestTimeout       time.Duration   `yaml:"request_timeout"`
+	MaxResponseBytes     int64           `yaml:"max_response_bytes"`
+	MaxCCIPDepth         int             `yaml:"max_ccip_depth"`
+	MaxBatchAddresses    int             `yaml:"max_batch_addresses"`
+	MaxConcurrency       int             `yaml:"max_concurrency"`
+}
+
+type ENSCustomConfig struct {
+	Registry          string   `yaml:"registry"`
+	UniversalResolver string   `yaml:"universal_resolver"`
+	CoinType          string   `yaml:"coin_type"`
+	Gateways          []string `yaml:"gateways"`
 }
 
 type SecurityConfig struct {
@@ -298,12 +324,10 @@ type AdapterConfig struct {
 	S3PathStyle      bool          `yaml:"s3_path_style"`
 	S3MaxObjectBytes int64         `yaml:"s3_max_object_bytes"`
 	PriceBaseURL     string        `yaml:"price_base_url"`
-	NameBaseURL      string        `yaml:"name_base_url"`
 	FetchTimeout     time.Duration `yaml:"fetch_timeout"`
 	MaxResponseBytes int           `yaml:"max_response_bytes"`
 	MaxRedirects     int           `yaml:"max_redirects"`
 	PriceFreshness   time.Duration `yaml:"price_freshness"`
-	NameFreshness    time.Duration `yaml:"name_freshness"`
 	FailureTTL       time.Duration `yaml:"failure_ttl"`
 }
 
@@ -369,12 +393,23 @@ func Default() Config {
 			MaxDocumentBytes: 2 << 20,
 			MaxRedirects:     3,
 		},
+		ENS: ENSConfig{
+			OfficialGateways:    []string{"https://ccip-v3.ens.xyz"},
+			ResolutionFreshness: 15 * time.Minute,
+			SnapshotTTL:         30 * time.Minute,
+			FailureTTL:          30 * time.Second,
+			RequestTimeout:      8 * time.Second,
+			MaxResponseBytes:    1 << 20,
+			MaxCCIPDepth:        4,
+			MaxBatchAddresses:   100,
+			MaxConcurrency:      8,
+		},
 		Adapters: AdapterConfig{
 			Namespace: "etherview", ConnectTimeout: 2 * time.Second,
 			OperationTimeout: 500 * time.Millisecond, RedisCacheTTL: 30 * time.Second,
 			S3Prefix: "etherview", S3MaxObjectBytes: 16 << 20,
 			FetchTimeout: 5 * time.Second, MaxResponseBytes: 1 << 20, MaxRedirects: 2,
-			PriceFreshness: 5 * time.Minute, NameFreshness: 24 * time.Hour, FailureTTL: 30 * time.Second,
+			PriceFreshness: 5 * time.Minute, FailureTTL: 30 * time.Second,
 		},
 		Security: SecurityConfig{
 			AnonymousRate:  5,
@@ -697,6 +732,9 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("metadata.ipfs_gateway must be an absolute HTTPS URL without credentials or fragment"))
 		}
 	}
+	if err := validateENSConfig(c.ENS, c.Features.ENS); err != nil {
+		errs = append(errs, err)
+	}
 	if _, err := NormalizeRoles(c.Runtime.Roles); err != nil {
 		errs = append(errs, err)
 	}
@@ -808,7 +846,6 @@ func (c Config) Validate() error {
 	}
 	for name, raw := range map[string]string{
 		"adapters.price_base_url": c.Adapters.PriceBaseURL,
-		"adapters.name_base_url":  c.Adapters.NameBaseURL,
 	} {
 		if raw == "" {
 			continue
@@ -832,9 +869,6 @@ func (c Config) Validate() error {
 	}
 	if c.Adapters.PriceFreshness <= 0 || c.Adapters.PriceFreshness > 24*time.Hour {
 		errs = append(errs, errors.New("adapters.price_freshness must be between 1ns and 24h"))
-	}
-	if c.Adapters.NameFreshness <= 0 || c.Adapters.NameFreshness > 30*24*time.Hour {
-		errs = append(errs, errors.New("adapters.name_freshness must be between 1ns and 720h"))
 	}
 	if c.Adapters.FailureTTL <= 0 || c.Adapters.FailureTTL > time.Hour {
 		errs = append(errs, errors.New("adapters.failure_ttl must be between 1ns and 1h"))
@@ -951,6 +985,101 @@ func (c Config) ValidateForRoles(roles []string) error {
 		if len(c.Billing.FacilitatorAllowedCIDRs) == 0 {
 			errs = append(errs, errors.New("API role x402 billing requires facilitator_allowed_cidrs"))
 		}
+	}
+	if needsAPI && c.Features.ENS {
+		if len(c.ENS.OfficialRPCEndpoints) == 0 && (c.Chain.ID != 1 || len(c.RPC.Endpoints) == 0) {
+			errs = append(errs, errors.New(
+				"API role ENS requires ETHERVIEW_ENS_RPC_URLS or an explored Ethereum Mainnet RPC endpoint",
+			))
+		}
+		if c.ENS.Custom.UniversalResolver != "" && len(c.RPC.Endpoints) == 0 {
+			errs = append(errs, errors.New("API role custom ENS requires a current-chain RPC endpoint"))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func validateENSConfig(cfg ENSConfig, enabled bool) error {
+	var errs []error
+	if cfg.ResolutionFreshness < time.Minute || cfg.ResolutionFreshness > 24*time.Hour {
+		errs = append(errs, errors.New("ens.resolution_freshness must be between 1m and 24h"))
+	}
+	if cfg.SnapshotTTL < cfg.ResolutionFreshness || cfg.SnapshotTTL > 24*time.Hour {
+		errs = append(errs, errors.New("ens.snapshot_ttl must be at least resolution_freshness and at most 24h"))
+	}
+	if cfg.FailureTTL < time.Second || cfg.FailureTTL > time.Hour {
+		errs = append(errs, errors.New("ens.failure_ttl must be between 1s and 1h"))
+	}
+	if cfg.RequestTimeout < 100*time.Millisecond || cfg.RequestTimeout > 30*time.Second {
+		errs = append(errs, errors.New("ens.request_timeout must be between 100ms and 30s"))
+	}
+	if cfg.MaxResponseBytes <= 0 || cfg.MaxResponseBytes > 8<<20 {
+		errs = append(errs, errors.New("ens.max_response_bytes must be between 1 and 8388608"))
+	}
+	if cfg.MaxCCIPDepth <= 0 || cfg.MaxCCIPDepth > 8 {
+		errs = append(errs, errors.New("ens.max_ccip_depth must be between 1 and 8"))
+	}
+	if cfg.MaxBatchAddresses <= 0 || cfg.MaxBatchAddresses > 100 {
+		errs = append(errs, errors.New("ens.max_batch_addresses must be between 1 and 100"))
+	}
+	if cfg.MaxConcurrency <= 0 || cfg.MaxConcurrency > 16 {
+		errs = append(errs, errors.New("ens.max_concurrency must be between 1 and 16"))
+	}
+	if enabled && len(cfg.OfficialGateways) == 0 {
+		errs = append(errs, errors.New("ens.official_gateways is required when ENS is enabled"))
+	}
+	if len(cfg.OfficialGateways) > 4 || len(cfg.Custom.Gateways) > 4 {
+		errs = append(errs, errors.New("ENS gateway lists must contain at most 4 URLs"))
+	}
+	for field, gateways := range map[string][]string{
+		"ens.official_gateways": cfg.OfficialGateways,
+		"ens.custom.gateways":   cfg.Custom.Gateways,
+	} {
+		seen := make(map[string]struct{}, len(gateways))
+		for index, raw := range gateways {
+			parsed, err := url.Parse(raw)
+			if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil ||
+				parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
+				len(raw) > 2048 || strings.HasSuffix(parsed.Host, ":") ||
+				(parsed.Port() != "" && parsed.Port() != "443") || unsafeURLPath(parsed.EscapedPath()) {
+				errs = append(errs, fmt.Errorf("%s[%d] must be a bounded absolute HTTPS URL without credentials, query, fragment, or path traversal", field, index))
+				continue
+			}
+			canonical := strings.ToLower(parsed.Scheme + "://" + parsed.Host + parsed.EscapedPath())
+			if _, exists := seen[canonical]; exists {
+				errs = append(errs, fmt.Errorf("%s contains a duplicate URL", field))
+			}
+			seen[canonical] = struct{}{}
+		}
+	}
+	registrySet := cfg.Custom.Registry != ""
+	resolverSet := cfg.Custom.UniversalResolver != ""
+	if registrySet != resolverSet {
+		errs = append(errs, errors.New("ens.custom.registry and ens.custom.universal_resolver must be configured together"))
+	}
+	for field, value := range map[string]string{
+		"ens.custom.registry":           cfg.Custom.Registry,
+		"ens.custom.universal_resolver": cfg.Custom.UniversalResolver,
+	} {
+		if value != "" && (!validFixedHex(value, 20) || strings.EqualFold(value, "0x"+strings.Repeat("0", 40))) {
+			errs = append(errs, fmt.Errorf("%s must be a non-zero 20-byte address", field))
+		}
+	}
+	if cfg.Custom.CoinType != "" {
+		coinType, ok := new(big.Int).SetString(cfg.Custom.CoinType, 10)
+		if !resolverSet || !ok || coinType.Sign() <= 0 || coinType.BitLen() > 256 || coinType.String() != cfg.Custom.CoinType {
+			errs = append(errs, errors.New("ens.custom.coin_type must be a canonical positive uint256 and requires a custom resolver"))
+		}
+	}
+	seenEndpoints := make(map[string]struct{}, len(cfg.OfficialRPCEndpoints))
+	for index, endpoint := range cfg.OfficialRPCEndpoints {
+		if err := endpoint.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("ENS RPC endpoint %d: %w", index, err))
+		}
+		if _, exists := seenEndpoints[endpoint.Name]; exists && endpoint.Name != "" {
+			errs = append(errs, fmt.Errorf("ENS RPC endpoint name %q is duplicated", endpoint.Name))
+		}
+		seenEndpoints[endpoint.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
 }
@@ -1599,8 +1728,16 @@ func applyEnvironmentForRoles(
 	setString(lookup, "S3_PREFIX", &cfg.Adapters.S3Prefix)
 	setString(lookup, "S3_REGION", &cfg.Adapters.S3Region)
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
-	setString(lookup, "NAME_BASE_URL", &cfg.Adapters.NameBaseURL)
+	setString(lookup, "ENS_CUSTOM_REGISTRY", &cfg.ENS.Custom.Registry)
+	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
+	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
+	if value, ok := lookup(envPrefix + "ENS_OFFICIAL_GATEWAYS"); ok {
+		cfg.ENS.OfficialGateways = splitCSV(value)
+	}
+	if value, ok := lookup(envPrefix + "ENS_CUSTOM_GATEWAYS"); ok {
+		cfg.ENS.Custom.Gateways = splitCSV(value)
+	}
 	if err := setUint64(lookup, "CHAIN_ID", &cfg.Chain.ID); err != nil {
 		return err
 	}
@@ -1662,6 +1799,18 @@ func applyEnvironmentForRoles(
 		return err
 	}
 	if err := setInt(lookup, "ADAPTER_MAX_REDIRECTS", &cfg.Adapters.MaxRedirects); err != nil {
+		return err
+	}
+	if err := setInt64(lookup, "ENS_MAX_RESPONSE_BYTES", &cfg.ENS.MaxResponseBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "ENS_MAX_CCIP_DEPTH", &cfg.ENS.MaxCCIPDepth); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "ENS_MAX_BATCH_ADDRESSES", &cfg.ENS.MaxBatchAddresses); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "ENS_MAX_CONCURRENCY", &cfg.ENS.MaxConcurrency); err != nil {
 		return err
 	}
 	if err := setInt64(lookup, "S3_MAX_OBJECT_BYTES", &cfg.Adapters.S3MaxObjectBytes); err != nil {
@@ -1749,8 +1898,11 @@ func applyEnvironmentForRoles(
 		"ADAPTER_OPERATION_TIMEOUT":    &cfg.Adapters.OperationTimeout,
 		"REDIS_CACHE_TTL":              &cfg.Adapters.RedisCacheTTL,
 		"ADAPTER_PRICE_FRESHNESS":      &cfg.Adapters.PriceFreshness,
-		"ADAPTER_NAME_FRESHNESS":       &cfg.Adapters.NameFreshness,
 		"ADAPTER_FAILURE_TTL":          &cfg.Adapters.FailureTTL,
+		"ENS_RESOLUTION_FRESHNESS":     &cfg.ENS.ResolutionFreshness,
+		"ENS_SNAPSHOT_TTL":             &cfg.ENS.SnapshotTTL,
+		"ENS_FAILURE_TTL":              &cfg.ENS.FailureTTL,
+		"ENS_REQUEST_TIMEOUT":          &cfg.ENS.RequestTimeout,
 		"VERIFICATION_TIMEOUT":         &cfg.Verification.Timeout,
 		"SOURCIFY_TIMEOUT":             &cfg.Sourcify.Timeout,
 		"SOURCIFY_POLL_INTERVAL":       &cfg.Sourcify.PollInterval,
@@ -1776,6 +1928,7 @@ func applyEnvironmentForRoles(
 		"FEATURE_SOURCIFY":                                    &cfg.Features.Sourcify,
 		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":                                     &cfg.Features.Pricing,
+		"FEATURE_ENS":                                         &cfg.Features.ENS,
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,
 		"FEATURE_USER_API_KEYS":                               &cfg.Features.UserAPIKeys,
 		"FEATURE_X402_BILLING":                                &cfg.Features.X402Billing,
@@ -1812,6 +1965,21 @@ func applyEnvironmentForRoles(
 			return err
 		}
 		cfg.RPC.Endpoints = endpoints
+	}
+	if apiRole {
+		ensRPCURLs, err := lookupValueOrFile("ENS_RPC_URLS", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		if ensRPCURLs != "" {
+			endpoints, err := parseEnvironmentRPCEndpointsNamed("ETHERVIEW_ENS_RPC_URLS", ensRPCURLs, []string{"state"})
+			if err != nil {
+				return err
+			}
+			cfg.ENS.OfficialRPCEndpoints = endpoints
+		}
+	} else {
+		cfg.ENS.OfficialRPCEndpoints = nil
 	}
 	return nil
 }
@@ -1860,20 +2028,24 @@ func parseSecretHeaders(value string) (map[string]string, error) {
 // policy. Parse failures never include the raw value because RPC URLs may
 // contain credentials.
 func parseEnvironmentRPCEndpoints(value string) ([]RPCEndpoint, error) {
+	return parseEnvironmentRPCEndpointsNamed("ETHERVIEW_RPC_URLS", value, []string{"all"})
+}
+
+func parseEnvironmentRPCEndpointsNamed(name, value string, defaultPurposes []string) ([]RPCEndpoint, error) {
 	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, "[") {
 		decoder := json.NewDecoder(strings.NewReader(value))
 		decoder.DisallowUnknownFields()
 		var endpoints []RPCEndpoint
 		if err := decoder.Decode(&endpoints); err != nil {
-			return nil, errors.New("ETHERVIEW_RPC_URLS contains invalid endpoint JSON")
+			return nil, fmt.Errorf("%s contains invalid endpoint JSON", name)
 		}
 		var trailing any
 		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-			return nil, errors.New("ETHERVIEW_RPC_URLS contains invalid endpoint JSON")
+			return nil, fmt.Errorf("%s contains invalid endpoint JSON", name)
 		}
 		if len(endpoints) == 0 {
-			return nil, errors.New("ETHERVIEW_RPC_URLS endpoint JSON must not be empty")
+			return nil, fmt.Errorf("%s endpoint JSON must not be empty", name)
 		}
 		return endpoints, nil
 	}
@@ -1882,12 +2054,12 @@ func parseEnvironmentRPCEndpoints(value string) ([]RPCEndpoint, error) {
 		raw = strings.TrimSpace(raw)
 		if raw != "" {
 			endpoints = append(endpoints, RPCEndpoint{
-				Name: fmt.Sprintf("env-%d", len(endpoints)+1), URL: raw, Purposes: []string{"all"},
+				Name: fmt.Sprintf("env-%d", len(endpoints)+1), URL: raw, Purposes: slices.Clone(defaultPurposes),
 			})
 		}
 	}
 	if len(endpoints) == 0 {
-		return nil, errors.New("ETHERVIEW_RPC_URLS must contain at least one endpoint")
+		return nil, fmt.Errorf("%s must contain at least one endpoint", name)
 	}
 	return endpoints, nil
 }

@@ -259,9 +259,10 @@ must publish all six deployed stages, retain the orphan branch, update hourly
 analytics, recover after RPC and PostgreSQL pauses plus an API restart, expose
 the same API/SSE/embedded-SPA behavior, pass bounded load, and finish with
 equivalent normalized durable and public state. Trace, mempool, historical
-state, and NFT metadata are enabled. Verification, Sourcify, and pricing are
+state, and NFT metadata are enabled. Verification, Sourcify, pricing, and ENS are
 explicitly disabled in this ordinary runtime suite because they require the
-official external compiler catalog or other external-service fixtures.
+official external compiler catalog, Ethereum Mainnet RPC, or other
+external-service fixtures.
 
 The pinned Anvil fixture currently emits `blobGasPrice` without
 `blobGasUsed` on ordinary receipts. A bounded test-only Go RPC adapter removes

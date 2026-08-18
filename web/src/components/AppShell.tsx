@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { normalize as normalizeENSName } from "viem/ens";
 
 import { usePublicConfig } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthProvider";
@@ -8,19 +9,32 @@ import etherviewMark from "@/assets/etherview-mark.svg";
 import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
+import { AddressNamesProvider } from "@/ens/AddressNamesProvider";
 
 export function AppShell() {
   const { i18n, t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [searchError, setSearchError] = useState("");
   const publicConfig = usePublicConfig();
   const auth = useAuth();
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const normalized = query.trim();
-    if (normalized) void navigate({ to: "/search", search: { q: normalized } });
+    let normalized = query.trim();
+    if (!normalized) return;
+    if (normalized.includes(".")) {
+      try {
+        normalized = normalizeENSName(normalized);
+      } catch {
+        setSearchError(t("actions.invalidENSName"));
+        return;
+      }
+    }
+    setSearchError("");
+    setQuery(normalized);
+    void navigate({ to: "/search", search: { q: normalized } });
   };
 
   const toggleLanguage = () => {
@@ -29,7 +43,8 @@ export function AppShell() {
   };
 
   return (
-    <AppFrame className="app-frame">
+    <AddressNamesProvider>
+      <AppFrame className="app-frame">
       <a className="skip-link" href="#main-content">
         {t("skip")}
       </a>
@@ -49,12 +64,18 @@ export function AppShell() {
             </label>
             <input
               id="global-search-input"
-              onChange={(event) => setQuery(event.target.value)}
+              aria-describedby={searchError ? "global-search-error" : undefined}
+              aria-invalid={Boolean(searchError)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSearchError("");
+              }}
               placeholder={t("actions.searchPlaceholder")}
               type="search"
               value={query}
             />
             <button type="submit">{t("actions.search")}</button>
+            {searchError ? <small className="global-search-error" id="global-search-error" role="alert">{searchError}</small> : null}
           </form>
 
           <div className="header-controls">
@@ -130,6 +151,7 @@ export function AppShell() {
           <span>{t("footer.description")}</span>
         </div>
       </footer>
-    </AppFrame>
+      </AppFrame>
+    </AddressNamesProvider>
   );
 }

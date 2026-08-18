@@ -34,7 +34,8 @@ batch semantics are not core v1 scope.
 | P64 | [NFT Metadata Web](docs/plans/P64-nft-metadata-web.md) | done | P20, P30, P40, P50, P60 | Canonical NFT metadata projection and guarded external-image navigation |
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys with a tabbed `/account` workspace |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P66 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P67 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -264,6 +265,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   account/administrator views plus operational/deployment closure are
   complete. The payment protocol remains accountless; the explicit opt-in Base
   Sepolia transaction and reconciliation gate remains open.
+- P67 is complete: explicitly enabled ENS recognition normalizes browser input
+  with Viem and Go input with `adraffy/go-ens-normalize`, while
+  `wealdtech/go-ens` supplies hashing and DNS wire encoding. Exact-block
+  Universal Resolver calls, bounded CCIP-Read, official-before-custom fallback,
+  immutable PostgreSQL generations, snapshot-stable search/address APIs, and
+  verified primary-name presentation pass PostgreSQL race, browser,
+  production-schema, monolith/six-role runtime, security, license, and common
+  gates. Reviewable commands and results remain in
+  [P67 evidence](docs/plans/P67-ens-primary-names.md#evidence).
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum
@@ -311,7 +321,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Global Release Gates
 
-- [ ] Every P00–P66 plan is `done` with reviewable evidence.
+- [ ] Every P00–P67 plan is `done` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

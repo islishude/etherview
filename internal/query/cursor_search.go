@@ -24,15 +24,18 @@ type blockCursor struct {
 }
 
 type searchCursor struct {
-	ChainID             string `json:"chain_id"`
-	SnapshotNumber      uint64 `json:"snapshot_number"`
-	SnapshotHash        string `json:"snapshot_hash"`
-	Generation          int64  `json:"generation"`
-	Query               string `json:"query"`
-	ResolvedNameAddress string `json:"resolved_name_address,omitempty"`
-	AfterRank           int    `json:"after_rank"`
-	AfterKind           string `json:"after_kind"`
-	AfterKey            string `json:"after_key"`
+	ChainID                   string `json:"chain_id"`
+	SnapshotNumber            uint64 `json:"snapshot_number"`
+	SnapshotHash              string `json:"snapshot_hash"`
+	Generation                int64  `json:"generation"`
+	Query                     string `json:"query"`
+	ResolvedName              string `json:"resolved_name,omitempty"`
+	ResolvedNameAddress       string `json:"resolved_name_address,omitempty"`
+	ResolvedNameObservationID int64  `json:"resolved_name_observation_id,omitempty"`
+	ResolvedNameSource        string `json:"resolved_name_source,omitempty"`
+	AfterRank                 int    `json:"after_rank"`
+	AfterKind                 string `json:"after_kind"`
+	AfterKey                  string `json:"after_key"`
 }
 
 func (r *PostgresReader) currentBlockCursor(ctx context.Context, tx *sql.Tx) (blockCursor, error) {
@@ -177,7 +180,7 @@ func (r *PostgresReader) searchText(
 	value string,
 	snapshotNumber uint64,
 	generation int64,
-	resolvedNameAddress string,
+	resolvedNameObservationID int64,
 	boundary *searchCursor,
 	limit int,
 ) ([]gen.SearchResult, error) {
@@ -189,7 +192,7 @@ func (r *PostgresReader) searchText(
 	rows, err := queryer.QueryContext(ctx, searchTextSQL,
 		r.chainID, strings.ToLower(value), strconv.FormatUint(snapshotNumber, 10),
 		generation, hasBoundary, afterRank, afterKind, afterKey, limit,
-		strings.ToLower(resolvedNameAddress),
+		resolvedNameObservationID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search indexed names and labels: %w", err)
@@ -200,10 +203,11 @@ func (r *PostgresReader) searchText(
 		var kind, key, label string
 		var rank int64
 		var canonical sql.NullBool
-		if err := rows.Scan(&kind, &key, &label, &rank, &canonical); err != nil {
+		var nameSource sql.NullString
+		if err := rows.Scan(&kind, &key, &label, &rank, &canonical, &nameSource); err != nil {
 			return nil, fmt.Errorf("scan indexed search result: %w", err)
 		}
-		result, err := normalizeSearchResult(kind, key, label, rank, canonical)
+		result, err := normalizeSearchResult(kind, key, label, rank, canonical, nameSource)
 		if err != nil {
 			return nil, err
 		}
@@ -226,10 +230,17 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 		return fmt.Errorf("%w: search cursor identity is invalid", ErrInvalidCursor)
 	}
 	if externalNameQuery(query) {
-		if _, err := ethrpc.ParseAddress(cursor.ResolvedNameAddress); err != nil {
+		if cursor.ResolvedNameObservationID <= 0 || cursor.ResolvedName == "" ||
+			(cursor.ResolvedNameSource != "ens" && cursor.ResolvedNameSource != "custom_ens") {
 			return fmt.Errorf("%w: search cursor name identity is invalid", ErrInvalidCursor)
 		}
-	} else if cursor.ResolvedNameAddress != "" {
+		if cursor.ResolvedNameAddress != "" {
+			if _, err := ethrpc.ParseAddress(cursor.ResolvedNameAddress); err != nil {
+				return fmt.Errorf("%w: search cursor name address is invalid", ErrInvalidCursor)
+			}
+		}
+	} else if cursor.ResolvedNameAddress != "" || cursor.ResolvedName != "" ||
+		cursor.ResolvedNameObservationID != 0 || cursor.ResolvedNameSource != "" {
 		return fmt.Errorf("%w: unexpected search cursor name identity", ErrInvalidCursor)
 	}
 	hash, err := ethrpc.ParseHash(cursor.SnapshotHash)
@@ -245,9 +256,12 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 	if !valid {
 		return fmt.Errorf("%w: canonical branch changed", ErrInvalidCursor)
 	}
-	if cursor.ResolvedNameAddress != "" {
+	if cursor.ResolvedNameObservationID > 0 {
 		visible, err := r.resolvedNameVisible(
-			ctx, tx, query, cursor.ResolvedNameAddress, cursor.SnapshotNumber, cursor.Generation,
+			ctx, tx, resolvedNameGate{
+				Name: cursor.ResolvedName, Address: cursor.ResolvedNameAddress,
+				Source: cursor.ResolvedNameSource, ObservationID: cursor.ResolvedNameObservationID,
+			}, cursor.Generation,
 		)
 		if err != nil {
 			return err
@@ -262,23 +276,27 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 func (r *PostgresReader) resolvedNameVisible(
 	ctx context.Context,
 	tx *sql.Tx,
-	name, address string,
-	snapshotNumber uint64,
+	gate resolvedNameGate,
 	generation int64,
 ) (bool, error) {
-	parsed, err := ethrpc.ParseAddress(address)
-	if err != nil {
-		return false, fmt.Errorf("validate resolved name address: %w", err)
+	var address []byte
+	if gate.Address != "" {
+		parsed, err := ethrpc.ParseAddress(gate.Address)
+		if err != nil {
+			return false, fmt.Errorf("validate resolved name address: %w", err)
+		}
+		address = parsed.Bytes()
 	}
 	var visible bool
 	if err := tx.QueryRowContext(
 		ctx,
 		validateResolvedNameSQL,
 		r.chainID,
-		strings.ToLower(strings.TrimSpace(name)),
-		strconv.FormatUint(snapshotNumber, 10),
+		gate.ObservationID,
+		gate.Name,
+		gate.Source,
 		generation,
-		parsed.Bytes(),
+		address,
 	).Scan(&visible); err != nil {
 		return false, fmt.Errorf("validate resolved name snapshot: %w", err)
 	}
@@ -303,7 +321,12 @@ func canonicalSearchBoundaryKey(value string) string {
 	return strings.ToLower(value)
 }
 
-func normalizeSearchResult(kind, key, label string, rank int64, canonical sql.NullBool) (gen.SearchResult, error) {
+func normalizeSearchResult(
+	kind, key, label string,
+	rank int64,
+	canonical sql.NullBool,
+	nameSource sql.NullString,
+) (gen.SearchResult, error) {
 	if label == "" || len(label) > 4096 {
 		return gen.SearchResult{}, errors.New("database returned an invalid search label")
 	}
@@ -338,6 +361,13 @@ func normalizeSearchResult(kind, key, label string, rank int64, canonical sql.Nu
 		key = strings.ToLower(hash.String())
 	}
 	result := gen.SearchResult{Kind: resultKind, Key: key, Label: label, Rank: int(rank)}
+	if nameSource.Valid {
+		source := gen.SearchResultNameSource(nameSource.String)
+		if resultKind != gen.SearchResultKindAddress || !source.Valid() {
+			return gen.SearchResult{}, errors.New("database returned invalid search name source")
+		}
+		result.NameSource = &source
+	}
 	if canonical.Valid {
 		value := canonical.Bool
 		result.Canonical = &value
@@ -410,33 +440,46 @@ WITH visible_documents AS (
     SELECT document.*
     FROM search_catalog_documents AS document
     WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $4
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
+      AND document.valid_from_generation <= $5
+      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $5)
 )
 SELECT EXISTS (
     SELECT 1
-    FROM visible_documents AS document
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = document.chain_id
-     AND canonical.number = document.block_number
-     AND canonical.block_hash = document.block_hash
-    WHERE document.source_kind = 'name'
-      AND lower(document.result_label) = $2
-      AND document.target_address = $5
-      AND document.block_number <= $3::numeric
-      AND document.source_canonical IS TRUE
-      AND document.id = (
-          SELECT latest.id
-          FROM visible_documents AS latest
-          JOIN canonical_blocks AS latest_canonical
-            ON latest_canonical.chain_id = latest.chain_id
-           AND latest_canonical.number = latest.block_number
-           AND latest_canonical.block_hash = latest.block_hash
-          WHERE latest.source_kind = 'name'
-            AND latest.logical_identity = document.logical_identity
-            AND latest.block_number <= $3::numeric
-            AND latest.source_canonical IS TRUE
-          ORDER BY latest.block_number DESC, latest.valid_from_generation DESC, latest.id DESC
-          LIMIT 1
+    FROM ens_name_observations AS observation
+    WHERE observation.chain_id = $1::numeric
+      AND observation.id = $2::bigint
+      AND observation.direction = 'forward'
+      AND observation.lookup_key = $3
+      AND observation.name = $3
+      AND observation.source = $4
+      AND (
+          (
+              observation.outcome = 'not_found'
+              AND $6::bytea IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM visible_documents AS document
+                  WHERE document.source_kind = 'name'
+                    AND document.logical_identity = lower(observation.name)
+              )
+          )
+          OR (
+              observation.outcome = 'resolved'
+              AND observation.address = $6::bytea
+              AND EXISTS (
+                  SELECT 1 FROM visible_documents AS document
+                  WHERE document.source_kind = 'name'
+                    AND document.name_observation_id = observation.id
+                    AND document.source_canonical IS TRUE
+                    AND (
+                        document.block_hash IS NULL
+                        OR EXISTS (
+                            SELECT 1 FROM canonical_blocks AS canonical
+                            WHERE canonical.chain_id = document.chain_id
+                              AND canonical.number = document.block_number
+                              AND canonical.block_hash = document.block_hash
+                        )
+                    )
+              )
+          )
       )
 )`

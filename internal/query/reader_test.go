@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/api/gen"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -681,7 +682,7 @@ func TestCoreSearchCoversAddressBlockNumberAndHash(t *testing.T) {
 	db := testDatabase(t,
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
-		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(5)},
+		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(6)},
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{contains: "canonical.number = $2::numeric", columns: columns(4), rows: [][]driver.Value{{
@@ -718,8 +719,8 @@ func TestSearchTreatsLowNumericAddressAsAddressBeforeBlockNumber(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(5),
-			rows: [][]driver.Value{{"contract", address, "Artifact", int64(104), nil}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(6),
+			rows: [][]driver.Value{{"contract", address, "Artifact", int64(104), nil, nil}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -740,11 +741,11 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(5),
+			contains: "FROM search_catalog_documents AS document", columns: columns(6),
 			rows: [][]driver.Value{
-				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), nil},
-				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true},
-				{"token", tokenAddress, "Example Token", int64(65), true},
+				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), nil, nil},
+				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens"},
+				{"token", tokenAddress, "Example Token", int64(65), true, nil},
 			},
 		},
 	)
@@ -788,8 +789,8 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]driver.Value{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]driver.Value{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(5),
-			rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(6),
+			rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil, nil}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -802,11 +803,11 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 func TestSearchTextRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "FROM search_catalog_documents AS document", columns: columns(5),
-		rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil}},
+		contains: "FROM search_catalog_documents AS document", columns: columns(6),
+		rows: [][]driver.Value{{"transaction", "not-a-hash", "bad", int64(80), nil, nil}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
-	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, "", nil, 20)
+	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, 0, nil, 20)
 	if err == nil || !strings.Contains(err.Error(), "invalid transaction") {
 		t.Fatalf("results=%+v error=%v", results, err)
 	}
@@ -827,8 +828,8 @@ func (err controlledNameResolverError) CapabilityDetails() (string, string, stri
 
 type failingNameResolver struct{ err error }
 
-func (resolver failingNameResolver) Resolve(context.Context, string) (string, error) {
-	return "", resolver.err
+func (resolver failingNameResolver) ResolveForward(context.Context, string) (ensresolver.ForwardResolution, error) {
+	return ensresolver.ForwardResolution{}, resolver.err
 }
 
 func TestSearchMapsOnlyControlledNameCapabilityDetails(t *testing.T) {

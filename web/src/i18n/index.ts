@@ -23,6 +23,7 @@ const resources = {
       actions: {
         search: "Search",
         searchPlaceholder: "Block, transaction, address, token or name",
+        invalidENSName: "Enter a valid ENS name",
         toggleTheme: "Switch color theme",
         toggleLanguage: "切换到中文",
         connect: "Connect wallet",
@@ -1467,6 +1468,7 @@ const resources = {
       actions: {
         search: "搜索",
         searchPlaceholder: "区块、交易、地址、代币或名称",
+        invalidENSName: "请输入有效的 ENS 名称",
         toggleTheme: "切换颜色主题",
         toggleLanguage: "Switch to English",
         connect: "连接钱包",

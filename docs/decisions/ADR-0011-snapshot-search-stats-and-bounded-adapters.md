@@ -2,6 +2,10 @@
 
 Status: accepted
 
+The external-name-specific decisions below are superseded by
+[ADR-0041](ADR-0041-snapshot-stable-ens-primary-names.md). Search catalog,
+price-adapter, statistics, and maintenance decisions remain active.
+
 ## Context
 
 Search results are assembled from core chain facts, operator labels, names,

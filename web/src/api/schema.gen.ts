@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/address-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAddressNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/addresses/{address}": {
         parameters: {
             query?: never;
@@ -1159,6 +1175,21 @@ export interface components {
             data: components["schemas"]["AddressInternalTransaction"][];
             meta: components["schemas"]["Meta"];
         };
+        AddressNameLookup: {
+            address: components["schemas"]["Address"];
+            code?: string;
+            primary_name?: components["schemas"]["PrimaryName"];
+            /** @enum {string} */
+            state: "resolved" | "not_found" | "unavailable";
+        };
+        AddressNamePage: {
+            items: components["schemas"]["AddressNameLookup"][];
+            snapshot: components["schemas"]["OpaqueCursor"];
+        };
+        AddressNamePageResponse: {
+            data: components["schemas"]["AddressNamePage"];
+            meta: components["schemas"]["Meta"];
+        };
         AddressOrigin: {
             block_hash?: components["schemas"]["Hash"];
             block_number?: components["schemas"]["Quantity"];
@@ -1183,9 +1214,9 @@ export interface components {
             delegation?: components["schemas"]["DelegationBinding"];
             /** @description Whether canonical applied EIP-7702 delegation history exists at this address snapshot. */
             has_delegation_history: boolean;
-            name?: string;
             nonce: components["schemas"]["Quantity"];
             origin?: components["schemas"]["AddressOrigin"];
+            primary_name?: components["schemas"]["PrimaryName"];
             /** @enum {string} */
             type: "eoa" | "contract" | "delegated_eoa" | "unknown";
         };
@@ -1868,6 +1899,11 @@ export interface components {
             data: components["schemas"]["PendingTransaction"][];
             meta: components["schemas"]["PendingMeta"];
         };
+        PrimaryName: {
+            name: string;
+            /** @enum {string} */
+            source: "ens" | "custom_ens";
+        };
         /** @enum {string} */
         ProxyArtifactKind: "erc1967_proxy" | "transparent_proxy" | "beacon_proxy" | "uups_implementation" | "proxy_admin" | "upgradeable_beacon";
         /** @enum {string} */
@@ -2118,6 +2154,8 @@ export interface components {
             /** @enum {string} */
             kind: "block" | "transaction" | "address" | "contract" | "token" | "nft" | "label";
             label: string;
+            /** @enum {string} */
+            name_source?: "ens" | "custom_ens";
             rank: number;
         };
         SessionRevocation: {
@@ -2809,6 +2847,36 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAddressNames: {
+        parameters: {
+            query: {
+                addresses: string;
+                snapshot?: components["schemas"]["OpaqueCursor"];
+            };
+            header?: {
+                /** @description A single x402 v2 exact-EVM payment payload for this canonical resource. */
+                "PAYMENT-SIGNATURE"?: components["parameters"]["PaymentSignature"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot-stable current primary names in request order; individual unavailable entries retain their exact addresses. */
+            200: {
+                headers: {
+                    "PAYMENT-RESPONSE": components["headers"]["PaymentResponse"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressNamePageResponse"];
+                };
+            };
+            402: components["responses"]["PaymentRequired"];
+            503: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
     getAddress: {
         parameters: {
             query?: never;

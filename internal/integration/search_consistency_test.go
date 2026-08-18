@@ -5,20 +5,15 @@ package integration_test
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-	"sync"
-	"sync/atomic"
+	"math/big"
 	"testing"
 	"time"
 
-	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/httpapi"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/maintenance"
-	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -37,10 +32,6 @@ func TestSearchCatalogFunctionsRemainBoundToTheirMigrationSchema(t *testing.T) {
 	if got := catalogGeneration(t, ctx, second, secondSchema); got != 1 {
 		t.Fatalf("second generation before cross-schema write=%d", got)
 	}
-
-	// The connection's search_path is the second schema. Both operations target
-	// the first schema explicitly and therefore must execute only first-schema
-	// function/table references.
 	if _, err := second.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s.operator_labels
 		(chain_id, object_kind, object_key, label)
 		VALUES (1, 'address', $1, 'first schema')`, quoteIdentifier(firstSchema)), testAddress(941).String()); err != nil {
@@ -66,513 +57,217 @@ func TestSearchCatalogFunctionsRemainBoundToTheirMigrationSchema(t *testing.T) {
 	}
 }
 
-func TestDottedSearchRequiresFreshNameButCursorFreezesSuccessfulGate(t *testing.T) {
+func TestENSObservationsAreImmutableAndDriveSearchCatalog(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
+	core, err := store.NewPostgresRepository(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitCanonical(t, ctx, repository, testBundle(0, testHash(950), testHash(0), testHash(9_500), "fresh-name"))
+	commitCanonical(t, ctx, core, testBundle(0, testHash(99), testHash(0), testHash(999), "ens-search"))
+	repository, err := ensresolver.NewRepository(db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC().Truncate(time.Second)
-	body, _ := json.Marshal(map[string]any{
-		"name": "fresh.eth", "address": testAddress(950).String(), "registry": testAddress(951).String(),
-		"block_number": "0", "block_hash": testHash(950).String(), "observed_at": now.Add(-time.Minute),
-	})
-	fetcher := &mutableIntegrationFetcher{body: body}
-	nameService, err := adapters.NewPostgresNameService(db, 1, fetcher, adapters.NameOptions{
-		BaseURL: "https://name.example/v1", Freshness: time.Hour,
-		FailureTTL: time.Minute, Now: func() time.Time { return now },
+	first, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
+		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 1), CoinType: big.NewInt(60),
+		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(100)},
+		CreatedAt: now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index := range uint64(2) {
-		execFixture(t, ctx, db, `INSERT INTO operator_labels
-			(chain_id, object_kind, object_key, label)
-			VALUES (1, 'address', $1, 'fresh.eth')`, testAddress(9_510+index).String())
+	address := testAddress(100)
+	observation := ensresolver.Observation{
+		GenerationID: first.ID, Source: ensresolver.SourceOfficial, Direction: "forward",
+		LookupKey: "alice.eth", Outcome: ensresolver.OutcomeResolved, Name: "alice.eth",
+		Address: address, Resolver: testAddress(101), ObservedAt: now,
 	}
-	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1, NameResolver: nameService})
+	stored, err := repository.RecordObservation(ctx, observation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, cursor, err := reader.Search(ctx, "fresh.eth", "", 1)
-	if err != nil || len(first) != 1 || cursor == "" || fetcher.calls.Load() != 1 {
-		t.Fatalf("first=%+v cursor=%q fetches=%d error=%v", first, cursor, fetcher.calls.Load(), err)
+	idempotent, err := repository.RecordObservation(ctx, observation)
+	if err != nil || idempotent.ID != stored.ID {
+		t.Fatalf("idempotent observation=%+v error=%v", idempotent, err)
+	}
+	conflict := observation
+	conflict.Address = testAddress(102)
+	if _, err := repository.RecordObservation(ctx, conflict); !errors.Is(err, ensresolver.ErrIdentityConflict) {
+		t.Fatalf("conflicting observation error=%v", err)
+	}
+	var source string
+	var observationID int64
+	var open bool
+	if err := db.QueryRowContext(ctx, `SELECT name_source, name_observation_id,
+		valid_to_generation IS NULL FROM search_catalog_documents
+		WHERE chain_id = 1 AND source_kind = 'name'`).Scan(&source, &observationID, &open); err != nil {
+		t.Fatal(err)
+	}
+	if source != "ens" || observationID != stored.ID || !open {
+		t.Fatalf("search document source=%q observation=%d open=%t", source, observationID, open)
+	}
+	execFixture(t, ctx, db, `INSERT INTO operator_labels
+		(chain_id, object_kind, object_key, label)
+		VALUES (1, 'address', $1, 'alice.eth')`, testAddress(103).String())
+	resolved := ensresolver.ForwardResolution{
+		ObservationID: stored.ID, Outcome: ensresolver.OutcomeResolved,
+		Name: "alice.eth", Address: address, Source: ensresolver.SourceOfficial,
+	}
+	reader, err := query.NewPostgresReader(db, query.Options{
+		ChainID: 1, NameResolver: integrationNameResolver(func(context.Context, string) (ensresolver.ForwardResolution, error) {
+			return resolved, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPage, cursor, err := reader.Search(ctx, "Alice.Eth", "", 1)
+	if err != nil || len(firstPage) != 1 || cursor == "" {
+		t.Fatalf("first ENS page=%+v cursor=%q error=%v", firstPage, cursor, err)
 	}
 
-	now = now.Add(2 * time.Hour)
-	fetcher.setError(&metadata.FetchError{Kind: metadata.FailureTemporary, Err: errors.New("upstream secret")})
-	second, _, err := reader.Search(ctx, "fresh.eth", cursor, 1)
-	if err != nil || len(second) != 1 || fetcher.calls.Load() != 1 {
-		t.Fatalf("cursor page=%+v fetches=%d error=%v", second, fetcher.calls.Load(), err)
+	secondAt := now.Add(2 * time.Minute)
+	second, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
+		PolicyKey: first.PolicyKey, CoinType: big.NewInt(60), OfficialEndpoint: "mainnet",
+		OfficialBlock: ensresolver.BlockRef{Number: 101, Hash: testHash(101)},
+		CreatedAt:     secondAt, FreshUntil: secondAt.Add(time.Minute), RetainUntil: secondAt.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	results, next, err := reader.Search(ctx, "fresh.eth", "", 20)
-	if !errors.Is(err, httpapi.ErrUnavailable) || len(results) != 0 || next != "" || fetcher.calls.Load() != 2 {
-		t.Fatalf("expired first page=%+v next=%q fetches=%d error=%v", results, next, fetcher.calls.Load(), err)
+	noRecord, err := repository.RecordObservation(ctx, ensresolver.Observation{
+		GenerationID: second.ID, Source: ensresolver.SourceOfficial, Direction: "forward",
+		LookupKey: "alice.eth", Outcome: ensresolver.OutcomeNoRecord, Name: "alice.eth", ObservedAt: secondAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozenPage, _, err := reader.Search(ctx, "Alice.Eth", cursor, 1)
+	if err != nil || len(frozenPage) != 1 || frozenPage[0].NameSource == nil {
+		t.Fatalf("frozen ENS page=%+v error=%v", frozenPage, err)
+	}
+	resolved = ensresolver.ForwardResolution{
+		ObservationID: noRecord.ID, Outcome: ensresolver.OutcomeNoRecord,
+		Name: "alice.eth", Source: ensresolver.SourceOfficial,
+	}
+	current, _, err := reader.Search(ctx, "Alice.Eth", "", 20)
+	if err != nil || len(current) != 1 || current[0].NameSource != nil {
+		t.Fatalf("current no-record search=%+v error=%v", current, err)
+	}
+	var openDocuments int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM search_catalog_documents
+		WHERE chain_id = 1 AND source_kind = 'name' AND logical_identity = 'alice.eth'
+		  AND valid_to_generation IS NULL`).Scan(&openDocuments); err != nil {
+		t.Fatal(err)
+	}
+	if openDocuments != 0 {
+		t.Fatalf("no-record left %d open search documents", openDocuments)
+	}
+	if generation := currentCatalogGeneration(t, ctx, db); generation != 3 {
+		t.Fatalf("catalog generation=%d, want 3", generation)
 	}
 }
 
-func TestSearchRejectsNameDetachedAfterResolveBeforeSnapshot(t *testing.T) {
-	db := newMigratedPostgres(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, block := range []struct{ number, hash, parent uint64 }{{0, 960, 0}, {1, 961, 960}, {2, 962, 961}} {
-		commitCanonical(t, ctx, repository, testBundle(block.number, testHash(block.hash), testHash(block.parent), testHash(9_600+block.number), "resolve-reorg"))
-	}
-	now := time.Now().UTC().Truncate(time.Second)
-	body, _ := json.Marshal(map[string]any{
-		"name": "race.eth", "address": testAddress(960).String(), "registry": testAddress(961).String(),
-		"block_number": "1", "block_hash": testHash(961).String(), "observed_at": now.Add(-time.Minute),
-	})
-	service, err := adapters.NewPostgresNameService(db, 1, &integrationJSONFetcher{body: body}, adapters.NameOptions{
-		BaseURL: "https://name.example/v1", Freshness: time.Hour,
-		FailureTTL: time.Minute, Now: func() time.Time { return now },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := nameResolverFunc(func(resolveCtx context.Context, name string) (string, error) {
-		address, resolveErr := service.Resolve(resolveCtx, name)
-		if resolveErr != nil {
-			return "", resolveErr
-		}
-		if _, deleteErr := db.ExecContext(resolveCtx, `DELETE FROM canonical_blocks
-			WHERE chain_id = 1 AND number = 1`); deleteErr != nil {
-			return "", deleteErr
-		}
-		return address, nil
-	})
-	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1, NameResolver: resolver})
-	if err != nil {
-		t.Fatal(err)
-	}
-	results, cursor, err := reader.Search(ctx, "race.eth", "", 20)
-	if !errors.Is(err, httpapi.ErrUnavailable) || len(results) != 0 || cursor != "" {
-		t.Fatalf("results=%+v cursor=%q error=%v", results, cursor, err)
-	}
+type integrationNameResolver func(context.Context, string) (ensresolver.ForwardResolution, error)
+
+func (resolve integrationNameResolver) ResolveForward(
+	ctx context.Context,
+	name string,
+) (ensresolver.ForwardResolution, error) {
+	return resolve(ctx, name)
 }
 
-func TestNameSuccessSerializesWithCanonicalDetach(t *testing.T) {
+func TestCustomENSGenerationAndSearchInvalidateOnReorg(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
+	core, err := store.NewPostgresRepository(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitCanonical(t, ctx, repository, testBundle(0, testHash(970), testHash(0), testHash(9_700), "name-lock"))
-	now := time.Now().UTC().Truncate(time.Second)
-	body, _ := json.Marshal(map[string]any{
-		"name": "locked.eth", "address": testAddress(970).String(), "registry": testAddress(971).String(),
-		"block_number": "0", "block_hash": testHash(970).String(), "observed_at": now.Add(-time.Minute),
-	})
-	service, err := adapters.NewPostgresNameService(db, 1, &integrationJSONFetcher{body: body}, adapters.NameOptions{
-		BaseURL: "https://name.example/v1", Freshness: time.Hour,
-		FailureTTL: time.Minute, Now: func() time.Time { return now },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	detach, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer detach.Rollback() //nolint:errcheck
-	if _, err := detach.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
-		t.Fatal(err)
-	}
-	finished := make(chan error, 1)
-	go func() {
-		_, resolveErr := service.Resolve(ctx, "locked.eth")
-		finished <- resolveErr
-	}()
-	waitForNameWriteLock(t, ctx, db)
-	select {
-	case err := <-finished:
-		t.Fatalf("name write did not wait for canonical detach: %v", err)
-	default:
-	}
-	if err := detach.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-finished; !errors.Is(err, adapters.ErrUnavailable) {
-		t.Fatalf("resolve after detach error=%v", err)
-	} else {
-		var capability adapters.CapabilityError
-		if !errors.As(err, &capability) || capability.Code != "stale_block" {
-			t.Fatalf("resolve capability=%#v", err)
-		}
-	}
-	var names, observations int
-	if err := db.QueryRowContext(ctx, `SELECT
-		(SELECT count(*) FROM name_records WHERE name = 'locked.eth'),
-		(SELECT count(*) FROM external_adapter_observations WHERE observation_key = 'locked.eth')`).Scan(&names, &observations); err != nil {
-		t.Fatal(err)
-	}
-	if names != 0 || observations != 0 {
-		t.Fatalf("names=%d observations=%d", names, observations)
-	}
-}
-
-func TestCanonicalDetachWaitsForNameSuccessAndThenOrphansIt(t *testing.T) {
-	db := newMigratedPostgres(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	genesis := testBundle(0, testHash(972), testHash(0), testHash(9_720), "name-first-genesis")
-	oldOne := testBundle(1, testHash(973), testHash(972), testHash(9_721), "name-first-old")
-	newOne := testBundle(1, testHash(974), testHash(972), testHash(9_722), "name-first-new")
+	genesis := testBundle(0, testHash(200), testHash(0), testHash(2_000), "ens-genesis")
+	oldOne := testBundle(1, testHash(201), testHash(200), testHash(2_001), "ens-old")
+	newOne := testBundle(1, testHash(202), testHash(200), testHash(2_002), "ens-new")
 	for _, bundle := range []chainbundle.Bundle{genesis, oldOne} {
-		commitCanonical(t, ctx, repository, bundle)
+		commitCanonical(t, ctx, core, bundle)
+	}
+	repository, err := ensresolver.NewRepository(db, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	body, _ := json.Marshal(map[string]any{
-		"name": "name-first.eth", "address": testAddress(972).String(), "registry": testAddress(973).String(),
-		"block_number": "1", "block_hash": testHash(973).String(), "observed_at": now.Add(-time.Minute),
-	})
-	service := newIntegrationNameService(t, db, now, &integrationJSONFetcher{body: body})
-
-	const advisoryKey = 20_097_200
-	execFixture(t, ctx, db, `CREATE FUNCTION pause_name_first_insert()
-		RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN
-			IF NEW.name = 'name-first.eth' THEN
-				PERFORM pg_advisory_xact_lock(20, 20097200);
-			END IF;
-			RETURN NEW;
-		END
-		$$`)
-	execFixture(t, ctx, db, `CREATE TRIGGER pause_name_first_insert_trigger
-		BEFORE INSERT ON name_records
-		FOR EACH ROW EXECUTE FUNCTION pause_name_first_insert()`)
-	pauseConnection, err := db.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pauseConnection.Close() //nolint:errcheck
-	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_lock(20, $1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
-	paused := true
-	defer func() {
-		if paused {
-			_, _ = pauseConnection.ExecContext(context.Background(), `SELECT pg_advisory_unlock(20, $1)`, advisoryKey)
-		}
-	}()
-
-	nameDone := make(chan error, 1)
-	go func() {
-		_, resolveErr := service.Resolve(ctx, "name-first.eth")
-		nameDone <- resolveErr
-	}()
-	waitForNameWriteLock(t, ctx, db)
-
-	ancestor := mustBlockRef(t, genesis)
-	detached := mustBlockRef(t, oldOne)
-	newTip := mustBlockRef(t, newOne)
-	reorgDone := make(chan error, 1)
-	go func() {
-		reorgDone <- repository.ApplyReorg(ctx, "1", store.Reorg{
-			Ancestor: ancestor, Detached: []store.BlockRef{detached},
-			Attached: []chainbundle.Bundle{newOne}, Checkpoint: store.NewCoreCheckpoint(newTip),
-			Reason: "name consistency lock test",
-		})
-	}()
-	waitForCanonicalDetachLock(t, ctx, db)
-	select {
-	case err := <-nameDone:
-		t.Fatalf("paused name write completed early: %v", err)
-	default:
-	}
-	select {
-	case err := <-reorgDone:
-		t.Fatalf("canonical detach did not wait for name key-share lock: %v", err)
-	default:
-	}
-
-	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_unlock(20, $1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
-	paused = false
-	if err := <-nameDone; err != nil {
-		t.Fatalf("complete name write: %v", err)
-	}
-	if err := <-reorgDone; err != nil {
-		t.Fatalf("complete canonical detach: %v", err)
-	}
-
-	var canonical bool
-	if err := db.QueryRowContext(ctx, `SELECT canonical FROM name_records
-		WHERE chain_id = 1 AND name = 'name-first.eth' AND block_hash = $1`, mustBytes(t, testHash(973))).Scan(&canonical); err != nil {
-		t.Fatal(err)
-	}
-	if canonical {
-		t.Fatal("detached name record remained canonical")
-	}
-	reader, err := query.NewPostgresReader(db, query.Options{
-		ChainID: 1,
-		NameResolver: nameResolverFunc(func(context.Context, string) (string, error) {
-			return testAddress(972).String(), nil
-		}),
+	oldRef := mustBlockRef(t, oldOne)
+	generation, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
+		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 2), CoinType: big.NewInt(60),
+		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(300)},
+		CustomEndpoint: "custom", CustomCoinType: big.NewInt(60),
+		CustomBlock: &ensresolver.BlockRef{Number: oldRef.Number, Hash: oldRef.Hash},
+		CreatedAt:   now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, cursor, err := reader.Search(ctx, "name-first.eth", "", 20)
-	if !errors.Is(err, httpapi.ErrUnavailable) || len(results) != 0 || cursor != "" {
-		t.Fatalf("orphan name search results=%+v cursor=%q error=%v", results, cursor, err)
+	if _, err := repository.RecordObservation(ctx, ensresolver.Observation{
+		GenerationID: generation.ID, Source: ensresolver.SourceCustom, Direction: "forward",
+		LookupKey: "custom.eth", Outcome: ensresolver.OutcomeResolved, Name: "custom.eth",
+		Address: testAddress(200), Resolver: testAddress(201), ObservedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, _, err := reader.Search(ctx, "custom", "", 20)
+	if err != nil || len(results) != 1 || results[0].NameSource == nil || string(*results[0].NameSource) != "custom_ens" {
+		t.Fatalf("custom search before reorg=%+v error=%v", results, err)
+	}
+	ancestor, replacement := mustBlockRef(t, genesis), mustBlockRef(t, newOne)
+	if err := core.ApplyReorg(ctx, "1", store.Reorg{
+		Ancestor: ancestor, Detached: []store.BlockRef{oldRef}, Attached: []chainbundle.Bundle{newOne},
+		Checkpoint: store.NewCoreCheckpoint(replacement), Reason: "ENS custom source reorg",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	results, _, err = reader.Search(ctx, "custom", "", 20)
+	if err != nil || len(results) != 0 {
+		t.Fatalf("custom search after reorg=%+v error=%v", results, err)
+	}
+	if _, err := repository.Generation(ctx, generation.ID, generation.PolicyKey, now); err == nil {
+		t.Fatal("detached custom ENS generation remained readable")
 	}
 }
 
-func TestSparseCanonicalReplacementWaitsForNameSuccessAndThenOrphansIt(t *testing.T) {
+func TestENSAddressNameSnapshotExpires(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
+	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
+	repository, err := ensresolver.NewRepository(db, 1)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
-		t.Fatal(err)
-	}
-	genesis := testBundle(0, testHash(975), testHash(0), testHash(9_750), "sparse-name-genesis")
-	oldTwo := testBundle(2, testHash(976), testHash(9_751), testHash(9_752), "sparse-name-old")
-	newTwo := testBundle(2, testHash(977), testHash(9_751), testHash(9_753), "sparse-name-new")
-	for _, segment := range [][]chainbundle.Bundle{{genesis}, {oldTwo}} {
-		if _, err := repository.CommitCanonicalSegment(ctx, "1", segment); err != nil {
-			t.Fatal(err)
-		}
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	body, _ := json.Marshal(map[string]any{
-		"name": "sparse-name.eth", "address": testAddress(975).String(), "registry": testAddress(976).String(),
-		"block_number": "2", "block_hash": testHash(976).String(), "observed_at": now.Add(-time.Minute),
-	})
-	service := newIntegrationNameService(t, db, now, &integrationJSONFetcher{body: body})
-
-	const advisoryKey = 20_097_500
-	execFixture(t, ctx, db, `CREATE FUNCTION pause_sparse_name_insert()
-		RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN
-			IF NEW.name = 'sparse-name.eth' THEN
-				PERFORM pg_advisory_xact_lock(21, 20097500);
-			END IF;
-			RETURN NEW;
-		END
-		$$`)
-	execFixture(t, ctx, db, `CREATE TRIGGER pause_sparse_name_insert_trigger
-		BEFORE INSERT ON name_records
-		FOR EACH ROW EXECUTE FUNCTION pause_sparse_name_insert()`)
-	pauseConnection, err := db.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pauseConnection.Close() //nolint:errcheck
-	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_lock(21, $1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
-	paused := true
-	defer func() {
-		if paused {
-			_, _ = pauseConnection.ExecContext(context.Background(), `SELECT pg_advisory_unlock(21, $1)`, advisoryKey)
-		}
-	}()
-
-	nameDone := make(chan error, 1)
-	go func() {
-		_, resolveErr := service.Resolve(ctx, "sparse-name.eth")
-		nameDone <- resolveErr
-	}()
-	waitForNameWriteLock(t, ctx, db)
-
-	detached := mustBlockRef(t, oldTwo)
-	replacementDone := make(chan error, 1)
-	go func() {
-		_, replaceErr := repository.ReplaceHighestCanonicalSegment(ctx, "1", store.SparseCanonicalReplacement{
-			Range: store.BlockRange{Start: 2, End: 2}, Detached: []store.BlockRef{detached},
-			Attached: []chainbundle.Bundle{newTwo}, Reason: "sparse name consistency lock test",
-		})
-		replacementDone <- replaceErr
-	}()
-	waitForCanonicalDetachLock(t, ctx, db)
-	select {
-	case err := <-nameDone:
-		t.Fatalf("paused sparse name write completed early: %v", err)
-	default:
-	}
-	select {
-	case err := <-replacementDone:
-		t.Fatalf("sparse canonical replacement did not wait for name key-share lock: %v", err)
-	default:
-	}
-
-	if _, err := pauseConnection.ExecContext(ctx, `SELECT pg_advisory_unlock(21, $1)`, advisoryKey); err != nil {
-		t.Fatal(err)
-	}
-	paused = false
-	if err := <-nameDone; err != nil {
-		t.Fatalf("complete sparse name write: %v", err)
-	}
-	if err := <-replacementDone; err != nil {
-		t.Fatalf("complete sparse canonical replacement: %v", err)
-	}
-
-	var canonical bool
-	if err := db.QueryRowContext(ctx, `SELECT canonical FROM name_records
-		WHERE chain_id = 1 AND name = 'sparse-name.eth' AND block_hash = $1`, mustBytes(t, testHash(976))).Scan(&canonical); err != nil {
-		t.Fatal(err)
-	}
-	if canonical {
-		t.Fatal("sparse-detached name record remained canonical")
-	}
-	reader, err := query.NewPostgresReader(db, query.Options{
-		ChainID: 1,
-		NameResolver: nameResolverFunc(func(context.Context, string) (string, error) {
-			return testAddress(975).String(), nil
-		}),
+	generation, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
+		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 3), CoinType: big.NewInt(60),
+		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(400)},
+		CreatedAt: now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, cursor, err := reader.Search(ctx, "sparse-name.eth", "", 20)
-	if !errors.Is(err, httpapi.ErrUnavailable) || len(results) != 0 || cursor != "" {
-		t.Fatalf("sparse orphan name search results=%+v cursor=%q error=%v", results, cursor, err)
-	}
-}
-
-func TestConcurrentNameObservationsAreIdempotentOrConflictWithoutCatalogChurn(t *testing.T) {
-	db := newMigratedPostgres(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	repository, err := store.NewPostgresRepository(db)
+	snapshot, err := repository.CreateSnapshot(ctx, generation.ID, now, now.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitCanonical(t, ctx, repository, testBundle(0, testHash(980), testHash(0), testHash(9_800), "name-race"))
-	now := time.Now().UTC().Truncate(time.Second)
-
-	identicalBefore := currentCatalogGeneration(t, ctx, db)
-	identicalTimes := []time.Time{now.Add(-2 * time.Minute), now.Add(-time.Minute)}
-	identicalBodies := make([][]byte, 2)
-	for index := range identicalBodies {
-		identicalBodies[index], _ = json.Marshal(map[string]any{
-			"name": "identical.eth", "address": testAddress(980).String(), "registry": testAddress(981).String(),
-			"block_number": "0", "block_hash": testHash(980).String(), "observed_at": identicalTimes[index],
-		})
+	if got, err := repository.SnapshotGeneration(ctx, snapshot, generation.PolicyKey, now.Add(time.Minute)); err != nil || got.ID != generation.ID {
+		t.Fatalf("snapshot generation=%+v error=%v", got, err)
 	}
-	identicalResults := resolveConcurrently(t, ctx, db, now, "identical.eth", identicalBodies)
-	for index, result := range identicalResults {
-		if result.err != nil || !strings.EqualFold(result.address, testAddress(980).String()) {
-			t.Fatalf("identical result %d=%+v", index, result)
-		}
-	}
-	if delta := currentCatalogGeneration(t, ctx, db) - identicalBefore; delta != 1 {
-		t.Fatalf("identical catalog generation delta=%d", delta)
-	}
-	var firstObservedAt time.Time
-	if err := db.QueryRowContext(ctx, `SELECT observed_at FROM name_records
-		WHERE chain_id = 1 AND name = 'identical.eth'`).Scan(&firstObservedAt); err != nil {
-		t.Fatal(err)
-	}
-	if !firstObservedAt.Equal(identicalTimes[0]) && !firstObservedAt.Equal(identicalTimes[1]) {
-		t.Fatalf("first observed_at=%s", firstObservedAt)
-	}
-
-	later := now.Add(2 * time.Hour)
-	laterBody, _ := json.Marshal(map[string]any{
-		"name": "identical.eth", "address": testAddress(980).String(), "registry": testAddress(981).String(),
-		"block_number": "0", "block_hash": testHash(980).String(), "observed_at": later.Add(-time.Minute),
-	})
-	laterService := newIntegrationNameService(t, db, later, &integrationJSONFetcher{body: laterBody})
-	if _, err := laterService.Resolve(ctx, "identical.eth"); err != nil {
-		t.Fatal(err)
-	}
-	if generation := currentCatalogGeneration(t, ctx, db); generation != identicalBefore+1 {
-		t.Fatalf("idempotent refresh changed generation=%d", generation)
-	}
-	var preserved time.Time
-	if err := db.QueryRowContext(ctx, `SELECT observed_at FROM name_records
-		WHERE chain_id = 1 AND name = 'identical.eth'`).Scan(&preserved); err != nil || !preserved.Equal(firstObservedAt) {
-		t.Fatalf("preserved observed_at=%s want=%s error=%v", preserved, firstObservedAt, err)
-	}
-
-	conflictBefore := currentCatalogGeneration(t, ctx, db)
-	conflictBodies := make([][]byte, 2)
-	for index := range conflictBodies {
-		conflictBodies[index], _ = json.Marshal(map[string]any{
-			"name": "conflict.eth", "address": testAddress(982 + uint64(index)).String(), "registry": testAddress(984).String(),
-			"block_number": "0", "block_hash": testHash(980).String(), "observed_at": now.Add(-time.Minute),
-		})
-	}
-	conflictResults := resolveConcurrently(t, ctx, db, now, "conflict.eth", conflictBodies)
-	var successes, conflicts int
-	for _, result := range conflictResults {
-		switch {
-		case result.err == nil:
-			successes++
-		case errors.Is(result.err, adapters.ErrUnavailable):
-			var capability adapters.CapabilityError
-			if errors.As(result.err, &capability) && capability.Code == "identity_conflict" {
-				conflicts++
-			}
-		}
-	}
-	if successes != 1 || conflicts != 1 {
-		t.Fatalf("conflict results=%+v successes=%d conflicts=%d", conflictResults, successes, conflicts)
-	}
-	if delta := currentCatalogGeneration(t, ctx, db) - conflictBefore; delta != 1 {
-		t.Fatalf("conflict catalog generation delta=%d", delta)
-	}
-}
-
-func TestNameAdapterRejectsNonCanonicalBlockNumbersAsStableFailure(t *testing.T) {
-	for _, test := range []struct {
-		name        string
-		blockNumber string
-	}{
-		{name: "leading-zero", blockNumber: "01"},
-		{name: "numeric-overflow", blockNumber: strings.Repeat("9", 79)},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			db := newMigratedPostgres(t)
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
-			execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
-			now := time.Now().UTC().Truncate(time.Second)
-			name := test.name + ".eth"
-			body, _ := json.Marshal(map[string]any{
-				"name": name, "address": testAddress(990).String(), "registry": testAddress(991).String(),
-				"block_number": test.blockNumber, "block_hash": testHash(990).String(),
-				"observed_at": now.Add(-time.Minute),
-			})
-			service := newIntegrationNameService(t, db, now, &integrationJSONFetcher{body: body})
-			if _, err := service.Resolve(ctx, name); !errors.Is(err, adapters.ErrUnavailable) {
-				t.Fatalf("resolve error=%v", err)
-			} else {
-				var capability adapters.CapabilityError
-				if !errors.As(err, &capability) || capability.State != "failed" || capability.Code != "invalid_response" {
-					t.Fatalf("resolve capability=%#v", err)
-				}
-			}
-			var state, code string
-			if err := db.QueryRowContext(ctx, `SELECT state, code
-				FROM external_adapter_observations
-				WHERE chain_id = 1 AND capability = 'name' AND observation_key = $1`, name).Scan(&state, &code); err != nil {
-				t.Fatal(err)
-			}
-			if state != "failed" || code != "invalid_response" {
-				t.Fatalf("persisted state=%q code=%q", state, code)
-			}
-		})
+	if _, err := repository.SnapshotGeneration(ctx, snapshot, generation.PolicyKey, now.Add(3*time.Minute)); !errors.Is(err, ensresolver.ErrSnapshotInvalid) {
+		t.Fatalf("expired snapshot error=%v", err)
 	}
 }
 
@@ -629,126 +324,7 @@ func TestPostgresCatalogMaintenanceUsesTryLockAndBoundedAdapterBatch(t *testing.
 		t.Fatalf("second sweep result=%+v error=%v", result, err)
 	}
 	assertAdapterObservationCounts(t, ctx, db, 1, now, 0, 1)
-	var retention, generation int64
-	if err := db.QueryRowContext(ctx, `SELECT retention_generations, generation
-		FROM search_catalog_generations WHERE chain_id = 1`).Scan(&retention, &generation); err != nil {
-		t.Fatal(err)
-	}
-	if retention != 1000 || generation != 2 {
-		t.Fatalf("catalog retention=%d generation=%d", retention, generation)
-	}
 	assertAdapterObservationCounts(t, ctx, db, 2, now, 1, 0)
-	result, err = cleaner.Sweep(ctx, 2, 1000, 2, now)
-	if err != nil || !result.Ran || result.Deleted != 1 {
-		t.Fatalf("other-chain sweep result=%+v error=%v", result, err)
-	}
-	assertAdapterObservationCounts(t, ctx, db, 2, now, 0, 0)
-}
-
-type nameResolverFunc func(context.Context, string) (string, error)
-
-func (resolve nameResolverFunc) Resolve(ctx context.Context, name string) (string, error) {
-	return resolve(ctx, name)
-}
-
-type mutableIntegrationFetcher struct {
-	mu    sync.Mutex
-	body  []byte
-	err   error
-	calls atomic.Int64
-}
-
-func (fetcher *mutableIntegrationFetcher) Fetch(context.Context, string, metadata.Kind) (metadata.Result, error) {
-	fetcher.calls.Add(1)
-	fetcher.mu.Lock()
-	defer fetcher.mu.Unlock()
-	if fetcher.err != nil {
-		return metadata.Result{}, fetcher.err
-	}
-	return metadata.Result{Body: append([]byte(nil), fetcher.body...), FetchedAt: time.Now().UTC()}, nil
-}
-
-func (fetcher *mutableIntegrationFetcher) setError(err error) {
-	fetcher.mu.Lock()
-	defer fetcher.mu.Unlock()
-	fetcher.err = err
-}
-
-type fetchBarrier struct {
-	want    int64
-	arrived atomic.Int64
-	ready   chan struct{}
-	once    sync.Once
-}
-
-func newFetchBarrier(want int64) *fetchBarrier {
-	return &fetchBarrier{want: want, ready: make(chan struct{})}
-}
-
-func (barrier *fetchBarrier) wait(ctx context.Context) error {
-	if barrier.arrived.Add(1) == barrier.want {
-		barrier.once.Do(func() { close(barrier.ready) })
-	}
-	select {
-	case <-barrier.ready:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-type barrierIntegrationFetcher struct {
-	body    []byte
-	barrier *fetchBarrier
-}
-
-func (fetcher *barrierIntegrationFetcher) Fetch(ctx context.Context, _ string, _ metadata.Kind) (metadata.Result, error) {
-	if err := fetcher.barrier.wait(ctx); err != nil {
-		return metadata.Result{}, err
-	}
-	return metadata.Result{Body: append([]byte(nil), fetcher.body...), FetchedAt: time.Now().UTC()}, nil
-}
-
-type concurrentResolveResult struct {
-	address string
-	err     error
-}
-
-func resolveConcurrently(
-	t *testing.T,
-	ctx context.Context,
-	db *sql.DB,
-	now time.Time,
-	name string,
-	bodies [][]byte,
-) []concurrentResolveResult {
-	t.Helper()
-	barrier := newFetchBarrier(int64(len(bodies)))
-	services := make([]*adapters.NameService, len(bodies))
-	for index, body := range bodies {
-		services[index] = newIntegrationNameService(t, db, now, &barrierIntegrationFetcher{body: body, barrier: barrier})
-	}
-	results := make([]concurrentResolveResult, len(services))
-	var group sync.WaitGroup
-	for index, service := range services {
-		group.Go(func() {
-			results[index].address, results[index].err = service.Resolve(ctx, name)
-		})
-	}
-	group.Wait()
-	return results
-}
-
-func newIntegrationNameService(t *testing.T, db *sql.DB, now time.Time, fetcher adapters.JSONFetcher) *adapters.NameService {
-	t.Helper()
-	service, err := adapters.NewPostgresNameService(db, 1, fetcher, adapters.NameOptions{
-		BaseURL: "https://name.example/v1", Freshness: time.Hour,
-		FailureTTL: time.Minute, Now: func() time.Time { return now },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return service
 }
 
 func currentTestSchema(t *testing.T, ctx context.Context, db *sql.DB) string {
@@ -780,61 +356,6 @@ func currentCatalogGeneration(t *testing.T, ctx context.Context, db *sql.DB) int
 		t.Fatal(err)
 	}
 	return generation
-}
-
-func waitForNameWriteLock(t *testing.T, ctx context.Context, db *sql.DB) {
-	t.Helper()
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline.C:
-			t.Fatal("name write did not wait on the canonical row lock")
-		case <-ticker.C:
-			var waiting bool
-			if err := db.QueryRowContext(ctx, `SELECT EXISTS (
-				SELECT 1 FROM pg_stat_activity
-				WHERE datname = current_database()
-				  AND wait_event_type = 'Lock'
-				  AND query LIKE '%INSERT INTO name_records AS stored_name%'
-			)`).Scan(&waiting); err != nil {
-				t.Fatal(err)
-			}
-			if waiting {
-				return
-			}
-		}
-	}
-}
-
-func waitForCanonicalDetachLock(t *testing.T, ctx context.Context, db *sql.DB) {
-	t.Helper()
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline.C:
-			t.Fatal("canonical detach did not wait on the name key-share lock")
-		case <-ticker.C:
-			var waiting bool
-			if err := db.QueryRowContext(ctx, `SELECT EXISTS (
-				SELECT 1 FROM pg_stat_activity
-				WHERE datname = current_database()
-				  AND wait_event_type = 'Lock'
-				  AND query LIKE '%FROM canonical_blocks cb%'
-				  AND query LIKE '%FOR UPDATE%'
-			)`).Scan(&waiting); err != nil {
-				t.Fatal(err)
-			}
-			if waiting {
-				return
-			}
-		}
-	}
 }
 
 func assertAdapterObservationCounts(

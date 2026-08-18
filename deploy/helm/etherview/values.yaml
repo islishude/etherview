@@ -194,6 +194,7 @@ secrets:
   databaseURLKey: database-url
   databaseReadURLKey: database-read-url
   rpcURLsKey: rpc-urls
+  ensRPCURLsKey: ens-rpc-urls
   apiKeyPepperKey: api-key-pepper
   sessionPepperKey: session-pepper
   x402FingerprintPepperKey: x402-fingerprint-pepper
@@ -217,6 +218,9 @@ externalSecret:
   # Set to materialize the optional database-read-url Secret entry.
   databaseReadURLRemoteKey: ""
   rpcURLsRemoteKey: etherview/rpc-urls
+  # Optional dedicated Ethereum Mainnet RPC Secret used only by API/all when
+  # ENS is enabled. Leave empty when the explored RPC is exact Mainnet.
+  ensRPCURLsRemoteKey: ""
   apiKeyPepperRemoteKey: etherview/api-key-pepper
   # Required when both externalSecret and config.features.user_auth are
   # enabled. It is otherwise neither fetched nor injected.
@@ -330,6 +334,7 @@ config:
     sourcify: false
     nft_metadata: false
     pricing: false
+    ens: false
     user_auth: false
     user_api_keys: false
     x402_billing: false
@@ -376,6 +381,22 @@ config:
     coarse_ip_rate: 100
     coarse_ip_burst: 200
     routes: {}
+  ens:
+    official_gateways:
+      - https://ccip-v3.ens.xyz
+    custom:
+      registry: ""
+      universal_resolver: ""
+      coin_type: ""
+      gateways: []
+    resolution_freshness: 15m
+    snapshot_ttl: 30m
+    failure_ttl: 30s
+    request_timeout: 8s
+    max_response_bytes: 1048576
+    max_ccip_depth: 4
+    max_batch_addresses: 100
+    max_concurrency: 8
   verification:
     max_input_bytes: 5242880
     max_output_bytes: 67108864
@@ -419,12 +440,10 @@ config:
     s3_path_style: false
     s3_max_object_bytes: 16777216
     price_base_url: ""
-    name_base_url: ""
     fetch_timeout: 5s
     max_response_bytes: 1048576
     max_redirects: 2
     price_freshness: 5m
-    name_freshness: 24h
     failure_ttl: 30s
 
 serviceMonitor:

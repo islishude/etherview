@@ -316,6 +316,22 @@ add internet-wide or link-local ranges. After changing credential source,
 restart the `all`/`api` Deployment and confirm trace-cache hits while
 PostgreSQL remains authoritative.
 
+## ENS primary names
+
+ENS is disabled by default. Enable `features.ens` only for API-capable roles.
+When the explored RPC is not exact Ethereum Mainnet, supply the dedicated L1
+endpoint set through `ETHERVIEW_ENS_RPC_URLS` or its `_FILE` form; Helm exposes
+the optional `secrets.ensRPCURLsKey` only to `api` and `all`. RPC URLs remain
+Secret-only and are never accepted from the ConfigMap-backed `ens` section.
+
+The default official gateway is `https://ccip-v3.ens.xyz`. A custom Registry
+and modern Universal Resolver may be configured under `ens.custom`; both are
+on the explored chain and are used only after official no-record. Custom names
+are visibly marked and never replace an exact copy, QR, or link address. An ENS
+outage degrades only names; inspect `etherview_ens_resolutions_total` and the
+bounded `capability_unavailable` code without retrying writes or changing core
+readiness.
+
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm
@@ -327,7 +343,7 @@ spread with at least two eligible domains. A placement that cannot satisfy
 that failure-domain boundary remains Pending instead of silently collapsing
 onto one node. Its configured steady-state/HPA maximum is 18 non-terminating
 application Pods. Trace,
-verification, metadata, Sourcify, and pricing remain separate optional
+verification, metadata, Sourcify, pricing, and ENS remain separate optional
 capability profiles because their RPC, compiler, and external-service costs
 must be measured independently. Its rolling strategy sets `maxSurge: 0` and
 `maxUnavailable: 1`, preventing an intentional surge while the per-role

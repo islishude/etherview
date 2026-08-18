@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -33,7 +34,7 @@ type RuntimeStatus struct {
 type RuntimeStatusFunc func(context.Context) (RuntimeStatus, bool, error)
 
 type NameResolver interface {
-	Resolve(context.Context, string) (string, error)
+	ResolveForward(context.Context, string) (ensresolver.ForwardResolution, error)
 }
 
 type Options struct {
@@ -395,25 +396,48 @@ func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string
 	if limit <= 0 || limit > 100 {
 		return nil, "", fmt.Errorf("search limit %d is outside 1..100", limit)
 	}
-	resolvedNameAddress := ""
+	gate := resolvedNameGate{}
+	searchValue := value
 	if encodedCursor == "" && externalNameQuery(value) {
 		if r.nameResolver == nil {
 			return nil, "", nameCapabilityUnavailable("unavailable", "not_configured")
 		}
-		resolved, resolveErr := r.nameResolver.Resolve(ctx, value)
+		resolved, resolveErr := r.nameResolver.ResolveForward(ctx, value)
 		if resolveErr != nil {
 			return nil, "", nameResolverError(resolveErr)
 		}
-		address, parseErr := ethrpc.ParseAddress(resolved)
-		if parseErr != nil {
+		if resolved.ObservationID <= 0 || resolved.Name == "" ||
+			(resolved.Outcome != ensresolver.OutcomeResolved && resolved.Outcome != ensresolver.OutcomeNoRecord) ||
+			(resolved.Source != ensresolver.SourceOfficial && resolved.Source != ensresolver.SourceCustom) {
 			return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
 		}
-		resolvedNameAddress = strings.ToLower(address.String())
+		gate = resolvedNameGate{
+			Name: resolved.Name, ObservationID: resolved.ObservationID, Source: string(resolved.Source),
+		}
+		if resolved.Outcome == ensresolver.OutcomeResolved {
+			if resolved.Address == (common.Address{}) {
+				return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
+			}
+			gate.Address = strings.ToLower(resolved.Address.String())
+		}
+		searchValue = resolved.Name
 	}
-	return r.search(ctx, value, encodedCursor, limit, resolvedNameAddress)
+	return r.search(ctx, value, searchValue, encodedCursor, limit, gate)
 }
 
-func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string, limit int, resolvedNameAddress string) ([]gen.SearchResult, string, error) {
+type resolvedNameGate struct {
+	Name          string
+	Address       string
+	Source        string
+	ObservationID int64
+}
+
+func (r *PostgresReader) search(
+	ctx context.Context,
+	value, searchValue, encodedCursor string,
+	limit int,
+	gate resolvedNameGate,
+) ([]gen.SearchResult, string, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return nil, "", fmt.Errorf("begin stable search: %w", err)
@@ -441,18 +465,24 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 		}
 		snapshot.SnapshotNumber, snapshot.SnapshotHash = decoded.SnapshotNumber, decoded.SnapshotHash
 		generation = decoded.Generation
-		resolvedNameAddress = decoded.ResolvedNameAddress
+		gate = resolvedNameGate{
+			Name: decoded.ResolvedName, Address: decoded.ResolvedNameAddress,
+			Source: decoded.ResolvedNameSource, ObservationID: decoded.ResolvedNameObservationID,
+		}
+		if gate.Name != "" {
+			searchValue = gate.Name
+		}
 		boundary = &decoded
 	}
-	if resolvedNameAddress != "" {
+	if gate.ObservationID > 0 {
 		visible, visibilityErr := r.resolvedNameVisible(
-			ctx, tx, value, resolvedNameAddress, snapshot.SnapshotNumber, generation,
+			ctx, tx, gate, generation,
 		)
 		if visibilityErr != nil {
 			return nil, "", visibilityErr
 		}
 		if !visible {
-			return nil, "", nameCapabilityUnavailable("unavailable", "stale_block")
+			return nil, "", nameCapabilityUnavailable("unavailable", "stale_name_snapshot")
 		}
 	}
 	var results []gen.SearchResult
@@ -463,13 +493,13 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 		results, err = r.searchHash(ctx, tx, hash, generation, limit+1)
 	} else if _, addressErr := ethrpc.ParseAddress(value); addressErr == nil {
 		results, err = r.searchText(
-			ctx, tx, value, snapshot.SnapshotNumber, generation, resolvedNameAddress, boundary, limit+2,
+			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, gate.ObservationID, boundary, limit+2,
 		)
 	} else if height, blockParseErr := parseBlockNumber(value); blockParseErr == nil {
 		results, err = r.searchBlockNumber(ctx, tx, height, generation)
 	} else {
 		results, err = r.searchText(
-			ctx, tx, value, snapshot.SnapshotNumber, generation, resolvedNameAddress, boundary, limit+2,
+			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, gate.ObservationID, boundary, limit+2,
 		)
 	}
 	if err != nil {
@@ -514,7 +544,9 @@ func (r *PostgresReader) search(ctx context.Context, value, encodedCursor string
 	last := results[len(results)-1]
 	next, err := httpapi.EncodeCursor(searchCursor{
 		ChainID: r.chainID, SnapshotNumber: snapshot.SnapshotNumber, SnapshotHash: snapshot.SnapshotHash,
-		Generation: generation, Query: strings.ToLower(value), ResolvedNameAddress: resolvedNameAddress,
+		Generation: generation, Query: strings.ToLower(value),
+		ResolvedName: gate.Name, ResolvedNameAddress: gate.Address,
+		ResolvedNameObservationID: gate.ObservationID, ResolvedNameSource: gate.Source,
 		AfterRank: last.Rank, AfterKind: string(last.Kind), AfterKey: canonicalSearchBoundaryKey(last.Key),
 	})
 	if err != nil {
@@ -528,6 +560,9 @@ type capabilityDetailer interface {
 }
 
 func nameResolverError(err error) error {
+	if errors.Is(err, ensresolver.ErrInvalidName) {
+		return httpapi.ErrInvalidInput
+	}
 	var detailer capabilityDetailer
 	if errors.As(err, &detailer) {
 		capability, state, code := detailer.CapabilityDetails()
@@ -543,7 +578,12 @@ func nameResolverError(err error) error {
 func stableNameCapabilityCode(code string) bool {
 	switch code {
 	case "unsafe_url", "unavailable", "temporary", "unsafe_content", "invalid_content", "too_large",
-		"transport_failure", "invalid_response", "stale_block", "identity_conflict":
+		"transport_failure", "invalid_response", "stale_block", "stale_name_snapshot", "identity_conflict",
+		ensresolver.CodeRPCUnavailable, ensresolver.CodeCCIPUnavailable,
+		ensresolver.CodeCCIPSenderMismatch, ensresolver.CodeCCIPDepthExceeded,
+		ensresolver.CodeResolverNotContract, ensresolver.CodeResolverFailure,
+		ensresolver.CodeForwardMismatch, ensresolver.CodeSourceIdentity,
+		ensresolver.CodeCustomDeployment:
 		return true
 	default:
 		return false
@@ -891,6 +931,7 @@ WITH visible_documents AS (
                  WHEN $2 = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
            CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
+           document.name_source,
            document.verification_match_type,
            document.valid_from_block AS verification_valid_from_block,
            document.verification_request_digest,
@@ -898,7 +939,7 @@ WITH visible_documents AS (
            proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact
     FROM visible_documents AS document
     LEFT JOIN canonical_blocks AS canonical
-      ON document.source_kind IN ('name', 'token')
+      ON (document.source_kind = 'token' OR (document.source_kind = 'name' AND document.block_hash IS NOT NULL))
      AND canonical.chain_id = document.chain_id
      AND canonical.number = document.block_number
      AND canonical.block_hash = document.block_hash
@@ -928,15 +969,15 @@ WITH visible_documents AS (
     WHERE document.source_kind <> 'code'
       AND (
           document.source_kind <> 'name'
-          OR $10 = ''
-          OR lower(document.result_key) = $10
+          OR $10::bigint = 0
+          OR document.name_observation_id = $10::bigint
       )
       AND ($2 = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
           WHERE strpos(term, $2) > 0
       ))
       AND (
-          document.source_kind NOT IN ('name', 'token')
+          document.source_kind <> 'token'
           OR document.id = (
               SELECT latest.id
               FROM visible_documents AS latest
@@ -944,7 +985,7 @@ WITH visible_documents AS (
                 ON latest_canonical.chain_id = latest.chain_id
                AND latest_canonical.number = latest.block_number
                AND latest_canonical.block_hash = latest.block_hash
-              WHERE latest.source_kind = document.source_kind
+              WHERE latest.source_kind = 'token'
                 AND latest.logical_identity = document.logical_identity
                 AND latest.block_number <= $3::numeric
                 AND latest.source_canonical = TRUE
@@ -955,7 +996,18 @@ WITH visible_documents AS (
       AND (
           document.source_kind = 'label'
           OR (
-              document.source_kind IN ('name', 'token')
+              document.source_kind = 'name'
+              AND document.source_canonical = TRUE
+              AND (
+                  document.block_hash IS NULL
+                  OR (
+                      document.block_number <= $3::numeric
+                      AND canonical.block_hash IS NOT NULL
+                  )
+              )
+          )
+          OR (
+              document.source_kind = 'token'
               AND document.block_number <= $3::numeric
               AND canonical.block_hash IS NOT NULL
               AND document.source_canonical = TRUE
@@ -969,7 +1021,7 @@ WITH visible_documents AS (
           )
       )
 ), deduplicated AS (
-    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical
+    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
     FROM candidates
     ORDER BY kind, key, rank DESC,
              verification_proxy_artifact DESC,
@@ -979,7 +1031,7 @@ WITH visible_documents AS (
              verification_job_id ASC NULLS LAST,
              label
 )
-SELECT kind, key, label, rank, canonical
+SELECT kind, key, label, rank, canonical, name_source
 FROM deduplicated
 WHERE $5::boolean = false
    OR rank < $6

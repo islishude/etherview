@@ -597,9 +597,13 @@ func catalogRequestTarget(t *testing.T, spec apiops.Spec) string {
 			)
 		case apiops.ParameterQuery:
 			if parameter.Required {
+				value := catalogParameterExample(t, parameter.Type)
+				if parameter.Name == "addresses" {
+					value = "0x" + strings.Repeat("11", 20)
+				}
 				query.Set(
 					parameter.Name,
-					catalogParameterExample(t, parameter.Type),
+					value,
 				)
 			}
 		default:

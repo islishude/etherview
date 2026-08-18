@@ -121,6 +121,20 @@ describe("embedded explorer shell", () => {
     expect(screen.getByText("0x1234")).toBeVisible();
   });
 
+  it("normalizes ENS input with Viem and rejects invalid names before navigation", async () => {
+    renderExplorer("/");
+    const user = userEvent.setup();
+    const input = await screen.findByRole("searchbox", { name: "Search" });
+    await user.type(input, "RaFFY🚴‍♂️.eTh");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("raffy🚴‍♂.eth")).toBeVisible();
+
+    await user.clear(input);
+    await user.type(input, "foo..eth");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a valid ENS name");
+  });
+
   it("renders the native OpenAPI response envelopes without shape adapters", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(new Date("2026-01-01T00:01:59Z"));

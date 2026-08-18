@@ -53,6 +53,7 @@ type Registry struct {
 	analyticsBackfill             float64
 	rateLimits                    map[string]uint64
 	x402Requests                  map[pair]uint64
+	ensResolutions                map[ensMetricKey]uint64
 	proxyDetectionDuration        *histogram
 	proxyDetectionRPCCalls        map[string]uint64
 	proxyDetectionRPCErrors       map[string]uint64
@@ -79,6 +80,12 @@ type proxyDetectionResultKey struct {
 	Family     string
 	Status     string
 	Confidence string
+}
+
+type ensMetricKey struct {
+	Source    string
+	Direction string
+	Outcome   string
 }
 
 type histogram struct {
@@ -112,6 +119,7 @@ func NewRegistry(version, role string) *Registry {
 		analyticsRollups:              make(map[string]uint64),
 		rateLimits:                    make(map[string]uint64),
 		x402Requests:                  make(map[pair]uint64),
+		ensResolutions:                make(map[ensMetricKey]uint64),
 		proxyDetectionDuration:        &histogram{Buckets: make([]uint64, len(proxyDetectionDurationBuckets))},
 		proxyDetectionRPCCalls:        make(map[string]uint64),
 		proxyDetectionRPCErrors:       make(map[string]uint64),
@@ -226,6 +234,27 @@ func (registry *Registry) RecordSyncHalt(reason string) {
 // RecordRPC increments an RPC outcome for a bounded architectural purpose.
 func (registry *Registry) RecordRPC(purpose, result string) {
 	registry.incrementPair(registry.rpcRequests, boundedRPCPurpose(purpose), boundedRPCResult(result))
+}
+
+func (registry *Registry) RecordENS(source, direction, outcome string) {
+	switch source {
+	case "ens", "custom_ens":
+	default:
+		source = "other"
+	}
+	switch direction {
+	case "forward", "primary":
+	default:
+		direction = "other"
+	}
+	switch outcome {
+	case "resolved", "not_found", "error", "cache_hit":
+	default:
+		outcome = "other"
+	}
+	registry.mu.Lock()
+	registry.ensResolutions[ensMetricKey{Source: source, Direction: direction, Outcome: outcome}]++
+	registry.mu.Unlock()
 }
 
 // SetJobsPending updates the durable PostgreSQL backlog for a named queue.
@@ -393,6 +422,7 @@ func (registry *Registry) Gather() string {
 	writePairCounters(&output, "etherview_http_panics_total", "Recovered HTTP handler panics grouped by bounded method and route.", "method", "route", registry.httpPanics)
 
 	writePairCounters(&output, "etherview_rpc_requests_total", "RPC calls grouped by purpose and result.", "purpose", "result", registry.rpcRequests)
+	writeENSMetrics(&output, registry.ensResolutions)
 	writeGaugeMap(&output, "etherview_jobs_pending", "Durable PostgreSQL jobs waiting by queue.", "queue", registry.jobsPending)
 	writePairGauges(&output, "etherview_durable_jobs", "Active durable PostgreSQL backlog grouped by stage and status.", "stage", "status", registry.durableJobs)
 	writeGaugeMap(&output, "etherview_verification_jobs", "Active verification backlog grouped by status.", "status", registry.verificationCurrent)
@@ -490,6 +520,23 @@ func writeProxyDetectionResults(output *strings.Builder, values map[proxyDetecti
 	for _, key := range keys {
 		fmt.Fprintf(output, "etherview_proxy_detection_results_total{detector=%s,family=%s,status=%s,confidence=%s} %d\n",
 			quote(key.Detector), quote(key.Family), quote(key.Status), quote(key.Confidence), values[key])
+	}
+}
+
+func writeENSMetrics(output *strings.Builder, values map[ensMetricKey]uint64) {
+	writeHelp(output, "etherview_ens_resolutions_total", "ENS resolution attempts grouped by bounded source, direction, and outcome.", "counter")
+	keys := make([]ensMetricKey, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		left := keys[i].Source + "\x00" + keys[i].Direction + "\x00" + keys[i].Outcome
+		right := keys[j].Source + "\x00" + keys[j].Direction + "\x00" + keys[j].Outcome
+		return left < right
+	})
+	for _, key := range keys {
+		fmt.Fprintf(output, "etherview_ens_resolutions_total{source=%s,direction=%s,outcome=%s} %d\n",
+			quote(key.Source), quote(key.Direction), quote(key.Outcome), values[key])
 	}
 }
 

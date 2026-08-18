@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	AcquireENSGenerationLock(ctx context.Context, chainID pgtype.Numeric) error
 	AppendBillingPaymentEvent(ctx context.Context, arg AppendBillingPaymentEventParams) error
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
 	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
@@ -20,8 +21,11 @@ type Querier interface {
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
+	DeleteExpiredENSAddressNameSnapshots(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
+	DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
+	EnsureENSNameObservationPublished(ctx context.Context, observationID int64, chainID pgtype.Numeric) error
 	ExpireBillingPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
 	GetActiveUserSession(ctx context.Context, tokenDigest []byte, observedAt pgtype.Timestamptz) (GetActiveUserSessionRow, error)
@@ -34,7 +38,12 @@ type Querier interface {
 	GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error)
 	GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error)
 	GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamondCutHistoryCoverageParams) (GetDiamondCutHistoryCoverageRow, error)
+	GetENSAddressNameSnapshot(ctx context.Context, arg GetENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
+	GetENSNameObservation(ctx context.Context, arg GetENSNameObservationParams) (EnsNameObservation, error)
+	GetENSResolutionGeneration(ctx context.Context, arg GetENSResolutionGenerationParams) (EnsResolutionGeneration, error)
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
+	GetFreshENSResolutionFailure(ctx context.Context, arg GetFreshENSResolutionFailureParams) (EnsResolutionFailure, error)
+	GetFreshENSResolutionGeneration(ctx context.Context, chainID pgtype.Numeric, policyKey string, nowAt pgtype.Timestamptz) (EnsResolutionGeneration, error)
 	GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error)
 	GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error)
 	GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error)
@@ -50,6 +59,10 @@ type Querier interface {
 	GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (User, error)
 	GetX402TestnetWriterFence(ctx context.Context) (GetX402TestnetWriterFenceRow, error)
 	InsertBillingPayment(ctx context.Context, arg InsertBillingPaymentParams) (BillingPayment, error)
+	InsertENSAddressNameSnapshot(ctx context.Context, arg InsertENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
+	InsertENSNameObservation(ctx context.Context, arg InsertENSNameObservationParams) (EnsNameObservation, error)
+	InsertENSResolutionFailure(ctx context.Context, arg InsertENSResolutionFailureParams) error
+	InsertENSResolutionGeneration(ctx context.Context, arg InsertENSResolutionGenerationParams) (EnsResolutionGeneration, error)
 	ListAdminBillingPayments(ctx context.Context, arg ListAdminBillingPaymentsParams) ([]BillingPayment, error)
 	ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaMigration, error)
 	ListBillingPaymentEvents(ctx context.Context, paymentID pgtype.UUID) ([]BillingPaymentEvent, error)
@@ -75,7 +88,6 @@ type Querier interface {
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
 	RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error
-	RecordNameAdapterSuccess(ctx context.Context, arg RecordNameAdapterSuccessParams) (RecordNameAdapterSuccessRow, error)
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)

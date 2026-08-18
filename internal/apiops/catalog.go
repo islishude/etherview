@@ -149,6 +149,9 @@ var catalog = []Spec{
 		cursorParameter(), limitParameter("25")),
 	spec("getAddress", "GET", "/addresses/{address}", true,
 		pathParameter("address", ParameterAddress)),
+	spec("listAddressNames", "GET", "/address-names", true,
+		boundedTextParameter("addresses", true, 42, 4299, false),
+		snapshotParameter()),
 	spec("getAddressDelegation", "GET", "/addresses/{address}/delegation", true,
 		pathParameter("address", ParameterAddress)),
 	spec("listAddressDelegations", "GET", "/addresses/{address}/delegations", true,
@@ -278,6 +281,12 @@ func cursorParameter() ParameterSpec {
 	parameter := queryParameter("cursor", ParameterOpaqueCursor)
 	parameter.MinimumBytes = 1
 	parameter.MaximumBytes = 1024
+	return parameter
+}
+
+func snapshotParameter() ParameterSpec {
+	parameter := cursorParameter()
+	parameter.Name = "snapshot"
 	return parameter
 }
 

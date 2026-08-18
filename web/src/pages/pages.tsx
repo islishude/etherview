@@ -87,6 +87,7 @@ import {
   shorten,
 } from "@/components/format";
 import { CopyButton, CopyableField } from "@/components/CopyButton";
+import { AddressIdentity } from "@/ens/AddressIdentity";
 import {
   TransactionStatus,
   type TransactionVisualStatus,
@@ -315,7 +316,7 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
           {shorten(transaction.hash)}
         </Link>
         <small>
-          {shorten(transaction.from)} → {transaction.to ? shorten(transaction.to) : "∅"}
+          <AddressIdentity address={transaction.from} /> → {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
         </small>
       </span>
       <IncludedTransactionStatus transaction={transaction} />
@@ -427,9 +428,7 @@ export function GenesisPage() {
               {accounts.data.items.map((account) => (
                 <tr key={account.address}>
                   <td>
-                    <Link to="/address/$address" params={{ address: account.address }}>
-                      <code title={account.address}>{shorten(account.address)}</code>
-                    </Link>
+                    <AddressIdentity address={account.address} />
                   </td>
                   <td>{t(`accountType.${account.type}`)}</td>
                   <td>{formatNativeAmount(account.balance, locale, nativeDecimals)}</td>
@@ -522,15 +521,11 @@ export function TransactionsPage() {
                     <IncludedTransactionStatus transaction={transaction} />
                   </td>
                   <td>
-                    <Link to="/address/$address" params={{ address: transaction.from }}>
-                      <code>{shorten(transaction.from)}</code>
-                    </Link>
+                    <AddressIdentity address={transaction.from} />
                   </td>
                   <td>
                     {transaction.to ? (
-                      <Link to="/address/$address" params={{ address: transaction.to }}>
-                        <code>{shorten(transaction.to)}</code>
-                      </Link>
+                      <AddressIdentity address={transaction.to} />
                     ) : t("common.contractCreation")}
                   </td>
                   <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
@@ -682,11 +677,7 @@ function BlockWithdrawalsPanel({
               <tr key={withdrawal.index}>
                 <td><code>{formatInteger(withdrawal.index, locale)}</code></td>
                 <td><code>{formatInteger(withdrawal.validator_index, locale)}</code></td>
-                <td>
-                  <Link to="/address/$address" params={{ address: withdrawal.address }}>
-                    <code>{withdrawal.address}</code>
-                  </Link>
-                </td>
+                <td><AddressIdentity address={withdrawal.address} compact={false} /></td>
                 <td><code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code></td>
               </tr>
             ))}</tbody>
@@ -756,8 +747,8 @@ function BlockTransactionsPanel({
                 </td>
                 <td><code>{transaction.transaction_index == null ? "—" : formatInteger(String(transaction.transaction_index), locale)}</code></td>
                 <td><TransactionStatusBadge transaction={transaction} /></td>
-                <td><Link to="/address/$address" params={{ address: transaction.from }}><code>{shorten(transaction.from)}</code></Link></td>
-                <td>{transaction.to ? <Link to="/address/$address" params={{ address: transaction.to }}><code>{shorten(transaction.to)}</code></Link> : t("common.contractCreation")}</td>
+                <td><AddressIdentity address={transaction.from} /></td>
+                <td>{transaction.to ? <AddressIdentity address={transaction.to} /> : t("common.contractCreation")}</td>
                 <td><code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code></td>
                 <td><code>{transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}</code></td>
                 <td><FinalityBadge finality={transaction.finality} /></td>
@@ -862,11 +853,8 @@ function BlockDetailPage({ identifier, tab }: { identifier: string; tab: string 
                 <Detail label={t("detail.baseFee")} value={formatInteger(block.data.base_fee_per_gas, locale)} />
                 <Detail
                   label={t("detail.miner")}
-                  mono
                   value={block.data.miner ? (
-                    <Link to="/address/$address" params={{ address: block.data.miner }}>
-                      {block.data.miner}
-                    </Link>
+                    <AddressIdentity address={block.data.miner} compact={false} />
                   ) : undefined}
                 />
                 <Detail label={t("detail.canonical")} value={yesNo(block.data.canonical, t)} />
@@ -1198,18 +1186,14 @@ function TransactionCalldata({
                 <span>{t(`detail.executionResolution.${resource.execution.resolution}`)}</span>
                 {resource.execution.address && <>
                   <span aria-hidden="true">·</span>
-                  <CopyableField value={resource.execution.address}>
-                    <Link to="/address/$address" params={{ address: resource.execution.address }}><code>{resource.execution.address}</code></Link>
-                  </CopyableField>
+                  <AddressIdentity address={resource.execution.address} compact={false} copy />
                 </>}
               </div>
               {decoding.abi_source?.address && (
                 <div className="calldata-abi-source">
                   <span>{t("detail.calldataAbiSource", { kind: decoding.abi_source.kind })}</span>
                   <span aria-hidden="true">·</span>
-                  <CopyableField value={decoding.abi_source.address}>
-                    <Link to="/address/$address" params={{ address: decoding.abi_source.address }}><code>{decoding.abi_source.address}</code></Link>
-                  </CopyableField>
+                  <AddressIdentity address={decoding.abi_source.address} compact={false} copy />
                 </div>
               )}
             </div>
@@ -1603,9 +1587,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                   <p>
                     {formatNativeAmount(transaction.data.value, locale, nativeDecimals)} {nativeSymbol}
                     {transaction.data.to ? (
-                      <> · <Link to="/address/$address" params={{ address: transaction.data.to }}>
-                        {shorten(transaction.data.to)}
-                      </Link></>
+                      <> · <AddressIdentity address={transaction.data.to} /></>
                     ) : null}
                     {tokenIdentityCurrent && (tokenTransfers.data?.items.length ?? 0) > 0
                       ? <> · {t("detail.actionTokenEvents", {
@@ -1662,29 +1644,14 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                       : "—"}
                   </TransactionDetailRow>
                   <TransactionDetailRow label={t("table.from")}>
-                    <CopyableField value={transaction.data.from}>
-                      <Link to="/address/$address" params={{ address: transaction.data.from }}>
-                        <code>{transaction.data.from}</code>
-                      </Link>
-                    </CopyableField>
+                    <AddressIdentity address={transaction.data.from} compact={false} copy />
                   </TransactionDetailRow>
                   <TransactionDetailRow label={t("table.to")}>
                     {transaction.data.to ? (
-                      <CopyableField value={transaction.data.to}>
-                        <Link to="/address/$address" params={{ address: transaction.data.to }}>
-                          <code>{transaction.data.to}</code>
-                        </Link>
-                      </CopyableField>
+                      <AddressIdentity address={transaction.data.to} compact={false} copy />
                     ) : transaction.data.contract_address ? (
                       <span className="transaction-inline-values">
-                        <CopyableField value={transaction.data.contract_address}>
-                          <Link
-                            to="/address/$address"
-                            params={{ address: transaction.data.contract_address }}
-                          >
-                            <code>{transaction.data.contract_address}</code>
-                          </Link>
-                        </CopyableField>
+                        <AddressIdentity address={transaction.data.contract_address} compact={false} copy />
                         <span className="transaction-creation-label">
                           {t("common.contractCreation")}
                         </span>
@@ -1800,20 +1767,12 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                               <tr key={item.path.join(".")}>
                                 <td><span className="transaction-trace-kind">{item.call_type}</span></td>
                                 <td>
-                                  <CopyableField value={item.from}>
-                                    <Link to="/address/$address" params={{ address: item.from }}>
-                                      <code>{shorten(item.from)}</code>
-                                    </Link>
-                                  </CopyableField>
+                                  <AddressIdentity address={item.from} copy />
                                 </td>
                                 <td>
                                   {destination ? (
                                     <span className="table-primary">
-                                      <CopyableField value={destination}>
-                                        <Link to="/address/$address" params={{ address: destination }}>
-                                          <code>{shorten(destination)}</code>
-                                        </Link>
-                                      </CopyableField>
+                                      <AddressIdentity address={destination} copy />
                                       {item.created_address ? <small>{t("activity.created")}</small> : null}
                                     </span>
                                   ) : "—"}
@@ -1850,7 +1809,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
                 <div className="transaction-log-list">
                   {transaction.data.access_list.map((entry) => (
                     <article className="transaction-log" key={entry.address}>
-                      <header><strong><Link to="/address/$address" params={{ address: entry.address }}><code>{entry.address}</code></Link></strong></header>
+                      <header><strong><AddressIdentity address={entry.address} compact={false} /></strong></header>
                       {entry.storage_keys.length > 0 ? (
                         <dl>
                           {entry.storage_keys.map((key) => (
@@ -2131,7 +2090,7 @@ function TransactionDetailPage({ hash, tab }: { hash: string; tab: string }) {
               )}
               {stateIdentityCurrent && stateChanges.data?.state === "complete" && stateGroups.map(([address, changes]) => (
                 <article className="transaction-state-account" key={address}>
-                  <header><Link to="/address/$address" params={{ address }}><code>{address}</code></Link></header>
+                  <header><AddressIdentity address={address} compact={false} /></header>
                   <dl>{changes.map((change) => (
                     <div key={`${change.kind}:${change.storage_key ?? ""}`}>
                       <dt>{change.kind}{change.storage_key ? <code>{shorten(change.storage_key)}</code> : null}</dt>
@@ -2203,7 +2162,7 @@ function TransactionLogCard({
       <div className="transaction-log-address">
         <span className="transaction-log-label">{t("detail.address")}</span>
         <CopyableField value={log.address}>
-          <Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link>
+          <AddressIdentity address={log.address} compact={false} />
         </CopyableField>
       </div>
 
@@ -2295,7 +2254,7 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
               {source.address && (
                 <div>
                   <dt>{t("detail.sourceAddress")}</dt>
-                  <dd><CopyableField value={source.address}><Link to="/address/$address" params={{ address: source.address }}><code>{source.address}</code></Link></CopyableField></dd>
+                  <dd><AddressIdentity address={source.address} compact={false} copy /></dd>
                 </div>
               )}
               {source.code_hash && (
@@ -2319,12 +2278,12 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
           <dl>
             <div>
               <dt>{t("detail.emitterAddress")}</dt>
-              <dd><CopyableField value={log.address}><Link to="/address/$address" params={{ address: log.address }}><code>{log.address}</code></Link></CopyableField></dd>
+              <dd><AddressIdentity address={log.address} compact={false} copy /></dd>
             </div>
             {attribution.execution_address && (
               <div>
                 <dt>{t("detail.executionAddress")}</dt>
-                <dd><CopyableField value={attribution.execution_address}><Link to="/address/$address" params={{ address: attribution.execution_address }}><code>{attribution.execution_address}</code></Link></CopyableField></dd>
+                <dd><AddressIdentity address={attribution.execution_address} compact={false} copy /></dd>
               </div>
             )}
             <div>
@@ -2499,15 +2458,11 @@ function MempoolTransactionOverview({
             </TransactionDetailRow>
           ) : null}
           <TransactionDetailRow label={t("table.from")}>
-            <CopyableField value={transaction.from}>
-              <Link to="/address/$address" params={{ address: transaction.from }}><code>{transaction.from}</code></Link>
-            </CopyableField>
+            <AddressIdentity address={transaction.from} activity compact={false} copy />
           </TransactionDetailRow>
           <TransactionDetailRow label={t("table.to")}>
             {transaction.to ? (
-              <CopyableField value={transaction.to}>
-                <Link to="/address/$address" params={{ address: transaction.to }}><code>{transaction.to}</code></Link>
-              </CopyableField>
+              <AddressIdentity address={transaction.to} activity compact={false} copy />
             ) : t("common.contractCreation")}
           </TransactionDetailRow>
           <TransactionDetailRow label={t("table.value", { symbol: nativeSymbol })}>
@@ -3026,7 +2981,7 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
   return (
     <>
       <span className="address-header-actions">
-        <CopyableField value={address}><code>{address}</code></CopyableField>
+        <AddressIdentity address={address} compact={false} copy link={false} />
         {qrPayload ? (
           <button
             aria-label={t("actions.showQRCode")}
@@ -3161,17 +3116,8 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
     <>
       <Detail
         label={sourceLabel}
-        mono
         value={origin.source_address ? (
-          <CopyableField value={origin.source_address}>
-            <Link
-              params={{ address: origin.source_address }}
-              search={{ tab: "transactions" }}
-              to="/address/$address"
-            >
-              {origin.source_address}
-            </Link>
-          </CopyableField>
+          <AddressIdentity address={origin.source_address} activity compact={false} copy />
         ) : undefined}
       />
       <Detail
@@ -3679,15 +3625,7 @@ function AddressCell({
   return (
     <td>
       <span className="table-primary">
-        <CopyableField value={address}>
-          {sameAddress(address, currentAddress) ? (
-            <code>{shorten(address)}</code>
-          ) : (
-            <Link to="/address/$address" params={{ address }} search={{ tab: "transactions" }}>
-              <code>{shorten(address)}</code>
-            </Link>
-          )}
-        </CopyableField>
+        <AddressIdentity address={address} activity copy link={!sameAddress(address, currentAddress)} />
         {created ? <small>{t("activity.created")}</small> : null}
       </span>
     </td>
@@ -4036,21 +3974,9 @@ function TokenTransfers({
                     </Link>
                   </td>
                   <td>{tokenEventKindLabel(event.kind, t)}</td>
-                  <td>{event.from ? (
-                    <Link to="/address/$address" params={{ address: event.from }}>
-                      <code title={event.from}>{shorten(event.from)}</code>
-                    </Link>
-                  ) : "—"}</td>
-                  <td>{event.to ? (
-                    <Link to="/address/$address" params={{ address: event.to }}>
-                      <code title={event.to}>{shorten(event.to)}</code>
-                    </Link>
-                  ) : "—"}</td>
-                  <td>{event.operator ? (
-                    <Link to="/address/$address" params={{ address: event.operator }}>
-                      <code title={event.operator}>{shorten(event.operator)}</code>
-                    </Link>
-                  ) : "—"}</td>
+                  <td>{event.from ? <AddressIdentity address={event.from} /> : "—"}</td>
+                  <td>{event.to ? <AddressIdentity address={event.to} /> : "—"}</td>
+                  <td>{event.operator ? <AddressIdentity address={event.operator} /> : "—"}</td>
                   <td>
                     {event.token_id && isNFTStandard(event.standard) ? (
                       <Link
@@ -4122,12 +4048,7 @@ function NFTDetailPage({ address, tokenID }: { address: string; tokenID: string 
         <DetailList label={t("detail.nftOwnership")}>
           <Detail
             label={t("detail.owner")}
-            mono
-            value={(
-              <Link to="/address/$address" params={{ address: ownership.data.owner }}>
-                {ownership.data.owner}
-              </Link>
-            )}
+            value={<AddressIdentity address={ownership.data.owner} compact={false} />}
           />
           <Detail label={t("detail.balance")} value={ownership.data.balance} />
           <Detail label={t("table.confidence")} value={confidenceLabel(ownership.data.confidence, t)} />
@@ -5289,7 +5210,8 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     <>
       <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
       <span>
-        <strong>{result.label}</strong>
+        <strong><bdi>{result.label}</bdi></strong>
+        {result.name_source === "custom_ens" ? <small className="custom-ens-badge">Custom ENS</small> : null}
         <small>{result.key}</small>
       </span>
       <span className="search-result-tail">

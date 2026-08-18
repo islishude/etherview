@@ -235,6 +235,31 @@ func (p *Pool) Acquire(purpose Purpose) (*Endpoint, error) {
 	return &endpoint, nil
 }
 
+// AcquireNamed returns the exact configured endpoint for a sticky operation.
+// It deliberately does not switch away during cooldown: a caller that has
+// persisted an endpoint-bound snapshot must fail that operation rather than
+// combine state from another node.
+func (p *Pool) AcquireNamed(purpose Purpose, name string) (*Endpoint, error) {
+	if !ValidPurpose(purpose) {
+		return nil, fmt.Errorf("invalid RPC purpose %q", purpose)
+	}
+	if name == "" {
+		return nil, errors.New("RPC endpoint name is empty")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, state := range p.byPurpose[purpose] {
+		if state.endpoint.Name != name {
+			continue
+		}
+		endpoint := cloneEndpoint(state.endpoint)
+		endpoint.purpose = purpose
+		endpoint.observer = p.observer
+		return &endpoint, nil
+	}
+	return nil, fmt.Errorf("RPC endpoint %q is not configured for purpose %q", name, purpose)
+}
+
 func (p *Pool) ReportSuccess(name string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

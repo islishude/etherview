@@ -476,30 +476,32 @@ size alone is not sufficient justification to weaken those invariants.
   authoritative source exists. Its optional details contain only controlled
   `capability`, `state`, and `code` identifiers; an empty successful list means
   the capability was available and observed no matching objects.
-- Price and external-name adapters persist short-lived success or stable
-  failure facts in PostgreSQL. Every first-page dotted search must obtain a
-  fresh resolution before opening its read snapshot, then verify that exact
-  name/address is visible at the chosen canonical tip and catalog generation;
-  an unavailable refresh never falls back to stale catalog data. Name-source
-  candidates are filtered to that accepted address even if another registry
-  publishes the same name. Its cursor freezes the accepted address and later
-  pages do not refetch after TTL expiry.
-  A name success takes a key-share lock on its exact canonical block through
-  publication and is immutable for its registry/name/block-hash identity; an
-  identical concurrent write preserves the first fact without catalog churn,
-  while a conflict is unavailable rather than an overwrite. Name cache
-  identities include a SHA-256 namespace of the validated configured base URL,
-  isolating provider changes without persisting the URL. Adapter fetches use
-  the shared SSRF-safe HTTPS client outside API read transactions. An
-  API-only role may use a state-purpose RPC endpoint without configuring
-  history RPC, but state calls retain exact block binding and typed capability
-  failures.
+- Price adapters retain their bounded HTTPS observation contract. ENS is a
+  separate explicitly enabled API capability governed by ADR-0041. One
+  resolution generation pins an exact Ethereum Mainnet finalized block and,
+  when configured, one exact local canonical custom-ENS block plus sticky RPC
+  endpoint identities. Go input uses `adraffy/go-ens-normalize`; the SPA uses
+  Viem `normalize`. Primary-name display additionally requires reverse and
+  matching forward resolution for the explored chain's coin type.
+- Official ENS no-record may fall through to the configured current-chain
+  custom Universal Resolver. RPC, CCIP, normalization, malformed-result, and
+  forward-mismatch failures never change namespaces. Gateway-aware Universal
+  Resolver calls use only configured HTTPS batch gateways through the shared
+  SSRF-safe transport and never persist or log RPC URLs.
+- Immutable forward/primary/no-record observations publish into the temporal
+  search catalog. Dotted search cursors bind the exact accepted observation;
+  address-name pages bind a retained generation snapshot so later batches use
+  the same source blocks. Official observations need no local block, while a
+  custom observation is visible only while its exact local block is canonical.
+  External calls remain outside PostgreSQL snapshots and ENS failure never
+  blocks core ingestion or ordinary projections.
 - The maintenance role owns a PostgreSQL-only search-catalog housekeeper in
   the same production component graph used by `roles=all` and split processes.
   It runs immediately and on a configured interval, uses a chain-scoped
   transaction advisory lock, retains the configured finalized-aware catalog
-  generation window, and deletes one bounded batch of expired adapter
-  observations. Cleanup failure emits a stable redacted code and retries with
+  generation window, and deletes bounded batches of expired adapter
+  observations plus ENS snapshots and retained generations. Cleanup failure
+  emits a stable redacted code and retries with
   bounded backoff without making readiness or core correctness depend on it.
 - The same maintenance-role graph conditionally owns writer-only user-auth
   cleanup and x402 reservation expiry. Each enabled feature runs one immediate

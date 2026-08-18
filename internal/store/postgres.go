@@ -1076,7 +1076,6 @@ var derivedCanonicalRelations = [...]string{
 	"eip7702_authorizations",
 	"transaction_state_changes",
 	"block_statistics",
-	"name_records",
 	"address_activities",
 }
 

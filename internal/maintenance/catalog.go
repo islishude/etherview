@@ -20,6 +20,7 @@ type CatalogCleanupResult struct {
 	Ran           bool
 	MinGeneration int64
 	Deleted       int64
+	ENSDeleted    int64
 }
 
 type CatalogCleaner interface {
@@ -73,7 +74,23 @@ func (cleaner *PostgresCatalogCleaner) Sweep(
 		if err != nil {
 			return err
 		}
-		result = CatalogCleanupResult{Ran: true, MinGeneration: minimum, Deleted: deleted}
+		expiredBefore := pgtype.Timestamptz{Time: now.UTC(), Valid: true}
+		deletedSnapshots, err := queries.DeleteExpiredENSAddressNameSnapshots(
+			ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch),
+		)
+		if err != nil {
+			return err
+		}
+		deletedGenerations, err := queries.DeleteExpiredENSResolutionGenerations(
+			ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch),
+		)
+		if err != nil {
+			return err
+		}
+		result = CatalogCleanupResult{
+			Ran: true, MinGeneration: minimum, Deleted: deleted,
+			ENSDeleted: deletedSnapshots + deletedGenerations,
+		}
 		return nil
 	})
 	if err != nil {
@@ -173,6 +190,7 @@ func (housekeeper *CatalogHousekeeper) Run(ctx context.Context) error {
 					"event", "catalog_maintenance_completed", "component", housekeeper.Name(),
 					"minimum_generation", result.MinGeneration,
 					"deleted_observations", result.Deleted,
+					"deleted_ens_records", result.ENSDeleted,
 				)
 			}
 			delay = housekeeper.options.Interval

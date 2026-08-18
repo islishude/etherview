@@ -147,6 +147,8 @@ tls_distributed="$temporary_dir/tls-distributed.yaml"
 tls_service="$temporary_dir/tls-service.yaml"
 tls_ingress="$temporary_dir/tls-ingress.yaml"
 tls_test="$temporary_dir/tls-test.yaml"
+ens_monolith="$temporary_dir/ens-monolith.yaml"
+ens_distributed="$temporary_dir/ens-distributed.yaml"
 
 "$helm_bin" template etherview "$chart_dir" --namespace explorer >"$monolith"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
@@ -198,6 +200,13 @@ tls_test="$temporary_dir/tls-test.yaml"
   --set apiTLS.enabled=true \
   --set-string apiTLS.existingSecret=etherview-api-tls \
   --show-only templates/tests/test-api.yaml >"$tls_test"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  --set config.features.ens=true >"$ens_monolith"
+"$helm_bin" template etherview "$chart_dir" --namespace explorer \
+  -f "$chart_dir/values-distributed.yaml" \
+  --set config.features.ens=true >"$ens_distributed"
+assert_occurrences "$ens_monolith" "name: ETHERVIEW_ENS_RPC_URLS" 1
+assert_occurrences "$ens_distributed" "name: ETHERVIEW_ENS_RPC_URLS" 1
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string genesisState.fetchTimeout=1s >"$temporary_dir/genesis-timeout-minimum.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \

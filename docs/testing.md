@@ -79,6 +79,9 @@ replace a required `make test-e2e` pass.
   because a single-process browser cannot safely reuse test contexts. A
   launched browser with blank pages still requires console/runtime diagnosis.
   CI remains on the ordinary multi-process browser.
+  The suite also enables a deterministic generated-client ENS fixture to prove
+  Viem normalization, current official/custom presentation, exact address
+  disclosure, snapshot reuse, bilingual accessibility, and 390px overflow.
 - `make test-integration`: build the embedded SPA, then run real migrations and
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
   the Go runner owns a fresh PostgreSQL 18 Compose project and removes its
