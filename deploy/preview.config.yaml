@@ -78,7 +78,7 @@ metadata:
   ipfs_gateway: https://ipfs.io
   # The checked-in config stays strict. compose.preview.yaml overrides this
   # only in the metadata worker process for Docker Desktop fake-IP routing.
-  unsafe_allow_private_networks: true
+  unsafe_allow_private_networks: false
 
 features:
   trace: true
@@ -95,7 +95,7 @@ features:
   proxy_detection_v2: true
   safe_proxy_detection: true
   diamond_proxy_detection: true
-  proxy_detection_v2_public: true
+  proxy_detection_v2_public: false
 
 security:
   public_verification: true
