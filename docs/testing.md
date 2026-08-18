@@ -162,6 +162,10 @@ replace a required `make test-e2e` pass.
   native address-verification endpoint, and requires exact runtime/creation
   matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
   and monolith/six-role publication parity.
+  Both Hardhat and Foundry verification overlays explicitly disable ENS on
+  every application role and inject no ENS Mainnet RPC. Their isolated Anvil
+  fixture is verification input, not an ENS source; ENS behavior remains owned
+  by `make test-runtime-e2e` and its exact Mainnet-identity fixture.
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
   (`standard`, `modernize`, and `unparam`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type

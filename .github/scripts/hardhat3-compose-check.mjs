@@ -37,6 +37,15 @@ for (const name of appServices) {
     `${name} must not mount a Docker socket`,
   );
   assert.equal(service.privileged ?? false, false, `${name} must not be privileged`);
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_ENS,
+    "false",
+    `${name} Hardhat ENS isolation`,
+  );
+  assert.ok(
+    [undefined, null, ""].includes(service.environment?.ETHERVIEW_ENS_RPC_URLS),
+    `${name} must not receive an ENS RPC`,
+  );
   for (const key of removedEnvironment) {
     assert.ok(
       !Object.hasOwn(service.environment ?? {}, key),

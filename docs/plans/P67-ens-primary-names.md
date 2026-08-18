@@ -28,6 +28,7 @@ records, and implicit ENS support in write forms are out of scope.
 | P67-T02 | done | P67-T01 | Fresh-schema persistence, resolution generations, official-to-custom fallback, search integration, and generated batch address-name API | PostgreSQL integration/race and API contract tests |
 | P67-T03 | done | P67-T02 | Shared bilingual primary-name UI across semantic address surfaces with snapshot reuse and exact address disclosure | web unit, accessibility, responsive, and embedded browser tests |
 | P67-T04 | done | P67-T01–P67-T03 | Role-scoped deployment configuration, maintenance, observability, docs, and monolith/split production acceptance | security/license/schema/runtime/common gates |
+| P67-T05 | done | P67-T04 | Keep independent Hardhat and Foundry verification E2E topologies isolated from the ENS-only Mainnet RPC fixture | Compose render regressions and rebuilt Hardhat/Foundry monolith/split E2E |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -43,6 +44,8 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Core indexing, ordinary API responses, and readiness do not depend on ENS availability.
 - [x] Every semantic address display retains an inspectable/copyable exact address and visually distinguishes custom ENS names.
 - [x] Monolith and split-role semantics match.
+- [x] Hardhat and Foundry verification E2E explicitly disable ENS and do not
+  require or impersonate the ENS Mainnet RPC fixture.
 
 ## Current Blockers
 
@@ -80,3 +83,12 @@ None.
   forward/reverse verification, search publication, restart, reorg, and durable
   parity. `make check` passed on 2026-08-18, including generation, lint,
   ordinary/race, security, license, Buildx, Compose, and Helm gates.
+- P67-T05: the shared runtime Compose layer had enabled ENS for verification
+  suites whose isolated Anvil is not Ethereum Mainnet, causing API/all startup
+  validation to fail before either client ran. Hardhat and Foundry overlays now
+  disable ENS on all seven application roles, force the API/all ENS RPC input
+  empty, and their Compose checks enforce both invariants. Rebuilt
+  `make test-hardhat3-e2e` passed monolith (100.62s) and distributed (100.31s);
+  rebuilt `make test-foundry-e2e` passed monolith (45.91s) and distributed
+  (48.53s); `make test-hardhat3-provider-compat` also passed; the final
+  `make check` passed on 2026-08-18.

@@ -27,6 +27,15 @@ for (const name of appServices) {
     `${name} must not mount a Docker socket`,
   );
   assert.equal(service.privileged ?? false, false, `${name} must not be privileged`);
+  assert.equal(
+    service.environment?.ETHERVIEW_FEATURE_ENS,
+    "false",
+    `${name} Foundry ENS isolation`,
+  );
+  assert.ok(
+    [undefined, null, ""].includes(service.environment?.ETHERVIEW_ENS_RPC_URLS),
+    `${name} must not receive an ENS RPC`,
+  );
   const cacheMounts = volumeMounts(service).filter((mount) => mount.target === cachePath);
   const hasCompilerCache = cacheMounts.length === 1 && cacheMounts[0].type === "volume";
   assert.equal(hasCompilerCache, name === compilerOwner, `${name} compiler cache scope`);
