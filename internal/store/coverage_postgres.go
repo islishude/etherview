@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string, configuredStart uint64) error {
@@ -39,9 +40,7 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 		}
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO core_index_configuration (chain_id, configured_start)
-		VALUES ($1::numeric, $2::numeric)`, chainID, decimal(configuredStart)); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyConfigureIndexStatement1, chainID, decimal(configuredStart)); err != nil {
 		return fmt.Errorf("insert index configuration: %w", err)
 	}
 	references, err := queryCanonicalReferencesTx(ctx, tx, chainID, configuredStart)
@@ -67,9 +66,7 @@ func (r *PostgresRepository) ConfigureIndex(ctx context.Context, chainID string,
 		if err := upsertCheckpointTx(ctx, tx, chainID, checkpoint); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, `
-		DELETE FROM index_checkpoints
-		WHERE chain_id = $1::numeric AND stage = $2`, chainID, CoreCheckpoint); err != nil {
+	} else if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyConfigureIndexStatement2, chainID, CoreCheckpoint); err != nil {
 		return fmt.Errorf("clear pre-coverage core checkpoint: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -132,7 +129,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	}
 	newCanonical := make([]bool, len(references))
 	for index, reference := range references {
-		existing, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, " FOR UPDATE")
+		existing, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true)
 		if err != nil {
 			return CoreCoverage{}, err
 		}
@@ -142,7 +139,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 		newCanonical[index] = !exists
 	}
 	if first.Number > 0 {
-		lower, exists, err := queryCanonicalBlock(ctx, tx, chainID, first.Number-1, " FOR UPDATE")
+		lower, exists, err := queryCanonicalBlock(ctx, tx, chainID, first.Number-1, true)
 		if err != nil {
 			return CoreCoverage{}, err
 		}
@@ -151,7 +148,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 		}
 	}
 	if last.Number < math.MaxUint64 {
-		upper, exists, err := queryCanonicalBlock(ctx, tx, chainID, last.Number+1, " FOR UPDATE")
+		upper, exists, err := queryCanonicalBlock(ctx, tx, chainID, last.Number+1, true)
 		if err != nil {
 			return CoreCoverage{}, err
 		}
@@ -177,10 +174,7 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 			return CoreCoverage{}, err
 		}
 		if newCanonical[index] {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO canonical_blocks (chain_id, number, block_hash)
-				VALUES ($1::numeric, $2::numeric, $3)`,
-				chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+			if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCommitCanonicalSegmentStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
 				return CoreCoverage{}, fmt.Errorf("insert canonical segment block %d: %w", reference.Number, err)
 			}
 			if err := insertCoreOutboxTx(ctx, tx, chainID, "core.block.canonical", reference); err != nil {
@@ -255,7 +249,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	if err := validateHighestDisconnectedRange(ranges, configuredStart, replacement.Range); err != nil {
 		return CoreCoverage{}, err
 	}
-	tip, exists, err := queryCanonicalTip(ctx, tx, chainID, " FOR UPDATE")
+	tip, exists, err := queryCanonicalTip(ctx, tx, chainID, true)
 	if err != nil {
 		return CoreCoverage{}, err
 	}
@@ -263,7 +257,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 		return CoreCoverage{}, fmt.Errorf("%w: replacement range is not the canonical tip", ErrConflict)
 	}
 	for _, detached := range replacement.Detached {
-		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, detached.Number, " FOR UPDATE")
+		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, detached.Number, true)
 		if err != nil {
 			return CoreCoverage{}, err
 		}
@@ -273,11 +267,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 	}
 	if replacement.Ancestor != nil {
 		var canonicalAbove int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COUNT(*)
-			FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number > $2::numeric`,
-			chainID, decimal(replacement.Ancestor.Number)).Scan(&canonicalAbove); err != nil {
+		if err := tx.QueryRowContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement1, chainID, decimal(replacement.Ancestor.Number)).Scan(&canonicalAbove); err != nil {
 			return CoreCoverage{}, fmt.Errorf("count canonical blocks above sparse ancestor: %w", err)
 		}
 		if canonicalAbove != int64(len(replacement.Detached)) {
@@ -300,7 +290,7 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 		if reference.Number <= replacement.Range.End || replacement.Ancestor != nil {
 			continue
 		}
-		if _, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, " FOR UPDATE"); err != nil {
+		if _, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true); err != nil {
 			return CoreCoverage{}, err
 		} else if exists {
 			return CoreCoverage{}, fmt.Errorf("%w: attached height %d is already canonical", ErrConflict, reference.Number)
@@ -316,20 +306,14 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 		}
 	}
 	for _, detached := range replacement.Detached {
-		result, err := tx.ExecContext(ctx, `
-			DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3`,
-			chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
+		result, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement2, chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
 		if err != nil {
 			return CoreCoverage{}, fmt.Errorf("detach sparse canonical block %d: %w", detached.Number, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
 			return CoreCoverage{}, fmt.Errorf("%w: detach sparse canonical block %d affected %d rows", ErrConflict, detached.Number, affected)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2`,
-			chainID, mustHashBytes(detached.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement3, chainID, mustHashBytes(detached.Hash)); err != nil {
 			return CoreCoverage{}, fmt.Errorf("mark sparse detached journals: %w", err)
 		}
 		if err := setDerivedCanonicalTx(ctx, tx, chainID, detached.Hash, false); err != nil {
@@ -340,16 +324,10 @@ func (r *PostgresRepository) ReplaceHighestCanonicalSegment(
 		}
 	}
 	for _, reference := range attached {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement4, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
 			return CoreCoverage{}, fmt.Errorf("attach sparse canonical block %d: %w", reference.Number, err)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2`,
-			chainID, mustHashBytes(reference.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceHighestCanonicalSegmentStatement5, chainID, mustHashBytes(reference.Hash)); err != nil {
 			return CoreCoverage{}, fmt.Errorf("mark sparse attached journals: %w", err)
 		}
 		if err := setDerivedCanonicalTx(ctx, tx, chainID, reference.Hash, true); err != nil {
@@ -433,31 +411,18 @@ func (r *PostgresRepository) ClaimBackfillRange(
 	if rangeIntersectsCoverage(ranges, target) {
 		return BackfillLease{}, false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM core_backfill_leases
-		WHERE chain_id = $1::numeric AND expires_at <= $2`, chainID, now); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement1, chainID, now); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("delete expired backfill leases: %w", err)
 	}
 	var overlaps bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM core_backfill_leases
-			WHERE chain_id = $1::numeric
-			  AND expires_at > $2
-			  AND NOT (range_end < $3::numeric OR range_start > $4::numeric)
-		)`, chainID, now, decimal(target.Start), decimal(target.End)).Scan(&overlaps); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement2, chainID, now, decimal(target.Start), decimal(target.End)).Scan(&overlaps); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("check overlapping backfill lease: %w", err)
 	}
 	if overlaps {
 		return BackfillLease{}, false, nil
 	}
 	lease := newBackfillLease(chainID, target, owner, now, ttl)
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO core_backfill_leases (
-			chain_id, range_start, range_end, owner, lease_token, claimed_at, expires_at
-		) VALUES ($1::numeric, $2::numeric, $3::numeric, $4, $5::uuid, $6, $7)`,
-		chainID, decimal(target.Start), decimal(target.End), lease.Owner, lease.Token, now, lease.ExpiresAt); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyClaimBackfillRangeStatement3, chainID, decimal(target.Start), decimal(target.End), lease.Owner, lease.Token, now, lease.ExpiresAt); err != nil {
 		return BackfillLease{}, false, fmt.Errorf("insert backfill lease: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -482,13 +447,7 @@ func (r *PostgresRepository) RenewBackfillRange(
 	now = now.UTC()
 	expiresAt := now.Add(ttl)
 	var storedExpiry time.Time
-	err := r.db.QueryRowContext(ctx, `
-		UPDATE core_backfill_leases
-		SET expires_at = $1, updated_at = now()
-		WHERE chain_id = $2::numeric
-		  AND range_start = $3::numeric AND range_end = $4::numeric
-		  AND owner = $5 AND lease_token = $6::uuid AND expires_at > $7
-		RETURNING expires_at`, expiresAt, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
+	err := r.db.QueryRowContext(ctx, dbgen.StoreLegacyRenewBackfillRangeStatement1, expiresAt, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
 		lease.Owner, lease.Token, now).Scan(&storedExpiry)
 	if err == sql.ErrNoRows {
 		return BackfillLease{}, ErrLeaseLost
@@ -505,12 +464,7 @@ func (r *PostgresRepository) ReleaseBackfillRange(ctx context.Context, lease Bac
 		return err
 	}
 	chainID, _ := normalizeChainID(lease.ChainID)
-	result, err := r.db.ExecContext(ctx, `
-		DELETE FROM core_backfill_leases
-		WHERE chain_id = $1::numeric
-		  AND range_start = $2::numeric AND range_end = $3::numeric
-		  AND owner = $4 AND lease_token = $5::uuid AND expires_at > CURRENT_TIMESTAMP`,
-		chainID, decimal(lease.Range.Start), decimal(lease.Range.End), lease.Owner, lease.Token)
+	result, err := r.db.ExecContext(ctx, dbgen.StoreLegacyReleaseBackfillRangeStatement1, chainID, decimal(lease.Range.Start), decimal(lease.Range.End), lease.Owner, lease.Token)
 	if err != nil {
 		return fmt.Errorf("release backfill lease: %w", err)
 	}
@@ -538,14 +492,7 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 		return err
 	}
 	var expiresAt time.Time
-	err = tx.QueryRowContext(ctx, `
-		SELECT expires_at
-		FROM core_backfill_leases
-		WHERE chain_id = $1::numeric
-		  AND range_start = $2::numeric AND range_end = $3::numeric
-		  AND owner = $4 AND lease_token = $5::uuid
-		  AND expires_at > CURRENT_TIMESTAMP
-		FOR UPDATE`, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
+	err = tx.QueryRowContext(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement1, chainID, decimal(lease.Range.Start), decimal(lease.Range.End),
 		lease.Owner, lease.Token).Scan(&expiresAt)
 	if err == sql.ErrNoRows {
 		return ErrLeaseLost
@@ -560,11 +507,7 @@ func (r *PostgresRepository) CompleteBackfillRange(ctx context.Context, lease Ba
 	if !rangeCovered(ranges, lease.Range) {
 		return fmt.Errorf("%w: backfill range is not fully covered", ErrConflict)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM core_backfill_leases
-		WHERE chain_id = $1::numeric
-		  AND range_start = $2::numeric AND range_end = $3::numeric
-		  AND lease_token = $4::uuid`, chainID, decimal(lease.Range.Start),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCompleteBackfillRangeStatement2, chainID, decimal(lease.Range.Start),
 		decimal(lease.Range.End), lease.Token); err != nil {
 		return fmt.Errorf("complete backfill lease: %w", err)
 	}
@@ -580,15 +523,12 @@ func queryConfiguredStartTx(
 	chainID string,
 	forUpdate bool,
 ) (uint64, bool, error) {
-	suffix := ""
+	query := dbgen.StoreConfiguredStart
 	if forUpdate {
-		suffix = " FOR UPDATE"
+		query = dbgen.StoreLockConfiguredStart
 	}
 	var value string
-	err := tx.QueryRowContext(ctx, `
-		SELECT configured_start::text
-		FROM core_index_configuration
-		WHERE chain_id = $1::numeric`+suffix, chainID).Scan(&value)
+	err := tx.QueryRowContext(ctx, query, chainID).Scan(&value)
 	if err == sql.ErrNoRows {
 		return 0, false, nil
 	}
@@ -649,12 +589,7 @@ func insertSparseReorgEventsTx(
 	} else if boundaryNumber > 0 {
 		boundaryNumber--
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO reorg_events (
-			chain_id, ancestor_number, ancestor_hash, old_tip_number, old_tip_hash,
-			new_tip_number, new_tip_hash, detached, attached, reason
-		) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5, $6::numeric, $7, $8::jsonb, $9::jsonb, $10)`,
-		chainID, decimal(boundaryNumber), mustHashBytes(boundaryHash),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertSparseReorgEventsTxStatement1, chainID, decimal(boundaryNumber), mustHashBytes(boundaryHash),
 		decimal(oldTip.Number), mustHashBytes(oldTip.Hash), decimal(newTip.Number),
 		mustHashBytes(newTip.Hash), detachedJSON, attachedJSON, replacement.Reason); err != nil {
 		return fmt.Errorf("insert sparse reorg audit event: %w", err)
@@ -694,7 +629,7 @@ func queryCoverageTx(
 			return CoreCoverage{}, false, errors.New("coverage range starts before configured index height")
 		}
 	}
-	highest, exists, err := queryCanonicalBlock(ctx, tx, chainID, ranges[len(ranges)-1].End, "")
+	highest, exists, err := queryCanonicalBlock(ctx, tx, chainID, ranges[len(ranges)-1].End, false)
 	if err != nil {
 		return CoreCoverage{}, false, err
 	}
@@ -703,7 +638,7 @@ func queryCoverageTx(
 	}
 	coverage.Highest = &highest
 	if ranges[0].Start == configuredStart {
-		contiguous, exists, err := queryCanonicalBlock(ctx, tx, chainID, ranges[0].End, "")
+		contiguous, exists, err := queryCanonicalBlock(ctx, tx, chainID, ranges[0].End, false)
 		if err != nil {
 			return CoreCoverage{}, false, err
 		}
@@ -716,11 +651,7 @@ func queryCoverageTx(
 }
 
 func queryCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string) ([]BlockRange, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT range_start::text, range_end::text
-		FROM core_coverage_ranges
-		WHERE chain_id = $1::numeric
-		ORDER BY range_start`, chainID)
+	rows, err := tx.QueryContext(ctx, dbgen.StoreLegacyQueryCoverageRangesTxStatement1, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("query core coverage ranges: %w", err)
 	}
@@ -754,16 +685,11 @@ func replaceCoverageRangesTx(ctx context.Context, tx *sql.Tx, chainID string, ra
 	if err := validateNormalizedCoverageRanges(ranges); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM core_coverage_ranges
-		WHERE chain_id = $1::numeric`, chainID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceCoverageRangesTxStatement1, chainID); err != nil {
 		return fmt.Errorf("replace core coverage ranges: %w", err)
 	}
 	for _, blockRange := range ranges {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO core_coverage_ranges (chain_id, range_start, range_end)
-			VALUES ($1::numeric, $2::numeric, $3::numeric)`,
-			chainID, decimal(blockRange.Start), decimal(blockRange.End)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyReplaceCoverageRangesTxStatement2, chainID, decimal(blockRange.Start), decimal(blockRange.End)); err != nil {
 			return fmt.Errorf("insert core coverage range %d-%d: %w", blockRange.Start, blockRange.End, err)
 		}
 	}
@@ -776,13 +702,7 @@ func queryCanonicalReferencesTx(
 	chainID string,
 	configuredStart uint64,
 ) ([]BlockRef, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT cb.number::text, cb.block_hash, b.parent_hash
-		FROM canonical_blocks cb
-		JOIN blocks b
-		  ON b.chain_id = cb.chain_id AND b.number = cb.number AND b.hash = cb.block_hash
-		WHERE cb.chain_id = $1::numeric AND cb.number >= $2::numeric
-		ORDER BY cb.number`, chainID, decimal(configuredStart))
+	rows, err := tx.QueryContext(ctx, dbgen.StoreLegacyQueryCanonicalReferencesTxStatement1, chainID, decimal(configuredStart))
 	if err != nil {
 		return nil, fmt.Errorf("query canonical blocks for coverage: %w", err)
 	}

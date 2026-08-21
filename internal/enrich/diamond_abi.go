@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type diamondABIRoute struct {
@@ -51,20 +52,7 @@ func resolveDiamondABIRoute(
 	selector [4]byte,
 ) (diamondABIRoute, error) {
 	var detected bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-		    SELECT 1
-		    FROM published_diamond_loupe_snapshots AS snapshot
-		    JOIN canonical_blocks AS canonical
-		      ON canonical.chain_id = snapshot.chain_id
-		     AND canonical.number = snapshot.block_number
-		     AND canonical.block_hash = snapshot.block_hash
-		    WHERE snapshot.chain_id = $1::numeric
-		      AND snapshot.diamond_address = $2
-		      AND snapshot.block_number <= $3::numeric
-		      AND snapshot.detection_state = 'confirmed'
-		      AND snapshot.canonical
-		)`, job.ChainID, observation.target[:],
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement1, job.ChainID, observation.target[:],
 		strconv.FormatUint(job.BlockNumber, 10)).Scan(&detected); err != nil {
 		return diamondABIRoute{}, fmt.Errorf("query Diamond ABI identity: %w", err)
 	}
@@ -73,17 +61,7 @@ func resolveDiamondABIRoute(
 	}
 	if observation.objectKind == abiObjectTraceCalldata {
 		var sameTransactionCut bool
-		if err := tx.QueryRowContext(ctx, `
-			SELECT EXISTS (
-			    SELECT 1
-			    FROM diamond_cut_events AS event
-			    WHERE event.chain_id = $1::numeric
-			      AND event.block_hash = $2
-			      AND event.diamond_address = $3
-			      AND event.transaction_index = $4::bigint
-			      AND event.canonical
-			      AND event.stage_version = $5
-			)`, job.ChainID, job.BlockHash[:], observation.target[:],
+		if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement2, job.ChainID, job.BlockHash[:], observation.target[:],
 			strconv.FormatUint(observation.transactionIndex, 10),
 			ProxyStage.Version).Scan(&sameTransactionCut); err != nil {
 			return diamondABIRoute{}, fmt.Errorf("query same-transaction DiamondCut: %w", err)
@@ -98,39 +76,7 @@ func resolveDiamondABIRoute(
 
 	var action int
 	var facetBytes []byte
-	err := tx.QueryRowContext(ctx, `
-		SELECT change.action, change.facet_address
-		FROM diamond_cut_events AS event
-		JOIN diamond_selector_changes AS change
-		  ON change.chain_id = event.chain_id
-		 AND change.block_hash = event.block_hash
-		 AND change.log_index = event.log_index
-		 AND change.stage_version = event.stage_version
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = event.chain_id
-		 AND canonical.number = event.block_number
-		 AND canonical.block_hash = event.block_hash
-		JOIN published_block_stage_results AS published
-		  ON published.chain_id = event.chain_id
-		 AND published.block_number = event.block_number
-		 AND published.block_hash = event.block_hash
-		 AND published.stage = 'proxy'
-		 AND published.stage_version = event.stage_version
-		 AND published.state = 'complete'
-		WHERE event.chain_id = $1::numeric
-		  AND event.diamond_address = $2
-		  AND change.selector = $3
-		  AND event.canonical
-		  AND (
-		      event.block_number < $4::numeric OR
-		      (event.block_number = $4::numeric AND
-		       event.transaction_index < $5::bigint)
-		  )
-		ORDER BY event.block_number DESC, event.transaction_index DESC,
-		         event.log_index DESC, change.cut_index DESC,
-		         change.selector_index DESC
-		LIMIT 1`,
-		job.ChainID, observation.target[:], selector[:],
+	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement3, job.ChainID, observation.target[:], selector[:],
 		strconv.FormatUint(job.BlockNumber, 10),
 		strconv.FormatUint(observation.transactionIndex, 10),
 	).Scan(&action, &facetBytes)
@@ -171,15 +117,7 @@ func resolveDiamondABIRoute(
 	// A snapshot is a block-end fact. It is safe as a transaction-start route
 	// only when this Diamond has no cuts in the containing block.
 	var blockHasCut bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-		    SELECT 1 FROM diamond_cut_events AS event
-		    WHERE event.chain_id = $1::numeric
-		      AND event.block_hash = $2
-		      AND event.diamond_address = $3
-		      AND event.canonical
-		      AND event.stage_version = $4
-		)`, job.ChainID, job.BlockHash[:], observation.target[:],
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement4, job.ChainID, job.BlockHash[:], observation.target[:],
 		ProxyStage.Version).Scan(&blockHasCut); err != nil {
 		return diamondABIRoute{}, fmt.Errorf("query block DiamondCut presence: %w", err)
 	}
@@ -190,22 +128,7 @@ func resolveDiamondABIRoute(
 		}, nil
 	}
 	var completeness string
-	err = tx.QueryRowContext(ctx, `
-		SELECT snapshot.completeness, selector.facet_address
-		FROM published_diamond_loupe_snapshots AS snapshot
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = snapshot.chain_id
-		 AND canonical.number = snapshot.block_number
-		 AND canonical.block_hash = snapshot.block_hash
-		LEFT JOIN diamond_loupe_selectors AS selector
-		  ON selector.snapshot_id = snapshot.id AND selector.selector = $3
-		WHERE snapshot.chain_id = $1::numeric
-		  AND snapshot.diamond_address = $2
-		  AND snapshot.block_number <= $4::numeric
-		  AND snapshot.detection_state = 'confirmed'
-		  AND snapshot.canonical
-		ORDER BY snapshot.block_number DESC, snapshot.id DESC
-		LIMIT 1`, job.ChainID, observation.target[:], selector[:],
+	err = tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveDiamondABIRouteStatement5, job.ChainID, observation.target[:], selector[:],
 		strconv.FormatUint(job.BlockNumber, 10)).Scan(&completeness, &facetBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return diamondABIRoute{detected: true}, nil
@@ -255,26 +178,7 @@ func loadDiamondFacetCodeHash(
 		return common.Hash{}, true, nil
 	}
 	var hashBytes []byte
-	err := tx.QueryRowContext(ctx, `
-		SELECT facet.code_hash
-		FROM published_diamond_loupe_snapshots AS snapshot
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = snapshot.chain_id
-		 AND canonical.number = snapshot.block_number
-		 AND canonical.block_hash = snapshot.block_hash
-		JOIN diamond_loupe_facets AS facet
-		  ON facet.snapshot_id = snapshot.id
-		WHERE snapshot.chain_id = $1::numeric
-		  AND snapshot.diamond_address = $2
-		  AND snapshot.block_number <= $3::numeric
-		  AND snapshot.detection_state = 'confirmed'
-		  AND snapshot.canonical
-		  AND facet.facet_address = $4
-		  AND facet.facet_kind = 'facet'
-		  AND facet.code_exists
-		  AND facet.code_hash IS NOT NULL
-		ORDER BY snapshot.block_number DESC, snapshot.id DESC
-		LIMIT 1`, job.ChainID, diamond[:],
+	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadDiamondFacetCodeHashStatement1, job.ChainID, diamond[:],
 		strconv.FormatUint(job.BlockNumber, 10), facet[:]).Scan(&hashBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return common.Hash{}, false, nil
@@ -371,65 +275,7 @@ func loadDiamondAuxiliaryABIBindings(
 	target ABIIdentity,
 	limits DecodeLimits,
 ) ([]persistedABIBinding, string, error) {
-	rows, err := tx.QueryContext(ctx, `
-		WITH selected_snapshots AS (
-		    (SELECT snapshot.id
-		     FROM published_diamond_loupe_snapshots AS snapshot
-		     JOIN canonical_blocks AS canonical
-		       ON canonical.chain_id = snapshot.chain_id
-		      AND canonical.number = snapshot.block_number
-		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number <= $3::numeric
-		       AND snapshot.detection_state = 'confirmed'
-		       AND snapshot.completeness = 'complete'
-		       AND snapshot.canonical
-		     ORDER BY snapshot.block_number DESC, snapshot.id DESC
-		     LIMIT 1)
-		    UNION
-		    (SELECT snapshot.id
-		     FROM published_diamond_loupe_snapshots AS snapshot
-		     JOIN canonical_blocks AS canonical
-		       ON canonical.chain_id = snapshot.chain_id
-		      AND canonical.number = snapshot.block_number
-		      AND canonical.block_hash = snapshot.block_hash
-		     WHERE snapshot.chain_id = $1::numeric
-		       AND snapshot.diamond_address = $2
-		       AND snapshot.block_number < $3::numeric
-		       AND snapshot.detection_state = 'confirmed'
-		       AND snapshot.completeness = 'complete'
-		       AND snapshot.canonical
-		     ORDER BY snapshot.block_number DESC, snapshot.id DESC
-		     LIMIT 1)
-		), candidates AS (
-		    SELECT facet.facet_address
-		    FROM diamond_loupe_facets AS facet
-		    WHERE facet.snapshot_id IN (SELECT id FROM selected_snapshots)
-		      AND facet.facet_kind = 'facet'
-		      AND facet.code_exists
-		      AND facet.code_hash IS NOT NULL
-		    UNION
-		    SELECT change.facet_address
-		    FROM diamond_cut_events AS event
-		    JOIN diamond_selector_changes AS change
-		      ON change.chain_id = event.chain_id
-		     AND change.block_hash = event.block_hash
-		     AND change.log_index = event.log_index
-		     AND change.stage_version = event.stage_version
-		    WHERE event.chain_id = $1::numeric
-		      AND event.block_hash = $4
-		      AND event.diamond_address = $2
-		      AND event.canonical
-		      AND event.stage_version = $5
-		      AND change.action IN (0, 1)
-		      AND change.facet_address <> decode(repeat('00', 20), 'hex')
-		)
-		SELECT facet_address
-		FROM candidates
-		ORDER BY facet_address
-		LIMIT $6`,
-		job.ChainID, target.Address[:], strconv.FormatUint(job.BlockNumber, 10),
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadDiamondAuxiliaryABIBindingsStatement1, job.ChainID, target.Address[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], ProxyStage.Version, diamondMaxAuxiliaryFacetCandidates+1,
 	)
 	if err != nil {

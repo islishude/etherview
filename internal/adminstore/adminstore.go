@@ -146,12 +146,7 @@ func (r *Repository) EnqueueRepair(ctx context.Context, request RepairRequest) (
 	if err := validateRepairRequest(request); err != nil {
 		return RepairRequest{}, err
 	}
-	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO repair_requests (
-			chain_id, operation, stage, from_block, to_block, allow_finalized, reason
-		) VALUES ($1::numeric, $2, $3, $4::numeric, $5::numeric, $6, $7)
-		RETURNING id, status, requested_at`,
-		r.chainID, request.Operation, request.Stage,
+	err := r.db.QueryRowContext(ctx, dbgen.AdminWriteEnqueueRepairStatement1, r.chainID, request.Operation, request.Stage,
 		strconv.FormatUint(request.FromBlock, 10), strconv.FormatUint(request.ToBlock, 10),
 		request.AllowFinalized, request.Reason,
 	).Scan(&request.ID, &request.Status, &request.RequestedAt)

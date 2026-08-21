@@ -68,10 +68,11 @@ func TestInternalTransactionsAreCanonicalPagedAndGolden(t *testing.T) {
 				"16", "21000", "20000", []byte{0xde, 0xad}, nil, false,
 			}},
 			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 7 || arguments[0].Value != "1" ||
+				if len(arguments) != 8 || arguments[0].Value != "1" ||
 					!reflect.DeepEqual(arguments[1].Value, testAddressBytes(testSender)) || arguments[2].Value != nil ||
 					arguments[3].Value != "10" || arguments[4].Value != "20" ||
-					fmt.Sprint(arguments[5].Value) != "2" || fmt.Sprint(arguments[6].Value) != "2" {
+					fmt.Sprint(arguments[5].Value) != "2" || fmt.Sprint(arguments[6].Value) != "2" ||
+					arguments[7].Value != "DESC" {
 					return fmt.Errorf("internal transaction arguments=%v", arguments)
 				}
 				return nil
@@ -127,10 +128,10 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 				completeCoreCoverageExpectation("10", "10", "12"),
 				completedStageExpectation("trace", "10", "10"),
 				{
-					contains: "($2::bytea IS NULL OR trace.from_address = $2 OR trace.to_address = $2 OR trace.created_address = $2)",
+					contains: "-- name: EtherscanInternalTransactions :many",
 					columns:  fakeColumns(16), rows: [][]driver.Value{row},
 					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 7 || arguments[1].Value != nil || !reflect.DeepEqual(arguments[2].Value, testHashBytes(7)) ||
+						if len(arguments) != 8 || arguments[1].Value != nil || !reflect.DeepEqual(arguments[2].Value, testHashBytes(7)) ||
 							arguments[3].Value != "10" || arguments[4].Value != "10" {
 							return fmt.Errorf("hash-mode arguments=%v", arguments)
 						}
@@ -146,10 +147,10 @@ func TestInternalTransactionsSupportHashAndRangeModes(t *testing.T) {
 				completeCoreCoverageExpectation("10", "20", "12"),
 				completedStageExpectation("trace", "10", "20"),
 				{
-					contains: "($2::bytea IS NULL OR trace.from_address = $2 OR trace.to_address = $2 OR trace.created_address = $2)",
+					contains: "-- name: EtherscanInternalTransactions :many",
 					columns:  fakeColumns(16), rows: [][]driver.Value{row},
 					check: func(arguments []driver.NamedValue) error {
-						if len(arguments) != 7 || arguments[1].Value != nil || arguments[2].Value != nil ||
+						if len(arguments) != 8 || arguments[1].Value != nil || arguments[2].Value != nil ||
 							arguments[3].Value != "10" || arguments[4].Value != "20" {
 							return fmt.Errorf("range-mode arguments=%v", arguments)
 						}
@@ -203,7 +204,7 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 		completeCoreCoverageExpectation("10", "20", "12"),
 		completedStageExpectation("token", "10", "20"),
 		sqlExpectation{
-			contains: "event.canonical = TRUE AND (event.from_address = $2 OR event.to_address = $2) AND event.standard = $3",
+			contains: "-- name: EtherscanTokenTransfers :many",
 			columns:  fakeColumns(19),
 			rows: [][]driver.Value{{
 				"10", testHashBytes(3), int64(4), int64(0), testTransactionHashBytes(testRecipient), testAddressBytes(testContract),
@@ -212,11 +213,12 @@ func TestERC20TransfersUseCanonicalRowsAndPreserveUint256(t *testing.T) {
 				testBlockJSON(10, 2), int64(1), "Example", "TOK", int64(18),
 			}},
 			check: func(arguments []driver.NamedValue) error {
-				if len(arguments) != 8 || arguments[0].Value != "1" ||
+				if len(arguments) != 9 || arguments[0].Value != "1" ||
 					!reflect.DeepEqual(arguments[1].Value, testAddressBytes(testSender)) || arguments[2].Value != "erc20" ||
 					arguments[3].Value != "10" || arguments[4].Value != "20" ||
 					!reflect.DeepEqual(arguments[5].Value, testAddressBytes(testContract)) ||
-					fmt.Sprint(arguments[6].Value) != "2" || fmt.Sprint(arguments[7].Value) != "2" {
+					fmt.Sprint(arguments[6].Value) != "2" || fmt.Sprint(arguments[7].Value) != "2" ||
+					arguments[8].Value != "DESC" {
 					return fmt.Errorf("token transfer arguments=%v", arguments)
 				}
 				return nil

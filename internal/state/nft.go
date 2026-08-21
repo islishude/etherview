@@ -569,24 +569,7 @@ func insertOwnerObservation(
 		ownerBytes = owner.Bytes()
 		state = "owned"
 	}
-	result, err := executor.ExecContext(ctx, `
-			INSERT INTO erc721_owner_reconciliations AS current (
-			chain_id, token_address, token_id, block_number, block_hash,
-			state, owner_address, confidence
-		)
-		SELECT $1::numeric, $2, $3::numeric, $4::numeric, $5,
-		       $6, $7, 'rpc_exact'
-		FROM canonical_blocks AS canonical
-		WHERE canonical.chain_id = $1::numeric
-		  AND canonical.number = $4::numeric
-		  AND canonical.block_hash = $5
-			ON CONFLICT (chain_id, token_address, token_id, block_hash) DO UPDATE SET
-				observed_at = current.observed_at
-			WHERE current.block_number = EXCLUDED.block_number
-			  AND current.state = EXCLUDED.state
-			  AND current.owner_address IS NOT DISTINCT FROM EXCLUDED.owner_address
-			  AND current.confidence = EXCLUDED.confidence`,
-		chainID, contractBytes, tokenID.String(), strconv.FormatUint(reference.Number, 10), hashBytes,
+	result, err := executor.ExecContext(ctx, dbgen.StateWriteInsertOwnerObservationStatement1, chainID, contractBytes, tokenID.String(), strconv.FormatUint(reference.Number, 10), hashBytes,
 		state, ownerBytes,
 	)
 	if err != nil {
@@ -621,23 +604,7 @@ func insertERC1155Balance(
 	contractBytes := contract.Bytes()
 	ownerBytes := owner.Bytes()
 	hashBytes := reference.Hash.Bytes()
-	result, err := executor.ExecContext(ctx, `
-			INSERT INTO erc1155_balance_reconciliations AS current (
-			chain_id, token_address, token_id, owner_address,
-			block_number, block_hash, balance, confidence
-		)
-		SELECT $1::numeric, $2, $3::numeric, $4,
-		       $5::numeric, $6, $7::numeric, 'rpc_exact'
-		FROM canonical_blocks AS canonical
-		WHERE canonical.chain_id = $1::numeric
-		  AND canonical.number = $5::numeric
-		  AND canonical.block_hash = $6
-			ON CONFLICT (chain_id, token_address, token_id, owner_address, block_hash) DO UPDATE SET
-				observed_at = current.observed_at
-			WHERE current.block_number = EXCLUDED.block_number
-			  AND current.balance = EXCLUDED.balance
-			  AND current.confidence = EXCLUDED.confidence`,
-		chainID, contractBytes, tokenID.String(), ownerBytes, strconv.FormatUint(reference.Number, 10), hashBytes,
+	result, err := executor.ExecContext(ctx, dbgen.StateWriteInsertERC1155BalanceStatement1, chainID, contractBytes, tokenID.String(), ownerBytes, strconv.FormatUint(reference.Number, 10), hashBytes,
 		observation.Balance,
 	)
 	if err != nil {
@@ -666,19 +633,7 @@ func classifyOwnerPersistenceMiss(
 	blockHash []byte,
 ) error {
 	var canonical, stored bool
-	err := executor.QueryRowContext(ctx, `
-		SELECT
-			EXISTS (
-				SELECT 1 FROM canonical_blocks
-				WHERE chain_id = $1::numeric AND number = $4::numeric AND block_hash = $5
-			),
-			EXISTS (
-				SELECT 1 FROM erc721_owner_reconciliations
-				WHERE chain_id = $1::numeric AND token_address = $2
-				  AND token_id = $3::numeric AND block_hash = $5
-			)`,
-		chainID, contract, tokenID, blockNumber, blockHash,
-	).Scan(&canonical, &stored)
+	err := executor.QueryRowContext(ctx, dbgen.StateWriteClassifyOwnerPersistenceMissStatement1, chainID, contract, tokenID, blockNumber, blockHash).Scan(&canonical, &stored)
 	if err != nil {
 		return fmt.Errorf("inspect exact ERC-721 owner persistence miss: %w", err)
 	}
@@ -702,19 +657,7 @@ func classifyBalancePersistenceMiss(
 	blockHash []byte,
 ) error {
 	var canonical, stored bool
-	err := executor.QueryRowContext(ctx, `
-		SELECT
-			EXISTS (
-				SELECT 1 FROM canonical_blocks
-				WHERE chain_id = $1::numeric AND number = $5::numeric AND block_hash = $6
-			),
-			EXISTS (
-				SELECT 1 FROM erc1155_balance_reconciliations
-				WHERE chain_id = $1::numeric AND token_address = $2
-				  AND token_id = $3::numeric AND owner_address = $4 AND block_hash = $6
-			)`,
-		chainID, contract, tokenID, owner, blockNumber, blockHash,
-	).Scan(&canonical, &stored)
+	err := executor.QueryRowContext(ctx, dbgen.StateWriteClassifyBalancePersistenceMissStatement1, chainID, contract, tokenID, owner, blockNumber, blockHash).Scan(&canonical, &stored)
 	if err != nil {
 		return fmt.Errorf("inspect exact ERC-1155 balance persistence miss: %w", err)
 	}

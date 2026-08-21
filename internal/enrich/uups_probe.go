@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/google/uuid"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type uupsProbeState string
@@ -237,8 +238,7 @@ func persistUUPSImplementationProbe(
 	} else {
 		rejection = string(result.rejection)
 	}
-	observation, err := tx.ExecContext(ctx, upsertUUPSImplementationObservationSQL,
-		job.ChainID, result.target.address[:], strconv.FormatUint(job.BlockNumber, 10),
+	observation, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertUUPSImplementationObservation, job.ChainID, result.target.address[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], result.target.codeHash[:], result.target.verificationJobID,
 		job.Stage.Version, OpenZeppelin561Standard, result.state, rejection,
 		proxiableUUID, interfaceVersion,
@@ -254,8 +254,7 @@ func persistUUPSImplementationProbe(
 		return Permanent(errors.New("existing UUPS implementation observation conflicts with exact probe"))
 	}
 
-	witness, err := tx.ExecContext(ctx, insertUUPSImplementationObservationGenerationSQL,
-		job.ChainID, result.target.address[:], job.BlockHash[:], job.Stage.Version,
+	witness, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertUUPSImplementationObservationGeneration, job.ChainID, result.target.address[:], job.BlockHash[:], job.Stage.Version,
 		result.target.verificationJobID, jobID, generation,
 	)
 	if err != nil {
@@ -270,35 +269,3 @@ func persistUUPSImplementationProbe(
 	}
 	return nil
 }
-
-const upsertUUPSImplementationObservationSQL = `
-INSERT INTO uups_implementation_observations AS current (
-    chain_id, implementation_address, block_number, block_hash,
-    implementation_code_hash, verification_job_id, stage_version,
-    standard_version, probe_state, rejection_reason, proxiable_uuid,
-    upgrade_interface_version, canonical
-) VALUES (
-    $1::numeric, $2, $3::numeric, $4,
-    $5, $6::uuid, $7, $8, $9, $10, $11, $12, TRUE
-)
-ON CONFLICT (
-    chain_id, implementation_address, block_hash,
-    stage_version, verification_job_id
-) DO UPDATE SET canonical = EXCLUDED.canonical
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.implementation_code_hash = EXCLUDED.implementation_code_hash
-  AND current.standard_version = EXCLUDED.standard_version
-  AND current.probe_state = EXCLUDED.probe_state
-  AND current.rejection_reason IS NOT DISTINCT FROM EXCLUDED.rejection_reason
-  AND current.proxiable_uuid IS NOT DISTINCT FROM EXCLUDED.proxiable_uuid
-  AND current.upgrade_interface_version IS NOT DISTINCT FROM EXCLUDED.upgrade_interface_version`
-
-const insertUUPSImplementationObservationGenerationSQL = `
-INSERT INTO uups_implementation_observation_generations (
-    chain_id, implementation_address, observation_block_hash,
-    observation_stage_version, verification_job_id,
-    durable_job_id, job_generation
-) VALUES (
-    $1::numeric, $2, $3, $4, $5::uuid, $6::bigint, $7::bigint
-)
-ON CONFLICT DO NOTHING`

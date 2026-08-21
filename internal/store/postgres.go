@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -39,7 +40,7 @@ func (r *PostgresRepository) CanonicalTip(ctx context.Context, chainID string) (
 	if err != nil {
 		return BlockRef{}, false, err
 	}
-	return queryCanonicalTip(ctx, r.db, chainID, "")
+	return queryCanonicalTip(ctx, r.db, chainID, false)
 }
 
 func (r *PostgresRepository) CanonicalBlock(ctx context.Context, chainID string, number uint64) (BlockRef, bool, error) {
@@ -47,7 +48,7 @@ func (r *PostgresRepository) CanonicalBlock(ctx context.Context, chainID string,
 	if err != nil {
 		return BlockRef{}, false, err
 	}
-	return queryCanonicalBlock(ctx, r.db, chainID, number, "")
+	return queryCanonicalBlock(ctx, r.db, chainID, number, false)
 }
 
 func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, hash common.Hash) (chainbundle.Bundle, bool, error) {
@@ -57,10 +58,7 @@ func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, h
 	}
 	hashBytes := hash.Bytes()
 	var blockJSON []byte
-	err = r.db.QueryRowContext(ctx,
-		`SELECT raw FROM blocks WHERE chain_id = $1::numeric AND hash = $2`,
-		chainID, hashBytes,
-	).Scan(&blockJSON)
+	err = r.db.QueryRowContext(ctx, dbgen.StoreLegacyBundleByHashStatement1, chainID, hashBytes).Scan(&blockJSON)
 	if err == sql.ErrNoRows {
 		return chainbundle.Bundle{}, false, nil
 	}
@@ -76,11 +74,7 @@ func (r *PostgresRepository) BundleByHash(ctx context.Context, chainID string, h
 			"decode stored block: block hash does not match requested identity",
 		)
 	}
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT raw
-		FROM receipts
-		WHERE chain_id = $1::numeric AND block_hash = $2
-		ORDER BY tx_index`, chainID, hashBytes)
+	rows, err := r.db.QueryContext(ctx, dbgen.StoreLegacyBundleByHashStatement2, chainID, hashBytes)
 	if err != nil {
 		return chainbundle.Bundle{}, false, fmt.Errorf("query stored receipts: %w", err)
 	}
@@ -131,7 +125,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 	if err := ensureChain(ctx, tx, chainID); err != nil {
 		return err
 	}
-	existing, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, " FOR UPDATE")
+	existing, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true)
 	if err != nil {
 		return err
 	}
@@ -139,7 +133,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 		return fmt.Errorf("%w: height %d already maps to another hash", ErrConflict, reference.Number)
 	}
 	if !exists {
-		tip, tipExists, err := queryCanonicalTip(ctx, tx, chainID, " FOR UPDATE")
+		tip, tipExists, err := queryCanonicalTip(ctx, tx, chainID, true)
 		if err != nil {
 			return err
 		}
@@ -158,10 +152,7 @@ func (r *PostgresRepository) CommitCanonical(ctx context.Context, chainID string
 		return err
 	}
 	if !exists {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyCommitCanonicalStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
 			return fmt.Errorf("insert canonical block: %w", err)
 		}
 	}
@@ -215,7 +206,7 @@ func (r *PostgresRepository) RefreshCanonical(
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
-	canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, " FOR UPDATE")
+	canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true)
 	if err != nil {
 		return err
 	}
@@ -282,14 +273,14 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	if err := lockChain(ctx, tx, chainID); err != nil {
 		return err
 	}
-	ancestor, exists, err := queryCanonicalBlock(ctx, tx, chainID, reorg.Ancestor.Number, " FOR UPDATE")
+	ancestor, exists, err := queryCanonicalBlock(ctx, tx, chainID, reorg.Ancestor.Number, true)
 	if err != nil {
 		return err
 	}
 	if !exists || ancestor.Hash != reorg.Ancestor.Hash {
 		return fmt.Errorf("%w: common ancestor is not canonical", ErrConflict)
 	}
-	tip, exists, err := queryCanonicalTip(ctx, tx, chainID, " FOR UPDATE")
+	tip, exists, err := queryCanonicalTip(ctx, tx, chainID, true)
 	if err != nil {
 		return err
 	}
@@ -300,7 +291,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 		return fmt.Errorf("%w: detached branch does not begin at canonical tip", ErrConflict)
 	}
 	for _, detached := range reorg.Detached {
-		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, detached.Number, " FOR UPDATE")
+		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, detached.Number, true)
 		if err != nil {
 			return err
 		}
@@ -325,20 +316,14 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 		}
 	}
 	for _, detached := range reorg.Detached {
-		result, err := tx.ExecContext(ctx, `
-			DELETE FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3`,
-			chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
+		result, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement1, chainID, decimal(detached.Number), mustHashBytes(detached.Hash))
 		if err != nil {
 			return fmt.Errorf("detach canonical block %d: %w", detached.Number, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
 			return fmt.Errorf("%w: detach canonical block %d affected %d rows", ErrConflict, detached.Number, affected)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE block_journals SET canonical = FALSE
-			WHERE chain_id = $1::numeric AND block_hash = $2`,
-			chainID, mustHashBytes(detached.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement2, chainID, mustHashBytes(detached.Hash)); err != nil {
 			return fmt.Errorf("mark detached journals: %w", err)
 		}
 		if err := setDerivedCanonicalTx(ctx, tx, chainID, detached.Hash, false); err != nil {
@@ -350,16 +335,10 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 	}
 	for _, bundle := range reorg.Attached {
 		reference, _ := RefFromBundle(bundle)
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO canonical_blocks (chain_id, number, block_hash)
-			VALUES ($1::numeric, $2::numeric, $3)`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement3, chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
 			return fmt.Errorf("attach canonical block %d: %w", reference.Number, err)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE block_journals SET canonical = TRUE
-			WHERE chain_id = $1::numeric AND block_hash = $2`,
-			chainID, mustHashBytes(reference.Hash)); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement4, chainID, mustHashBytes(reference.Hash)); err != nil {
 			return fmt.Errorf("mark attached journals: %w", err)
 		}
 		if err := setDerivedCanonicalTx(ctx, tx, chainID, reference.Hash, true); err != nil {
@@ -412,9 +391,7 @@ func (r *PostgresRepository) ApplyReorg(ctx context.Context, chainID string, reo
 		if err := upsertCheckpointTx(ctx, tx, chainID, checkpoint); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, `
-		DELETE FROM index_checkpoints
-		WHERE chain_id = $1::numeric AND stage = $2`, chainID, CoreCheckpoint); err != nil {
+	} else if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyApplyReorgStatement5, chainID, CoreCheckpoint); err != nil {
 		return fmt.Errorf("delete non-contiguous core checkpoint: %w", err)
 	}
 	if err := insertReorgEvent(ctx, tx, chainID, tip, reorg); err != nil {
@@ -438,10 +415,7 @@ func (r *PostgresRepository) Checkpoint(ctx context.Context, chainID, stage stri
 	var height string
 	var hash []byte
 	var updatedAt time.Time
-	err = r.db.QueryRowContext(ctx, `
-		SELECT contiguous_through::text, block_hash, updated_at
-		FROM index_checkpoints
-		WHERE chain_id = $1::numeric AND stage = $2`, chainID, stage).Scan(&height, &hash, &updatedAt)
+	err = r.db.QueryRowContext(ctx, dbgen.StoreLegacyCheckpointStatement1, chainID, stage).Scan(&height, &hash, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Checkpoint{}, false, nil
 	}
@@ -490,7 +464,7 @@ func (r *PostgresRepository) UpdateFinality(ctx context.Context, chainID string,
 		if reference == nil {
 			continue
 		}
-		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, " FOR UPDATE")
+		canonical, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true)
 		if err != nil {
 			return err
 		}
@@ -511,17 +485,7 @@ func (r *PostgresRepository) UpdateFinality(ctx context.Context, chainID string,
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO chain_finality (
-			chain_id, safe_number, safe_hash, finalized_number, finalized_hash, updated_at
-		) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5, $6)
-		ON CONFLICT (chain_id) DO UPDATE SET
-			safe_number = EXCLUDED.safe_number,
-			safe_hash = EXCLUDED.safe_hash,
-			finalized_number = EXCLUDED.finalized_number,
-			finalized_hash = EXCLUDED.finalized_hash,
-			updated_at = EXCLUDED.updated_at`,
-		chainID, nullableNumber(finality.Safe), nullableHash(finality.Safe),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyUpdateFinalityStatement1, chainID, nullableNumber(finality.Safe), nullableHash(finality.Safe),
 		nullableNumber(finality.Finalized), nullableHash(finality.Finalized), updatedAt,
 	); err != nil {
 		return fmt.Errorf("upsert finality: %w", err)
@@ -547,18 +511,7 @@ func (r *PostgresRepository) AppendJournal(ctx context.Context, chainID string, 
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
 	}
-	result, err := r.db.ExecContext(ctx, `
-		INSERT INTO block_journals (
-			chain_id, block_hash, stage, sequence, payload, canonical, created_at
-		)
-		SELECT $1::numeric, $2, $3, $4::numeric, $5::jsonb,
-		       EXISTS (
-		           SELECT 1 FROM canonical_blocks
-		           WHERE chain_id = $1::numeric AND block_hash = $2
-		       ), $6
-		WHERE EXISTS (
-		    SELECT 1 FROM blocks WHERE chain_id = $1::numeric AND hash = $2
-		)`, chainID, mustHashBytes(entry.BlockHash), entry.Stage, decimal(entry.Sequence), []byte(entry.Payload), createdAt)
+	result, err := r.db.ExecContext(ctx, dbgen.StoreLegacyAppendJournalStatement1, chainID, mustHashBytes(entry.BlockHash), entry.Stage, decimal(entry.Sequence), []byte(entry.Payload), createdAt)
 	if err != nil {
 		return fmt.Errorf("append block journal: %w", err)
 	}
@@ -573,11 +526,7 @@ func (r *PostgresRepository) JournalsByBlock(ctx context.Context, chainID string
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT stage, sequence::text, payload, canonical, created_at
-		FROM block_journals
-		WHERE chain_id = $1::numeric AND block_hash = $2
-		ORDER BY stage, sequence`, chainID, mustHashBytes(hash))
+	rows, err := r.db.QueryContext(ctx, dbgen.StoreLegacyJournalsByBlockStatement1, chainID, mustHashBytes(hash))
 	if err != nil {
 		return nil, fmt.Errorf("query block journals: %w", err)
 	}
@@ -606,32 +555,27 @@ type queryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-func queryCanonicalTip(ctx context.Context, queryer queryer, chainID, suffix string) (BlockRef, bool, error) {
-	return scanBlockRef(queryer.QueryRowContext(ctx, `
-		SELECT cb.number::text, cb.block_hash, b.parent_hash
-		FROM canonical_blocks cb
-		JOIN blocks b
-		  ON b.chain_id = cb.chain_id AND b.number = cb.number AND b.hash = cb.block_hash
-		WHERE cb.chain_id = $1::numeric
-		ORDER BY cb.number DESC
-		LIMIT 1`+suffix, chainID), "query canonical tip")
+func queryCanonicalTip(ctx context.Context, queryer queryer, chainID string, forUpdate bool) (BlockRef, bool, error) {
+	query := dbgen.StoreCanonicalTip
+	if forUpdate {
+		query = dbgen.StoreLockCanonicalTip
+	}
+	return scanBlockRef(queryer.QueryRowContext(ctx, query, chainID), "query canonical tip")
 }
 
-func queryCanonicalBlock(ctx context.Context, queryer queryer, chainID string, number uint64, suffix string) (BlockRef, bool, error) {
-	return scanBlockRef(queryer.QueryRowContext(ctx, `
-		SELECT cb.number::text, cb.block_hash, b.parent_hash
-		FROM canonical_blocks cb
-		JOIN blocks b
-		  ON b.chain_id = cb.chain_id AND b.number = cb.number AND b.hash = cb.block_hash
-		WHERE cb.chain_id = $1::numeric AND cb.number = $2::numeric`+suffix,
-		chainID, decimal(number)), "query canonical block")
+func queryCanonicalBlock(ctx context.Context, queryer queryer, chainID string, number uint64, forUpdate bool) (BlockRef, bool, error) {
+	query := dbgen.StoreCanonicalBlock
+	if forUpdate {
+		query = dbgen.StoreLockCanonicalBlock
+	}
+	return scanBlockRef(queryer.QueryRowContext(ctx, query, chainID, decimal(number)), "query canonical block")
 }
 
 func validateRefreshParentTx(ctx context.Context, tx *sql.Tx, chainID string, reference BlockRef) error {
 	if reference.Number == 0 {
 		return nil
 	}
-	parent, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number-1, " FOR UPDATE")
+	parent, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number-1, true)
 	if err != nil {
 		return err
 	}
@@ -645,11 +589,7 @@ func validateRefreshParentTx(ctx context.Context, tx *sql.Tx, chainID string, re
 		return nil
 	}
 	var hasLowerCanonical bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number < $2::numeric
-		)`, chainID, decimal(reference.Number)).Scan(&hasLowerCanonical); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.StoreLegacyValidateRefreshParentTxStatement1, chainID, decimal(reference.Number)).Scan(&hasLowerCanonical); err != nil {
 		return fmt.Errorf("check canonical refresh predecessor: %w", err)
 	}
 	if hasLowerCanonical {
@@ -665,51 +605,16 @@ func deleteBundleFactsTx(ctx context.Context, tx *sql.Tx, chainID string, refere
 	// hash. Other block hashes, including orphan inclusions, are outside every
 	// predicate. Repair never schedules enrichment: operators must explicitly
 	// reindex the affected ABI/token/stats/trace range after core refresh.
-	for _, table := range []string{
-		"block_stage_results",
-		"proxy_upgrade_events",
-		"proxy_initialization_events",
-		"diamond_loupe_snapshots",
-		"diamond_cut_events",
-		"abi_decodings",
-		"contract_abis",
-		"transaction_effective_execution_identities",
-		"token_balance_deltas",
-		"token_events",
-		"trace_log_attributions",
-		"normalized_traces",
-		"transaction_execution_code_resolutions",
-		"eip7702_authorizations",
-		"transaction_state_changes",
-		"address_activities",
-		"block_statistics",
-	} {
-		statement := fmt.Sprintf(
-			"DELETE FROM %s WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3",
-			table,
-		)
-		if _, err := tx.ExecContext(
-			ctx, statement, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
-		); err != nil {
-			return fmt.Errorf("invalidate canonical %s for block %d: %w", table, reference.Number, err)
-		}
+	if _, err := tx.ExecContext(ctx, dbgen.StoreDeleteDerivedBlockFacts,
+		chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+		return fmt.Errorf("invalidate canonical derived facts for block %d: %w", reference.Number, err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM block_journals
-		WHERE chain_id = $1::numeric AND block_hash = $2`,
-		chainID, mustHashBytes(reference.Hash)); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyDeleteBundleFactsTxStatement1, chainID, mustHashBytes(reference.Hash)); err != nil {
 		return fmt.Errorf("invalidate canonical block_journals for block %d: %w", reference.Number, err)
 	}
-	for _, table := range []string{"logs", "receipts", "transaction_inclusions", "withdrawals"} {
-		statement := fmt.Sprintf(
-			"DELETE FROM %s WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3",
-			table,
-		)
-		if _, err := tx.ExecContext(
-			ctx, statement, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
-		); err != nil {
-			return fmt.Errorf("delete canonical %s for block %d: %w", table, reference.Number, err)
-		}
+	if _, err := tx.ExecContext(ctx, dbgen.StoreDeleteCoreBlockFacts,
+		chainID, decimal(reference.Number), mustHashBytes(reference.Hash)); err != nil {
+		return fmt.Errorf("delete canonical core facts for block %d: %w", reference.Number, err)
 	}
 	return nil
 }
@@ -747,14 +652,7 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbu
 	if err != nil {
 		return fmt.Errorf("encode block persistence: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO blocks (chain_id, number, hash, parent_hash, timestamp, raw)
-		VALUES ($1::numeric, $2::numeric, $3, $4, $5::numeric, $6::jsonb)
-		ON CONFLICT (chain_id, number, hash) DO UPDATE SET
-			parent_hash = EXCLUDED.parent_hash,
-			timestamp = EXCLUDED.timestamp,
-			raw = EXCLUDED.raw`,
-		chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement1, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
 		mustHashBytes(reference.ParentHash), decimal(bundle.Block.Time()),
 		blockJSON); err != nil {
 		return fmt.Errorf("upsert block %d: %w", reference.Number, err)
@@ -762,37 +660,19 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbu
 	for index, transaction := range bundle.Block.Transactions() {
 		transactionHash := transaction.Hash()
 		transactionJSON := bundle.RawTransactions[index]
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO transactions (chain_id, hash, tx_type, raw)
-			VALUES ($1::numeric, $2, $3::numeric, $4::jsonb)
-			ON CONFLICT (chain_id, hash) DO UPDATE SET
-				tx_type = EXCLUDED.tx_type,
-				raw = EXCLUDED.raw`,
-			chainID, mustHashBytes(transactionHash),
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement2, chainID, mustHashBytes(transactionHash),
 			strconv.FormatUint(uint64(transaction.Type()), 10),
 			transactionJSON); err != nil {
 			return fmt.Errorf("upsert transaction %d: %w", index, err)
 		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO transaction_inclusions (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement3, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
 			mustHashBytes(transactionHash), transactionJSON); err != nil {
 			return fmt.Errorf("upsert transaction inclusion %d: %w", index, err)
 		}
 
 		receipt := bundle.Receipts[index]
 		receiptJSON := bundle.RawReceipts[index]
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO receipts (
-				chain_id, block_number, block_hash, tx_index, tx_hash, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, tx_index)
-			DO UPDATE SET raw = EXCLUDED.raw`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement4, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), index,
 			mustHashBytes(transactionHash), receiptJSON); err != nil {
 			return fmt.Errorf("upsert receipt %d: %w", index, err)
 		}
@@ -803,14 +683,7 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbu
 			if len(log.Topics) > 0 {
 				topic0 = mustHashBytes(log.Topics[0])
 			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO logs (
-					chain_id, block_number, block_hash, log_index, tx_index,
-					tx_hash, address, topic0, raw
-				) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9::jsonb)
-				ON CONFLICT (chain_id, block_number, block_hash, log_index)
-				DO UPDATE SET raw = EXCLUDED.raw`,
-				chainID, decimal(reference.Number), mustHashBytes(reference.Hash), log.Index,
+			if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement5, chainID, decimal(reference.Number), mustHashBytes(reference.Hash), log.Index,
 				index, mustHashBytes(transactionHash), log.Address.Bytes(), topic0, logJSON); err != nil {
 				return fmt.Errorf("upsert log %d: %w", logPosition, err)
 			}
@@ -818,14 +691,7 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbu
 	}
 	for index, withdrawal := range bundle.Block.Withdrawals() {
 		withdrawalJSON := bundle.RawWithdrawals[index]
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO withdrawals (
-				chain_id, block_number, block_hash, withdrawal_index,
-				validator_index, address, amount, raw
-			) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5::numeric, $6, $7::numeric, $8::jsonb)
-			ON CONFLICT (chain_id, block_number, block_hash, withdrawal_index)
-			DO UPDATE SET raw = EXCLUDED.raw`,
-			chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
+		if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyPutBundleTxStatement6, chainID, decimal(reference.Number), mustHashBytes(reference.Hash),
 			decimal(withdrawal.Index), decimal(withdrawal.Validator),
 			withdrawal.Address.Bytes(), decimal(withdrawal.Amount), withdrawalJSON); err != nil {
 			return fmt.Errorf("upsert withdrawal %d: %w", index, err)
@@ -835,16 +701,14 @@ func putBundleTx(ctx context.Context, tx *sql.Tx, chainID string, bundle chainbu
 }
 
 func ensureChain(ctx context.Context, tx *sql.Tx, chainID string) error {
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO chains (chain_id) VALUES ($1::numeric) ON CONFLICT (chain_id) DO NOTHING`, chainID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyEnsureChainStatement1, chainID); err != nil {
 		return fmt.Errorf("ensure chain row: %w", err)
 	}
 	return nil
 }
 
 func lockChain(ctx context.Context, tx *sql.Tx, chainID string) error {
-	if _, err := tx.ExecContext(ctx,
-		`SELECT pg_advisory_xact_lock(hashtext('etherview:chain:' || $1))`, chainID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyLockChainStatement1, chainID); err != nil {
 		return fmt.Errorf("lock chain: %w", err)
 	}
 	return nil
@@ -853,11 +717,7 @@ func lockChain(ctx context.Context, tx *sql.Tx, chainID string) error {
 func checkCheckpointTx(ctx context.Context, tx *sql.Tx, chainID string, checkpoint Checkpoint, allowRegression bool) error {
 	var height string
 	var hash []byte
-	err := tx.QueryRowContext(ctx, `
-		SELECT contiguous_through::text, block_hash
-		FROM index_checkpoints
-		WHERE chain_id = $1::numeric AND stage = $2
-		FOR UPDATE`, chainID, checkpoint.Stage).Scan(&height, &hash)
+	err := tx.QueryRowContext(ctx, dbgen.StoreLegacyCheckCheckpointTxStatement1, chainID, checkpoint.Stage).Scan(&height, &hash)
 	if err == sql.ErrNoRows {
 		return nil
 	}
@@ -891,15 +751,7 @@ func upsertCheckpointTx(ctx context.Context, tx *sql.Tx, chainID string, checkpo
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO index_checkpoints (
-			chain_id, stage, contiguous_through, block_hash, updated_at
-		) VALUES ($1::numeric, $2, $3::numeric, $4, $5)
-		ON CONFLICT (chain_id, stage) DO UPDATE SET
-			contiguous_through = EXCLUDED.contiguous_through,
-			block_hash = EXCLUDED.block_hash,
-			updated_at = EXCLUDED.updated_at`,
-		chainID, checkpoint.Stage, decimal(checkpoint.ContiguousThrough),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyUpsertCheckpointTxStatement1, chainID, checkpoint.Stage, decimal(checkpoint.ContiguousThrough),
 		mustHashBytes(checkpoint.BlockHash), updatedAt); err != nil {
 		return fmt.Errorf("upsert checkpoint: %w", err)
 	}
@@ -907,17 +759,14 @@ func upsertCheckpointTx(ctx context.Context, tx *sql.Tx, chainID string, checkpo
 }
 
 func queryFinality(ctx context.Context, queryer queryer, chainID string, forUpdate bool) (Finality, bool, error) {
-	suffix := ""
+	query := dbgen.StoreFinality
 	if forUpdate {
-		suffix = " FOR UPDATE"
+		query = dbgen.StoreLockFinality
 	}
 	var safeNumber, finalizedNumber sql.NullString
 	var safeHash, finalizedHash []byte
 	var updatedAt time.Time
-	err := queryer.QueryRowContext(ctx, `
-		SELECT safe_number::text, safe_hash, finalized_number::text, finalized_hash, updated_at
-		FROM chain_finality
-		WHERE chain_id = $1::numeric`+suffix, chainID).Scan(
+	err := queryer.QueryRowContext(ctx, query, chainID).Scan(
 		&safeNumber, &safeHash, &finalizedNumber, &finalizedHash, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -973,12 +822,7 @@ func insertReorgEvent(ctx context.Context, tx *sql.Tx, chainID string, oldTip Bl
 	if len(attachedRefs) > 0 {
 		newTip = attachedRefs[len(attachedRefs)-1]
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO reorg_events (
-			chain_id, ancestor_number, ancestor_hash, old_tip_number, old_tip_hash,
-			new_tip_number, new_tip_hash, detached, attached, reason
-		) VALUES ($1::numeric, $2::numeric, $3, $4::numeric, $5, $6::numeric, $7, $8::jsonb, $9::jsonb, $10)`,
-		chainID, decimal(reorg.Ancestor.Number), mustHashBytes(reorg.Ancestor.Hash),
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertReorgEventStatement1, chainID, decimal(reorg.Ancestor.Number), mustHashBytes(reorg.Ancestor.Hash),
 		decimal(oldTip.Number), mustHashBytes(oldTip.Hash), decimal(newTip.Number),
 		mustHashBytes(newTip.Hash), detachedJSON, attachedJSON, reorg.Reason); err != nil {
 		return fmt.Errorf("insert reorg audit event: %w", err)
@@ -1020,9 +864,7 @@ func insertRuntimeEventTx(ctx context.Context, tx *sql.Tx, chainID, eventType st
 	if len(encoded) > 8192 {
 		return fmt.Errorf("encode %s runtime event: payload exceeds 8192 bytes", eventType)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO runtime_events (chain_id, event_type, payload)
-		VALUES ($1::numeric, $2, $3::jsonb)`, chainID, eventType, encoded); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertRuntimeEventTxStatement1, chainID, eventType, encoded); err != nil {
 		return fmt.Errorf("insert %s runtime event: %w", eventType, err)
 	}
 	return nil
@@ -1037,54 +879,16 @@ func insertCoreOutboxTx(ctx context.Context, tx *sql.Tx, chainID, topic string, 
 		return fmt.Errorf("encode core outbox message: %w", err)
 	}
 	messageKey := reference.Hash.String()
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO transactional_outbox (
-			chain_id, topic, message_key, payload, generation
-		)
-		VALUES ($1::numeric, $2, $3, $4::jsonb, 1)
-		ON CONFLICT (chain_id, topic, message_key) DO UPDATE SET
-			payload = EXCLUDED.payload,
-			generation = transactional_outbox.generation + 1,
-			available_at = clock_timestamp(),
-			published_at = NULL,
-			attempts = 0,
-			last_error = NULL`,
-		chainID, topic, messageKey, payload); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.StoreLegacyInsertCoreOutboxTxStatement1, chainID, topic, messageKey, payload); err != nil {
 		return fmt.Errorf("insert %s outbox message: %w", topic, err)
 	}
 	return nil
 }
 
-var derivedCanonicalRelations = [...]string{
-	"contract_code_observations",
-	"proxy_observations",
-	"beacon_implementation_observations",
-	"uups_implementation_observations",
-	"proxy_detection_evidence",
-	"proxy_upgrade_events",
-	"proxy_initialization_events",
-	"diamond_loupe_snapshots",
-	"diamond_cut_events",
-	"contract_abis",
-	"abi_decodings",
-	"transaction_effective_execution_identities",
-	"token_events",
-	"token_balance_deltas",
-	"trace_log_attributions",
-	"normalized_traces",
-	"transaction_execution_code_resolutions",
-	"eip7702_authorizations",
-	"transaction_state_changes",
-	"block_statistics",
-	"address_activities",
-}
-
 func setDerivedCanonicalTx(ctx context.Context, tx *sql.Tx, chainID string, hash common.Hash, canonical bool) error {
-	for _, table := range derivedCanonicalRelations {
-		statement := fmt.Sprintf(`UPDATE %s SET canonical = $3 WHERE chain_id = $1::numeric AND block_hash = $2`, table)
-		if _, err := tx.ExecContext(ctx, statement, chainID, mustHashBytes(hash), canonical); err != nil {
-			return fmt.Errorf("set %s canonical=%t: %w", table, canonical, err)
-		}
+	if _, err := tx.ExecContext(ctx, dbgen.StoreSetDerivedCanonical,
+		chainID, mustHashBytes(hash), canonical); err != nil {
+		return fmt.Errorf("set derived canonical=%t: %w", canonical, err)
 	}
 	return nil
 }

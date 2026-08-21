@@ -280,8 +280,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   recovery, typed mempool failure classification, and monolith/six-role runtime
   acceptance. P68-T02 moves static read-path SQL into named sqlc sources while
   retaining exact snapshot, cursor, ordering, reader-routing, and compatibility
-  behavior. P68-T03 is claimed for correctness/write SQL and the enforceable
-  raw-SQL execution boundary.
+  behavior. P68-T03 moves correctness/write SQL into generated named sources,
+  replaces dynamic compatibility and stage predicates with fixed parameters,
+  and enforces migration/partition as the only raw-SQL boundary. P68-T04 is
+  claimed for runtime assembly and configuration modularization.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

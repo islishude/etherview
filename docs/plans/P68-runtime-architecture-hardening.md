@@ -25,8 +25,8 @@ schema remain unchanged.
 |---|---|---|---|---|
 | P68-T01 | done | P40, P60 | Per-write SSE deadlines and cancellation-safe HTTP shutdown; non-blocking durable replay, cache invalidation circuit breaking, and typed mempool failures | HTTP/1.1 and HTTP/2 service tests; event/Redis/mempool race tests; runtime E2E |
 | P68-T02 | done | P68-T01 | Move all static read-path SQL into named sqlc queries without changing snapshots, cursors, ordering, or reader routing | generation, focused query/catalog/compatibility tests, PostgreSQL integration and race |
-| P68-T03 | in_progress | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
-| P68-T04 | todo | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
+| P68-T03 | done | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
+| P68-T04 | in_progress | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
 | P68-T05 | todo | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
 | P68-T06 | todo | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
 | P68-T07 | todo | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
@@ -95,3 +95,22 @@ None.
   `git diff --check` pass. Both PostgreSQL targets applied migrations through
   `0049_ens_primary_names`, exercised all seven integration-tagged packages,
   and removed their owned PostgreSQL 18 projects and volumes.
+- P68-T03 moves production correctness and write statements for administration,
+  analytics, authentication, enrichment, runtime events, Genesis import,
+  maintenance, mempool, metadata, state reconciliation, canonical storage,
+  verified selectors, and verification into named sqlc sources. Existing
+  correctness transactions retain their lock order and scan adapters while
+  executing only exported generated statements. Dynamic Etherscan ordering,
+  ranges, and topic filters are fixed parameterized queries; topic `AND`/`OR`
+  folding and exact `stage@version` queue selection are exercised against real
+  PostgreSQL. Multi-table canonical cleanup and publication changes use fixed
+  writable CTEs, and generated savepoint statements preserve atomic replay.
+  `make source-check` enforces that only the migration runner and validated
+  partition-DDL module may own raw production SQL and reports 257 checked Go
+  files plus 93 SQL sources. `go test ./... -count=1`, focused Go race tests,
+  `make generate-check`, `make lint-go` (0 issues),
+  `make test-hardhat3-provider-compat`, `make test-integration`, and
+  `make test-integration-race` pass. The full PostgreSQL integration package
+  passes in 147.531s and its race run in 163.075s; an additional real-database
+  fixed-topic regression passes in 133.945s. Every owned PostgreSQL 18 project,
+  network, and volume was removed.

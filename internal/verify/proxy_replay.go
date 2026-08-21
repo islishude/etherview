@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -35,8 +36,7 @@ func (repository *PostgresRepository) requestVerificationProxyReplayTx(
 	// code identity was verified. Association discovery belongs to ordinary
 	// direct/current proxy replays; expanding historical associations here
 	// would turn one verification into unbounded fixed-block RPC fanout.
-	if _, err := tx.ExecContext(ctx, verificationProxyReplayTargetSQL,
-		strconv.FormatUint(job.RequestV2.Target.ChainID, 10), target[:],
+	if _, err := tx.ExecContext(ctx, dbgen.VerifyLegacyVerificationProxyReplayTarget, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), target[:],
 		strconv.FormatUint(blockNumber, 10), blockHash[:], directTargetKind, job.ID,
 	); err != nil {
 		return fmt.Errorf("persist verification proxy replay target: %w", err)
@@ -69,13 +69,3 @@ func verificationProxyReplayTargetKind(artifact *recognizedProxyArtifact) string
 		return "proxy"
 	}
 }
-
-const verificationProxyReplayTargetSQL = `
-INSERT INTO proxy_replay_targets (
-    chain_id, block_number, block_hash, address, target_kind,
-    source_kind, source_verification_job_id
-) VALUES (
-    $1::numeric, $3::numeric, $4, $2, $5,
-    'verification_publication', $6::uuid
-)
-ON CONFLICT DO NOTHING`

@@ -28,15 +28,12 @@ func (b *PostgresBackend) blockNumberByTime(ctx context.Context, values url.Valu
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return "", err
 	}
-	comparison, direction := "<=", "DESC"
-	if closest == "after" {
-		comparison, direction = ">=", "ASC"
-	}
-	query := fmt.Sprintf(blockNumberByTimeSQL, comparison, direction, direction, direction)
 	var raw []byte
 	var numberText, timestampText string
 	var hashBytes []byte
-	err = tx.QueryRowContext(ctx, query, b.chain, timestamp.String()).Scan(&raw, &numberText, &hashBytes, &timestampText)
+	err = tx.QueryRowContext(ctx, dbgen.EtherscanBlockNumberByTime,
+		b.chain, timestamp.String(), closest,
+	).Scan(&raw, &numberText, &hashBytes, &timestampText)
 	if err == sql.ErrNoRows {
 		return "", ErrNotFound
 	}
@@ -171,15 +168,3 @@ func (b *PostgresBackend) ethSupply(ctx context.Context) (string, error) {
 	}
 	return parsed.String(), nil
 }
-
-const blockNumberByTimeSQL = `
-SELECT block.raw, block.number::text, block.hash, block.timestamp::text
-FROM blocks AS block
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = block.chain_id
- AND canonical.number = block.number
- AND canonical.block_hash = block.hash
-WHERE block.chain_id = $1::numeric
-  AND block.timestamp %s $2::numeric
-ORDER BY block.timestamp %s, block.number %s, block.hash %s
-LIMIT 1`

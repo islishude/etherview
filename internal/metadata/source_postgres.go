@@ -84,8 +84,7 @@ func (repository *PostgresRepository) RecordNFTSource(ctx context.Context, obser
 	address := observation.Candidate.Token.Bytes()
 	hash := mustHashBytes(observation.Candidate.BlockHash)
 	var inserted int
-	err := repository.db.QueryRowContext(ctx, insertNFTSourceSQL,
-		observation.Candidate.ChainID, address, observation.Candidate.TokenID,
+	err := repository.db.QueryRowContext(ctx, dbgen.MetadataWriteInsertNFTSource, observation.Candidate.ChainID, address, observation.Candidate.TokenID,
 		strconv.FormatUint(observation.Candidate.BlockNumber, 10), hash,
 		observation.Candidate.Standard, observation.State, nullableString(observation.SourceURI),
 		nullableString(observation.ErrorCode),
@@ -121,14 +120,3 @@ func nullableString(value string) any {
 	}
 	return value
 }
-
-const insertNFTSourceSQL = `
-INSERT INTO nft_metadata_source_observations (
-    chain_id, token_address, token_id, block_number, block_hash,
-    standard, state, source_uri, error_code
-) VALUES (
-    $1::numeric, $2, $3::numeric, $4::numeric, $5,
-    $6, $7, $8, $9
-)
-ON CONFLICT DO NOTHING
-RETURNING 1`

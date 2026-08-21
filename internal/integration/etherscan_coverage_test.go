@@ -113,6 +113,30 @@ func TestEtherscanCoreCoverageDistinguishesGapsFromAuthoritativeResults(t *testi
 	if len(logRows) != 3 || logRows[0]["blockNumber"] != "0x0" || logRows[2]["blockNumber"] != "0x2" {
 		t.Fatalf("covered logs = %#v", logRows)
 	}
+	topic0 := testHash(9_000).String()
+	topic2 := testHash(9_002).String()
+	filteredLogs, err := backend.Execute(ctx, etherscan.Request{
+		Module: "logs", Action: "getLogs",
+		Values: url.Values{
+			"fromBlock": {"0"}, "toBlock": {"2"},
+			"topic0": {topic0}, "topic2": {topic2}, "topic0_2_opr": {"or"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("query fixed OR topic filter: %v", err)
+	}
+	if rows := etherscanResultRows(t, filteredLogs); len(rows) != 3 {
+		t.Fatalf("fixed OR topic filter rows = %#v", rows)
+	}
+	if _, err := backend.Execute(ctx, etherscan.Request{
+		Module: "logs", Action: "getLogs",
+		Values: url.Values{
+			"fromBlock": {"0"}, "toBlock": {"2"},
+			"topic0": {topic0}, "topic2": {topic2}, "topic0_2_opr": {"and"},
+		},
+	}); !errors.Is(err, etherscan.ErrNotFound) {
+		t.Fatalf("fixed AND topic filter error = %v, want no records", err)
+	}
 
 	mined, err := backend.Execute(ctx, etherscan.Request{
 		Module: "account", Action: "getminedblocks",

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/contractartifact"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -216,7 +217,7 @@ func (repository *PostgresRepository) Renew(ctx context.Context, lease Verificat
 	if err != nil {
 		return fmt.Errorf("verification lease duration: %w", err)
 	}
-	result, err := repository.db.ExecContext(ctx, renewVerificationSQL, lease.Job.ID, lease.Token, microseconds)
+	result, err := repository.db.ExecContext(ctx, dbgen.VerifyLegacyRenewVerification, lease.Job.ID, lease.Token, microseconds)
 	if err != nil {
 		return fmt.Errorf("renew verification lease: %w", err)
 	}
@@ -342,55 +343,3 @@ func validUUID(value string) bool {
 	_, err := hex.DecodeString(compact)
 	return err == nil
 }
-
-const renewVerificationSQL = `
-UPDATE verification_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-    updated_at = clock_timestamp()
-WHERE id = $1::uuid
-  AND status = 'running'
-	  AND lease_token = $2
-	  AND lease_expires_at > clock_timestamp()`
-
-const verificationCanonicalTargetSQL = `
-SELECT observation.block_number::text
-FROM contract_code_observations AS observation
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = observation.chain_id
- AND canonical.number = observation.block_number
- AND canonical.block_hash = observation.block_hash
-WHERE observation.chain_id = $1::numeric
-  AND observation.address = $2
-  AND observation.code_hash = $3
-  AND observation.block_hash = $4
-  AND observation.canonical = TRUE
-FOR SHARE OF observation, canonical`
-
-const verificationCanonicalGenesisTargetSQL = `
-SELECT observation.block_number::text
-FROM contract_code_observations AS observation
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = observation.chain_id
- AND canonical.number = observation.block_number
- AND canonical.block_hash = observation.block_hash
-JOIN genesis_state_imports AS imported
-  ON imported.chain_id = observation.chain_id
- AND imported.state = 'complete'
-JOIN canonical_blocks AS genesis_canonical
-  ON genesis_canonical.chain_id = imported.chain_id
- AND genesis_canonical.number = 0
- AND genesis_canonical.block_hash = imported.block_hash
-JOIN genesis_account_observations AS account
-  ON account.chain_id = imported.chain_id
- AND account.block_hash = imported.block_hash
- AND account.address = observation.address
- AND octet_length(account.code) > 0
- AND account.code_hash = observation.code_hash
- AND account.code = observation.code
-WHERE observation.chain_id = $1::numeric
-  AND observation.address = $2
-  AND observation.code_hash = $3
-  AND observation.block_hash = $4
-  AND observation.code = $5
-  AND observation.canonical = TRUE
-FOR SHARE OF observation, canonical, imported, genesis_canonical, account`

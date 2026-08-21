@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -78,10 +79,10 @@ func TestDerivedJournalPayloadIsStableAndControlled(t *testing.T) {
 	if _, err := encodeDerivedJournal(StageID{Name: "future", Version: 1}); err == nil {
 		t.Fatal("unregistered stage journal unexpectedly succeeded")
 	}
-	if !strings.Contains(upsertDerivedJournalSQL, "number = $6::numeric") ||
-		!strings.Contains(upsertDerivedJournalSQL, "block_hash = $2") ||
-		!strings.Contains(upsertDerivedJournalSQL, "canonical = EXCLUDED.canonical") {
-		t.Fatalf("journal upsert does not derive and refresh exact canonical identity:\n%s", upsertDerivedJournalSQL)
+	if !strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "number = $6::numeric") ||
+		!strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "block_hash = $2") ||
+		!strings.Contains(dbgen.EnrichLegacyUpsertDerivedJournal, "canonical = EXCLUDED.canonical") {
+		t.Fatalf("journal upsert does not derive and refresh exact canonical identity:\n%s", dbgen.EnrichLegacyUpsertDerivedJournal)
 	}
 }
 

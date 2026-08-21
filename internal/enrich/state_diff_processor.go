@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -376,17 +377,13 @@ func (processor *StateDiffRPCProcessor) transactions(
 	job Job,
 ) ([]stateDiffTransaction, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, traceCanonicalSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTraceCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
 		return nil, false, fmt.Errorf("check state difference block canonicality: %w", err)
 	}
 	if !canonical {
 		return nil, false, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, stateDiffTransactionsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyStateDiffTransactions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return nil, false, fmt.Errorf("query state difference transactions: %w", err)
 	}
@@ -989,19 +986,13 @@ func (processor *StateDiffRPCProcessor) persist(
 			transactions = nil
 		}
 		if canonical {
-			if _, err := tx.ExecContext(ctx, deleteStateDiffBlockSQL,
-				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-			); err != nil {
+			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStateDiffBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous transaction state differences: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, deleteEIP7702AuthorizationsBlockSQL,
-				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-			); err != nil {
+			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteEIP7702AuthorizationsBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous EIP-7702 authorizations: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, deleteExecutionCodeResolutionsBlockSQL,
-				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-			); err != nil {
+			if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteExecutionCodeResolutionsBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 				return StageResult{}, fmt.Errorf("clear previous execution-code resolutions: %w", err)
 			}
 		}
@@ -1009,8 +1000,7 @@ func (processor *StateDiffRPCProcessor) persist(
 		proxyRelevantChanges := 0
 		for _, transaction := range transactions {
 			for _, change := range transaction.changes {
-				if _, err := tx.ExecContext(ctx, insertStateChangeSQL,
-					job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+				if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertStateChange, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 					transaction.hash[:], transaction.index, change.address[:], change.kind,
 					change.key, nullableStateValue(change.before), nullableStateValue(change.after),
 				); err != nil {
@@ -1066,8 +1056,7 @@ func persistEIP7702Authorization(
 	if result.skipReason != "" {
 		reason = result.skipReason
 	}
-	if _, err := tx.ExecContext(ctx, insertEIP7702AuthorizationSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertEIP7702Authorization, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], transaction.index, result.index,
 		result.authorization.ChainID.ToBig().String(), result.authorization.Nonce,
 		result.authorization.Address[:], result.authorization.V, r[:], s[:], authority,
@@ -1089,8 +1078,7 @@ func persistExecutionCodeResolution(
 	if resolution.codeHash != nil {
 		codeHash = resolution.codeHash[:]
 	}
-	if _, err := tx.ExecContext(ctx, insertExecutionCodeResolutionSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertExecutionCodeResolution, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], transaction.index, resolution.context[:], execution,
 		codeHash, resolution.resolution, resolution.evidenceSource,
 	); err != nil {
@@ -1121,49 +1109,3 @@ func nullableStateValue(value *string) any {
 	}
 	return *value
 }
-
-const stateDiffTransactionsSQL = `
-SELECT tx_index, tx_hash, raw
-FROM transaction_inclusions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-ORDER BY tx_index`
-
-const deleteStateDiffBlockSQL = `
-DELETE FROM transaction_state_changes
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
-
-const deleteEIP7702AuthorizationsBlockSQL = `
-DELETE FROM eip7702_authorizations
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
-
-const deleteExecutionCodeResolutionsBlockSQL = `
-DELETE FROM transaction_execution_code_resolutions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
-
-const insertStateChangeSQL = `
-INSERT INTO transaction_state_changes (
-    chain_id, block_number, block_hash, transaction_hash, transaction_index,
-    address, field_kind, storage_key, before_value, after_value, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
-)`
-
-const insertEIP7702AuthorizationSQL = `
-INSERT INTO eip7702_authorizations (
-    chain_id, block_number, block_hash, transaction_hash, transaction_index,
-    authorization_index, authorization_chain_id, authorization_nonce,
-    delegate_address, y_parity, r, s, authority, signature_status,
-    application_status, skip_reason, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7::numeric, $8::numeric,
-    $9, $10, $11, $12, $13, $14, $15, $16, true
-)`
-
-const insertExecutionCodeResolutionSQL = `
-INSERT INTO transaction_execution_code_resolutions (
-    chain_id, block_number, block_hash, transaction_hash, transaction_index,
-    context_address, execution_address, execution_code_hash, resolution,
-    evidence_source, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, true
-)`

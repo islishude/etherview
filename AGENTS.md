@@ -103,8 +103,10 @@ driver solely because an older evidence entry cites it.
   verified bundle.
 - Public quantities beyond JavaScript's safe integer range are strings. Public
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
-  `internal/db/queries/`. Regenerate outputs and never hand-edit generated
-  files.
+  `internal/db/queries/`. Production executable SQL must originate there; only
+  the migration runner and validated partition-DDL module may own raw SQL in
+  Go. Regenerate outputs, never hand-edit generated files, and run `make
+  source-check` after changing a database execution boundary.
 - Contract verification compiles bounded Solidity/Yul inputs twice with one
   exact official `emscripten-wasm32` solc-js artifact, discovers candidates
   automatically, and records only declared
@@ -187,6 +189,7 @@ evidence rules.
   `COMPOSE`, `BUILDX`, and `DOCKER` overrides rather than hard-coding one local
   installation shape.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
-  SPA changes; run `make plan-check` after governance changes.
+  SPA changes; run `make source-check` after database execution-boundary
+  changes; run `make plan-check` after governance changes.
 - A work item is complete only when its targeted tests and applicable common
   gates pass and the child plan records concise evidence.

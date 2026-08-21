@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -328,9 +329,7 @@ func (processor *PostgresProxyProcessor) loadCandidates(
 	job Job,
 ) ([]proxyCandidate, []uupsImplementationProbeTarget, proxyBlockEvents, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, proxyCanonicalSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyProxyCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
 		return nil, nil, proxyBlockEvents{}, false, fmt.Errorf("check proxy block canonicality: %w", err)
 	}
 	if !canonical {
@@ -428,19 +427,7 @@ func (processor *PostgresProxyProcessor) loadGenesisCandidates(
 	if job.BlockNumber != 0 {
 		return nil
 	}
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT account.address
-		FROM genesis_account_observations AS account
-		JOIN genesis_state_imports AS imported
-		  ON imported.chain_id = account.chain_id
-		 AND imported.block_hash = account.block_hash
-		 AND imported.state = 'complete'
-		WHERE account.chain_id = $1::numeric
-		  AND account.block_hash = $2
-		  AND octet_length(account.code) > 0
-		ORDER BY account.address`,
-		job.ChainID, job.BlockHash[:],
-	)
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadGenesisCandidatesStatement1, job.ChainID, job.BlockHash[:])
 	if err != nil {
 		return fmt.Errorf("query genesis proxy candidates: %w", err)
 	}
@@ -465,11 +452,7 @@ func (processor *PostgresProxyProcessor) loadGenesisCandidates(
 }
 
 func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT tx_hash, raw
-		FROM transaction_inclusions
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		ORDER BY tx_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadTransactionCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return fmt.Errorf("query proxy transaction targets: %w", err)
 	}
@@ -503,11 +486,7 @@ func (processor *PostgresProxyProcessor) loadTransactionCandidates(ctx context.C
 }
 
 func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT tx_index, tx_hash, raw
-		FROM receipts
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		ORDER BY tx_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadReceiptCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return fmt.Errorf("query proxy creation receipts: %w", err)
 	}
@@ -566,11 +545,7 @@ func (processor *PostgresProxyProcessor) loadLogCandidates(
 	job Job,
 	add proxyCandidateAdder,
 ) (proxyBlockEvents, error) {
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT log_index, tx_hash, address, topic0, raw
-		FROM logs
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-		ORDER BY log_index`, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadLogCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return proxyBlockEvents{}, fmt.Errorf("query proxy log targets: %w", err)
 	}
@@ -679,23 +654,7 @@ func parseStrictInitializedEvent(log types.Log) (uint64, bool) {
 }
 
 func (processor *PostgresProxyProcessor) loadTraceCandidates(ctx context.Context, job Job, add proxyCandidateAdder) error {
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT call_type, from_address, to_address, created_address, reverted
-		FROM normalized_traces AS trace
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.block_number = $2::numeric
-		  AND trace.block_hash = $3
-		  AND trace.canonical
-		  AND EXISTS (
-		      SELECT 1
-		      FROM published_block_stage_results AS published
-		      WHERE published.chain_id = trace.chain_id
-		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
-		        AND published.state = 'complete'
-		  )
-		ORDER BY transaction_index, trace_path`, job.ChainID,
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadTraceCandidatesStatement1, job.ChainID,
 		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		TraceStage.Name, TraceStage.Version)
 	if err != nil {
@@ -747,28 +706,7 @@ func (processor *PostgresProxyProcessor) loadStateDiffCandidates(
 	job Job,
 	add proxyCandidateAdder,
 ) error {
-	rows, err := processor.db.QueryContext(ctx, `
-		SELECT DISTINCT address
-		FROM transaction_state_changes AS change
-		WHERE change.chain_id = $1::numeric
-		  AND change.block_number = $2::numeric
-		  AND change.block_hash = $3
-		  AND change.canonical
-		  AND EXISTS (
-		      SELECT 1
-		      FROM published_block_stage_results AS published
-		      WHERE published.chain_id = change.chain_id
-		        AND published.block_hash = change.block_hash
-		        AND published.stage = $7
-		        AND published.stage_version = $8
-		        AND published.state = 'complete'
-		  )
-		  AND (
-		      change.field_kind = 'code'
-		      OR (change.field_kind = 'storage' AND change.storage_key IN ($4, $5, $6))
-		  )
-		ORDER BY change.address`,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichInlineLoadStateDiffCandidatesStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		EIP1967ImplementationSlot[:], EIP1967BeaconSlot[:], EIP1967AdminSlot[:],
 		StateDiffStage.Name, StateDiffStage.Version,
 	)
@@ -804,8 +742,7 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(
 		// provenance. Their ordinary block candidates are still loaded above.
 		return nil, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, proxyReplayCandidatesSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10),
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyProxyReplayCandidates, job.ChainID, strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version, proxySourceVerification,
 		job.ID, strconv.FormatUint(job.Generation, 10),
 	)
@@ -859,52 +796,6 @@ func (processor *PostgresProxyProcessor) loadReplayCandidates(
 	return uupsTargets, nil
 }
 
-const proxyReplayCandidatesSQL = `
-		SELECT target.address, target.target_kind, $5::text AS source,
-		       verified.code_hash, verified.verification_job_id::text
-		FROM proxy_replay_targets AS target
-		JOIN durable_job_replay_requests AS replay_request
-		  ON replay_request.job_id = $6::bigint
-		 AND replay_request.source_kind = 'verification-publication'
-		 AND target.source_verification_job_id::text = replay_request.source_key
-		JOIN durable_jobs AS replay_job
-		  ON replay_job.id = replay_request.job_id
-		 AND replay_job.chain_id = target.chain_id
-		 AND replay_job.kind = 'enrichment'
-		 AND replay_job.stage = 'proxy'
-		 AND replay_job.stage_version = $4
-		 AND replay_job.payload->>'block_hash' = '0x' || encode(target.block_hash, 'hex')
-		 AND replay_job.payload->>'block_number' = target.block_number::text
-		 AND replay_job.status = 'leased'
-		 AND replay_job.claimed_generation = $7::bigint
-		 AND replay_job.leased_generation = $7::bigint
-		LEFT JOIN verified_contract_proxy_artifacts AS artifact
-		  ON target.target_kind = 'uups'
-		 AND artifact.verification_job_id = target.source_verification_job_id
-		 AND artifact.chain_id = target.chain_id
-		 AND artifact.address = target.address
-		 AND artifact.artifact_kind = 'uups_implementation'
-		 AND artifact.standard_version = '5.6.1'
-		 AND artifact.runtime_immutable_address = target.address
-		 AND artifact.valid_from_block <= target.block_number
-		LEFT JOIN verified_contracts AS verified
-		  ON verified.chain_id = artifact.chain_id
-		 AND verified.address = artifact.address
-		 AND verified.code_hash = artifact.code_hash
-		 AND verified.valid_from_block = artifact.valid_from_block
-		 AND verified.verification_job_id = artifact.verification_job_id
-		 AND verified.request_digest = artifact.request_digest
-		 AND (verified.valid_to_block IS NULL OR
-		      verified.valid_to_block >= target.block_number)
-		WHERE target.chain_id = $1::numeric
-		  AND target.block_number = $2::numeric
-		  AND target.block_hash = $3
-		  AND target.source_kind = 'verification_publication'
-		  AND replay_request.requested_generation > replay_job.completed_generation
-		  AND replay_request.requested_generation <= $7::bigint
-		ORDER BY target.address, target.target_kind, source,
-		         verified.verification_job_id`
-
 // probeUUPSReplayTargets keeps the authenticated artifact identity on every
 // persisted witness while issuing the fixed-block RPC probe only once for one
 // implementation address and code epoch. Multiple verification publications
@@ -953,25 +844,7 @@ func (processor *PostgresProxyProcessor) loadProxyArtifact(
 ) (proxyArtifactEvidence, bool, error) {
 	var artifact proxyArtifactEvidence
 	var immutable []byte
-	err := processor.db.QueryRowContext(ctx, `
-		SELECT artifact.artifact_kind, artifact.standard_version,
-		       artifact.runtime_immutable_address,
-		       artifact.verification_job_id::text
-		FROM verified_contract_proxy_artifacts AS artifact
-		JOIN verified_contracts AS verified
-		  ON verified.chain_id = artifact.chain_id
-		 AND verified.address = artifact.address
-		 AND verified.code_hash = artifact.code_hash
-		 AND verified.valid_from_block = artifact.valid_from_block
-		 AND verified.verification_job_id = artifact.verification_job_id
-		 AND verified.request_digest = artifact.request_digest
-		WHERE artifact.chain_id = $1::numeric
-		  AND artifact.address = $2
-		  AND artifact.code_hash = $3
-		  AND artifact.valid_from_block <= $4::numeric
-		  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $4::numeric)
-		ORDER BY artifact.valid_from_block DESC, artifact.verification_job_id
-		LIMIT 1`, job.ChainID, address[:], hash[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(
+	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineLoadProxyArtifactStatement1, job.ChainID, address[:], hash[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(
 		&artifact.kind, &artifact.standardVersion, &immutable, &artifact.verificationJob,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1002,20 +875,7 @@ func (processor *PostgresProxyProcessor) hasVerifiedDiamondLoupeABI(
 	address common.Address,
 ) (bool, error) {
 	var found bool
-	err := processor.db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM verified_contracts AS verified
-			WHERE verified.chain_id = $1::numeric
-			  AND verified.address = $2
-			  AND verified.abi IS NOT NULL
-			  AND verified.valid_from_block <= $3::numeric
-			  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-			  AND verified.abi @> '[{"type":"function","name":"facets","inputs":[]}]'::jsonb
-			  AND verified.abi @> '[{"type":"function","name":"facetAddresses","inputs":[]}]'::jsonb
-			  AND verified.abi @> '[{"type":"function","name":"facetFunctionSelectors","inputs":[{"type":"address"}]}]'::jsonb
-			  AND verified.abi @> '[{"type":"function","name":"facetAddress","inputs":[{"type":"bytes4"}]}]'::jsonb
-		)`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&found)
+	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineHasVerifiedDiamondLoupeABIStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("query verified Diamond Loupe ABI: %w", err)
 	}
@@ -1029,31 +889,7 @@ func (processor *PostgresProxyProcessor) authenticateCloneCreation(
 	runtime []byte,
 ) (bool, error) {
 	var input, output []byte
-	err := processor.db.QueryRowContext(ctx, `
-		SELECT trace.input, trace.output
-		FROM normalized_traces AS trace
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = trace.chain_id
-		 AND canonical.number = trace.block_number
-		 AND canonical.block_hash = trace.block_hash
-		WHERE trace.chain_id = $1::numeric
-		  AND trace.created_address = $2
-		  AND trace.call_type IN ('CREATE', 'CREATE2')
-		  AND NOT trace.reverted
-		  AND trace.canonical
-		  AND EXISTS (
-		      SELECT 1
-		      FROM published_block_stage_results AS published
-		      WHERE published.chain_id = trace.chain_id
-		        AND published.block_hash = trace.block_hash
-		        AND published.stage = $4
-		        AND published.stage_version = $5
-		        AND published.state = 'complete'
-		  )
-		  AND trace.block_number <= $3::numeric
-		ORDER BY trace.block_number DESC, trace.transaction_index DESC,
-		         trace.trace_path DESC
-		LIMIT 1`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
+	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineAuthenticateCloneCreationStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
 		TraceStage.Name, TraceStage.Version).Scan(&input, &output)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -1074,54 +910,7 @@ func (processor *PostgresProxyProcessor) proxyOrBeaconHistory(
 	address common.Address,
 ) (bool, bool, error) {
 	var proxy, beacon bool
-	err := processor.db.QueryRowContext(ctx, `
-		SELECT
-		    EXISTS (
-		        SELECT 1
-		        FROM proxy_observations AS observation
-		        JOIN canonical_blocks AS canonical
-		          ON canonical.chain_id = observation.chain_id
-		         AND canonical.number = observation.block_number
-		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-		          AND observation.proxy_address = $2
-		          AND observation.block_number <= $3::numeric
-		          AND observation.canonical
-		        UNION ALL
-		        SELECT 1
-		        FROM published_diamond_loupe_snapshots AS snapshot
-		        JOIN canonical_blocks AS canonical
-		          ON canonical.chain_id = snapshot.chain_id
-		         AND canonical.number = snapshot.block_number
-		         AND canonical.block_hash = snapshot.block_hash
-		        WHERE snapshot.chain_id = $1::numeric
-		          AND snapshot.diamond_address = $2
-		          AND snapshot.block_number <= $3::numeric
-		          AND snapshot.canonical
-		    ),
-		    EXISTS (
-		        SELECT 1
-		        FROM proxy_observations AS observation
-		        JOIN canonical_blocks AS canonical
-		          ON canonical.chain_id = observation.chain_id
-		         AND canonical.number = observation.block_number
-		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-		          AND observation.beacon_address = $2
-		          AND observation.block_number <= $3::numeric
-		          AND observation.canonical
-		        UNION ALL
-		        SELECT 1
-		        FROM beacon_implementation_observations AS observation
-		        JOIN canonical_blocks AS canonical
-		          ON canonical.chain_id = observation.chain_id
-		         AND canonical.number = observation.block_number
-		         AND canonical.block_hash = observation.block_hash
-		        WHERE observation.chain_id = $1::numeric
-		          AND observation.beacon_address = $2
-		          AND observation.block_number <= $3::numeric
-		          AND observation.canonical
-		    )`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&proxy, &beacon)
+	err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineProxyOrBeaconHistoryStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&proxy, &beacon)
 	if err != nil {
 		return false, false, fmt.Errorf("query canonical proxy or beacon history: %w", err)
 	}
@@ -1130,17 +919,7 @@ func (processor *PostgresProxyProcessor) proxyOrBeaconHistory(
 
 func (processor *PostgresProxyProcessor) hasCanonicalCodeHistory(ctx context.Context, job Job, address common.Address) (bool, error) {
 	var exists bool
-	if err := processor.db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-		    SELECT 1
-		    FROM contract_code_observations AS code
-		    JOIN canonical_blocks AS canonical
-		      ON canonical.chain_id = code.chain_id
-		     AND canonical.number = code.block_number
-		     AND canonical.block_hash = code.block_hash
-		    WHERE code.chain_id = $1::numeric AND code.address = $2
-		      AND code.block_number <= $3::numeric AND code.canonical
-		)`, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&exists); err != nil {
+	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichInlineHasCanonicalCodeHistoryStatement1, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&exists); err != nil {
 		return false, fmt.Errorf("query canonical code history: %w", err)
 	}
 	return exists, nil
@@ -2029,8 +1808,7 @@ func carryForwardProxyGeneration(
 		return proxyCarryForwardCounts{}, Permanent(err)
 	}
 	var carried proxyCarryForwardCounts
-	err = tx.QueryRowContext(ctx, carryForwardProxyGenerationSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyCarryForwardProxyGeneration, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		job.Stage.Version, jobID, generation,
 	).Scan(
 		&carried.proxies, &carried.beacons, &carried.uups, &carried.resolutions,
@@ -2052,15 +1830,7 @@ func loadProxyCoverageDetails(
 		"trace_coverage":      "missing",
 		"state_diff_coverage": "missing",
 	}
-	rows, err := tx.QueryContext(ctx, `
-		SELECT stage, stage_version, state, durable_job_id, job_generation
-		FROM published_block_stage_results
-		WHERE chain_id = $1::numeric
-		  AND block_hash = $2
-		  AND ((stage = $3 AND stage_version = $4) OR
-		       (stage = $5 AND stage_version = $6))
-		ORDER BY stage, stage_version`,
-		job.ChainID, job.BlockHash[:], TraceStage.Name, TraceStage.Version,
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadProxyCoverageDetailsStatement1, job.ChainID, job.BlockHash[:], TraceStage.Name, TraceStage.Version,
 		StateDiffStage.Name, StateDiffStage.Version,
 	)
 	if err != nil {
@@ -2129,8 +1899,7 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionEvidence(
 	if err != nil {
 		return Permanent(err)
 	}
-	result, err := tx.ExecContext(ctx, upsertProxyDetectionEvidenceSQL,
-		job.ChainID, candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidence, job.ChainID, candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version, codeHash[:], candidateKind, state, reason,
 		jobID, generation, string(details),
 	)
@@ -2165,8 +1934,7 @@ func (processor *PostgresProxyProcessor) persistProxyDetectionV2(
 		return Permanent(err)
 	}
 	state := strings.ReplaceAll(string(detection.v2.Status), "-", "_")
-	result, err := tx.ExecContext(ctx, upsertProxyDetectionEvidenceSQL,
-		job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyDetectionEvidence, job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version, detection.codeHash[:], "proxy_v2", state, "resolver",
 		jobID, generation, string(details),
 	)
@@ -2238,8 +2006,7 @@ func mergeProxyCodeObservation(observations map[common.Address]proxyCodeObservat
 }
 
 func persistProxyCodeObservation(ctx context.Context, tx *sql.Tx, job Job, observation proxyCodeObservation) error {
-	result, err := tx.ExecContext(ctx, upsertProxyCodeObservationSQL,
-		job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10),
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyCodeObservation, job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], observation.codeHash[:], observation.code,
 	)
 	if err != nil {
@@ -2307,8 +2074,7 @@ func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Con
 	if resolved.standardVersion != "" {
 		standardVersion = resolved.standardVersion
 	}
-	result, err := tx.ExecContext(ctx, upsertProxyObservationSQL,
-		job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyObservation, job.ChainID, detection.candidate.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		job.Stage.Version, detection.codeHash[:], resolved.kind, resolved.pattern, standardVersion,
 		resolved.implementation[:], admin, adminHash, beacon, beaconHash, immutableArgs,
 		resolved.implementationHash[:], ConfidenceHigh, resolved.evidenceState, string(encoded),
@@ -2347,9 +2113,7 @@ func persistProxyObservationGeneration(
 	if err != nil {
 		return Permanent(err)
 	}
-	result, err := tx.ExecContext(ctx, insertProxyObservationGenerationSQL,
-		job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation,
-	)
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertProxyObservationGeneration, job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation)
 	if err != nil {
 		return fmt.Errorf("persist proxy observation generation: %w", err)
 	}
@@ -2394,8 +2158,7 @@ func (processor *PostgresProxyProcessor) persistProxyArtifactResolution(
 		implementationArtifact = exact.implementationArtifactJob
 	}
 	var resolutionID int64
-	err = tx.QueryRowContext(ctx, insertProxyArtifactResolutionSQL,
-		job.ChainID, detection.candidate.address[:], job.BlockHash[:], job.Stage.Version,
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyInsertProxyArtifactResolution, job.ChainID, detection.candidate.address[:], job.BlockHash[:], job.Stage.Version,
 		detection.codeHash[:], exact.kind, exact.pattern, exact.standardVersion,
 		exact.implementation[:], exact.implementationHash[:], admin, adminHash,
 		beacon, beaconHash, exact.proxyArtifactJob, implementationArtifact,
@@ -2428,8 +2191,7 @@ func (processor *PostgresProxyProcessor) persistBeaconObservation(
 	if len(details) > processor.limits.MaxDetailsBytes {
 		return Permanent(errors.New("beacon implementation observation details exceed configured limit"))
 	}
-	result, err := tx.ExecContext(ctx, upsertBeaconImplementationObservationSQL,
-		job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertBeaconImplementationObservation, job.ChainID, observation.address[:], strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		observation.codeHash[:], observation.implementation[:], observation.implementationHash[:],
 		job.Stage.Version, ConfidenceHigh, string(details),
 	)
@@ -2456,9 +2218,7 @@ func persistBeaconObservationGeneration(
 	if err != nil {
 		return Permanent(err)
 	}
-	result, err := tx.ExecContext(ctx, insertBeaconObservationGenerationSQL,
-		job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation,
-	)
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertBeaconObservationGeneration, job.ChainID, address[:], job.BlockHash[:], job.Stage.Version, jobID, generation)
 	if err != nil {
 		return fmt.Errorf("persist beacon observation generation: %w", err)
 	}
@@ -2477,8 +2237,7 @@ func persistProxyUpgradeEvent(
 	job Job,
 	event proxyUpgradeEvent,
 ) error {
-	result, err := tx.ExecContext(ctx, upsertProxyUpgradeEventSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyUpgradeEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		strconv.FormatUint(event.index, 10), event.hash[:], event.emitter[:], event.kind,
 		event.target[:], job.Stage.Version,
 	)
@@ -2501,8 +2260,7 @@ func persistProxyInitializationEvent(
 	job Job,
 	event proxyInitializationEvent,
 ) error {
-	result, err := tx.ExecContext(ctx, upsertProxyInitializationEventSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertProxyInitializationEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		strconv.FormatUint(event.index, 10), event.hash[:], event.address[:],
 		strconv.FormatUint(event.version, 10), job.Stage.Version,
 	)
@@ -2531,343 +2289,3 @@ func resetTerminalDependentStageTx(ctx context.Context, tx *sql.Tx, job Job, dep
 	}
 	return requested, nil
 }
-
-const proxyCanonicalSQL = `
-SELECT EXISTS (
-    SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-)`
-
-const upsertProxyCodeObservationSQL = `
-INSERT INTO contract_code_observations AS current (
-    chain_id, address, block_number, block_hash, code_hash, code, canonical
-) VALUES ($1::numeric, $2, $3::numeric, $4, $5, $6, TRUE)
-ON CONFLICT (chain_id, address, block_hash) DO UPDATE SET
-    code = COALESCE(current.code, EXCLUDED.code),
-    canonical = EXCLUDED.canonical
-WHERE current.code_hash = EXCLUDED.code_hash
-  AND (current.code IS NULL OR current.code = EXCLUDED.code)`
-
-const upsertProxyObservationSQL = `
-INSERT INTO proxy_observations AS current (
-    chain_id, proxy_address, block_number, block_hash, stage_version,
-    proxy_code_hash, proxy_kind, proxy_pattern, standard_version,
-    implementation_address, admin_address, admin_code_hash,
-    beacon_address, beacon_code_hash, immutable_args,
-    implementation_code_hash, confidence, evidence_state, canonical, details
-) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5,
-    $6, $7, $8, $9, $10, $11, $12,
-    $13, $14, $15, $16, $17, $18, TRUE, $19::jsonb
-)
-ON CONFLICT (chain_id, proxy_address, block_hash, stage_version) DO UPDATE SET
-    canonical = EXCLUDED.canonical,
-    details = current.details || EXCLUDED.details
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.proxy_code_hash = EXCLUDED.proxy_code_hash
-  AND current.proxy_kind = EXCLUDED.proxy_kind
-  AND current.proxy_pattern = EXCLUDED.proxy_pattern
-  AND current.standard_version IS NOT DISTINCT FROM EXCLUDED.standard_version
-  AND current.implementation_address IS NOT DISTINCT FROM EXCLUDED.implementation_address
-  AND current.admin_address IS NOT DISTINCT FROM EXCLUDED.admin_address
-  AND current.admin_code_hash IS NOT DISTINCT FROM EXCLUDED.admin_code_hash
-  AND current.beacon_address IS NOT DISTINCT FROM EXCLUDED.beacon_address
-  AND current.beacon_code_hash IS NOT DISTINCT FROM EXCLUDED.beacon_code_hash
-  AND current.immutable_args IS NOT DISTINCT FROM EXCLUDED.immutable_args
-  AND current.implementation_code_hash IS NOT DISTINCT FROM EXCLUDED.implementation_code_hash
-  AND current.confidence = EXCLUDED.confidence
-  AND current.evidence_state = EXCLUDED.evidence_state`
-
-const insertProxyObservationGenerationSQL = `
-INSERT INTO proxy_observation_generations (
-    chain_id, proxy_address, observation_block_hash,
-    observation_stage_version, durable_job_id, job_generation
-) VALUES ($1::numeric, $2, $3, $4, $5::bigint, $6::bigint)
-ON CONFLICT DO NOTHING`
-
-const upsertProxyDetectionEvidenceSQL = `
-INSERT INTO proxy_detection_evidence AS current (
-    chain_id, address, block_number, block_hash, stage_version, code_hash,
-    candidate_kind, detection_state, reason, canonical,
-    durable_job_id, job_generation, details
-) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5, $6,
-    $7, $8, $9, TRUE, $10::bigint, $11::bigint, $12::jsonb
-)
-ON CONFLICT (
-    chain_id, address, block_hash, stage_version, candidate_kind,
-    durable_job_id, job_generation
-) DO UPDATE SET
-    canonical = EXCLUDED.canonical,
-    details = current.details || EXCLUDED.details
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.code_hash = EXCLUDED.code_hash
-  AND current.detection_state = EXCLUDED.detection_state
-  AND current.reason = EXCLUDED.reason`
-
-const insertProxyArtifactResolutionSQL = `
-WITH inserted AS (
-    INSERT INTO proxy_artifact_resolutions (
-        chain_id, proxy_address, observation_block_hash,
-        observation_stage_version, proxy_code_hash, proxy_kind,
-        proxy_pattern, standard_version, implementation_address,
-        implementation_code_hash, admin_address, admin_code_hash,
-        beacon_address, beacon_code_hash, proxy_artifact_job_id,
-        implementation_artifact_job_id, durable_job_id, job_generation,
-        evidence
-    ) VALUES (
-        $1::numeric, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        $13, $14, $15::uuid, $16::uuid, $17::bigint, $18::bigint,
-        $19::jsonb
-    )
-    ON CONFLICT DO NOTHING
-    RETURNING id
-)
-SELECT id FROM inserted
-UNION ALL
-SELECT existing.id
-FROM proxy_artifact_resolutions AS existing
-WHERE existing.chain_id = $1::numeric
-  AND existing.proxy_address = $2
-  AND existing.observation_block_hash = $3
-  AND existing.observation_stage_version = $4
-  AND existing.durable_job_id IS NOT DISTINCT FROM $17::bigint
-  AND existing.job_generation IS NOT DISTINCT FROM $18::bigint
-  AND existing.proxy_code_hash = $5
-  AND existing.proxy_kind = $6
-  AND existing.proxy_pattern = $7
-  AND existing.standard_version = $8
-  AND existing.implementation_address = $9
-  AND existing.implementation_code_hash = $10
-  AND existing.admin_address IS NOT DISTINCT FROM $11::bytea
-  AND existing.admin_code_hash IS NOT DISTINCT FROM $12::bytea
-  AND existing.beacon_address IS NOT DISTINCT FROM $13::bytea
-  AND existing.beacon_code_hash IS NOT DISTINCT FROM $14::bytea
-  AND existing.proxy_artifact_job_id = $15::uuid
-  AND existing.implementation_artifact_job_id IS NOT DISTINCT FROM $16::uuid
-  AND existing.evidence = $19::jsonb
-LIMIT 1`
-
-const upsertBeaconImplementationObservationSQL = `
-INSERT INTO beacon_implementation_observations AS current (
-    chain_id, beacon_address, block_number, block_hash, beacon_code_hash,
-    implementation_address, implementation_code_hash, stage_version,
-    confidence, canonical, details
-) VALUES (
-    $1::numeric, $2, $3::numeric, $4, $5,
-    $6, $7, $8, $9, TRUE, $10::jsonb
-)
-ON CONFLICT (chain_id, beacon_address, block_hash, stage_version) DO UPDATE SET
-    canonical = EXCLUDED.canonical,
-    details = current.details || EXCLUDED.details
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.beacon_code_hash = EXCLUDED.beacon_code_hash
-  AND current.implementation_address = EXCLUDED.implementation_address
-  AND current.implementation_code_hash = EXCLUDED.implementation_code_hash
-  AND current.confidence = EXCLUDED.confidence`
-
-const insertBeaconObservationGenerationSQL = `
-INSERT INTO beacon_observation_generations (
-    chain_id, beacon_address, observation_block_hash,
-    observation_stage_version, durable_job_id, job_generation
-) VALUES ($1::numeric, $2, $3, $4, $5::bigint, $6::bigint)
-ON CONFLICT DO NOTHING`
-
-const carryForwardProxyGenerationSQL = `
-WITH source_generation AS MATERIALIZED (
-    SELECT publication.job_generation
-    FROM durable_stage_publications AS publication
-    WHERE publication.job_id = $5::bigint
-      AND publication.job_generation < $6::bigint
-      AND publication.chain_id = $1::numeric
-      AND publication.block_number = $2::numeric
-      AND publication.block_hash = $3
-      AND publication.stage = 'proxy'
-      AND publication.stage_version = $4
-      AND publication.state = 'complete'
-    ORDER BY publication.job_generation DESC
-    LIMIT 1
-), redetected AS MATERIALIZED (
-    SELECT generation.proxy_address AS address
-    FROM proxy_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
-    UNION
-    SELECT generation.beacon_address AS address
-    FROM beacon_observation_generations AS generation
-    WHERE generation.chain_id = $1::numeric
-      AND generation.observation_block_hash = $3
-      AND generation.observation_stage_version = $4
-      AND generation.durable_job_id = $5::bigint
-      AND generation.job_generation = $6::bigint
-    UNION
-	SELECT generation.implementation_address AS address
-	FROM uups_implementation_observation_generations AS generation
-	WHERE generation.chain_id = $1::numeric
-	  AND generation.observation_block_hash = $3
-	  AND generation.observation_stage_version = $4
-	  AND generation.durable_job_id = $5::bigint
-	  AND generation.job_generation = $6::bigint
-	UNION
-    SELECT evidence.address
-    FROM proxy_detection_evidence AS evidence
-    WHERE evidence.chain_id = $1::numeric
-      AND evidence.block_number = $2::numeric
-      AND evidence.block_hash = $3
-      AND evidence.stage_version = $4
-      AND evidence.durable_job_id = $5::bigint
-      AND evidence.job_generation = $6::bigint
-), carried_proxies AS (
-    INSERT INTO proxy_observation_generations (
-        chain_id, proxy_address, observation_block_hash,
-        observation_stage_version, durable_job_id, job_generation
-    )
-    SELECT source.chain_id, source.proxy_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
-    FROM proxy_observation_generations AS source
-    JOIN source_generation
-      ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
-      AND NOT EXISTS (
-          SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
-      )
-    ON CONFLICT DO NOTHING
-    RETURNING 1
-), carried_beacons AS (
-    INSERT INTO beacon_observation_generations (
-        chain_id, beacon_address, observation_block_hash,
-        observation_stage_version, durable_job_id, job_generation
-    )
-    SELECT source.chain_id, source.beacon_address, source.observation_block_hash,
-           source.observation_stage_version, $5::bigint, $6::bigint
-    FROM beacon_observation_generations AS source
-    JOIN source_generation
-      ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
-      AND NOT EXISTS (
-          SELECT 1 FROM redetected WHERE redetected.address = source.beacon_address
-      )
-    ON CONFLICT DO NOTHING
-    RETURNING 1
-), carried_uups AS (
-	INSERT INTO uups_implementation_observation_generations (
-		chain_id, implementation_address, observation_block_hash,
-		observation_stage_version, verification_job_id,
-		durable_job_id, job_generation
-	)
-	SELECT source.chain_id, source.implementation_address,
-		   source.observation_block_hash, source.observation_stage_version,
-		   source.verification_job_id, $5::bigint, $6::bigint
-	FROM uups_implementation_observation_generations AS source
-	JOIN source_generation
-	  ON source.job_generation = source_generation.job_generation
-	WHERE source.chain_id = $1::numeric
-	  AND source.observation_block_hash = $3
-	  AND source.observation_stage_version = $4
-	  AND source.durable_job_id = $5::bigint
-	  AND NOT EXISTS (
-		  SELECT 1 FROM redetected
-		  WHERE redetected.address = source.implementation_address
-	  )
-	ON CONFLICT DO NOTHING
-	RETURNING 1
-), carried_resolutions AS (
-    INSERT INTO proxy_artifact_resolutions (
-        chain_id, proxy_address, observation_block_hash,
-        observation_stage_version, proxy_code_hash, proxy_kind,
-        proxy_pattern, standard_version, implementation_address,
-        implementation_code_hash, admin_address, admin_code_hash,
-        beacon_address, beacon_code_hash, proxy_artifact_job_id,
-        implementation_artifact_job_id, durable_job_id, job_generation,
-        evidence
-    )
-    SELECT source.chain_id, source.proxy_address, source.observation_block_hash,
-           source.observation_stage_version, source.proxy_code_hash,
-           source.proxy_kind, source.proxy_pattern, source.standard_version,
-           source.implementation_address, source.implementation_code_hash,
-           source.admin_address, source.admin_code_hash,
-           source.beacon_address, source.beacon_code_hash,
-           source.proxy_artifact_job_id, source.implementation_artifact_job_id,
-           $5::bigint, $6::bigint, source.evidence
-    FROM proxy_artifact_resolutions AS source
-    JOIN source_generation
-      ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.observation_block_hash = $3
-      AND source.observation_stage_version = $4
-      AND source.durable_job_id = $5::bigint
-      AND NOT EXISTS (
-          SELECT 1 FROM redetected WHERE redetected.address = source.proxy_address
-      )
-    ON CONFLICT DO NOTHING
-    RETURNING 1
-), carried_negative_evidence AS (
-    INSERT INTO proxy_detection_evidence (
-        chain_id, address, block_number, block_hash, stage_version, code_hash,
-        candidate_kind, detection_state, reason, canonical,
-        durable_job_id, job_generation, details
-    )
-    SELECT source.chain_id, source.address, source.block_number,
-           source.block_hash, source.stage_version, source.code_hash,
-           source.candidate_kind, source.detection_state, source.reason, TRUE,
-           $5::bigint, $6::bigint, source.details
-    FROM proxy_detection_evidence AS source
-    JOIN source_generation
-      ON source.job_generation = source_generation.job_generation
-    WHERE source.chain_id = $1::numeric
-      AND source.block_number = $2::numeric
-      AND source.block_hash = $3
-      AND source.stage_version = $4
-      AND source.durable_job_id = $5::bigint
-      AND NOT EXISTS (
-          SELECT 1 FROM redetected WHERE redetected.address = source.address
-      )
-    ON CONFLICT DO NOTHING
-    RETURNING 1
-)
-SELECT (SELECT count(*) FROM carried_proxies),
-       (SELECT count(*) FROM carried_beacons),
-	   (SELECT count(*) FROM carried_uups),
-       (SELECT count(*) FROM carried_resolutions),
-       (SELECT count(*) FROM carried_negative_evidence)`
-
-const upsertProxyUpgradeEventSQL = `
-INSERT INTO proxy_upgrade_events AS current (
-    chain_id, block_number, block_hash, log_index, transaction_hash,
-    emitter_address, event_kind, target_address, stage_version, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4::bigint, $5,
-    $6, $7, $8, $9, TRUE
-)
-ON CONFLICT (chain_id, block_hash, log_index, stage_version) DO UPDATE SET
-    canonical = EXCLUDED.canonical
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.transaction_hash = EXCLUDED.transaction_hash
-  AND current.emitter_address = EXCLUDED.emitter_address
-  AND current.event_kind = EXCLUDED.event_kind
-  AND current.target_address = EXCLUDED.target_address`
-
-const upsertProxyInitializationEventSQL = `
-INSERT INTO proxy_initialization_events AS current (
-    chain_id, block_number, block_hash, log_index, transaction_hash,
-    contract_address, version, stage_version, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4::bigint, $5,
-    $6, $7::numeric, $8, TRUE
-)
-ON CONFLICT (chain_id, block_hash, log_index, stage_version) DO UPDATE SET
-    canonical = EXCLUDED.canonical
-WHERE current.block_number = EXCLUDED.block_number
-  AND current.transaction_hash = EXCLUDED.transaction_hash
-  AND current.contract_address = EXCLUDED.contract_address
-  AND current.version = EXCLUDED.version`

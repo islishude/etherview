@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -160,17 +161,13 @@ func (processor *TraceRPCProcessor) Process(ctx context.Context, job Job) (Stage
 
 func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) ([]traceTransaction, bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, traceCanonicalSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTraceCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
 		return nil, false, fmt.Errorf("check trace block canonicality: %w", err)
 	}
 	if !canonical {
 		return nil, false, nil
 	}
-	rows, err := processor.db.QueryContext(ctx, traceTransactionsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTraceTransactions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return nil, false, fmt.Errorf("query trace transactions: %w", err)
 	}
@@ -217,8 +214,7 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 	if err := rows.Err(); err != nil {
 		return nil, false, fmt.Errorf("iterate trace transactions: %w", err)
 	}
-	resolutionRows, err := processor.db.QueryContext(ctx, traceExecutionResolutionsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	resolutionRows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTraceExecutionResolutions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		StateDiffStage.Name, StateDiffStage.Version,
 	)
 	if err != nil {
@@ -491,14 +487,10 @@ func (processor *TraceRPCProcessor) persistTx(
 		transactions = nil
 	}
 	if canonical {
-		if _, err := tx.ExecContext(ctx, deleteTraceLogAttributionsSQL,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteTraceLogAttributions, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 			return StageResult{}, fmt.Errorf("clear previous trace log attribution: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, deleteTraceBlockSQL,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-		); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteTraceBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 			return StageResult{}, fmt.Errorf("clear previous normalized trace: %w", err)
 		}
 	}
@@ -611,8 +603,7 @@ func persistTraceFrame(ctx context.Context, tx *sql.Tx, job Job, transaction tra
 	if frame.ExecutionResolution == "" {
 		frame.ExecutionResolution = "unavailable"
 	}
-	_, err = tx.ExecContext(ctx, insertTraceFrameSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	_, err = tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTraceFrame, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], transaction.index, tracePath, parentPath, len(frame.TraceAddress),
 		frame.Type, from, to, created, value, gas, gasUsed, nullableBytes(frame.Input),
 		nullableBytes(frame.Output), traceError, frame.DirectReverted, frame.Reverted,
@@ -637,9 +628,7 @@ func loadTraceLogAttributions(
 	job Job,
 	transaction traceTransaction,
 ) ([]traceLogAttribution, int, error) {
-	rows, err := tx.QueryContext(ctx, traceReceiptLogsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transaction.hash[:],
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTraceReceiptLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transaction.hash[:])
 	if err != nil {
 		return nil, 0, fmt.Errorf("query receipt logs for trace attribution: %w", err)
 	}
@@ -733,8 +722,7 @@ func persistTraceLogAttribution(
 	transaction traceTransaction,
 	attribution traceLogAttribution,
 ) error {
-	if _, err := tx.ExecContext(ctx, insertTraceLogAttributionSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTraceLogAttribution, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		transaction.hash[:], attribution.logIndex, attribution.tracePath,
 		attribution.callType, attribution.executionAddress[:],
 	); err != nil {
@@ -785,75 +773,3 @@ func sanitizeTraceRPCError(err error) error {
 	}
 	return ethrpc.SanitizeError(err)
 }
-
-const traceCanonicalSQL = `
-SELECT EXISTS (
-    SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-)`
-
-const traceTransactionsSQL = `
-SELECT tx_index, tx_hash,
-       raw->>'from', raw->>'to', raw->>'value', raw->>'input'
-FROM transaction_inclusions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-ORDER BY tx_index`
-
-const traceExecutionResolutionsSQL = `
-SELECT resolution.transaction_hash, resolution.context_address,
-       resolution.execution_address, resolution.execution_code_hash,
-       resolution.resolution, resolution.evidence_source
-FROM transaction_execution_code_resolutions AS resolution
-WHERE resolution.chain_id = $1::numeric
-  AND resolution.block_number = $2::numeric
-  AND resolution.block_hash = $3
-  AND resolution.canonical
-  AND EXISTS (
-      SELECT 1
-      FROM published_block_stage_results AS published
-      WHERE published.chain_id = resolution.chain_id
-        AND published.block_number = resolution.block_number
-        AND published.block_hash = resolution.block_hash
-        AND published.stage = $4
-        AND published.stage_version = $5
-        AND published.state = 'complete'
-  )
-ORDER BY resolution.transaction_index, resolution.context_address`
-
-const deleteTraceBlockSQL = `
-DELETE FROM normalized_traces
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
-
-const deleteTraceLogAttributionsSQL = `
-DELETE FROM trace_log_attributions
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`
-
-const insertTraceFrameSQL = `
-INSERT INTO normalized_traces (
-    chain_id, block_number, block_hash, transaction_hash, transaction_index,
-    trace_path, parent_path, depth, call_type, from_address, to_address,
-    created_address, value, gas, gas_used, input, output, error,
-    direct_reverted, reverted, execution_address, execution_code_hash,
-    execution_resolution, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-    $12, $13::numeric, $14::numeric, $15::numeric, $16, $17, $18, $19, $20,
-    $21, $22, $23, true
-)`
-
-const traceReceiptLogsSQL = `
-SELECT log_index, raw
-FROM logs
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND tx_hash = $4
-ORDER BY log_index`
-
-const insertTraceLogAttributionSQL = `
-INSERT INTO trace_log_attributions (
-    chain_id, block_number, block_hash, transaction_hash, log_index,
-    trace_path, call_type, execution_address, canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, TRUE
-)`

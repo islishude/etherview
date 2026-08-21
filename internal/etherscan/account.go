@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Values) ([]accountTransaction, error) {
@@ -35,15 +36,14 @@ func (b *PostgresBackend) accountTransactions(ctx context.Context, values url.Va
 		return nil, err
 	}
 
-	arguments := []any{b.chain, strings.ToLower(address.Hex()), start}
-	endClause := ""
+	var endArgument any
 	if end != nil {
-		arguments = append(arguments, *end)
-		endClause = fmt.Sprintf("AND inclusion.block_number <= $%d::numeric", len(arguments))
+		endArgument = *end
 	}
-	arguments = append(arguments, page.limit, page.offset)
-	query := fmt.Sprintf(accountTransactionsSQL, endClause, page.direction, page.direction, page.direction, len(arguments)-1, len(arguments))
-	rows, err := tx.QueryContext(ctx, query, arguments...)
+	rows, err := tx.QueryContext(ctx, dbgen.EtherscanAccountTransactions,
+		b.chain, strings.ToLower(address.Hex()), start, endArgument,
+		page.limit, page.offset, page.direction,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("query account transactions: %w", err)
 	}
@@ -212,8 +212,9 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	if _, err := b.requireCanonicalCoreRange(ctx, tx, "0", nil); err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf(minedBlocksSQL, page.direction, page.direction)
-	rows, err := tx.QueryContext(ctx, query, b.chain, strings.ToLower(address.Hex()), page.limit, page.offset)
+	rows, err := tx.QueryContext(ctx, dbgen.EtherscanMinedBlocks,
+		b.chain, strings.ToLower(address.Hex()), page.limit, page.offset, page.direction,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("query mined blocks: %w", err)
 	}
@@ -258,47 +259,3 @@ func (b *PostgresBackend) minedBlocks(ctx context.Context, values url.Values) ([
 	}
 	return result, nil
 }
-
-const accountTransactionsSQL = `
-WITH tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-)
-SELECT inclusion.raw, receipt.raw, block.raw, inclusion.block_number::text,
-       inclusion.block_hash, inclusion.tx_index, inclusion.tx_hash, tip.number::text
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-CROSS JOIN tip
-WHERE inclusion.chain_id = $1::numeric
-  AND (lower(inclusion.raw->>'from') = $2 OR lower(inclusion.raw->>'to') = $2)
-  AND inclusion.block_number >= $3::numeric
-  %s
-ORDER BY inclusion.block_number %s, inclusion.tx_index %s, inclusion.tx_hash %s
-LIMIT $%d OFFSET $%d`
-
-const minedBlocksSQL = `
-SELECT block.raw, block.number::text, block.hash
-FROM blocks AS block
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = block.chain_id
- AND canonical.number = block.number
- AND canonical.block_hash = block.hash
-WHERE block.chain_id = $1::numeric
-  AND lower(block.raw->>'miner') = $2
-ORDER BY block.number %s, block.hash %s
-LIMIT $3 OFFSET $4`

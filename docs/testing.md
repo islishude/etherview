@@ -57,6 +57,10 @@ replace a required `make test-e2e` pass.
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
+- `make source-check`: reject production SQL literals outside the migration
+  runner and validated partition-DDL module, and reject `.sql` sources outside
+  `internal/db/queries` and `internal/store/migrations`. `make lint-go` includes
+  this boundary.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an

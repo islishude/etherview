@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type fakeSQLBackend struct {
@@ -385,13 +386,13 @@ func TestPostgresClaimContentionBudgetReturnsIdle(t *testing.T) {
 func TestLeaseMutationsBindExactEnrichmentJobIdentity(t *testing.T) {
 	t.Parallel()
 	for name, query := range map[string]string{
-		"renew":               renewJobSQL,
-		"finish":              finishJobSQL,
-		"retry":               retryJobSQL,
-		"publish success":     atomicPublishSuccessSQL,
-		"consume replay":      atomicConsumePendingReplaySQL,
-		"claim":               claimCandidateJobSQL,
-		"terminal exhaustion": terminalizeExhaustedJobSQL,
+		"renew":               dbgen.EnrichLegacyRenewJob,
+		"finish":              dbgen.EnrichLegacyFinishJob,
+		"retry":               dbgen.EnrichLegacyRetryJob,
+		"publish success":     dbgen.EnrichLegacyAtomicPublishSuccess,
+		"consume replay":      dbgen.EnrichLegacyAtomicConsumePendingReplay,
+		"claim":               dbgen.EnrichClaimCandidate,
+		"terminal exhaustion": dbgen.EnrichLegacyTerminalizeExhaustedJob,
 	} {
 		for _, fragment := range []string{
 			"kind = 'enrichment'", "chain_id =", "stage =", "stage_version =",
@@ -400,6 +401,20 @@ func TestLeaseMutationsBindExactEnrichmentJobIdentity(t *testing.T) {
 			if !strings.Contains(query, fragment) {
 				t.Errorf("%s SQL lacks %q:\n%s", name, fragment, query)
 			}
+		}
+	}
+}
+
+func TestClaimQueriesUseCanonicalStageKeys(t *testing.T) {
+	t.Parallel()
+	for name, query := range map[string]string{
+		"claim candidate":     dbgen.EnrichSelectClaimCandidate,
+		"claim update":        dbgen.EnrichClaimCandidate,
+		"exhausted candidate": dbgen.EnrichSelectExhaustedCandidate,
+		"exhausted lock":      dbgen.EnrichLockExhaustedJob,
+	} {
+		if !strings.Contains(query, "stage || '@' ||") {
+			t.Errorf("%s query does not use StageID.String canonical keys:\n%s", name, query)
 		}
 	}
 }

@@ -92,7 +92,11 @@ runtime-event, and external-call correctness fences; reader startup checks the
 same schema and chain identity, and API readiness fails closed if either pool
 is unavailable. Generated sqlc/pgx queries enter production through a small
 bridge that pins one stdlib connection from the selected pool for the duration
-of the callback. The routing and lag contract is specified in
+of the callback. Existing correctness transactions may execute exported,
+generated statements through their pinned `database/sql` transaction adapters,
+but production SQL still originates only in `internal/db/queries`; the
+migration runner and validated partition-DDL module are the only raw-SQL
+executors. The routing and lag contract is specified in
 [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md).
 
 ## Chain Correctness

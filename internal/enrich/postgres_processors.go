@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -85,7 +86,7 @@ func (processor *PostgresTokenProcessor) processTokenTx(ctx context.Context, tx 
 		}, nil
 	}
 
-	rows, err := tx.QueryContext(ctx, tokenLogsSQL, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return StageResult{}, fmt.Errorf("query token logs: %w", err)
 	}
@@ -185,18 +186,14 @@ func (processor *PostgresTokenProcessor) processDetected(ctx context.Context, jo
 
 func (processor *PostgresTokenProcessor) tokenBlockCanonical(ctx context.Context, job Job) (bool, error) {
 	var canonical bool
-	if err := processor.db.QueryRowContext(ctx, tokenCanonicalSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&canonical); err != nil {
+	if err := processor.db.QueryRowContext(ctx, dbgen.EnrichLegacyTokenCanonical, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&canonical); err != nil {
 		return false, fmt.Errorf("check token block canonicality: %w", err)
 	}
 	return canonical, nil
 }
 
 func (processor *PostgresTokenProcessor) collectTokenEvidence(ctx context.Context, job Job) (map[common.Address]TokenLogEvidence, error) {
-	rows, err := processor.db.QueryContext(ctx, tokenLogsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := processor.db.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return nil, fmt.Errorf("query token detection logs: %w", err)
 	}
@@ -255,9 +252,7 @@ func (processor *PostgresTokenProcessor) persistDetectedTokenBlockTx(
 			return StageResult{}, err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, tokenLogsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyTokenLogs, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return StageResult{}, fmt.Errorf("query detected token logs: %w", err)
 	}
@@ -383,8 +378,7 @@ func persistTokenContract(ctx context.Context, tx *sql.Tx, job Job, address comm
 	if detection.TotalSupply != nil {
 		totalSupply = *detection.TotalSupply
 	}
-	if _, err := tx.ExecContext(ctx, upsertTokenContractSQL,
-		job.ChainID, address[:], detection.CodeHash[:], detection.Standard, detection.Confidence,
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertTokenContract, job.ChainID, address[:], detection.CodeHash[:], detection.Standard, detection.Confidence,
 		name, symbol, decimals, totalSupply, detection.MetadataState,
 		strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 	); err != nil {
@@ -419,9 +413,7 @@ func indexedTokenLog(wire types.Log, logIndex uint64, transactionHash, address [
 
 func detectedToken(ctx context.Context, tx *sql.Tx, job Job, address common.Address) (TokenStandard, Confidence, bool, error) {
 	var standard, confidence string
-	err := tx.QueryRowContext(ctx, detectedTokenSQL,
-		job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
-	).Scan(&standard, &confidence)
+	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyDetectedToken, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&standard, &confidence)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", false, nil
 	}
@@ -463,8 +455,7 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 	if event.Amount != "" {
 		amount = event.Amount
 	}
-	_, err := tx.ExecContext(ctx, insertTokenEventSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	_, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTokenEvent, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		event.LogIndex, event.SubIndex, transactionHash, event.Contract[:], event.Standard,
 		event.Kind, operator, from, to, tokenID, amount, event.Confidence, string(raw),
 	)
@@ -494,8 +485,7 @@ func persistTokenEvent(ctx context.Context, tx *sql.Tx, job Job, transactionHash
 		if delta.Sign() == 0 {
 			continue
 		}
-		_, err := tx.ExecContext(ctx, insertTokenDeltaSQL,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], event.LogIndex,
+		_, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertTokenDelta, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], event.LogIndex,
 			event.SubIndex, event.Contract[:], owner[:], tokenID, delta.String(),
 		)
 		if err != nil {
@@ -552,9 +542,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	var configuredStart string
 	var parentNumber, parentTimestamp sql.NullString
 	var canonicalParent bool
-	if err := tx.QueryRowContext(ctx, blockStatsSourceSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&raw, &transactionCount, &configuredStart, &parentNumber, &parentTimestamp, &canonicalParent); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyBlockStatsSource, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&raw, &transactionCount, &configuredStart, &parentNumber, &parentTimestamp, &canonicalParent); err != nil {
 		return StageResult{}, fmt.Errorf("query stats source block: %w", err)
 	}
 	if transactionCount < 0 {
@@ -642,8 +630,7 @@ func (processor *PostgresStatsProcessor) processStatsTx(ctx context.Context, tx 
 	if priorityFee.Sign() < 0 {
 		return StageResult{}, Permanent(errors.New("execution fee is below authenticated base fee burn"))
 	}
-	if _, err := tx.ExecContext(ctx, insertBlockStatsSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transactionCount,
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertBlockStats, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], transactionCount,
 		gasUsed.String(), gasLimit.String(), baseFee, blobGasUsed, burned,
 		timestamp.String(), blockInterval, transactionsPerSecond, excessBlobGas, blobBaseFee, blobBurned,
 		receiptFacts.ExecutionFee.String(), priorityFee.String(), receiptFacts.FailedTransactions,
@@ -685,9 +672,7 @@ func readStatsReceiptFacts(
 	job Job,
 	expectedCount int64,
 ) (statsReceiptFacts, error) {
-	rows, err := tx.QueryContext(ctx, statsReceiptSourceSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacyStatsReceiptSource, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:])
 	if err != nil {
 		return statsReceiptFacts{}, fmt.Errorf("query stats source receipts: %w", err)
 	}
@@ -772,9 +757,7 @@ func jsonValuePresent(raw json.RawMessage) bool {
 
 func lockCanonicalBlock(ctx context.Context, tx *sql.Tx, job Job) (bool, error) {
 	var locked int
-	err := tx.QueryRowContext(ctx, lockCanonicalBlockSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	).Scan(&locked)
+	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyLockCanonicalBlock, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]).Scan(&locked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -795,8 +778,7 @@ func commitStageResult(ctx context.Context, tx *sql.Tx, job Job, result StageRes
 	if err != nil {
 		return StageResult{}, err
 	}
-	journalResult, err := tx.ExecContext(ctx, upsertDerivedJournalSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.String(), derivedJournalSequence,
+	journalResult, err := tx.ExecContext(ctx, dbgen.EnrichLegacyUpsertDerivedJournal, job.ChainID, job.BlockHash[:], job.Stage.String(), derivedJournalSequence,
 		string(journal), strconv.FormatUint(job.BlockNumber, 10),
 	)
 	if err != nil {
@@ -836,8 +818,7 @@ func persistStageResultTx(ctx context.Context, tx *sql.Tx, job Job, result Stage
 	if result.Error != "" {
 		lastError = result.Error
 	}
-	writeResult, err := tx.ExecContext(ctx, insertStageResultSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	writeResult, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertStageResult, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		job.Stage.Name, job.Stage.Version, result.State, string(encodedDetails), lastError,
 	)
 	if err != nil {
@@ -859,180 +840,3 @@ func requireDirectStageWrite(result sql.Result) error {
 	}
 	return nil
 }
-
-const lockCanonicalBlockSQL = `
-SELECT 1
-FROM canonical_blocks
-WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-FOR KEY SHARE`
-
-const tokenLogsSQL = `
-SELECT log_index, tx_hash, address, raw
-FROM logs
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-ORDER BY log_index`
-
-const tokenCanonicalSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-)`
-
-const upsertTokenContractSQL = `
-INSERT INTO token_contracts AS current (
-    chain_id, address, code_hash, standard, confidence,
-    name, symbol, decimals, total_supply, metadata_state,
-    observed_block_number, observed_block_hash
-) VALUES (
-    $1::numeric, $2, $3, $4, $5,
-    $6, $7, $8, $9::numeric, $10,
-    $11::numeric, $12
-)
-ON CONFLICT (chain_id, address, code_hash, observed_block_hash) DO UPDATE SET
-    standard = CASE
-        WHEN (CASE EXCLUDED.confidence WHEN 'verified' THEN 4 WHEN 'high' THEN 3 WHEN 'inferred' THEN 2 ELSE 1 END) >
-             (CASE current.confidence WHEN 'verified' THEN 4 WHEN 'high' THEN 3 WHEN 'inferred' THEN 2 ELSE 1 END)
-          OR (
-             EXCLUDED.confidence = current.confidence AND current.standard = 'unknown'
-          )
-        THEN EXCLUDED.standard
-        ELSE current.standard
-    END,
-    confidence = CASE
-        WHEN (CASE EXCLUDED.confidence WHEN 'verified' THEN 4 WHEN 'high' THEN 3 WHEN 'inferred' THEN 2 ELSE 1 END) >
-             (CASE current.confidence WHEN 'verified' THEN 4 WHEN 'high' THEN 3 WHEN 'inferred' THEN 2 ELSE 1 END)
-        THEN EXCLUDED.confidence
-        ELSE current.confidence
-    END,
-    name = COALESCE(EXCLUDED.name, current.name),
-    symbol = COALESCE(EXCLUDED.symbol, current.symbol),
-    decimals = COALESCE(EXCLUDED.decimals, current.decimals),
-    total_supply = COALESCE(EXCLUDED.total_supply, current.total_supply),
-    metadata_state = CASE
-        WHEN EXCLUDED.metadata_state = 'complete' OR current.metadata_state = 'complete' THEN 'complete'
-        ELSE EXCLUDED.metadata_state
-    END,
-    updated_at = now()`
-
-const detectedTokenSQL = `
-SELECT token.standard, token.confidence
-FROM token_contracts AS token
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = token.chain_id
- AND canonical.number = token.observed_block_number
- AND canonical.block_hash = token.observed_block_hash
-WHERE token.chain_id = $1::numeric
-  AND token.address = $2
-  AND token.observed_block_number <= $3::numeric
-  AND token.standard <> 'unknown'
-ORDER BY token.observed_block_number DESC, token.updated_at DESC
-LIMIT 1`
-
-const insertTokenEventSQL = `
-INSERT INTO token_events (
-    chain_id, block_number, block_hash, log_index, sub_index, transaction_hash,
-    token_address, standard, event_kind, operator, from_address, to_address,
-    token_id, amount, canonical, confidence, raw
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-    $13::numeric, $14::numeric, true, $15, $16::jsonb
-)
-ON CONFLICT (chain_id, block_number, block_hash, log_index, sub_index) DO UPDATE SET
-    transaction_hash = EXCLUDED.transaction_hash,
-    token_address = EXCLUDED.token_address,
-    standard = EXCLUDED.standard,
-    event_kind = EXCLUDED.event_kind,
-    operator = EXCLUDED.operator,
-    from_address = EXCLUDED.from_address,
-    to_address = EXCLUDED.to_address,
-    token_id = EXCLUDED.token_id,
-    amount = EXCLUDED.amount,
-    canonical = true,
-    confidence = EXCLUDED.confidence,
-    raw = EXCLUDED.raw`
-
-const insertTokenDeltaSQL = `
-INSERT INTO token_balance_deltas (
-    chain_id, block_number, block_hash, log_index, sub_index,
-    token_address, owner_address, token_id, delta, canonical
-) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8::numeric, $9::numeric, true)
-ON CONFLICT (
-    chain_id, block_number, block_hash, log_index, sub_index, token_address, owner_address
-) DO UPDATE SET token_id = EXCLUDED.token_id, delta = EXCLUDED.delta, canonical = true`
-
-const blockStatsSourceSQL = `
-SELECT block.raw, count(inclusion.tx_index), configuration.configured_start::text,
-       parent.number::text, parent.timestamp::text,
-       COALESCE(bool_or(canonical_parent.block_hash IS NOT NULL), FALSE)
-FROM blocks AS block
-JOIN core_index_configuration AS configuration
-  ON configuration.chain_id = block.chain_id
-LEFT JOIN transaction_inclusions AS inclusion
-  ON inclusion.chain_id = block.chain_id
- AND inclusion.block_number = block.number
- AND inclusion.block_hash = block.hash
-LEFT JOIN blocks AS parent
-  ON parent.chain_id = block.chain_id
- AND parent.hash = block.parent_hash
-LEFT JOIN canonical_blocks AS canonical_parent
-  ON canonical_parent.chain_id = parent.chain_id
- AND canonical_parent.number = parent.number
- AND canonical_parent.block_hash = parent.hash
-WHERE block.chain_id = $1::numeric AND block.number = $2::numeric AND block.hash = $3
-GROUP BY block.raw, configuration.configured_start, parent.number, parent.timestamp`
-
-const statsReceiptSourceSQL = `
-SELECT receipt.raw
-FROM receipts AS receipt
-WHERE receipt.chain_id = $1::numeric
-  AND receipt.block_number = $2::numeric
-  AND receipt.block_hash = $3
-ORDER BY receipt.tx_index`
-
-const insertBlockStatsSQL = `
-INSERT INTO block_statistics (
-    chain_id, block_number, block_hash, transaction_count, gas_used, gas_limit,
-    base_fee_per_gas, blob_gas_used, burned_wei, block_timestamp,
-    block_interval_seconds, transactions_per_second, excess_blob_gas,
-    blob_base_fee_per_gas, blob_burned_wei, execution_gas_fee_wei,
-    priority_fee_wei, failed_transaction_count, contract_creation_count,
-    canonical
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5::numeric, $6::numeric, $7::numeric,
-    $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12::numeric,
-    $13::numeric, $14::numeric, $15::numeric, $16::numeric, $17::numeric,
-    $18, $19, true
-)
-ON CONFLICT (chain_id, block_number, block_hash) DO UPDATE SET
-    transaction_count = EXCLUDED.transaction_count,
-    gas_used = EXCLUDED.gas_used,
-    gas_limit = EXCLUDED.gas_limit,
-    base_fee_per_gas = EXCLUDED.base_fee_per_gas,
-    blob_gas_used = EXCLUDED.blob_gas_used,
-    burned_wei = EXCLUDED.burned_wei,
-    block_timestamp = EXCLUDED.block_timestamp,
-    block_interval_seconds = EXCLUDED.block_interval_seconds,
-    transactions_per_second = EXCLUDED.transactions_per_second,
-    excess_blob_gas = EXCLUDED.excess_blob_gas,
-    blob_base_fee_per_gas = EXCLUDED.blob_base_fee_per_gas,
-    blob_burned_wei = EXCLUDED.blob_burned_wei,
-    execution_gas_fee_wei = EXCLUDED.execution_gas_fee_wei,
-    priority_fee_wei = EXCLUDED.priority_fee_wei,
-    failed_transaction_count = EXCLUDED.failed_transaction_count,
-    contract_creation_count = EXCLUDED.contract_creation_count,
-    canonical = true,
-    computed_at = now()`
-
-const insertStageResultSQL = `
-INSERT INTO block_stage_results AS current (
-    chain_id, block_number, block_hash, stage, stage_version, state, details, last_error
-) VALUES ($1::numeric, $2::numeric, $3, $4, $5, $6, $7::jsonb, $8)
-ON CONFLICT (chain_id, block_hash, stage, stage_version) DO UPDATE SET
-    block_number = EXCLUDED.block_number,
-    state = EXCLUDED.state,
-    details = EXCLUDED.details,
-    last_error = EXCLUDED.last_error,
-    completed_at = now()
-WHERE current.durable_job_id IS NULL
-  AND current.job_generation IS NULL`
