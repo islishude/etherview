@@ -278,7 +278,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P68 is in progress: P68-T01 completes the production SSE lifetime/shutdown
   contract, non-blocking durable event replay, optional Redis invalidation
   recovery, typed mempool failure classification, and monolith/six-role runtime
-  acceptance. P68-T02 is claimed for the staged read-path sqlc migration.
+  acceptance. P68-T02 moves static read-path SQL into named sqlc sources while
+  retaining exact snapshot, cursor, ordering, reader-routing, and compatibility
+  behavior. P68-T03 is claimed for correctness/write SQL and the enforceable
+  raw-SQL execution boundary.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

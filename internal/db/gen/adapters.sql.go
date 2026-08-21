@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getFreshAdapterObservation = `-- name: GetFreshAdapterObservation :one
+const GetFreshAdapterObservation = `-- name: GetFreshAdapterObservation :one
 SELECT state, code, value, block_number, block_hash,
        observed_at, expires_at
 FROM external_adapter_observations
@@ -43,7 +43,7 @@ type GetFreshAdapterObservationRow struct {
 }
 
 func (q *Queries) GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error) {
-	row := q.db.QueryRow(ctx, getFreshAdapterObservation,
+	row := q.db.QueryRow(ctx, GetFreshAdapterObservation,
 		arg.ChainID,
 		arg.Capability,
 		arg.ProviderKey,
@@ -63,7 +63,7 @@ func (q *Queries) GetFreshAdapterObservation(ctx context.Context, arg GetFreshAd
 	return i, err
 }
 
-const recordAdapterFailure = `-- name: RecordAdapterFailure :exec
+const RecordAdapterFailure = `-- name: RecordAdapterFailure :exec
 INSERT INTO external_adapter_observations (
     chain_id, capability, provider_key, observation_key, state, code,
     observed_at, expires_at
@@ -86,7 +86,7 @@ type RecordAdapterFailureParams struct {
 }
 
 func (q *Queries) RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error {
-	_, err := q.db.Exec(ctx, recordAdapterFailure,
+	_, err := q.db.Exec(ctx, RecordAdapterFailure,
 		arg.ChainID,
 		arg.Capability,
 		arg.ProviderKey,
@@ -99,7 +99,7 @@ func (q *Queries) RecordAdapterFailure(ctx context.Context, arg RecordAdapterFai
 	return err
 }
 
-const recordPriceAdapterSuccess = `-- name: RecordPriceAdapterSuccess :exec
+const RecordPriceAdapterSuccess = `-- name: RecordPriceAdapterSuccess :exec
 INSERT INTO external_adapter_observations (
     chain_id, capability, provider_key, observation_key, state, value,
     observed_at, expires_at
@@ -118,7 +118,7 @@ type RecordPriceAdapterSuccessParams struct {
 }
 
 func (q *Queries) RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error {
-	_, err := q.db.Exec(ctx, recordPriceAdapterSuccess,
+	_, err := q.db.Exec(ctx, RecordPriceAdapterSuccess,
 		arg.ChainID,
 		arg.Value,
 		arg.ObservedAt,

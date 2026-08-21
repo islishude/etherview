@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/netpolicy"
 )
 
@@ -125,14 +126,10 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		blockNumber string
 		blockHash   []byte
 	)
-	err = tx.QueryRowContext(ctx, selectCanonicalNFTMetadataSQL,
-		reader.chainID, address.Bytes(), tokenID,
-	).Scan(&state, &document, &blockNumber, &blockHash)
+	err = tx.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(&state, &document, &blockNumber, &blockHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
-		if queryErr := tx.QueryRowContext(ctx, anyNFTMetadataSQL,
-			reader.chainID, address.Bytes(), tokenID,
-		).Scan(&exists); queryErr != nil {
+		if queryErr := tx.QueryRowContext(ctx, dbgen.MetadataAnyNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(&exists); queryErr != nil {
 			return NFTMetadata{}, fmt.Errorf("check historical NFT metadata display state: %w", queryErr)
 		}
 		if exists {
@@ -327,20 +324,3 @@ func truncateRunes(value string, maximum int) (string, bool) {
 func exceedsRunes(value string, maximum int) bool {
 	return len([]rune(value)) > maximum
 }
-
-const selectCanonicalNFTMetadataSQL = `
-SELECT metadata.state,
-       metadata.document,
-       metadata.observed_block_number::text,
-       metadata.observed_block_hash
-FROM external_metadata AS metadata
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = metadata.chain_id
- AND canonical.number = metadata.observed_block_number
- AND canonical.block_hash = metadata.observed_block_hash
-WHERE metadata.chain_id = $1::numeric
-  AND metadata.resource_kind = 'nft'
-  AND metadata.token_address = $2
-  AND metadata.token_id = $3::numeric
-ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash
-LIMIT 1`

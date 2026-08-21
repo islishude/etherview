@@ -1,13 +1,14 @@
 package contractartifact
 
 import (
+	"github.com/islishude/etherview/internal/db/gen"
 	"strings"
 	"testing"
 )
 
 func TestArtifactResolverRestoresImmutableOutcomesAndRanksStableSources(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(artifactSourceSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.ContractArtifactArtifactSource), " ")
 	for _, required := range []string{
 		"JOIN verification_results AS result",
 		"result.job_id = verified.verification_job_id",

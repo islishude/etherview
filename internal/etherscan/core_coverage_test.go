@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"net/url"
 	"strings"
 	"testing"
@@ -68,7 +69,7 @@ func TestCanonicalCoreRangeRequiresOneInclusiveCoverageInterval(t *testing.T) {
 
 func TestCanonicalCoreRangeSQLProvesSingleContainingRange(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(canonicalCoreRangeSQL)
+	query := compactSQL(dbgen.EtherscanCanonicalCoreRange)
 	for _, required := range []string{
 		"LEAST(COALESCE($3::numeric, tip.number), tip.number) AS range_end",
 		"candidate.range_start <= requested.range_start",

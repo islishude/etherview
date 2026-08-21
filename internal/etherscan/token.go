@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func (b *PostgresBackend) accountTokenTransfers(ctx context.Context, action string, values url.Values) ([]tokenTransfer, error) {
@@ -267,7 +268,7 @@ func (b *PostgresBackend) canonicalTokenContract(
 	addressBytes []byte,
 ) (storedTokenContract, error) {
 	var token storedTokenContract
-	err := queryer.QueryRowContext(ctx, canonicalTokenContractSQL, b.chain, addressBytes).Scan(
+	err := queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalTokenContract, b.chain, addressBytes).Scan(
 		&token.address, &token.codeHash, &token.standard, &token.confidence,
 		&token.name, &token.symbol, &token.decimals, &token.totalSupply,
 		&token.metadataState, &token.observedBlock, &token.observedHash,
@@ -466,16 +467,3 @@ WHERE event.chain_id = $1::numeric
 ORDER BY event.block_number %s, inclusion.tx_index %s, event.log_index %s,
          event.sub_index %s, event.block_hash %s
 LIMIT $7 OFFSET $8`
-
-const canonicalTokenContractSQL = `
-SELECT token.address, token.code_hash, token.standard, token.confidence,
-       token.name, token.symbol, token.decimals, token.total_supply::text,
-       token.metadata_state, token.observed_block_number::text, token.observed_block_hash
-FROM token_contracts AS token
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = token.chain_id
- AND canonical.number = token.observed_block_number
- AND canonical.block_hash = token.observed_block_hash
-WHERE token.chain_id = $1::numeric AND token.address = $2
-ORDER BY token.observed_block_number DESC, token.updated_at DESC, token.code_hash DESC
-LIMIT 1`

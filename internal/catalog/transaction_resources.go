@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type transactionResourceCursor struct {
@@ -44,8 +45,7 @@ func (catalog *Postgres) TransactionTokenEvents(
 	defer tx.Rollback() //nolint:errcheck
 	page := TransactionTokenEventPage{Identity: resolution.identity, Items: []TokenEvent{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, transactionTokenEventsSQL,
-			request.ChainID, resolution.blockHash, resolution.txHash,
+		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionTokenEvents, request.ChainID, resolution.blockHash, resolution.txHash,
 			resolution.limit+1, resolution.offset,
 		)
 		if queryErr != nil {
@@ -90,8 +90,7 @@ func (catalog *Postgres) TransactionInternalTransactions(
 		Items:    []TransactionInternalTransaction{},
 	}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, transactionInternalTransactionsSQL,
-			request.ChainID, resolution.blockHash, resolution.txHash,
+		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionInternalTransactions, request.ChainID, resolution.blockHash, resolution.txHash,
 			resolution.limit+1, resolution.offset,
 		)
 		if queryErr != nil {
@@ -174,8 +173,7 @@ func (catalog *Postgres) TransactionLogs(
 	}
 	defer tx.Rollback() //nolint:errcheck
 	page := TransactionLogPage{Identity: resolution.identity, Items: []TransactionLog{}}
-	rows, err := tx.QueryContext(ctx, transactionLogsSQL,
-		request.ChainID, resolution.blockHash, resolution.txHash,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionLogs, request.ChainID, resolution.blockHash, resolution.txHash,
 		resolution.limit+1, resolution.offset,
 	)
 	if err != nil {
@@ -288,8 +286,7 @@ func (catalog *Postgres) TransactionStateChanges(
 	defer tx.Rollback() //nolint:errcheck
 	page := TransactionStateChangePage{Identity: resolution.identity, Items: []TransactionStateChange{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, transactionStateChangesSQL,
-			request.ChainID, resolution.blockHash, resolution.txHash,
+		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionStateChanges, request.ChainID, resolution.blockHash, resolution.txHash,
 			resolution.limit+1, resolution.offset,
 		)
 		if queryErr != nil {
@@ -374,7 +371,7 @@ func (catalog *Postgres) beginTransactionResource(
 	resolution.limit = limit
 	var blockNumber string
 	var blockHash []byte
-	err = tx.QueryRowContext(ctx, transactionResourceIdentitySQL, request.ChainID, txHash).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.CatalogTransactionResourceIdentity, request.ChainID, txHash).Scan(
 		&blockNumber, &blockHash, &resolution.txIndex, &resolution.canonical,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -432,9 +429,7 @@ func transactionStageState(
 	}
 	var state string
 	var generation int64
-	err := tx.QueryRowContext(ctx, transactionStageStateSQL,
-		chainID, blockNumber, blockHash, string(stage), stage.Version(),
-	).Scan(&state, &generation)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionStageState, chainID, blockNumber, blockHash, string(stage), stage.Version()).Scan(&state, &generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return StageMissing, 0, nil
 	}
@@ -456,114 +451,3 @@ func (resolution transactionResourceResolution) nextCursor(kind string, offset i
 		Generation: resolution.generation, Offset: offset,
 	})
 }
-
-const transactionResourceIdentitySQL = `
-SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index,
-       (canonical.block_hash IS NOT NULL)
-FROM transaction_inclusions AS inclusion
-LEFT JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
-ORDER BY (canonical.block_hash IS NOT NULL) DESC, inclusion.block_number DESC
-LIMIT 1`
-
-const transactionStageStateSQL = `
-SELECT state, job_generation
-FROM published_block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND stage = $4
-  AND stage_version = $5`
-
-const transactionTokenEventsSQL = `
-SELECT event.chain_id::text, event.block_number::text, event.block_hash,
-       event.log_index::text, event.sub_index::text, event.transaction_hash,
-       event.token_address, event.standard, event.event_kind, event.operator,
-       event.from_address, event.to_address, event.token_id::text, event.amount::text,
-       event.confidence, metadata.decimals
-FROM token_events AS event
-LEFT JOIN LATERAL (
-    SELECT CASE
-               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
-               THEN contract.decimals
-           END AS decimals
-    FROM token_contracts AS contract
-    JOIN canonical_blocks AS observation
-      ON observation.chain_id = contract.chain_id
-     AND observation.number = contract.observed_block_number
-     AND observation.block_hash = contract.observed_block_hash
-    WHERE contract.chain_id = event.chain_id
-      AND contract.address = event.token_address
-      AND contract.observed_block_number <= event.block_number
-    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
-    LIMIT 1
-) AS metadata ON event.standard = 'erc20'
-WHERE event.chain_id = $1::numeric
-  AND event.block_hash = $2
-  AND event.transaction_hash = $3
-  AND event.canonical = true
-ORDER BY event.log_index, event.sub_index
-LIMIT $4 OFFSET $5`
-
-const transactionInternalTransactionsSQL = `
-SELECT trace.trace_path, trace.depth, trace.call_type,
-       trace.from_address, trace.to_address, trace.created_address,
-       trace.value::text
-FROM normalized_traces AS trace
-WHERE trace.chain_id = $1::numeric
-  AND trace.block_hash = $2
-  AND trace.transaction_hash = $3
-  AND trace.canonical = true
-  AND trace.depth > 0
-  AND trace.value > 0
-  AND trace.reverted = false
-ORDER BY string_to_array(trace.trace_path, '.')::bigint[]
-LIMIT $4 OFFSET $5`
-
-const transactionLogsSQL = `
-SELECT log.log_index, log.raw, decoding.status, decoding.signature,
-       decoding.source, decoding.confidence, decoding.arguments,
-       decoding.candidates, decoding.warning,
-       decoding.target_address, decoding.target_code_hash,
-       decoding.source_address, decoding.source_code_hash,
-       attribution.trace_path, attribution.execution_address
-FROM logs AS log
-LEFT JOIN abi_decodings AS decoding
-  ON decoding.chain_id = log.chain_id
- AND decoding.block_hash = log.block_hash
- AND decoding.transaction_hash = log.tx_hash
- AND decoding.object_kind = 'log'
- AND decoding.object_index = log.log_index::text
- AND decoding.canonical
-LEFT JOIN trace_log_attributions AS attribution
-  ON attribution.chain_id = log.chain_id
- AND attribution.block_number = log.block_number
- AND attribution.block_hash = log.block_hash
- AND attribution.transaction_hash = log.tx_hash
- AND attribution.log_index = log.log_index
- AND attribution.canonical
- AND EXISTS (
-     SELECT 1
-     FROM published_block_stage_results AS published
-     WHERE published.chain_id = attribution.chain_id
-       AND published.block_hash = attribution.block_hash
-       AND published.stage = 'trace'
-       AND published.stage_version = 3
-       AND published.state = 'complete'
- )
-WHERE log.chain_id = $1::numeric AND log.block_hash = $2 AND log.tx_hash = $3
-ORDER BY log.log_index
-LIMIT $4 OFFSET $5`
-
-const transactionStateChangesSQL = `
-SELECT address, field_kind, storage_key, before_value, after_value
-FROM transaction_state_changes
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND transaction_hash = $3
-  AND canonical = true
-ORDER BY address, field_kind, storage_key
-LIMIT $4 OFFSET $5`

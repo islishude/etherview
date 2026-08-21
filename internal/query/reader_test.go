@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -763,7 +764,7 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 
 func TestSearchVerifiedContractWinnerUsesCanonicalPublicationOrder(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(searchTextSQL)
+	query := compactSQL(dbgen.QuerySearchText)
 	for _, required := range []string{
 		"LEFT JOIN verified_contract_proxy_artifacts AS proxy_artifact",
 		"proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact",

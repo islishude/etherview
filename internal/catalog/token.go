@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type rowScanner interface{ Scan(...any) error }
@@ -41,9 +42,7 @@ func (catalog *Postgres) TokenContract(ctx context.Context, chainID, addressText
 }
 
 func (catalog *Postgres) tokenContractAtSnapshot(ctx context.Context, tx *sql.Tx, snapshot Snapshot, address []byte) (TokenContract, error) {
-	contract, err := catalog.scanTokenContract(tx.QueryRowContext(ctx, tokenContractSQL,
-		snapshot.ChainID, address, snapshot.BlockNumber,
-	))
+	contract, err := catalog.scanTokenContract(tx.QueryRowContext(ctx, dbgen.CatalogTokenContract, snapshot.ChainID, address, snapshot.BlockNumber))
 	if errors.Is(err, sql.ErrNoRows) {
 		return TokenContract{}, ErrNotFound
 	}
@@ -93,9 +92,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return TokenPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, tokenContractsSQL,
-		request.ChainID, snapshot.BlockNumber, hasAfter, afterAddress, limit+1,
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTokenContracts, request.ChainID, snapshot.BlockNumber, hasAfter, afterAddress, limit+1)
 	if err != nil {
 		return TokenPage{}, fmt.Errorf("list token contracts: %w", err)
 	}
@@ -259,8 +256,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return TokenEventPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, tokenEventsSQL,
-		request.ChainID, snapshot.BlockNumber, tokenAddress, hasBoundary,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTokenEvents, request.ChainID, snapshot.BlockNumber, tokenAddress, hasBoundary,
 		boundaryNumber, boundaryLog, boundarySub, boundaryHash, limit+1,
 	)
 	if err != nil {
@@ -372,80 +368,3 @@ func scanTokenEvent(row rowScanner) (TokenEvent, error) {
 	}
 	return event, nil
 }
-
-const tokenContractColumns = `
-tc.chain_id::text, tc.address, tc.code_hash, tc.standard, tc.confidence,
-tc.name, tc.symbol, tc.decimals, tc.total_supply::text, tc.metadata_state,
-tc.observed_block_number::text, tc.observed_block_hash, tc.updated_at`
-
-var tokenContractSQL = `
-SELECT ` + tokenContractColumns + `
-FROM token_contracts AS tc
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = tc.chain_id
- AND cb.number = tc.observed_block_number
- AND cb.block_hash = tc.observed_block_hash
-WHERE tc.chain_id = $1::numeric
-  AND tc.address = $2
-  AND tc.observed_block_number <= $3::numeric
-ORDER BY tc.observed_block_number DESC, tc.code_hash DESC
-LIMIT 1`
-
-var tokenContractsSQL = `
-WITH current_tokens AS (
-    SELECT DISTINCT ON (tc.address) ` + tokenContractColumns + `
-    FROM token_contracts AS tc
-    JOIN canonical_blocks AS cb
-      ON cb.chain_id = tc.chain_id
-     AND cb.number = tc.observed_block_number
-     AND cb.block_hash = tc.observed_block_hash
-    WHERE tc.chain_id = $1::numeric
-      AND tc.observed_block_number <= $2::numeric
-      AND ($3::boolean = false OR tc.address > $4)
-    ORDER BY tc.address, tc.observed_block_number DESC, tc.code_hash DESC
-)
-SELECT chain_id::text, address, code_hash, standard, confidence,
-       name, symbol, decimals, total_supply::text, metadata_state,
-       observed_block_number::text, observed_block_hash, updated_at
-FROM current_tokens
-ORDER BY address
-LIMIT $5`
-
-const tokenEventsSQL = `
-SELECT e.chain_id::text, e.block_number::text, e.block_hash,
-       e.log_index::text, e.sub_index::text, e.transaction_hash,
-       e.token_address, e.standard, e.event_kind, e.operator,
-       e.from_address, e.to_address, e.token_id::text, e.amount::text,
-       e.confidence, metadata.decimals
-FROM token_events AS e
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = e.chain_id
- AND cb.number = e.block_number
- AND cb.block_hash = e.block_hash
-LEFT JOIN LATERAL (
-    SELECT CASE
-               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
-               THEN contract.decimals
-           END AS decimals
-    FROM token_contracts AS contract
-    JOIN canonical_blocks AS observation
-      ON observation.chain_id = contract.chain_id
-     AND observation.number = contract.observed_block_number
-     AND observation.block_hash = contract.observed_block_hash
-    WHERE contract.chain_id = e.chain_id
-      AND contract.address = e.token_address
-      AND contract.observed_block_number <= e.block_number
-    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
-    LIMIT 1
-) AS metadata ON e.standard = 'erc20'
-WHERE e.chain_id = $1::numeric
-  AND e.block_number <= $2::numeric
-  AND e.token_address = $3
-  AND e.canonical = true
-  AND (
-      $4::boolean = false OR
-      (e.block_number, e.log_index, e.sub_index, e.block_hash) <
-      ($5::numeric, $6::bigint, $7::integer, $8)
-  )
-ORDER BY e.block_number DESC, e.log_index DESC, e.sub_index DESC, e.block_hash DESC
-LIMIT $9`

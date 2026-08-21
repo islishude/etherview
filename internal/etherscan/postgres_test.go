@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -456,7 +457,7 @@ func verifiedArtifactSourceExpectation(
 
 func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(verifiedProxySQL)
+	query := compactSQL(dbgen.EtherscanVerifiedProxy)
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",
@@ -528,7 +529,7 @@ func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 
 func TestProxyVerificationTargetQueryFencesAllCurrentIdentities(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(proxyVerificationTargetSQL)
+	query := compactSQL(dbgen.EtherscanProxyVerificationTarget)
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",

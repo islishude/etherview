@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -74,14 +75,10 @@ func (source *PostgresImageSource) SelectNFTImage(ctx context.Context, address c
 		blockNumber string
 		blockHash   []byte
 	)
-	err := source.db.QueryRowContext(ctx, selectCanonicalNFTImageSQL,
-		source.chainID, addressBytes, tokenID,
-	).Scan(&state, &image, &blockNumber, &blockHash)
+	err := source.db.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTImage, source.chainID, addressBytes, tokenID).Scan(&state, &image, &blockNumber, &blockHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
-		if queryErr := source.db.QueryRowContext(ctx, anyNFTMetadataSQL,
-			source.chainID, addressBytes, tokenID,
-		).Scan(&exists); queryErr != nil {
+		if queryErr := source.db.QueryRowContext(ctx, dbgen.MetadataAnyNFTMetadata, source.chainID, addressBytes, tokenID).Scan(&exists); queryErr != nil {
 			return NFTImageSelection{}, fmt.Errorf("check historical NFT media state: %w", queryErr)
 		}
 		if exists {
@@ -141,8 +138,7 @@ func (source *PostgresImageSource) NFTImageCurrent(
 		return false, errors.New("validate NFT media: invalid selection")
 	}
 	var current bool
-	err := source.db.QueryRowContext(ctx, currentNFTImageSQL,
-		source.chainID, addressBytes, tokenID, strconv.FormatUint(selection.BlockNumber, 10),
+	err := source.db.QueryRowContext(ctx, dbgen.MetadataCurrentNFTImage, source.chainID, addressBytes, tokenID, strconv.FormatUint(selection.BlockNumber, 10),
 		mustHashBytes(selection.BlockHash), selection.URI,
 	).Scan(&current)
 	if err != nil {
@@ -150,63 +146,3 @@ func (source *PostgresImageSource) NFTImageCurrent(
 	}
 	return current, nil
 }
-
-const selectCanonicalNFTImageSQL = `
-SELECT metadata.state,
-       CASE
-           WHEN jsonb_typeof(metadata.document -> 'image') = 'string'
-           THEN metadata.document ->> 'image'
-           ELSE NULL
-       END,
-       metadata.observed_block_number::text,
-       metadata.observed_block_hash
-FROM external_metadata AS metadata
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = metadata.chain_id
- AND canonical.number = metadata.observed_block_number
- AND canonical.block_hash = metadata.observed_block_hash
-WHERE metadata.chain_id = $1::numeric
-  AND metadata.resource_kind = 'nft'
-  AND metadata.token_address = $2
-  AND metadata.token_id = $3::numeric
-ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash
-LIMIT 1`
-
-const anyNFTMetadataSQL = `
-SELECT EXISTS (
-    SELECT 1 FROM external_metadata
-    WHERE chain_id = $1::numeric AND resource_kind = 'nft'
-      AND token_address = $2 AND token_id = $3::numeric
-)`
-
-const currentNFTImageSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM external_metadata AS metadata
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = metadata.chain_id
-     AND canonical.number = metadata.observed_block_number
-     AND canonical.block_hash = metadata.observed_block_hash
-    WHERE metadata.chain_id = $1::numeric
-      AND metadata.resource_kind = 'nft'
-      AND metadata.token_address = $2
-      AND metadata.token_id = $3::numeric
-      AND metadata.observed_block_number = $4::numeric
-      AND metadata.observed_block_hash = $5
-      AND metadata.state = 'available'
-      AND jsonb_typeof(metadata.document -> 'image') = 'string'
-      AND btrim(metadata.document ->> 'image') = $6
-      AND NOT EXISTS (
-          SELECT 1
-          FROM external_metadata AS newer
-          JOIN canonical_blocks AS newer_canonical
-            ON newer_canonical.chain_id = newer.chain_id
-           AND newer_canonical.number = newer.observed_block_number
-           AND newer_canonical.block_hash = newer.observed_block_hash
-          WHERE newer.chain_id = metadata.chain_id
-            AND newer.resource_kind = 'nft'
-            AND newer.token_address = metadata.token_address
-            AND newer.token_id = metadata.token_id
-            AND newer.observed_block_number > metadata.observed_block_number
-      )
-)`

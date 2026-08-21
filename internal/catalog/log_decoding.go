@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -139,8 +140,7 @@ func loadLogABICandidatesForCodeHash(
 	if codeHash != nil {
 		expectedCodeHash = codeHash[:]
 	}
-	rows, err := tx.QueryContext(ctx, transactionLogABICandidatesSQL,
-		chainID, address[:], fmt.Sprint(blockNumber), maxReadTimeLogABICandidates+1,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionLogABICandidates, chainID, address[:], fmt.Sprint(blockNumber), maxReadTimeLogABICandidates+1,
 		expectedCodeHash,
 	)
 	if err != nil {
@@ -313,115 +313,3 @@ func mapStoredABISource(source string) string {
 		return ""
 	}
 }
-
-const transactionLogABICandidatesSQL = `
-WITH target_code AS (
-    SELECT $5::bytea AS code_hash
-    WHERE $5::bytea IS NOT NULL
-    UNION ALL
-    (
-        SELECT observation.code_hash
-        FROM contract_code_observations AS observation
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = observation.chain_id
-         AND canonical.number = observation.block_number
-         AND canonical.block_hash = observation.block_hash
-        WHERE observation.chain_id = $1::numeric
-          AND observation.address = $2
-          AND observation.block_number <= $3::numeric
-          AND observation.canonical
-          AND $5::bytea IS NULL
-        ORDER BY observation.block_number DESC, observation.observed_at DESC
-        LIMIT 1
-    )
-), historical_proxy AS (
-    SELECT observation.implementation_address, observation.implementation_code_hash
-    FROM proxy_observations AS observation
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = observation.chain_id
-     AND canonical.number = observation.block_number
-     AND canonical.block_hash = observation.block_hash
-    CROSS JOIN target_code
-    WHERE observation.chain_id = $1::numeric
-      AND observation.proxy_address = $2
-      AND observation.proxy_code_hash = target_code.code_hash
-      AND observation.block_number <= $3::numeric
-      AND observation.canonical
-      AND observation.confidence IN ('verified', 'high')
-      AND observation.implementation_address IS NOT NULL
-      AND observation.implementation_code_hash IS NOT NULL
-    ORDER BY observation.block_number DESC, observation.stage_version DESC,
-             observation.block_hash DESC
-    LIMIT 1
-), candidates AS (
-	    SELECT target_code.code_hash AS target_code_hash, binding.abi,
-	           CASE binding.source
-	             WHEN 'verified' THEN 'verified'
-	             WHEN 'proxy_implementation' THEN 'proxy_implementation'
-	             WHEN 'diamond_facet' THEN 'diamond_facet'
-	             ELSE 'signature_database'
-	           END AS registry_source,
-	           CASE binding.source
-	             WHEN 'verified' THEN 'exact_address'
-	             WHEN 'proxy_implementation' THEN 'proxy_implementation'
-	             WHEN 'diamond_facet' THEN 'diamond_facet'
-	             ELSE 'signature_database'
-	           END AS source_kind,
-	           binding.source_address, binding.source_code_hash,
-	           binding.selector_scope,
-	           binding.valid_from_block, binding.valid_to_block,
-	           CASE binding.source
-	             WHEN 'verified' THEN 0
-	             WHEN 'proxy_implementation' THEN 2
-	             WHEN 'diamond_facet' THEN 2
-	             ELSE 4
-	           END AS priority,
-           binding.created_at, NULL::bytea AS request_digest, NULL::uuid AS job_id
-    FROM contract_abis AS binding, target_code
-    WHERE binding.chain_id = $1::numeric
-      AND binding.address = $2
-      AND binding.code_hash = target_code.code_hash
-      AND binding.valid_from_block <= $3::numeric
-      AND (binding.valid_to_block IS NULL OR binding.valid_to_block >= $3::numeric)
-      AND binding.canonical
-    UNION ALL
-    SELECT target_code.code_hash, verified.abi,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-                THEN 'verified' ELSE 'code_hash' END,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-                THEN 'exact_address' ELSE 'code_hash' END,
-	           verified.address, verified.code_hash,
-	           decode(repeat('00', 32), 'hex'),
-           0::numeric, NULL::numeric,
-           CASE WHEN verified.address = $2
-                     AND verified.valid_from_block <= $3::numeric
-                     AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-                THEN 1 ELSE 3 END,
-           verified.created_at, verified.request_digest, verified.verification_job_id
-    FROM verified_contracts AS verified, target_code
-    WHERE verified.chain_id = $1::numeric
-      AND verified.code_hash = target_code.code_hash
-      AND verified.abi IS NOT NULL
-    UNION ALL
-    SELECT target_code.code_hash, verified.abi, 'proxy_implementation',
-	           'proxy_implementation', verified.address, verified.code_hash,
-	           decode(repeat('00', 32), 'hex'),
-           0::numeric, NULL::numeric, 2,
-           verified.created_at, verified.request_digest, verified.verification_job_id
-    FROM verified_contracts AS verified, target_code, historical_proxy AS proxy
-    WHERE verified.chain_id = $1::numeric
-      AND verified.address = proxy.implementation_address
-      AND verified.code_hash = proxy.implementation_code_hash
-      AND verified.abi IS NOT NULL
-)
-SELECT target_code_hash, abi, registry_source, source_kind,
-       source_address, source_code_hash, selector_scope,
-       valid_from_block::text, valid_to_block::text
-FROM candidates
-ORDER BY priority, created_at DESC, request_digest ASC NULLS FIRST,
-         job_id ASC NULLS FIRST, source_address, source_code_hash
-LIMIT $4`

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"net/url"
 	"strings"
@@ -82,7 +83,7 @@ func (b *PostgresBackend) blockCountdown(ctx context.Context, values url.Values)
 		currentText, currentTimestampText, anchorText, anchorTimestampText string
 		sampleCountText, configuredStartText, rangeStartText, rangeEndText string
 	)
-	err = tx.QueryRowContext(ctx, blockCountdownSQL, b.chain).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.EtherscanBlockCountdown, b.chain).Scan(
 		&currentText, &currentTimestampText, &anchorText, &anchorTimestampText,
 		&sampleCountText, &configuredStartText, &rangeStartText, &rangeEndText,
 	)
@@ -182,52 +183,3 @@ WHERE block.chain_id = $1::numeric
   AND block.timestamp %s $2::numeric
 ORDER BY block.timestamp %s, block.number %s, block.hash %s
 LIMIT 1`
-
-const blockCountdownSQL = `
-WITH tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-), tip_coverage AS (
-    SELECT configuration.configured_start,
-           coverage.range_start, coverage.range_end
-    FROM tip
-    JOIN core_index_configuration AS configuration
-      ON configuration.chain_id = $1::numeric
-    JOIN core_coverage_ranges AS coverage
-      ON coverage.chain_id = configuration.chain_id
-     AND coverage.range_start <= tip.number
-     AND coverage.range_end >= tip.number
-    ORDER BY coverage.range_start DESC
-    LIMIT 1
-), recent AS (
-    SELECT block.number, block.timestamp
-    FROM blocks AS block
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = block.chain_id
-     AND canonical.number = block.number
-     AND canonical.block_hash = block.hash
-    CROSS JOIN tip
-    CROSS JOIN tip_coverage AS coverage
-    WHERE block.chain_id = $1::numeric
-      AND block.number >= coverage.range_start
-      AND block.number <= tip.number
-    ORDER BY block.number DESC
-    LIMIT 128
-), current_sample AS (
-    SELECT number, timestamp FROM recent ORDER BY number DESC LIMIT 1
-), anchor AS (
-    SELECT number, timestamp FROM recent ORDER BY number ASC LIMIT 1
-), sample_count AS (
-    SELECT count(*) AS value FROM recent
-)
-SELECT current_sample.number::text, current_sample.timestamp::text,
-       anchor.number::text, anchor.timestamp::text,
-       sample_count.value::text, coverage.configured_start::text,
-       coverage.range_start::text, coverage.range_end::text
-FROM current_sample
-CROSS JOIN anchor
-CROSS JOIN sample_count
-CROSS JOIN tip_coverage AS coverage`

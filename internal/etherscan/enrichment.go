@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 )
 
@@ -43,9 +44,7 @@ func (b *PostgresBackend) requireCanonicalStageRange(
 	var tip string
 	var incompleteNumber, state sql.NullString
 	var incompleteHash []byte
-	err = queryer.QueryRowContext(ctx, canonicalStageRangeSQL,
-		b.chain, start, endArgument, stage,
-	).Scan(&tip, &incompleteNumber, &incompleteHash, &state)
+	err = queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalStageRange, b.chain, start, endArgument, stage).Scan(&tip, &incompleteNumber, &incompleteHash, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", errors.New("canonical stage range lost its proven core tip")
 	}
@@ -91,36 +90,3 @@ func storedUint256(value, name string) (*big.Int, error) {
 	}
 	return parsed, nil
 }
-
-const canonicalStageRangeSQL = `
-WITH tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-), incomplete AS (
-    SELECT canonical.number, canonical.block_hash, latest.state
-    FROM canonical_blocks AS canonical
-    CROSS JOIN tip
-    LEFT JOIN LATERAL (
-        SELECT result.state
-        FROM published_block_stage_results AS result
-        WHERE result.chain_id = canonical.chain_id
-          AND result.block_number = canonical.number
-          AND result.block_hash = canonical.block_hash
-          AND result.stage = $4
-        ORDER BY result.stage_version DESC
-        LIMIT 1
-    ) AS latest ON true
-    WHERE canonical.chain_id = $1::numeric
-      AND canonical.number >= $2::numeric
-      AND canonical.number <= LEAST(COALESCE($3::numeric, tip.number), tip.number)
-      AND latest.state IS DISTINCT FROM 'complete'
-    ORDER BY canonical.number
-    LIMIT 1
-)
-SELECT tip.number::text, incomplete.number::text,
-       incomplete.block_hash, incomplete.state
-FROM tip
-LEFT JOIN incomplete ON true`

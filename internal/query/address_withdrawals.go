@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -66,10 +67,10 @@ func (r *PostgresReader) AddressWithdrawals(
 		}
 	}
 
-	query := listAddressWithdrawalsFirstSQL
+	query := dbgen.ListAddressWithdrawalsFirst
 	arguments := []any{r.chainID, address.Bytes(), strconv.FormatUint(cursor.SnapshotNumber, 10), limit + 1}
 	if encodedCursor != "" {
-		query = listAddressWithdrawalsSQL
+		query = dbgen.ListAddressWithdrawalsAfter
 		arguments = []any{r.chainID, address.Bytes(), strconv.FormatUint(cursor.SnapshotNumber, 10), strconv.FormatUint(cursor.BeforeIndex, 10), limit + 1}
 	}
 	rows, err := tx.QueryContext(ctx, query, arguments...)
@@ -184,7 +185,7 @@ func (r *PostgresReader) validateAddressWithdrawalCursor(
 		return ErrInvalidCursor
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, validateAddressWithdrawalCursorSQL,
+	if err := tx.QueryRowContext(ctx, dbgen.ValidateAddressWithdrawalCursor,
 		r.chainID,
 		strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
 		address.Bytes(), strconv.FormatUint(cursor.BeforeIndex, 10),
@@ -197,67 +198,3 @@ func (r *PostgresReader) validateAddressWithdrawalCursor(
 	}
 	return nil
 }
-
-const addressWithdrawalColumns = `
-    withdrawal.withdrawal_index::text,
-    withdrawal.validator_index::text,
-    withdrawal.address,
-    withdrawal.amount::text,
-    withdrawal.block_number::text,
-    withdrawal.block_hash,
-    block.timestamp::text`
-
-const listAddressWithdrawalsFirstSQL = `
-SELECT ` + addressWithdrawalColumns + `
-FROM withdrawals AS withdrawal
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = withdrawal.chain_id
- AND canonical.number = withdrawal.block_number
- AND canonical.block_hash = withdrawal.block_hash
-JOIN blocks AS block
-  ON block.chain_id = withdrawal.chain_id
- AND block.number = withdrawal.block_number
- AND block.hash = withdrawal.block_hash
-WHERE withdrawal.chain_id = $1::numeric
-  AND withdrawal.address = $2
-  AND withdrawal.block_number <= $3::numeric
-ORDER BY withdrawal.withdrawal_index DESC
-LIMIT $4`
-
-const listAddressWithdrawalsSQL = `
-SELECT ` + addressWithdrawalColumns + `
-FROM withdrawals AS withdrawal
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = withdrawal.chain_id
- AND canonical.number = withdrawal.block_number
- AND canonical.block_hash = withdrawal.block_hash
-JOIN blocks AS block
-  ON block.chain_id = withdrawal.chain_id
- AND block.number = withdrawal.block_number
- AND block.hash = withdrawal.block_hash
-WHERE withdrawal.chain_id = $1::numeric
-  AND withdrawal.address = $2
-  AND withdrawal.block_number <= $3::numeric
-  AND withdrawal.withdrawal_index < $4::numeric
-ORDER BY withdrawal.withdrawal_index DESC
-LIMIT $5`
-
-const validateAddressWithdrawalCursorSQL = `
-SELECT
-    EXISTS (
-        SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-    )
-    AND EXISTS (
-        SELECT 1
-        FROM withdrawals AS withdrawal
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = withdrawal.chain_id
-         AND canonical.number = withdrawal.block_number
-         AND canonical.block_hash = withdrawal.block_hash
-        WHERE withdrawal.chain_id = $1::numeric
-          AND withdrawal.address = $4
-          AND withdrawal.withdrawal_index = $5::numeric
-          AND withdrawal.block_number = $6::numeric
-          AND withdrawal.block_hash = $7
-    )`

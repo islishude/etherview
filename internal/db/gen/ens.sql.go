@@ -11,18 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const acquireENSGenerationLock = `-- name: AcquireENSGenerationLock :exec
+const AcquireENSGenerationLock = `-- name: AcquireENSGenerationLock :exec
 SELECT pg_advisory_xact_lock(hashtextextended(
     'etherview:ens-generation:' || $1::numeric::text, 0
 ))
 `
 
 func (q *Queries) AcquireENSGenerationLock(ctx context.Context, chainID pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, acquireENSGenerationLock, chainID)
+	_, err := q.db.Exec(ctx, AcquireENSGenerationLock, chainID)
 	return err
 }
 
-const ensureENSNameObservationPublished = `-- name: EnsureENSNameObservationPublished :exec
+const EnsureENSNameObservationPublished = `-- name: EnsureENSNameObservationPublished :exec
 UPDATE ens_name_observations AS observation
 SET publication_nonce = observation.publication_nonce + 1
 WHERE observation.id = $1
@@ -39,11 +39,11 @@ WHERE observation.id = $1
 `
 
 func (q *Queries) EnsureENSNameObservationPublished(ctx context.Context, observationID int64, chainID pgtype.Numeric) error {
-	_, err := q.db.Exec(ctx, ensureENSNameObservationPublished, observationID, chainID)
+	_, err := q.db.Exec(ctx, EnsureENSNameObservationPublished, observationID, chainID)
 	return err
 }
 
-const getENSAddressNameSnapshot = `-- name: GetENSAddressNameSnapshot :one
+const GetENSAddressNameSnapshot = `-- name: GetENSAddressNameSnapshot :one
 SELECT snapshot.id, snapshot.chain_id, snapshot.generation_id, snapshot.created_at, snapshot.expires_at
 FROM ens_address_name_snapshots AS snapshot
 JOIN ens_resolution_generations AS generation ON generation.id = snapshot.generation_id
@@ -71,7 +71,7 @@ type GetENSAddressNameSnapshotParams struct {
 }
 
 func (q *Queries) GetENSAddressNameSnapshot(ctx context.Context, arg GetENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error) {
-	row := q.db.QueryRow(ctx, getENSAddressNameSnapshot,
+	row := q.db.QueryRow(ctx, GetENSAddressNameSnapshot,
 		arg.ID,
 		arg.ChainID,
 		arg.NowAt,
@@ -88,7 +88,7 @@ func (q *Queries) GetENSAddressNameSnapshot(ctx context.Context, arg GetENSAddre
 	return i, err
 }
 
-const getENSNameObservation = `-- name: GetENSNameObservation :one
+const GetENSNameObservation = `-- name: GetENSNameObservation :one
 SELECT observation.id, observation.generation_id, observation.chain_id, observation.source, observation.direction, observation.lookup_key, observation.outcome, observation.name, observation.address, observation.resolver, observation.reverse_resolver, observation.observed_at, observation.publication_nonce
 FROM ens_name_observations AS observation
 WHERE observation.generation_id = $1
@@ -108,7 +108,7 @@ type GetENSNameObservationParams struct {
 }
 
 func (q *Queries) GetENSNameObservation(ctx context.Context, arg GetENSNameObservationParams) (EnsNameObservation, error) {
-	row := q.db.QueryRow(ctx, getENSNameObservation,
+	row := q.db.QueryRow(ctx, GetENSNameObservation,
 		arg.GenerationID,
 		arg.ChainID,
 		arg.Source,
@@ -134,7 +134,7 @@ func (q *Queries) GetENSNameObservation(ctx context.Context, arg GetENSNameObser
 	return i, err
 }
 
-const getENSResolutionGeneration = `-- name: GetENSResolutionGeneration :one
+const GetENSResolutionGeneration = `-- name: GetENSResolutionGeneration :one
 SELECT generation.id, generation.chain_id, generation.policy_key, generation.coin_type, generation.official_endpoint, generation.official_block_number, generation.official_block_hash, generation.custom_endpoint, generation.custom_coin_type, generation.custom_block_number, generation.custom_block_hash, generation.created_at, generation.fresh_until, generation.retain_until
 FROM ens_resolution_generations AS generation
 WHERE generation.id = $1
@@ -160,7 +160,7 @@ type GetENSResolutionGenerationParams struct {
 }
 
 func (q *Queries) GetENSResolutionGeneration(ctx context.Context, arg GetENSResolutionGenerationParams) (EnsResolutionGeneration, error) {
-	row := q.db.QueryRow(ctx, getENSResolutionGeneration,
+	row := q.db.QueryRow(ctx, GetENSResolutionGeneration,
 		arg.GenerationID,
 		arg.ChainID,
 		arg.PolicyKey,
@@ -186,7 +186,7 @@ func (q *Queries) GetENSResolutionGeneration(ctx context.Context, arg GetENSReso
 	return i, err
 }
 
-const getFreshENSResolutionFailure = `-- name: GetFreshENSResolutionFailure :one
+const GetFreshENSResolutionFailure = `-- name: GetFreshENSResolutionFailure :one
 SELECT failure.id, failure.generation_id, failure.chain_id, failure.source, failure.direction, failure.lookup_key, failure.code, failure.observed_at, failure.expires_at
 FROM ens_resolution_failures AS failure
 WHERE failure.generation_id = $1
@@ -209,7 +209,7 @@ type GetFreshENSResolutionFailureParams struct {
 }
 
 func (q *Queries) GetFreshENSResolutionFailure(ctx context.Context, arg GetFreshENSResolutionFailureParams) (EnsResolutionFailure, error) {
-	row := q.db.QueryRow(ctx, getFreshENSResolutionFailure,
+	row := q.db.QueryRow(ctx, GetFreshENSResolutionFailure,
 		arg.GenerationID,
 		arg.ChainID,
 		arg.Source,
@@ -232,7 +232,7 @@ func (q *Queries) GetFreshENSResolutionFailure(ctx context.Context, arg GetFresh
 	return i, err
 }
 
-const getFreshENSResolutionGeneration = `-- name: GetFreshENSResolutionGeneration :one
+const GetFreshENSResolutionGeneration = `-- name: GetFreshENSResolutionGeneration :one
 SELECT generation.id, generation.chain_id, generation.policy_key, generation.coin_type, generation.official_endpoint, generation.official_block_number, generation.official_block_hash, generation.custom_endpoint, generation.custom_coin_type, generation.custom_block_number, generation.custom_block_hash, generation.created_at, generation.fresh_until, generation.retain_until
 FROM ens_resolution_generations AS generation
 WHERE generation.chain_id = $1::numeric
@@ -252,7 +252,7 @@ LIMIT 1
 `
 
 func (q *Queries) GetFreshENSResolutionGeneration(ctx context.Context, chainID pgtype.Numeric, policyKey string, nowAt pgtype.Timestamptz) (EnsResolutionGeneration, error) {
-	row := q.db.QueryRow(ctx, getFreshENSResolutionGeneration, chainID, policyKey, nowAt)
+	row := q.db.QueryRow(ctx, GetFreshENSResolutionGeneration, chainID, policyKey, nowAt)
 	var i EnsResolutionGeneration
 	err := row.Scan(
 		&i.ID,
@@ -273,7 +273,7 @@ func (q *Queries) GetFreshENSResolutionGeneration(ctx context.Context, chainID p
 	return i, err
 }
 
-const insertENSAddressNameSnapshot = `-- name: InsertENSAddressNameSnapshot :one
+const InsertENSAddressNameSnapshot = `-- name: InsertENSAddressNameSnapshot :one
 INSERT INTO ens_address_name_snapshots (
     id, chain_id, generation_id, created_at, expires_at
 ) VALUES (
@@ -292,7 +292,7 @@ type InsertENSAddressNameSnapshotParams struct {
 }
 
 func (q *Queries) InsertENSAddressNameSnapshot(ctx context.Context, arg InsertENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error) {
-	row := q.db.QueryRow(ctx, insertENSAddressNameSnapshot,
+	row := q.db.QueryRow(ctx, InsertENSAddressNameSnapshot,
 		arg.ID,
 		arg.ChainID,
 		arg.GenerationID,
@@ -310,7 +310,7 @@ func (q *Queries) InsertENSAddressNameSnapshot(ctx context.Context, arg InsertEN
 	return i, err
 }
 
-const insertENSNameObservation = `-- name: InsertENSNameObservation :one
+const InsertENSNameObservation = `-- name: InsertENSNameObservation :one
 INSERT INTO ens_name_observations (
     generation_id, chain_id, source, direction, lookup_key, outcome,
     name, address, resolver, reverse_resolver, observed_at
@@ -346,7 +346,7 @@ type InsertENSNameObservationParams struct {
 }
 
 func (q *Queries) InsertENSNameObservation(ctx context.Context, arg InsertENSNameObservationParams) (EnsNameObservation, error) {
-	row := q.db.QueryRow(ctx, insertENSNameObservation,
+	row := q.db.QueryRow(ctx, InsertENSNameObservation,
 		arg.GenerationID,
 		arg.ChainID,
 		arg.Source,
@@ -378,7 +378,7 @@ func (q *Queries) InsertENSNameObservation(ctx context.Context, arg InsertENSNam
 	return i, err
 }
 
-const insertENSResolutionFailure = `-- name: InsertENSResolutionFailure :exec
+const InsertENSResolutionFailure = `-- name: InsertENSResolutionFailure :exec
 INSERT INTO ens_resolution_failures (
     generation_id, chain_id, source, direction, lookup_key, code,
     observed_at, expires_at
@@ -401,7 +401,7 @@ type InsertENSResolutionFailureParams struct {
 }
 
 func (q *Queries) InsertENSResolutionFailure(ctx context.Context, arg InsertENSResolutionFailureParams) error {
-	_, err := q.db.Exec(ctx, insertENSResolutionFailure,
+	_, err := q.db.Exec(ctx, InsertENSResolutionFailure,
 		arg.GenerationID,
 		arg.ChainID,
 		arg.Source,
@@ -414,7 +414,7 @@ func (q *Queries) InsertENSResolutionFailure(ctx context.Context, arg InsertENSR
 	return err
 }
 
-const insertENSResolutionGeneration = `-- name: InsertENSResolutionGeneration :one
+const InsertENSResolutionGeneration = `-- name: InsertENSResolutionGeneration :one
 INSERT INTO ens_resolution_generations (
     chain_id, policy_key, coin_type,
     official_endpoint, official_block_number, official_block_hash,
@@ -454,7 +454,7 @@ type InsertENSResolutionGenerationParams struct {
 }
 
 func (q *Queries) InsertENSResolutionGeneration(ctx context.Context, arg InsertENSResolutionGenerationParams) (EnsResolutionGeneration, error) {
-	row := q.db.QueryRow(ctx, insertENSResolutionGeneration,
+	row := q.db.QueryRow(ctx, InsertENSResolutionGeneration,
 		arg.ChainID,
 		arg.PolicyKey,
 		arg.CoinType,

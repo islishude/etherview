@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
@@ -106,7 +107,7 @@ func (r *PostgresReader) status(
 	var configuredStart, contiguousEnd, checkpointHeight, highestEnd sql.NullString
 	var contiguousHash, checkpointHash, highestHash []byte
 	var safeHeight, finalizedHeight, traceState sql.NullString
-	if err := queryer.QueryRowContext(ctx, statusStateSQL, r.chainID).Scan(
+	if err := queryer.QueryRowContext(ctx, dbgen.QueryStatusState, r.chainID).Scan(
 		&configuredStart,
 		&contiguousEnd, &contiguousHash,
 		&checkpointHeight, &checkpointHash,
@@ -249,10 +250,10 @@ func (r *PostgresReader) Blocks(ctx context.Context, encodedCursor string, limit
 		}
 	}
 
-	pageSQL := listBlocksSQL
+	pageSQL := dbgen.QueryListBlocks
 	boundary := snapshot.BeforeNumber
 	if encodedCursor == "" {
-		pageSQL = listBlocksFirstSQL
+		pageSQL = dbgen.QueryListBlocksFirst
 		boundary = snapshot.SnapshotNumber
 	}
 	rows, err := tx.QueryContext(ctx, pageSQL, r.chainID, strconv.FormatUint(boundary, 10), limit+1)
@@ -304,7 +305,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 	if hash, isHash, err := parseHashIdentifier(identifier); err != nil {
 		return gen.Block{}, err
 	} else if isHash {
-		rows, err := r.db.QueryContext(ctx, blockByHashSQL, r.chainID, hash.Bytes())
+		rows, err := r.db.QueryContext(ctx, dbgen.QueryBlockByHash, r.chainID, hash.Bytes())
 		if err != nil {
 			return gen.Block{}, fmt.Errorf("query block by hash: %w", err)
 		}
@@ -325,7 +326,7 @@ func (r *PostgresReader) Block(ctx context.Context, identifier string) (gen.Bloc
 	if err != nil {
 		return gen.Block{}, err
 	}
-	rows, err := r.db.QueryContext(ctx, blockByNumberSQL, r.chainID, strconv.FormatUint(height, 10))
+	rows, err := r.db.QueryContext(ctx, dbgen.QueryBlockByNumber, r.chainID, strconv.FormatUint(height, 10))
 	if err != nil {
 		return gen.Block{}, fmt.Errorf("query block by number: %w", err)
 	}
@@ -357,7 +358,7 @@ func (r *PostgresReader) Transaction(ctx context.Context, value string) (gen.Tra
 	if err != nil {
 		return gen.Transaction{}, err
 	}
-	rows, err := tx.QueryContext(ctx, transactionByHashSQL, r.chainID, hash.Bytes())
+	rows, err := tx.QueryContext(ctx, dbgen.QueryTransactionByHash, r.chainID, hash.Bytes())
 	if err != nil {
 		return gen.Transaction{}, fmt.Errorf("query transaction: %w", err)
 	}
@@ -448,7 +449,7 @@ func (r *PostgresReader) search(
 		return nil, "", err
 	}
 	var generation, minGeneration int64
-	if err := tx.QueryRowContext(ctx, currentSearchGenerationSQL, r.chainID).Scan(&generation, &minGeneration); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.GetCurrentSearchGeneration, r.chainID).Scan(&generation, &minGeneration); err != nil {
 		return nil, "", fmt.Errorf("read search catalog generation: %w", err)
 	}
 	if generation < 0 || minGeneration < 0 || minGeneration > generation {
@@ -674,368 +675,3 @@ func equalBytes(left, right []byte) bool {
 	}
 	return true
 }
-
-const statusStateSQL = `
-SELECT
-	configuration.configured_start::text,
-	contiguous.range_end::text,
-	contiguous_block.block_hash,
-    checkpoint.contiguous_through::text,
-    checkpoint.block_hash,
-	highest.range_end::text,
-	highest_block.block_hash,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    trace_result.state
-FROM (SELECT 1) AS singleton
-LEFT JOIN core_index_configuration AS configuration
-  ON configuration.chain_id = $1::numeric
-LEFT JOIN core_coverage_ranges AS contiguous
-  ON contiguous.chain_id = $1::numeric
- AND contiguous.range_start = configuration.configured_start
-LEFT JOIN canonical_blocks AS contiguous_block
-  ON contiguous_block.chain_id = $1::numeric
- AND contiguous_block.number = contiguous.range_end
-LEFT JOIN index_checkpoints AS checkpoint
-  ON checkpoint.chain_id = $1::numeric AND checkpoint.stage = 'core'
-LEFT JOIN LATERAL (
-	SELECT range_end
-	FROM core_coverage_ranges
-	WHERE chain_id = $1::numeric
-	ORDER BY range_end DESC
-	LIMIT 1
-) AS highest ON TRUE
-LEFT JOIN canonical_blocks AS highest_block
-  ON highest_block.chain_id = $1::numeric
- AND highest_block.number = highest.range_end
-LEFT JOIN chain_finality AS finality
-  ON finality.chain_id = $1::numeric
-LEFT JOIN published_block_stage_results AS trace_result
-  ON trace_result.chain_id = $1::numeric
- AND trace_result.block_number = contiguous.range_end
- AND trace_result.block_hash = contiguous_block.block_hash
- AND trace_result.stage = 'trace'
- AND trace_result.stage_version = 3`
-
-const listBlocksSQL = `
-SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number < $2::numeric
-ORDER BY canonical.number DESC
-LIMIT $3`
-
-const listBlocksFirstSQL = `
-SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric
-  AND canonical.number <= $2::numeric
-ORDER BY canonical.number DESC
-LIMIT $3`
-
-const blockByNumberSQL = `
-SELECT
-    block.raw,
-    canonical.number::text,
-    canonical.block_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = canonical.chain_id
-WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric`
-
-const blockByHashSQL = `
-SELECT
-    block.raw,
-    block.number::text,
-    block.hash,
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text
-FROM blocks AS block
-LEFT JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = block.chain_id
- AND canonical.number = block.number
- AND canonical.block_hash = block.hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = block.chain_id
-WHERE block.chain_id = $1::numeric AND block.hash = $2
-LIMIT 1`
-
-const transactionByHashSQL = `
-SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.raw
-FROM transaction_inclusions AS inclusion
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-LEFT JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
-ORDER BY (canonical.block_hash IS NOT NULL) DESC, inclusion.block_number DESC
-LIMIT 1`
-
-const searchHashSQL = `
-WITH visible_labels AS (
-    SELECT document.result_kind, document.result_key, document.result_label, document.id
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.source_kind = 'label'
-      AND document.valid_from_generation <= $3
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
-)
-SELECT kind, key, label, rank, canonical
-FROM (
-    SELECT
-        'block'::text AS kind,
-        '0x' || encode(block.hash, 'hex') AS key,
-        COALESCE(operator_label.result_label, 'Block #' || block.number::text) AS label,
-        CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint AS rank,
-        (canonical.block_hash IS NOT NULL) AS canonical
-    FROM blocks AS block
-    LEFT JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = block.chain_id
-     AND canonical.number = block.number
-     AND canonical.block_hash = block.hash
-    LEFT JOIN LATERAL (
-        SELECT visible.result_label
-        FROM visible_labels AS visible
-        WHERE visible.result_kind = 'block'
-          AND lower(visible.result_key) = ('0x' || encode(block.hash, 'hex'))
-        ORDER BY visible.id DESC
-        LIMIT 1
-    ) AS operator_label ON TRUE
-    WHERE block.chain_id = $1::numeric AND block.hash = $2
-
-    UNION ALL
-
-    SELECT
-        'transaction'::text,
-        '0x' || encode(transaction.hash, 'hex'),
-        COALESCE(operator_label.result_label, 'Transaction 0x' || encode(transaction.hash, 'hex')),
-        CASE WHEN operator_label.result_label IS NULL THEN 90 ELSE 110 END::bigint,
-        EXISTS (
-            SELECT 1 FROM transaction_inclusions AS inclusion
-            JOIN canonical_blocks AS canonical
-              ON canonical.chain_id = inclusion.chain_id
-             AND canonical.number = inclusion.block_number
-             AND canonical.block_hash = inclusion.block_hash
-            WHERE inclusion.chain_id = transaction.chain_id
-              AND inclusion.tx_hash = transaction.hash
-        )
-    FROM transactions AS transaction
-    LEFT JOIN LATERAL (
-        SELECT visible.result_label
-        FROM visible_labels AS visible
-        WHERE visible.result_kind = 'transaction'
-          AND lower(visible.result_key) = ('0x' || encode(transaction.hash, 'hex'))
-        ORDER BY visible.id DESC
-        LIMIT 1
-    ) AS operator_label ON TRUE
-    WHERE transaction.chain_id = $1::numeric AND transaction.hash = $2
-) AS results
-ORDER BY rank DESC, kind
-LIMIT $4`
-
-const searchBlockNumberSQL = `
-WITH visible_labels AS (
-    SELECT document.result_key, document.result_label, document.id
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.source_kind = 'label'
-      AND document.result_kind = 'block'
-      AND document.valid_from_generation <= $3
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $3)
-)
-SELECT canonical.number::text,
-       canonical.block_hash,
-       COALESCE(operator_label.result_label, 'Block #' || canonical.number::text),
-       CASE WHEN operator_label.result_label IS NULL THEN 100 ELSE 110 END::bigint
-FROM canonical_blocks AS canonical
-LEFT JOIN LATERAL (
-    SELECT visible.result_label
-    FROM visible_labels AS visible
-    WHERE lower(visible.result_key) IN (
-        canonical.number::text,
-        '0x' || encode(canonical.block_hash, 'hex')
-    )
-    ORDER BY CASE WHEN lower(visible.result_key) = canonical.number::text THEN 0 ELSE 1 END,
-             visible.id DESC
-    LIMIT 1
-) AS operator_label ON TRUE
-WHERE canonical.chain_id = $1::numeric AND canonical.number = $2::numeric`
-
-const searchTextSQL = `
-WITH visible_documents AS (
-    SELECT document.*
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $4
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $4)
-), candidates AS (
-    SELECT document.result_kind AS kind,
-           lower(document.result_key) AS key,
-           document.result_label AS label,
-           CASE document.source_kind
-             WHEN 'label' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 110 ELSE 80 END
-             WHEN 'name' THEN CASE WHEN $2 = ANY(document.exact_terms) THEN 100 ELSE 70 END
-             WHEN 'token' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 105
-                 WHEN $2 = ANY(document.exact_terms) THEN 95 ELSE 65 END
-             WHEN 'verified_contract' THEN CASE
-                 WHEN lower(document.result_key) = $2 THEN 104
-                 WHEN $2 = ANY(document.exact_terms) THEN 94 ELSE 64 END
-           END::bigint AS rank,
-           CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
-           document.name_source,
-           document.verification_match_type,
-           document.valid_from_block AS verification_valid_from_block,
-           document.verification_request_digest,
-           document.verification_job_id,
-           proxy_artifact.verification_job_id IS NOT NULL AS verification_proxy_artifact
-    FROM visible_documents AS document
-    LEFT JOIN canonical_blocks AS canonical
-      ON (document.source_kind = 'token' OR (document.source_kind = 'name' AND document.block_hash IS NOT NULL))
-     AND canonical.chain_id = document.chain_id
-     AND canonical.number = document.block_number
-     AND canonical.block_hash = document.block_hash
-    LEFT JOIN LATERAL (
-        SELECT observation.code_hash, observation.block_number
-        FROM visible_documents AS observation
-        JOIN canonical_blocks AS observed_canonical
-          ON observed_canonical.chain_id = observation.chain_id
-         AND observed_canonical.number = observation.block_number
-         AND observed_canonical.block_hash = observation.block_hash
-        WHERE document.source_kind = 'verified_contract'
-          AND observation.source_kind = 'code'
-          AND observation.target_address = document.target_address
-          AND observation.block_number <= $3::numeric
-          AND observation.source_canonical = TRUE
-        ORDER BY observation.block_number DESC, observation.block_hash DESC
-        LIMIT 1
-    ) AS current_code ON TRUE
-    LEFT JOIN verified_contract_proxy_artifacts AS proxy_artifact
-      ON document.source_kind = 'verified_contract'
-     AND proxy_artifact.chain_id = document.chain_id
-     AND proxy_artifact.address = document.target_address
-     AND proxy_artifact.code_hash = document.code_hash
-     AND proxy_artifact.valid_from_block = document.valid_from_block
-     AND proxy_artifact.verification_job_id = document.verification_job_id
-     AND proxy_artifact.request_digest = document.verification_request_digest
-    WHERE document.source_kind <> 'code'
-      AND (
-          document.source_kind <> 'name'
-          OR $10::bigint = 0
-          OR document.name_observation_id = $10::bigint
-      )
-      AND ($2 = ANY(document.exact_terms) OR EXISTS (
-          SELECT 1 FROM unnest(document.partial_terms) AS term
-          WHERE strpos(term, $2) > 0
-      ))
-      AND (
-          document.source_kind <> 'token'
-          OR document.id = (
-              SELECT latest.id
-              FROM visible_documents AS latest
-              JOIN canonical_blocks AS latest_canonical
-                ON latest_canonical.chain_id = latest.chain_id
-               AND latest_canonical.number = latest.block_number
-               AND latest_canonical.block_hash = latest.block_hash
-              WHERE latest.source_kind = 'token'
-                AND latest.logical_identity = document.logical_identity
-                AND latest.block_number <= $3::numeric
-                AND latest.source_canonical = TRUE
-              ORDER BY latest.block_number DESC, latest.valid_from_generation DESC, latest.id DESC
-              LIMIT 1
-          )
-      )
-      AND (
-          document.source_kind = 'label'
-          OR (
-              document.source_kind = 'name'
-              AND document.source_canonical = TRUE
-              AND (
-                  document.block_hash IS NULL
-                  OR (
-                      document.block_number <= $3::numeric
-                      AND canonical.block_hash IS NOT NULL
-                  )
-              )
-          )
-          OR (
-              document.source_kind = 'token'
-              AND document.block_number <= $3::numeric
-              AND canonical.block_hash IS NOT NULL
-              AND document.source_canonical = TRUE
-          )
-          OR (
-              document.source_kind = 'verified_contract'
-              AND document.verification_job_id IS NOT NULL
-              AND current_code.code_hash = document.code_hash
-              AND document.valid_from_block <= current_code.block_number
-              AND (document.valid_to_block IS NULL OR document.valid_to_block >= current_code.block_number)
-          )
-      )
-), deduplicated AS (
-    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
-    FROM candidates
-    ORDER BY kind, key, rank DESC,
-             verification_proxy_artifact DESC,
-             (verification_match_type = 'full') DESC NULLS LAST,
-             verification_valid_from_block DESC NULLS LAST,
-             verification_request_digest ASC NULLS LAST,
-             verification_job_id ASC NULLS LAST,
-             label
-)
-SELECT kind, key, label, rank, canonical, name_source
-FROM deduplicated
-WHERE $5::boolean = false
-   OR rank < $6
-   OR (rank = $6 AND kind > $7)
-   OR (rank = $6 AND kind = $7 AND key > $8)
-ORDER BY rank DESC, kind, key
-LIMIT $9`

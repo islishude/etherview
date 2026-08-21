@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"slices"
 	"strings"
@@ -41,7 +42,7 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err := requireStageRange(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock, StageToken); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, blockStatsSQL, request.ChainID, request.FromBlock, request.ToBlock)
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogBlockStats, request.ChainID, request.FromBlock, request.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("query canonical block statistics: %w", err)
 	}
@@ -76,9 +77,7 @@ func requireStageRange(ctx context.Context, tx *sql.Tx, chainID, fromBlock, toBl
 	var blockNumber string
 	var blockHash []byte
 	var state sql.NullString
-	err := tx.QueryRowContext(ctx, firstIncompleteStageInRangeSQL,
-		chainID, fromBlock, toBlock, string(stage), stage.Version(),
-	).Scan(&blockNumber, &blockHash, &state)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogFirstIncompleteStageInRange, chainID, fromBlock, toBlock, string(stage), stage.Version()).Scan(&blockNumber, &blockHash, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -195,9 +194,7 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 		Snapshot: snapshot, CoreComplete: true, StatsComplete: true, TokenComplete: true,
 	}
 	var weightedTPS sql.NullString
-	if err := tx.QueryRowContext(ctx, aggregateStatsSQL,
-		request.ChainID, request.FromBlock, request.ToBlock,
-	).Scan(
+	if err := tx.QueryRowContext(ctx, dbgen.CatalogAggregateStats, request.ChainID, request.FromBlock, request.ToBlock).Scan(
 		&result.BlockCount, &result.TransactionCount, &result.GasUsed,
 		&result.BurnedWei, &result.BlobBurnedWei, &result.TokenEventCount,
 		&result.TokenTransferCount, &result.NFTTransferCount, &weightedTPS,
@@ -341,9 +338,7 @@ func (catalog *Postgres) readTraceIdentity(ctx context.Context, chainID string, 
 func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, chainID string, transactionHash []byte) (traceIdentity, []byte, error) {
 	var blockNumber, transactionIndex string
 	var blockHash []byte
-	err := tx.QueryRowContext(ctx, canonicalTransactionInclusionSQL,
-		chainID, transactionHash,
-	).Scan(&blockNumber, &blockHash, &transactionIndex)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogCanonicalTransactionInclusion, chainID, transactionHash).Scan(&blockNumber, &blockHash, &transactionIndex)
 	if errors.Is(err, sql.ErrNoRows) {
 		return traceIdentity{}, nil, ErrNotFound
 	}
@@ -359,9 +354,7 @@ func (catalog *Postgres) resolveTraceIdentity(ctx context.Context, tx *sql.Tx, c
 	}
 	var state string
 	var jobID, jobGeneration int64
-	err = tx.QueryRowContext(ctx, traceStagePublicationSQL,
-		chainID, blockNumber, blockHash, string(StageTrace), StageTrace.Version(),
-	).Scan(&state, &jobID, &jobGeneration)
+	err = tx.QueryRowContext(ctx, dbgen.CatalogTraceStagePublication, chainID, blockNumber, blockHash, string(StageTrace), StageTrace.Version()).Scan(&state, &jobID, &jobGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return traceIdentity{}, nil, StageUnavailableError{
 			Stage: StageTrace, State: StageMissing, BlockNumber: blockNumber, BlockHash: encodedBlockHash,
@@ -398,9 +391,7 @@ func (catalog *Postgres) readTransactionTrace(ctx context.Context, chainID strin
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, err
 	}
-	rows, err := tx.QueryContext(ctx, transactionTraceSQL,
-		chainID, identity.BlockNumber, blockHash, transactionHash, catalog.options.MaxTraceFrames+1,
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTrace, chainID, identity.BlockNumber, blockHash, transactionHash, catalog.options.MaxTraceFrames+1)
 	if err != nil {
 		return TransactionTrace{}, traceIdentity{}, fmt.Errorf("query normalized transaction trace: %w", err)
 	}
@@ -700,138 +691,3 @@ func compareUnsignedDecimal(left, right string) int {
 	rightInteger.SetString(right, 10)
 	return leftInteger.Cmp(rightInteger)
 }
-
-const firstIncompleteStageInRangeSQL = `
-WITH heights AS (
-    SELECT generate_series($2::numeric, $3::numeric, 1::numeric) AS number
-)
-SELECT heights.number::text, cb.block_hash, latest.state
-FROM heights
-LEFT JOIN canonical_blocks AS cb
-  ON cb.chain_id = $1::numeric AND cb.number = heights.number
-LEFT JOIN LATERAL (
-    SELECT result.state
-    FROM published_block_stage_results AS result
-    WHERE result.chain_id = cb.chain_id
-      AND result.block_number = cb.number
-      AND result.block_hash = cb.block_hash
-      AND result.stage = $4
-      AND result.stage_version = $5
-) AS latest ON true
-WHERE cb.block_hash IS NULL OR latest.state IS DISTINCT FROM 'complete'
-ORDER BY heights.number
-LIMIT 1`
-
-const blockStatsSQL = `
-SELECT stats.chain_id::text, stats.block_number::text, stats.block_hash,
-       stats.transaction_count::text, stats.gas_used::text, stats.gas_limit::text,
-       stats.base_fee_per_gas::text, stats.blob_gas_used::text,
-       stats.excess_blob_gas::text, stats.blob_base_fee_per_gas::text,
-       stats.burned_wei::text, stats.blob_burned_wei::text,
-       stats.block_timestamp::text, stats.block_interval_seconds::text,
-       trim(trailing '.' FROM trim(trailing '0' FROM stats.transactions_per_second::text)),
-       token.token_event_count::text, token.token_transfer_count::text,
-       token.nft_transfer_count::text, stats.computed_at
-FROM block_statistics AS stats
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = stats.chain_id
- AND cb.number = stats.block_number
- AND cb.block_hash = stats.block_hash
-LEFT JOIN LATERAL (
-    SELECT count(*) AS token_event_count,
-           count(*) FILTER (
-               WHERE event.standard = 'erc20'
-                 AND event.event_kind IN ('transfer', 'mint', 'burn')
-           ) AS token_transfer_count,
-           count(*) FILTER (
-               WHERE event.standard IN ('erc721', 'erc1155')
-                 AND event.event_kind IN ('transfer', 'mint', 'burn')
-           ) AS nft_transfer_count
-    FROM token_events AS event
-    WHERE event.chain_id = stats.chain_id
-      AND event.block_number = stats.block_number
-      AND event.block_hash = stats.block_hash
-      AND event.canonical = true
-) AS token ON true
-WHERE stats.chain_id = $1::numeric
-  AND stats.block_number BETWEEN $2::numeric AND $3::numeric
-  AND stats.canonical = true
-ORDER BY stats.block_number`
-
-const aggregateStatsSQL = `
-WITH selected_stats AS (
-    SELECT stats.*
-    FROM block_statistics AS stats
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = stats.chain_id
-     AND canonical.number = stats.block_number
-     AND canonical.block_hash = stats.block_hash
-    WHERE stats.chain_id = $1::numeric
-      AND stats.block_number BETWEEN $2::numeric AND $3::numeric
-      AND stats.canonical = true
-), selected_tokens AS (
-    SELECT event.standard, event.event_kind
-    FROM token_events AS event
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = event.chain_id
-     AND canonical.number = event.block_number
-     AND canonical.block_hash = event.block_hash
-    WHERE event.chain_id = $1::numeric
-      AND event.block_number BETWEEN $2::numeric AND $3::numeric
-      AND event.canonical = true
-)
-SELECT count(*)::text,
-       COALESCE(sum(transaction_count), 0)::text,
-       COALESCE(sum(gas_used), 0)::text,
-       COALESCE(sum(burned_wei), 0)::text,
-       COALESCE(sum(blob_burned_wei), 0)::text,
-       (SELECT count(*)::text FROM selected_tokens),
-       (SELECT count(*)::text FROM selected_tokens
-         WHERE standard = 'erc20' AND event_kind IN ('transfer', 'mint', 'burn')),
-       (SELECT count(*)::text FROM selected_tokens
-         WHERE standard IN ('erc721', 'erc1155') AND event_kind IN ('transfer', 'mint', 'burn')),
-       CASE WHEN COALESCE(sum(block_interval_seconds) FILTER (
-                     WHERE block_interval_seconds IS NOT NULL
-                 ), 0) = 0 THEN NULL
-            ELSE trim(trailing '.' FROM trim(trailing '0' FROM
-                 round(
-                     sum(transaction_count) FILTER (WHERE block_interval_seconds IS NOT NULL)
-                     / sum(block_interval_seconds) FILTER (WHERE block_interval_seconds IS NOT NULL),
-                     18
-                 )::text))
-       END
-FROM selected_stats`
-
-const canonicalTransactionInclusionSQL = `
-SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index::text
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = inclusion.chain_id
- AND cb.number = inclusion.block_number
- AND cb.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
-LIMIT 1`
-
-const traceStagePublicationSQL = `
-SELECT state, durable_job_id, job_generation
-FROM published_block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND stage = $4
-  AND stage_version = $5`
-
-const transactionTraceSQL = `
-SELECT trace_path, parent_path, depth, call_type,
-       from_address, to_address, created_address,
-       value::text, gas::text, gas_used::text,
-       input, output, error, direct_reverted, reverted,
-       execution_address, execution_code_hash, execution_resolution
-FROM normalized_traces
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND transaction_hash = $4
-  AND canonical = true
-ORDER BY depth, trace_path
-LIMIT $5`

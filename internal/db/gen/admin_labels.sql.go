@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteOperatorLabel = `-- name: DeleteOperatorLabel :one
+const DeleteOperatorLabel = `-- name: DeleteOperatorLabel :one
 DELETE FROM operator_labels
 WHERE chain_id = $1::numeric
   AND object_kind = $2
@@ -28,7 +28,7 @@ type DeleteOperatorLabelRow struct {
 }
 
 func (q *Queries) DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error) {
-	row := q.db.QueryRow(ctx, deleteOperatorLabel, chainID, objectKind, objectKey)
+	row := q.db.QueryRow(ctx, DeleteOperatorLabel, chainID, objectKind, objectKey)
 	var i DeleteOperatorLabelRow
 	err := row.Scan(
 		&i.ObjectKind,
@@ -40,7 +40,7 @@ func (q *Queries) DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeri
 	return i, err
 }
 
-const listOperatorLabels = `-- name: ListOperatorLabels :many
+const ListOperatorLabels = `-- name: ListOperatorLabels :many
 SELECT object_kind, object_key, label, created_at, updated_at
 FROM operator_labels
 WHERE chain_id = $1::numeric
@@ -56,7 +56,7 @@ type ListOperatorLabelsRow struct {
 }
 
 func (q *Queries) ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric) ([]ListOperatorLabelsRow, error) {
-	rows, err := q.db.Query(ctx, listOperatorLabels, chainID)
+	rows, err := q.db.Query(ctx, ListOperatorLabels, chainID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (q *Queries) ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric
 	return items, nil
 }
 
-const upsertOperatorLabel = `-- name: UpsertOperatorLabel :one
+const UpsertOperatorLabel = `-- name: UpsertOperatorLabel :one
 INSERT INTO operator_labels AS stored_label (
     chain_id, object_kind, object_key, label
 ) VALUES (
@@ -110,7 +110,7 @@ type UpsertOperatorLabelRow struct {
 }
 
 func (q *Queries) UpsertOperatorLabel(ctx context.Context, arg UpsertOperatorLabelParams) (UpsertOperatorLabelRow, error) {
-	row := q.db.QueryRow(ctx, upsertOperatorLabel,
+	row := q.db.QueryRow(ctx, UpsertOperatorLabel,
 		arg.ChainID,
 		arg.ObjectKind,
 		arg.ObjectKey,

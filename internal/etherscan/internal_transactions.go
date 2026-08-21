@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"net/url"
 	"strconv"
 	"strings"
@@ -115,7 +116,7 @@ func (b *PostgresBackend) canonicalTransactionBlock(
 	hash []byte,
 ) (string, error) {
 	var block string
-	err := queryer.QueryRowContext(ctx, canonicalTransactionBlockSQL, b.chain, hash).Scan(&block)
+	err := queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalTransactionBlock, b.chain, hash).Scan(&block)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -292,14 +293,3 @@ ORDER BY trace.block_number %s, trace.transaction_index %s,
          string_to_array(trace.trace_path, '.')::bigint[] %s,
          trace.block_hash %s, trace.transaction_hash %s
 LIMIT $6 OFFSET $7`
-
-const canonicalTransactionBlockSQL = `
-SELECT inclusion.block_number::text
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.tx_hash = $2
-LIMIT 1`

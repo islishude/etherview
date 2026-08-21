@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -42,6 +43,18 @@ func WithQueries(ctx context.Context, database *sql.DB, callback func(*dbgen.Que
 // WithTransaction pins one pgx stdlib connection and commits generated sqlc
 // calls as one transaction. The callback must not retain the Queries value.
 func WithTransaction(ctx context.Context, database *sql.DB, callback func(*dbgen.Queries) error) error {
+	return WithTransactionOptions(ctx, database, pgx.TxOptions{}, callback)
+}
+
+// WithTransactionOptions is WithTransaction with an explicit pgx isolation and
+// access-mode contract. It is used by generated multi-query read snapshots and
+// correctness writes that need stronger transaction semantics.
+func WithTransactionOptions(
+	ctx context.Context,
+	database *sql.DB,
+	options pgx.TxOptions,
+	callback func(*dbgen.Queries) error,
+) error {
 	if database == nil {
 		return errors.New("sqlc transaction database is nil")
 	}
@@ -58,7 +71,7 @@ func WithTransaction(ctx context.Context, database *sql.DB, callback func(*dbgen
 		if !ok {
 			return fmt.Errorf("sqlc transaction requires pgx stdlib, got %T", driverConnection)
 		}
-		transaction, err := pgxConnection.Conn().Begin(ctx)
+		transaction, err := pgxConnection.Conn().BeginTx(ctx, options)
 		if err != nil {
 			return fmt.Errorf("begin sqlc transaction: %w", err)
 		}

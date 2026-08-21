@@ -10,6 +10,11 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const DefaultReplayLimit = 256
@@ -26,9 +31,10 @@ type PostgresOptions struct {
 }
 
 type PostgresStore struct {
-	db          *sql.DB
-	chainID     string
-	replayLimit int
+	db           *sql.DB
+	chainID      string
+	chainNumeric pgtype.Numeric
+	replayLimit  int
 }
 
 type SyncStatus struct {
@@ -73,7 +79,12 @@ func NewPostgresStore(db *sql.DB, chainID string, options PostgresOptions) (*Pos
 	if limit > 4096 {
 		return nil, errors.New("runtime event replay limit exceeds 4096")
 	}
-	return &PostgresStore{db: db, chainID: chainID, replayLimit: limit}, nil
+	chainInteger, _ := new(big.Int).SetString(chainID, 10)
+	return &PostgresStore{
+		db: db, chainID: chainID,
+		chainNumeric: pgtype.Numeric{Int: chainInteger, Valid: true},
+		replayLimit:  limit,
+	}, nil
 }
 
 // RecordStatus elects one reporter per chain, then atomically updates the
@@ -226,46 +237,44 @@ func (s *PostgresStore) RecordStatus(ctx context.Context, status SyncStatus) (Ev
 }
 
 func (s *PostgresStore) Status(ctx context.Context) (SyncStatus, bool, error) {
-	var latest, indexed, highest sql.NullString
-	var status SyncStatus
-	err := s.db.QueryRowContext(ctx, `
-		SELECT latest_number::text, indexed_number::text, highest_covered_number::text,
-		       backfill_complete, ready,
-		       last_poll_at, last_error_code
-		FROM sync_runtime_status
-		WHERE chain_id = $1::numeric`, s.chainID).Scan(
-		&latest, &indexed, &highest, &status.BackfillComplete,
-		&status.Ready, &status.PolledAt, &status.ErrorCode,
-	)
-	if err == sql.ErrNoRows {
+	var row dbgen.GetSyncRuntimeStatusRow
+	err := dbaccess.WithQueries(ctx, s.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		row, queryErr = queries.GetSyncRuntimeStatus(ctx, s.chainNumeric)
+		return queryErr
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return SyncStatus{}, false, nil
 	}
 	if err != nil {
 		return SyncStatus{}, false, fmt.Errorf("query sync runtime status: %w", err)
 	}
-	var decodeErr error
-	if latest.Valid {
-		status.Latest, decodeErr = strconv.ParseUint(latest.String, 10, 64)
-		if decodeErr != nil {
-			return SyncStatus{}, false, errors.New("stored latest block is outside uint64")
-		}
-		status.LatestKnown = true
+	if !row.LastPollAt.Valid {
+		return SyncStatus{}, false, errors.New("stored sync runtime status has no poll time")
 	}
-	if indexed.Valid {
-		status.Indexed, decodeErr = strconv.ParseUint(indexed.String, 10, 64)
-		if decodeErr != nil {
-			return SyncStatus{}, false, errors.New("stored indexed block is outside uint64")
-		}
-		status.IndexedKnown = true
+	status := SyncStatus{
+		BackfillComplete: row.BackfillComplete, Ready: row.Ready,
+		PolledAt: row.LastPollAt.Time.UTC(), ErrorCode: row.LastErrorCode,
 	}
-	if highest.Valid {
-		status.HighestCovered, decodeErr = strconv.ParseUint(highest.String, 10, 64)
-		if decodeErr != nil {
-			return SyncStatus{}, false, errors.New("stored highest covered block is outside uint64")
+	for _, field := range []struct {
+		raw   string
+		name  string
+		value *uint64
+		known *bool
+	}{
+		{row.LatestNumber, "latest", &status.Latest, &status.LatestKnown},
+		{row.IndexedNumber, "indexed", &status.Indexed, &status.IndexedKnown},
+		{row.HighestCoveredNumber, "highest covered", &status.HighestCovered, &status.HighestCoveredKnown},
+	} {
+		if field.raw == "" {
+			continue
 		}
-		status.HighestCoveredKnown = true
+		value, decodeErr := strconv.ParseUint(field.raw, 10, 64)
+		if decodeErr != nil {
+			return SyncStatus{}, false, fmt.Errorf("stored %s block is outside uint64", field.name)
+		}
+		*field.value, *field.known = value, true
 	}
-	status.PolledAt = status.PolledAt.UTC()
 	status.SafetyHalt = safetyHaltErrorCode(status.ErrorCode)
 	if err := validateSyncStatus(status); err != nil {
 		return SyncStatus{}, false, fmt.Errorf("stored sync runtime status is invalid: %w", err)
@@ -277,108 +286,79 @@ func (s *PostgresStore) Status(ctx context.Context) (SyncStatus, bool, error) {
 // repeatable-read snapshot so retention cannot race cursor validation.
 func (s *PostgresStore) Replay(ctx context.Context, after *uint64, limit int) ([]Event, error) {
 	limit = boundedLimit(limit, s.replayLimit)
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("begin runtime event replay: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-	var minimum, maximum sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT MIN(id), MAX(id)
-		FROM runtime_events
-		WHERE chain_id = $1::numeric`, s.chainID).Scan(&minimum, &maximum); err != nil {
-		return nil, fmt.Errorf("query runtime event replay bounds: %w", err)
-	}
-	if after != nil {
-		if !maximum.Valid {
-			if *after != 0 {
-				return nil, ErrFutureCursor
-			}
-		} else {
-			if maximum.Int64 <= 0 || minimum.Int64 <= 0 {
-				return nil, errors.New("runtime event replay bounds are invalid")
-			}
-			if *after > uint64(maximum.Int64) {
-				return nil, ErrFutureCursor
-			}
-			oldest := uint64(minimum.Int64)
-			if oldest > 0 && *after < oldest-1 {
-				return nil, ErrExpiredCursor
-			}
+	var rows []dbgen.ListRuntimeEventsRow
+	err := dbaccess.WithTransactionOptions(ctx, s.db, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	}, func(queries *dbgen.Queries) error {
+		bounds, queryErr := queries.GetRuntimeEventReplayBounds(ctx, s.chainNumeric)
+		if queryErr != nil {
+			return fmt.Errorf("query runtime event replay bounds: %w", queryErr)
 		}
-	}
-	events, err := queryReplay(ctx, tx, s.chainID, after, limit)
+		if bounds.MinimumID < 0 || bounds.MaximumID < 0 ||
+			(bounds.MinimumID == 0) != (bounds.MaximumID == 0) {
+			return errors.New("runtime event replay bounds are invalid")
+		}
+		afterID := int64(0)
+		if after != nil {
+			if bounds.MaximumID == 0 {
+				if *after != 0 {
+					return ErrFutureCursor
+				}
+			} else {
+				if *after > uint64(bounds.MaximumID) {
+					return ErrFutureCursor
+				}
+				oldest := uint64(bounds.MinimumID)
+				if oldest > 0 && *after < oldest-1 {
+					return ErrExpiredCursor
+				}
+			}
+			afterID = int64(*after)
+		}
+		rows, queryErr = queries.ListRuntimeEvents(ctx, dbgen.ListRuntimeEventsParams{
+			ChainID: s.chainNumeric, HasAfter: after != nil,
+			AfterID: afterID, PageLimit: int32(limit),
+		})
+		return queryErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("replay runtime events: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit runtime event replay: %w", err)
-	}
-	return events, nil
+	return runtimeEventsFromRows(rows)
 }
 
 // Poll is used by every API replica independently. It intentionally clamps an
 // old internal cursor to retained rows and performs no claim/delete operation.
 func (s *PostgresStore) Poll(ctx context.Context, after uint64, limit int) ([]Event, error) {
 	limit = boundedLimit(limit, s.replayLimit)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, event_type, payload, created_at
-		FROM runtime_events
-		WHERE chain_id = $1::numeric AND id > $2
-		ORDER BY id
-		LIMIT $3`, s.chainID, after, limit)
+	if after > uint64(^uint64(0)>>1) {
+		return nil, errors.New("runtime event poll cursor exceeds bigint")
+	}
+	var rows []dbgen.ListRuntimeEventsRow
+	err := dbaccess.WithQueries(ctx, s.db, func(queries *dbgen.Queries) error {
+		var queryErr error
+		rows, queryErr = queries.ListRuntimeEvents(ctx, dbgen.ListRuntimeEventsParams{
+			ChainID: s.chainNumeric, HasAfter: true,
+			AfterID: int64(after), PageLimit: int32(limit),
+		})
+		return queryErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("poll runtime events: %w", err)
 	}
-	return scanEvents(rows)
+	return runtimeEventsFromRows(rows)
 }
 
-type queryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
-
-func queryReplay(ctx context.Context, query queryer, chainID string, after *uint64, limit int) ([]Event, error) {
-	var rows *sql.Rows
-	var err error
-	if after == nil {
-		rows, err = query.QueryContext(ctx, `
-			SELECT id, event_type, payload, created_at
-			FROM (
-				SELECT id, event_type, payload, created_at
-				FROM runtime_events
-				WHERE chain_id = $1::numeric
-				ORDER BY id DESC
-				LIMIT $2
-			) recent
-			ORDER BY id`, chainID, limit)
-	} else {
-		rows, err = query.QueryContext(ctx, `
-			SELECT id, event_type, payload, created_at
-			FROM runtime_events
-			WHERE chain_id = $1::numeric AND id > $2
-			ORDER BY id
-			LIMIT $3`, chainID, *after, limit)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query runtime event replay: %w", err)
-	}
-	return scanEvents(rows)
-}
-
-func scanEvents(rows *sql.Rows) ([]Event, error) {
-	defer rows.Close() //nolint:errcheck
-	result := make([]Event, 0)
-	for rows.Next() {
-		var id int64
-		var event Event
-		if err := rows.Scan(&id, &event.Type, &event.Data, &event.Time); err != nil {
-			return nil, fmt.Errorf("scan runtime event: %w", err)
-		}
-		if id <= 0 {
+func runtimeEventsFromRows(rows []dbgen.ListRuntimeEventsRow) ([]Event, error) {
+	result := make([]Event, 0, len(rows))
+	for _, row := range rows {
+		if row.ID <= 0 || !row.CreatedAt.Valid {
 			return nil, errors.New("stored runtime event ID is invalid")
 		}
-		event.ID = uint64(id)
-		event.Time = event.Time.UTC()
+		event := Event{
+			ID: uint64(row.ID), Type: row.EventType,
+			Time: row.CreatedAt.Time.UTC(), Data: row.Payload,
+		}
 		if err := validateEvent(event); err != nil {
 			return nil, fmt.Errorf("stored runtime event is invalid: %w", err)
 		}
@@ -386,9 +366,6 @@ func scanEvents(rows *sql.Rows) ([]Event, error) {
 			return nil, errors.New("stored runtime events are not strictly ordered")
 		}
 		result = append(result, event)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate runtime events: %w", err)
 	}
 	return result, nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/catalog"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/query"
@@ -400,18 +401,7 @@ func (reconciler *NFTReconciler) cachedOwner(
 	hashBytes := reference.Hash.Bytes()
 	var state, confidence string
 	var ownerBytes []byte
-	err := reconciler.db.QueryRowContext(ctx, `
-		SELECT state, owner_address, confidence
-		FROM erc721_owner_reconciliations AS observation
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = observation.chain_id
-		 AND canonical.number = observation.block_number
-		 AND canonical.block_hash = observation.block_hash
-		WHERE observation.chain_id = $1::numeric
-		  AND observation.token_address = $2
-		  AND observation.token_id = $3::numeric
-		  AND observation.block_number = $4::numeric
-		  AND observation.block_hash = $5`,
+	err := reconciler.db.QueryRowContext(ctx, dbgen.StateERC721OwnerObservation,
 		chainID, contractBytes, tokenID.String(), strconv.FormatUint(reference.Number, 10), hashBytes,
 	).Scan(&state, &ownerBytes, &confidence)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -479,19 +469,7 @@ func (reconciler *NFTReconciler) cachedBalance(
 	ownerBytes := owner.Bytes()
 	hashBytes := reference.Hash.Bytes()
 	var balance, confidence string
-	err := reconciler.db.QueryRowContext(ctx, `
-		SELECT observation.balance::text, observation.confidence
-		FROM erc1155_balance_reconciliations AS observation
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = observation.chain_id
-		 AND canonical.number = observation.block_number
-		 AND canonical.block_hash = observation.block_hash
-		WHERE observation.chain_id = $1::numeric
-		  AND observation.token_address = $2
-		  AND observation.token_id = $3::numeric
-		  AND observation.owner_address = $4
-		  AND observation.block_number = $5::numeric
-		  AND observation.block_hash = $6`,
+	err := reconciler.db.QueryRowContext(ctx, dbgen.StateERC1155BalanceObservation,
 		chainID, contractBytes, candidate.tokenID.String(), ownerBytes,
 		strconv.FormatUint(reference.Number, 10), hashBytes,
 	).Scan(&balance, &confidence)

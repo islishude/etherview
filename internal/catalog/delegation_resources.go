@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type delegationCursor struct {
@@ -32,8 +33,7 @@ func (catalog *Postgres) TransactionAuthorizations(
 	defer tx.Rollback() //nolint:errcheck
 	page := TransactionAuthorizationPage{Identity: resolution.identity, Items: []EIP7702Authorization{}}
 	if resolution.identity.State == StageComplete {
-		rows, queryErr := tx.QueryContext(ctx, transactionAuthorizationsSQL,
-			request.ChainID, resolution.blockHash, resolution.txHash,
+		rows, queryErr := tx.QueryContext(ctx, dbgen.CatalogTransactionAuthorizations, request.ChainID, resolution.blockHash, resolution.txHash,
 			resolution.limit+1, resolution.offset,
 		)
 		if queryErr != nil {
@@ -130,8 +130,7 @@ func (catalog *Postgres) AddressDelegations(
 		// $4 branch makes the comparison logically unnecessary.
 		blockBoundary, transactionBoundary, authorizationBoundary = "0", "0", "0"
 	}
-	rows, err := tx.QueryContext(ctx, addressDelegationsSQL,
-		request.ChainID, authority, snapshot.BlockNumber, hasBoundary,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogAddressDelegations, request.ChainID, authority, snapshot.BlockNumber, hasBoundary,
 		blockBoundary, transactionBoundary, authorizationBoundary, limit+1,
 	)
 	if err != nil {
@@ -190,43 +189,3 @@ func (catalog *Postgres) AddressDelegations(
 	}
 	return page, nil
 }
-
-const transactionAuthorizationsSQL = `
-SELECT authorization_index, authorization_chain_id::text,
-       authorization_nonce::text, delegate_address, y_parity, r, s,
-       authority, signature_status, application_status, skip_reason
-FROM eip7702_authorizations
-WHERE chain_id = $1::numeric AND block_hash = $2 AND transaction_hash = $3
-  AND canonical
-ORDER BY authorization_index
-LIMIT $4 OFFSET $5`
-
-const addressDelegationsSQL = `
-WITH ordered AS (
-    SELECT authz.block_number, authz.block_hash,
-           authz.transaction_hash, authz.transaction_index,
-           authz.authorization_index, authz.delegate_address,
-           lag(authz.delegate_address) OVER (
-               ORDER BY authz.block_number, authz.transaction_index,
-                        authz.authorization_index
-           ) AS previous_delegate
-    FROM eip7702_authorizations AS authz
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = authz.chain_id
-     AND canonical.number = authz.block_number
-     AND canonical.block_hash = authz.block_hash
-    WHERE authz.chain_id = $1::numeric
-      AND authz.authority = $2
-      AND authz.application_status = 'applied'
-      AND authz.canonical
-      AND authz.block_number <= $3::numeric
-)
-SELECT block_number::text, block_hash, transaction_hash,
-       transaction_index::text, authorization_index::text,
-       delegate_address, previous_delegate
-FROM ordered
-WHERE NOT $4 OR (block_number, transaction_index, authorization_index)
-    < ($5::numeric, $6::numeric, $7::numeric)
-ORDER BY ordered.block_number DESC, ordered.transaction_index DESC,
-         ordered.authorization_index DESC
-LIMIT $8`

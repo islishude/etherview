@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"github.com/islishude/etherview/internal/accelerator"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 type Options struct {
@@ -107,7 +108,7 @@ func (catalog *Postgres) pageLimit(requested int) (int, error) {
 func readCanonicalSnapshot(ctx context.Context, tx *sql.Tx, chainID string) (Snapshot, error) {
 	var number string
 	var hash []byte
-	err := tx.QueryRowContext(ctx, canonicalSnapshotSQL, chainID).Scan(&number, &hash)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogCanonicalSnapshot, chainID).Scan(&number, &hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Snapshot{}, StageUnavailableError{Stage: StageCore, State: StageMissing}
 	}
@@ -133,9 +134,7 @@ func validateCanonicalSnapshot(ctx context.Context, tx *sql.Tx, snapshot Snapsho
 		return ErrInvalidCursor
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, validateCanonicalSnapshotSQL,
-		snapshot.ChainID, snapshot.BlockNumber, hash,
-	).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.CatalogValidateCanonicalSnapshot, snapshot.ChainID, snapshot.BlockNumber, hash).Scan(&exists); err != nil {
 		return fmt.Errorf("validate catalog cursor snapshot: %w", err)
 	}
 	if !exists {
@@ -150,9 +149,7 @@ func requireStage(ctx context.Context, tx *sql.Tx, snapshot Snapshot, stage Stag
 		return ErrCorruptData
 	}
 	var state string
-	err = tx.QueryRowContext(ctx, latestStageSQL,
-		snapshot.ChainID, snapshot.BlockNumber, hash, string(stage), stage.Version(),
-	).Scan(&state)
+	err = tx.QueryRowContext(ctx, dbgen.CatalogLatestStage, snapshot.ChainID, snapshot.BlockNumber, hash, string(stage), stage.Version()).Scan(&state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return StageUnavailableError{
 			Stage: stage, State: StageMissing, BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash,
@@ -179,26 +176,3 @@ func commitRead(tx *sql.Tx) error {
 	}
 	return nil
 }
-
-const canonicalSnapshotSQL = `
-SELECT number::text, block_hash
-FROM canonical_blocks AS canonical
-WHERE chain_id = $1::numeric
-ORDER BY canonical.number DESC
-LIMIT 1`
-
-const validateCanonicalSnapshotSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-)`
-
-const latestStageSQL = `
-SELECT state
-FROM published_block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND stage = $4
-  AND stage_version = $5`

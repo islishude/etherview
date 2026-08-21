@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -234,7 +235,7 @@ func TestAddressOriginQueriesExcludeFailedRevertedAndZeroValueCandidates(t *test
 		"trace.value > 0",
 		"ORDER BY block_number, tx_index, source_rank, trace_order",
 	} {
-		if !strings.Contains(compactSQL(firstContractOriginSQL+" "+firstFundingOriginSQL), compactSQL(fragment)) {
+		if !strings.Contains(compactSQL(dbgen.QueryFirstContractOrigin+" "+dbgen.QueryFirstFundingOrigin), compactSQL(fragment)) {
 			t.Fatalf("origin queries do not enforce %q", fragment)
 		}
 	}
@@ -243,7 +244,7 @@ func TestAddressOriginQueriesExcludeFailedRevertedAndZeroValueCandidates(t *test
 		"canonical.number = 0",
 		"imported.state = 'complete'",
 	} {
-		if !strings.Contains(compactSQL(genesisAddressOriginSQL), compactSQL(fragment)) {
+		if !strings.Contains(compactSQL(dbgen.QueryGenesisAddressOrigin), compactSQL(fragment)) {
 			t.Fatalf("genesis origin query does not enforce %q", fragment)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 	"net/url"
 	"strconv"
@@ -24,7 +25,7 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	var storedHash, blockHash []byte
 	var blockNumberText string
 	var transactionIndex int64
-	err = tx.QueryRowContext(ctx, transactionStatusSQL, b.chain, hashBytes).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.EtherscanTransactionStatus, b.chain, hashBytes).Scan(
 		&raw, &storedHash, &blockHash, &blockNumberText, &transactionIndex,
 	)
 	if err == sql.ErrNoRows {
@@ -83,15 +84,3 @@ func (b *PostgresBackend) transactionStatus(ctx context.Context, values url.Valu
 	}
 	return result, nil
 }
-
-const transactionStatusSQL = `
-SELECT receipt.raw, receipt.tx_hash, receipt.block_hash,
-       receipt.block_number::text, receipt.tx_index
-FROM receipts AS receipt
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = receipt.chain_id
- AND canonical.number = receipt.block_number
- AND canonical.block_hash = receipt.block_hash
-WHERE receipt.chain_id = $1::numeric
-  AND receipt.tx_hash = $2
-LIMIT 1`

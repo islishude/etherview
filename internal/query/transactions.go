@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -69,11 +70,11 @@ func (r *PostgresReader) Transactions(ctx context.Context, encodedCursor string,
 		}
 	}
 
-	query, arguments := listTransactionsWithMethodSQL, []any{
+	query, arguments := dbgen.QueryListTransactionsWithMethod, []any{
 		r.chainID, strconv.FormatUint(cursor.BeforeBlockNumber, 10), cursor.BeforeTxIndex, limit + 1,
 	}
 	if encodedCursor == "" {
-		query = listTransactionsWithMethodFirstSQL
+		query = dbgen.QueryListTransactionsWithMethodFirst
 		arguments = []any{r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), limit + 1}
 	}
 	rows, err := tx.QueryContext(ctx, query, arguments...)
@@ -212,7 +213,7 @@ func validTransactionMethodSignature(signature string) bool {
 func (r *PostgresReader) currentTransactionCursor(ctx context.Context, tx *sql.Tx) (transactionCursor, error) {
 	var numberText string
 	var hashBytes []byte
-	if err := tx.QueryRowContext(ctx, currentTipSQL, r.chainID).Scan(&numberText, &hashBytes); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.GetCurrentQueryTip, r.chainID).Scan(&numberText, &hashBytes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return transactionCursor{}, httpUnavailableNotReady()
 		}
@@ -249,8 +250,7 @@ func (r *PostgresReader) validateTransactionCursor(ctx context.Context, tx *sql.
 		return fmt.Errorf("%w: invalid transaction boundary hash", ErrInvalidCursor)
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, validateTransactionCursorSQL,
-		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
+	if err := tx.QueryRowContext(ctx, dbgen.QueryValidateTransactionCursor, r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
 		strconv.FormatUint(cursor.BeforeBlockNumber, 10), beforeBlockHash.Bytes(),
 		cursor.BeforeTxIndex, beforeTxHash.Bytes(),
 	).Scan(&valid); err != nil {
@@ -299,207 +299,3 @@ func (r *PostgresReader) scanTransaction(scanner rowScanner, tipNumber uint64) (
 		Index: uint64(transactionIndex), Hash: transactionHash,
 	}, nil
 }
-
-const listTransactionsFirstSQL = `
-SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.raw
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.block_number <= $2::numeric
-ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $3`
-
-const transactionMethodJoinsSQL = `
-LEFT JOIN LATERAL (
-    WITH published_abi AS (
-        SELECT 1
-        FROM published_block_stage_results
-        WHERE chain_id = inclusion.chain_id
-          AND block_number = inclusion.block_number
-          AND block_hash = inclusion.block_hash
-          AND stage = 'abi'
-          AND stage_version = 4
-          AND state = 'complete'
-    ), candidates AS (
-        SELECT effective.resolution, effective.execution_address,
-               effective.execution_code_hash, 1 AS priority
-        FROM transaction_effective_execution_identities AS effective
-        WHERE effective.chain_id = inclusion.chain_id
-          AND effective.block_number = inclusion.block_number
-          AND effective.block_hash = inclusion.block_hash
-          AND effective.transaction_hash = inclusion.tx_hash
-          AND effective.transaction_index = inclusion.tx_index
-          AND effective.context_address =
-              decode(substring(inclusion.raw->>'to' from 3), 'hex')
-          AND effective.canonical
-          AND EXISTS (SELECT 1 FROM published_abi)
-        UNION ALL
-        SELECT raw.resolution, raw.execution_address,
-               raw.execution_code_hash, 2 AS priority
-        FROM transaction_execution_code_resolutions AS raw
-        WHERE raw.chain_id = inclusion.chain_id
-          AND raw.block_number = inclusion.block_number
-          AND raw.block_hash = inclusion.block_hash
-          AND raw.transaction_hash = inclusion.tx_hash
-          AND raw.transaction_index = inclusion.tx_index
-          AND raw.context_address =
-              decode(substring(inclusion.raw->>'to' from 3), 'hex')
-          AND raw.canonical
-          AND NOT EXISTS (SELECT 1 FROM published_abi)
-          AND EXISTS (
-              SELECT 1
-              FROM published_block_stage_results AS published_state_diff
-              WHERE published_state_diff.chain_id = raw.chain_id
-                AND published_state_diff.block_number = raw.block_number
-                AND published_state_diff.block_hash = raw.block_hash
-                AND published_state_diff.stage = 'state_diff'
-                AND published_state_diff.stage_version = 3
-                AND published_state_diff.state = 'complete'
-          )
-    )
-    SELECT resolution, execution_address, execution_code_hash
-    FROM candidates
-    ORDER BY priority
-    LIMIT 1
-) AS execution ON TRUE
-LEFT JOIN abi_decodings AS decoding
-  ON decoding.chain_id = inclusion.chain_id
- AND decoding.block_number = inclusion.block_number
- AND decoding.block_hash = inclusion.block_hash
- AND decoding.transaction_hash = inclusion.tx_hash
- AND decoding.object_kind = 'transaction_calldata'
- AND decoding.object_index = ''
- AND decoding.target_address = execution.execution_address
- AND decoding.target_code_hash = execution.execution_code_hash
- AND decoding.status = 'decoded'
- AND decoding.canonical
- AND EXISTS (
-     SELECT 1
-     FROM published_block_stage_results AS published_abi
-     WHERE published_abi.chain_id = decoding.chain_id
-       AND published_abi.block_number = decoding.block_number
-       AND published_abi.block_hash = decoding.block_hash
-       AND published_abi.stage = 'abi'
-       AND published_abi.stage_version = 4
-       AND published_abi.state = 'complete'
- )`
-
-const listTransactionsWithMethodColumnsSQL = `
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    TRUE,
-    finality.safe_number::text,
-    finality.finalized_number::text,
-	block.raw,
-	EXISTS (
-	    SELECT 1
-	    FROM published_block_stage_results AS published_state_diff
-	    WHERE published_state_diff.chain_id = inclusion.chain_id
-	      AND published_state_diff.block_number = inclusion.block_number
-	      AND published_state_diff.block_hash = inclusion.block_hash
-	      AND published_state_diff.stage = 'state_diff'
-	      AND published_state_diff.stage_version = 3
-	      AND published_state_diff.state = 'complete'
-	),
-	execution.resolution,
-	execution.execution_address,
-	execution.execution_code_hash,
-	decoding.signature,
-	decoding.source,
-	decoding.confidence`
-
-const listTransactionsWithMethodFirstSQL = `
-SELECT ` + listTransactionsWithMethodColumnsSQL + `
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-` + transactionMethodJoinsSQL + `
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.block_number <= $2::numeric
-ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $3`
-
-const listTransactionsWithMethodSQL = `
-SELECT ` + listTransactionsWithMethodColumnsSQL + `
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-` + transactionMethodJoinsSQL + `
-WHERE inclusion.chain_id = $1::numeric
-  AND (
-      inclusion.block_number < $2::numeric
-      OR (inclusion.block_number = $2::numeric AND inclusion.tx_index < $3)
-  )
-ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC
-LIMIT $4`
-
-const validateTransactionCursorSQL = `
-SELECT
-    EXISTS (
-        SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-    )
-AND EXISTS (
-    SELECT 1
-    FROM transaction_inclusions AS inclusion
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = inclusion.chain_id
-     AND canonical.number = inclusion.block_number
-     AND canonical.block_hash = inclusion.block_hash
-    WHERE inclusion.chain_id = $1::numeric
-      AND inclusion.block_number = $4::numeric
-      AND inclusion.block_hash = $5
-      AND inclusion.tx_index = $6
-      AND inclusion.tx_hash = $7
-)`

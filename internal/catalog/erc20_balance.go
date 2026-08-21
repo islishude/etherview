@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math/big"
 )
 
@@ -60,8 +61,7 @@ func (catalog *Postgres) ERC20Balances(
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return ERC20BalancePage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, erc20BalanceCandidatesSQL,
-		request.ChainID, snapshot.BlockNumber, ownerAddress,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogErc20BalanceCandidates, request.ChainID, snapshot.BlockNumber, ownerAddress,
 		hasBoundary, boundaryAddress, limit+1,
 	)
 	if err != nil {
@@ -171,20 +171,3 @@ func erc20StateUnavailable(snapshot Snapshot) error {
 		BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash,
 	}
 }
-
-const erc20BalanceCandidatesSQL = `
-SELECT d.token_address
-FROM token_balance_deltas AS d
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = d.chain_id
- AND cb.number = d.block_number
- AND cb.block_hash = d.block_hash
-WHERE d.chain_id = $1::numeric
-  AND d.block_number <= $2::numeric
-  AND d.owner_address = $3
-  AND d.token_id IS NULL
-  AND d.canonical = TRUE
-  AND ($4::boolean = FALSE OR d.token_address > $5)
-GROUP BY d.token_address
-ORDER BY d.token_address
-LIMIT $6`

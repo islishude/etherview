@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -37,7 +38,7 @@ func (catalog *Postgres) TransactionCalldata(
 	var blockNumberText string
 	var blockHash, raw []byte
 	var transactionIndex int64
-	err = tx.QueryRowContext(ctx, transactionCalldataIdentitySQL, chainID, transactionHash).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataIdentity, chainID, transactionHash).Scan(
 		&blockNumberText, &blockHash, &transactionIndex, &raw,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -170,8 +171,7 @@ func loadVerifiedAddressSelectorSelection(
 	if len(input) < 4 {
 		return verifiedAddressSelectorSelection{}, nil
 	}
-	rows, err := tx.QueryContext(ctx, transactionVerifiedAddressSelectorsSQL,
-		chainID, address[:], strconv.FormatUint(blockNumber, 10), input[:4],
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionVerifiedAddressSelectors, chainID, address[:], strconv.FormatUint(blockNumber, 10), input[:4],
 		maxVerifiedAddressSelectorCandidates+1,
 	)
 	if err != nil {
@@ -262,9 +262,7 @@ func (catalog *Postgres) loadTransactionExecution(
 ) error {
 	var storedContext, executionAddress, executionCodeHash []byte
 	var resolution, evidenceSource string
-	err := tx.QueryRowContext(ctx, transactionCalldataExecutionSQL,
-		chainID, blockNumber, blockHash, transactionHash, contextAddress[:], transactionIndex,
-	).Scan(&storedContext, &executionAddress, &executionCodeHash, &resolution, &evidenceSource)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataExecution, chainID, blockNumber, blockHash, transactionHash, contextAddress[:], transactionIndex).Scan(&storedContext, &executionAddress, &executionCodeHash, &resolution, &evidenceSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		result.Execution = TransactionExecution{
 			ContextAddress: contextAddress.Hex(), Resolution: "unavailable",
@@ -401,9 +399,7 @@ func loadPersistedTransactionCalldata(
 	executionCodeHash common.Hash,
 ) (*persistedTraceDecoding, error) {
 	value := &persistedTraceDecoding{}
-	err := tx.QueryRowContext(ctx, transactionCalldataDecodingSQL,
-		chainID, blockHash, transactionHash, executionAddress[:], executionCodeHash[:],
-	).Scan(
+	err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionCalldataDecoding, chainID, blockHash, transactionHash, executionAddress[:], executionCodeHash[:]).Scan(
 		&value.status, &value.signature, &value.source, &value.confidence,
 		&value.arguments, &value.candidates, &value.warning,
 		&value.targetAddress, &value.targetCodeHash,
@@ -508,105 +504,3 @@ func transactionCalldataParameters(values []enrich.DecodedParameter) []Transacti
 	}
 	return result
 }
-
-const transactionCalldataIdentitySQL = `
-SELECT inclusion.block_number::text, inclusion.block_hash, inclusion.tx_index, inclusion.raw
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric AND inclusion.tx_hash = $2
-LIMIT 1`
-
-const transactionCalldataExecutionSQL = `
-WITH published_abi AS (
-    SELECT 1
-    FROM published_block_stage_results
-    WHERE chain_id = $1::numeric
-      AND block_number = $2::numeric
-      AND block_hash = $3
-      AND stage = 'abi'
-      AND stage_version = 4
-      AND state = 'complete'
-), selected AS (
-    SELECT effective.context_address, effective.execution_address,
-           effective.execution_code_hash, effective.resolution,
-           effective.evidence_source, 1 AS priority
-    FROM transaction_effective_execution_identities AS effective
-    WHERE effective.chain_id = $1::numeric
-      AND effective.block_number = $2::numeric
-      AND effective.block_hash = $3
-      AND effective.transaction_hash = $4
-      AND effective.context_address = $5
-	  AND effective.transaction_index = $6
-      AND effective.canonical
-      AND EXISTS (SELECT 1 FROM published_abi)
-    UNION ALL
-    SELECT raw.context_address, raw.execution_address,
-           raw.execution_code_hash, raw.resolution,
-           raw.evidence_source, 2 AS priority
-    FROM transaction_execution_code_resolutions AS raw
-    WHERE raw.chain_id = $1::numeric
-      AND raw.block_number = $2::numeric
-      AND raw.block_hash = $3
-      AND raw.transaction_hash = $4
-      AND raw.context_address = $5
-	  AND raw.transaction_index = $6
-      AND raw.canonical
-      AND NOT EXISTS (SELECT 1 FROM published_abi)
-)
-SELECT context_address, execution_address, execution_code_hash,
-       resolution, evidence_source
-FROM selected
-ORDER BY priority
-LIMIT 1`
-
-const transactionCalldataDecodingSQL = `
-SELECT decoding.status, decoding.signature, decoding.source, decoding.confidence,
-       decoding.arguments, decoding.candidates, decoding.warning,
-       decoding.target_address, decoding.target_code_hash,
-       decoding.source_address, decoding.source_code_hash,
-       decoding.return_status, decoding.return_arguments
-FROM abi_decodings AS decoding
-WHERE decoding.chain_id = $1::numeric
-  AND decoding.block_hash = $2
-  AND decoding.transaction_hash = $3
-  AND decoding.object_kind = 'transaction_calldata'
-  AND decoding.object_index = ''
-  AND decoding.target_address = $4
-  AND decoding.target_code_hash = $5
-  AND decoding.canonical
-  AND EXISTS (
-      SELECT 1
-      FROM published_block_stage_results AS published
-      WHERE published.chain_id = decoding.chain_id
-        AND published.block_number = decoding.block_number
-        AND published.block_hash = decoding.block_hash
-        AND published.stage = 'abi'
-        AND published.stage_version = 4
-        AND published.state = 'complete'
-  )`
-
-const transactionVerifiedAddressSelectorsSQL = `
-SELECT indexed.code_hash, selector.signature, selector.abi_entry
-FROM verified_function_selector_sets AS indexed
-JOIN verified_contracts AS verified
-  ON verified.chain_id = indexed.chain_id
- AND verified.address = indexed.address
- AND verified.code_hash = indexed.code_hash
- AND verified.valid_from_block = indexed.valid_from_block
- AND verified.verification_job_id = indexed.verification_job_id
-JOIN verified_function_selectors AS selector
-  ON selector.verification_job_id = indexed.verification_job_id
- AND selector.chain_id = indexed.chain_id
- AND selector.address = indexed.address
- AND selector.code_hash = indexed.code_hash
-WHERE indexed.chain_id = $1::numeric
-  AND indexed.address = $2
-  AND indexed.status = 'complete'
-  AND indexed.valid_from_block <= $3::numeric
-  AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $3::numeric)
-  AND selector.selector = $4
-ORDER BY selector.signature, indexed.code_hash, indexed.verification_job_id
-LIMIT $5`

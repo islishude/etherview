@@ -24,8 +24,8 @@ schema remain unchanged.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P68-T01 | done | P40, P60 | Per-write SSE deadlines and cancellation-safe HTTP shutdown; non-blocking durable replay, cache invalidation circuit breaking, and typed mempool failures | HTTP/1.1 and HTTP/2 service tests; event/Redis/mempool race tests; runtime E2E |
-| P68-T02 | in_progress | P68-T01 | Move all static read-path SQL into named sqlc queries without changing snapshots, cursors, ordering, or reader routing | generation, focused query/catalog/compatibility tests, PostgreSQL integration and race |
-| P68-T03 | todo | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
+| P68-T02 | done | P68-T01 | Move all static read-path SQL into named sqlc queries without changing snapshots, cursors, ordering, or reader routing | generation, focused query/catalog/compatibility tests, PostgreSQL integration and race |
+| P68-T03 | in_progress | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
 | P68-T04 | todo | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
 | P68-T05 | todo | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
 | P68-T06 | todo | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
@@ -81,3 +81,17 @@ None.
   `git diff --check` pass. The rebuilt production image's monolith/six-role
   `make test-runtime-e2e` passes in 74.367s and delivers a durable SSE event
   after three times its configured 250ms write timeout in both topologies.
+- P68-T02 moves static analytics, query, catalog, Etherscan compatibility,
+  metadata, mempool, state, authentication, contract-artifact, event replay,
+  and finalized-height reads into named sqlc query sources. Exported generated
+  statements retain the existing `database/sql` scan adapters where those
+  adapters encode public projection behavior; event and analytics readers use
+  typed pgx/sqlc rows and explicit read-only repeatable-read transactions.
+  Snapshot identity, cursor predicates, canonical joins, ordering, optional
+  read-pool routing, and compatibility response behavior remain unchanged.
+  `make generate-check`, `make lint-go`, `go test ./... -count=1`, focused
+  query/catalog/Etherscan tests, `make test-hardhat3-provider-compat`,
+  `make test-integration`, `make test-integration-race`, and
+  `git diff --check` pass. Both PostgreSQL targets applied migrations through
+  `0049_ens_primary_names`, exercised all seven integration-tagged packages,
+  and removed their owned PostgreSQL 18 projects and volumes.

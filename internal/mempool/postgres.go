@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -266,12 +267,7 @@ func (repository *Postgres) replacementPredecessor(
 	var snapshotID sql.NullInt64
 	var lastSnapshotWriteID sql.NullInt64
 	var lastAttempt time.Time
-	err := tx.QueryRowContext(ctx, `
-		SELECT state, endpoint_name, latest_snapshot_id, last_snapshot_write_id, last_attempt_at
-		FROM mempool_status
-		WHERE chain_id = $1::numeric
-		FOR UPDATE`, repository.chain,
-	).Scan(&state, &endpoint, &snapshotID, &lastSnapshotWriteID, &lastAttempt)
+	err := tx.QueryRowContext(ctx, dbgen.MempoolReplacementPredecessorStatus, repository.chain).Scan(&state, &endpoint, &snapshotID, &lastSnapshotWriteID, &lastAttempt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
@@ -286,11 +282,7 @@ func (repository *Postgres) replacementPredecessor(
 
 	var previousEndpoint string
 	var previousObservedAt, previousExpiresAt time.Time
-	err = tx.QueryRowContext(ctx, `
-		SELECT endpoint_name, observed_at, expires_at
-		FROM mempool_snapshots
-		WHERE chain_id = $1::numeric AND id = $2`, repository.chain, snapshotID.Int64,
-	).Scan(&previousEndpoint, &previousObservedAt, &previousExpiresAt)
+	err = tx.QueryRowContext(ctx, dbgen.MempoolReplacementPredecessorSnapshot, repository.chain, snapshotID.Int64).Scan(&previousEndpoint, &previousObservedAt, &previousExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, fmt.Errorf("%w: replacement predecessor snapshot is missing", ErrCorruptData)
 	}
@@ -511,72 +503,14 @@ func (repository *Postgres) lookupPending(
 	snapshot SnapshotInfo,
 	hash []byte,
 ) (Transaction, error) {
-	row := tx.QueryRowContext(ctx, `
-		SELECT
-			pending.tx_hash, pending.from_address, pending.to_address,
-			pending.nonce::text, pending.value::text, pending.gas::text,
-			pending.gas_price::text, pending.max_fee_per_gas::text,
-			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
-			pending.input, pending.raw, pending.first_seen_at,
-			pending.last_seen_at, pending.expires_at,
-			predecessor.replaced_hash
-		FROM mempool_snapshot_transactions AS member
-		JOIN mempool_transactions AS pending
-		  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
-		LEFT JOIN LATERAL (
-			SELECT replacement.replaced_hash
-			FROM mempool_transaction_replacements AS replacement
-			JOIN mempool_snapshots AS evidence
-			  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
-			WHERE replacement.chain_id = pending.chain_id
-			  AND replacement.replacement_hash = pending.tx_hash
-			  AND evidence.observed_at <= $4
-			  AND evidence.expires_at > $5
-			ORDER BY evidence.observed_at DESC, evidence.id DESC
-			LIMIT 1
-		) AS predecessor ON TRUE
-		WHERE member.chain_id = $1::numeric
-		  AND member.snapshot_id = $2
-		  AND member.tx_hash = $3`,
+	row := tx.QueryRowContext(ctx, dbgen.MempoolLookupPending,
 		repository.chain, snapshot.ID, hash, snapshot.ObservedAt, repository.now().UTC(),
 	)
 	return repository.scanPending(row, snapshot)
 }
 
 func (repository *Postgres) lookupReplaced(ctx context.Context, tx *sql.Tx, hash []byte) (Detail, error) {
-	row := tx.QueryRowContext(ctx, `
-		SELECT
-			pending.tx_hash, pending.from_address, pending.to_address,
-			pending.nonce::text, pending.value::text, pending.gas::text,
-			pending.gas_price::text, pending.max_fee_per_gas::text,
-			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
-			pending.input, pending.raw, pending.first_seen_at,
-			pending.last_seen_at, pending.expires_at,
-			predecessor.replaced_hash,
-			replacement.replacement_hash, evidence.observed_at,
-			evidence.expires_at, evidence.endpoint_name
-		FROM mempool_transaction_replacements AS replacement
-		JOIN mempool_snapshots AS evidence
-		  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
-		JOIN mempool_transactions AS pending
-		  ON pending.chain_id = replacement.chain_id AND pending.tx_hash = replacement.replaced_hash
-		LEFT JOIN LATERAL (
-			SELECT earlier.replaced_hash
-			FROM mempool_transaction_replacements AS earlier
-			JOIN mempool_snapshots AS earlier_evidence
-			  ON earlier_evidence.chain_id = earlier.chain_id AND earlier_evidence.id = earlier.snapshot_id
-			WHERE earlier.chain_id = pending.chain_id
-			  AND earlier.replacement_hash = pending.tx_hash
-			  AND earlier_evidence.observed_at <= evidence.observed_at
-			  AND earlier_evidence.expires_at > $3
-			ORDER BY earlier_evidence.observed_at DESC, earlier_evidence.id DESC
-			LIMIT 1
-		) AS predecessor ON TRUE
-		WHERE replacement.chain_id = $1::numeric
-		  AND replacement.replaced_hash = $2
-		  AND evidence.expires_at > $3
-		ORDER BY evidence.observed_at DESC, evidence.id DESC
-		LIMIT 1`, repository.chain, hash, repository.now().UTC())
+	row := tx.QueryRowContext(ctx, dbgen.MempoolLookupReplaced, repository.chain, hash, repository.now().UTC())
 
 	var hashBytes, from, to, input, raw, replaces, replacement []byte
 	var nonce, value, gas string
@@ -635,11 +569,7 @@ func (repository *Postgres) readStatus(ctx context.Context, tx *sql.Tx) (statusR
 	var snapshotID sql.NullInt64
 	var errorCode sql.NullString
 	var lastAttempt time.Time
-	err := tx.QueryRowContext(ctx, `
-		SELECT state, latest_snapshot_id, error_code, last_attempt_at
-		FROM mempool_status
-		WHERE chain_id = $1::numeric`, repository.chain,
-	).Scan(&state, &snapshotID, &errorCode, &lastAttempt)
+	err := tx.QueryRowContext(ctx, dbgen.MempoolReadStatus, repository.chain).Scan(&state, &snapshotID, &errorCode, &lastAttempt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return statusRecord{state: StatePending, errorCode: "not_observed"}, nil
 	}
@@ -664,10 +594,7 @@ func (repository *Postgres) readStatus(ctx context.Context, tx *sql.Tx) (statusR
 
 func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapshotID int64) (SnapshotInfo, error) {
 	var snapshot SnapshotInfo
-	err := tx.QueryRowContext(ctx, `
-		SELECT id, endpoint_name, observed_at, expires_at, transaction_count
-		FROM mempool_snapshots
-		WHERE chain_id = $1::numeric AND id = $2`,
+	err := tx.QueryRowContext(ctx, dbgen.MempoolReadSnapshot,
 		repository.chain, snapshotID,
 	).Scan(&snapshot.ID, &snapshot.Endpoint, &snapshot.ObservedAt, &snapshot.ExpiresAt, &snapshot.TransactionCount)
 	if err != nil {
@@ -688,46 +615,16 @@ func (repository *Postgres) readSnapshot(ctx context.Context, tx *sql.Tx, snapsh
 }
 
 func (repository *Postgres) pendingRows(ctx context.Context, tx *sql.Tx, snapshot SnapshotInfo, cursor *pendingCursor, limit int) (*sql.Rows, error) {
-	const selectSQL = `
-		SELECT
-			pending.tx_hash, pending.from_address, pending.to_address,
-			pending.nonce::text, pending.value::text, pending.gas::text,
-			pending.gas_price::text, pending.max_fee_per_gas::text,
-			pending.max_priority_fee_per_gas::text, pending.tx_type::text,
-			pending.input, pending.raw, pending.first_seen_at,
-			pending.last_seen_at, pending.expires_at,
-			predecessor.replaced_hash
-		FROM mempool_snapshot_transactions AS member
-		JOIN mempool_transactions AS pending
-		  ON pending.chain_id = member.chain_id AND pending.tx_hash = member.tx_hash
-		LEFT JOIN LATERAL (
-			SELECT replacement.replaced_hash
-			FROM mempool_transaction_replacements AS replacement
-			JOIN mempool_snapshots AS evidence
-			  ON evidence.chain_id = replacement.chain_id AND evidence.id = replacement.snapshot_id
-			WHERE replacement.chain_id = pending.chain_id
-			  AND replacement.replacement_hash = pending.tx_hash
-			  AND evidence.observed_at <= $3
-			  AND evidence.expires_at > $4
-			ORDER BY evidence.observed_at DESC, evidence.id DESC
-			LIMIT 1
-		) AS predecessor ON TRUE
-		WHERE member.chain_id = $1::numeric AND member.snapshot_id = $2`
 	var rows *sql.Rows
 	var err error
 	if cursor == nil {
-		rows, err = tx.QueryContext(ctx, selectSQL+`
-			ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-			LIMIT $5`, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), limit)
+		rows, err = tx.QueryContext(ctx, dbgen.MempoolListPendingFirst, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), limit)
 	} else {
 		hash, parseErr := ethrpc.ParseHash(cursor.BeforeHash)
 		if parseErr != nil {
 			return nil, ErrInvalidCursor
 		}
-		rows, err = tx.QueryContext(ctx, selectSQL+`
-			AND (pending.first_seen_at, pending.tx_hash) < ($5, $6)
-			ORDER BY pending.first_seen_at DESC, pending.tx_hash DESC
-			LIMIT $7`, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), cursor.BeforeFirstSeen, hash.Bytes(), limit)
+		rows, err = tx.QueryContext(ctx, dbgen.MempoolListPendingAfter, repository.chain, snapshot.ID, snapshot.ObservedAt, repository.now().UTC(), cursor.BeforeFirstSeen, hash.Bytes(), limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query pending transaction page: %w", err)

@@ -58,13 +58,7 @@ func (r *PostgresRepository) ByPrefix(ctx context.Context, prefix string) (APIKe
 	var owner pgtype.UUID
 	var ownerActive bool
 	var scopes []string
-	err := r.db.QueryRowContext(ctx, `
-		SELECT key.prefix, key.digest, key.name, key.rate_per_second, key.burst,
-		       key.created_at, key.revoked_at, key.owner_user_id, key.scopes,
-		       COALESCE(owner.status = 'active', TRUE)
-		FROM api_keys AS key
-		LEFT JOIN users AS owner ON owner.id = key.owner_user_id
-		WHERE key.prefix = $1`, prefix).Scan(
+	err := r.db.QueryRowContext(ctx, dbgen.AuthLegacyGetAPIKeyByPrefix, prefix).Scan(
 		&key.Prefix, &key.Digest, &key.Name, &key.Rate, &key.Burst,
 		&key.CreatedAt, &revoked, &owner, apiKeyPGTypeMap.SQLScanner(&scopes), &ownerActive,
 	)
@@ -121,11 +115,7 @@ func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacem
 			return errors.New("replacement API key owner is invalid")
 		}
 		var lockedOwner string
-		if err := tx.QueryRowContext(ctx, `
-			SELECT id::text
-			FROM users
-			WHERE id = $1 AND status = 'active'
-			FOR UPDATE`, ownerID).Scan(&lockedOwner); errors.Is(err, sql.ErrNoRows) {
+		if err := tx.QueryRowContext(ctx, dbgen.AuthLegacyLockActiveOwner, ownerID).Scan(&lockedOwner); errors.Is(err, sql.ErrNoRows) {
 			return ErrAPIKeyNotActive
 		} else if err != nil {
 			return fmt.Errorf("lock API key owner for rotation: %w", err)
@@ -137,11 +127,7 @@ func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacem
 	var revoked sql.NullTime
 	var owner pgtype.UUID
 	var scopes []string
-	err = tx.QueryRowContext(ctx, `
-		SELECT name, rate_per_second, burst, revoked_at, owner_user_id, scopes
-		FROM api_keys
-		WHERE prefix = $1
-		FOR UPDATE`, prefix).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.AuthLegacyLockAPIKeyForRotation, prefix).Scan(
 		&name, &rate, &burst, &revoked, &owner,
 		apiKeyPGTypeMap.SQLScanner(&scopes),
 	)
@@ -197,11 +183,7 @@ func (r *PostgresRepository) Rotate(ctx context.Context, prefix string, replacem
 }
 
 func (r *PostgresRepository) List(ctx context.Context) ([]APIKey, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT prefix, name, rate_per_second, burst, created_at, revoked_at,
-		       owner_user_id, scopes
-		FROM api_keys
-		ORDER BY created_at, prefix`)
+	rows, err := r.db.QueryContext(ctx, dbgen.AuthLegacyListAPIKeys)
 	if err != nil {
 		return nil, fmt.Errorf("list API keys: %w", err)
 	}

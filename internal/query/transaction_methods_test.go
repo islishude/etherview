@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -18,9 +19,10 @@ func TestTransactionMethodProjectionUsesPublishedTransactionScopedEffectiveIdent
 		"effective.transaction_index = inclusion.tx_index",
 		"effective.context_address",
 		"stage_version = 4",
-		"NOT EXISTS (SELECT 1 FROM published_abi)",
+		"NOT EXISTS (",
+		"published_block_stage_results AS published_abi",
 	} {
-		if !strings.Contains(transactionMethodJoinsSQL, fragment) {
+		if !strings.Contains(dbgen.QueryListTransactionsWithMethod, fragment) {
 			t.Fatalf("transaction Method projection missing %q", fragment)
 		}
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteExpiredAdapterObservations = `-- name: DeleteExpiredAdapterObservations :one
+const DeleteExpiredAdapterObservations = `-- name: DeleteExpiredAdapterObservations :one
 WITH expired AS MATERIALIZED (
     SELECT observation.id
     FROM external_adapter_observations AS observation
@@ -31,13 +31,13 @@ FROM deleted
 `
 
 func (q *Queries) DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
-	row := q.db.QueryRow(ctx, deleteExpiredAdapterObservations, chainID, expiredBefore, deleteLimit)
+	row := q.db.QueryRow(ctx, DeleteExpiredAdapterObservations, chainID, expiredBefore, deleteLimit)
 	var deleted_count int64
 	err := row.Scan(&deleted_count)
 	return deleted_count, err
 }
 
-const deleteExpiredENSAddressNameSnapshots = `-- name: DeleteExpiredENSAddressNameSnapshots :one
+const DeleteExpiredENSAddressNameSnapshots = `-- name: DeleteExpiredENSAddressNameSnapshots :one
 WITH expired AS MATERIALIZED (
     SELECT snapshot.id
     FROM ens_address_name_snapshots AS snapshot
@@ -56,13 +56,13 @@ SELECT count(*)::bigint AS deleted_count FROM deleted
 `
 
 func (q *Queries) DeleteExpiredENSAddressNameSnapshots(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
-	row := q.db.QueryRow(ctx, deleteExpiredENSAddressNameSnapshots, chainID, expiredBefore, deleteLimit)
+	row := q.db.QueryRow(ctx, DeleteExpiredENSAddressNameSnapshots, chainID, expiredBefore, deleteLimit)
 	var deleted_count int64
 	err := row.Scan(&deleted_count)
 	return deleted_count, err
 }
 
-const deleteExpiredENSResolutionGenerations = `-- name: DeleteExpiredENSResolutionGenerations :one
+const DeleteExpiredENSResolutionGenerations = `-- name: DeleteExpiredENSResolutionGenerations :one
 WITH expired AS MATERIALIZED (
     SELECT generation.id
     FROM ens_resolution_generations AS generation
@@ -85,13 +85,13 @@ SELECT count(*)::bigint AS deleted_count FROM deleted
 `
 
 func (q *Queries) DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
-	row := q.db.QueryRow(ctx, deleteExpiredENSResolutionGenerations, chainID, expiredBefore, deleteLimit)
+	row := q.db.QueryRow(ctx, DeleteExpiredENSResolutionGenerations, chainID, expiredBefore, deleteLimit)
 	var deleted_count int64
 	err := row.Scan(&deleted_count)
 	return deleted_count, err
 }
 
-const pruneSearchCatalog = `-- name: PruneSearchCatalog :one
+const PruneSearchCatalog = `-- name: PruneSearchCatalog :one
 SELECT prune_search_catalog(
     $1::numeric,
     $2::bigint
@@ -99,13 +99,13 @@ SELECT prune_search_catalog(
 `
 
 func (q *Queries) PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error) {
-	row := q.db.QueryRow(ctx, pruneSearchCatalog, chainID, retentionGenerations)
+	row := q.db.QueryRow(ctx, PruneSearchCatalog, chainID, retentionGenerations)
 	var min_generation int64
 	err := row.Scan(&min_generation)
 	return min_generation, err
 }
 
-const trySearchCatalogMaintenanceLock = `-- name: TrySearchCatalogMaintenanceLock :one
+const TrySearchCatalogMaintenanceLock = `-- name: TrySearchCatalogMaintenanceLock :one
 SELECT pg_try_advisory_xact_lock(
     hashtext('etherview:search-catalog-maintenance'),
     hashtext($1::text)
@@ -113,7 +113,7 @@ SELECT pg_try_advisory_xact_lock(
 `
 
 func (q *Queries) TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error) {
-	row := q.db.QueryRow(ctx, trySearchCatalogMaintenanceLock, chainID)
+	row := q.db.QueryRow(ctx, TrySearchCatalogMaintenanceLock, chainID)
 	var pg_try_advisory_xact_lock bool
 	err := row.Scan(&pg_try_advisory_xact_lock)
 	return pg_try_advisory_xact_lock, err

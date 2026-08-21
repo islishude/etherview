@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const operationalMetricSnapshot = `-- name: OperationalMetricSnapshot :many
+const OperationalMetricSnapshot = `-- name: OperationalMetricSnapshot :many
 WITH metric_rows AS (
     SELECT 'durable'::text AS metric_kind,
            (stage || '@' || stage_version::text)::text AS metric_name,
@@ -82,7 +82,7 @@ type OperationalMetricSnapshotRow struct {
 }
 
 func (q *Queries) OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error) {
-	rows, err := q.db.Query(ctx, operationalMetricSnapshot, chainID, settlementCrashDelayMicroseconds)
+	rows, err := q.db.Query(ctx, OperationalMetricSnapshot, chainID, settlementCrashDelayMicroseconds)
 	if err != nil {
 		return nil, err
 	}
