@@ -216,8 +216,9 @@ replace a required `make test-e2e` pass.
   It checks exact authorization signatures/outcomes, transaction-time calldata
   execution identity, cleared EOA history/current binding, hidden skipped and
   orphan authorizations, retained orphan PostgreSQL evidence, API/SSE/SPA
-  behavior, RPC and PostgreSQL outage recovery, API process restart, bounded
-  load, and final durable/public parity.
+  behavior, an SSE event delivered after an idle period longer than the
+  production server's test write timeout, RPC and PostgreSQL outage recovery,
+  API process restart, bounded load, and final durable/public parity.
   The distributed scenario additionally proves config-only identity binding
   and continues after one of two sync and enrichment replicas is stopped. It
   then recreates the production API with a Go-generated, test-only temporary

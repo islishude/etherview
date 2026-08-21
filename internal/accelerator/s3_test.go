@@ -370,7 +370,7 @@ func readS3TestRequestBody(request *http.Request) ([]byte, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		sizeText := strings.SplitN(strings.TrimSpace(header), ";", 2)[0]
+		sizeText, _, _ := strings.Cut(strings.TrimSpace(header), ";")
 		size, parseErr := strconv.ParseInt(sizeText, 16, 64)
 		if parseErr != nil {
 			return nil, parseErr

@@ -1203,13 +1203,20 @@ func (h *harness) waitDatabaseUnavailable(ctx context.Context) {
 }
 
 func (h *harness) validateSSE(ctx context.Context) {
-	streamCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	streamCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	var after int64
+	if err := h.db.QueryRow(ctx, `
+		SELECT COALESCE(MAX(id), 0)
+		FROM runtime_events
+		WHERE chain_id = 1`).Scan(&after); err != nil {
+		h.t.Fatal(err)
+	}
 	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet, h.baseURL+"/api/v1/events", nil)
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	request.Header.Set("Last-Event-ID", "0")
+	request.Header.Set("Last-Event-ID", strconv.FormatInt(after, 10))
 	response, err := h.http.Do(request)
 	if err != nil {
 		h.t.Fatal(err)
@@ -1219,9 +1226,28 @@ func (h *harness) validateSSE(ctx context.Context) {
 		response.Header.Get("Content-Type") != "text/event-stream; charset=utf-8" {
 		h.t.Fatalf("SSE status=%d headers=%v", response.StatusCode, response.Header)
 	}
+	// The production server is configured with a 250ms write timeout. Stay idle
+	// beyond that whole-response deadline, then commit a durable event. The SSE
+	// frame must still arrive because streaming applies the timeout per write.
+	time.Sleep(750 * time.Millisecond)
+	var eventID int64
+	if err := h.db.QueryRow(ctx, `
+		INSERT INTO runtime_events (chain_id, event_type, payload)
+		VALUES (1, 'status', '{"ready":true,"test":"per_write_deadline"}'::jsonb)
+		RETURNING id`).Scan(&eventID); err != nil {
+		h.t.Fatal(err)
+	}
 	scanner := bufio.NewScanner(response.Body)
+	var receivedID int64
 	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "event: ") {
+		line := scanner.Text()
+		if raw, ok := strings.CutPrefix(line, "id: "); ok {
+			receivedID, err = strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+			if err != nil {
+				h.t.Fatal(err)
+			}
+		}
+		if line == "" && receivedID == eventID {
 			return
 		}
 	}

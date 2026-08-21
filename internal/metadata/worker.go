@@ -213,8 +213,7 @@ func (worker *Worker) record(ctx context.Context, lease Lease, completed fetchRe
 		return ctx.Err()
 	}
 
-	var fetchFailure *FetchError
-	if errors.As(completed.err, &fetchFailure) {
+	if fetchFailure, ok := errors.AsType[*FetchError](completed.err); ok {
 		diagnostic = fetchFailure.Diagnostic
 	}
 	if diagnostic.SourceScheme == "" {

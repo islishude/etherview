@@ -20,6 +20,13 @@ with PostgreSQL liveness. The API probe combines it with durable core-index
 readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
 
+The API server binds every accepted request context to that same lifecycle.
+Long-lived SSE handlers therefore exit before graceful HTTP shutdown waits for
+active connections. Ordinary responses retain the configured write timeout;
+SSE clears the idle deadline and reapplies it around each individual write and
+flush, preserving both indefinite idle subscriptions and a bounded slow-client
+write.
+
 The public API listener optionally serves TLS from one startup-loaded
 certificate/private-key pair as specified by
 [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md). TLS is enabled
@@ -149,6 +156,11 @@ of the callback. The routing and lag contract is specified in
   snapshot backward and backfill-worker count cannot consume the replay
   window. Each API replica tails that ledger independently; see
   [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md).
+- A durable subscriber is registered provisionally while PostgreSQL replay and
+  cache invalidation run outside the fanout mutex. Live events published during
+  replay are buffered and merged by ID before the subscription becomes active;
+  bounded overflow returns replay unavailable instead of delaying established
+  subscribers.
 - If an API query cache is configured, its idempotent invalidator runs before a
   tailed event advances the replica cursor or reaches SSE subscribers. A failed
   invalidation retries the same PostgreSQL event. Without a configured cache,

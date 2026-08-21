@@ -534,8 +534,11 @@ func (h *Handler) preflight(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	// Clear the whole-response deadline before durable replay. Replay is bounded,
+	// but it must not consume the stream's future write budget before headers are
+	// committed.
+	stream, err := newSSEStream(w, h.cfg.Server.WriteTimeout)
+	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "stream_unsupported", "streaming is unsupported", nil)
 		return
 	}
@@ -558,7 +561,9 @@ func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if err := stream.flush(); err != nil {
+		return
+	}
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
@@ -567,15 +572,13 @@ func (h *Handler) eventStream(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
-			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.Type, event.Data); err != nil {
+			if err := stream.write("id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.Type, event.Data); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-heartbeat.C:
-			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+			if err := stream.write(": heartbeat\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-r.Context().Done():
 			return
 		}
@@ -588,11 +591,6 @@ type homeSnapshotResponse struct {
 }
 
 func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, r, http.StatusInternalServerError, "stream_unsupported", "streaming is unsupported", nil)
-		return
-	}
 	if h.homeSnapshots == nil {
 		writeError(
 			w, r, http.StatusServiceUnavailable,
@@ -608,12 +606,19 @@ func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	stream, err := newSSEStream(w, h.cfg.Server.WriteTimeout)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "stream_unsupported", "streaming is unsupported", nil)
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if err := stream.flush(); err != nil {
+		return
+	}
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
@@ -647,18 +652,16 @@ func (h *Handler) homeSnapshotStream(w http.ResponseWriter, r *http.Request) {
 				)
 				return
 			}
-			if _, err := fmt.Fprintf(
-				w, "id: %d\nevent: snapshot\ndata: %s\n\n",
+			if err := stream.write(
+				"id: %d\nevent: snapshot\ndata: %s\n\n",
 				publication.EventID, encoded,
 			); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-heartbeat.C:
-			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
+			if err := stream.write(": heartbeat\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
 		case <-r.Context().Done():
 			return
 		}
@@ -1275,8 +1278,7 @@ func (h *Handler) handleENSReaderError(w http.ResponseWriter, r *http.Request, e
 		h.handleReaderError(w, r, ErrInvalidCursor)
 		return
 	}
-	var resolution *ensresolver.ResolutionError
-	if errors.As(err, &resolution) {
+	if resolution, ok := errors.AsType[*ensresolver.ResolutionError](err); ok {
 		capability, state, code := resolution.CapabilityDetails()
 		h.handleReaderError(w, r, NewCapabilityUnavailableError(capability, state, code))
 		return
@@ -3496,6 +3498,9 @@ func NewService(cfg config.Config, handler http.Handler, loggers ...*slog.Logger
 func (s *Service) Name() string { return "http-api" }
 
 func (s *Service) Run(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("API service context is nil")
+	}
 	if (s.tlsCertFile == "") != (s.tlsKeyFile == "") {
 		return errors.New("API TLS certificate and key must be configured together")
 	}
@@ -3510,6 +3515,10 @@ func (s *Service) Run(ctx context.Context) error {
 			Certificates: []tls.Certificate{certificate},
 		}
 	}
+	// Every accepted request inherits the component lifecycle. Canceling the
+	// service therefore terminates long-lived SSE handlers before Shutdown waits
+	// for active connections to become idle.
+	s.server.BaseContext = func(net.Listener) context.Context { return ctx }
 	listener, err := s.listen("tcp", s.server.Addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -3536,7 +3545,16 @@ func (s *Service) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		if err := s.server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown: %w", err)
+			shutdownErr := fmt.Errorf("shutdown: %w", err)
+			closeErr := s.server.Close()
+			serveErr := <-done
+			if errors.Is(closeErr, http.ErrServerClosed) {
+				closeErr = nil
+			}
+			if errors.Is(serveErr, http.ErrServerClosed) {
+				serveErr = nil
+			}
+			return errors.Join(shutdownErr, closeErr, serveErr)
 		}
 		err := <-done
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {

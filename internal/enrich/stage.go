@@ -134,8 +134,7 @@ func withStageDiagnostic(err error, diagnostic StageDiagnostic) error {
 	if err == nil {
 		return nil
 	}
-	var existing stageDiagnosticError
-	if errors.As(err, &existing) {
+	if existing, ok := errors.AsType[stageDiagnosticError](err); ok {
 		if diagnostic.Code == "" {
 			diagnostic.Code = existing.diagnostic.Code
 		}
@@ -432,8 +431,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			Event: JobEventExecutionFailed, Component: worker.Name(), WorkerID: worker.options.ID,
 			Job: lease.Job, Result: "error", Code: "execution_failed", Duration: time.Since(startedAt),
 		}
-		var diagnostic stageDiagnosticError
-		if errors.As(err, &diagnostic) {
+		if diagnostic, ok := errors.AsType[stageDiagnosticError](err); ok {
 			transition.Diagnostic = diagnostic.diagnostic
 		}
 		worker.observe(transition)
@@ -601,8 +599,7 @@ func (worker *Worker) errorTransition(
 	transition := worker.transition(
 		job, StageResult{State: stageState}, jobStatus, result, code, retryAfter, startedAt,
 	)
-	var diagnostic stageDiagnosticError
-	if errors.As(cause, &diagnostic) {
+	if diagnostic, ok := errors.AsType[stageDiagnosticError](cause); ok {
 		transition.Diagnostic = diagnostic.diagnostic
 		if transition.Diagnostic.Code != "" {
 			transition.Code = transition.Diagnostic.Code

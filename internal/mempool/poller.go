@@ -38,6 +38,21 @@ func (err SourceError) Error() string {
 
 func (err SourceError) Unwrap() error { return err.Cause }
 
+type pollCycleError struct {
+	code string
+	err  error
+}
+
+func (err pollCycleError) Error() string { return err.err.Error() }
+func (err pollCycleError) Unwrap() error { return err.err }
+
+func cycleFailure(code string, err error) error {
+	if err == nil {
+		err = errors.New("mempool poll cycle failed")
+	}
+	return pollCycleError{code: code, err: err}
+}
+
 type PoolSource struct{ Pool *ethrpc.Pool }
 
 func (source PoolSource) PendingTransactions(ctx context.Context) (json.RawMessage, string, error) {
@@ -153,7 +168,7 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 	if err != nil {
 		failure := sourceFailure(err, endpoint, observedAt)
 		if storeErr := poller.store.StoreFailure(ctx, failure); storeErr != nil {
-			return fmt.Errorf("persist mempool failure status: %w", storeErr)
+			return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist mempool failure status: %w", storeErr))
 		}
 		return err
 	}
@@ -164,13 +179,13 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 			Message: boundedMessage(err.Error()), ObservedAt: observedAt,
 		}
 		if storeErr := poller.store.StoreFailure(ctx, failure); storeErr != nil {
-			return fmt.Errorf("persist invalid mempool status: %w", storeErr)
+			return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist invalid mempool status: %w", storeErr))
 		}
-		return err
+		return cycleFailure("invalid_snapshot", err)
 	}
 	info, err := poller.store.StoreSnapshot(ctx, snapshot)
 	if err != nil {
-		return fmt.Errorf("persist mempool snapshot: %w", err)
+		return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist mempool snapshot: %w", err))
 	}
 	poller.options.Logger.DebugContext(ctx, "mempool snapshot committed",
 		"event", "mempool_snapshot_committed", "component", poller.Name(),
@@ -392,8 +407,9 @@ func pollErrorCode(err error) string {
 	if errors.As(err, &sourceErr) && sourceErr.Code != "" {
 		return sourceErr.Code
 	}
-	if strings.Contains(err.Error(), "snapshot") {
-		return "invalid_snapshot"
+	var cycleErr pollCycleError
+	if errors.As(err, &cycleErr) && cycleErr.code != "" {
+		return cycleErr.code
 	}
 	return "storage_or_internal_failure"
 }

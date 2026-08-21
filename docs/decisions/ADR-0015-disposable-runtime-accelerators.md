@@ -37,8 +37,11 @@ correctness implementation and break the PostgreSQL-only deployment.
   event idempotently advances that generation before relay cursor advancement
   or SSE fanout. Cache writes use the generation observed before reading
   PostgreSQL, making a write that races invalidation unreachable. Redis loss
-  disables cache reads and writes before invalidation reports success; a later
-  durable event may safely re-enable them.
+  disables cache reads and writes before invalidation reports success. Cache
+  invalidation has its own short exponential circuit: events observed while it
+  is open advance safely with the cache bypassed, and after backoff exactly one
+  event probes the fence/invalidation path. A successful probe establishes a
+  fresh generation before reads are re-enabled.
 - S3-compatible storage caches schema-v2 normalized transaction call frames
   only. ABI input/output/revert projections are never stored in the object. An
   object key binds chain ID, exact block hash, durable job ID, exact completed
