@@ -10,6 +10,16 @@ The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
 The parity suite also proves that `roles=all` is the union of the split-role
 graphs, so adding a component without updating both paths fails before serving.
+The manifest remains independent in `internal/app/component_manifest.go`;
+typed builders in `runtime_shared.go` and `runtime_<role>.go` own registration
+for each subsystem and role. `runtime_assembly.go` only carries their explicit
+dependencies and invokes them in lifecycle order, while `serve.go` owns shared
+resource acquisition and final supervision.
+
+Configuration has the same separation: `config.go` owns the model, defaults,
+and YAML load; environment files own role-scoped overrides and secret loading;
+validation files own pure global, role, and subsystem checks. The split does
+not introduce alternate precedence, defaults, keys, or role-specific fallback.
 
 The same supervisor owns the lifecycle of those registered services in every
 deployment shape. It advertises process readiness only after all selected

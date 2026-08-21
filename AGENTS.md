@@ -69,7 +69,9 @@ driver solely because an older evidence entry cites it.
   remain optional and disposable.
 - `serve --roles=all` and split roles use the same components and persistence
   semantics. Keep the production component manifest, registration, readiness,
-  shutdown, and parity tests aligned.
+  shutdown, and parity tests aligned. Keep the manifest independent from the
+  typed shared/role builders under `internal/app/runtime_*.go`; new components
+  must update both the owning builder and manifest expectations.
 - Identify block-scoped facts by chain and block hash, retain orphan facts, and
   never infer durable coverage from a higher disconnected block.
 - Core ingestion never waits for enrichment. Derived output becomes public only

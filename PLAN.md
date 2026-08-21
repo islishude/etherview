@@ -282,8 +282,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   retaining exact snapshot, cursor, ordering, reader-routing, and compatibility
   behavior. P68-T03 moves correctness/write SQL into generated named sources,
   replaces dynamic compatibility and stage predicates with fixed parameters,
-  and enforces migration/partition as the only raw-SQL boundary. P68-T04 is
-  claimed for runtime assembly and configuration modularization.
+  and enforces migration/partition as the only raw-SQL boundary. P68-T04 splits
+  shared and per-role runtime builders, preserves the independent executable
+  component manifest, and separates configuration load, override, and pure
+  subsystem validation. P68-T05 is claimed for explicit HTTP capability
+  modules and startup dependency rejection.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum
