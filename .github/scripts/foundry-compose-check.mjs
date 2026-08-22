@@ -81,15 +81,20 @@ assert.ok(
   !Object.keys(foundry.environment ?? {}).some((key) => key.includes("API_KEY")),
   "Foundry client must not receive a static API key",
 );
+const foundryTmpfs = tmpfsTargets(foundry);
+assert.equal(
+  foundryTmpfs.includes("/workspace/cache"),
+  false,
+  "Foundry disposable project cache must not be writable",
+);
 for (const target of [
   "/tmp",
-  "/workspace/cache",
   "/workspace/out",
   "/workspace/broadcast",
   "/home/foundry/.cache",
   "/home/foundry/.foundry",
 ]) {
-  assert.ok(tmpfsTargets(foundry).includes(target), `missing Foundry tmpfs ${target}`);
+  assert.ok(foundryTmpfs.includes(target), `missing Foundry tmpfs ${target}`);
 }
 
 function tmpfsTargets(service) {

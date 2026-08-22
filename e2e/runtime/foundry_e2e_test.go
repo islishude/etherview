@@ -160,6 +160,20 @@ func prepareFoundryRuntime(t *testing.T, ctx context.Context) foundryRuntime {
 		!strings.Contains(versionText, "Commit SHA: "+foundryRevision) {
 		t.Fatalf("Foundry version output = %q", strings.TrimSpace(versionText))
 	}
+	config := exec.CommandContext(ctx, docker, "run", "--rm", tag, "forge", "config", "--json")
+	configOutput, err := config.CombinedOutput()
+	if err != nil {
+		t.Fatalf("read pinned Foundry client config: %v\n%s", err, strings.TrimSpace(string(configOutput)))
+	}
+	var clientConfig struct {
+		Cache bool `json:"cache"`
+	}
+	if err := json.Unmarshal(configOutput, &clientConfig); err != nil {
+		t.Fatalf("decode pinned Foundry client config: %v\n%s", err, strings.TrimSpace(string(configOutput)))
+	}
+	if clientConfig.Cache {
+		t.Fatal("Foundry client project cache is enabled for disposable verification containers")
+	}
 	assertFoundryNativeImageArchitecture(t, ctx, docker, valueOrDefault("IMAGE", "etherview:local"))
 	assertFoundryNativeImageArchitecture(t, ctx, docker, tag)
 	return foundryRuntime{image: tag}

@@ -139,6 +139,9 @@ replace a required `make test-e2e` pass.
   v1.7.1 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
+  Foundry's disposable project build cache is disabled: each Compose command
+  runs in a fresh one-shot container, while only the image-owned solc toolchain
+  cache is required to survive between the online and offline build checks.
 - `make test-foundry-e2e`: rebuild the host-native production application and
   independent Foundry client images, run the offline compiler preflight, and
   exercise source verification against fresh Anvil/PostgreSQL datasets in the
