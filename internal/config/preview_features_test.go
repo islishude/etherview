@@ -17,6 +17,7 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 	}
 	var preview struct {
 		Metadata struct {
+			FetchTimeout               string `yaml:"fetch_timeout"`
 			IPFSGateway                string `yaml:"ipfs_gateway"`
 			UnsafeAllowPrivateNetworks bool   `yaml:"unsafe_allow_private_networks"`
 		} `yaml:"metadata"`
@@ -58,11 +59,13 @@ func TestPreviewEnablesPublicVerificationAndNFTMetadata(t *testing.T) {
 			t.Fatalf("Preview config retains removed field %q", removed)
 		}
 	}
-	if !preview.Features.NFTMetadata || preview.Metadata.IPFSGateway != "https://ipfs.io" {
+	if !preview.Features.NFTMetadata || preview.Metadata.IPFSGateway != "https://ipfs.io" ||
+		preview.Metadata.FetchTimeout != "30s" {
 		t.Fatalf(
-			"Preview NFT metadata = %v gateway = %q, want enabled public HTTPS gateway",
+			"Preview NFT metadata = %v gateway = %q timeout = %q, want bounded public HTTPS gateway",
 			preview.Features.NFTMetadata,
 			preview.Metadata.IPFSGateway,
+			preview.Metadata.FetchTimeout,
 		)
 	}
 	if preview.Metadata.UnsafeAllowPrivateNetworks {

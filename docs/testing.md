@@ -52,15 +52,24 @@ replace a required `make test-e2e` pass.
 
 ## Common Gates
 
-- `make toolchain-check`: require at least Go 1.26.5, Node 24.18.0, and npm
+- `make toolchain-check`: require at least Go 1.27.0, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
+- `make source-check`: reject production SQL literals outside the migration
+  runner and validated partition-DDL module, and reject `.sql` sources outside
+  `internal/db/queries` and `internal/store/migrations`. `make lint-go` includes
+  this boundary.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
+- `make web-lint`: run TypeScript project checking followed by the exact pinned
+  Biome policy. Biome enforces React hook placement/dependencies, unused
+  imports/variables, selected cognitive and function complexity, and a
+  production source-file size ceiling; generated OpenAPI and test-size
+  exceptions remain explicit in `web/biome.json`.
 - `make test`: Go and frontend unit tests.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
@@ -130,6 +139,9 @@ replace a required `make test-e2e` pass.
   v1.7.1 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
+  Foundry's disposable project build cache is disabled: each Compose command
+  runs in a fresh one-shot container, while only the image-owned solc toolchain
+  cache is required to survive between the online and offline build checks.
 - `make test-foundry-e2e`: rebuild the host-native production application and
   independent Foundry client images, run the offline compiler preflight, and
   exercise source verification against fresh Anvil/PostgreSQL datasets in the
@@ -216,8 +228,12 @@ replace a required `make test-e2e` pass.
   It checks exact authorization signatures/outcomes, transaction-time calldata
   execution identity, cleared EOA history/current binding, hidden skipped and
   orphan authorizations, retained orphan PostgreSQL evidence, API/SSE/SPA
-  behavior, RPC and PostgreSQL outage recovery, API process restart, bounded
-  load, and final durable/public parity.
+  behavior, an SSE event delivered after an idle period longer than the
+  production server's test write timeout, RPC and PostgreSQL outage recovery,
+  API process restart, bounded load, and final durable/public parity. The
+  test-only ordinary-response write timeout and load request timeout share one
+  2-second budget; the SSE client is independently context-bounded and stays
+  idle for three times that budget before requiring the durable event.
   The distributed scenario additionally proves config-only identity binding
   and continues after one of two sync and enrichment replicas is stopped. It
   then recreates the production API with a Go-generated, test-only temporary
@@ -262,9 +278,11 @@ replace a required `make test-e2e` pass.
   bounded structured network evidence, and restart-stable persistence. Public
   DNS is accepted directly; only Docker fake-IP `198.18.0.0/15` may use the
   Preview metadata exception. Other private routes, alternate gateways,
-  retries, content drift, and internal fixtures fail. Run `make preview-cert`
-  once first. This live external-service gate is explicit and is not included
-  in `make check`.
+  retries, content drift, and internal fixtures fail. The checked-in Preview
+  keeps this cold public-gateway request bounded to 30 seconds so it can remain
+  one durable attempt; the ordinary metadata default remains 10 seconds. Run
+  `make preview-cert` once first. This live external-service gate is explicit
+  and is not included in `make check`.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
   30-second smoke with p95, error-rate, throughput, and final core-lag
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the

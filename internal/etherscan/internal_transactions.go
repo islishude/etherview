@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"net/url"
 	"strconv"
 	"strings"
@@ -76,11 +77,9 @@ func (b *PostgresBackend) internalTransactions(ctx context.Context, values url.V
 	if end != nil {
 		endArgument = *end
 	}
-	query := fmt.Sprintf(internalTransactionsSQL,
-		page.direction, page.direction, page.direction, page.direction, page.direction,
-	)
-	rows, err := tx.QueryContext(ctx, query,
-		b.chain, addressBytes, transactionHashBytes, start, endArgument, page.limit, page.offset,
+	rows, err := tx.QueryContext(ctx, dbgen.EtherscanInternalTransactions,
+		b.chain, addressBytes, transactionHashBytes, start, endArgument,
+		page.limit, page.offset, page.direction,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query internal transactions: %w", err)
@@ -115,7 +114,7 @@ func (b *PostgresBackend) canonicalTransactionBlock(
 	hash []byte,
 ) (string, error) {
 	var block string
-	err := queryer.QueryRowContext(ctx, canonicalTransactionBlockSQL, b.chain, hash).Scan(&block)
+	err := queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalTransactionBlock, b.chain, hash).Scan(&block)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -265,41 +264,3 @@ func validateTracePath(value string) (int, error) {
 	}
 	return len(parts), nil
 }
-
-const internalTransactionsSQL = `
-SELECT trace.block_number::text, trace.block_hash, trace.transaction_hash,
-       block.timestamp::text, trace.trace_path, trace.depth, trace.call_type,
-       trace.from_address, trace.to_address, trace.created_address,
-       trace.value::text, trace.gas::text, trace.gas_used::text,
-       trace.input, trace.error, trace.reverted
-FROM normalized_traces AS trace
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = trace.chain_id
- AND canonical.number = trace.block_number
- AND canonical.block_hash = trace.block_hash
-JOIN blocks AS block
-  ON block.chain_id = trace.chain_id
- AND block.number = trace.block_number
- AND block.hash = trace.block_hash
-WHERE trace.chain_id = $1::numeric
-  AND trace.canonical = TRUE
-  AND trace.depth > 0
-  AND ($2::bytea IS NULL OR trace.from_address = $2 OR trace.to_address = $2 OR trace.created_address = $2)
-  AND ($3::bytea IS NULL OR trace.transaction_hash = $3)
-  AND trace.block_number >= $4::numeric
-  AND ($5::numeric IS NULL OR trace.block_number <= $5::numeric)
-ORDER BY trace.block_number %s, trace.transaction_index %s,
-         string_to_array(trace.trace_path, '.')::bigint[] %s,
-         trace.block_hash %s, trace.transaction_hash %s
-LIMIT $6 OFFSET $7`
-
-const canonicalTransactionBlockSQL = `
-SELECT inclusion.block_number::text
-FROM transaction_inclusions AS inclusion
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.tx_hash = $2
-LIMIT 1`

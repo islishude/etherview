@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText, tokenID string) (NFTOwnership, error) {
@@ -111,8 +112,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
 		return NFTBalancePage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, nftBalanceCandidatesSQL,
-		request.ChainID, snapshot.BlockNumber, ownerAddress, hasBoundary,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogNftBalanceCandidates, request.ChainID, snapshot.BlockNumber, ownerAddress, hasBoundary,
 		boundaryAddress, boundaryTokenID, limit+1,
 	)
 	if err != nil {
@@ -218,23 +218,3 @@ func nftStateUnavailable(snapshot Snapshot) error {
 		BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash,
 	}
 }
-
-const nftBalanceCandidatesSQL = `
-SELECT d.token_address, d.token_id::text
-FROM token_balance_deltas AS d
-JOIN canonical_blocks AS cb
-  ON cb.chain_id = d.chain_id
- AND cb.number = d.block_number
- AND cb.block_hash = d.block_hash
-WHERE d.chain_id = $1::numeric
-  AND d.block_number <= $2::numeric
-  AND d.owner_address = $3
-  AND d.token_id IS NOT NULL
-  AND d.canonical = true
-  AND (
-      $4::boolean = false OR
-      (d.token_address, d.token_id) > ($5, $6::numeric)
-  )
-GROUP BY d.token_address, d.token_id
-ORDER BY d.token_address, d.token_id
-LIMIT $7`

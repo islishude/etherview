@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/query"
@@ -62,12 +63,7 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 	}
 	var number string
 	var hashBytes []byte
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT canonical.number::text, canonical.block_hash
-		FROM canonical_blocks AS canonical
-		WHERE canonical.chain_id = $1::numeric
-		ORDER BY canonical.number DESC
-		LIMIT 1`, s.ChainID).Scan(&number, &hashBytes)
+	err := s.DB.QueryRowContext(ctx, dbgen.StateCanonicalTip, s.ChainID).Scan(&number, &hashBytes)
 	if err == sql.ErrNoRows {
 		return CanonicalRef{}, httpapi.ErrNotReady
 	}
@@ -87,11 +83,7 @@ func (s PostgresCanonicalSource) Tip(ctx context.Context) (CanonicalRef, error) 
 
 func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference CanonicalRef) (bool, error) {
 	var canonical bool
-	err := s.DB.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM canonical_blocks
-			WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-		)`, s.ChainID, fmt.Sprint(reference.Number), reference.Hash.Bytes()).Scan(&canonical)
+	err := s.DB.QueryRowContext(ctx, dbgen.StateIsCanonical, s.ChainID, fmt.Sprint(reference.Number), reference.Hash.Bytes()).Scan(&canonical)
 	return canonical, err
 }
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -79,24 +80,21 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var canonical bool
-	if err := tx.QueryRowContext(ctx, canonicalObservationSQL,
-		request.ChainID, strconv.FormatUint(request.BlockNumber, 10), blockHash,
-	).Scan(&canonical); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalObservation, request.ChainID, strconv.FormatUint(request.BlockNumber, 10), blockHash).Scan(&canonical); err != nil {
 		return EnqueueResult{}, fmt.Errorf("check metadata source canonicality: %w", err)
 	}
 	if !canonical {
 		return EnqueueResult{}, errors.New("metadata source block is not canonical")
 	}
 	var nftContract bool
-	if err := tx.QueryRowContext(ctx, canonicalNFTContractSQL, request.ChainID, address).Scan(&nftContract); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalNFTContract, request.ChainID, address).Scan(&nftContract); err != nil {
 		return EnqueueResult{}, fmt.Errorf("check metadata NFT contract: %w", err)
 	}
 	if !nftContract {
 		return EnqueueResult{}, errors.New("metadata token address is not a canonical ERC-721 or ERC-1155 contract")
 	}
 	var inserted int
-	err = tx.QueryRowContext(ctx, insertMetadataResourceSQL,
-		request.ChainID, request.resourceKey(), request.SourceURI,
+	err = tx.QueryRowContext(ctx, dbgen.MetadataWriteInsertMetadataResource, request.ChainID, request.resourceKey(), request.SourceURI,
 		address, request.TokenID, strconv.FormatUint(request.BlockNumber, 10), blockHash,
 	).Scan(&inserted)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,9 +103,7 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 			storedAddress, storedBlockHash          []byte
 			storedTokenID                           string
 		)
-		err = tx.QueryRowContext(ctx, existingMetadataResourceSQL,
-			request.ChainID, address, request.TokenID, blockHash,
-		).Scan(&storedKey, &storedURI, &storedAddress, &storedTokenID, &storedBlockNumber, &storedBlockHash)
+		err = tx.QueryRowContext(ctx, dbgen.MetadataExistingMetadataResource, request.ChainID, address, request.TokenID, blockHash).Scan(&storedKey, &storedURI, &storedAddress, &storedTokenID, &storedBlockNumber, &storedBlockHash)
 		if err == nil && (storedKey != request.resourceKey() || storedURI != request.SourceURI ||
 			!bytes.Equal(storedAddress, address) || storedTokenID != request.TokenID ||
 			storedBlockNumber != strconv.FormatUint(request.BlockNumber, 10) || !bytes.Equal(storedBlockHash, blockHash)) {
@@ -118,12 +114,10 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 		return EnqueueResult{}, fmt.Errorf("insert NFT metadata resource: %w", err)
 	}
 	var jobID int64
-	err = tx.QueryRowContext(ctx, enqueueMetadataJobSQL,
-		request.ChainID, key, string(payload), request.Priority, request.MaxAttempts,
-	).Scan(&jobID)
+	err = tx.QueryRowContext(ctx, dbgen.MetadataWriteEnqueueMetadataJob, request.ChainID, key, string(payload), request.Priority, request.MaxAttempts).Scan(&jobID)
 	created := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, existingMetadataJobSQL, request.ChainID, key).Scan(&jobID)
+		err = tx.QueryRowContext(ctx, dbgen.MetadataExistingMetadataJob, request.ChainID, key).Scan(&jobID)
 	}
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("enqueue NFT metadata job: %w", err)
@@ -157,7 +151,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 		return Lease{}, false, fmt.Errorf("begin metadata claim transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx, exhaustMetadataJobsSQL, repository.chainID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.MetadataExhaustMetadataJobs, repository.chainID); err != nil {
 		return Lease{}, false, fmt.Errorf("finalize exhausted metadata jobs: %w", err)
 	}
 	var (
@@ -165,7 +159,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 		chainID                     string
 		payload                     []byte
 	)
-	err = tx.QueryRowContext(ctx, claimMetadataJobSQL, workerID, token, leaseMicros, repository.chainID).Scan(
+	err = tx.QueryRowContext(ctx, dbgen.MetadataClaimMetadataJob, workerID, token, leaseMicros, repository.chainID).Scan(
 		&jobID, &chainID, &attempt, &maxAttempts, &payload,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -210,7 +204,7 @@ func (repository *PostgresRepository) Renew(ctx context.Context, lease Lease, le
 	if err != nil {
 		return fmt.Errorf("metadata lease duration: %w", err)
 	}
-	result, err := repository.db.ExecContext(ctx, renewMetadataJobSQL, lease.JobID, lease.Token, leaseMicros)
+	result, err := repository.db.ExecContext(ctx, dbgen.MetadataWriteRenewMetadataJob, lease.JobID, lease.Token, leaseMicros)
 	if err != nil {
 		return fmt.Errorf("renew metadata job: %w", err)
 	}
@@ -313,8 +307,7 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 			return err
 		}
 	} else {
-		result, err := tx.ExecContext(ctx, recordMetadataRetrySQL,
-			lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
+		result, err := tx.ExecContext(ctx, dbgen.MetadataWriteRecordMetadataRetry, lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
 			strconv.FormatUint(lease.Request.BlockNumber, 10), mustHashBytes(lease.Request.BlockHash),
 			lease.Attempt, code, message,
 		)
@@ -324,13 +317,12 @@ func (repository *PostgresRepository) Retry(ctx context.Context, lease Lease, co
 		if err := requireOne(result); err != nil {
 			return fmt.Errorf("record pending metadata retry: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, insertMetadataAttemptSQL,
-			lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
+		if _, err := tx.ExecContext(ctx, dbgen.MetadataWriteInsertMetadataAttempt, lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
 			StateError, lease.Request.SourceURI, nil, nil, nil, nil, code, message,
 		); err != nil {
 			return fmt.Errorf("audit metadata retry: %w", err)
 		}
-		result, err = tx.ExecContext(ctx, retryMetadataJobSQL, lease.JobID, lease.Token, code+": "+message, retryMicros)
+		result, err = tx.ExecContext(ctx, dbgen.MetadataWriteRetryMetadataJob, lease.JobID, lease.Token, code+": "+message, retryMicros)
 		if err != nil {
 			return fmt.Errorf("queue metadata retry: %w", err)
 		}
@@ -352,8 +344,7 @@ func queryCurrent(ctx context.Context, queryer queryRower, request NFTRequest) (
 	address := request.Token.Bytes()
 	hash := request.BlockHash.Bytes()
 	var current Current
-	if err := queryer.QueryRowContext(ctx, currentMetadataResourceSQL,
-		request.ChainID, request.resourceKey(), address, request.TokenID,
+	if err := queryer.QueryRowContext(ctx, dbgen.MetadataCurrentMetadataResource, request.ChainID, request.resourceKey(), address, request.TokenID,
 		strconv.FormatUint(request.BlockNumber, 10), hash, request.SourceURI,
 	).Scan(&current.Resource, &current.Canonical); err != nil {
 		return Current{}, err
@@ -365,8 +356,7 @@ func lockCurrent(ctx context.Context, tx *sql.Tx, request NFTRequest) (Current, 
 	address := request.Token.Bytes()
 	hash := request.BlockHash.Bytes()
 	var matches bool
-	err := tx.QueryRowContext(ctx, lockMetadataResourceSQL,
-		request.ChainID, request.resourceKey(), address, request.TokenID,
+	err := tx.QueryRowContext(ctx, dbgen.MetadataLockMetadataResource, request.ChainID, request.resourceKey(), address, request.TokenID,
 		strconv.FormatUint(request.BlockNumber, 10), hash, request.SourceURI,
 	).Scan(&matches)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -376,9 +366,7 @@ func lockCurrent(ctx context.Context, tx *sql.Tx, request NFTRequest) (Current, 
 		return Current{}, err
 	}
 	var canonical bool
-	if err := tx.QueryRowContext(ctx, canonicalObservationSQL,
-		request.ChainID, strconv.FormatUint(request.BlockNumber, 10), hash,
-	).Scan(&canonical); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.MetadataCanonicalObservation, request.ChainID, strconv.FormatUint(request.BlockNumber, 10), hash).Scan(&canonical); err != nil {
 		return Current{}, err
 	}
 	return Current{Resource: matches, Canonical: canonical}, nil
@@ -388,7 +376,7 @@ func lockOwnedJob(ctx context.Context, tx *sql.Tx, lease Lease) error {
 	var payload []byte
 	var chainID string
 	var maxAttempts int64
-	err := tx.QueryRowContext(ctx, lockOwnedMetadataJobSQL, lease.JobID, lease.Token).Scan(&chainID, &payload, &maxAttempts)
+	err := tx.QueryRowContext(ctx, dbgen.MetadataLockOwnedMetadataJob, lease.JobID, lease.Token).Scan(&chainID, &payload, &maxAttempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost
 	}
@@ -429,8 +417,7 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 		errorText = outcome.Message
 	}
 	if updateResource {
-		result, err := tx.ExecContext(ctx, finishMetadataResourceSQL,
-			lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
+		result, err := tx.ExecContext(ctx, dbgen.MetadataWriteFinishMetadataResource, lease.Request.ChainID, lease.Request.resourceKey(), lease.Request.SourceURI,
 			strconv.FormatUint(lease.Request.BlockNumber, 10), mustHashBytes(lease.Request.BlockHash),
 			outcome.State, resolvedURI, mediaType, contentHash, document, contentSize,
 			lease.Attempt, errorCode, errorText,
@@ -442,8 +429,7 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 			return fmt.Errorf("persist metadata outcome: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, insertMetadataAttemptSQL,
-		lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
+	if _, err := tx.ExecContext(ctx, dbgen.MetadataWriteInsertMetadataAttempt, lease.Request.ChainID, lease.Request.resourceKey(), lease.JobID, lease.Attempt,
 		outcome.State, lease.Request.SourceURI, resolvedURI, mediaType, contentHash, contentSize,
 		errorCode, errorText,
 	); err != nil {
@@ -460,9 +446,7 @@ func finishLocked(ctx context.Context, tx *sql.Tx, lease Lease, outcome Outcome,
 	if err != nil {
 		return fmt.Errorf("encode metadata job outcome: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, finishMetadataJobSQL,
-		lease.JobID, lease.Token, jobStatus, string(summary), errorText,
-	)
+	result, err := tx.ExecContext(ctx, dbgen.MetadataWriteFinishMetadataJob, lease.JobID, lease.Token, jobStatus, string(summary), errorText)
 	if err != nil {
 		return fmt.Errorf("finish metadata durable job: %w", err)
 	}
@@ -568,209 +552,3 @@ func hashString(outcome Outcome) any {
 	}
 	return "0x" + fmt.Sprintf("%x", outcome.ContentHash[:])
 }
-
-const canonicalObservationSQL = `
-SELECT EXISTS (
-    SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-)`
-
-const canonicalNFTContractSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM token_contracts AS token
-    JOIN canonical_blocks AS canonical
-      ON canonical.chain_id = token.chain_id
-     AND canonical.number = token.observed_block_number
-     AND canonical.block_hash = token.observed_block_hash
-    WHERE token.chain_id = $1::numeric
-      AND token.address = $2
-      AND token.standard IN ('erc721', 'erc1155')
-)`
-
-const insertMetadataResourceSQL = `
-INSERT INTO external_metadata (
-    chain_id, resource_kind, resource_key, source_uri, state,
-    token_address, token_id, observed_block_number, observed_block_hash,
-    identity_hash, attempt_count, updated_at
-) VALUES (
-    $1::numeric, 'nft', $2, $3, 'pending',
-    $4, $5::numeric, $6::numeric, $7,
-    $7, 0, clock_timestamp()
-)
-ON CONFLICT DO NOTHING
-RETURNING 1`
-
-const existingMetadataResourceSQL = `
-SELECT resource_key, source_uri, token_address, token_id::text,
-       observed_block_number::text, observed_block_hash
-FROM external_metadata
-WHERE chain_id = $1::numeric AND resource_kind = 'nft'
-  AND token_address = $2 AND token_id = $3::numeric AND observed_block_hash = $4
-FOR UPDATE`
-
-const enqueueMetadataJobSQL = `
-INSERT INTO durable_jobs (
-    chain_id, kind, stage, stage_version, idempotency_key, payload,
-    priority, max_attempts
-) VALUES (
-    $1::numeric, 'metadata', 'nft-metadata', 1, $2,
-    $3::jsonb, $4, $5
-)
-ON CONFLICT (chain_id, kind, idempotency_key) DO NOTHING
-RETURNING id`
-
-const existingMetadataJobSQL = `
-SELECT id FROM durable_jobs
-WHERE chain_id = $1::numeric AND kind = 'metadata' AND idempotency_key = $2`
-
-const exhaustMetadataJobsSQL = `
-WITH exhausted AS (
-    UPDATE durable_jobs
-    SET status = 'failed',
-        result = jsonb_build_object('state', 'error', 'code', 'attempts_exhausted'),
-        last_error = COALESCE(last_error, 'maximum metadata attempts exhausted'),
-        leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
-        updated_at = clock_timestamp()
-    WHERE kind = 'metadata'
-      AND chain_id = $1::numeric
-      AND stage = 'nft-metadata' AND stage_version = 1
-      AND attempts >= max_attempts
-      AND ((status = 'queued' AND available_at <= clock_timestamp())
-        OR (status = 'leased' AND lease_expires_at <= clock_timestamp()))
-    RETURNING id, chain_id, attempts, payload, last_error
-), updated AS (
-    UPDATE external_metadata AS metadata
-    SET state = 'error', attempt_count = exhausted.attempts,
-        last_error_code = 'attempts_exhausted', last_error = exhausted.last_error,
-        fetched_at = clock_timestamp(), terminal_at = clock_timestamp(), updated_at = clock_timestamp()
-    FROM exhausted
-    WHERE metadata.chain_id = exhausted.chain_id
-      AND metadata.resource_kind = 'nft'
-      AND metadata.resource_key = exhausted.payload->>'resource_key'
-      AND metadata.identity_hash = decode(substr(exhausted.payload->>'block_hash', 3), 'hex')
-      AND metadata.source_uri = exhausted.payload->>'source_uri'
-      AND metadata.observed_block_number = (exhausted.payload->>'block_number')::numeric
-      AND metadata.observed_block_hash = decode(substr(exhausted.payload->>'block_hash', 3), 'hex')
-    RETURNING exhausted.id, exhausted.chain_id, exhausted.attempts,
-        exhausted.payload, exhausted.last_error
-)
-INSERT INTO external_metadata_attempts (
-    chain_id, resource_kind, resource_key, durable_job_id, attempt, state,
-    source_uri, error_code, error_message
-)
-SELECT chain_id, 'nft', payload->>'resource_key', id, attempts, 'error',
-       payload->>'source_uri', 'attempts_exhausted', left(last_error, 1024)
-FROM updated
-ON CONFLICT (durable_job_id, attempt) DO NOTHING`
-
-const claimMetadataJobSQL = `
-WITH candidate AS (
-    SELECT id FROM durable_jobs
-    WHERE kind = 'metadata'
-      AND chain_id = $4::numeric
-      AND stage = 'nft-metadata' AND stage_version = 1
-      AND attempts < max_attempts
-      AND ((status = 'queued' AND available_at <= clock_timestamp())
-        OR (status = 'leased' AND lease_expires_at <= clock_timestamp()))
-    ORDER BY priority DESC, available_at, id
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
-UPDATE durable_jobs AS job
-SET status = 'leased', attempts = job.attempts + 1,
-    leased_by = $1, lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-    result = NULL, updated_at = clock_timestamp()
-FROM candidate
-WHERE job.id = candidate.id
-RETURNING job.id, job.chain_id::text, job.attempts, job.max_attempts, job.payload`
-
-const renewMetadataJobSQL = `
-UPDATE durable_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-    updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()`
-
-const currentMetadataResourceSQL = `
-SELECT
-    EXISTS (
-        SELECT 1 FROM external_metadata
-        WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-          AND identity_hash = $6
-          AND token_address = $3 AND token_id = $4::numeric
-          AND observed_block_number = $5::numeric AND observed_block_hash = $6
-          AND source_uri = $7
-    ),
-    EXISTS (
-        SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $5::numeric AND block_hash = $6
-    )`
-
-const lockMetadataResourceSQL = `
-SELECT token_address = $3
-   AND token_id = $4::numeric
-   AND observed_block_number = $5::numeric
-   AND observed_block_hash = $6
-   AND source_uri = $7
-FROM external_metadata
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $6
-FOR UPDATE`
-
-const lockOwnedMetadataJobSQL = `
-SELECT chain_id::text, payload, max_attempts
-FROM durable_jobs
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()
-FOR UPDATE`
-
-const finishMetadataResourceSQL = `
-UPDATE external_metadata
-SET state = $6, resolved_uri = $7, media_type = $8, content_hash = $9,
-    document = $10::jsonb, content_size = $11, attempt_count = $12,
-    last_error_code = $13, last_error = $14,
-    fetched_at = clock_timestamp(), terminal_at = clock_timestamp(), updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $5
-  AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5`
-
-const recordMetadataRetrySQL = `
-UPDATE external_metadata
-SET state = 'pending', attempt_count = $6, last_error_code = $7, last_error = $8,
-    fetched_at = clock_timestamp(), terminal_at = NULL, updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND resource_kind = 'nft' AND resource_key = $2
-  AND identity_hash = $5
-  AND source_uri = $3 AND observed_block_number = $4::numeric AND observed_block_hash = $5`
-
-const insertMetadataAttemptSQL = `
-INSERT INTO external_metadata_attempts (
-    chain_id, resource_kind, resource_key, durable_job_id, attempt, state,
-    source_uri, resolved_uri, media_type, content_hash, content_size,
-    error_code, error_message
-) VALUES (
-    $1::numeric, 'nft', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-)
-ON CONFLICT (durable_job_id, attempt) DO UPDATE SET
-    state = EXCLUDED.state, resolved_uri = EXCLUDED.resolved_uri,
-    media_type = EXCLUDED.media_type, content_hash = EXCLUDED.content_hash,
-    content_size = EXCLUDED.content_size, error_code = EXCLUDED.error_code,
-    error_message = EXCLUDED.error_message, attempted_at = clock_timestamp()`
-
-const finishMetadataJobSQL = `
-UPDATE durable_jobs
-SET status = $3, result = $4::jsonb, last_error = $5,
-    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()`
-
-const retryMetadataJobSQL = `
-UPDATE durable_jobs
-SET status = 'queued', available_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
-    last_error = $3, result = NULL,
-    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1 AND kind = 'metadata' AND status = 'leased'
-  AND lease_token = $2 AND lease_expires_at > clock_timestamp()`

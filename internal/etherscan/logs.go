@@ -2,6 +2,7 @@ package etherscan
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var topicOperatorPattern = regexp.MustCompile(`^topic([0-3])_([0-3])_opr$`)
@@ -20,60 +22,57 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	if err != nil {
 		return nil, err
 	}
-	arguments := []any{b.chain, "0"}
+	fromBlock := "0"
 	if raw := strings.TrimSpace(values.Get("fromBlock")); raw != "" {
 		value, err := parseDecimal(raw, "fromBlock")
 		if err != nil {
 			return nil, err
 		}
-		arguments[1] = value.String()
+		fromBlock = value.String()
 	}
-	clauses := []string{"log.block_number >= $2::numeric"}
 	var coverageEnd *string
+	var toBlock any
 	if raw := strings.TrimSpace(values.Get("toBlock")); raw != "" {
 		value, err := parseDecimal(raw, "toBlock")
 		if err != nil {
 			return nil, err
 		}
-		if value.Cmp(mustBig(arguments[1].(string))) < 0 {
+		if value.Cmp(mustBig(fromBlock)) < 0 {
 			return nil, invalidParameter("toBlock is less than fromBlock")
 		}
 		text := value.String()
 		coverageEnd = &text
-		arguments = append(arguments, text)
-		clauses = append(clauses, fmt.Sprintf("log.block_number <= $%d::numeric", len(arguments)))
+		toBlock = text
 	}
+	var address any
 	if raw := strings.TrimSpace(values.Get("address")); raw != "" {
 		_, addressBytes, err := parseAddressParameter(raw, "address")
 		if err != nil {
 			return nil, err
 		}
-		arguments = append(arguments, addressBytes)
-		clauses = append(clauses, fmt.Sprintf("log.address = $%d", len(arguments)))
+		address = addressBytes
 	}
 
-	topicClause, topicArguments, err := buildTopicFilter(values, len(arguments)+1)
+	topicFilters, err := buildTopicFilter(values)
 	if err != nil {
 		return nil, err
 	}
-	arguments = append(arguments, topicArguments...)
-	if topicClause != "" {
-		clauses = append(clauses, topicClause)
+	encodedTopics, err := json.Marshal(topicFilters)
+	if err != nil {
+		return nil, fmt.Errorf("encode log topic filters: %w", err)
 	}
 	tx, err := b.beginCanonicalSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if _, err := b.requireCanonicalCoreRange(ctx, tx, arguments[1].(string), coverageEnd); err != nil {
+	if _, err := b.requireCanonicalCoreRange(ctx, tx, fromBlock, coverageEnd); err != nil {
 		return nil, err
 	}
-	arguments = append(arguments, page.limit, page.offset)
-	query := fmt.Sprintf(
-		logsSQL, strings.Join(clauses, " AND "), page.direction, page.direction,
-		page.direction, len(arguments)-1, len(arguments),
+	rows, err := tx.QueryContext(ctx, dbgen.EtherscanLogs,
+		b.chain, fromBlock, toBlock, address, encodedTopics,
+		page.limit, page.offset, page.direction,
 	)
-	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
@@ -101,11 +100,16 @@ func (b *PostgresBackend) logs(ctx context.Context, values url.Values) ([]logEnt
 	return result, nil
 }
 
-func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, error) {
+type sqlTopicFilter struct {
+	Index    int    `json:"index"`
+	Value    string `json:"value"`
+	Operator string `json:"operator"`
+}
+
+func buildTopicFilter(values url.Values) ([]sqlTopicFilter, error) {
 	type topicFilter struct {
-		index     int
-		condition string
-		argument  any
+		index int
+		value string
 	}
 	filters := make([]topicFilter, 0, 4)
 	for key, items := range values {
@@ -115,10 +119,10 @@ func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, e
 		validFilter := len(key) == len("topic0") && key[len(key)-1] >= '0' && key[len(key)-1] <= '3'
 		validOperator := topicOperatorPattern.MatchString(key)
 		if !validFilter && !validOperator {
-			return "", nil, invalidParameter("unsupported topic parameter %s", key)
+			return nil, invalidParameter("unsupported topic parameter %s", key)
 		}
 		if len(items) != 1 {
-			return "", nil, invalidParameter("topic parameter %s must appear exactly once", key)
+			return nil, invalidParameter("topic parameter %s must appear exactly once", key)
 		}
 	}
 	for index := range 4 {
@@ -127,18 +131,11 @@ func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, e
 		if raw == "" {
 			continue
 		}
-		hash, bytes, err := parseHashParameter(raw, name)
+		hash, _, err := parseHashParameter(raw, name)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
-		placeholder := firstPlaceholder + len(filters)
-		condition := fmt.Sprintf("lower(log.raw->'topics'->>%d) = $%d", index, placeholder)
-		argument := any(strings.ToLower(hash.Hex()))
-		if index == 0 {
-			condition = fmt.Sprintf("log.topic0 = $%d", placeholder)
-			argument = bytes
-		}
-		filters = append(filters, topicFilter{index: index, condition: condition, argument: argument})
+		filters = append(filters, topicFilter{index: index, value: strings.ToLower(hash.Hex())})
 	}
 	allowedOperators := make(map[string]struct{}, 3)
 	for index := 1; index < len(filters); index++ {
@@ -150,39 +147,34 @@ func buildTopicFilter(values url.Values, firstPlaceholder int) (string, []any, e
 		}
 		match := topicOperatorPattern.FindStringSubmatch(key)
 		if match == nil || len(items) != 1 {
-			return "", nil, invalidParameter("invalid topic operator %s", key)
+			return nil, invalidParameter("invalid topic operator %s", key)
 		}
 		left, _ := strconv.Atoi(match[1])
 		right, _ := strconv.Atoi(match[2])
 		if left >= right || strings.TrimSpace(values.Get(fmt.Sprintf("topic%d", left))) == "" || strings.TrimSpace(values.Get(fmt.Sprintf("topic%d", right))) == "" {
-			return "", nil, invalidParameter("topic operator %s references missing or unordered filters", key)
+			return nil, invalidParameter("topic operator %s references missing or unordered filters", key)
 		}
 		if _, supported := allowedOperators[key]; !supported {
-			return "", nil, invalidParameter("topic operator %s does not connect adjacent supplied filters", key)
+			return nil, invalidParameter("topic operator %s does not connect adjacent supplied filters", key)
 		}
 		operator := strings.ToLower(strings.TrimSpace(items[0]))
 		if operator != "and" && operator != "or" {
-			return "", nil, invalidParameter("topic operator %s must be and or or", key)
+			return nil, invalidParameter("topic operator %s must be and or or", key)
 		}
 	}
-	if len(filters) == 0 {
-		return "", nil, nil
-	}
-	expression := filters[0].condition
-	arguments := []any{filters[0].argument}
-	for index := 1; index < len(filters); index++ {
-		left, right := filters[index-1].index, filters[index].index
-		operator := strings.ToUpper(strings.TrimSpace(values.Get(fmt.Sprintf("topic%d_%d_opr", left, right))))
-		if operator == "" {
-			operator = "AND"
+	result := make([]sqlTopicFilter, 0, len(filters))
+	for index, filter := range filters {
+		operator := "AND"
+		if index > 0 {
+			left, right := filters[index-1].index, filter.index
+			operator = strings.ToUpper(strings.TrimSpace(values.Get(fmt.Sprintf("topic%d_%d_opr", left, right))))
+			if operator == "" {
+				operator = "AND"
+			}
 		}
-		if operator != "AND" && operator != "OR" {
-			return "", nil, invalidParameter("topic%d_%d_opr must be and or or", left, right)
-		}
-		expression = fmt.Sprintf("(%s %s %s)", expression, operator, filters[index].condition)
-		arguments = append(arguments, filters[index].argument)
+		result = append(result, sqlTopicFilter{Index: filter.index, Value: filter.value, Operator: operator})
 	}
-	return expression, arguments, nil
+	return result, nil
 }
 
 func scanLogEntry(scanner rowScanner) (logEntry, error) {
@@ -274,30 +266,3 @@ func scanLogEntry(scanner rowScanner) (logEntry, error) {
 	result.GasPrice = hexutil.EncodeBig(gasPrice)
 	return result, nil
 }
-
-const logsSQL = `
-SELECT log.raw, receipt.raw, inclusion.raw, block.raw, log.block_number::text,
-       log.block_hash, log.log_index, log.tx_index, log.tx_hash, log.address
-FROM logs AS log
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = log.chain_id
- AND canonical.number = log.block_number
- AND canonical.block_hash = log.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = log.chain_id
- AND receipt.block_number = log.block_number
- AND receipt.block_hash = log.block_hash
- AND receipt.tx_index = log.tx_index
-JOIN transaction_inclusions AS inclusion
-  ON inclusion.chain_id = log.chain_id
- AND inclusion.block_number = log.block_number
- AND inclusion.block_hash = log.block_hash
- AND inclusion.tx_index = log.tx_index
-JOIN blocks AS block
-  ON block.chain_id = log.chain_id
- AND block.number = log.block_number
- AND block.hash = log.block_hash
-WHERE log.chain_id = $1::numeric
-  AND %s
-ORDER BY log.block_number %s, log.log_index %s, log.block_hash %s
-LIMIT $%d OFFSET $%d`

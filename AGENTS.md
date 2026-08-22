@@ -69,7 +69,9 @@ driver solely because an older evidence entry cites it.
   remain optional and disposable.
 - `serve --roles=all` and split roles use the same components and persistence
   semantics. Keep the production component manifest, registration, readiness,
-  shutdown, and parity tests aligned.
+  shutdown, and parity tests aligned. Keep the manifest independent from the
+  typed shared/role builders under `internal/app/runtime_*.go`; new components
+  must update both the owning builder and manifest expectations.
 - Identify block-scoped facts by chain and block hash, retain orphan facts, and
   never infer durable coverage from a higher disconnected block.
 - Core ingestion never waits for enrichment. Derived output becomes public only
@@ -103,8 +105,10 @@ driver solely because an older evidence entry cites it.
   verified bundle.
 - Public quantities beyond JavaScript's safe integer range are strings. Public
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
-  `internal/db/queries/`. Regenerate outputs and never hand-edit generated
-  files.
+  `internal/db/queries/`. Production executable SQL must originate there; only
+  the migration runner and validated partition-DDL module may own raw SQL in
+  Go. Regenerate outputs, never hand-edit generated files, and run `make
+  source-check` after changing a database execution boundary.
 - Contract verification compiles bounded Solidity/Yul inputs twice with one
   exact official `emscripten-wasm32` solc-js artifact, discovers candidates
   automatically, and records only declared
@@ -140,8 +144,16 @@ driver solely because an older evidence entry cites it.
   inside the injected-provider module and its closed allowlist; raw providers
   never escape. A submitted transaction without a trustworthy matching hash is
   an unknown outcome, not a retryable failure.
+- Keep native HTTP routes in explicit capability modules. Production API
+  assembly must declare required capabilities and pass their dependencies
+  directly; do not recover capabilities through reader/catalog/Web type
+  assertions or silently omit an enabled module's routes.
 - Validate SPA routing, CSP, cache, and security headers against the built
   distribution served by Go, not a Vite development server.
+- Keep core SPA pages and both language resources split by domain. `web-lint`
+  includes exact `@biomejs/biome` policy for hooks, unused code, selected
+  complexity/function size, and the production file-size ceiling; do not
+  bypass it with blanket suppressions.
 
 Consult the accepted ADRs before changing a public API, persistent contract,
 security boundary, external-service boundary, or monolith/split runtime model;
@@ -155,7 +167,7 @@ change. Add a nested `AGENTS.md` only for genuinely different subtree rules.
 The Makefile is the command source of truth; `docs/testing.md` defines scope and
 evidence rules.
 
-- Toolchains are minimums, not exact ceilings: Go 1.26.5, Node.js 24.18.0, and
+- Toolchains are minimums, not exact ceilings: Go 1.27.0, Node.js 24.18.0, and
   npm 11.16.0. Compatible newer stable versions must pass `make
   toolchain-check`.
 - Add regressions for malformed RPC data, reorgs, optional-capability loss,
@@ -187,6 +199,7 @@ evidence rules.
   `COMPOSE`, `BUILDX`, and `DOCKER` overrides rather than hard-coding one local
   installation shape.
 - Run `make generate-check` after OpenAPI, SQL, generated-client, or embedded
-  SPA changes; run `make plan-check` after governance changes.
+  SPA changes; run `make source-check` after database execution-boundary
+  changes; run `make plan-check` after governance changes.
 - A work item is complete only when its targeted tests and applicable common
   gates pass and the child plan records concise evidence.

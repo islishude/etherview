@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math"
 	"strconv"
 	"time"
@@ -73,8 +74,7 @@ func (catalog *Postgres) AddressInternalTransactions(
 	if err != nil {
 		return AddressInternalTransactionPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, addressInternalTransactionsSQL,
-		request.ChainID, snapshot.BlockNumber, address, hasBoundary,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogAddressInternalTransactions, request.ChainID, snapshot.BlockNumber, address, hasBoundary,
 		boundary.BlockNumber, boundary.TransactionIndex, boundary.TracePath,
 		blockHash, txHash, limit+1,
 	)
@@ -283,8 +283,7 @@ func (catalog *Postgres) addressTokenTransfers(
 	if err != nil {
 		return AddressTokenTransferPage{}, err
 	}
-	rows, err := tx.QueryContext(ctx, addressTokenTransfersSQL,
-		request.ChainID, snapshot.BlockNumber, address, kind, hasBoundary,
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogAddressTokenTransfers, request.ChainID, snapshot.BlockNumber, address, kind, hasBoundary,
 		boundary.BlockNumber, boundary.TransactionIndex, boundary.LogIndex, boundary.SubIndex,
 		blockHash, txHash, limit+1,
 	)
@@ -459,137 +458,3 @@ func (catalog *Postgres) scanAddressTokenTransfer(row rowScanner) (AddressTokenT
 	}
 	return item, nil
 }
-
-const addressInternalTransactionsSQL = `
-WITH candidates AS (
-    SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
-    FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND from_address = $3
-    UNION
-    SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
-    FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND to_address = $3
-    UNION
-    SELECT chain_id, block_number, block_hash, transaction_hash, trace_path
-    FROM normalized_traces
-    WHERE chain_id = $1::numeric AND canonical = TRUE AND depth > 0
-      AND block_number <= $2::numeric AND created_address = $3
-)
-SELECT trace.block_number::text, trace.block_hash, block.timestamp::text,
-       trace.transaction_hash, trace.transaction_index::text,
-       trace.trace_path, trace.depth, trace.call_type,
-       trace.from_address, trace.to_address, trace.created_address,
-       trace.value::text, trace.gas::text, trace.gas_used::text,
-       trace.input, trace.error, trace.reverted
-FROM candidates
-JOIN normalized_traces AS trace
-  ON trace.chain_id = candidates.chain_id
- AND trace.block_number = candidates.block_number
- AND trace.block_hash = candidates.block_hash
- AND trace.transaction_hash = candidates.transaction_hash
- AND trace.trace_path = candidates.trace_path
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = trace.chain_id
- AND canonical.number = trace.block_number
- AND canonical.block_hash = trace.block_hash
-JOIN blocks AS block
-  ON block.chain_id = trace.chain_id
- AND block.number = trace.block_number
- AND block.hash = trace.block_hash
-WHERE NOT $4::boolean OR (
-    trace.block_number,
-    trace.transaction_index,
-    string_to_array(trace.trace_path, '.')::bigint[],
-    trace.block_hash,
-    trace.transaction_hash
-) < (
-    $5::numeric,
-    $6::bigint,
-    string_to_array($7, '.')::bigint[],
-    $8::bytea,
-    $9::bytea
-)
-ORDER BY trace.block_number DESC, trace.transaction_index DESC,
-         string_to_array(trace.trace_path, '.')::bigint[] DESC,
-         trace.block_hash DESC, trace.transaction_hash DESC
-LIMIT $10`
-
-const addressTokenTransfersSQL = `
-WITH candidates AS (
-    SELECT chain_id, block_number, block_hash, log_index, sub_index
-    FROM token_events
-    WHERE chain_id = $1::numeric AND canonical = TRUE
-      AND block_number <= $2::numeric AND from_address = $3
-      AND event_kind IN ('transfer', 'mint', 'burn')
-      AND (($4 = 'erc20' AND standard = 'erc20') OR ($4 = 'nft' AND standard IN ('erc721', 'erc1155')))
-    UNION
-    SELECT chain_id, block_number, block_hash, log_index, sub_index
-    FROM token_events
-    WHERE chain_id = $1::numeric AND canonical = TRUE
-      AND block_number <= $2::numeric AND to_address = $3
-      AND event_kind IN ('transfer', 'mint', 'burn')
-      AND (($4 = 'erc20' AND standard = 'erc20') OR ($4 = 'nft' AND standard IN ('erc721', 'erc1155')))
-)
-SELECT event.block_number::text, event.block_hash, block.timestamp::text,
-       event.transaction_hash, inclusion.tx_index::text,
-       event.log_index::text, event.sub_index::text,
-       event.token_address, event.standard, event.event_kind,
-       event.from_address, event.to_address, event.token_id::text,
-       event.amount::text, event.confidence, metadata.decimals
-FROM candidates
-JOIN token_events AS event
-  ON event.chain_id = candidates.chain_id
- AND event.block_number = candidates.block_number
- AND event.block_hash = candidates.block_hash
- AND event.log_index = candidates.log_index
- AND event.sub_index = candidates.sub_index
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = event.chain_id
- AND canonical.number = event.block_number
- AND canonical.block_hash = event.block_hash
-JOIN blocks AS block
-  ON block.chain_id = event.chain_id
- AND block.number = event.block_number
- AND block.hash = event.block_hash
-JOIN transaction_inclusions AS inclusion
-  ON inclusion.chain_id = event.chain_id
- AND inclusion.block_number = event.block_number
- AND inclusion.block_hash = event.block_hash
- AND inclusion.tx_hash = event.transaction_hash
-LEFT JOIN LATERAL (
-    SELECT CASE
-               WHEN contract.standard = 'erc20' AND contract.metadata_state = 'complete'
-               THEN contract.decimals
-           END AS decimals
-    FROM token_contracts AS contract
-    JOIN canonical_blocks AS observation
-      ON observation.chain_id = contract.chain_id
-     AND observation.number = contract.observed_block_number
-     AND observation.block_hash = contract.observed_block_hash
-    WHERE contract.chain_id = event.chain_id
-      AND contract.address = event.token_address
-      AND contract.observed_block_number <= event.block_number
-    ORDER BY contract.observed_block_number DESC, contract.code_hash DESC
-    LIMIT 1
-) AS metadata ON event.standard = 'erc20'
-WHERE NOT $5::boolean OR (
-    event.block_number,
-    inclusion.tx_index,
-    event.log_index,
-    event.sub_index,
-    event.block_hash,
-    event.transaction_hash
-) < (
-    $6::numeric,
-    $7::bigint,
-    $8::bigint,
-    $9::integer,
-    $10::bytea,
-    $11::bytea
-)
-ORDER BY event.block_number DESC, inclusion.tx_index DESC,
-         event.log_index DESC, event.sub_index DESC,
-         event.block_hash DESC, event.transaction_hash DESC
-LIMIT $12`

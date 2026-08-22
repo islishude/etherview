@@ -19,6 +19,7 @@ import (
 	"github.com/islishude/etherview/internal/adminstore"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -351,10 +352,7 @@ func validateMaintenanceOperationStage(operation, stage string) error {
 
 func finalizedHeight(ctx context.Context, db *sql.DB, chainID uint64) (uint64, bool, error) {
 	var raw sql.NullString
-	err := db.QueryRowContext(ctx, `
-		SELECT finalized_number::text
-		FROM chain_finality
-		WHERE chain_id = $1::numeric`, strconv.FormatUint(chainID, 10)).Scan(&raw)
+	err := db.QueryRowContext(ctx, dbgen.GetFinalizedHeight, strconv.FormatUint(chainID, 10)).Scan(&raw)
 	if err == sql.ErrNoRows || (err == nil && !raw.Valid) {
 		return 0, false, nil
 	}

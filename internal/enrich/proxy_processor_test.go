@@ -13,11 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func TestProxyReplayCandidatesLoadOnlyGenerationFencedVerificationTargets(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(proxyReplayCandidatesSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.EnrichLegacyProxyReplayCandidates), " ")
 	for _, required := range []string{
 		"FROM proxy_replay_targets AS target",
 		"SELECT target.address, target.target_kind",
@@ -171,7 +172,7 @@ func TestProbeUUPSReplayTargetsCallsOncePerImplementationCodeEpoch(t *testing.T)
 
 func TestProxyGenerationCarryForwardExcludesEveryRedetectedAddress(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(carryForwardProxyGenerationSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.EnrichLegacyCarryForwardProxyGeneration), " ")
 	for _, required := range []string{
 		"FROM durable_stage_publications AS publication",
 		"publication.job_generation < $6::bigint",

@@ -178,13 +178,13 @@ func TestAtomicPublisherDiscardsStaleAndPendingGenerationOutput(t *testing.T) {
 					switch {
 					case isPublicationControlSQL(query):
 						return driver.RowsAffected(1), nil
-					case strings.HasPrefix(strings.TrimSpace(query), "SAVEPOINT"):
+					case strings.Contains(query, "EnrichSavepointStageOutput"):
 						return driver.RowsAffected(0), nil
 					case strings.Contains(query, "INSERT INTO fixture_output"):
 						return driver.RowsAffected(1), nil
 					case strings.Contains(query, "SET status = 'succeeded'"):
 						return driver.RowsAffected(0), nil
-					case strings.HasPrefix(strings.TrimSpace(query), "ROLLBACK TO SAVEPOINT"):
+					case strings.Contains(query, "EnrichRollbackStageOutput"):
 						rolledToSavepoint.Store(true)
 						return driver.RowsAffected(0), nil
 					case strings.Contains(query, "SET status = 'queued'"):
@@ -237,7 +237,7 @@ func TestHeartbeatCannotRenewAfterAtomicCommit(t *testing.T) {
 			switch {
 			case isPublicationControlSQL(query):
 				return driver.RowsAffected(1), nil
-			case strings.HasPrefix(strings.TrimSpace(query), "SAVEPOINT"):
+			case strings.Contains(query, "EnrichSavepointStageOutput"):
 				return driver.RowsAffected(0), nil
 			case strings.Contains(query, "SET status = 'succeeded'"):
 				return driver.RowsAffected(1), nil
@@ -309,7 +309,7 @@ func TestAtomicPublisherTreatsCommittedGenerationSupersededDuringConfirmationAsS
 			switch {
 			case isPublicationControlSQL(query):
 				return driver.RowsAffected(1), nil
-			case strings.HasPrefix(strings.TrimSpace(query), "SAVEPOINT"):
+			case strings.Contains(query, "EnrichSavepointStageOutput"):
 				return driver.RowsAffected(0), nil
 			case strings.Contains(query, "SET status = 'succeeded'"):
 				return driver.RowsAffected(1), nil
@@ -367,7 +367,7 @@ func TestAtomicPublisherRollsBackWhenPublicationMarkerCannotCommit(t *testing.T)
 			switch {
 			case isPublicationControlSQL(query):
 				return driver.RowsAffected(1), nil
-			case strings.HasPrefix(strings.TrimSpace(query), "SAVEPOINT"), strings.Contains(query, "INSERT INTO fixture_output"):
+			case strings.Contains(query, "EnrichSavepointStageOutput"), strings.Contains(query, "INSERT INTO fixture_output"):
 				return driver.RowsAffected(1), nil
 			default:
 				return nil, fmt.Errorf("unexpected exec: %s", query)

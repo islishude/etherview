@@ -10,6 +10,16 @@ The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
 The parity suite also proves that `roles=all` is the union of the split-role
 graphs, so adding a component without updating both paths fails before serving.
+The manifest remains independent in `internal/app/component_manifest.go`;
+typed builders in `runtime_shared.go` and `runtime_<role>.go` own registration
+for each subsystem and role. `runtime_assembly.go` only carries their explicit
+dependencies and invokes them in lifecycle order, while `serve.go` owns shared
+resource acquisition and final supervision.
+
+Configuration has the same separation: `config.go` owns the model, defaults,
+and YAML load; environment files own role-scoped overrides and secret loading;
+validation files own pure global, role, and subsystem checks. The split does
+not introduce alternate precedence, defaults, keys, or role-specific fallback.
 
 The same supervisor owns the lifecycle of those registered services in every
 deployment shape. It advertises process readiness only after all selected
@@ -19,6 +29,21 @@ an early clean exit as a process failure, and bounds peer draining with
 with PostgreSQL liveness. The API probe combines it with durable core-index
 readiness, so startup, failure, and termination cannot serve a stale ready
 signal.
+
+The API server binds every accepted request context to that same lifecycle.
+Long-lived SSE handlers therefore exit before graceful HTTP shutdown waits for
+active connections. Ordinary responses retain the configured write timeout;
+SSE clears the idle deadline and reapplies it around each individual write and
+flush, preserving both indefinite idle subscriptions and a bounded slow-client
+write.
+
+The native API mux is composed from explicit operations, identity/billing,
+native, catalog, analytics, metadata, verification, and external-surface route
+modules. Production assembly declares its required capability set, and handler
+construction validates every dependency before registering any route. Optional
+features keep their stable disabled routes and typed unavailable responses;
+enabled production modules never infer dependencies through reader/catalog/Web
+type assertions or silently omit a route.
 
 The public API listener optionally serves TLS from one startup-loaded
 certificate/private-key pair as specified by
@@ -63,6 +88,14 @@ API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
 ```
 
+The SPA keeps route dispatch in `router.tsx`, shared explorer primitives in
+`pages/pages.tsx`, and block, transaction, address, token/NFT, verification,
+and entity dispatch in separate page modules. English and Chinese resources
+are merged from the same seven domain modules, preventing one language from
+silently acquiring a different key layout. The pinned Biome gate is part of
+`web-lint` and checks hooks, unused code, selected complexity, function size,
+and production file size before the embedded distribution is built.
+
 Optional accelerator behavior is intentionally asymmetric: NATS carries only
 coalesced poll hints, Redis shares rate buckets and caches only the durable
 runtime-status model behind an event generation, and S3-compatible storage
@@ -85,7 +118,11 @@ runtime-event, and external-call correctness fences; reader startup checks the
 same schema and chain identity, and API readiness fails closed if either pool
 is unavailable. Generated sqlc/pgx queries enter production through a small
 bridge that pins one stdlib connection from the selected pool for the duration
-of the callback. The routing and lag contract is specified in
+of the callback. Existing correctness transactions may execute exported,
+generated statements through their pinned `database/sql` transaction adapters,
+but production SQL still originates only in `internal/db/queries`; the
+migration runner and validated partition-DDL module are the only raw-SQL
+executors. The routing and lag contract is specified in
 [ADR-0018](../decisions/ADR-0018-api-read-replica-routing.md).
 
 ## Chain Correctness
@@ -149,6 +186,11 @@ of the callback. The routing and lag contract is specified in
   snapshot backward and backfill-worker count cannot consume the replay
   window. Each API replica tails that ledger independently; see
   [ADR-0004](../decisions/ADR-0004-durable-runtime-status-and-events.md).
+- A durable subscriber is registered provisionally while PostgreSQL replay and
+  cache invalidation run outside the fanout mutex. Live events published during
+  replay are buffered and merged by ID before the subscription becomes active;
+  bounded overflow returns replay unavailable instead of delaying established
+  subscribers.
 - If an API query cache is configured, its idempotent invalidator runs before a
   tailed event advances the replica cursor or reaches SSE subscribers. A failed
   invalidation retries the same PostgreSQL event. Without a configured cache,

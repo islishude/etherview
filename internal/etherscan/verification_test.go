@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -282,7 +283,7 @@ func TestResolveVerificationTargetRejectsUnprovenGenesisShapes(t *testing.T) {
 
 func TestVerificationTargetQueryAuthenticatesExactGenesisRuntime(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(verificationTargetSQL)
+	query := compactSQL(dbgen.EtherscanVerificationTarget)
 	for _, required := range []string{
 		"imported.state = 'complete'",
 		"genesis_canonical.number = 0",

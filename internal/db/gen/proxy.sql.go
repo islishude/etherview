@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countCurrentBeaconProxies = `-- name: CountCurrentBeaconProxies :one
+const CountCurrentBeaconProxies = `-- name: CountCurrentBeaconProxies :one
 WITH canonical_tip AS (
     SELECT number
     FROM canonical_blocks
@@ -125,13 +125,13 @@ WHERE beacon_address = $1::bytea
 `
 
 func (q *Queries) CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error) {
-	row := q.db.QueryRow(ctx, countCurrentBeaconProxies, beaconAddress, chainID)
+	row := q.db.QueryRow(ctx, CountCurrentBeaconProxies, beaconAddress, chainID)
 	var proxy_count string
 	err := row.Scan(&proxy_count)
 	return proxy_count, err
 }
 
-const getCurrentVerifiedProxyBinding = `-- name: GetCurrentVerifiedProxyBinding :one
+const GetCurrentVerifiedProxyBinding = `-- name: GetCurrentVerifiedProxyBinding :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -588,7 +588,7 @@ type GetCurrentVerifiedProxyBindingRow struct {
 }
 
 func (q *Queries) GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error) {
-	row := q.db.QueryRow(ctx, getCurrentVerifiedProxyBinding, chainID, proxyAddress)
+	row := q.db.QueryRow(ctx, GetCurrentVerifiedProxyBinding, chainID, proxyAddress)
 	var i GetCurrentVerifiedProxyBindingRow
 	err := row.Scan(
 		&i.BindingID,
@@ -618,7 +618,7 @@ func (q *Queries) GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pg
 	return i, err
 }
 
-const getDiamondCutHistoryCoverage = `-- name: GetDiamondCutHistoryCoverage :one
+const GetDiamondCutHistoryCoverage = `-- name: GetDiamondCutHistoryCoverage :one
 WITH tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -701,7 +701,7 @@ type GetDiamondCutHistoryCoverageRow struct {
 }
 
 func (q *Queries) GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamondCutHistoryCoverageParams) (GetDiamondCutHistoryCoverageRow, error) {
-	row := q.db.QueryRow(ctx, getDiamondCutHistoryCoverage,
+	row := q.db.QueryRow(ctx, GetDiamondCutHistoryCoverage,
 		arg.ChainID,
 		arg.SnapshotNumber,
 		arg.SnapshotHash,
@@ -712,7 +712,7 @@ func (q *Queries) GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamo
 	return i, err
 }
 
-const getLatestPublishedProxyDetection = `-- name: GetLatestPublishedProxyDetection :one
+const GetLatestPublishedProxyDetection = `-- name: GetLatestPublishedProxyDetection :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -1007,7 +1007,7 @@ type GetLatestPublishedProxyDetectionRow struct {
 }
 
 func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetection, chainID, proxyAddress)
+	row := q.db.QueryRow(ctx, GetLatestPublishedProxyDetection, chainID, proxyAddress)
 	var i GetLatestPublishedProxyDetectionRow
 	err := row.Scan(
 		&i.ObservationBlockNumber,
@@ -1036,7 +1036,7 @@ func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID 
 	return i, err
 }
 
-const getLatestPublishedProxyDetectionV2 = `-- name: GetLatestPublishedProxyDetectionV2 :one
+const GetLatestPublishedProxyDetectionV2 = `-- name: GetLatestPublishedProxyDetectionV2 :one
 SELECT evidence.details
 FROM proxy_detection_evidence AS evidence
 JOIN canonical_blocks AS canonical
@@ -1062,13 +1062,13 @@ LIMIT 1
 `
 
 func (q *Queries) GetLatestPublishedProxyDetectionV2(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetectionV2, chainID, proxyAddress)
+	row := q.db.QueryRow(ctx, GetLatestPublishedProxyDetectionV2, chainID, proxyAddress)
 	var details []byte
 	err := row.Scan(&details)
 	return details, err
 }
 
-const getLatestPublishedProxyNegativeEvidence = `-- name: GetLatestPublishedProxyNegativeEvidence :one
+const GetLatestPublishedProxyNegativeEvidence = `-- name: GetLatestPublishedProxyNegativeEvidence :one
 SELECT evidence.block_number::text AS block_number,
        evidence.block_hash, evidence.code_hash,
        evidence.detection_state, evidence.reason, evidence.details
@@ -1105,7 +1105,7 @@ type GetLatestPublishedProxyNegativeEvidenceRow struct {
 }
 
 func (q *Queries) GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyNegativeEvidence, chainID, proxyAddress)
+	row := q.db.QueryRow(ctx, GetLatestPublishedProxyNegativeEvidence, chainID, proxyAddress)
 	var i GetLatestPublishedProxyNegativeEvidenceRow
 	err := row.Scan(
 		&i.BlockNumber,
@@ -1118,7 +1118,7 @@ func (q *Queries) GetLatestPublishedProxyNegativeEvidence(ctx context.Context, c
 	return i, err
 }
 
-const getProxyAPISnapshot = `-- name: GetProxyAPISnapshot :one
+const GetProxyAPISnapshot = `-- name: GetProxyAPISnapshot :one
 
 WITH canonical_tip AS (
     SELECT number, block_hash
@@ -1173,7 +1173,7 @@ type GetProxyAPISnapshotRow struct {
 // to its current proxy@2 publication witness; raw or superseded generations
 // are retained for audit but never cross the public boundary.
 func (q *Queries) GetProxyAPISnapshot(ctx context.Context, chainID pgtype.Numeric) (GetProxyAPISnapshotRow, error) {
-	row := q.db.QueryRow(ctx, getProxyAPISnapshot, chainID)
+	row := q.db.QueryRow(ctx, GetProxyAPISnapshot, chainID)
 	var i GetProxyAPISnapshotRow
 	err := row.Scan(
 		&i.SnapshotNumber,
@@ -1187,7 +1187,7 @@ func (q *Queries) GetProxyAPISnapshot(ctx context.Context, chainID pgtype.Numeri
 	return i, err
 }
 
-const getProxyHistoryCoverage = `-- name: GetProxyHistoryCoverage :one
+const GetProxyHistoryCoverage = `-- name: GetProxyHistoryCoverage :one
 WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
@@ -1256,7 +1256,7 @@ type GetProxyHistoryCoverageRow struct {
 }
 
 func (q *Queries) GetProxyHistoryCoverage(ctx context.Context, arg GetProxyHistoryCoverageParams) (GetProxyHistoryCoverageRow, error) {
-	row := q.db.QueryRow(ctx, getProxyHistoryCoverage,
+	row := q.db.QueryRow(ctx, GetProxyHistoryCoverage,
 		arg.HistoryKind,
 		arg.ChainID,
 		arg.SnapshotNumber,
@@ -1273,7 +1273,7 @@ func (q *Queries) GetProxyHistoryCoverage(ctx context.Context, arg GetProxyHisto
 	return i, err
 }
 
-const listDiamondCutHistory = `-- name: ListDiamondCutHistory :many
+const ListDiamondCutHistory = `-- name: ListDiamondCutHistory :many
 SELECT event.block_number::text AS block_number,
        event.block_hash,
        block.timestamp::text AS block_timestamp,
@@ -1337,7 +1337,7 @@ type ListDiamondCutHistoryRow struct {
 }
 
 func (q *Queries) ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutHistoryParams) ([]ListDiamondCutHistoryRow, error) {
-	rows, err := q.db.Query(ctx, listDiamondCutHistory,
+	rows, err := q.db.Query(ctx, ListDiamondCutHistory,
 		arg.ChainID,
 		arg.DiamondAddress,
 		arg.SnapshotNumber,
@@ -1374,7 +1374,7 @@ func (q *Queries) ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutH
 	return items, nil
 }
 
-const listProxyInitializationHistory = `-- name: ListProxyInitializationHistory :many
+const ListProxyInitializationHistory = `-- name: ListProxyInitializationHistory :many
 WITH published_proxy_observations AS (
     SELECT observation.chain_id, observation.proxy_address,
            observation.block_number, observation.block_hash,
@@ -2200,7 +2200,7 @@ type ListProxyInitializationHistoryRow struct {
 }
 
 func (q *Queries) ListProxyInitializationHistory(ctx context.Context, arg ListProxyInitializationHistoryParams) ([]ListProxyInitializationHistoryRow, error) {
-	rows, err := q.db.Query(ctx, listProxyInitializationHistory,
+	rows, err := q.db.Query(ctx, ListProxyInitializationHistory,
 		arg.ChainID,
 		arg.SnapshotNumber,
 		arg.ProxyAddress,
@@ -2237,7 +2237,7 @@ func (q *Queries) ListProxyInitializationHistory(ctx context.Context, arg ListPr
 	return items, nil
 }
 
-const listProxyUpgradeHistory = `-- name: ListProxyUpgradeHistory :many
+const ListProxyUpgradeHistory = `-- name: ListProxyUpgradeHistory :many
 WITH published_proxy_observations AS (
     SELECT observation.chain_id, observation.proxy_address,
            observation.block_number, observation.block_hash,
@@ -3414,7 +3414,7 @@ type ListProxyUpgradeHistoryRow struct {
 }
 
 func (q *Queries) ListProxyUpgradeHistory(ctx context.Context, arg ListProxyUpgradeHistoryParams) ([]ListProxyUpgradeHistoryRow, error) {
-	rows, err := q.db.Query(ctx, listProxyUpgradeHistory,
+	rows, err := q.db.Query(ctx, ListProxyUpgradeHistory,
 		arg.ChainID,
 		arg.SnapshotNumber,
 		arg.PageLimit,
@@ -3465,7 +3465,7 @@ func (q *Queries) ListProxyUpgradeHistory(ctx context.Context, arg ListProxyUpgr
 	return items, nil
 }
 
-const validateProxyAPISnapshot = `-- name: ValidateProxyAPISnapshot :one
+const ValidateProxyAPISnapshot = `-- name: ValidateProxyAPISnapshot :one
 SELECT EXISTS (
     SELECT 1
     FROM canonical_blocks
@@ -3507,7 +3507,7 @@ type ValidateProxyAPISnapshotParams struct {
 }
 
 func (q *Queries) ValidateProxyAPISnapshot(ctx context.Context, arg ValidateProxyAPISnapshotParams) (bool, error) {
-	row := q.db.QueryRow(ctx, validateProxyAPISnapshot,
+	row := q.db.QueryRow(ctx, ValidateProxyAPISnapshot,
 		arg.DurableJobID,
 		arg.JobGeneration,
 		arg.ChainID,

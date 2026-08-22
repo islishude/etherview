@@ -10,6 +10,7 @@ import (
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -38,9 +39,7 @@ func (catalog *Postgres) TransactionFailure(
 		return TransactionFailure{}, err
 	}
 	var receiptStatus sql.NullString
-	if err := tx.QueryRowContext(ctx, transactionFailureReceiptStatusSQL,
-		chainID, identity.BlockNumber, blockHash, transactionHash,
-	).Scan(&receiptStatus); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.CatalogTransactionFailureReceiptStatus, chainID, identity.BlockNumber, blockHash, transactionHash).Scan(&receiptStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return TransactionFailure{}, ErrCorruptData
 		}
@@ -57,9 +56,7 @@ func (catalog *Postgres) TransactionFailure(
 		return TransactionFailure{}, ErrCorruptData
 	}
 
-	root, err := catalog.scanTraceFrame(tx.QueryRowContext(ctx, transactionFailureRootSQL,
-		chainID, identity.BlockNumber, blockHash, transactionHash,
-	))
+	root, err := catalog.scanTraceFrame(tx.QueryRowContext(ctx, dbgen.CatalogTransactionFailureRoot, chainID, identity.BlockNumber, blockHash, transactionHash))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return TransactionFailure{}, ErrCorruptData
@@ -161,28 +158,3 @@ func transactionFailureDecoding(
 	}
 	return result, nil
 }
-
-const transactionFailureReceiptStatusSQL = `
-SELECT receipt.raw->>'status'
-FROM receipts AS receipt
-WHERE receipt.chain_id = $1::numeric
-  AND receipt.block_number = $2::numeric
-  AND receipt.block_hash = $3
-  AND receipt.tx_hash = $4
-LIMIT 1`
-
-const transactionFailureRootSQL = `
-SELECT trace_path, parent_path, depth, call_type,
-       from_address, to_address, created_address,
-       value::text, gas::text, gas_used::text,
-       input, output, error, direct_reverted, reverted,
-       execution_address, execution_code_hash, execution_resolution
-FROM normalized_traces
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND transaction_hash = $4
-  AND trace_path = ''
-  AND depth = 0
-  AND canonical = true
-LIMIT 1`

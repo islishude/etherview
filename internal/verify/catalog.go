@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/islishude/etherview/internal/db/gen"
 	"golang.org/x/mod/semver"
 )
 
@@ -415,34 +416,17 @@ func (catalog *CompilerCatalog) persist(
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var generationID int64
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO compiler_catalog_generations
-			(language, source_url, catalog_digest, entry_count)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (language, catalog_digest) DO UPDATE
-		SET source_url = compiler_catalog_generations.source_url
-		RETURNING id
-	`, language, source, digest[:], len(entries)).Scan(&generationID)
+	err = tx.QueryRowContext(ctx, dbgen.VerifyInlinePersistStatement1, language, source, digest[:], len(entries)).Scan(&generationID)
 	if err != nil {
 		return 0, fmt.Errorf("persist compiler catalog generation: %w", err)
 	}
 	for _, entry := range entries {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO compiler_catalog_entries
-				(generation_id, language, version, platform, artifact_url, artifact_sha256, max_bytes)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			ON CONFLICT (generation_id, version) DO NOTHING
-		`, generationID, language, entry.Version, entry.Platform, entry.ArtifactURL,
+		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlinePersistStatement2, generationID, language, entry.Version, entry.Platform, entry.ArtifactURL,
 			entry.ArtifactSHA256[:], entry.MaxBytes); err != nil {
 			return 0, fmt.Errorf("persist compiler catalog entry: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO compiler_catalog_heads (language, generation_id)
-		VALUES ($1, $2)
-		ON CONFLICT (language) DO UPDATE
-		SET generation_id = EXCLUDED.generation_id, updated_at = now()
-	`, language, generationID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlinePersistStatement3, language, generationID); err != nil {
 		return 0, fmt.Errorf("activate compiler catalog generation: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -458,26 +442,14 @@ func (catalog *CompilerCatalog) Lookup(ctx context.Context, language Language, v
 	version = normalizeCompilerVersion(version)
 	var entry CatalogEntry
 	var digest []byte
-	err := catalog.db.QueryRowContext(ctx, `
-		SELECT entry.generation_id, entry.language, entry.version,
-		       entry.platform, entry.artifact_url, entry.artifact_sha256,
-		       entry.max_bytes, head.updated_at
-		FROM compiler_catalog_heads AS head
-		JOIN compiler_catalog_generations AS generation
-		  ON generation.id = head.generation_id AND generation.language = head.language
-		JOIN compiler_catalog_entries AS entry
-		  ON entry.generation_id = head.generation_id AND entry.language = head.language
-		WHERE head.language = $1 AND entry.version = $2
-	`, language, version).Scan(
+	err := catalog.db.QueryRowContext(ctx, dbgen.VerifyInlineLookupStatement1, language, version).Scan(
 		&entry.GenerationID, &entry.Language, &entry.Version, &entry.Platform,
 		&entry.ArtifactURL, &digest, &entry.MaxBytes, &entry.FetchedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
 		headErr := catalog.db.QueryRowContext(
-			ctx,
-			`SELECT EXISTS (SELECT 1 FROM compiler_catalog_heads WHERE language = $1)`,
-			language,
+			ctx, dbgen.VerifyInlineLookupStatement2, language,
 		).Scan(&exists)
 		if headErr != nil {
 			return CatalogEntry{}, fmt.Errorf("check compiler catalog availability: %w", headErr)
@@ -507,16 +479,7 @@ func (catalog *CompilerCatalog) Versions(ctx context.Context, language Language)
 	if language == LanguageYul {
 		language = LanguageSolidity
 	}
-	rows, err := catalog.db.QueryContext(ctx, `
-		SELECT entry.version, head.updated_at
-		FROM compiler_catalog_heads AS head
-		JOIN compiler_catalog_generations AS generation
-		  ON generation.id = head.generation_id AND generation.language = head.language
-		JOIN compiler_catalog_entries AS entry
-		  ON entry.generation_id = head.generation_id AND entry.language = head.language
-		WHERE head.language = $1
-		ORDER BY entry.version
-	`, language)
+	rows, err := catalog.db.QueryContext(ctx, dbgen.VerifyInlineVersionsStatement1, language)
 	if err != nil {
 		return nil, fmt.Errorf("list compiler catalog: %w", err)
 	}

@@ -55,7 +55,6 @@ services:
       FOUNDRY_OFFLINE: "true"
     tmpfs:
       - /tmp:uid=1000,gid=1000,mode=0700
-      - /workspace/cache:uid=1000,gid=1000,mode=0700
       - /workspace/out:uid=1000,gid=1000,mode=0700
       - /workspace/broadcast:uid=1000,gid=1000,mode=0700
       - /home/foundry/.cache:uid=1000,gid=1000,mode=0700

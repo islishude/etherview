@@ -116,6 +116,46 @@ func TestPollerPersistsExplicitFailureWithoutReturningStaleSuccess(t *testing.T)
 	}
 }
 
+func TestPollerUsesTypedFailureClassification(t *testing.T) {
+	t.Parallel()
+	options := PollerOptions{
+		ChainID: 1, PollInterval: time.Second, Retention: time.Minute,
+		MaxTransactions: 10, MaxResponseBytes: 1 << 20, Now: func() time.Time { return time.Unix(7, 0) },
+	}
+	t.Run("invalid snapshot", func(t *testing.T) {
+		poller, err := NewPoller(contentSource{content: json.RawMessage(`{"pending":`)}, &recordingStore{}, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cycleErr := poller.Cycle(context.Background())
+		if pollErrorCode(cycleErr) != "invalid_snapshot" {
+			t.Fatalf("invalid snapshot code=%q error=%v", pollErrorCode(cycleErr), cycleErr)
+		}
+	})
+	t.Run("snapshot storage", func(t *testing.T) {
+		store := &recordingStore{snapshotErr: errors.New("database snapshot write failed")}
+		poller, err := NewPoller(contentSource{content: txpoolTestContent(t, 1)}, store, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cycleErr := poller.Cycle(context.Background())
+		if pollErrorCode(cycleErr) != "storage_or_internal_failure" {
+			t.Fatalf("storage code=%q error=%v", pollErrorCode(cycleErr), cycleErr)
+		}
+	})
+	t.Run("failure status storage", func(t *testing.T) {
+		store := &recordingStore{failureErr: errors.New("database snapshot status failed")}
+		poller, err := NewPoller(errorSource{err: SourceError{State: StateUnavailable, Code: "method_not_supported"}}, store, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cycleErr := poller.Cycle(context.Background())
+		if pollErrorCode(cycleErr) != "storage_or_internal_failure" {
+			t.Fatalf("failure storage code=%q error=%v", pollErrorCode(cycleErr), cycleErr)
+		}
+	})
+}
+
 func TestPoolSourceUsesTxpoolContentRPC(t *testing.T) {
 	t.Parallel()
 	service := &pendingRPCService{content: txpoolTestContent(t, 1)}
@@ -160,15 +200,26 @@ func (source errorSource) PendingTransactions(context.Context) (json.RawMessage,
 	return nil, "rpc", source.err
 }
 
+type contentSource struct{ content json.RawMessage }
+
+func (source contentSource) PendingTransactions(context.Context) (json.RawMessage, string, error) {
+	return source.content, "rpc", nil
+}
+
 type recordingStore struct {
-	mu        sync.Mutex
-	snapshots []Snapshot
-	failures  []Failure
+	mu          sync.Mutex
+	snapshots   []Snapshot
+	failures    []Failure
+	snapshotErr error
+	failureErr  error
 }
 
 func (store *recordingStore) StoreSnapshot(_ context.Context, snapshot Snapshot) (SnapshotInfo, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.snapshotErr != nil {
+		return SnapshotInfo{}, store.snapshotErr
+	}
 	store.snapshots = append(store.snapshots, snapshot)
 	return SnapshotInfo{ID: int64(len(store.snapshots))}, nil
 }
@@ -176,6 +227,9 @@ func (store *recordingStore) StoreSnapshot(_ context.Context, snapshot Snapshot)
 func (store *recordingStore) StoreFailure(_ context.Context, failure Failure) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.failureErr != nil {
+		return store.failureErr
+	}
 	store.failures = append(store.failures, failure)
 	return nil
 }

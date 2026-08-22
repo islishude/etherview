@@ -243,7 +243,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       removeProviderListener(provider, "chainChanged", chainChanged);
       removeProviderListener(provider, "disconnect", disconnected);
     };
-  }, [commitActive, internalActive?.detail.provider]);
+  }, [commitActive, internalActive]);
 
   const connect = useCallback(
     async (uuid: string) => {

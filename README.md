@@ -102,7 +102,7 @@ Vite dev/preview mode.
 
 ## Build and verify
 
-The minimum supported toolchains are Go 1.26.5, Node.js 24.18.0, and npm
+The minimum supported toolchains are Go 1.27.0, Node.js 24.18.0, and npm
 11.16.0; compatible newer stable releases are supported.
 
 ```sh

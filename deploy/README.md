@@ -193,6 +193,9 @@ image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.
 
 NFT metadata defaults to the best-effort public `https://ipfs.io` gateway.
+The checked-in Preview allows a bounded 30-second cold fetch so its strict live
+gate can complete without a durable retry; the ordinary configuration default
+and example remain 10 seconds.
 Override it without editing the checked-in configuration:
 
 ```sh

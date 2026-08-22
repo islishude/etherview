@@ -16,10 +16,22 @@ run:
 linters:
   default: standard
   enable:
+    - dupl
+    - gocognit
     - modernize
     - unparam
+  settings:
+    dupl:
+      threshold: 150
+    gocognit:
+      min-complexity: 150
   exclusions:
     generated: strict
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - gocognit
 
 formatters:
   enable:

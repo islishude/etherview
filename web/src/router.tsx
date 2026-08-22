@@ -9,7 +9,6 @@ import { getAddress, isAddress } from "viem";
 import { AppShell } from "@/components/AppShell";
 import {
   BlocksPage,
-  EntityPage,
   GenesisPage,
   HomePage,
   NotFoundPage,
@@ -17,8 +16,9 @@ import {
   StatusPage,
   TokensPage,
   TransactionsPage,
-  VerifyPage,
 } from "@/pages/pages";
+import { EntityPage } from "@/pages/EntityPage";
+import { VerifyPage } from "@/pages/VerifyPage";
 import {
   ChartMetricPage,
   ChartsPage,

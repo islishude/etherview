@@ -9,10 +9,12 @@ WORKDIR /workspace
 COPY --chown=foundry:foundry foundry.toml ./
 COPY --chown=foundry:foundry src ./src
 
-# Cache the exact Solidity release during the image build, then prove the
-# fixture can compile from that cache without resolving another toolchain.
+# Install the exact Solidity release into Foundry's compiler cache during the
+# image build, then prove the fixture can compile offline. Project build caching
+# stays disabled because every verification command runs in a fresh container.
 RUN forge --version | grep -F "forge Version: 1.7.1" \
     && forge --version | grep -F "Commit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8" \
+    && forge config --json | grep -F '"cache": false' \
     && forge build \
     && forge build --offline --force --silent
 

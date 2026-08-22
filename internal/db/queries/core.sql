@@ -40,3 +40,8 @@ LIMIT sqlc.arg(page_limit);
 SELECT version, checksum, applied_at
 FROM etherview_schema_migrations
 ORDER BY version;
+
+-- name: GetFinalizedHeight :one
+SELECT finalized_number::text
+FROM chain_finality
+WHERE chain_id = sqlc.arg(chain_id)::numeric;

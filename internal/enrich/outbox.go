@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -227,21 +228,21 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	startedAt := time.Now()
 	decodedMessage := message
 	_ = decodedMessage.decode()
-	if _, err := tx.ExecContext(ctx, "SAVEPOINT enrichment_dispatch_jobs"); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichSavepointDispatchJobs); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("create enrichment dispatch savepoint: %w", err)
 	}
 	audit, processErr := dispatcher.processMessage(ctx, tx, message)
 	if processErr != nil {
-		if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT enrichment_dispatch_jobs"); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichRollbackDispatchJobs); err != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("rollback partial enrichment dispatch: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT enrichment_dispatch_jobs"); err != nil {
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichReleaseDispatchJobs); err != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("release failed enrichment dispatch savepoint: %w", err)
 		}
 		delay := dispatcher.retryDelay(message.Attempts)
 		microseconds, _ := durationMicroseconds(delay)
 		reason := truncateOutboxError(processErr.Error())
-		result, updateErr := tx.ExecContext(ctx, retryOutboxSQL, message.ID, reason, microseconds)
+		result, updateErr := tx.ExecContext(ctx, dbgen.EnrichLegacyRetryOutbox, message.ID, reason, microseconds)
 		if updateErr != nil {
 			return OutboxDispatchResult{}, fmt.Errorf("record enrichment outbox retry: %w", updateErr)
 		}
@@ -261,14 +262,14 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 			},
 		}, nil
 	}
-	if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT enrichment_dispatch_jobs"); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichReleaseDispatchJobs); err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("release enrichment dispatch savepoint: %w", err)
 	}
 	encodedAudit, err := json.Marshal(audit)
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("encode enrichment outbox audit: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, publishOutboxSQL, message.ID, string(encodedAudit))
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyPublishOutbox, message.ID, string(encodedAudit))
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("publish enrichment outbox message: %w", err)
 	}
@@ -294,7 +295,7 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 func claimOutboxMessage(ctx context.Context, tx *sql.Tx) (outboxMessage, bool, error) {
 	var message outboxMessage
 	var payload []byte
-	err := tx.QueryRowContext(ctx, claimOutboxSQL).Scan(
+	err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyClaimOutbox).Scan(
 		&message.ID,
 		&message.ChainID,
 		&message.Topic,
@@ -360,9 +361,7 @@ func (dispatcher *OutboxDispatcher) processMessage(ctx context.Context, tx *sql.
 func (dispatcher *OutboxDispatcher) processCanonical(ctx context.Context, tx *sql.Tx, message outboxMessage) (dispatchAudit, error) {
 	var canonical bool
 	if err := tx.QueryRowContext(
-		ctx,
-		canonicalBlockSQL,
-		message.ChainID,
+		ctx, dbgen.EnrichLegacyCanonicalBlock, message.ChainID,
 		strconv.FormatUint(message.BlockNumber, 10),
 		message.BlockHash[:],
 	).Scan(&canonical); err != nil {
@@ -406,9 +405,7 @@ func (dispatcher *OutboxDispatcher) enqueue(ctx context.Context, tx *sql.Tx, req
 func (*OutboxDispatcher) processOrphan(ctx context.Context, tx *sql.Tx, message outboxMessage) (dispatchAudit, error) {
 	var canonical bool
 	if err := tx.QueryRowContext(
-		ctx,
-		canonicalBlockSQL,
-		message.ChainID,
+		ctx, dbgen.EnrichLegacyCanonicalBlock, message.ChainID,
 		strconv.FormatUint(message.BlockNumber, 10),
 		message.BlockHash[:],
 	).Scan(&canonical); err != nil {
@@ -418,7 +415,7 @@ func (*OutboxDispatcher) processOrphan(ctx context.Context, tx *sql.Tx, message 
 		return dispatchAudit{Outcome: "stale_orphan_skipped", Replayed: false}, nil
 	}
 	var journalsNonCanonical bool
-	if err := tx.QueryRowContext(ctx, orphanJournalsSQL, message.ChainID, message.BlockHash[:]).Scan(&journalsNonCanonical); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyOrphanJournals, message.ChainID, message.BlockHash[:]).Scan(&journalsNonCanonical); err != nil {
 		return dispatchAudit{}, fmt.Errorf("check orphaned block journals: %w", err)
 	}
 	if !journalsNonCanonical {
@@ -468,45 +465,3 @@ func requireSingleUpdate(result sql.Result, operation string) error {
 	}
 	return nil
 }
-
-const claimOutboxSQL = `
-SELECT id, chain_id::text, topic, message_key, payload, attempts, generation
-FROM transactional_outbox
-WHERE published_at IS NULL
-  AND available_at <= clock_timestamp()
-  AND topic IN ('core.block.canonical', 'core.block.orphaned')
-ORDER BY available_at, id
-FOR UPDATE SKIP LOCKED
-LIMIT 1`
-
-const canonicalBlockSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-      AND number = $2::numeric
-      AND block_hash = $3
-)`
-
-const orphanJournalsSQL = `
-SELECT NOT EXISTS (
-    SELECT 1
-    FROM block_journals
-    WHERE chain_id = $1::numeric
-      AND block_hash = $2
-      AND canonical
-)`
-
-const publishOutboxSQL = `
-UPDATE transactional_outbox
-SET published_at = clock_timestamp(),
-    last_error = NULL,
-    payload = jsonb_set(payload, '{_etherview_dispatch}', $2::jsonb, true)
-WHERE id = $1 AND published_at IS NULL`
-
-const retryOutboxSQL = `
-UPDATE transactional_outbox
-SET attempts = LEAST(attempts + 1, 2147483647),
-    last_error = $2,
-    available_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond')
-WHERE id = $1 AND published_at IS NULL`

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verifiedselector"
 )
 
@@ -47,20 +48,7 @@ func (repository *PostgresRepository) SubmitV2(
 		codeHash, _ = decodeFixedHex(request.Target.CodeHash, 32)
 		blockHash, _ = decodeFixedHex(request.Target.AtBlockHash, 32)
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, `
-		INSERT INTO verification_jobs (
-			id, kind, language, catalog_language, compiler_version, compiler_platform,
-			catalog_generation_id,
-			compiler_digest, executor_kind, execution_policy, executor_digest,
-			chain_id, address, code_hash, block_hash,
-			request, request_payload, request_digest, max_attempts
-		) VALUES (
-			$1::uuid, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL,
-			$9::numeric, $10, $11, $12, $13::jsonb, $14, $15, $16
-		)
-		ON CONFLICT (request_digest) WHERE status IN ('queued', 'running', 'succeeded')
-		DO NOTHING
-		RETURNING `+v2VerificationJobColumns,
+	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2SubmitJob,
 		id, request.Kind, language, catalogLanguage, version, platform, generation,
 		compilerDigest,
 		chainID, address, codeHash, blockHash, string(encoded), encoded, digest[:],
@@ -68,12 +56,7 @@ func (repository *PostgresRepository) SubmitV2(
 	))
 	created := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
-		job, err = repository.scanV2Job(repository.db.QueryRowContext(ctx, `
-			SELECT `+v2VerificationJobColumns+`
-			FROM verification_jobs
-			WHERE request_digest = $1 AND status IN ('queued', 'running', 'succeeded')
-			ORDER BY created_at, id LIMIT 1
-		`, digest[:]))
+		job, err = repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2FindActiveJobByDigest, digest[:]))
 	}
 	if err != nil {
 		return VerificationJob{}, false, fmt.Errorf("submit v2 verification job: %w", err)
@@ -115,38 +98,7 @@ func (repository *PostgresRepository) claimRunnable(
 	if err != nil {
 		return VerificationLease{}, false, err
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, `
-		WITH exhausted AS (
-			UPDATE verification_jobs
-			SET status = 'failed', error_code = 'attempts_exhausted',
-			    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
-			    updated_at = clock_timestamp()
-			WHERE id = (
-				SELECT id FROM verification_jobs
-				WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-				  AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
-				       OR ($4 AND language IN ('solidity', 'yul'))
-				       OR ($5 AND language = 'geas'))
-				  AND attempt_count >= max_attempts
-				ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
-			)
-			RETURNING id
-		), candidate AS (
-			SELECT id FROM verification_jobs
-			WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-			  AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
-			       OR ($4 AND language IN ('solidity', 'yul'))
-			       OR ($5 AND language = 'geas'))
-			  AND attempt_count < max_attempts
-			  AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
-			ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
-		)
-		UPDATE verification_jobs AS job
-		SET status = 'running', leased_by = $1, lease_token = $2,
-		    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-		    attempt_count = job.attempt_count + 1, updated_at = clock_timestamp()
-		FROM candidate WHERE job.id = candidate.id
-		RETURNING `+v2ClaimedVerificationJobColumns,
+	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2ClaimRunnable,
 		workerID, token, microseconds, availability.SolcJS, availability.Geas,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -184,24 +136,7 @@ func (repository *PostgresRepository) BindCompiler(
 	if provenance.CatalogGeneration > 0 {
 		generation = provenance.CatalogGeneration
 	}
-	result, err := repository.db.ExecContext(ctx, `
-		UPDATE verification_jobs
-		SET compiler_platform = $3, catalog_generation_id = $4,
-		    compiler_digest = $5, executor_kind = $6,
-		    execution_policy = $7, executor_digest = $8,
-		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
-		  AND lease_expires_at > clock_timestamp()
-		  AND (
-		    (compiler_platform IS NULL AND catalog_generation_id IS NULL
-		     AND compiler_digest IS NULL AND executor_kind IS NULL
-		     AND execution_policy IS NULL AND executor_digest IS NULL)
-		    OR
-		    (compiler_platform = $3 AND catalog_generation_id IS NOT DISTINCT FROM $4
-		     AND compiler_digest = $5 AND executor_kind = $6
-		     AND execution_policy = $7 AND executor_digest = $8)
-		  )
-	`, lease.Job.ID, lease.Token, provenance.Platform,
+	result, err := repository.db.ExecContext(ctx, dbgen.VerifyInlineBindCompilerStatement1, lease.Job.ID, lease.Token, provenance.Platform,
 		generation, provenance.Digest[:],
 		provenance.ExecutorKind, provenance.ExecutionPolicy,
 		provenance.ExecutorDigest[:])
@@ -212,11 +147,7 @@ func (repository *PostgresRepository) BindCompiler(
 		return nil
 	}
 	var leaseOwned bool
-	err = repository.db.QueryRowContext(ctx, `
-		SELECT TRUE FROM verification_jobs
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
-		  AND lease_expires_at > clock_timestamp()
-	`, lease.Job.ID, lease.Token).Scan(&leaseOwned)
+	err = repository.db.QueryRowContext(ctx, dbgen.VerifyInlineBindCompilerStatement2, lease.Job.ID, lease.Token).Scan(&leaseOwned)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost
 	}
@@ -248,11 +179,7 @@ func (repository *PostgresRepository) CompleteV2(
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	job, err := repository.scanV2Job(tx.QueryRowContext(ctx, `
-		SELECT `+v2VerificationJobColumns+` FROM verification_jobs
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
-		  AND lease_expires_at > clock_timestamp() FOR UPDATE
-	`, lease.Job.ID, lease.Token))
+	job, err := repository.scanV2Job(tx.QueryRowContext(ctx, dbgen.VerifyV2LockRunningJob, lease.Job.ID, lease.Token))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost
 	}
@@ -282,13 +209,7 @@ func (repository *PostgresRepository) CompleteV2(
 		publicationCodeHash, _ = decodeFixedHex(job.RequestV2.Target.CodeHash, 32)
 		blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
 		var actualRuntime []byte
-		runtimeErr := tx.QueryRowContext(ctx, `
-			SELECT code
-			FROM contract_code_observations
-			WHERE chain_id = $1::numeric AND address = $2
-			  AND block_number = $3::numeric AND block_hash = $4
-			  AND code_hash = $5 AND canonical = TRUE`,
-			strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
+		runtimeErr := tx.QueryRowContext(ctx, dbgen.VerifyInlineCompleteV2Statement1, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
 			strconv.FormatUint(publicationBlockNumber, 10), blockHash, publicationCodeHash,
 		).Scan(&actualRuntime)
 		if runtimeErr != nil && !errors.Is(runtimeErr, sql.ErrNoRows) {
@@ -307,31 +228,12 @@ func (repository *PostgresRepository) CompleteV2(
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE verification_jobs
-		SET status = 'succeeded', outcome_kind = $3, outcome = $4::jsonb,
-		    error_code = NULL, leased_by = NULL, lease_token = NULL,
-		    lease_expires_at = NULL, updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND lease_token = $2
-	`, job.ID, lease.Token, outcomeKind, string(outcome)); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement2, job.ID, lease.Token, outcomeKind, string(outcome)); err != nil {
 		return err
 	}
 	artifactKind, artifactVersion, artifactImmutable, artifactManifest :=
 		proxyArtifactAttestationValues(authenticatedArtifact)
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO verification_results (
-			job_id, request_digest, outcome_kind, outcome, file_name, contract_name,
-			language, compiler_version, match_type, abi, sources, settings,
-			compilation_artifacts, creation_code_artifacts, runtime_code_artifacts,
-			constructor_arguments, libraries, is_blueprint,
-			proxy_artifact_kind, proxy_standard_version,
-			proxy_runtime_immutable_address, proxy_source_manifest_sha256
-		) VALUES (
-			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb,
-			$11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb,
-			$16, $17::jsonb, $18, $19, $20, $21, $22
-		)
-	`, job.ID, job.RequestDigest[:], outcomeKind, string(outcome),
+	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement3, job.ID, job.RequestDigest[:], outcomeKind, string(outcome),
 		resultFields.FileName, resultFields.ContractName, resultFields.Language,
 		resultFields.CompilerVersion, resultFields.MatchType, resultFields.ABI,
 		resultFields.Sources, resultFields.Settings, resultFields.CompilationArtifacts,
@@ -342,19 +244,7 @@ func (repository *PostgresRepository) CompleteV2(
 		return err
 	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO verified_contracts (
-				chain_id, address, code_hash, valid_from_block, verification_job_id,
-				request_digest, file_name, contract_name, language, compiler_version,
-				match_type, abi, sources, settings, compilation_artifacts,
-				creation_code_artifacts, runtime_code_artifacts, constructor_arguments,
-				libraries, is_blueprint
-			) VALUES (
-				$1::numeric, $2, $3, $4::numeric, $5::uuid, $6, $7, $8, $9, $10,
-				$11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb,
-				$17::jsonb, $18, $19::jsonb, $20
-			)
-		`, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
+		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement4, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
 			publicationCodeHash, strconv.FormatUint(publicationBlockNumber, 10),
 			job.ID, job.RequestDigest[:],
 			resultFields.FileName, resultFields.ContractName, resultFields.Language,
@@ -370,16 +260,7 @@ func (repository *PostgresRepository) CompleteV2(
 			if authenticatedArtifact.RuntimeImmutable != nil {
 				immutable = authenticatedArtifact.RuntimeImmutable[:]
 			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO verified_contract_proxy_artifacts (
-					chain_id, address, code_hash, valid_from_block,
-					verification_job_id, request_digest, artifact_kind,
-					standard_version, runtime_immutable_address,
-					source_manifest_sha256
-				) VALUES (
-					$1::numeric, $2, $3, $4::numeric,
-					$5::uuid, $6, $7, $8, $9, $10
-				)`, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+			if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement5, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
 				publicationAddress, publicationCodeHash,
 				strconv.FormatUint(publicationBlockNumber, 10),
 				job.ID, job.RequestDigest[:], authenticatedArtifact.Kind,
@@ -434,14 +315,7 @@ func (repository *PostgresRepository) Fail(
 	if !code.valid() {
 		return errors.New("verification failure code is invalid")
 	}
-	result, err := repository.db.ExecContext(ctx, `
-		UPDATE verification_jobs
-		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $3,
-		    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
-		    updated_at = clock_timestamp()
-		WHERE id = $1::uuid AND status = 'running' AND lease_token = $2
-		  AND lease_expires_at > clock_timestamp()
-	`, lease.Job.ID, lease.Token, code)
+	result, err := repository.db.ExecContext(ctx, dbgen.VerifyInlineFailStatement1, lease.Job.ID, lease.Token, code)
 	if err != nil {
 		return err
 	}
@@ -452,9 +326,7 @@ func (repository *PostgresRepository) Job(ctx context.Context, id string) (Verif
 	if !validUUID(id) {
 		return VerificationJob{}, false, errors.New("verification job ID is invalid")
 	}
-	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, `
-		SELECT `+v2VerificationJobColumns+` FROM verification_jobs WHERE id = $1::uuid
-	`, id))
+	job, err := repository.scanV2Job(repository.db.QueryRowContext(ctx, dbgen.VerifyV2GetJob, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return VerificationJob{}, false, nil
 	}
@@ -639,20 +511,6 @@ func decodeStoredVerificationMatch(value []byte) (*VerificationMatchDetails, err
 	return &details, nil
 }
 
-const v2VerificationJobColumns = `
-id::text, kind, language, compiler_version, compiler_platform, catalog_generation_id,
-compiler_digest, executor_kind, execution_policy, executor_digest,
-request_payload, request_digest, status, outcome_kind, outcome, error_code,
-attempt_count, max_attempts, created_at, updated_at`
-
-const v2ClaimedVerificationJobColumns = `
-job.id::text, job.kind, job.language, job.compiler_version, job.compiler_platform,
-job.catalog_generation_id,
-job.compiler_digest, job.executor_kind, job.execution_policy, job.executor_digest,
-job.request_payload, job.request_digest,
-job.status, job.outcome_kind, job.outcome, job.error_code,
-job.attempt_count, job.max_attempts, job.created_at, job.updated_at`
-
 type v2ResultFields struct {
 	FileName             any
 	ContractName         any
@@ -770,14 +628,10 @@ func canonicalV2Target(ctx context.Context, tx *sql.Tx, target *VerificationTarg
 		if err != nil || len(runtime) == 0 {
 			return 0, ErrTargetNotCanonical
 		}
-		if err := tx.QueryRowContext(ctx, verificationCanonicalGenesisTargetSQL,
-			strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash, runtime,
-		).Scan(&blockNumber); err != nil {
+		if err := tx.QueryRowContext(ctx, dbgen.VerifyLegacyVerificationCanonicalGenesisTarget, strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash, runtime).Scan(&blockNumber); err != nil {
 			return 0, err
 		}
-	} else if err := tx.QueryRowContext(ctx, verificationCanonicalTargetSQL,
-		strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash,
-	).Scan(&blockNumber); err != nil {
+	} else if err := tx.QueryRowContext(ctx, dbgen.VerifyLegacyVerificationCanonicalTarget, strconv.FormatUint(target.ChainID, 10), address, codeHash, blockHash).Scan(&blockNumber); err != nil {
 		return 0, err
 	}
 	value, err := strconv.ParseUint(blockNumber, 10, 64)

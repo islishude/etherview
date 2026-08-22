@@ -161,6 +161,10 @@ func (function replaySourceFunc) Replay(ctx context.Context, after *uint64, limi
 	return function(ctx, after, limit)
 }
 
+type streamResponseRecorder struct{ *httptest.ResponseRecorder }
+
+func (*streamResponseRecorder) SetWriteDeadline(time.Time) error { return nil }
+
 func TestEventStreamClassifiesCursorAndReplayFailures(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -200,7 +204,7 @@ func TestEventStreamClassifiesCursorAndReplayFailures(t *testing.T) {
 			}
 			request := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
 			request.Header.Set("Last-Event-ID", test.cursor)
-			recorder := httptest.NewRecorder()
+			recorder := &streamResponseRecorder{ResponseRecorder: httptest.NewRecorder()}
 			handler.ServeHTTP(recorder, request)
 
 			if recorder.Code != test.status {

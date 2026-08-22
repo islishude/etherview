@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +78,42 @@ type replayFixture struct {
 type mutableReplayFixture struct {
 	mu     sync.Mutex
 	events []Event
+}
+
+type blockingReplayFixture struct {
+	mu      sync.Mutex
+	events  []Event
+	block   bool
+	entered chan struct{}
+	release <-chan struct{}
+}
+
+func (fixture *blockingReplayFixture) Replay(ctx context.Context, after *uint64, limit int) ([]Event, error) {
+	fixture.mu.Lock()
+	events := append([]Event(nil), fixture.events...)
+	block, entered, release := fixture.block, fixture.entered, fixture.release
+	fixture.mu.Unlock()
+	if block {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-release:
+		}
+	}
+	result := make([]Event, 0, min(limit, len(events)))
+	for _, event := range events {
+		if after == nil || event.ID > *after {
+			result = append(result, event)
+		}
+		if len(result) == limit {
+			break
+		}
+	}
+	return result, nil
 }
 
 func (f *mutableReplayFixture) Replay(_ context.Context, after *uint64, limit int) ([]Event, error) {
@@ -227,6 +264,159 @@ func TestReplayForNewSubscriberDoesNotSuppressExistingLiveSubscriber(t *testing.
 	case duplicate := <-second:
 		t.Fatalf("second subscriber received duplicate event %+v", duplicate)
 	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestSlowDurableReplayDoesNotBlockLivePublicationAndMergesExactlyOnce(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	source := &blockingReplayFixture{}
+	broker, err := NewDurableBroker(8, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	first, err := broker.Subscribe(ctx, "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := Event{ID: 1, Type: "head", Time: now, Data: []byte(`{"number":"1"}`)}
+	release := make(chan struct{})
+	source.mu.Lock()
+	source.events = []Event{event}
+	source.block = true
+	source.entered = make(chan struct{}, 1)
+	source.release = release
+	source.mu.Unlock()
+
+	type subscriptionResult struct {
+		channel <-chan Event
+		err     error
+	}
+	secondResult := make(chan subscriptionResult, 1)
+	go func() {
+		channel, subscribeErr := broker.Subscribe(ctx, "0")
+		secondResult <- subscriptionResult{channel: channel, err: subscribeErr}
+	}()
+	select {
+	case <-source.entered:
+	case <-time.After(time.Second):
+		t.Fatal("durable replay did not block")
+	}
+
+	published := make(chan error, 1)
+	go func() {
+		_, publishErr := broker.PublishStored(event)
+		published <- publishErr
+	}()
+	select {
+	case publishErr := <-published:
+		if publishErr != nil {
+			t.Fatal(publishErr)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("live publication blocked behind durable replay")
+	}
+	if got := <-first; got.ID != event.ID {
+		t.Fatalf("existing subscriber event=%+v", got)
+	}
+	close(release)
+	second := <-secondResult
+	if second.err != nil {
+		t.Fatal(second.err)
+	}
+	if got := <-second.channel; got.ID != event.ID {
+		t.Fatalf("replay/live merged event=%+v", got)
+	}
+	select {
+	case duplicate := <-second.channel:
+		t.Fatalf("replay/live merge duplicated event %+v", duplicate)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestDurableReplaySkipsAlreadyCompletedCacheInvalidation(t *testing.T) {
+	t.Parallel()
+	event := Event{ID: 9, Type: "status", Time: time.Now().UTC(), Data: []byte(`{"ready":true}`)}
+	invalidations := 0
+	broker, err := NewDurableBroker(8, replayFixture{events: []Event{event}}, CacheInvalidatorFunc(func(_ context.Context, _ Event) error {
+		invalidations++
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published, err := broker.PublishStored(event); err != nil || !published {
+		t.Fatalf("publish=%t err=%v", published, err)
+	}
+	stream, err := broker.Subscribe(t.Context(), "8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := <-stream; got.ID != event.ID {
+		t.Fatalf("replayed event=%+v", got)
+	}
+	if invalidations != 1 {
+		t.Fatalf("historical replay repeated cache invalidation %d times", invalidations)
+	}
+}
+
+func TestCacheInvalidationDeduplicatesOnlyTheSameEventIdentity(t *testing.T) {
+	t.Parallel()
+	invalidated := make([]uint64, 0, 2)
+	broker, err := NewDurableBroker(8, replayFixture{}, CacheInvalidatorFunc(func(_ context.Context, event Event) error {
+		invalidated = append(invalidated, event.ID)
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	newer := Event{ID: 10, Type: "status", Time: now, Data: []byte(`{"ready":true}`)}
+	older := Event{ID: 9, Type: "status", Time: now, Data: []byte(`{"ready":false}`)}
+	if err := broker.invalidate(t.Context(), newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.invalidate(t.Context(), older); err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.invalidate(t.Context(), newer); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(invalidated, []uint64{10, 9}) {
+		t.Fatalf("invalidated IDs=%v", invalidated)
+	}
+}
+
+func TestDurableReplayOverflowFailsClosedAndRemovesPreparingSubscriber(t *testing.T) {
+	t.Parallel()
+	source := &blockingReplayFixture{block: true, entered: make(chan struct{}, 1)}
+	release := make(chan struct{})
+	source.release = release
+	broker, err := NewDurableBroker(2, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, subscribeErr := broker.Subscribe(t.Context(), "0")
+		result <- subscribeErr
+	}()
+	<-source.entered
+	for id := uint64(1); id <= 3; id++ {
+		event := Event{ID: id, Type: "head", Time: time.Now().UTC(), Data: []byte(`{"number":"1"}`)}
+		if _, err := broker.PublishStored(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(release)
+	if err := <-result; !errors.Is(err, ErrReplayUnavailable) {
+		t.Fatalf("overflow error=%v", err)
+	}
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	if len(broker.subscribers) != 0 {
+		t.Fatalf("overflow retained subscribers=%d", len(broker.subscribers))
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -60,7 +61,7 @@ func (r *PostgresReader) BlockTransactions(
 		}
 	}
 
-	rows, err := tx.QueryContext(ctx, blockTransactionsSQL,
+	rows, err := tx.QueryContext(ctx, dbgen.ListBlockTransactions,
 		r.chainID, strconv.FormatUint(blockNumber, 10), blockHash.Bytes(), cursor.AfterIndex, limit+1,
 	)
 	if err != nil {
@@ -114,7 +115,7 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 	} else if isHash {
 		var numberText string
 		var hashBytes []byte
-		if err := tx.QueryRowContext(ctx, blockTransactionByHashSQL, r.chainID, hash.Bytes()).Scan(&numberText, &hashBytes); err != nil {
+		if err := tx.QueryRowContext(ctx, dbgen.GetBlockTransactionTargetByHash, r.chainID, hash.Bytes()).Scan(&numberText, &hashBytes); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return 0, common.Hash{}, httpapi.ErrNotFound
 			}
@@ -140,7 +141,7 @@ func (r *PostgresReader) resolveBlockTransactionTarget(
 	}
 	var numberText string
 	var hashBytes []byte
-	if err := tx.QueryRowContext(ctx, blockTransactionByNumberSQL,
+	if err := tx.QueryRowContext(ctx, dbgen.GetBlockTransactionTargetByNumber,
 		r.chainID, strconv.FormatUint(number, 10),
 	).Scan(&numberText, &hashBytes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -177,7 +178,7 @@ func (r *PostgresReader) validateBlockTransactionCursor(
 		return fmt.Errorf("%w: block transaction cursor block hash is invalid", ErrInvalidCursor)
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, blockTransactionCursorSQL,
+	if err := tx.QueryRowContext(ctx, dbgen.ValidateBlockTransactionCursor,
 		r.chainID, strconv.FormatUint(blockNumber, 10), blockHash.Bytes(),
 	).Scan(&exists); err != nil {
 		return fmt.Errorf("validate block transaction cursor: %w", err)
@@ -187,55 +188,3 @@ func (r *PostgresReader) validateBlockTransactionCursor(
 	}
 	return nil
 }
-
-const blockTransactionByHashSQL = `
-SELECT number::text, hash
-FROM blocks
-WHERE chain_id = $1::numeric AND hash = $2
-LIMIT 1`
-
-const blockTransactionByNumberSQL = `
-SELECT number::text, block_hash
-FROM canonical_blocks
-WHERE chain_id = $1::numeric AND number = $2::numeric`
-
-const blockTransactionCursorSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND hash = $3
-)`
-
-const blockTransactionsSQL = `
-SELECT
-    inclusion.raw,
-    receipt.raw,
-    inclusion.block_number::text,
-    inclusion.block_hash,
-    inclusion.tx_index,
-    inclusion.tx_hash,
-    (canonical.block_hash IS NOT NULL),
-    finality.safe_number::text,
-    finality.finalized_number::text,
-    block.raw
-FROM transaction_inclusions AS inclusion
-JOIN blocks AS block
-  ON block.chain_id = inclusion.chain_id
- AND block.number = inclusion.block_number
- AND block.hash = inclusion.block_hash
-JOIN receipts AS receipt
-  ON receipt.chain_id = inclusion.chain_id
- AND receipt.block_number = inclusion.block_number
- AND receipt.block_hash = inclusion.block_hash
- AND receipt.tx_index = inclusion.tx_index
-LEFT JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = inclusion.chain_id
- AND canonical.number = inclusion.block_number
- AND canonical.block_hash = inclusion.block_hash
-LEFT JOIN chain_finality AS finality ON finality.chain_id = inclusion.chain_id
-WHERE inclusion.chain_id = $1::numeric
-  AND inclusion.block_number = $2::numeric
-  AND inclusion.block_hash = $3
-  AND inclusion.tx_index > $4
-ORDER BY inclusion.tx_index ASC
-LIMIT $5`

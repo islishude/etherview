@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -279,27 +280,7 @@ func (importer *Importer) completedRemoteImport(
 		blockHash, stateRoot, digest, raw []byte
 		canonical                         bool
 	)
-	err := queryer.QueryRowContext(ctx, `
-		SELECT
-		    imported.xmin::text,
-		    imported.state,
-		    imported.block_hash,
-		    imported.state_root,
-		    imported.document_sha256,
-		    canonical.block_hash IS NOT NULL,
-		    block.raw
-		FROM genesis_state_imports AS imported
-		LEFT JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = imported.chain_id
-		 AND canonical.number = 0
-		 AND canonical.block_hash = imported.block_hash
-		LEFT JOIN blocks AS block
-		  ON block.chain_id = canonical.chain_id
-		 AND block.number = canonical.number
-		 AND block.hash = canonical.block_hash
-		WHERE imported.chain_id = $1::numeric`,
-		importer.chainID,
-	).Scan(
+	err := queryer.QueryRowContext(ctx, dbgen.GenesisWriteCompletedRemoteImportStatement1, importer.chainID).Scan(
 		&checkpoint.version,
 		&checkpoint.state,
 		&blockHash,
@@ -359,14 +340,7 @@ func (importer *Importer) waitForCanonicalBlockZero(ctx context.Context) error {
 			return ctx.Err()
 		case <-timer.C:
 			var available bool
-			if err := importer.db.QueryRowContext(ctx, `
-				SELECT EXISTS (
-				    SELECT 1
-				    FROM canonical_blocks
-				    WHERE chain_id = $1::numeric AND number = 0
-				)`,
-				importer.chainID,
-			).Scan(&available); err != nil {
+			if err := importer.db.QueryRowContext(ctx, dbgen.GenesisWriteWaitForCanonicalBlockZeroStatement1, importer.chainID).Scan(&available); err != nil {
 				return fmt.Errorf("wait for canonical block zero: %w", err)
 			}
 			if available {
@@ -390,13 +364,7 @@ func (importer *Importer) withRemoteSourceLock(
 		if locked {
 			unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			var unlocked bool
-			unlockErr := conn.QueryRowContext(unlockCtx,
-				`SELECT pg_advisory_unlock(
-				    hashtext('etherview:genesis-remote-source'),
-				    hashtext($1)
-				)`,
-				importer.chainID,
-			).Scan(&unlocked)
+			unlockErr := conn.QueryRowContext(unlockCtx, dbgen.GenesisWriteWithRemoteSourceLockStatement1, importer.chainID).Scan(&unlocked)
 			cancel()
 			if unlockErr != nil || !unlocked {
 				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
@@ -408,13 +376,7 @@ func (importer *Importer) withRemoteSourceLock(
 		}
 	}()
 	for !locked {
-		if err := conn.QueryRowContext(ctx,
-			`SELECT pg_try_advisory_lock(
-			    hashtext('etherview:genesis-remote-source'),
-			    hashtext($1)
-			)`,
-			importer.chainID,
-		).Scan(&locked); err != nil {
+		if err := conn.QueryRowContext(ctx, dbgen.GenesisWriteWithRemoteSourceLockStatement2, importer.chainID).Scan(&locked); err != nil {
 			return fmt.Errorf("lock genesis remote source: %w", err)
 		}
 		if !locked {
@@ -457,21 +419,7 @@ func (importer *Importer) recordRemoteFailure(
 	if kind != remoteFailureUnavailable && kind != remoteFailureFailed {
 		return errors.New("record genesis remote failure with invalid state")
 	}
-	if _, err := execer.ExecContext(ctx, `
-		INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
-		VALUES ($1::numeric, $2, $3)
-		ON CONFLICT (chain_id) DO UPDATE SET
-		    state = EXCLUDED.state,
-		    block_hash = NULL,
-		    state_root = NULL,
-		    document_sha256 = NULL,
-		    account_count = NULL,
-		    last_error_code = EXCLUDED.last_error_code,
-		    imported_at = NULL,
-		    updated_at = clock_timestamp()
-		WHERE genesis_state_imports.state <> 'complete'`,
-		importer.chainID, string(kind), code,
-	); err != nil {
+	if _, err := execer.ExecContext(ctx, dbgen.GenesisWriteRecordRemoteFailureStatement1, importer.chainID, string(kind), code); err != nil {
 		return fmt.Errorf("publish genesis remote source failure: %w", err)
 	}
 	importer.logger.WarnContext(ctx, "genesis state import transitioned",
@@ -484,19 +432,7 @@ func (importer *Importer) recordRemoteFailure(
 }
 
 func (importer *Importer) markUnavailable(ctx context.Context) error {
-	_, err := importer.db.ExecContext(ctx, `
-		INSERT INTO genesis_state_imports (chain_id, state, last_error_code)
-		VALUES ($1::numeric, 'unavailable', 'genesis_file_not_configured')
-		ON CONFLICT (chain_id) DO UPDATE SET
-		    state = 'unavailable',
-		    block_hash = NULL,
-		    state_root = NULL,
-		    document_sha256 = NULL,
-		    account_count = NULL,
-		    last_error_code = 'genesis_file_not_configured',
-		    imported_at = NULL,
-		    updated_at = clock_timestamp()
-		WHERE genesis_state_imports.state <> 'complete'`, importer.chainID)
+	_, err := importer.db.ExecContext(ctx, dbgen.GenesisWriteMarkUnavailableStatement1, importer.chainID)
 	if err != nil {
 		return fmt.Errorf("publish unavailable genesis state: %w", err)
 	}
@@ -524,23 +460,11 @@ func (importer *Importer) importOnceUsing(
 		return common.Hash{}, common.Hash{}, fmt.Errorf("begin genesis state import: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if _, err := tx.ExecContext(ctx,
-		`SELECT pg_advisory_xact_lock(hashtext('etherview:genesis-state'), hashtext($1))`,
-		importer.chainID,
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement1, importer.chainID); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("lock genesis state import: %w", err)
 	}
 	var blockHash, raw []byte
-	err = tx.QueryRowContext(ctx, `
-		SELECT block.hash, block.raw
-		FROM canonical_blocks AS canonical
-		JOIN blocks AS block
-		  ON block.chain_id = canonical.chain_id
-		 AND block.number = canonical.number
-		 AND block.hash = canonical.block_hash
-		WHERE canonical.chain_id = $1::numeric AND canonical.number = 0`,
-		importer.chainID,
-	).Scan(&blockHash, &raw)
+	err = tx.QueryRowContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement2, importer.chainID).Scan(&blockHash, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return common.Hash{}, common.Hash{}, errBlockZeroPending
 	}
@@ -563,12 +487,7 @@ func (importer *Importer) importOnceUsing(
 	}
 	var existingState string
 	var existingHash, existingRoot, existingDigest []byte
-	err = tx.QueryRowContext(ctx, `
-		SELECT state, block_hash, state_root, document_sha256
-		FROM genesis_state_imports
-		WHERE chain_id = $1::numeric
-		FOR UPDATE`, importer.chainID,
-	).Scan(&existingState, &existingHash, &existingRoot, &existingDigest)
+	err = tx.QueryRowContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement3, importer.chainID).Scan(&existingState, &existingHash, &existingRoot, &existingDigest)
 	if err == nil && existingState == "complete" {
 		if !bytes.Equal(existingHash, blockHash) || !bytes.Equal(existingRoot, stateRoot[:]) {
 			return common.Hash{}, common.Hash{}, errors.New("stored genesis import identity conflicts with canonical block zero")
@@ -585,25 +504,7 @@ func (importer *Importer) importOnceUsing(
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("read genesis import state: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO genesis_state_imports (
-		    chain_id, block_hash, state_root, document_sha256, state,
-		    account_count, last_error_code, imported_at, updated_at
-		) VALUES (
-		    $1::numeric, $2, $3, $4, 'complete', $5::numeric,
-		    NULL, clock_timestamp(), clock_timestamp()
-		)
-		ON CONFLICT (chain_id) DO UPDATE SET
-		    block_hash = EXCLUDED.block_hash,
-		    state_root = EXCLUDED.state_root,
-		    document_sha256 = EXCLUDED.document_sha256,
-		    state = EXCLUDED.state,
-		    account_count = EXCLUDED.account_count,
-		    last_error_code = NULL,
-		    imported_at = EXCLUDED.imported_at,
-		    updated_at = EXCLUDED.updated_at
-		WHERE genesis_state_imports.state <> 'complete'`,
-		importer.chainID, blockHash, stateRoot[:], importer.digest[:],
+	if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement4, importer.chainID, blockHash, stateRoot[:], importer.digest[:],
 		strconv.Itoa(len(importer.spec.Alloc)),
 	); err != nil {
 		return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis import identity: %w", err)
@@ -626,31 +527,13 @@ func (importer *Importer) importOnceUsing(
 			code = []byte{}
 		}
 		codeHash := crypto.Keccak256Hash(code)
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO genesis_account_observations (
-			    chain_id, address, block_hash, balance, nonce,
-			    code_hash, code, storage_root
-			) VALUES (
-			    $1::numeric, $2, $3, $4::numeric, $5::numeric, $6, $7, $8
-			)`,
-			importer.chainID, accountAddress[:], blockHash, account.Balance.String(),
+		if _, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement5, importer.chainID, accountAddress[:], blockHash, account.Balance.String(),
 			strconv.FormatUint(account.Nonce, 10), codeHash[:], code, storageHash[:],
 		); err != nil {
 			return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis account: %w", err)
 		}
 		if len(code) > 0 {
-			result, err := tx.ExecContext(ctx, `
-				INSERT INTO contract_code_observations AS current (
-				    chain_id, address, block_number, block_hash,
-				    code_hash, code, canonical
-				) VALUES ($1::numeric, $2, 0, $3, $4, $5, TRUE)
-				ON CONFLICT (chain_id, address, block_hash) DO UPDATE SET
-				    code = COALESCE(current.code, EXCLUDED.code),
-				    canonical = TRUE
-				WHERE current.code_hash = EXCLUDED.code_hash
-				  AND (current.code IS NULL OR current.code = EXCLUDED.code)`,
-				importer.chainID, accountAddress[:], blockHash, codeHash[:], code,
-			)
+			result, err := tx.ExecContext(ctx, dbgen.GenesisWriteImportOnceUsingStatement6, importer.chainID, accountAddress[:], blockHash, codeHash[:], code)
 			if err != nil {
 				return common.Hash{}, common.Hash{}, fmt.Errorf("persist genesis code observation: %w", err)
 			}

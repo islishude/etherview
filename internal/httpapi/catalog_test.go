@@ -170,14 +170,18 @@ func testCatalogHandler(t *testing.T, catalogReader catalog.Reader) http.Handler
 func testAddressActivityHandler(
 	t *testing.T,
 	activity AddressActivityReader,
-	catalogReader catalog.Reader,
+	catalogReader interface {
+		catalog.Reader
+		AddressEnrichmentActivityReader
+	},
 ) http.Handler {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Chain.ID = 11155111
 	handler, err := New(Options{
 		Config: cfg, Reader: fakeReader{}, AddressActivities: activity, Catalog: catalogReader,
-		RequestID: func() string { return "address-activity-request" },
+		AddressEnrichment: catalogReader,
+		RequestID:         func() string { return "address-activity-request" },
 	})
 	if err != nil {
 		t.Fatal(err)

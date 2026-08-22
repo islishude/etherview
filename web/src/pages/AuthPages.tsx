@@ -66,6 +66,7 @@ export function AccountPage({
   }, [sessionUser?.display_name]);
 
   useEffect(() => {
+    void sessionUser?.id;
     setProfileError(undefined);
     setProfileSaved(false);
   }, [sessionUser?.id]);

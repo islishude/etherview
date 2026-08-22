@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getCanonicalBlock = `-- name: GetCanonicalBlock :one
+const GetCanonicalBlock = `-- name: GetCanonicalBlock :one
 SELECT canonical.number::text AS number, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
@@ -29,13 +29,13 @@ type GetCanonicalBlockRow struct {
 }
 
 func (q *Queries) GetCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric) (GetCanonicalBlockRow, error) {
-	row := q.db.QueryRow(ctx, getCanonicalBlock, chainID, blockNumber)
+	row := q.db.QueryRow(ctx, GetCanonicalBlock, chainID, blockNumber)
 	var i GetCanonicalBlockRow
 	err := row.Scan(&i.Number, &i.BlockHash, &i.ParentHash)
 	return i, err
 }
 
-const getCanonicalTip = `-- name: GetCanonicalTip :one
+const GetCanonicalTip = `-- name: GetCanonicalTip :one
 SELECT canonical.number::text AS number, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
@@ -54,13 +54,13 @@ type GetCanonicalTipRow struct {
 }
 
 func (q *Queries) GetCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (GetCanonicalTipRow, error) {
-	row := q.db.QueryRow(ctx, getCanonicalTip, chainID)
+	row := q.db.QueryRow(ctx, GetCanonicalTip, chainID)
 	var i GetCanonicalTipRow
 	err := row.Scan(&i.Number, &i.BlockHash, &i.ParentHash)
 	return i, err
 }
 
-const getChainIdentity = `-- name: GetChainIdentity :one
+const GetChainIdentity = `-- name: GetChainIdentity :one
 SELECT chain_id::text AS chain_id, genesis_hash
 FROM chains
 WHERE chain_id = $1::numeric
@@ -72,20 +72,33 @@ type GetChainIdentityRow struct {
 }
 
 func (q *Queries) GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error) {
-	row := q.db.QueryRow(ctx, getChainIdentity, chainID)
+	row := q.db.QueryRow(ctx, GetChainIdentity, chainID)
 	var i GetChainIdentityRow
 	err := row.Scan(&i.ChainID, &i.GenesisHash)
 	return i, err
 }
 
-const listAppliedMigrations = `-- name: ListAppliedMigrations :many
+const GetFinalizedHeight = `-- name: GetFinalizedHeight :one
+SELECT finalized_number::text
+FROM chain_finality
+WHERE chain_id = $1::numeric
+`
+
+func (q *Queries) GetFinalizedHeight(ctx context.Context, chainID pgtype.Numeric) (string, error) {
+	row := q.db.QueryRow(ctx, GetFinalizedHeight, chainID)
+	var finalized_number string
+	err := row.Scan(&finalized_number)
+	return finalized_number, err
+}
+
+const ListAppliedMigrations = `-- name: ListAppliedMigrations :many
 SELECT version, checksum, applied_at
 FROM etherview_schema_migrations
 ORDER BY version
 `
 
 func (q *Queries) ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaMigration, error) {
-	rows, err := q.db.Query(ctx, listAppliedMigrations)
+	rows, err := q.db.Query(ctx, ListAppliedMigrations)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +117,7 @@ func (q *Queries) ListAppliedMigrations(ctx context.Context) ([]EtherviewSchemaM
 	return items, nil
 }
 
-const listCanonicalBlocks = `-- name: ListCanonicalBlocks :many
+const ListCanonicalBlocks = `-- name: ListCanonicalBlocks :many
 SELECT block.raw
 FROM canonical_blocks AS canonical
 JOIN blocks AS block
@@ -118,7 +131,7 @@ LIMIT $3
 `
 
 func (q *Queries) ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listCanonicalBlocks, chainID, beforeNumber, pageLimit)
+	rows, err := q.db.Query(ctx, ListCanonicalBlocks, chainID, beforeNumber, pageLimit)
 	if err != nil {
 		return nil, err
 	}

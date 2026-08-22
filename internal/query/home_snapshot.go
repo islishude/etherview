@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -44,10 +45,7 @@ func (r *PostgresReader) HomeSnapshot(ctx context.Context) (httpapi.HomeSnapshot
 
 func (r *PostgresReader) homeEventID(ctx context.Context, tx *sql.Tx) (uint64, error) {
 	var id sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT MAX(id)
-		FROM runtime_events
-		WHERE chain_id = $1::numeric`, r.chainID).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.GetHomeRuntimeEventID, r.chainID).Scan(&id); err != nil {
 		return 0, fmt.Errorf("query home runtime event identity: %w", err)
 	}
 	if !id.Valid {
@@ -63,11 +61,7 @@ func (r *PostgresReader) transactionRuntimeStatus(tx *sql.Tx) RuntimeStatusFunc 
 	return func(ctx context.Context) (RuntimeStatus, bool, error) {
 		var latest, indexed, highest sql.NullString
 		var status RuntimeStatus
-		err := tx.QueryRowContext(ctx, `
-			SELECT latest_number::text, indexed_number::text,
-			       highest_covered_number::text, backfill_complete, ready
-			FROM sync_runtime_status
-			WHERE chain_id = $1::numeric`, r.chainID).Scan(
+		err := tx.QueryRowContext(ctx, dbgen.GetHomeRuntimeStatus, r.chainID).Scan(
 			&latest, &indexed, &highest, &status.BackfillComplete, &status.Ready,
 		)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -110,7 +104,7 @@ func (r *PostgresReader) homeActivity(
 ) ([]gen.Block, []gen.Transaction, error) {
 	var tipNumberText string
 	var tipHash []byte
-	err := tx.QueryRowContext(ctx, currentTipSQL, r.chainID).Scan(&tipNumberText, &tipHash)
+	err := tx.QueryRowContext(ctx, dbgen.GetCurrentQueryTip, r.chainID).Scan(&tipNumberText, &tipHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return []gen.Block{}, []gen.Transaction{}, nil
 	}
@@ -126,7 +120,7 @@ func (r *PostgresReader) homeActivity(
 	}
 
 	blockRows, err := tx.QueryContext(
-		ctx, listBlocksFirstSQL, r.chainID, tipNumberText, homeSnapshotLimit,
+		ctx, dbgen.QueryListBlocksFirst, r.chainID, tipNumberText, homeSnapshotLimit,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query home blocks: %w", err)
@@ -149,7 +143,7 @@ func (r *PostgresReader) homeActivity(
 	}
 
 	transactionRows, err := tx.QueryContext(
-		ctx, listTransactionsFirstSQL, r.chainID, tipNumberText, homeSnapshotLimit,
+		ctx, dbgen.QueryListTransactionsFirst, r.chainID, tipNumberText, homeSnapshotLimit,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query home transactions: %w", err)

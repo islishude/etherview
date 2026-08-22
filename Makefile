@@ -24,8 +24,8 @@ GOLANGCI_LINT ?= golangci-lint
 
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
-GO_LICENSES_VERSION ?= v1.6.0
-GOLANGCI_LINT_VERSION ?= v2.12.2
+GO_LICENSES_VERSION ?= v2.0.1
+GOLANGCI_LINT_VERSION ?= v2.13.1
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
 GENERATED_PATHS := \
@@ -55,7 +55,7 @@ PREVIEW_GENESIS_RUNTIME := .local/preview-genesis.json
 	docker-build docker-check docker-image-check \
 	compiler-install go-build generate generate-check generate-go helm-check install-lint-tools install-security-tools \
 	golangci-lint \
-	license-check license-tool-check lint lint-go plan-check security-check \
+	license-check license-tool-check lint lint-go plan-check security-check source-check \
 	security-tool-check test test-go toolchain-check \
 	test-e2e test-integration test-integration-race test-load test-race test-runtime-e2e \
 	test-runtime-e2e-prebuilt test-hardhat3-provider-compat test-hardhat3-e2e \
@@ -71,6 +71,9 @@ go-build: web-build
 
 plan-check:
 	$(GO) run ./cmd/plancheck -root .
+
+source-check:
+	$(GO) run ./cmd/sourcecheck -root .
 
 toolchain-check:
 	@.github/scripts/toolchain-check.sh
@@ -228,7 +231,7 @@ web-test: web-install
 web-build: web-generate
 	$(NPM) --prefix web run build
 
-lint-go: lint-tool-check
+lint-go: lint-tool-check source-check
 	@unformatted="$$(find . \( -path './.git' -o -path './vendor' -o -path './web/node_modules' \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt is required for:"; \
@@ -246,7 +249,7 @@ lint: lint-go web-lint
 install-security-tools:
 	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
-	$(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+	$(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
 
 install-lint-tools:
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)

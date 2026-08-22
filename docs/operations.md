@@ -179,6 +179,15 @@ span as an error, and aborts without appending a second body. The net/http
 internal logger discards panic values and stack text and emits only a stable
 error code.
 
+`server.write_timeout` is the whole-response budget for ordinary handlers and
+the per-write/flush budget for `/api/v1/events` and `/api/v1/home/stream`.
+Idle SSE connections intentionally outlive that duration; a 15-second
+heartbeat keeps intermediaries aware of the stream without turning the timeout
+into a connection-lifetime limit. On SIGTERM, API request contexts are canceled
+before the HTTP drain begins, so active streams close within
+`server.shutdown_timeout`. A drain timeout force-closes remaining connections
+rather than returning while handlers still own runtime resources.
+
 The PostgreSQL metric collector refreshes only active control-plane backlog at
 `observability.metrics_refresh_interval`: durable `queued`/`leased`,
 verification `queued`/`running`, and repair/reindex `queued`/`running` rows.
@@ -437,6 +446,11 @@ buckets expire when inactive. When Redis is configured, a timeout falls back
 to that bounded local limiter and opens a short circuit so a continuing Redis
 outage does not spend the full adapter timeout on every request. The fallback
 quota is per replica; it preserves availability, not a globally exact budget.
+Runtime-status cache invalidation uses an independent circuit with the same
+bounded backoff. While open, cache reads and writes remain disabled and durable
+event relay continues from PostgreSQL without another Redis call per event.
+After backoff, one event probes the generation fence and invalidation; only a
+successful probe re-enables cache access.
 
 For application failover, run at least two replicas for every role whose
 continuity is required. Durable backfill and job leases permit another replica

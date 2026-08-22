@@ -43,6 +43,13 @@ public view.
 - Every API replica independently tails the ledger into an in-process fanout.
   The fanout is a latency mechanism only: it does not claim or delete rows and
   is not a correctness source.
+- Durable subscription replay is bounded independently from live fanout. A new
+  subscriber is provisionally registered before its repeatable-read replay;
+  PostgreSQL reads and cache invalidation occur without the fanout mutex, while
+  committed live events are buffered to that provisional subscriber. Final
+  registration merges both ordered streams by event ID. A bounded buffer
+  overflow fails replay closed instead of blocking existing subscribers or
+  dropping an event, and a fixed replay-concurrency limit bounds database work.
 - A configured query-cache invalidator runs idempotently for each durable event
   before the replica advances its private cursor or publishes that event. An
   invalidation failure leaves the cursor unchanged and is retried; clients are
@@ -73,6 +80,11 @@ public view.
   browsers and unmanaged intermediaries; an explicitly configured server-side
   cache remains behind the event invalidator. The SSE stream itself uses
   `no-cache, no-transform` and reconnects by durable ID.
+- `server.write_timeout` bounds each SSE header/frame write and flush, not the
+  idle lifetime of the stream. The write deadline is cleared between frames.
+  API request contexts inherit the component lifecycle, so shutdown cancels
+  active event and home streams before `net/http` waits for connections to
+  drain; a failed bounded drain force-closes the listener and active requests.
 
 ## Consequences
 
@@ -80,6 +92,8 @@ public view.
   state and reconnect semantics after process restart.
 - Event delivery remains at-least-observable under duplicate wakes and relay
   polling; subscriber cursors suppress duplicate delivery.
+- A slow or unavailable replay source cannot hold the live-fanout mutex or
+  delay delivery to an already registered subscriber.
 - Increasing sync or backfill-worker replicas does not consume the replay
   window faster. Status history follows the elected live reporter, and an
   expired or failed reporter can be replaced without a process-local tracker

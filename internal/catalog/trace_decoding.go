@@ -13,6 +13,7 @@ import (
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -312,9 +313,7 @@ func loadExactConstructorRegistry(
 	var codeHash, abiJSON, arguments []byte
 	var validFromText string
 	var validTo sql.NullString
-	err := tx.QueryRowContext(ctx, exactConstructorArtifactSQL,
-		chainID, strconv.FormatUint(blockNumber, 10), blockHash, address[:],
-	).Scan(&codeHash, &abiJSON, &arguments, &validFromText, &validTo)
+	err := tx.QueryRowContext(ctx, dbgen.CatalogExactConstructorArtifact, chainID, strconv.FormatUint(blockNumber, 10), blockHash, address[:]).Scan(&codeHash, &abiJSON, &arguments, &validFromText, &validTo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, enrich.ABIIdentity{}, nil, "", nil
 	}
@@ -409,8 +408,7 @@ func (catalog *Postgres) attachTraceExecutions(
 	if !needsProjection {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, transactionTraceExecutionSQL,
-		identity.ChainID, identity.BlockNumber, mustDecodeHash(identity.BlockHash),
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTraceExecution, identity.ChainID, identity.BlockNumber, mustDecodeHash(identity.BlockHash),
 		mustDecodeHash(identity.TransactionHash), catalog.options.MaxTraceFrames+1,
 	)
 	if err != nil {
@@ -650,7 +648,7 @@ func loadPersistedTraceDecodings(
 	chainID string,
 	blockHash, transactionHash []byte,
 ) (map[string]*persistedTraceDecoding, error) {
-	rows, err := tx.QueryContext(ctx, transactionTraceDecodingsSQL, chainID, blockHash, transactionHash)
+	rows, err := tx.QueryContext(ctx, dbgen.CatalogTransactionTraceDecodings, chainID, blockHash, transactionHash)
 	if err != nil {
 		return nil, fmt.Errorf("query transaction trace ABI decodings: %w", err)
 	}
@@ -935,63 +933,3 @@ func decodeTraceData(value string) ([]byte, error) {
 	}
 	return hex.DecodeString(value[2:])
 }
-
-const transactionTraceDecodingsSQL = `
-SELECT decoding.object_kind, decoding.object_index, decoding.status,
-       decoding.signature, decoding.source, decoding.confidence,
-       decoding.arguments, decoding.candidates, decoding.warning,
-       decoding.target_address, decoding.target_code_hash,
-       decoding.source_address, decoding.source_code_hash,
-       decoding.return_status, decoding.return_arguments
-FROM abi_decodings AS decoding
-WHERE decoding.chain_id = $1::numeric
-  AND decoding.block_hash = $2
-  AND decoding.transaction_hash = $3
-  AND decoding.object_kind IN ('trace_calldata', 'trace_constructor', 'trace_revert')
-  AND decoding.canonical
-  AND EXISTS (
-      SELECT 1
-      FROM published_block_stage_results AS published
-      WHERE published.chain_id = decoding.chain_id
-        AND published.block_hash = decoding.block_hash
-        AND published.stage = 'abi'
-        AND published.stage_version = 4
-        AND published.state = 'complete'
-  )
-ORDER BY decoding.object_index, decoding.object_kind`
-
-const exactConstructorArtifactSQL = `
-SELECT verified.code_hash, verified.abi, verified.constructor_arguments,
-       verified.valid_from_block::text, verified.valid_to_block::text
-FROM contract_code_observations AS code
-JOIN verified_contracts AS verified
-  ON verified.chain_id = code.chain_id
- AND verified.address = code.address
- AND verified.code_hash = code.code_hash
- AND verified.valid_from_block <= $2::numeric
- AND (verified.valid_to_block IS NULL OR verified.valid_to_block >= $2::numeric)
-JOIN verification_results AS result
-  ON result.job_id = verified.verification_job_id
- AND result.request_digest = verified.request_digest
- AND result.outcome_kind = 'verification_success'
- AND result.outcome->'creation_match'->>'match_type' = 'full'
-WHERE code.chain_id = $1::numeric
-  AND code.block_number = $2::numeric
-  AND code.block_hash = $3
-  AND code.address = $4
-  AND code.canonical
-  AND verified.abi IS NOT NULL
-ORDER BY verified.valid_from_block DESC
-LIMIT 1`
-
-const transactionTraceExecutionSQL = `
-SELECT trace_path, COALESCE(to_address, created_address, from_address), execution_address,
-       execution_code_hash, execution_resolution
-FROM normalized_traces
-WHERE chain_id = $1::numeric
-  AND block_number = $2::numeric
-  AND block_hash = $3
-  AND transaction_hash = $4
-  AND canonical
-ORDER BY depth, trace_path
-LIMIT $5`

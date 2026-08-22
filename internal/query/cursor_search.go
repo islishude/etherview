@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -41,7 +42,7 @@ type searchCursor struct {
 func (r *PostgresReader) currentBlockCursor(ctx context.Context, tx *sql.Tx) (blockCursor, error) {
 	var numberText string
 	var hashBytes []byte
-	if err := tx.QueryRowContext(ctx, currentTipSQL, r.chainID).Scan(&numberText, &hashBytes); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.GetCurrentQueryTip, r.chainID).Scan(&numberText, &hashBytes); err != nil {
 		if err == sql.ErrNoRows {
 			return blockCursor{}, httpUnavailableNotReady()
 		}
@@ -74,7 +75,7 @@ func (r *PostgresReader) validateBlockCursor(ctx context.Context, tx *sql.Tx, cu
 		return fmt.Errorf("%w: invalid boundary hash", ErrInvalidCursor)
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, validateCursorSQL,
+	if err := tx.QueryRowContext(ctx, dbgen.ValidateBlockCursor,
 		r.chainID,
 		strconv.FormatUint(cursor.SnapshotNumber, 10), snapshotHash.Bytes(),
 		strconv.FormatUint(cursor.BeforeNumber, 10), beforeHash.Bytes(),
@@ -94,7 +95,7 @@ func (r *PostgresReader) searchHash(
 	generation int64,
 	limit int,
 ) ([]gen.SearchResult, error) {
-	rows, err := queryer.QueryContext(ctx, searchHashSQL, r.chainID, hash.Bytes(), generation, limit)
+	rows, err := queryer.QueryContext(ctx, dbgen.QuerySearchHash, r.chainID, hash.Bytes(), generation, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search hash: %w", err)
 	}
@@ -144,7 +145,7 @@ func (r *PostgresReader) searchBlockNumber(
 	var label string
 	var rank int64
 	err := queryer.QueryRowContext(
-		ctx, searchBlockNumberSQL, r.chainID, strconv.FormatUint(height, 10), generation,
+		ctx, dbgen.QuerySearchBlockNumber, r.chainID, strconv.FormatUint(height, 10), generation,
 	).Scan(&numberText, &hashBytes, &label, &rank)
 	if err == sql.ErrNoRows {
 		return []gen.SearchResult{}, nil
@@ -189,8 +190,7 @@ func (r *PostgresReader) searchText(
 		hasBoundary, afterRank, afterKind, afterKey = true, boundary.AfterRank, boundary.AfterKind,
 			canonicalSearchBoundaryKey(boundary.AfterKey)
 	}
-	rows, err := queryer.QueryContext(ctx, searchTextSQL,
-		r.chainID, strings.ToLower(value), strconv.FormatUint(snapshotNumber, 10),
+	rows, err := queryer.QueryContext(ctx, dbgen.QuerySearchText, r.chainID, strings.ToLower(value), strconv.FormatUint(snapshotNumber, 10),
 		generation, hasBoundary, afterRank, afterKind, afterKey, limit,
 		resolvedNameObservationID,
 	)
@@ -248,7 +248,7 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx *sql.Tx, c
 		return fmt.Errorf("%w: search cursor hash is invalid", ErrInvalidCursor)
 	}
 	var valid bool
-	if err := tx.QueryRowContext(ctx, validateSearchCursorSQL,
+	if err := tx.QueryRowContext(ctx, dbgen.ValidateSearchCursor,
 		r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), hash.Bytes(), cursor.Generation,
 	).Scan(&valid); err != nil {
 		return fmt.Errorf("validate search cursor: %w", err)
@@ -290,7 +290,7 @@ func (r *PostgresReader) resolvedNameVisible(
 	var visible bool
 	if err := tx.QueryRowContext(
 		ctx,
-		validateResolvedNameSQL,
+		dbgen.ValidateResolvedSearchName,
 		r.chainID,
 		gate.ObservationID,
 		gate.Name,
@@ -402,84 +402,3 @@ func httpUnavailableNotReady() error {
 	// explicit without treating an empty chain as a missing block.
 	return fmt.Errorf("%w: canonical index is empty", httpapi.ErrNotReady)
 }
-
-const currentTipSQL = `
-SELECT canonical.number::text, canonical.block_hash
-FROM canonical_blocks AS canonical
-WHERE canonical.chain_id = $1::numeric
-ORDER BY canonical.number DESC, canonical.block_hash DESC
-LIMIT 1`
-
-const validateCursorSQL = `
-SELECT
-    EXISTS (
-        SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-    )
-AND EXISTS (
-        SELECT 1 FROM canonical_blocks
-        WHERE chain_id = $1::numeric AND number = $4::numeric AND block_hash = $5
-    )`
-
-const validateSearchCursorSQL = `
-SELECT EXISTS (
-    SELECT 1 FROM canonical_blocks
-    WHERE chain_id = $1::numeric AND number = $2::numeric AND block_hash = $3
-) AND COALESCE((
-    SELECT min_generation <= $4 AND generation >= $4
-    FROM search_catalog_generations WHERE chain_id = $1::numeric
-), $4 = 0)`
-
-const currentSearchGenerationSQL = `
-SELECT COALESCE(generation, 0), COALESCE(min_generation, 0)
-FROM (SELECT 1) AS singleton
-LEFT JOIN search_catalog_generations ON chain_id = $1::numeric`
-
-const validateResolvedNameSQL = `
-WITH visible_documents AS (
-    SELECT document.*
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $5
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $5)
-)
-SELECT EXISTS (
-    SELECT 1
-    FROM ens_name_observations AS observation
-    WHERE observation.chain_id = $1::numeric
-      AND observation.id = $2::bigint
-      AND observation.direction = 'forward'
-      AND observation.lookup_key = $3
-      AND observation.name = $3
-      AND observation.source = $4
-      AND (
-          (
-              observation.outcome = 'not_found'
-              AND $6::bytea IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.logical_identity = lower(observation.name)
-              )
-          )
-          OR (
-              observation.outcome = 'resolved'
-              AND observation.address = $6::bytea
-              AND EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.name_observation_id = observation.id
-                    AND document.source_canonical IS TRUE
-                    AND (
-                        document.block_hash IS NULL
-                        OR EXISTS (
-                            SELECT 1 FROM canonical_blocks AS canonical
-                            WHERE canonical.chain_id = document.chain_id
-                              AND canonical.number = document.block_number
-                              AND canonical.block_hash = document.block_hash
-                        )
-                    )
-              )
-          )
-      )
-)`

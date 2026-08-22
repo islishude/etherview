@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 const (
@@ -72,54 +73,7 @@ func loadEffectiveTransactionExecutions(
 	tx *sql.Tx,
 	job Job,
 ) ([]effectiveTransactionExecution, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT inclusion.tx_hash, inclusion.tx_index, inclusion.raw,
-		       resolution.context_address, resolution.execution_address,
-		       resolution.execution_code_hash, resolution.resolution,
-		       resolution.evidence_source,
-		       root.to_address, root.execution_address,
-		       root.execution_code_hash, root.execution_resolution, root.input
-		FROM transaction_inclusions AS inclusion
-		LEFT JOIN transaction_execution_code_resolutions AS resolution
-		  ON resolution.chain_id = inclusion.chain_id
-		 AND resolution.block_number = inclusion.block_number
-		 AND resolution.block_hash = inclusion.block_hash
-		 AND resolution.transaction_hash = inclusion.tx_hash
-		 AND resolution.transaction_index = inclusion.tx_index
-		 AND resolution.context_address =
-		     decode(substring(inclusion.raw->>'to' from 3), 'hex')
-		 AND resolution.canonical
-		 AND EXISTS (
-		     SELECT 1 FROM published_block_stage_results AS published
-		     WHERE published.chain_id = resolution.chain_id
-		       AND published.block_number = resolution.block_number
-		       AND published.block_hash = resolution.block_hash
-		       AND published.stage = $4
-		       AND published.stage_version = $5
-		       AND published.state = 'complete'
-		 )
-		LEFT JOIN normalized_traces AS root
-		  ON root.chain_id = inclusion.chain_id
-		 AND root.block_number = inclusion.block_number
-		 AND root.block_hash = inclusion.block_hash
-		 AND root.transaction_hash = inclusion.tx_hash
-		 AND root.transaction_index = inclusion.tx_index
-		 AND root.trace_path = ''
-		 AND root.canonical
-		 AND EXISTS (
-		     SELECT 1 FROM published_block_stage_results AS published
-		     WHERE published.chain_id = root.chain_id
-		       AND published.block_number = root.block_number
-		       AND published.block_hash = root.block_hash
-		       AND published.stage = $6
-		       AND published.stage_version = $7
-		       AND published.state = 'complete'
-		 )
-		WHERE inclusion.chain_id = $1::numeric
-		  AND inclusion.block_number = $2::numeric
-		  AND inclusion.block_hash = $3
-		ORDER BY inclusion.tx_index`,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadEffectiveTransactionExecutionsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		StateDiffStage.Name, StateDiffStage.Version, TraceStage.Name, TraceStage.Version,
 	)
 	if err != nil {
@@ -402,18 +356,7 @@ func resolveTransactionStartCode(
 	address common.Address,
 	transactionIndex uint64,
 ) (transactionStartCode, bool, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_index, before_value, after_value
-		FROM transaction_state_changes
-		WHERE chain_id = $1::numeric
-		  AND block_number = $2::numeric
-		  AND block_hash = $3
-		  AND address = $4
-		  AND field_kind = 'code'
-		  AND canonical
-		ORDER BY transaction_index`,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], address[:],
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:], address[:])
 	if err != nil {
 		return transactionStartCode{}, false, fmt.Errorf("query transaction-position code changes: %w", err)
 	}
@@ -455,22 +398,7 @@ func resolveTransactionStartCode(
 			return transactionStartCode{}, false, Permanent(err)
 		}
 		var priorHashBytes, priorCode []byte
-		priorErr := tx.QueryRowContext(ctx, `
-			SELECT observation.code_hash, observation.code
-			FROM contract_code_observations AS observation
-			JOIN canonical_blocks AS canonical
-			  ON canonical.chain_id = observation.chain_id
-			 AND canonical.number = observation.block_number
-			 AND canonical.block_hash = observation.block_hash
-			WHERE observation.chain_id = $1::numeric
-			  AND observation.address = $2
-			  AND observation.block_number < $3::numeric
-			  AND observation.canonical
-			ORDER BY observation.block_number DESC, observation.observed_at DESC,
-			         observation.code_hash DESC
-			LIMIT 1`,
-			job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
-		).Scan(&priorHashBytes, &priorCode)
+		priorErr := tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement2, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&priorHashBytes, &priorCode)
 		if priorErr != nil && !errors.Is(priorErr, sql.ErrNoRows) {
 			return transactionStartCode{}, false, fmt.Errorf("query prior canonical code observation: %w", priorErr)
 		}
@@ -487,22 +415,7 @@ func resolveTransactionStartCode(
 	}
 
 	var codeHashBytes, code []byte
-	err = tx.QueryRowContext(ctx, `
-		SELECT observation.code_hash, observation.code
-		FROM contract_code_observations AS observation
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = observation.chain_id
-		 AND canonical.number = observation.block_number
-		 AND canonical.block_hash = observation.block_hash
-		WHERE observation.chain_id = $1::numeric
-		  AND observation.address = $2
-		  AND observation.block_number < $3::numeric
-		  AND observation.canonical
-		ORDER BY observation.block_number DESC, observation.observed_at DESC,
-		         observation.code_hash DESC
-		LIMIT 1`,
-		job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10),
-	).Scan(&codeHashBytes, &code)
+	err = tx.QueryRowContext(ctx, dbgen.EnrichInlineResolveTransactionStartCodeStatement3, job.ChainID, address[:], strconv.FormatUint(job.BlockNumber, 10)).Scan(&codeHashBytes, &code)
 	if errors.Is(err, sql.ErrNoRows) {
 		return transactionStartCode{}, false, nil
 	}
@@ -560,11 +473,7 @@ func persistEffectiveTransactionExecutions(
 	job Job,
 	executions []effectiveTransactionExecution,
 ) error {
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM transaction_effective_execution_identities
-		WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3`,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistEffectiveTransactionExecutionsStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
 		return fmt.Errorf("clear effective transaction execution identities: %w", err)
 	}
 	for _, execution := range executions {
@@ -578,17 +487,7 @@ func persistEffectiveTransactionExecutions(
 		if execution.rootTracePath != nil {
 			rootTracePath = *execution.rootTracePath
 		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO transaction_effective_execution_identities (
-			    chain_id, block_number, block_hash, transaction_hash,
-			    transaction_index, context_address, execution_address,
-			    execution_code_hash, resolution, evidence_source,
-			    root_trace_path, canonical
-			) VALUES (
-			    $1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8,
-			    $9, $10, $11, TRUE
-			)`,
-			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistEffectiveTransactionExecutionsStatement2, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 			execution.transactionHash[:], execution.transactionIndex,
 			execution.contextAddress[:], executionAddress, executionCodeHash,
 			execution.resolution, execution.evidenceSource, rootTracePath,

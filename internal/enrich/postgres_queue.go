@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var (
@@ -138,9 +139,7 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 	if err := lockPublicationJobTx(ctx, tx, id); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, requeueJobSQL,
-		id, job.ChainID, job.Stage.Name, job.Stage.Version, idempotencyKey,
-	)
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyRequeueJob, id, job.ChainID, job.Stage.Name, job.Stage.Version, idempotencyKey)
 	if err != nil {
 		return fmt.Errorf("requeue enrichment job: %w", err)
 	}
@@ -163,7 +162,7 @@ func (queue *PostgresJobQueue) Requeue(ctx context.Context, job Job) error {
 		return nil
 	}
 	var status string
-	if err := tx.QueryRowContext(ctx, enrichmentJobStatusSQL, id).Scan(&status); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichLegacyEnrichmentJobStatus, id).Scan(&status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("enrichment job disappeared before replay")
 		}
@@ -204,9 +203,7 @@ func requestDependentStageReplayForKindTx(
 		return false, err
 	}
 	var targetID int64
-	err = tx.QueryRowContext(ctx, selectDependentReplayTargetIDSQL,
-		source.ChainID, source.BlockHash.String(), dependent.Name, dependent.Version,
-	).Scan(&targetID)
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectDependentReplayTargetID, source.ChainID, source.BlockHash.String(), dependent.Name, dependent.Version).Scan(&targetID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -216,7 +213,7 @@ func requestDependentStageReplayForKindTx(
 	if err := lockPublicationJobTx(ctx, tx, targetID); err != nil {
 		return false, err
 	}
-	target, status, err := scanReplayTarget(tx.QueryRowContext(ctx, selectReplayTargetByIDSQL, targetID))
+	target, status, err := scanReplayTarget(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectReplayTargetByID, targetID))
 	if err != nil {
 		return false, fmt.Errorf("lock dependent stage %s for replay: %w", dependent, err)
 	}
@@ -243,7 +240,7 @@ func requestJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, source Repl
 	if err := lockPublicationJobTx(ctx, tx, id); err != nil {
 		return false, err
 	}
-	locked, status, err := scanReplayTarget(tx.QueryRowContext(ctx, selectReplayTargetByIDSQL, id))
+	locked, status, err := scanReplayTarget(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectReplayTargetByID, id))
 	if err != nil {
 		return false, fmt.Errorf("lock enrichment replay target: %w", err)
 	}
@@ -267,9 +264,7 @@ func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, statu
 		return false, errors.New("enrichment replay generation is out of range")
 	}
 	nextGeneration := int64(target.Generation + 1)
-	inserted, err := tx.ExecContext(ctx, insertReplayRequestSQL,
-		target.ID, source.Kind, source.Key, nextGeneration,
-	)
+	inserted, err := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertReplayRequest, target.ID, source.Kind, source.Key, nextGeneration)
 	if err != nil {
 		return false, fmt.Errorf("record enrichment replay source: %w", err)
 	}
@@ -280,7 +275,7 @@ func requestLockedJobReplayTx(ctx context.Context, tx *sql.Tx, target Job, statu
 	if affected == 0 {
 		return false, nil
 	}
-	result, err := tx.ExecContext(ctx, requestReplayJobSQL, target.ID, nextGeneration)
+	result, err := tx.ExecContext(ctx, dbgen.EnrichLegacyRequestReplayJob, target.ID, nextGeneration)
 	if err != nil {
 		return false, fmt.Errorf("advance enrichment replay generation: %w", err)
 	}
@@ -322,9 +317,7 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 		return err
 	}
 	var resultJobID, resultGeneration sql.NullInt64
-	err = tx.QueryRowContext(ctx, selectStageResultPublicationSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version,
-	).Scan(&resultJobID, &resultGeneration)
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectStageResultPublication, job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version).Scan(&resultJobID, &resultGeneration)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("lock enrichment stage result for replay: %w", err)
 	}
@@ -332,9 +325,7 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 		return ErrStagePublicationConflict
 	}
 
-	rows, err := tx.QueryContext(ctx, selectStageJournalPublicationsSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.String(),
-	)
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichLegacySelectStageJournalPublications, job.ChainID, job.BlockHash[:], job.Stage.String())
 	if err != nil {
 		return fmt.Errorf("lock enrichment stage journal for replay: %w", err)
 	}
@@ -357,28 +348,16 @@ func clearStageReplayStateTx(ctx context.Context, tx *sql.Tx, job Job) error {
 		return fmt.Errorf("close enrichment stage journal publications: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, deleteStageResultSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version,
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStageResult, job.ChainID, job.BlockHash[:], job.Stage.Name, job.Stage.Version); err != nil {
 		return fmt.Errorf("clear enrichment stage result for replay: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, deleteStageJournalSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.String(),
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyDeleteStageJournal, job.ChainID, job.BlockHash[:], job.Stage.String()); err != nil {
 		return fmt.Errorf("clear enrichment stage journal for replay: %w", err)
 	}
 	if job.Stage == ABIStage {
-		for _, table := range []string{
-			"abi_decodings", "contract_abis", "transaction_effective_execution_identities",
-		} {
-			statement := fmt.Sprintf(
-				"DELETE FROM %s WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3",
-				table,
-			)
-			if _, err := tx.ExecContext(ctx, statement,
-				job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
-				return fmt.Errorf("clear replayed %s output: %w", table, err)
-			}
+		if _, err := tx.ExecContext(ctx, dbgen.EnrichClearABIReplayOutputs,
+			job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:]); err != nil {
+			return fmt.Errorf("clear replayed ABI output: %w", err)
 		}
 	}
 	if err := requestInvalidatedEvidenceDependentsTx(ctx, tx, job); err != nil {
@@ -437,7 +416,7 @@ func lockPublicationJobTx(ctx context.Context, tx *sql.Tx, jobID int64) error {
 	if tx == nil || jobID <= 0 {
 		return errors.New("publication advisory lock requires a transaction and positive job ID")
 	}
-	if _, err := tx.ExecContext(ctx, lockPublicationJobSQL, jobID); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyLockPublicationJob, jobID); err != nil {
 		return fmt.Errorf("lock enrichment publication job: %w", err)
 	}
 	return nil
@@ -447,7 +426,7 @@ func enablePublicationProtocolTx(ctx context.Context, tx *sql.Tx) error {
 	if tx == nil {
 		return errors.New("publication protocol requires a transaction")
 	}
-	if _, err := tx.ExecContext(ctx, enablePublicationProtocolSQL); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichLegacyEnablePublicationProtocol); err != nil {
 		return fmt.Errorf("enable enrichment publication protocol: %w", err)
 	}
 	return nil
@@ -487,9 +466,7 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 	// INSERT .. ON CONFLICT first: PostgreSQL may wait on the conflicting job
 	// tuple, which would invert the publisher's advisory-lock-first order.
 	if request.Replay != (ReplaySource{}) {
-		existing, existingErr := scanJob(tx.QueryRowContext(ctx, selectExistingJobSQL,
-			request.ChainID, request.Kind, idempotencyKey,
-		))
+		existing, existingErr := scanJob(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectExistingJob, request.ChainID, request.Kind, idempotencyKey))
 		if existingErr == nil {
 			replayed, replayErr := requestJobReplayTx(ctx, tx, existing, request.Replay)
 			if replayErr != nil {
@@ -502,8 +479,7 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 		}
 	}
 
-	row := tx.QueryRowContext(ctx, enqueueJobSQL,
-		request.ChainID,
+	row := tx.QueryRowContext(ctx, dbgen.EnrichLegacyEnqueueJob, request.ChainID,
 		request.Kind,
 		request.Stage.Name,
 		request.Stage.Version,
@@ -515,7 +491,7 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 	job, scanErr := scanJob(row)
 	created := scanErr == nil
 	if errors.Is(scanErr, sql.ErrNoRows) {
-		job, scanErr = scanJob(tx.QueryRowContext(ctx, selectExistingJobSQL, request.ChainID, request.Kind, idempotencyKey))
+		job, scanErr = scanJob(tx.QueryRowContext(ctx, dbgen.EnrichLegacySelectExistingJob, request.ChainID, request.Kind, idempotencyKey))
 	}
 	if scanErr != nil {
 		return EnqueueResult{}, fmt.Errorf("enqueue enrichment job: %w", scanErr)
@@ -526,9 +502,7 @@ func (queue *PostgresJobQueue) enqueueTx(ctx context.Context, tx *sql.Tx, reques
 		if identityErr != nil {
 			return EnqueueResult{}, identityErr
 		}
-		inserted, insertErr := tx.ExecContext(ctx, insertReplayRequestSQL,
-			jobID, request.Replay.Kind, request.Replay.Key, generation,
-		)
+		inserted, insertErr := tx.ExecContext(ctx, dbgen.EnrichLegacyInsertReplayRequest, jobID, request.Replay.Kind, request.Replay.Key, generation)
 		if insertErr != nil {
 			return EnqueueResult{}, fmt.Errorf("record initial enrichment replay source: %w", insertErr)
 		}
@@ -619,19 +593,7 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 	if len(stages) == 0 {
 		return Lease{}, false, errors.New("claim requires at least one stage")
 	}
-	exhaustedCandidatePredicate, stageArguments, err := stagePredicate(stages, 1, "exhausted_job")
-	if err != nil {
-		return Lease{}, false, err
-	}
-	exhaustedLockedPredicate, _, err := stagePredicate(stages, 2, "exhausted_job")
-	if err != nil {
-		return Lease{}, false, err
-	}
-	claimCandidatePredicate, _, err := stagePredicate(stages, 1, "candidate_job")
-	if err != nil {
-		return Lease{}, false, err
-	}
-	claimLockedPredicate, _, err := stagePredicate(stages, 10, "job")
+	stageKeys, err := databaseStageKeySet(stages)
 	if err != nil {
 		return Lease{}, false, err
 	}
@@ -643,9 +605,7 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 	// Bound each call's reaping work so an old exhausted backlog cannot starve
 	// ready work. Each terminal transition is its own atomic marker+job commit.
 	for range 32 {
-		terminalized, terminalErr := queue.terminalizeOneExhausted(ctx,
-			exhaustedCandidatePredicate, exhaustedLockedPredicate, stageArguments,
-		)
+		terminalized, terminalErr := queue.terminalizeOneExhausted(ctx, stageKeys)
 		if terminalErr != nil {
 			return Lease{}, false, terminalErr
 		}
@@ -654,8 +614,6 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 		}
 	}
 
-	selectQuery := bindCurrentStageVersions(strings.Replace(selectClaimCandidateIDSQL, "/*STAGES*/", claimCandidatePredicate, 1))
-	claimQuery := bindCurrentStageVersions(strings.Replace(claimCandidateJobSQL, "/*STAGES*/", claimLockedPredicate, 1))
 	for range 32 {
 		tx, beginErr := queue.db.BeginTx(ctx, nil)
 		if beginErr != nil {
@@ -665,7 +623,10 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 			_ = tx.Rollback()
 			return Lease{}, false, setErr
 		}
-		candidate, selectErr := scanJob(tx.QueryRowContext(ctx, selectQuery, stageArguments...))
+		candidate, selectErr := scanJob(tx.QueryRowContext(ctx,
+			dbgen.EnrichSelectClaimCandidate,
+			stageKeys, int64(ProxyStage.Version),
+		))
 		if selectErr != nil {
 			_ = tx.Rollback()
 			if errors.Is(selectErr, sql.ErrNoRows) {
@@ -692,8 +653,8 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 			candidate.ChainID, candidate.Stage.Name, candidate.Stage.Version,
 			candidate.BlockHash.String(), strconv.FormatUint(candidate.BlockNumber, 10),
 		}
-		arguments = append(arguments, stageArguments...)
-		job, claimErr := scanJob(tx.QueryRowContext(ctx, claimQuery, arguments...))
+		arguments = append(arguments, stageKeys, int64(ProxyStage.Version))
+		job, claimErr := scanJob(tx.QueryRowContext(ctx, dbgen.EnrichClaimCandidate, arguments...))
 		if errors.Is(claimErr, sql.ErrNoRows) {
 			_ = tx.Rollback()
 			continue
@@ -723,9 +684,7 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 
 func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	ctx context.Context,
-	candidatePredicate string,
-	lockedPredicate string,
-	stageArguments []any,
+	stageKeys string,
 ) (bool, error) {
 	tx, err := queue.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -735,9 +694,10 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return false, err
 	}
-	candidateQuery := bindCurrentStageVersions(strings.Replace(selectExhaustedCandidateIDSQL, "/*STAGES*/", candidatePredicate, 1))
 	var candidateID int64
-	if err := tx.QueryRowContext(ctx, candidateQuery, stageArguments...).Scan(&candidateID); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.EnrichSelectExhaustedCandidate,
+		stageKeys, int64(ProxyStage.Version),
+	).Scan(&candidateID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
@@ -746,9 +706,10 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := lockPublicationJobTx(ctx, tx, candidateID); err != nil {
 		return false, err
 	}
-	lockedQuery := bindCurrentStageVersions(strings.Replace(selectExhaustedJobSQL, "/*STAGES*/", lockedPredicate, 1))
-	arguments := append([]any{candidateID}, stageArguments...)
-	job, reason, err := scanExhaustedJob(tx.QueryRowContext(ctx, lockedQuery, arguments...))
+	job, reason, err := scanExhaustedJob(tx.QueryRowContext(ctx,
+		dbgen.EnrichLockExhaustedJob,
+		candidateID, stageKeys, int64(ProxyStage.Version),
+	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -777,8 +738,7 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err != nil {
 		return false, fmt.Errorf("encode exhausted enrichment result: %w", err)
 	}
-	updated, err := tx.ExecContext(ctx, terminalizeExhaustedJobSQL,
-		candidateID, job.Generation, string(encoded), reason,
+	updated, err := tx.ExecContext(ctx, dbgen.EnrichLegacyTerminalizeExhaustedJob, candidateID, job.Generation, string(encoded), reason,
 		job.ChainID, job.Stage.Name, job.Stage.Version,
 		job.BlockHash.String(), strconv.FormatUint(job.BlockNumber, 10),
 	)
@@ -792,10 +752,6 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 		return false, fmt.Errorf("commit exhausted enrichment job: %w", err)
 	}
 	return true, nil
-}
-
-func bindCurrentStageVersions(query string) string {
-	return strings.ReplaceAll(query, "/*ABI_PROXY_VERSION*/", strconv.FormatUint(uint64(ProxyStage.Version), 10))
 }
 
 func durableIdentityForJob(job Job) (durablePublicationIdentity, error) {
@@ -818,8 +774,7 @@ func (queue *PostgresJobQueue) Renew(ctx context.Context, lease Lease, leaseFor 
 	if err != nil {
 		return fmt.Errorf("lease duration: %w", err)
 	}
-	result, err := queue.db.ExecContext(ctx, renewJobSQL,
-		identity.jobID, lease.Token, leaseMicros, identity.generation,
+	result, err := queue.db.ExecContext(ctx, dbgen.EnrichLegacyRenewJob, identity.jobID, lease.Token, leaseMicros, identity.generation,
 		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
 		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
 	)
@@ -866,8 +821,7 @@ func (queue *PostgresJobQueue) Finish(ctx context.Context, lease Lease, stageRes
 		return err
 	}
 	var replayPending bool
-	err = tx.QueryRowContext(ctx, finishJobSQL,
-		identity.jobID, lease.Token, status, string(encodedResult), lastError, identity.generation,
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyFinishJob, identity.jobID, lease.Token, status, string(encodedResult), lastError, identity.generation,
 		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
 		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
 	).Scan(&replayPending)
@@ -932,8 +886,7 @@ func (queue *PostgresJobQueue) Retry(ctx context.Context, lease Lease, retry Ret
 	}
 	var status string
 	var replayPending bool
-	err = tx.QueryRowContext(ctx, retryJobSQL,
-		identity.jobID, lease.Token, retry.Reason, retryMicros, identity.generation,
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyRetryJob, identity.jobID, lease.Token, retry.Reason, retryMicros, identity.generation,
 		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
 		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
 	).Scan(&status, &replayPending)
@@ -1005,24 +958,24 @@ func randomLeaseToken(source io.Reader) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(random), nil
 }
 
-func stagePredicate(stages []StageID, firstPlaceholder int, relation string) (string, []any, error) {
+func databaseStageKeySet(stages []StageID) (string, error) {
 	seen := make(map[string]struct{}, len(stages))
-	parts := make([]string, 0, len(stages))
-	arguments := make([]any, 0, len(stages)*2)
-	placeholder := firstPlaceholder
+	keys := make(map[string]bool, len(stages))
 	for _, stage := range stages {
 		if err := validateDatabaseStage(stage); err != nil {
-			return "", nil, err
+			return "", err
 		}
 		if _, exists := seen[stage.String()]; exists {
 			continue
 		}
 		seen[stage.String()] = struct{}{}
-		parts = append(parts, fmt.Sprintf("(%s.stage = $%d AND %s.stage_version = $%d)", relation, placeholder, relation, placeholder+1))
-		arguments = append(arguments, stage.Name, stage.Version)
-		placeholder += 2
+		keys[stage.String()] = true
 	}
-	return "(" + strings.Join(parts, " OR ") + ")", arguments, nil
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return "", fmt.Errorf("encode database stage keys: %w", err)
+	}
+	return string(encoded), nil
 }
 
 type rowScanner interface {
@@ -1132,399 +1085,3 @@ func requireLeaseUpdate(result sql.Result) error {
 	}
 	return nil
 }
-
-const enqueueJobSQL = `
-INSERT INTO durable_jobs (
-    chain_id, kind, stage, stage_version, idempotency_key, payload,
-    priority, max_attempts
-) VALUES ($1::numeric, $2, $3, $4, $5, $6::jsonb, $7, $8)
-ON CONFLICT (chain_id, kind, idempotency_key) DO NOTHING
-RETURNING id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation`
-
-const selectExistingJobSQL = `
-SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload, requested_generation
-FROM durable_jobs
-WHERE chain_id = $1::numeric AND kind = $2 AND idempotency_key = $3`
-
-const enablePublicationProtocolSQL = `
-SELECT set_config('etherview.enrichment_publication_protocol', '2', true)`
-
-const selectExhaustedCandidateIDSQL = `
-SELECT exhausted_job.id
-FROM durable_jobs AS exhausted_job
-WHERE exhausted_job.kind = 'enrichment'
-  AND exhausted_job.attempts >= exhausted_job.max_attempts
-  AND exhausted_job.claimed_generation > exhausted_job.completed_generation
-  AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
-  AND /*STAGES*/
-  AND (
-      exhausted_job.stage <> 'abi'
-      OR EXISTS (
-          SELECT 1
-          FROM published_block_stage_results AS dependency
-          WHERE dependency.chain_id = exhausted_job.chain_id
-            AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy'
-            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
-            AND dependency.state IN ('complete', 'unavailable')
-      )
-  )
-  AND (
-      (exhausted_job.status = 'queued' AND exhausted_job.available_at <= clock_timestamp())
-      OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
-  )
-ORDER BY exhausted_job.available_at, exhausted_job.id
-LIMIT 1`
-
-const selectExhaustedJobSQL = `
-SELECT exhausted_job.id, exhausted_job.chain_id::text,
-       exhausted_job.stage, exhausted_job.stage_version,
-       exhausted_job.attempts, exhausted_job.max_attempts, exhausted_job.payload,
-       exhausted_job.claimed_generation,
-       COALESCE(exhausted_job.last_error, 'maximum attempts exhausted')
-FROM durable_jobs AS exhausted_job
-WHERE exhausted_job.id = $1
-  AND exhausted_job.kind = 'enrichment'
-  AND exhausted_job.attempts >= exhausted_job.max_attempts
-  AND exhausted_job.claimed_generation > exhausted_job.completed_generation
-  AND exhausted_job.requested_generation <= exhausted_job.claimed_generation
-  AND /*STAGES*/
-  AND (
-      exhausted_job.stage <> 'abi'
-      OR EXISTS (
-          SELECT 1
-          FROM published_block_stage_results AS dependency
-          WHERE dependency.chain_id = exhausted_job.chain_id
-            AND dependency.block_hash = decode(substr(exhausted_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy'
-            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
-            AND dependency.state IN ('complete', 'unavailable')
-      )
-  )
-  AND (
-      (exhausted_job.status = 'queued' AND exhausted_job.available_at <= clock_timestamp())
-      OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
-  )
-FOR UPDATE`
-
-const terminalizeExhaustedJobSQL = `
-UPDATE durable_jobs
-SET status = 'failed',
-    result = $3::jsonb,
-    last_error = $4,
-    completed_generation = $2,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
-  AND attempts >= max_attempts
-  AND claimed_generation = $2
-  AND requested_generation <= $2
-  AND completed_generation < $2
-  AND (
-      (status = 'queued' AND available_at <= clock_timestamp())
-      OR (status = 'leased' AND lease_expires_at <= clock_timestamp())
-  )`
-
-const selectClaimCandidateIDSQL = `
-SELECT candidate_job.id, candidate_job.chain_id::text,
-       candidate_job.stage, candidate_job.stage_version,
-       candidate_job.attempts, candidate_job.max_attempts, candidate_job.payload,
-       candidate_job.requested_generation
-FROM durable_jobs AS candidate_job
-WHERE candidate_job.kind = 'enrichment'
-  AND (
-      candidate_job.attempts < candidate_job.max_attempts
-      OR candidate_job.requested_generation > candidate_job.claimed_generation
-  )
-  AND /*STAGES*/
-  AND (
-      candidate_job.stage <> 'abi'
-      OR EXISTS (
-          SELECT 1
-          FROM published_block_stage_results AS dependency
-          WHERE dependency.chain_id = candidate_job.chain_id
-            AND dependency.block_hash = decode(substr(candidate_job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy'
-            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
-            AND dependency.state IN ('complete', 'unavailable')
-      )
-  )
-  AND (
-      (candidate_job.status = 'queued' AND candidate_job.available_at <= clock_timestamp())
-      OR (candidate_job.status = 'leased' AND candidate_job.lease_expires_at <= clock_timestamp())
-  )
-ORDER BY candidate_job.priority DESC, candidate_job.available_at, candidate_job.id
-LIMIT 1`
-
-const claimCandidateJobSQL = `
-UPDATE durable_jobs AS job
-SET status = 'leased',
-    attempts = CASE
-        WHEN job.requested_generation > job.claimed_generation THEN 1
-        ELSE job.attempts + 1
-    END,
-    claimed_generation = job.requested_generation,
-    leased_generation = job.requested_generation,
-    leased_by = $1,
-    lease_token = $2,
-    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-    result = NULL,
-    last_error = CASE
-        WHEN job.requested_generation > job.claimed_generation THEN NULL
-        ELSE job.last_error
-    END,
-    updated_at = clock_timestamp()
-WHERE job.id = $4
-  AND job.kind = 'enrichment'
-  AND job.chain_id = $5::numeric
-  AND job.stage = $6
-  AND job.stage_version = $7
-  AND job.payload->>'block_hash' = $8
-  AND job.payload->>'block_number' = $9
-  AND (
-      job.attempts < job.max_attempts
-      OR job.requested_generation > job.claimed_generation
-  )
-  AND /*STAGES*/
-  AND (
-      job.stage <> 'abi'
-      OR EXISTS (
-          SELECT 1
-          FROM published_block_stage_results AS dependency
-          WHERE dependency.chain_id = job.chain_id
-            AND dependency.block_hash = decode(substr(job.payload->>'block_hash', 3), 'hex')
-            AND dependency.stage = 'proxy'
-            AND dependency.stage_version = /*ABI_PROXY_VERSION*/
-            AND dependency.state IN ('complete', 'unavailable')
-      )
-  )
-  AND (
-      (job.status = 'queued' AND job.available_at <= clock_timestamp())
-      OR (job.status = 'leased' AND job.lease_expires_at <= clock_timestamp())
-  )
-RETURNING job.id, job.chain_id::text, job.stage, job.stage_version,
-          job.attempts, job.max_attempts, job.payload, job.leased_generation`
-
-const renewJobSQL = `
-UPDATE durable_jobs
-SET lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $4
-  AND leased_generation = $4`
-
-const finishJobSQL = `
-UPDATE durable_jobs
-SET status = CASE
-        WHEN requested_generation > leased_generation THEN 'queued'
-        ELSE $3
-    END,
-    attempts = CASE
-        WHEN requested_generation > leased_generation THEN 0
-        ELSE attempts
-    END,
-    available_at = CASE
-        WHEN requested_generation > leased_generation THEN clock_timestamp()
-        ELSE available_at
-    END,
-    result = CASE
-        WHEN requested_generation > leased_generation THEN NULL
-        ELSE $4::jsonb
-    END,
-    last_error = CASE
-        WHEN requested_generation > leased_generation THEN NULL
-        ELSE $5
-    END,
-    completed_generation = GREATEST(completed_generation, leased_generation),
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $7::numeric
-  AND stage = $8
-  AND stage_version = $9
-  AND payload->>'block_hash' = $10
-  AND payload->>'block_number' = $11
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $6
-  AND leased_generation = $6
-  AND completed_generation < $6
-RETURNING status = 'queued'
-      AND attempts = 0
-      AND completed_generation < requested_generation`
-
-const retryJobSQL = `
-UPDATE durable_jobs
-SET status = CASE
-        WHEN requested_generation > leased_generation THEN 'queued'
-        WHEN attempts >= max_attempts THEN 'failed'
-        ELSE 'queued'
-    END,
-    attempts = CASE
-        WHEN requested_generation > leased_generation THEN 0
-        ELSE attempts
-    END,
-    available_at = CASE
-        WHEN requested_generation > leased_generation THEN clock_timestamp()
-        ELSE clock_timestamp() + ($4 * INTERVAL '1 microsecond')
-    END,
-    last_error = CASE
-        WHEN requested_generation > leased_generation THEN NULL
-        ELSE $3
-    END,
-    result = CASE
-        WHEN requested_generation > leased_generation THEN NULL
-        WHEN attempts >= max_attempts
-            THEN jsonb_build_object('state', 'failed', 'error', $3::text)
-        ELSE NULL
-    END,
-    completed_generation = CASE
-        WHEN requested_generation > leased_generation
-            THEN GREATEST(completed_generation, leased_generation)
-        WHEN attempts >= max_attempts
-            THEN GREATEST(completed_generation, leased_generation)
-        ELSE completed_generation
-    END,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $6::numeric
-  AND stage = $7
-  AND stage_version = $8
-  AND payload->>'block_hash' = $9
-  AND payload->>'block_number' = $10
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $5
-  AND leased_generation = $5
-  AND completed_generation < $5
-RETURNING status,
-          status = 'queued'
-          AND attempts = 0
-          AND completed_generation < requested_generation`
-
-const requeueJobSQL = `
-UPDATE durable_jobs
-SET status = 'queued',
-    attempts = 0,
-    requested_generation = requested_generation + 1,
-    available_at = clock_timestamp(),
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    result = NULL,
-    last_error = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND chain_id = $2::numeric
-  AND kind = 'enrichment'
-  AND stage = $3
-  AND stage_version = $4
-  AND idempotency_key = $5
-  AND status IN ('succeeded', 'failed')`
-
-const enrichmentJobStatusSQL = `
-SELECT status
-FROM durable_jobs
-WHERE id = $1`
-
-const lockPublicationJobSQL = `
-SELECT pg_advisory_xact_lock(-($1::bigint))`
-
-const selectStageResultPublicationSQL = `
-SELECT durable_job_id, job_generation
-FROM block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
-  AND stage_version = $4
-FOR UPDATE`
-
-const selectStageJournalPublicationsSQL = `
-SELECT durable_job_id, job_generation
-FROM block_journals
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
-ORDER BY sequence
-FOR UPDATE`
-
-const deleteStageResultSQL = `
-DELETE FROM block_stage_results
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3
-  AND stage_version = $4`
-
-const deleteStageJournalSQL = `
-DELETE FROM block_journals
-WHERE chain_id = $1::numeric
-  AND block_hash = $2
-  AND stage = $3`
-
-const selectDependentReplayTargetIDSQL = `
-SELECT id
-FROM durable_jobs
-WHERE chain_id = $1::numeric
-  AND kind = 'enrichment'
-  AND payload->>'block_hash' = $2
-  AND stage = $3
-  AND stage_version = $4`
-
-const selectReplayTargetByIDSQL = `
-SELECT id, chain_id::text, stage, stage_version, attempts, max_attempts, payload,
-       requested_generation, status
-FROM durable_jobs
-WHERE id = $1
-FOR UPDATE`
-
-const insertReplayRequestSQL = `
-INSERT INTO durable_job_replay_requests (
-    job_id, source_kind, source_key, requested_generation
-) VALUES ($1, $2, $3, $4)
-ON CONFLICT (job_id, source_kind, source_key) DO NOTHING`
-
-const requestReplayJobSQL = `
-UPDATE durable_jobs
-SET requested_generation = $2,
-    status = CASE WHEN status = 'leased' THEN status ELSE 'queued' END,
-    attempts = CASE WHEN status = 'leased' THEN attempts ELSE 0 END,
-    available_at = CASE WHEN status = 'leased' THEN available_at ELSE clock_timestamp() END,
-    leased_by = CASE WHEN status = 'leased' THEN leased_by ELSE NULL END,
-    lease_token = CASE WHEN status = 'leased' THEN lease_token ELSE NULL END,
-    lease_expires_at = CASE WHEN status = 'leased' THEN lease_expires_at ELSE NULL END,
-    leased_generation = CASE WHEN status = 'leased' THEN leased_generation ELSE NULL END,
-    result = CASE WHEN status = 'leased' THEN result ELSE NULL END,
-    last_error = CASE WHEN status = 'leased' THEN last_error ELSE NULL END,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND requested_generation = $2 - 1`

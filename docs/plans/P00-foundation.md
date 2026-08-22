@@ -28,6 +28,7 @@ and API contracts, and a deterministic embedded-SPA build.
 | P00-T08 | done | P00-T02 | Repository-owned golangci-lint v2 policy for Go source and tests | configuration validation and `make lint-go` |
 | P00-T09 | done | P00-T08 | Tagged Go lint coverage and unparam cleanup across production, integration, and E2E code | `make lint-go` and tagged compile/test regressions |
 | P00-T10 | done | P00-T02, P00-T05 | Codex sandbox execution guidance for writable caches, browser gates, and Docker-backed checks | documentation review and `make plan-check` |
+| P00-T11 | done | P00-T07, P00-T08 | Raise the repository Go baseline to 1.27.0 and pin golangci-lint 2.13.1 across development and production build inputs | toolchain regressions, lint configuration, common gates, and production image validation |
 
 ## Acceptance
 
@@ -45,6 +46,15 @@ None.
 
 ## Evidence
 
+- P00-T11 raises the module, minimum-version checker, maintained documentation,
+  and production builder to Go 1.27.0, pins golangci-lint v2.13.1, and adopts
+  Go 1.27's promoted embedded-field literal syntax required by `modernize`.
+  The checker regression suite, `make toolchain-check`, golangci-lint
+  configuration verification, `make plan-check generate-check lint test
+  test-race security-check license-check`, and `make docker-check` pass; the
+  Docker check resolves `golang:1.27.0` and reports no warnings. Go source
+  analysis tools used for the local evidence were rebuilt with Go 1.27.0 so
+  they could parse the upgraded module and standard library.
 - P00-T10 adds one maintained restricted-host workflow to `AGENTS.md` and
   `docs/testing.md`: npm, Go build, and golangci-lint caches move to scoped
   writable `/tmp` paths without discarding the warmed module cache; known

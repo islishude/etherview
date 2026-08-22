@@ -84,21 +84,3 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 	}
 	return encoded, nil
 }
-
-const upsertDerivedJournalSQL = `
-INSERT INTO block_journals AS current (
-    chain_id, block_hash, stage, sequence, payload, canonical
-)
-SELECT $1::numeric, $2, $3, $4::numeric, $5::jsonb,
-       EXISTS (
-           SELECT 1
-           FROM canonical_blocks
-           WHERE chain_id = $1::numeric
-             AND number = $6::numeric
-             AND block_hash = $2
-       )
-ON CONFLICT (chain_id, block_hash, stage, sequence) DO UPDATE SET
-    payload = EXCLUDED.payload,
-    canonical = EXCLUDED.canonical
-WHERE current.durable_job_id IS NULL
-  AND current.job_generation IS NULL`

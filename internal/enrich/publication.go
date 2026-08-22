@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math"
 	"strconv"
 	"time"
@@ -94,7 +95,7 @@ func (queue *PostgresJobQueue) publishSuccess(
 	if err := lockPublicationJobTx(ctx, tx, identity.jobID); err != nil {
 		return StageResult{}, err
 	}
-	if _, err := tx.ExecContext(ctx, "SAVEPOINT enrichment_stage_output"); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichSavepointStageOutput); err != nil {
 		return StageResult{}, fmt.Errorf("create atomic stage output savepoint: %w", err)
 	}
 	result, err := writer(ctx, tx)
@@ -127,8 +128,7 @@ func (queue *PostgresJobQueue) publishSuccess(
 	// row lock.
 	guard.mu.Lock()
 	defer guard.mu.Unlock()
-	updated, err := tx.ExecContext(ctx, atomicPublishSuccessSQL,
-		identity.jobID, lease.Token, identity.generation, string(encodedResult),
+	updated, err := tx.ExecContext(ctx, dbgen.EnrichLegacyAtomicPublishSuccess, identity.jobID, lease.Token, identity.generation, string(encodedResult),
 		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
 		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
 	)
@@ -157,11 +157,10 @@ func (queue *PostgresJobQueue) publishSuccess(
 	// this generation, then consume the pending marker and old published state in
 	// the same lease-fenced transaction. Any other CAS miss is a lost lease and
 	// leaves no stage writes behind.
-	if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT enrichment_stage_output"); err != nil {
+	if _, err := tx.ExecContext(ctx, dbgen.EnrichRollbackStageOutput); err != nil {
 		return StageResult{}, fmt.Errorf("discard superseded stage output: %w", err)
 	}
-	consumed, err := tx.ExecContext(ctx, atomicConsumePendingReplaySQL,
-		identity.jobID, lease.Token, identity.generation,
+	consumed, err := tx.ExecContext(ctx, dbgen.EnrichLegacyAtomicConsumePendingReplay, identity.jobID, lease.Token, identity.generation,
 		lease.Job.ChainID, lease.Job.Stage.Name, lease.Job.Stage.Version,
 		lease.Job.BlockHash.String(), strconv.FormatUint(lease.Job.BlockNumber, 10),
 	)
@@ -227,8 +226,7 @@ func persistPublishedStageResultTx(
 	if result.Error != "" {
 		lastError = result.Error
 	}
-	row := tx.QueryRowContext(ctx, insertPublishedStageResultSQL,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	row := tx.QueryRowContext(ctx, dbgen.EnrichLegacyInsertPublishedStageResult, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		job.Stage.Name, job.Stage.Version, result.State, string(encodedDetails), lastError,
 		identity.jobID, identity.generation,
 	)
@@ -253,8 +251,7 @@ func persistPublishedJournalTx(
 		return err
 	}
 	var inserted int
-	err = tx.QueryRowContext(ctx, upsertPublishedDerivedJournalSQL,
-		job.ChainID, job.BlockHash[:], job.Stage.String(), derivedJournalSequence,
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyUpsertPublishedDerivedJournal, job.ChainID, job.BlockHash[:], job.Stage.String(), derivedJournalSequence,
 		string(journal), strconv.FormatUint(job.BlockNumber, 10),
 		identity.jobID, identity.generation,
 	).Scan(&inserted)
@@ -288,8 +285,7 @@ func persistDurablePublicationTx(
 		lastError = result.Error
 	}
 	var inserted int
-	err = tx.QueryRowContext(ctx, insertDurablePublicationSQL,
-		identity.jobID, identity.generation,
+	err = tx.QueryRowContext(ctx, dbgen.EnrichLegacyInsertDurablePublication, identity.jobID, identity.generation,
 		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		job.Stage.Name, job.Stage.Version, state, string(encodedDetails), lastError,
 	).Scan(&inserted)
@@ -303,7 +299,7 @@ func (queue *PostgresJobQueue) confirmPublishedSuccess(ctx context.Context, iden
 	confirmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	var confirmed bool
-	err := queue.db.QueryRowContext(confirmCtx, confirmPublishedSuccessSQL, identity.jobID, identity.generation).Scan(&confirmed)
+	err := queue.db.QueryRowContext(confirmCtx, dbgen.EnrichLegacyConfirmPublishedSuccess, identity.jobID, identity.generation).Scan(&confirmed)
 	return err == nil && confirmed
 }
 
@@ -311,141 +307,6 @@ func (queue *PostgresJobQueue) confirmSupersededPublication(ctx context.Context,
 	confirmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	var confirmed bool
-	err := queue.db.QueryRowContext(confirmCtx, confirmSupersededPublicationSQL, identity.jobID, identity.generation).Scan(&confirmed)
+	err := queue.db.QueryRowContext(confirmCtx, dbgen.EnrichLegacyConfirmSupersededPublication, identity.jobID, identity.generation).Scan(&confirmed)
 	return err == nil && confirmed
 }
-
-const insertPublishedStageResultSQL = `
-INSERT INTO block_stage_results AS current (
-    chain_id, block_number, block_hash, stage, stage_version,
-    state, details, last_error, durable_job_id, job_generation
-) VALUES (
-    $1::numeric, $2::numeric, $3, $4, $5,
-    $6, $7::jsonb, $8, $9, $10
-)
-ON CONFLICT (chain_id, block_hash, stage, stage_version) DO UPDATE SET
-    block_number = EXCLUDED.block_number,
-    state = EXCLUDED.state,
-    details = EXCLUDED.details,
-    last_error = EXCLUDED.last_error,
-    durable_job_id = EXCLUDED.durable_job_id,
-    job_generation = EXCLUDED.job_generation,
-    completed_at = clock_timestamp()
-WHERE (
-        current.durable_job_id IS NULL
-        AND current.job_generation IS NULL
-      ) OR (
-        current.durable_job_id = EXCLUDED.durable_job_id
-        AND current.job_generation <= EXCLUDED.job_generation
-      )
-RETURNING 1`
-
-const upsertPublishedDerivedJournalSQL = `
-INSERT INTO block_journals AS current (
-    chain_id, block_hash, stage, sequence, payload, canonical,
-    durable_job_id, job_generation
-)
-SELECT $1::numeric, $2, $3, $4::numeric, $5::jsonb,
-       EXISTS (
-           SELECT 1
-           FROM canonical_blocks
-           WHERE chain_id = $1::numeric
-             AND number = $6::numeric
-             AND block_hash = $2
-       ),
-       $7, $8
-ON CONFLICT (chain_id, block_hash, stage, sequence) DO UPDATE SET
-    payload = EXCLUDED.payload,
-    canonical = EXCLUDED.canonical,
-    durable_job_id = EXCLUDED.durable_job_id,
-    job_generation = EXCLUDED.job_generation
-WHERE (
-        current.durable_job_id IS NULL
-        AND current.job_generation IS NULL
-      ) OR (
-        current.durable_job_id = EXCLUDED.durable_job_id
-        AND current.job_generation <= EXCLUDED.job_generation
-      )
-RETURNING 1`
-
-const insertDurablePublicationSQL = `
-INSERT INTO durable_stage_publications (
-    job_id, job_generation, chain_id, block_number, block_hash,
-    stage, stage_version, state, details, last_error
-) VALUES (
-    $1, $2, $3::numeric, $4::numeric, $5,
-    $6, $7, $8, $9::jsonb, $10
-)
-RETURNING 1`
-
-const atomicPublishSuccessSQL = `
-UPDATE durable_jobs
-SET status = 'succeeded',
-    result = $4::jsonb,
-    last_error = NULL,
-    completed_generation = $3,
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $5::numeric
-  AND stage = $6
-  AND stage_version = $7
-  AND payload->>'block_hash' = $8
-  AND payload->>'block_number' = $9
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation = $3
-  AND completed_generation < $3`
-
-const atomicConsumePendingReplaySQL = `
-UPDATE durable_jobs
-SET status = 'queued',
-    attempts = 0,
-    available_at = clock_timestamp(),
-    result = NULL,
-    last_error = NULL,
-    completed_generation = GREATEST(completed_generation, $3),
-    leased_by = NULL,
-    lease_token = NULL,
-    lease_expires_at = NULL,
-    leased_generation = NULL,
-    updated_at = clock_timestamp()
-WHERE id = $1
-  AND kind = 'enrichment'
-  AND chain_id = $4::numeric
-  AND stage = $5
-  AND stage_version = $6
-  AND payload->>'block_hash' = $7
-  AND payload->>'block_number' = $8
-  AND status = 'leased'
-  AND lease_token = $2
-  AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $3
-  AND leased_generation = $3
-  AND requested_generation > $3
-  AND completed_generation < $3`
-
-const confirmPublishedSuccessSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM durable_stage_publications AS publication
-    WHERE publication.job_id = $1
-      AND publication.job_generation = $2
-      AND publication.state = 'complete'
-)`
-
-const confirmSupersededPublicationSQL = `
-SELECT EXISTS (
-    SELECT 1
-    FROM durable_stage_publications AS publication
-    WHERE publication.job_id = $1
-      AND publication.job_generation = $2
-      AND publication.state = 'superseded'
-)`

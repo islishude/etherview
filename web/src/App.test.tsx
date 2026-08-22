@@ -550,7 +550,6 @@ describe("embedded explorer shell", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input);
-        const meta = { request_id: "chart-stage-test", chain_id: "1" };
         if (path === "/api/v1/stats/charts/overview") {
           return Response.json({
             error: {

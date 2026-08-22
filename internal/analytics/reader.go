@@ -9,6 +9,11 @@ import (
 	"math/big"
 	"strconv"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	"github.com/islishude/etherview/internal/db/gen"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const maxPoints = 500
@@ -56,59 +61,48 @@ func (reader *Reader) Detail(ctx context.Context, request DetailRequest) (Series
 	if err != nil {
 		return Series{}, err
 	}
-	tx, err := reader.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return Series{}, fmt.Errorf("begin analytics snapshot: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-	snapshot, err := readSnapshot(ctx, tx, request.ChainID)
-	if err != nil {
-		return Series{}, err
-	}
-	coverage, err := readCoverage(ctx, tx, request.ChainID)
-	if err != nil {
-		return Series{}, err
-	}
-	if coverage.AvailableFrom == nil || coverage.AvailableTo == nil ||
-		request.From.Before(*coverage.AvailableFrom) && !coverage.Complete {
-		return Series{}, PendingError{Coverage: coverage}
-	}
-	var dirty string
-	if err := tx.QueryRowContext(ctx, dirtyRangeSQL, request.ChainID, request.From, request.To).Scan(&dirty); err != nil {
-		return Series{}, fmt.Errorf("read analytics dirty range: %w", err)
-	}
-	if dirty != "0" {
-		return Series{}, PendingError{Coverage: coverage}
-	}
-	if err := tx.QueryRowContext(ctx, missingRollupRangeSQL, request.ChainID, request.From, request.To).Scan(&dirty); err != nil {
-		return Series{}, fmt.Errorf("read analytics rollup range: %w", err)
-	}
-	if dirty != "0" {
-		return Series{}, PendingError{Coverage: coverage}
-	}
-	if err := tx.QueryRowContext(ctx, pendingSourceRangeSQL, request.ChainID, request.From, request.To).Scan(&dirty); err != nil {
-		return Series{}, fmt.Errorf("read analytics source range: %w", err)
-	}
-	if dirty != "0" {
-		return Series{}, PendingError{Coverage: coverage}
-	}
-	rows, err := tx.QueryContext(
-		ctx, detailRangeSQL,
-		request.ChainID, request.From, request.To, string(interval),
-	)
-	if err != nil {
-		return Series{}, fmt.Errorf("query analytics hours: %w", err)
-	}
-	hours, err := scanHours(rows)
+	chainNumeric := analyticsNumeric(request.ChainID)
+	var snapshot Snapshot
+	var coverage Coverage
+	var hours []hourRow
+	err = dbaccess.WithTransactionOptions(ctx, reader.db, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	}, func(queries *dbgen.Queries) error {
+		var queryErr error
+		snapshot, queryErr = readSnapshot(ctx, queries, chainNumeric, request.ChainID)
+		if queryErr != nil {
+			return queryErr
+		}
+		coverage, queryErr = readCoverage(ctx, queries, chainNumeric)
+		if queryErr != nil {
+			return queryErr
+		}
+		if coverage.AvailableFrom == nil || coverage.AvailableTo == nil ||
+			request.From.Before(*coverage.AvailableFrom) && !coverage.Complete {
+			return PendingError{Coverage: coverage}
+		}
+		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, request.From, request.To); queryErr != nil {
+			if errors.Is(queryErr, ErrPending) {
+				return PendingError{Coverage: coverage}
+			}
+			return queryErr
+		}
+		rows, queryErr := queries.ListAnalyticsHours(ctx, dbgen.ListAnalyticsHoursParams{
+			BucketInterval: string(interval), ChainID: chainNumeric,
+			ToTime: analyticsTime(request.To), FromTime: analyticsTime(request.From),
+		})
+		if queryErr != nil {
+			return fmt.Errorf("query analytics hours: %w", queryErr)
+		}
+		hours, queryErr = analyticsHoursFromRows(rows)
+		return queryErr
+	})
 	if err != nil {
 		return Series{}, err
 	}
 	points := aggregateHours(hours, request.Metric, interval, request.Now)
 	if len(points) > maxPoints {
 		return Series{}, ErrCorruptData
-	}
-	if err := tx.Commit(); err != nil {
-		return Series{}, fmt.Errorf("commit analytics snapshot: %w", err)
 	}
 	return Series{
 		Metric: request.Metric, Interval: interval, FromTime: request.From,
@@ -126,72 +120,57 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 	} else {
 		now = now.UTC()
 	}
-	tx, err := reader.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return Overview{}, fmt.Errorf("begin analytics overview snapshot: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-	snapshot, err := readSnapshot(ctx, tx, chainID)
+	chainNumeric := analyticsNumeric(chainID)
+	var overview Overview
+	var hours []hourRow
+	var skipMetrics bool
+	err := dbaccess.WithTransactionOptions(ctx, reader.db, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	}, func(queries *dbgen.Queries) error {
+		snapshot, queryErr := readSnapshot(ctx, queries, chainNumeric, chainID)
+		if queryErr != nil {
+			return queryErr
+		}
+		coverage, queryErr := readCoverage(ctx, queries, chainNumeric)
+		if queryErr != nil {
+			return queryErr
+		}
+		overview = Overview{
+			GeneratedAt: now, Snapshot: snapshot, Coverage: coverage,
+			Pending: !coverage.Complete,
+		}
+		from := now.Add(-7 * 24 * time.Hour)
+		if coverage.AvailableFrom == nil || coverage.AvailableTo == nil {
+			overview.Pending = true
+			skipMetrics = true
+			return nil
+		}
+		if from.Before(*coverage.AvailableFrom) {
+			from = *coverage.AvailableFrom
+		}
+		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, from, now); queryErr != nil {
+			if errors.Is(queryErr, ErrPending) {
+				overview.Pending = true
+				skipMetrics = true
+				return nil
+			}
+			return queryErr
+		}
+		rows, queryErr := queries.ListAnalyticsHours(ctx, dbgen.ListAnalyticsHoursParams{
+			BucketInterval: string(IntervalHour), ChainID: chainNumeric,
+			ToTime: analyticsTime(now), FromTime: analyticsTime(from),
+		})
+		if queryErr != nil {
+			return fmt.Errorf("query overview hours: %w", queryErr)
+		}
+		hours, queryErr = analyticsHoursFromRows(rows)
+		return queryErr
+	})
 	if err != nil {
 		return Overview{}, err
 	}
-	coverage, err := readCoverage(ctx, tx, chainID)
-	if err != nil {
-		return Overview{}, err
-	}
-	overview := Overview{
-		GeneratedAt: now, Snapshot: snapshot, Coverage: coverage,
-		Pending: !coverage.Complete,
-	}
-	from := now.Add(-7 * 24 * time.Hour)
-	if coverage.AvailableFrom == nil || coverage.AvailableTo == nil {
-		overview.Pending = true
-		if err := tx.Commit(); err != nil {
-			return Overview{}, err
-		}
+	if skipMetrics {
 		return overview, nil
-	}
-	if from.Before(*coverage.AvailableFrom) {
-		from = *coverage.AvailableFrom
-	}
-	var dirty string
-	if err := tx.QueryRowContext(ctx, missingRollupRangeSQL, chainID, from, now).Scan(&dirty); err != nil {
-		return Overview{}, fmt.Errorf("read overview rollup range: %w", err)
-	}
-	if dirty != "0" {
-		overview.Pending = true
-		if err := tx.Commit(); err != nil {
-			return Overview{}, err
-		}
-		return overview, nil
-	}
-	if err := tx.QueryRowContext(ctx, dirtyRangeSQL, chainID, from, now).Scan(&dirty); err != nil {
-		return Overview{}, fmt.Errorf("read overview dirty range: %w", err)
-	}
-	if dirty != "0" {
-		overview.Pending = true
-		if err := tx.Commit(); err != nil {
-			return Overview{}, err
-		}
-		return overview, nil
-	}
-	if err := tx.QueryRowContext(ctx, pendingSourceRangeSQL, chainID, from, now).Scan(&dirty); err != nil {
-		return Overview{}, fmt.Errorf("read overview source range: %w", err)
-	}
-	if dirty != "0" {
-		overview.Pending = true
-		if err := tx.Commit(); err != nil {
-			return Overview{}, err
-		}
-		return overview, nil
-	}
-	rows, err := tx.QueryContext(ctx, hourlyRangeSQL, chainID, from, now)
-	if err != nil {
-		return Overview{}, fmt.Errorf("query overview hours: %w", err)
-	}
-	hours, err := scanHours(rows)
-	if err != nil {
-		return Overview{}, err
 	}
 	currentFrom, previousFrom := now.Add(-24*time.Hour), now.Add(-48*time.Hour)
 	for _, metric := range metricOrder {
@@ -208,9 +187,6 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 			ChangePercent: change, Points: previewPoints,
 		})
 	}
-	if err := tx.Commit(); err != nil {
-		return Overview{}, fmt.Errorf("commit analytics overview snapshot: %w", err)
-	}
 	return overview, nil
 }
 
@@ -225,20 +201,23 @@ type hourRow struct {
 	ERC20Transfers, NFTTransfers                                  *big.Int
 }
 
-func scanHours(rows *sql.Rows) ([]hourRow, error) {
-	defer rows.Close() //nolint:errcheck
-	var result []hourRow
-	for rows.Next() {
+func analyticsHoursFromRows(rows []dbgen.ListAnalyticsHoursRow) ([]hourRow, error) {
+	result := make([]hourRow, 0, len(rows))
+	for _, source := range rows {
+		if !source.BucketStart.Valid {
+			return nil, ErrCorruptData
+		}
 		var row hourRow
-		var values [15]string
-		if err := rows.Scan(
-			&row.Start, &row.FromBlock, &row.ToBlock, &row.BlockCount,
-			&values[0], &values[1], &values[2], &values[3], &values[4],
-			&row.BlockIntervalSamples, &values[5], &row.BaseFeeSamples,
-			&values[6], &values[7], &values[8], &values[9], &values[10],
-			&values[11], &row.BlobSamples, &values[12], &values[13], &values[14],
-		); err != nil {
-			return nil, fmt.Errorf("scan analytics hour: %w", err)
+		row.Start, row.FromBlock, row.ToBlock = source.BucketStart.Time.UTC(), source.FromBlock, source.ToBlock
+		row.BlockCount = source.BlockCount
+		row.BlockIntervalSamples, row.BaseFeeSamples = source.BlockIntervalSamples, source.BaseFeeSamples
+		row.BlobSamples = source.BlobBaseFeeSamples
+		values := [...]string{
+			source.TransactionCount, source.FailedTransactionCount, source.ContractCreationCount,
+			source.GasUsed, source.GasLimit, source.BlockIntervalSeconds,
+			source.BaseFeePerGasSum, source.ExecutionGasFeeWei, source.PriorityFeeWei,
+			source.BurnedWei, source.BlobGasUsed, source.BlobBaseFeePerGasSum,
+			source.BlobBurnedWei, source.Erc20TransferCount, source.NftTransferCount,
 		}
 		destinations := []**big.Int{
 			&row.TransactionCount, &row.FailedCount, &row.CreationCount,
@@ -259,9 +238,6 @@ func scanHours(rows *sql.Rows) ([]hourRow, error) {
 			return nil, ErrCorruptData
 		}
 		result = append(result, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate analytics hours: %w", err)
 	}
 	return result, nil
 }
@@ -507,43 +483,82 @@ func bucketEnd(value time.Time, interval Interval) time.Time {
 	}
 }
 
-func readSnapshot(ctx context.Context, tx *sql.Tx, chainID string) (Snapshot, error) {
-	var result Snapshot
-	var hash []byte
-	if err := tx.QueryRowContext(ctx, snapshotSQL, chainID).Scan(&result.BlockNumber, &hash); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+func readSnapshot(
+	ctx context.Context,
+	queries *dbgen.Queries,
+	chainNumeric pgtype.Numeric,
+	chainID string,
+) (Snapshot, error) {
+	row, err := queries.GetAnalyticsSnapshot(ctx, chainNumeric)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Snapshot{}, ErrPending
 		}
 		return Snapshot{}, fmt.Errorf("read analytics snapshot: %w", err)
 	}
-	if len(hash) != 32 || !canonicalPositiveIntegerOrZero(result.BlockNumber) {
+	if len(row.BlockHash) != 32 || !canonicalPositiveIntegerOrZero(row.BlockNumber) {
 		return Snapshot{}, ErrCorruptData
 	}
-	result.ChainID, result.BlockHash = chainID, "0x"+hex.EncodeToString(hash)
-	return result, nil
+	return Snapshot{
+		ChainID: chainID, BlockNumber: row.BlockNumber,
+		BlockHash: "0x" + hex.EncodeToString(row.BlockHash),
+	}, nil
 }
 
-func readCoverage(ctx context.Context, tx *sql.Tx, chainID string) (Coverage, error) {
-	var coverage Coverage
-	var from, to sql.NullTime
-	var dirty, progress string
-	var complete bool
-	err := tx.QueryRowContext(ctx, coverageSQL, chainID).Scan(
-		&from, &to, &complete, &dirty, &progress,
-	)
+func readCoverage(ctx context.Context, queries *dbgen.Queries, chainNumeric pgtype.Numeric) (Coverage, error) {
+	row, err := queries.GetAnalyticsCoverage(ctx, chainNumeric)
 	if err != nil {
 		return Coverage{}, fmt.Errorf("read analytics coverage: %w", err)
 	}
-	if from.Valid {
-		value := from.Time.UTC()
+	coverage := Coverage{Complete: row.Complete, DirtyHours: row.DirtyHours, Progress: row.Progress}
+	if row.AvailableFrom.Valid {
+		value := row.AvailableFrom.Time.UTC()
 		coverage.AvailableFrom = &value
 	}
-	if to.Valid {
-		value := to.Time.UTC()
+	if row.AvailableTo.Valid {
+		value := row.AvailableTo.Time.UTC()
 		coverage.AvailableTo = &value
 	}
-	coverage.Complete, coverage.DirtyHours, coverage.Progress = complete, dirty, progress
 	return coverage, nil
+}
+
+func requireCleanAnalyticsRange(
+	ctx context.Context,
+	queries *dbgen.Queries,
+	chainNumeric pgtype.Numeric,
+	from, to time.Time,
+) error {
+	dirty, err := queries.CountDirtyAnalyticsHours(ctx, chainNumeric, analyticsTime(to), analyticsTime(from))
+	if err != nil {
+		return fmt.Errorf("read analytics dirty range: %w", err)
+	}
+	if dirty != "0" {
+		return ErrPending
+	}
+	missing, err := queries.CountMissingAnalyticsRollups(ctx, chainNumeric, analyticsTime(from), analyticsTime(to))
+	if err != nil {
+		return fmt.Errorf("read analytics rollup range: %w", err)
+	}
+	if missing != "0" {
+		return ErrPending
+	}
+	pending, err := queries.CountPendingAnalyticsSources(ctx, chainNumeric, analyticsTime(from), analyticsTime(to))
+	if err != nil {
+		return fmt.Errorf("read analytics source range: %w", err)
+	}
+	if pending != "0" {
+		return ErrPending
+	}
+	return nil
+}
+
+func analyticsNumeric(value string) pgtype.Numeric {
+	integer, _ := new(big.Int).SetString(value, 10)
+	return pgtype.Numeric{Int: integer, Valid: true}
+}
+
+func analyticsTime(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: value.UTC(), Valid: true}
 }
 
 func canonicalPositiveInteger(value string) bool {
@@ -561,124 +576,3 @@ func canonicalPositiveIntegerOrZero(value string) bool {
 	}
 	return true
 }
-
-const snapshotSQL = `
-SELECT canonical.number::text, canonical.block_hash
-FROM canonical_blocks AS canonical
-WHERE canonical.chain_id = $1::numeric
-ORDER BY canonical.number DESC
-LIMIT 1`
-
-const coverageSQL = `
-SELECT backfill.available_from, backfill.available_to, COALESCE(backfill.complete, false),
-       (SELECT count(*)::text FROM chart_rollup_dirty_hours WHERE chain_id = $1::numeric),
-       CASE
-           WHEN COALESCE(backfill.total_blocks, 0) = 0 THEN '0'
-           ELSE trim(trailing '.' FROM trim(trailing '0' FROM
-               round(backfill.completed_blocks::numeric * 100 / backfill.total_blocks, 18)::text
-           ))
-       END
-FROM (SELECT 1) AS singleton
-LEFT JOIN chart_rollup_backfill AS backfill ON backfill.chain_id = $1::numeric`
-
-const dirtyRangeSQL = `
-SELECT count(*)::text
-FROM chart_rollup_dirty_hours
-WHERE chain_id = $1::numeric
-  AND bucket_start < $3
-  AND bucket_start + interval '1 hour' > $2`
-
-const pendingSourceRangeSQL = `
-SELECT count(*)::text
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN published_block_stage_results AS stats_result
-  ON stats_result.chain_id = canonical.chain_id
- AND stats_result.block_number = canonical.number
- AND stats_result.block_hash = canonical.block_hash
- AND stats_result.stage = 'stats'
- AND stats_result.stage_version = 3
- AND stats_result.state = 'complete'
-LEFT JOIN published_block_stage_results AS token_result
-  ON token_result.chain_id = canonical.chain_id
- AND token_result.block_number = canonical.number
- AND token_result.block_hash = canonical.block_hash
- AND token_result.stage = 'token'
- AND token_result.stage_version = 1
- AND token_result.state = 'complete'
-WHERE canonical.chain_id = $1::numeric
-  AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM $3::timestamptz)::numeric
-  AND (stats_result.block_number IS NULL OR token_result.block_number IS NULL)`
-
-const missingRollupRangeSQL = `
-SELECT count(*)::text
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN chart_hourly_rollups AS rollup
-  ON rollup.chain_id = canonical.chain_id
- AND rollup.bucket_start = date_trunc(
-     'hour',
-     to_timestamp(block.timestamp::double precision),
-     'UTC'
- )
-WHERE canonical.chain_id = $1::numeric
-  AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM $3::timestamptz)::numeric
-  AND rollup.bucket_start IS NULL`
-
-const hourlyRangeSQL = `
-SELECT bucket_start, from_block::text, to_block::text, block_count,
-       transaction_count::text, failed_transaction_count::text,
-       contract_creation_count::text, gas_used::text, gas_limit::text,
-       block_interval_samples, block_interval_seconds::text,
-       base_fee_samples, base_fee_per_gas_sum::text,
-       execution_gas_fee_wei::text, priority_fee_wei::text, burned_wei::text,
-       blob_gas_used::text, blob_base_fee_samples, blob_base_fee_per_gas_sum::text,
-       blob_burned_wei::text, erc20_transfer_count::text, nft_transfer_count::text
-FROM chart_hourly_rollups
-WHERE chain_id = $1::numeric
-  AND bucket_start < $3
-  AND bucket_start + interval '1 hour' > $2
-ORDER BY bucket_start`
-
-const detailRangeSQL = `
-WITH requested AS (
-    SELECT CASE $4::text
-               WHEN 'hour' THEN date_trunc('hour', bucket_start, 'UTC')
-               WHEN 'day' THEN date_trunc('day', bucket_start, 'UTC')
-               WHEN 'week' THEN date_trunc('week', bucket_start, 'UTC')
-               WHEN 'month' THEN date_trunc('month', bucket_start, 'UTC')
-           END AS bucket_start,
-           from_block, to_block, block_count, transaction_count,
-           failed_transaction_count, contract_creation_count, gas_used,
-           gas_limit, block_interval_samples, block_interval_seconds,
-           base_fee_samples, base_fee_per_gas_sum, execution_gas_fee_wei,
-           priority_fee_wei, burned_wei, blob_gas_used, blob_base_fee_samples,
-           blob_base_fee_per_gas_sum, blob_burned_wei, erc20_transfer_count,
-           nft_transfer_count
-    FROM chart_hourly_rollups
-    WHERE chain_id = $1::numeric
-      AND bucket_start < $3
-      AND bucket_start + interval '1 hour' > $2
-)
-SELECT bucket_start, min(from_block)::text, max(to_block)::text,
-       sum(block_count)::bigint, sum(transaction_count)::text,
-       sum(failed_transaction_count)::text, sum(contract_creation_count)::text,
-       sum(gas_used)::text, sum(gas_limit)::text,
-       sum(block_interval_samples)::bigint, sum(block_interval_seconds)::text,
-       sum(base_fee_samples)::bigint, sum(base_fee_per_gas_sum)::text,
-       sum(execution_gas_fee_wei)::text, sum(priority_fee_wei)::text,
-       sum(burned_wei)::text, sum(blob_gas_used)::text,
-       sum(blob_base_fee_samples)::bigint, sum(blob_base_fee_per_gas_sum)::text,
-       sum(blob_burned_wei)::text, sum(erc20_transfer_count)::text,
-       sum(nft_transfer_count)::text
-FROM requested
-GROUP BY bucket_start
-ORDER BY bucket_start`

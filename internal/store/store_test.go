@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/chainbundle/testfixture"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testing.T) {
@@ -23,10 +23,10 @@ func TestDerivedCanonicalRelationsIncludeUUPSImplementationObservations(t *testi
 		"diamond_cut_events",
 		"transaction_effective_execution_identities",
 	} {
-		if slices.Contains(derivedCanonicalRelations[:], relation) {
+		if strings.Contains(dbgen.StoreSetDerivedCanonical, "UPDATE "+relation+" SET canonical") {
 			continue
 		}
-		t.Fatalf("derived canonical relations=%v", derivedCanonicalRelations)
+		t.Fatalf("derived canonical query lacks %s", relation)
 	}
 }
 

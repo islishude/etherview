@@ -17,7 +17,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc -b --pretty false",
+    "lint": "tsc -b --pretty false && npm run lint:biome",
+    "lint:biome": "biome check src",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest"
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
+    "@biomejs/biome": "2.5.10",
     "@playwright/test": "1.62.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "7.0.0",

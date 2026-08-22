@@ -117,6 +117,7 @@ type RedisAccelerator struct {
 	cacheEnabled     atomic.Bool
 	cacheFenced      atomic.Bool
 	rateCircuit      *redisRateCircuit
+	cacheCircuit     *redisRateCircuit
 }
 
 func NewRedisAccelerator(rawURL string, options RedisOptions) (*RedisAccelerator, error) {
@@ -158,6 +159,7 @@ func newRedisAccelerator(backend redisBackend, options RedisOptions) *RedisAccel
 		cacheTTL:         options.CacheTTL,
 		logger:           options.Logger,
 		rateCircuit:      newRedisRateCircuit(options.OperationTimeout, options.circuitNow),
+		cacheCircuit:     newRedisRateCircuit(options.OperationTimeout, options.circuitNow),
 	}
 	accelerator.cacheEnabled.Store(true)
 	accelerator.cacheFenced.Store(true)
@@ -185,6 +187,10 @@ func (accelerator *RedisAccelerator) FenceCache(ctx context.Context) {
 	if accelerator == nil || accelerator.backend == nil {
 		return
 	}
+	if accelerator.cacheCircuit != nil && !accelerator.cacheCircuit.Allow() {
+		accelerator.cacheEnabled.Store(false)
+		return
+	}
 	operationCtx, cancel := accelerator.operationContext(ctx)
 	defer cancel()
 	if _, err := accelerator.backend.Eval(operationCtx, redisFenceScript, []string{accelerator.prefix + ":cache:generation"}); err != nil {
@@ -194,6 +200,9 @@ func (accelerator *RedisAccelerator) FenceCache(ctx context.Context) {
 	}
 	accelerator.cacheFenced.Store(true)
 	accelerator.cacheEnabled.Store(true)
+	if accelerator.cacheCircuit != nil {
+		accelerator.cacheCircuit.Succeed()
+	}
 }
 
 type redisLimiter struct {
@@ -361,6 +370,10 @@ func (accelerator *RedisAccelerator) Invalidate(ctx context.Context, event event
 	if accelerator == nil || accelerator.backend == nil {
 		return nil
 	}
+	if accelerator.cacheCircuit != nil && !accelerator.cacheCircuit.Allow() {
+		accelerator.cacheEnabled.Store(false)
+		return nil
+	}
 	operationCtx, cancel := accelerator.operationContext(ctx)
 	defer cancel()
 	if !accelerator.cacheFenced.Load() {
@@ -374,11 +387,13 @@ func (accelerator *RedisAccelerator) Invalidate(ctx context.Context, event event
 	_, err := accelerator.backend.Eval(operationCtx, redisInvalidateScript,
 		[]string{accelerator.prefix + ":cache:last-event", accelerator.prefix + ":cache:generation"}, strconv.FormatUint(event.ID, 10))
 	if err != nil {
-		accelerator.cacheEnabled.Store(false)
-		accelerator.logBypass(ctx, "optional Redis cache invalidation unavailable; cache bypassed", err)
+		accelerator.disableCacheWithMessage(ctx, "optional Redis cache invalidation unavailable; cache bypassed", err)
 		return nil
 	}
 	accelerator.cacheEnabled.Store(true)
+	if accelerator.cacheCircuit != nil {
+		accelerator.cacheCircuit.Succeed()
+	}
 	return nil
 }
 
@@ -457,8 +472,19 @@ func (accelerator *RedisAccelerator) operationContext(ctx context.Context) (cont
 }
 
 func (accelerator *RedisAccelerator) disableCache(ctx context.Context, err error) {
+	accelerator.disableCacheWithMessage(ctx, "optional Redis cache unavailable; cache bypassed", err)
+}
+
+func (accelerator *RedisAccelerator) disableCacheWithMessage(ctx context.Context, message string, err error) {
 	accelerator.cacheEnabled.Store(false)
-	accelerator.logBypass(ctx, "optional Redis cache unavailable; cache bypassed", err)
+	if accelerator.cacheCircuit != nil {
+		if ctx != nil && ctx.Err() != nil {
+			accelerator.cacheCircuit.CancelProbe()
+		} else {
+			accelerator.cacheCircuit.Fail()
+		}
+	}
+	accelerator.logBypass(ctx, message, err)
 }
 
 func (accelerator *RedisAccelerator) logBypass(ctx context.Context, message string, err error) {

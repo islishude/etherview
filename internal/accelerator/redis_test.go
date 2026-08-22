@@ -302,10 +302,14 @@ func TestRedisInvalidationKeepsLargeEventIDExact(t *testing.T) {
 
 func TestRedisInvalidationOutageDisablesCacheAndLaterEventRecovers(t *testing.T) {
 	t.Parallel()
+	var nowNanos atomic.Int64
+	nowNanos.Store(time.Unix(100, 0).UnixNano())
 	failing := true
 	fenceCalls := 0
+	evalCalls := 0
 	backend := &fakeRedisBackend{values: map[string][]byte{"test:1:cache:generation": []byte("0")}}
 	backend.eval = func(script string, _ []string, _ ...any) (any, error) {
+		evalCalls++
 		if script == redisFenceScript {
 			fenceCalls++
 		}
@@ -316,7 +320,8 @@ func TestRedisInvalidationOutageDisablesCacheAndLaterEventRecovers(t *testing.T)
 	}
 	accelerator := newRedisAccelerator(backend, RedisOptions{
 		Namespace: "test", ChainID: 1, OperationTimeout: time.Second, CacheTTL: time.Minute,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		circuitNow: func() time.Time { return time.Unix(0, nowNanos.Load()) },
 	})
 	// Model a real process whose startup fence could not reach Redis.
 	accelerator.cacheFenced.Store(false)
@@ -334,10 +339,17 @@ func TestRedisInvalidationOutageDisablesCacheAndLaterEventRecovers(t *testing.T)
 	if err := accelerator.Invalidate(context.Background(), events.Event{ID: 2, Type: "status"}); err != nil {
 		t.Fatal(err)
 	}
+	if accelerator.cacheEnabled.Load() || evalCalls != 1 {
+		t.Fatalf("open cache circuit enabled=%t eval_calls=%d", accelerator.cacheEnabled.Load(), evalCalls)
+	}
+	nowNanos.Add(int64(time.Second))
+	if err := accelerator.Invalidate(context.Background(), events.Event{ID: 3, Type: "status"}); err != nil {
+		t.Fatal(err)
+	}
 	if !accelerator.cacheEnabled.Load() {
 		t.Fatal("cache did not recover after a successful later invalidation")
 	}
-	if !accelerator.cacheFenced.Load() || fenceCalls != 2 {
-		t.Fatalf("startup fence was not retried safely: fenced=%v calls=%d", accelerator.cacheFenced.Load(), fenceCalls)
+	if !accelerator.cacheFenced.Load() || fenceCalls != 2 || evalCalls != 3 {
+		t.Fatalf("startup fence was not retried safely: fenced=%v fence_calls=%d eval_calls=%d", accelerator.cacheFenced.Load(), fenceCalls, evalCalls)
 	}
 }

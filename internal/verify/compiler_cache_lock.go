@@ -7,23 +7,13 @@ import (
 	"database/sql/driver"
 	"encoding/hex"
 	"errors"
+	"github.com/islishude/etherview/internal/db/gen"
 	"time"
 )
 
 const (
 	compilerCacheLockPollInterval = 25 * time.Millisecond
 	compilerCacheUnlockTimeout    = 5 * time.Second
-)
-
-const (
-	tryCompilerCacheInstallLockSQL = `
-SELECT pg_try_advisory_lock(
-    hashtextextended('etherview:compiler-cache:' || $1::text, 0)
-)`
-	unlockCompilerCacheInstallSQL = `
-SELECT pg_advisory_unlock(
-    hashtextextended('etherview:compiler-cache:' || $1::text, 0)
-)`
 )
 
 // CompilerCacheInstallLocker serializes the final publication of one
@@ -96,7 +86,7 @@ func (locker *PostgresCompilerCacheInstallLocker) acquire(
 			return nil, err
 		}
 		var acquired bool
-		err = conn.QueryRowContext(ctx, tryCompilerCacheInstallLockSQL, key).Scan(&acquired)
+		err = conn.QueryRowContext(ctx, dbgen.VerifyLegacyTryCompilerCacheInstallLock, key).Scan(&acquired)
 		if err != nil {
 			// The server may have granted the session lock before the result was
 			// lost. Never return an outcome-uncertain session to the pool.
@@ -124,7 +114,7 @@ func releaseCompilerCacheInstallLock(conn *sql.Conn, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), compilerCacheUnlockTimeout)
 	defer cancel()
 	var unlocked bool
-	err := conn.QueryRowContext(ctx, unlockCompilerCacheInstallSQL, key).Scan(&unlocked)
+	err := conn.QueryRowContext(ctx, dbgen.VerifyLegacyUnlockCompilerCacheInstall, key).Scan(&unlocked)
 	if err != nil || !unlocked {
 		discardCompilerCacheLockConnection(conn)
 		_ = conn.Close()

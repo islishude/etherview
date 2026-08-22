@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/httpapi"
 )
@@ -31,7 +32,7 @@ func (r *PostgresReader) HasAddressDelegationHistory(
 	defer tx.Rollback() //nolint:errcheck
 
 	var referenceCanonical, hasHistory bool
-	if err := tx.QueryRowContext(ctx, addressDelegationHistorySQL,
+	if err := tx.QueryRowContext(ctx, dbgen.GetAddressDelegationHistory,
 		r.chainID, fmt.Sprint(referenceNumber), referenceHash.Bytes(), address.Bytes(),
 	).Scan(&referenceCanonical, &hasHistory); err != nil {
 		return false, fmt.Errorf("check address delegation history: %w", err)
@@ -44,26 +45,3 @@ func (r *PostgresReader) HasAddressDelegationHistory(
 	}
 	return hasHistory, nil
 }
-
-const addressDelegationHistorySQL = `
-SELECT
-    EXISTS (
-        SELECT 1
-        FROM canonical_blocks
-        WHERE chain_id = $1::numeric
-          AND number = $2::numeric
-          AND block_hash = $3
-    ) AS reference_canonical,
-    EXISTS (
-        SELECT 1
-        FROM eip7702_authorizations AS authz
-        JOIN canonical_blocks AS canonical
-          ON canonical.chain_id = authz.chain_id
-         AND canonical.number = authz.block_number
-         AND canonical.block_hash = authz.block_hash
-        WHERE authz.chain_id = $1::numeric
-          AND authz.authority = $4
-          AND authz.application_status = 'applied'
-          AND authz.canonical
-          AND authz.block_number <= $2::numeric
-    ) AS has_history`

@@ -436,8 +436,7 @@ func transportFailurePhase(err error, stage fetchTransportStage) FetchPhase {
 }
 
 func classifyTransportFailure(err error, stage fetchTransportStage) FetchFailureReason {
-	var dnsError *net.DNSError
-	if errors.As(err, &dnsError) {
+	if dnsError, ok := errors.AsType[*net.DNSError](err); ok {
 		if dnsError.IsTimeout {
 			return FetchFailureDNSTimeout
 		}
@@ -455,8 +454,7 @@ func classifyTransportFailure(err error, stage fetchTransportStage) FetchFailure
 	if errors.As(err, &unknownAuthority) || errors.As(err, &hostnameError) || errors.As(err, &certificateInvalid) {
 		return FetchFailureTLSCertificateInvalid
 	}
-	var recordHeaderError tls.RecordHeaderError
-	if errors.As(err, &recordHeaderError) {
+	if _, ok := errors.AsType[tls.RecordHeaderError](err); ok {
 		return FetchFailureTLSProtocolError
 	}
 	if errors.Is(err, context.DeadlineExceeded) || isTimeoutError(err) {

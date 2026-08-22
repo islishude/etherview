@@ -21,6 +21,8 @@ var (
 
 const maxEventPayloadBytes = 8192
 
+const defaultReplayConcurrency = 4
+
 type Event struct {
 	ID   uint64          `json:"id"`
 	Type string          `json:"type"`
@@ -52,27 +54,37 @@ func (function CacheInvalidatorFunc) Invalidate(ctx context.Context, event Event
 }
 
 type Broker struct {
-	mu            sync.Mutex
-	nextID        uint64
-	lastPublished uint64
-	replayLimit   int
-	replay        []Event
-	subscribers   map[uint64]subscriber
-	nextSubID     uint64
-	source        ReplaySource
-	invalidator   CacheInvalidator
+	mu                sync.Mutex
+	invalidationMu    sync.Mutex
+	nextID            uint64
+	lastPublished     uint64
+	invalidated       map[uint64]struct{}
+	invalidationOrder []uint64
+	replayLimit       int
+	replay            []Event
+	subscribers       map[uint64]subscriber
+	nextSubID         uint64
+	replaySlots       chan struct{}
+	source            ReplaySource
+	invalidator       CacheInvalidator
 }
 
 type subscriber struct {
-	channel chan Event
-	after   uint64
+	channel   chan Event
+	after     uint64
+	preparing bool
+	pending   []Event
+	overflow  bool
 }
 
 func NewBroker(replayLimit int) *Broker {
 	if replayLimit <= 0 {
 		replayLimit = 128
 	}
-	return &Broker{replayLimit: replayLimit, subscribers: make(map[uint64]subscriber)}
+	return &Broker{
+		replayLimit: replayLimit, subscribers: make(map[uint64]subscriber),
+		invalidated: make(map[uint64]struct{}),
+	}
 }
 
 func NewDurableBroker(replayLimit int, source ReplaySource, invalidators ...CacheInvalidator) (*Broker, error) {
@@ -84,6 +96,7 @@ func NewDurableBroker(replayLimit int, source ReplaySource, invalidators ...Cach
 	}
 	broker := NewBroker(replayLimit)
 	broker.source = source
+	broker.replaySlots = make(chan struct{}, defaultReplayConcurrency)
 	if len(invalidators) == 1 {
 		if invalidators[0] == nil {
 			return nil, errors.New("durable event cache invalidator is nil")
@@ -167,33 +180,102 @@ func (b *Broker) Subscribe(ctx context.Context, afterID string) (<-chan Event, e
 		}
 		after = &parsed
 	}
+	if b.source != nil {
+		return b.subscribeDurable(ctx, after)
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	var replay []Event
-	if b.source != nil {
-		var err error
-		replay, err = b.source.Replay(ctx, after, b.replayLimit)
-		if err != nil {
-			if errors.Is(err, ErrInvalidCursor) || errors.Is(err, ErrExpiredCursor) || errors.Is(err, ErrFutureCursor) {
-				return nil, err
-			}
-			return nil, ErrReplayUnavailable
+	if err := b.validateMemoryCursorLocked(after); err != nil {
+		return nil, err
+	}
+	return b.registerLocked(ctx, after, b.memoryReplayLocked(after)), nil
+}
+
+func (b *Broker) subscribeDurable(ctx context.Context, after *uint64) (<-chan Event, error) {
+	if !b.acquireReplaySlot(ctx) {
+		return nil, ErrReplayUnavailable
+	}
+	defer b.releaseReplaySlot()
+
+	b.mu.Lock()
+	b.nextSubID++
+	id := b.nextSubID
+	subscriberAfter := uint64(0)
+	if after != nil {
+		subscriberAfter = *after
+	}
+	b.subscribers[id] = subscriber{
+		after: subscriberAfter, preparing: true,
+		pending: make([]Event, 0, min(b.replayLimit, 16)),
+	}
+	b.mu.Unlock()
+
+	registered := true
+	defer func() {
+		if !registered {
+			b.removePreparingSubscriber(id)
 		}
-		for _, event := range replay {
-			if err := validateEvent(event); err != nil {
-				return nil, fmt.Errorf("invalid durable event: %w", err)
-			}
-			if err := b.invalidate(ctx, event); err != nil {
-				return nil, ErrReplayUnavailable
-			}
-			b.rememberLocked(event)
-		}
-	} else {
-		if err := b.validateMemoryCursorLocked(after); err != nil {
+	}()
+
+	replay, err := b.source.Replay(ctx, after, b.replayLimit)
+	if err != nil {
+		registered = false
+		if errors.Is(err, ErrInvalidCursor) || errors.Is(err, ErrExpiredCursor) || errors.Is(err, ErrFutureCursor) {
 			return nil, err
 		}
-		replay = b.memoryReplayLocked(after)
+		return nil, ErrReplayUnavailable
 	}
+	for index, event := range replay {
+		if err := validateEvent(event); err != nil {
+			registered = false
+			return nil, fmt.Errorf("invalid durable event: %w", err)
+		}
+		if index > 0 && replay[index-1].ID >= event.ID {
+			registered = false
+			return nil, errors.New("durable event replay is not strictly ordered")
+		}
+		if err := b.invalidate(ctx, event); err != nil {
+			registered = false
+			return nil, ErrReplayUnavailable
+		}
+	}
+
+	b.mu.Lock()
+	current, exists := b.subscribers[id]
+	if !exists || !current.preparing || current.overflow {
+		if exists {
+			delete(b.subscribers, id)
+		}
+		b.mu.Unlock()
+		registered = false
+		return nil, ErrReplayUnavailable
+	}
+	for _, event := range replay {
+		b.rememberLocked(event)
+	}
+	delivery := mergeEvents(replay, current.pending)
+	channel := make(chan Event, len(delivery)+16)
+	current.channel = channel
+	current.preparing = false
+	current.pending = nil
+	for _, event := range delivery {
+		if event.ID <= current.after {
+			continue
+		}
+		channel <- event
+		current.after = event.ID
+	}
+	if after == nil && len(delivery) == 0 {
+		current.after = b.nextID
+	}
+	b.subscribers[id] = current
+	b.mu.Unlock()
+	registered = true
+	b.removeOnCancellation(ctx, id, channel)
+	return channel, nil
+}
+
+func (b *Broker) registerLocked(ctx context.Context, after *uint64, replay []Event) <-chan Event {
 	b.nextSubID++
 	id := b.nextSubID
 	channel := make(chan Event, len(replay)+16)
@@ -209,6 +291,11 @@ func (b *Broker) Subscribe(ctx context.Context, afterID string) (<-chan Event, e
 		subscriberAfter = b.nextID
 	}
 	b.subscribers[id] = subscriber{channel: channel, after: subscriberAfter}
+	b.removeOnCancellation(ctx, id, channel)
+	return channel
+}
+
+func (b *Broker) removeOnCancellation(ctx context.Context, id uint64, channel chan Event) {
 	go func() {
 		<-ctx.Done()
 		b.mu.Lock()
@@ -218,20 +305,51 @@ func (b *Broker) Subscribe(ctx context.Context, afterID string) (<-chan Event, e
 		}
 		b.mu.Unlock()
 	}()
-	return channel, nil
 }
 
 func (b *Broker) invalidate(ctx context.Context, event Event) error {
 	if b.invalidator == nil {
 		return nil
 	}
-	return b.invalidator.Invalidate(ctx, event)
+	b.invalidationMu.Lock()
+	defer b.invalidationMu.Unlock()
+	b.mu.Lock()
+	_, specificallyInvalidated := b.invalidated[event.ID]
+	alreadyInvalidated := event.ID <= b.lastPublished || specificallyInvalidated
+	b.mu.Unlock()
+	if alreadyInvalidated {
+		return nil
+	}
+	if err := b.invalidator.Invalidate(ctx, event); err != nil {
+		return err
+	}
+	b.mu.Lock()
+	if _, exists := b.invalidated[event.ID]; !exists {
+		b.invalidated[event.ID] = struct{}{}
+		b.invalidationOrder = append(b.invalidationOrder, event.ID)
+		if len(b.invalidationOrder) > b.replayLimit {
+			oldest := b.invalidationOrder[0]
+			b.invalidationOrder = b.invalidationOrder[1:]
+			delete(b.invalidated, oldest)
+		}
+	}
+	b.mu.Unlock()
+	return nil
 }
 
 func (b *Broker) publishLocked(event Event) {
 	b.rememberLocked(event)
 	for id, subscriber := range b.subscribers {
 		if event.ID <= subscriber.after {
+			continue
+		}
+		if subscriber.preparing {
+			if len(subscriber.pending) >= b.replayLimit {
+				subscriber.overflow = true
+			} else {
+				subscriber.pending = append(subscriber.pending, event)
+			}
+			b.subscribers[id] = subscriber
 			continue
 		}
 		select {
@@ -243,6 +361,58 @@ func (b *Broker) publishLocked(event Event) {
 			delete(b.subscribers, id)
 		}
 	}
+}
+
+func (b *Broker) acquireReplaySlot(ctx context.Context) bool {
+	if b.replaySlots == nil {
+		return true
+	}
+	select {
+	case b.replaySlots <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (b *Broker) releaseReplaySlot() {
+	if b.replaySlots != nil {
+		<-b.replaySlots
+	}
+}
+
+func (b *Broker) removePreparingSubscriber(id uint64) {
+	b.mu.Lock()
+	if current, ok := b.subscribers[id]; ok && current.preparing {
+		delete(b.subscribers, id)
+	}
+	b.mu.Unlock()
+}
+
+func mergeEvents(replay, live []Event) []Event {
+	merged := make([]Event, 0, len(replay)+len(live))
+	left, right := 0, 0
+	for left < len(replay) || right < len(live) {
+		switch {
+		case right >= len(live):
+			merged = append(merged, replay[left])
+			left++
+		case left >= len(replay):
+			merged = append(merged, live[right])
+			right++
+		case replay[left].ID < live[right].ID:
+			merged = append(merged, replay[left])
+			left++
+		case live[right].ID < replay[left].ID:
+			merged = append(merged, live[right])
+			right++
+		default:
+			merged = append(merged, replay[left])
+			left++
+			right++
+		}
+	}
+	return merged
 }
 
 func (b *Broker) rememberLocked(event Event) {

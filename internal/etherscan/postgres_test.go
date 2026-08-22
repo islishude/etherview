@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -115,7 +116,7 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("10", "20", "12"),
 		sqlExpectation{
-			contains: "inclusion.block_number <= $4::numeric ORDER BY inclusion.block_number DESC, inclusion.tx_index DESC, inclusion.tx_hash DESC LIMIT $5 OFFSET $6",
+			contains: "-- name: EtherscanAccountTransactions :many",
 			columns:  fakeColumns(8),
 			rows: [][]driver.Value{{
 				testTransactionJSON(7, testRecipient),
@@ -124,7 +125,7 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 				"10", testHashBytes(3), int64(1), testTransactionHashBytes(testRecipient), "12",
 			}},
 			check: func(arguments []driver.NamedValue) error {
-				want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2"}
+				want := []string{"1", strings.ToLower(testSender), "10", "20", "2", "2", "DESC"}
 				if len(arguments) != len(want) {
 					return fmt.Errorf("arguments=%v", arguments)
 				}
@@ -185,7 +186,7 @@ func TestMinedBlocksOmitsUnknownReward(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "10"),
 		sqlExpectation{
-			contains: "lower(block.raw->>'miner') = $2 ORDER BY block.number ASC, block.hash ASC",
+			contains: "-- name: EtherscanMinedBlocks :many",
 			columns:  fakeColumns(3),
 			rows:     [][]driver.Value{{testBlockJSON(10, 2), "10", testHashBytes(3)}},
 		},
@@ -237,7 +238,7 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("5", "12", "12"),
 		sqlExpectation{
-			contains: "log.address = $4 AND (log.topic0 = $5 OR lower(log.raw->'topics'->>2) = $6) ORDER BY log.block_number DESC, log.log_index DESC, log.block_hash DESC LIMIT $7 OFFSET $8",
+			contains: "-- name: EtherscanLogs :many",
 			columns:  fakeColumns(10),
 			rows: [][]driver.Value{{
 				testLogJSON(10, 3, 7, 1, 4, testContract, []string{topic0, testHash(22), topic2}),
@@ -250,7 +251,11 @@ func TestLogsUseParameterizedTopicExpressionAndHexWireModel(t *testing.T) {
 				if len(arguments) != 8 || fmt.Sprint(arguments[0].Value) != "1" || fmt.Sprint(arguments[1].Value) != "5" || fmt.Sprint(arguments[2].Value) != "12" {
 					return fmt.Errorf("arguments=%v", arguments)
 				}
-				if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) || !reflect.DeepEqual(arguments[4].Value, testHashBytes(21)) || arguments[5].Value != topic2 {
+				wantTopics := `[{"index":0,"value":"` + topic0 + `","operator":"AND"},{"index":2,"value":"` + topic2 + `","operator":"OR"}]`
+				if !reflect.DeepEqual(arguments[3].Value, testAddressBytes(testContract)) ||
+					string(arguments[4].Value.([]byte)) != wantTopics ||
+					fmt.Sprint(arguments[5].Value) != "100" || fmt.Sprint(arguments[6].Value) != "0" ||
+					arguments[7].Value != "DESC" {
 					return fmt.Errorf("binary/topic arguments=%v", arguments)
 				}
 				return nil
@@ -297,7 +302,7 @@ func TestBlockTimeCountdownAndSupply(t *testing.T) {
 	t.Parallel()
 	db := fakeDatabase(t,
 		completeCoreCoverageExpectation("0", "", "10"),
-		sqlExpectation{contains: "block.timestamp <= $2::numeric ORDER BY block.timestamp DESC, block.number DESC", columns: fakeColumns(4), rows: [][]driver.Value{{testBlockJSON(10, 2), "10", testHashBytes(3), "100"}}},
+		sqlExpectation{contains: "-- name: EtherscanBlockNumberByTime :many", columns: fakeColumns(4), rows: [][]driver.Value{{testBlockJSON(10, 2), "10", testHashBytes(3), "100"}}},
 		sqlExpectation{contains: "tip_coverage AS", columns: fakeColumns(8), rows: [][]driver.Value{{"10", "100", "2", "20", "9", "0", "0", "10"}}},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1, Supply: func(_ context.Context, chainID uint64) (string, error) {
@@ -456,7 +461,7 @@ func verifiedArtifactSourceExpectation(
 
 func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(verifiedProxySQL)
+	query := compactSQL(dbgen.EtherscanVerifiedProxy)
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",
@@ -528,7 +533,7 @@ func TestVerifiedProxyQueryRequiresCurrentExactV2Binding(t *testing.T) {
 
 func TestProxyVerificationTargetQueryFencesAllCurrentIdentities(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(proxyVerificationTargetSQL)
+	query := compactSQL(dbgen.EtherscanProxyVerificationTarget)
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"JOIN published_block_stage_results AS published",

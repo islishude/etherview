@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const consumeAuthChallenge = `-- name: ConsumeAuthChallenge :one
+const ConsumeAuthChallenge = `-- name: ConsumeAuthChallenge :one
 UPDATE auth_challenges
 SET consumed_at = $1
 WHERE id = $2::uuid
@@ -22,7 +22,7 @@ RETURNING id, chain_id, address, message, nonce, issued_at, expires_at,
 `
 
 func (q *Queries) ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error) {
-	row := q.db.QueryRow(ctx, consumeAuthChallenge, consumedAt, iD)
+	row := q.db.QueryRow(ctx, ConsumeAuthChallenge, consumedAt, iD)
 	var i AuthChallenge
 	err := row.Scan(
 		&i.ID,
@@ -37,7 +37,7 @@ func (q *Queries) ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Ti
 	return i, err
 }
 
-const createAuthChallenge = `-- name: CreateAuthChallenge :one
+const CreateAuthChallenge = `-- name: CreateAuthChallenge :one
 INSERT INTO auth_challenges (
     id, chain_id, address, message, nonce, issued_at, expires_at
 ) VALUES (
@@ -64,7 +64,7 @@ type CreateAuthChallengeParams struct {
 }
 
 func (q *Queries) CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) (AuthChallenge, error) {
-	row := q.db.QueryRow(ctx, createAuthChallenge,
+	row := q.db.QueryRow(ctx, CreateAuthChallenge,
 		arg.ID,
 		arg.ChainID,
 		arg.Address,
@@ -87,7 +87,7 @@ func (q *Queries) CreateAuthChallenge(ctx context.Context, arg CreateAuthChallen
 	return i, err
 }
 
-const createUserSession = `-- name: CreateUserSession :one
+const CreateUserSession = `-- name: CreateUserSession :one
 INSERT INTO user_sessions (
     id, user_id, token_digest, csrf_digest, created_at, expires_at, last_used_at
 ) VALUES (
@@ -113,7 +113,7 @@ type CreateUserSessionParams struct {
 }
 
 func (q *Queries) CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error) {
-	row := q.db.QueryRow(ctx, createUserSession,
+	row := q.db.QueryRow(ctx, CreateUserSession,
 		arg.ID,
 		arg.UserID,
 		arg.TokenDigest,
@@ -135,7 +135,7 @@ func (q *Queries) CreateUserSession(ctx context.Context, arg CreateUserSessionPa
 	return i, err
 }
 
-const deleteExpiredAuthChallenges = `-- name: DeleteExpiredAuthChallenges :execrows
+const DeleteExpiredAuthChallenges = `-- name: DeleteExpiredAuthChallenges :execrows
 WITH candidates AS (
     SELECT candidate.id
     FROM auth_challenges AS candidate
@@ -151,14 +151,14 @@ WHERE challenge.id = candidates.id
 `
 
 func (q *Queries) DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteExpiredAuthChallenges, chainID, expiredBefore, deleteLimit)
+	result, err := q.db.Exec(ctx, DeleteExpiredAuthChallenges, chainID, expiredBefore, deleteLimit)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const deleteExpiredUserSessions = `-- name: DeleteExpiredUserSessions :execrows
+const DeleteExpiredUserSessions = `-- name: DeleteExpiredUserSessions :execrows
 WITH candidates AS (
     SELECT candidate.id
     FROM user_sessions AS candidate
@@ -181,14 +181,14 @@ WHERE session.id = candidates.id
 `
 
 func (q *Queries) DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteExpiredUserSessions, chainID, expiredBefore, deleteLimit)
+	result, err := q.db.Exec(ctx, DeleteExpiredUserSessions, chainID, expiredBefore, deleteLimit)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const getActiveUserSession = `-- name: GetActiveUserSession :one
+const GetActiveUserSession = `-- name: GetActiveUserSession :one
 SELECT
     s.id AS session_id,
     s.user_id,
@@ -229,7 +229,7 @@ type GetActiveUserSessionRow struct {
 }
 
 func (q *Queries) GetActiveUserSession(ctx context.Context, tokenDigest []byte, observedAt pgtype.Timestamptz) (GetActiveUserSessionRow, error) {
-	row := q.db.QueryRow(ctx, getActiveUserSession, tokenDigest, observedAt)
+	row := q.db.QueryRow(ctx, GetActiveUserSession, tokenDigest, observedAt)
 	var i GetActiveUserSessionRow
 	err := row.Scan(
 		&i.SessionID,
@@ -250,14 +250,14 @@ func (q *Queries) GetActiveUserSession(ctx context.Context, tokenDigest []byte, 
 	return i, err
 }
 
-const getAuthChallenge = `-- name: GetAuthChallenge :one
+const GetAuthChallenge = `-- name: GetAuthChallenge :one
 SELECT id, chain_id, address, message, nonce, issued_at, expires_at, consumed_at
 FROM auth_challenges
 WHERE id = $1::uuid
 `
 
 func (q *Queries) GetAuthChallenge(ctx context.Context, id pgtype.UUID) (AuthChallenge, error) {
-	row := q.db.QueryRow(ctx, getAuthChallenge, id)
+	row := q.db.QueryRow(ctx, GetAuthChallenge, id)
 	var i AuthChallenge
 	err := row.Scan(
 		&i.ID,
@@ -272,7 +272,7 @@ func (q *Queries) GetAuthChallenge(ctx context.Context, id pgtype.UUID) (AuthCha
 	return i, err
 }
 
-const getOrCreateUserForLogin = `-- name: GetOrCreateUserForLogin :one
+const GetOrCreateUserForLogin = `-- name: GetOrCreateUserForLogin :one
 WITH inserted AS (
     INSERT INTO users (
         id, chain_id, address, role, status, created_at, updated_at
@@ -321,7 +321,7 @@ type GetOrCreateUserForLoginRow struct {
 }
 
 func (q *Queries) GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUserForLoginParams) (GetOrCreateUserForLoginRow, error) {
-	row := q.db.QueryRow(ctx, getOrCreateUserForLogin,
+	row := q.db.QueryRow(ctx, GetOrCreateUserForLogin,
 		arg.ID,
 		arg.ChainID,
 		arg.Address,
@@ -342,7 +342,7 @@ func (q *Queries) GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUs
 	return i, err
 }
 
-const getUserByAddress = `-- name: GetUserByAddress :one
+const GetUserByAddress = `-- name: GetUserByAddress :one
 SELECT id, chain_id, address, display_name, role, status, created_at,
        updated_at, last_login_at
 FROM users
@@ -351,7 +351,7 @@ WHERE chain_id = $1::numeric
 `
 
 func (q *Queries) GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, address []byte) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByAddress, chainID, address)
+	row := q.db.QueryRow(ctx, GetUserByAddress, chainID, address)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -367,7 +367,7 @@ func (q *Queries) GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, 
 	return i, err
 }
 
-const getUserByID = `-- name: GetUserByID :one
+const GetUserByID = `-- name: GetUserByID :one
 SELECT id, chain_id, address, display_name, role, status, created_at,
        updated_at, last_login_at
 FROM users
@@ -376,7 +376,7 @@ WHERE id = $1::uuid
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByID, iD, chainID)
+	row := q.db.QueryRow(ctx, GetUserByID, iD, chainID)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -392,7 +392,7 @@ func (q *Queries) GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtyp
 	return i, err
 }
 
-const listUsersPage = `-- name: ListUsersPage :many
+const ListUsersPage = `-- name: ListUsersPage :many
 SELECT id, chain_id, address, display_name, role, status, created_at,
        updated_at, last_login_at
 FROM users
@@ -416,7 +416,7 @@ type ListUsersPageParams struct {
 }
 
 func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error) {
-	rows, err := q.db.Query(ctx, listUsersPage,
+	rows, err := q.db.Query(ctx, ListUsersPage,
 		arg.ChainID,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
@@ -450,7 +450,7 @@ func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([
 	return items, nil
 }
 
-const recordUserLogin = `-- name: RecordUserLogin :one
+const RecordUserLogin = `-- name: RecordUserLogin :one
 UPDATE users
 SET last_login_at = $1,
     updated_at = $1
@@ -461,7 +461,7 @@ RETURNING id, chain_id, address, display_name, role, status, created_at,
 `
 
 func (q *Queries) RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, recordUserLogin, loggedInAt, iD)
+	row := q.db.QueryRow(ctx, RecordUserLogin, loggedInAt, iD)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -477,7 +477,7 @@ func (q *Queries) RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timesta
 	return i, err
 }
 
-const revokeAllUserSessions = `-- name: RevokeAllUserSessions :one
+const RevokeAllUserSessions = `-- name: RevokeAllUserSessions :one
 WITH revoked AS (
     UPDATE user_sessions
     SET revoked_at = $1
@@ -490,13 +490,13 @@ FROM revoked
 `
 
 func (q *Queries) RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, revokeAllUserSessions, revokedAt, userID)
+	row := q.db.QueryRow(ctx, RevokeAllUserSessions, revokedAt, userID)
 	var revoked_sessions int64
 	err := row.Scan(&revoked_sessions)
 	return revoked_sessions, err
 }
 
-const revokeUserSessionByDigest = `-- name: RevokeUserSessionByDigest :execrows
+const RevokeUserSessionByDigest = `-- name: RevokeUserSessionByDigest :execrows
 UPDATE user_sessions
 SET revoked_at = $1
 WHERE token_digest = $2
@@ -504,14 +504,14 @@ WHERE token_digest = $2
 `
 
 func (q *Queries) RevokeUserSessionByDigest(ctx context.Context, revokedAt pgtype.Timestamptz, tokenDigest []byte) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeUserSessionByDigest, revokedAt, tokenDigest)
+	result, err := q.db.Exec(ctx, RevokeUserSessionByDigest, revokedAt, tokenDigest)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const touchActiveUserSession = `-- name: TouchActiveUserSession :exec
+const TouchActiveUserSession = `-- name: TouchActiveUserSession :exec
 UPDATE user_sessions
 SET last_used_at = $1
 WHERE id = $2::uuid
@@ -521,11 +521,11 @@ WHERE id = $2::uuid
 `
 
 func (q *Queries) TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, touchActiveUserSession, observedAt, iD, touchBefore)
+	_, err := q.db.Exec(ctx, TouchActiveUserSession, observedAt, iD, touchBefore)
 	return err
 }
 
-const updateAdminUser = `-- name: UpdateAdminUser :one
+const UpdateAdminUser = `-- name: UpdateAdminUser :one
 UPDATE users
 SET role = COALESCE($1::text, role),
     status = COALESCE($2::text, status),
@@ -545,7 +545,7 @@ type UpdateAdminUserParams struct {
 }
 
 func (q *Queries) UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateAdminUser,
+	row := q.db.QueryRow(ctx, UpdateAdminUser,
 		arg.Role,
 		arg.Status,
 		arg.UpdatedAt,
@@ -567,7 +567,7 @@ func (q *Queries) UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams
 	return i, err
 }
 
-const updateCurrentUserDisplayName = `-- name: UpdateCurrentUserDisplayName :one
+const UpdateCurrentUserDisplayName = `-- name: UpdateCurrentUserDisplayName :one
 UPDATE users
 SET display_name = $1::text,
     updated_at = $2
@@ -578,7 +578,7 @@ RETURNING id, chain_id, address, display_name, role, status, created_at,
 `
 
 func (q *Queries) UpdateCurrentUserDisplayName(ctx context.Context, displayName *string, updatedAt pgtype.Timestamptz, iD pgtype.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, updateCurrentUserDisplayName, displayName, updatedAt, iD)
+	row := q.db.QueryRow(ctx, UpdateCurrentUserDisplayName, displayName, updatedAt, iD)
 	var i User
 	err := row.Scan(
 		&i.ID,

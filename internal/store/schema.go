@@ -42,7 +42,7 @@ func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
 	// Resolve through the connection search_path. Production uses public by
 	// default, while tests and managed deployments can isolate Etherview in a
 	// dedicated schema without making status checks look in the wrong ledger.
-	if err := db.QueryRowContext(ctx, `SELECT to_regclass('etherview_schema_migrations')::text`).Scan(&ledger); err != nil {
+	if err := db.QueryRowContext(ctx, dbgen.StoreLegacyReadSchemaStatusStatement1).Scan(&ledger); err != nil {
 		return SchemaStatus{}, fmt.Errorf("locate migration ledger: %w", err)
 	}
 	if !ledger.Valid {
@@ -52,10 +52,7 @@ func ReadSchemaStatus(ctx context.Context, db *sql.DB) (SchemaStatus, error) {
 		}
 		return status, nil
 	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT version, checksum
-		FROM etherview_schema_migrations
-		ORDER BY version`)
+	rows, err := db.QueryContext(ctx, dbgen.StoreLegacyReadSchemaStatusStatement2)
 	if err != nil {
 		return SchemaStatus{}, fmt.Errorf("read migration ledger: %w", err)
 	}
@@ -131,23 +128,12 @@ func BindChainIdentity(ctx context.Context, db *sql.DB, chainID string, genesis 
 		return err
 	}
 	var existing []byte
-	err = tx.QueryRowContext(ctx, `
-		SELECT genesis_hash
-		FROM chains
-		WHERE chain_id = $1::numeric
-		FOR NO KEY UPDATE`, chainID).Scan(&existing)
+	err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement1, chainID).Scan(&existing)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		err = tx.QueryRowContext(ctx, `
-			INSERT INTO chains (chain_id, genesis_hash)
-			VALUES ($1::numeric, $2)
-			RETURNING genesis_hash`, chainID, genesisBytes).Scan(&existing)
+		err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement2, chainID, genesisBytes).Scan(&existing)
 	case err == nil && len(existing) == 0:
-		err = tx.QueryRowContext(ctx, `
-			UPDATE chains
-			SET genesis_hash = $2
-			WHERE chain_id = $1::numeric AND genesis_hash IS NULL
-			RETURNING genesis_hash`, chainID, genesisBytes).Scan(&existing)
+		err = tx.QueryRowContext(ctx, dbgen.StoreLegacyBindChainIdentityStatement3, chainID, genesisBytes).Scan(&existing)
 	}
 	if err != nil {
 		return fmt.Errorf("persist chain identity: %w", err)

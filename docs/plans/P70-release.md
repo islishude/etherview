@@ -30,11 +30,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10–P66 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10–P66 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10–P66 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T01 | blocked | P10–P68 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10–P68 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10–P68 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
 | P70-T04 | blocked | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00–P66 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T05 | blocked | P00–P68 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -72,10 +72,11 @@ and user/operator evidence sufficient for a production public release.
 | P70-T40 | done | P70-T29, P70-T32, P70-T38, P70-T39 | Package the trusted solc-js protocol as one Node SEA with generated target-rootfs ELF closure and one relocatable executor path | ADR, manifest, subprocess, config, image, cache persistence, and real compiler gates |
 | P70-T41 | done | P70-T35 | Render a per-start Preview Genesis runtime copy from the checked-in template while preserving persistent-volume identity semantics | script, Makefile, Compose, and Preview runtime checks |
 | P70-T42 | done | P70-T41 | Keep Preview recreation strictly Genesis-immutable, including when the default runtime copy is absent | Makefile, documentation, and focused lifecycle regression |
+| P70-T43 | done | P70-T31 | Disable disposable Foundry project caching so repeated one-shot verification clients cannot race an empty tmpfs cache while retaining offline solc availability | pinned client-config assertion and production Foundry E2E |
 
 ## Acceptance
 
-- [ ] Every P00–P66 plan and root release gate is complete with evidence.
+- [ ] Every P00–P68 plan and root release gate is complete with evidence.
 - [ ] Clean deployment, upgrade, rollback, backup/restore, and repair procedures
       are independently reproducible.
 - [ ] Security findings have no unresolved critical/high issue.
@@ -351,6 +352,21 @@ those gates.
 
 ## Evidence
 
+- P70-T43 diagnoses GitHub Actions run 32546457689 job 96965663361 as
+  disposable Foundry client cache instability: the first real verification
+  completed, while the repeated already-verified command occasionally raced a
+  background read of the fresh container's empty
+  `/workspace/cache/solidity-files-cache.json` and exited nonzero. The pinned
+  client now disables Foundry's project build cache and no longer mounts an
+  empty workspace cache tmpfs; the image still installs solc 0.8.30 and proves
+  a forced offline rebuild. Runtime preparation independently decodes `forge
+  config --json` from the loaded client image and rejects cache re-enablement.
+  Tagged focused tests, the rebuilt Foundry client image, `make
+  test-foundry-offline-compile`, `make compose-check`, `make lint-go
+  plan-check`, and `make test-foundry-e2e-prebuilt` pass; the production E2E
+  completes both real verification and the repeated
+  already-verified short circuit in monolith (61.18s) and the complete
+  six-role topology (49.40s).
 - P70-T40 implementation: accepted ADR-0040 supersedes only ADR-0031's runtime
   packaging and launch surface. An exact-lockfile `esbuild@0.28.2` CommonJS
   bundle embeds the trusted protocol and `solc/wrapper` in a Node 26.7.0 SEA

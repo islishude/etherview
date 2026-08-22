@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"math"
 	"strconv"
 	"strings"
@@ -105,7 +106,7 @@ func queryCandidateBatch(ctx context.Context, tx *sql.Tx, cursor claimCursor) ([
 		requestedAt = time.Unix(0, 0).UTC()
 	}
 	rows, err := tx.QueryContext(
-		ctx, claimCandidatesSQL, claimBatchSize, cursor.set,
+		ctx, dbgen.MaintenanceLegacyClaimCandidates, claimBatchSize, cursor.set,
 		cursor.statusRank, requestedAt, cursor.id,
 	)
 	if err != nil {
@@ -180,7 +181,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 				return Lease{}, false, err
 			}
 			var acquired bool
-			if err := tx.QueryRowContext(ctx, tryAdvisoryLockSQL, key).Scan(&acquired); err != nil {
+			if err := tx.QueryRowContext(ctx, dbgen.MaintenanceLegacyTryAdvisoryLock, key).Scan(&acquired); err != nil {
 				return Lease{}, false, fmt.Errorf("acquire maintenance advisory lease: %w", err)
 			}
 			if !acquired {
@@ -212,7 +213,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 				continue
 			}
 
-			result, err := tx.ExecContext(ctx, markRunningSQL, request.ID)
+			result, err := tx.ExecContext(ctx, dbgen.MaintenanceLegacyMarkRunning, request.ID)
 			if err != nil {
 				return Lease{}, false, fmt.Errorf("mark maintenance request running: %w", err)
 			}
@@ -257,7 +258,7 @@ func (repository *PostgresRepository) GuardFinalized(ctx context.Context, lease 
 	}
 	var status string
 	var finalized sql.NullString
-	err = session.conn.QueryRowContext(ctx, currentFinalitySQL, lease.Request.ID, lease.Request.ChainID).Scan(&status, &finalized)
+	err = session.conn.QueryRowContext(ctx, dbgen.MaintenanceLegacyCurrentFinality, lease.Request.ID, lease.Request.ChainID).Scan(&status, &finalized)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLeaseLost
 	}
@@ -314,10 +315,10 @@ func (repository *PostgresRepository) transition(ctx context.Context, lease Leas
 		}
 		return ErrLeaseLost
 	}
-	query := completeRequestSQL
+	query := dbgen.MaintenanceLegacyCompleteRequest
 	arguments := []any{lease.Request.ID}
 	if target == "failed" {
-		query = failRequestSQL
+		query = dbgen.MaintenanceLegacyFailRequest
 		arguments = append(arguments, lastError)
 	}
 	result, err := session.conn.ExecContext(ctx, query, arguments...)
@@ -386,7 +387,7 @@ func finalizedViolation(request Request, finalized sql.NullString) (error, error
 }
 
 func failCandidate(ctx context.Context, tx *sql.Tx, id int64, reason string) error {
-	result, err := tx.ExecContext(ctx, rejectCandidateSQL, id, normalizeFailure(reason))
+	result, err := tx.ExecContext(ctx, dbgen.MaintenanceLegacyRejectCandidate, id, normalizeFailure(reason))
 	if err != nil {
 		return fmt.Errorf("reject maintenance request: %w", err)
 	}
@@ -398,7 +399,7 @@ func failCandidate(ctx context.Context, tx *sql.Tx, id int64, reason string) err
 
 func unlockAdvisoryTx(ctx context.Context, tx *sql.Tx, key int64) error {
 	var unlocked bool
-	if err := tx.QueryRowContext(ctx, unlockAdvisorySQL, key).Scan(&unlocked); err != nil {
+	if err := tx.QueryRowContext(ctx, dbgen.MaintenanceLegacyUnlockAdvisory, key).Scan(&unlocked); err != nil {
 		return fmt.Errorf("release rejected maintenance advisory lease: %w", err)
 	}
 	if !unlocked {
@@ -413,7 +414,7 @@ type queryRower interface {
 
 func unlockAdvisory(ctx context.Context, queryer queryRower, key int64) (bool, error) {
 	var unlocked bool
-	err := queryer.QueryRowContext(ctx, unlockAdvisorySQL, key).Scan(&unlocked)
+	err := queryer.QueryRowContext(ctx, dbgen.MaintenanceLegacyUnlockAdvisory, key).Scan(&unlocked)
 	return unlocked, err
 }
 
@@ -465,65 +466,3 @@ func discardSQLConnection(conn *sql.Conn) {
 	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 	_ = conn.Close()
 }
-
-const claimCandidatesSQL = `
-SELECT request.id, request.chain_id::text, request.operation, request.stage,
-       request.from_block::text, request.to_block::text,
-       request.allow_finalized, request.reason, request.status,
-       finality.finalized_number::text,
-       CASE request.status WHEN 'queued' THEN 0 ELSE 1 END AS status_rank,
-       request.requested_at
-FROM repair_requests AS request
-LEFT JOIN chain_finality AS finality ON finality.chain_id = request.chain_id
-WHERE request.status IN ('queued', 'running')
-  AND (
-      $2 = FALSE
-      OR (
-          CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
-          request.requested_at,
-          request.id
-      ) > ($3::integer, $4::timestamptz, $5::bigint)
-  )
-ORDER BY CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
-         request.requested_at, request.id
-FOR UPDATE OF request SKIP LOCKED
-LIMIT $1`
-
-const tryAdvisoryLockSQL = `SELECT pg_try_advisory_lock($1)`
-
-const unlockAdvisorySQL = `SELECT pg_advisory_unlock($1)`
-
-const markRunningSQL = `
-UPDATE repair_requests
-SET status = 'running',
-    started_at = COALESCE(started_at, clock_timestamp()),
-    completed_at = NULL,
-    last_error = NULL
-WHERE id = $1
-  AND status IN ('queued', 'running')`
-
-const rejectCandidateSQL = `
-UPDATE repair_requests
-SET status = 'failed',
-    started_at = COALESCE(started_at, clock_timestamp()),
-    completed_at = clock_timestamp(),
-    last_error = $2
-WHERE id = $1
-  AND status IN ('queued', 'running')`
-
-const currentFinalitySQL = `
-SELECT request.status, finality.finalized_number::text
-FROM repair_requests AS request
-LEFT JOIN chain_finality AS finality ON finality.chain_id = request.chain_id
-WHERE request.id = $1
-  AND request.chain_id = $2::numeric`
-
-const completeRequestSQL = `
-UPDATE repair_requests
-SET status = 'done', completed_at = clock_timestamp(), last_error = NULL
-WHERE id = $1 AND status = 'running'`
-
-const failRequestSQL = `
-UPDATE repair_requests
-SET status = 'failed', completed_at = clock_timestamp(), last_error = $2
-WHERE id = $1 AND status = 'running'`

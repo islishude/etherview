@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 	"strings"
 	"testing"
 )
@@ -146,7 +147,7 @@ func TestDecodeStoredVerificationMatchRestoresPublicationDetails(t *testing.T) {
 
 func TestProxyCompletionQueryFencesExactCurrentBinding(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(proxyVerificationCurrentTargetSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.VerifyLegacyProxyVerificationCurrentTarget), " ")
 	for _, required := range []string{
 		"observation.stage_version = 2",
 		"raw.proxy_pattern = 'clone' AND raw.evidence_state = 'exact'",
@@ -221,7 +222,7 @@ func TestProxyCompletionQueryFencesExactCurrentBinding(t *testing.T) {
 
 func TestVerificationProxyReplayPersistsOnlyDirectTarget(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(verificationProxyReplayTargetSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.VerifyLegacyVerificationProxyReplayTarget), " ")
 	for _, required := range []string{
 		"INSERT INTO proxy_replay_targets",
 		"$1::numeric, $3::numeric, $4, $2, $5",
@@ -304,7 +305,7 @@ func TestGenesisPredeployMarkerIsDurableWithoutChangingOrdinaryPayload(t *testin
 
 func TestGenesisCanonicalTargetQueryRechecksAndLocksExactProof(t *testing.T) {
 	t.Parallel()
-	query := strings.Join(strings.Fields(verificationCanonicalGenesisTargetSQL), " ")
+	query := strings.Join(strings.Fields(dbgen.VerifyLegacyVerificationCanonicalGenesisTarget), " ")
 	for _, required := range []string{
 		"imported.state = 'complete'",
 		"genesis_canonical.number = 0",

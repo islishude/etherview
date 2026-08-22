@@ -40,7 +40,7 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
 
-FROM golang:1.26.6 AS go-builder
+FROM golang:1.27.0 AS go-builder
 WORKDIR /src
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \

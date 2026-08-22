@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveUserAPIKeys = `-- name: CountActiveUserAPIKeys :one
+const CountActiveUserAPIKeys = `-- name: CountActiveUserAPIKeys :one
 SELECT count(*)::bigint
 FROM api_keys
 WHERE owner_user_id = $1::uuid
@@ -19,13 +19,13 @@ WHERE owner_user_id = $1::uuid
 `
 
 func (q *Queries) CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveUserAPIKeys, userID)
+	row := q.db.QueryRow(ctx, CountActiveUserAPIKeys, userID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const createUserAPIKey = `-- name: CreateUserAPIKey :exec
+const CreateUserAPIKey = `-- name: CreateUserAPIKey :exec
 INSERT INTO api_keys (
     prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
     owner_user_id, scopes
@@ -48,7 +48,7 @@ type CreateUserAPIKeyParams struct {
 }
 
 func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) error {
-	_, err := q.db.Exec(ctx, createUserAPIKey,
+	_, err := q.db.Exec(ctx, CreateUserAPIKey,
 		arg.Prefix,
 		arg.Digest,
 		arg.Name,
@@ -61,7 +61,7 @@ func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyPara
 	return err
 }
 
-const listUserAPIKeysPage = `-- name: ListUserAPIKeysPage :many
+const ListUserAPIKeysPage = `-- name: ListUserAPIKeysPage :many
 SELECT prefix, name, rate_per_second, burst, created_at, revoked_at,
        owner_user_id, scopes
 FROM api_keys
@@ -96,7 +96,7 @@ type ListUserAPIKeysPageRow struct {
 }
 
 func (q *Queries) ListUserAPIKeysPage(ctx context.Context, arg ListUserAPIKeysPageParams) ([]ListUserAPIKeysPageRow, error) {
-	rows, err := q.db.Query(ctx, listUserAPIKeysPage,
+	rows, err := q.db.Query(ctx, ListUserAPIKeysPage,
 		arg.UserID,
 		arg.BeforeCreatedAt,
 		arg.BeforePrefix,
@@ -129,7 +129,7 @@ func (q *Queries) ListUserAPIKeysPage(ctx context.Context, arg ListUserAPIKeysPa
 	return items, nil
 }
 
-const lockActiveUserForAPIKey = `-- name: LockActiveUserForAPIKey :one
+const LockActiveUserForAPIKey = `-- name: LockActiveUserForAPIKey :one
 SELECT id
 FROM users
 WHERE id = $1::uuid
@@ -138,13 +138,13 @@ FOR UPDATE
 `
 
 func (q *Queries) LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, lockActiveUserForAPIKey, userID)
+	row := q.db.QueryRow(ctx, LockActiveUserForAPIKey, userID)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
-const lockUserAPIKey = `-- name: LockUserAPIKey :one
+const LockUserAPIKey = `-- name: LockUserAPIKey :one
 SELECT prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
        owner_user_id, scopes
 FROM api_keys
@@ -154,7 +154,7 @@ FOR UPDATE
 `
 
 func (q *Queries) LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, lockUserAPIKey, prefix, userID)
+	row := q.db.QueryRow(ctx, LockUserAPIKey, prefix, userID)
 	var i ApiKey
 	err := row.Scan(
 		&i.Prefix,
@@ -170,7 +170,7 @@ func (q *Queries) LockUserAPIKey(ctx context.Context, prefix string, userID pgty
 	return i, err
 }
 
-const revokeAllUserAPIKeys = `-- name: RevokeAllUserAPIKeys :execrows
+const RevokeAllUserAPIKeys = `-- name: RevokeAllUserAPIKeys :execrows
 UPDATE api_keys
 SET revoked_at = $1
 WHERE owner_user_id = $2::uuid
@@ -178,14 +178,14 @@ WHERE owner_user_id = $2::uuid
 `
 
 func (q *Queries) RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeAllUserAPIKeys, revokedAt, userID)
+	result, err := q.db.Exec(ctx, RevokeAllUserAPIKeys, revokedAt, userID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const revokeUserAPIKey = `-- name: RevokeUserAPIKey :one
+const RevokeUserAPIKey = `-- name: RevokeUserAPIKey :one
 UPDATE api_keys
 SET revoked_at = COALESCE(revoked_at, $1)
 WHERE prefix = $2
@@ -195,7 +195,7 @@ RETURNING prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
 `
 
 func (q *Queries) RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, revokeUserAPIKey, revokedAt, prefix, userID)
+	row := q.db.QueryRow(ctx, RevokeUserAPIKey, revokedAt, prefix, userID)
 	var i ApiKey
 	err := row.Scan(
 		&i.Prefix,

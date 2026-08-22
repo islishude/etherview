@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/httpapi"
 )
 
@@ -50,7 +51,7 @@ func TestHasAddressDelegationHistoryUsesCanonicalAppliedRowsAtReference(t *testi
 		})
 	}
 
-	compact := compactSQL(addressDelegationHistorySQL)
+	compact := compactSQL(dbgen.GetAddressDelegationHistory)
 	for _, fragment := range []string{
 		"authz.application_status = 'applied'",
 		"authz.canonical",

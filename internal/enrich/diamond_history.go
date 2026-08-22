@@ -15,6 +15,7 @@ import (
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 var diamondCutEventABI = mustGethABI(`[
@@ -122,29 +123,7 @@ func persistDiamondCutRecord(
 	if err != nil {
 		return fmt.Errorf("encode DiamondCut record: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO diamond_cut_events AS current (
-		    chain_id, block_number, block_hash, transaction_hash,
-		    transaction_index, log_index, diamond_address, init_address,
-		    init_calldata, cuts, stage_version, canonical
-		)
-		SELECT $1::numeric, $2::numeric, $3, $4, $5::bigint, $6::bigint,
-		       $7, $8, $9, $10::jsonb, $11,
-		       EXISTS (
-		           SELECT 1 FROM canonical_blocks
-		           WHERE chain_id = $1::numeric AND number = $2::numeric
-		             AND block_hash = $3
-		       )
-		ON CONFLICT (chain_id, block_hash, log_index, stage_version)
-		DO UPDATE SET canonical = EXCLUDED.canonical
-		WHERE current.block_number = EXCLUDED.block_number
-		  AND current.transaction_hash = EXCLUDED.transaction_hash
-		  AND current.transaction_index = EXCLUDED.transaction_index
-		  AND current.diamond_address = EXCLUDED.diamond_address
-		  AND current.init_address = EXCLUDED.init_address
-		  AND current.init_calldata = EXCLUDED.init_calldata
-		  AND current.cuts = EXCLUDED.cuts`,
-		job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
+	result, err := tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement1, job.ChainID, strconv.FormatUint(job.BlockNumber, 10), job.BlockHash[:],
 		record.hash[:], strconv.FormatUint(record.transactionIndex, 10),
 		strconv.FormatUint(record.index, 10), record.diamond[:], record.init[:],
 		record.calldata, string(encoded), job.Stage.Version,
@@ -161,21 +140,7 @@ func persistDiamondCutRecord(
 	}
 	for cutIndex, cut := range record.cuts {
 		for selectorIndex, selector := range cut.FunctionSelectors {
-			result, err = tx.ExecContext(ctx, `
-				INSERT INTO diamond_selector_changes AS current (
-				    chain_id, block_hash, log_index, stage_version,
-				    cut_index, selector_index, selector, action, facet_address
-				) VALUES (
-				    $1::numeric, $2, $3::bigint, $4, $5, $6, $7, $8, $9
-				)
-				ON CONFLICT (
-				    chain_id, block_hash, log_index, stage_version,
-				    cut_index, selector_index
-				) DO UPDATE SET selector = EXCLUDED.selector
-				WHERE current.selector = EXCLUDED.selector
-				  AND current.action = EXCLUDED.action
-				  AND current.facet_address = EXCLUDED.facet_address`,
-				job.ChainID, job.BlockHash[:], strconv.FormatUint(record.index, 10),
+			result, err = tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondCutRecordStatement2, job.ChainID, job.BlockHash[:], strconv.FormatUint(record.index, 10),
 				job.Stage.Version, cutIndex, selectorIndex, selector[:], cut.Action,
 				cut.FacetAddress[:],
 			)
@@ -281,39 +246,7 @@ func loadAndReplayDiamondHistory(
 		return diamondHistoryUnavailable,
 			"DiamondCut history coverage does not begin at the Diamond creation point", nil
 	}
-	rows, err := tx.QueryContext(ctx, `
-		SELECT change.selector, change.action, change.facet_address
-		FROM diamond_cut_events AS event
-		JOIN diamond_selector_changes AS change
-		  ON change.chain_id = event.chain_id
-		 AND change.block_hash = event.block_hash
-		 AND change.log_index = event.log_index
-		 AND change.stage_version = event.stage_version
-		JOIN canonical_blocks AS canonical
-		  ON canonical.chain_id = event.chain_id
-		 AND canonical.number = event.block_number
-		 AND canonical.block_hash = event.block_hash
-		WHERE event.chain_id = $1::numeric
-		  AND event.diamond_address = $2
-		  AND event.block_number <= $3::numeric
-		  AND event.canonical
-		  AND event.stage_version = $5
-		  AND (
-		      event.block_hash = $4 OR EXISTS (
-		          SELECT 1
-		          FROM published_block_stage_results AS published
-		          WHERE published.chain_id = event.chain_id
-		            AND published.block_number = event.block_number
-		            AND published.block_hash = event.block_hash
-		            AND published.stage = 'proxy'
-		            AND published.stage_version = event.stage_version
-		            AND published.state = 'complete'
-		      )
-		  )
-		ORDER BY event.block_number, event.transaction_index, event.log_index,
-		         change.cut_index, change.selector_index
-		LIMIT $6`,
-		job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
+	rows, err := tx.QueryContext(ctx, dbgen.EnrichInlineLoadAndReplayDiamondHistoryStatement1, job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version, DiamondMaxHistoryChanges+1,
 	)
 	if err != nil {
@@ -389,71 +322,7 @@ func diamondHistoryCoverageComplete(
 	diamond common.Address,
 ) (bool, error) {
 	var complete bool
-	err := tx.QueryRowContext(ctx, `
-		WITH first_cut AS (
-		    SELECT event.block_number, event.block_hash
-		    FROM diamond_cut_events AS event
-		    JOIN canonical_blocks AS canonical
-		      ON canonical.chain_id = event.chain_id
-		     AND canonical.number = event.block_number
-		     AND canonical.block_hash = event.block_hash
-		    WHERE event.chain_id = $1::numeric
-		      AND event.diamond_address = $2
-		      AND event.block_number <= $3::numeric
-		      AND event.stage_version = $5
-		      AND event.canonical
-		      AND (
-		          event.block_hash = $4 OR EXISTS (
-		              SELECT 1
-		              FROM published_block_stage_results AS published
-		              WHERE published.chain_id = event.chain_id
-		                AND published.block_number = event.block_number
-		                AND published.block_hash = event.block_hash
-		                AND published.stage = 'proxy'
-		                AND published.stage_version = event.stage_version
-		                AND published.state = 'complete'
-		          )
-		      )
-		    ORDER BY event.block_number, event.transaction_index, event.log_index
-		    LIMIT 1
-		), created AS (
-		    SELECT EXISTS (
-		        SELECT 1
-		        FROM receipts AS receipt
-		        WHERE receipt.chain_id = $1::numeric
-		          AND receipt.block_number = first_cut.block_number
-		          AND receipt.block_hash = first_cut.block_hash
-		          AND lower(receipt.raw->>'contractAddress') =
-		              lower('0x' || encode($2, 'hex'))
-		        UNION ALL
-		        SELECT 1
-		        FROM normalized_traces AS trace
-		        JOIN published_block_stage_results AS published
-		          ON published.chain_id = trace.chain_id
-		         AND published.block_number = trace.block_number
-		         AND published.block_hash = trace.block_hash
-		         AND published.stage = 'trace'
-		         AND published.stage_version = 2
-		         AND published.state = 'complete'
-		        WHERE trace.chain_id = $1::numeric
-		          AND trace.block_number = first_cut.block_number
-		          AND trace.block_hash = first_cut.block_hash
-		          AND trace.created_address = $2
-		          AND trace.call_type IN ('CREATE', 'CREATE2')
-		          AND NOT trace.reverted
-		          AND trace.canonical
-		    ) AS at_first_cut
-		    FROM first_cut
-		)
-		SELECT COALESCE(
-		    created.at_first_cut AND proxy_interaction_coverage_contains(
-		        $1::numeric, first_cut.block_number, first_cut.block_hash,
-		        $3::numeric, $4
-		    ), FALSE
-		)
-		FROM first_cut
-		JOIN created ON TRUE`,
-		job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
+	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineDiamondHistoryCoverageCompleteStatement1, job.ChainID, diamond[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version,
 	).Scan(&complete)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -530,40 +399,7 @@ func persistDiamondDetectionSnapshot(
 	state := string(outcome.Status)
 	validation := string(diamond.Validation)
 	var snapshotID int64
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO diamond_loupe_snapshots AS current (
-		    chain_id, diamond_address, block_number, block_hash, stage_version,
-		    detection_state, completeness, validation, standard_diamond_cut,
-		    standard_diamond_cut_facet, loupe_interface_reported, truncated,
-		    truncation_reason, warnings, canonical, durable_job_id, job_generation
-		)
-		SELECT $1::numeric, $2, $3::numeric, $4, $5, $6, $7, $8, $9,
-		       $10, $11, $12, $13, $14::jsonb,
-		       EXISTS (
-		           SELECT 1 FROM canonical_blocks
-		           WHERE chain_id = $1::numeric AND number = $3::numeric
-		             AND block_hash = $4
-		       ),
-		       $15, $16::bigint
-		ON CONFLICT (
-		    chain_id, diamond_address, block_hash, stage_version,
-		    durable_job_id, job_generation
-		) DO UPDATE SET canonical = EXCLUDED.canonical
-		WHERE current.block_number = EXCLUDED.block_number
-		  AND current.detection_state = EXCLUDED.detection_state
-		  AND current.completeness = EXCLUDED.completeness
-		  AND current.validation = EXCLUDED.validation
-		  AND current.standard_diamond_cut = EXCLUDED.standard_diamond_cut
-		  AND current.standard_diamond_cut_facet IS NOT DISTINCT FROM
-		      EXCLUDED.standard_diamond_cut_facet
-		  AND current.loupe_interface_reported IS NOT DISTINCT FROM
-		      EXCLUDED.loupe_interface_reported
-		  AND current.truncated = EXCLUDED.truncated
-		  AND current.truncation_reason IS NOT DISTINCT FROM
-		      EXCLUDED.truncation_reason
-		  AND current.warnings = EXCLUDED.warnings
-		RETURNING id`,
-		job.ChainID, outcome.Proxy[:], strconv.FormatUint(job.BlockNumber, 10),
+	err = tx.QueryRowContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement1, job.ChainID, outcome.Proxy[:], strconv.FormatUint(job.BlockNumber, 10),
 		job.BlockHash[:], job.Stage.Version, state, string(diamond.Completeness),
 		validation, string(diamond.StandardDiamondCut.Status), cutFacet,
 		loupeReported, diamond.Truncated, truncationReason, string(warnings),
@@ -587,17 +423,7 @@ func persistDiamondDetectionSnapshot(
 		if facet.CodeHash != nil {
 			codeHash = facet.CodeHash[:]
 		}
-		result, insertErr := tx.ExecContext(ctx, `
-			INSERT INTO diamond_loupe_facets AS current (
-			    snapshot_id, facet_address, facet_kind, code_exists, code_hash
-			) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (snapshot_id, facet_address)
-			DO UPDATE SET facet_kind = EXCLUDED.facet_kind
-			WHERE current.facet_kind = EXCLUDED.facet_kind
-			  AND current.code_exists = EXCLUDED.code_exists
-			  AND current.code_hash IS NOT DISTINCT FROM EXCLUDED.code_hash`,
-			snapshotID, facet.Address[:], string(facet.Role), facet.CodeExists, codeHash,
-		)
+		result, insertErr := tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement2, snapshotID, facet.Address[:], string(facet.Role), facet.CodeExists, codeHash)
 		if insertErr != nil {
 			return fmt.Errorf("persist Diamond Loupe facet: %w", insertErr)
 		}
@@ -613,15 +439,7 @@ func persistDiamondDetectionSnapshot(
 			return bytes.Compare(left[:], right[:])
 		})
 		for _, selector := range selectors {
-			result, insertErr = tx.ExecContext(ctx, `
-				INSERT INTO diamond_loupe_selectors AS current (
-				    snapshot_id, selector, facet_address
-				) VALUES ($1, $2, $3)
-				ON CONFLICT (snapshot_id, selector)
-				DO UPDATE SET facet_address = EXCLUDED.facet_address
-				WHERE current.facet_address = EXCLUDED.facet_address`,
-				snapshotID, selector[:], facet.Address[:],
-			)
+			result, insertErr = tx.ExecContext(ctx, dbgen.EnrichInlinePersistDiamondDetectionSnapshotStatement3, snapshotID, selector[:], facet.Address[:])
 			if insertErr != nil {
 				return fmt.Errorf("persist Diamond Loupe selector: %w", insertErr)
 			}

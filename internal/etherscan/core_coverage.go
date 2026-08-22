@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/db/gen"
 )
 
 // ErrCoreUnavailable means the requested canonical block interval has not
@@ -48,9 +49,7 @@ func (b *PostgresBackend) requireCanonicalCoreRange(
 
 	var tip string
 	var configuredStart, coveredStart, coveredEnd sql.NullString
-	err = queryer.QueryRowContext(ctx, canonicalCoreRangeSQL,
-		b.chain, start, endArgument,
-	).Scan(&tip, &configuredStart, &coveredStart, &coveredEnd)
+	err = queryer.QueryRowContext(ctx, dbgen.EtherscanCanonicalCoreRange, b.chain, start, endArgument).Scan(&tip, &configuredStart, &coveredStart, &coveredEnd)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrCoreUnavailable
 	}
@@ -98,31 +97,3 @@ func (b *PostgresBackend) requireCanonicalCoreRange(
 	}
 	return tip, nil
 }
-
-const canonicalCoreRangeSQL = `
-WITH tip AS (
-    SELECT number
-    FROM canonical_blocks
-    WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
-), requested AS (
-    SELECT tip.number,
-           $2::numeric AS range_start,
-           LEAST(COALESCE($3::numeric, tip.number), tip.number) AS range_end
-    FROM tip
-)
-SELECT requested.number::text, configuration.configured_start::text,
-       coverage.range_start::text, coverage.range_end::text
-FROM requested
-LEFT JOIN core_index_configuration AS configuration
-  ON configuration.chain_id = $1::numeric
-LEFT JOIN LATERAL (
-    SELECT candidate.range_start, candidate.range_end
-    FROM core_coverage_ranges AS candidate
-    WHERE candidate.chain_id = configuration.chain_id
-      AND candidate.range_start <= requested.range_start
-      AND candidate.range_end >= requested.range_end
-    ORDER BY candidate.range_start DESC
-    LIMIT 1
-) AS coverage ON true`
