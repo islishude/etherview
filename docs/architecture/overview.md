@@ -88,6 +88,14 @@ API -> optional Redis cache/rate limit
 large blobs -> optional S3-compatible storage
 ```
 
+The SPA keeps route dispatch in `router.tsx`, shared explorer primitives in
+`pages/pages.tsx`, and block, transaction, address, token/NFT, verification,
+and entity dispatch in separate page modules. English and Chinese resources
+are merged from the same seven domain modules, preventing one language from
+silently acquiring a different key layout. The pinned Biome gate is part of
+`web-lint` and checks hooks, unused code, selected complexity, function size,
+and production file size before the embedded distribution is built.
+
 Optional accelerator behavior is intentionally asymmetric: NATS carries only
 coalesced poll hints, Redis shares rate buckets and caches only the durable
 runtime-status model behind an event generation, and S3-compatible storage

@@ -28,8 +28,8 @@ schema remain unchanged.
 | P68-T03 | done | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
 | P68-T04 | done | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
 | P68-T05 | done | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
-| P68-T06 | in_progress | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
-| P68-T07 | todo | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
+| P68-T06 | done | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
+| P68-T07 | in_progress | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -146,3 +146,18 @@ None.
   `make test-runtime-e2e` passes in 76.329s: monolith in 32.71s and the complete
   six-role topology in 42.45s through publication, reorg, outages, restart,
   API/SSE/SPA/load, and process-native TLS.
+- P68-T06 splits the former 5,464-line page locator into Entity, Block,
+  Transaction, Address, Token/NFT, and Verification domains plus a shared
+  explorer module. Every production page file is below 2,000 physical lines;
+  the largest is Transaction at 1,889 lines. The former 2,927-line bilingual
+  resource locator is now a 76-line merger over seven shared English/Chinese
+  domains, each below 711 lines. Exact `@biomejs/biome@2.5.10` is lockfile
+  pinned and part of `web-lint`; it rejects unused imports/variables, invalid
+  hook placement/dependencies, cognitive complexity above 100, functions above
+  600 effective lines, and production files above 2,000 effective lines.
+  Transaction detail complexity drops from 112 to 99 without suppressions.
+  TypeScript, Biome, 346 Vitest cases, the production Vite build,
+  `make generate-check`, and `make lint` pass. The rebuilt embedded-SPA
+  Playwright gate passes 23/23, including bilingual deep links, responsive and
+  WCAG 2.1 AA checks, hashed asset/CSP isolation, SIWE/billing/admin, and wallet
+  boundaries.

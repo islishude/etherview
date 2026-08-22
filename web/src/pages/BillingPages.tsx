@@ -104,6 +104,7 @@ export function PersonalBillingHistory() {
   });
 
   useEffect(() => {
+    void userID;
     setCursors([""]);
   }, [userID]);
 

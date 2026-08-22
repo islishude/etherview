@@ -288,8 +288,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   subsystem validation. P68-T05 splits HTTP routes and handlers by explicit
   capabilities, rejects incomplete enabled production modules before route
   registration, and removes inferred reader/catalog/Web capability discovery.
-  P68-T06 is claimed for Web page/language modularization and pinned Biome
-  quality gates.
+  P68-T06 splits core pages and both languages by domain and adds exact pinned
+  Biome hook, unused-code, complexity, function, and production file-size
+  gates. P68-T07 is claimed for the final Go quality baseline and full
+  acceptance matrix.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

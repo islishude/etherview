@@ -65,6 +65,11 @@ replace a required `make test-e2e` pass.
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
+- `make web-lint`: run TypeScript project checking followed by the exact pinned
+  Biome policy. Biome enforces React hook placement/dependencies, unused
+  imports/variables, selected cognitive and function complexity, and a
+  production source-file size ceiling; generated OpenAPI and test-size
+  exceptions remain explicit in `web/biome.json`.
 - `make test`: Go and frontend unit tests.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then

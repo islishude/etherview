@@ -150,6 +150,10 @@ driver solely because an older evidence entry cites it.
   assertions or silently omit an enabled module's routes.
 - Validate SPA routing, CSP, cache, and security headers against the built
   distribution served by Go, not a Vite development server.
+- Keep core SPA pages and both language resources split by domain. `web-lint`
+  includes exact `@biomejs/biome` policy for hooks, unused code, selected
+  complexity/function size, and the production file-size ceiling; do not
+  bypass it with blanket suppressions.
 
 Consult the accepted ADRs before changing a public API, persistent contract,
 security boundary, external-service boundary, or monolith/split runtime model;

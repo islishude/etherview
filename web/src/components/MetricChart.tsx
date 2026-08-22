@@ -28,6 +28,7 @@ export function MetricChart({
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    void resetKey;
     if (!host.current || data.length === 0) return;
     let chart: ECharts | undefined;
     try {

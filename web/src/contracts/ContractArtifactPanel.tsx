@@ -14,7 +14,6 @@ import {
 } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import { solidity } from "@replit/codemirror-lang-solidity";
-import { Link } from "@tanstack/react-router";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
@@ -278,6 +277,9 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
   const matchType = artifact.runtime_match?.match_type ?? artifact.creation_match?.match_type;
 
   useEffect(() => {
+		void artifact.source.address;
+		void artifact.target.address;
+		void artifact.target.code_hash;
     setSelectedName(manifest.files[0]?.name ?? "");
 	}, [artifact.source.address, artifact.target.address, artifact.target.code_hash, manifest.files]);
 
