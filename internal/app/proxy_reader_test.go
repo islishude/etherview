@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/cwiaargs"
 	"github.com/islishude/etherview/internal/query"
 )
 
@@ -66,11 +68,13 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 	observedAt := time.Date(2026, time.August, 2, 1, 2, 3, 0, time.FixedZone("test", 8*60*60))
 	implementation := query.ProxyIdentity{
 		Address: implementationAddress, CodeHash: codeHash,
-		ArtifactKind: "uups_implementation", StandardVersion: "5.6.1", Verified: true,
+		ArtifactResolution: "exact_address", ArtifactKind: "uups_implementation",
+		StandardVersion: "5.6.1", Verified: true,
 	}
 	admin := query.ProxyIdentity{
 		Address: adminAddress, CodeHash: codeHash,
-		ArtifactKind: "proxy_admin", StandardVersion: "5.6.1", Verified: true,
+		ArtifactResolution: "exact_address", ArtifactKind: "proxy_admin",
+		StandardVersion: "5.6.1", Verified: true,
 	}
 	stub := &appProxyQueryStub{
 		detail: query.ProxyDetail{
@@ -78,7 +82,7 @@ func TestProxyReaderAdapterMapsWriterModelsToOpenAPI(t *testing.T) {
 			Snapshot:  query.ProxySnapshot{Number: "42", Hash: blockHash},
 			Mechanism: "eip1967", Pattern: "uups", StandardVersion: "5.6.1",
 			Confidence: "verified", EvidenceState: "exact", BindingID: "ddeb27fb-d9a0-4624-be4d-4615062daed4",
-			Proxy:          &query.ProxyIdentity{Address: proxyAddress, CodeHash: codeHash, ArtifactKind: "erc1967_proxy", StandardVersion: "5.6.1", Verified: true},
+			Proxy:          &query.ProxyIdentity{Address: proxyAddress, CodeHash: codeHash, ArtifactResolution: "exact_address", ArtifactKind: "erc1967_proxy", StandardVersion: "5.6.1", Verified: true},
 			Implementation: &implementation,
 			Evidence: []query.ProxyEvidence{{
 				Subject: "implementation", Source: "direct_call", Result: "authoritative",
@@ -154,9 +158,12 @@ func TestProxyReaderAdapterPublishesHighConfidenceUnverifiedInteractionWithoutMa
 		Address: proxyAddress, Status: "detected_unverified",
 		Snapshot:  query.ProxySnapshot{Number: "42", Hash: blockHash},
 		Mechanism: "eip1967", Pattern: "unknown", Confidence: "high",
-		EvidenceState:  "partial",
-		Proxy:          &query.ProxyIdentity{Address: proxyAddress, CodeHash: proxyCodeHash},
-		Implementation: &query.ProxyIdentity{Address: implementationAddress, CodeHash: implementationCodeHash},
+		EvidenceState: "partial",
+		Proxy:         &query.ProxyIdentity{Address: proxyAddress, CodeHash: proxyCodeHash},
+		Implementation: &query.ProxyIdentity{
+			Address: implementationAddress, CodeHash: implementationCodeHash,
+			ArtifactResolution: "code_hash",
+		},
 	}}
 	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
 	if err != nil {
@@ -166,7 +173,9 @@ func TestProxyReaderAdapterPublishesHighConfidenceUnverifiedInteractionWithoutMa
 		t.Fatalf("ordinary interaction exposed the wrong authority: %+v", detail)
 	}
 	if detail.ImplementationInteraction.Proxy.CodeHash != proxyCodeHash ||
-		detail.ImplementationInteraction.Implementation.CodeHash != implementationCodeHash {
+		detail.ImplementationInteraction.Implementation.CodeHash != implementationCodeHash ||
+		detail.Implementation == nil || detail.Implementation.ArtifactResolution == nil ||
+		*detail.Implementation.ArtifactResolution != gen.ContractArtifactResolutionCodeHash {
 		t.Fatalf("interaction identity = %+v", detail.ImplementationInteraction)
 	}
 }
@@ -183,6 +192,90 @@ func TestProxyReaderAdapterRejectsMalformedPersistedPublicIdentity(t *testing.T)
 	}}
 	if _, err := newProxyReaderAdapter(stub, 1, false).Proxy(context.Background(), stub.detail.Address); err == nil {
 		t.Fatal("malformed persisted proxy status was published")
+	}
+}
+
+func TestProxyCurrentIdentitySeparatesExactVerificationFromCodeHashArtifact(t *testing.T) {
+	t.Parallel()
+	const (
+		address  = "0x1111111111111111111111111111111111111111"
+		codeHash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	)
+	for name, test := range map[string]struct {
+		identity query.ProxyIdentity
+		wantErr  bool
+	}{
+		"exact": {
+			identity: query.ProxyIdentity{Address: address, CodeHash: codeHash, Verified: true, ArtifactResolution: "exact_address"},
+		},
+		"code hash": {
+			identity: query.ProxyIdentity{Address: address, CodeHash: codeHash, ArtifactResolution: "code_hash"},
+		},
+		"verified missing resolution": {
+			identity: query.ProxyIdentity{Address: address, CodeHash: codeHash, Verified: true}, wantErr: true,
+		},
+		"unverified exact resolution": {
+			identity: query.ProxyIdentity{Address: address, CodeHash: codeHash, ArtifactResolution: "exact_address"}, wantErr: true,
+		},
+		"verified code hash resolution": {
+			identity: query.ProxyIdentity{Address: address, CodeHash: codeHash, Verified: true, ArtifactResolution: "code_hash"}, wantErr: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			model, err := proxyCurrentIdentity(&test.identity)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("model=%+v error=%v", model, err)
+			}
+		})
+	}
+}
+
+func TestProxyReaderAdapterRejectsCodeHashArtifactsOutsideCurrentImplementation(t *testing.T) {
+	t.Parallel()
+	const (
+		proxyAddress          = "0x1111111111111111111111111111111111111111"
+		implementationAddress = "0x2222222222222222222222222222222222222222"
+		managementAddress     = "0x3333333333333333333333333333333333333333"
+		blockHash             = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		codeHash              = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	base := query.ProxyDetail{
+		Address: proxyAddress, Status: "detected_unverified",
+		Snapshot:  query.ProxySnapshot{Number: "42", Hash: blockHash},
+		Mechanism: "eip1967", Pattern: "transparent", Confidence: "high", EvidenceState: "exact",
+		Proxy: &query.ProxyIdentity{Address: proxyAddress, CodeHash: codeHash},
+		Implementation: &query.ProxyIdentity{
+			Address: implementationAddress, CodeHash: codeHash, ArtifactResolution: "code_hash",
+		},
+	}
+	for name, mutate := range map[string]func(*query.ProxyDetail){
+		"proxy": func(detail *query.ProxyDetail) {
+			detail.Proxy.ArtifactResolution = "code_hash"
+		},
+		"admin": func(detail *query.ProxyDetail) {
+			detail.Admin = &query.ProxyIdentity{Address: managementAddress, CodeHash: codeHash, ArtifactResolution: "code_hash"}
+		},
+		"beacon": func(detail *query.ProxyDetail) {
+			detail.Beacon = &query.ProxyIdentity{Address: managementAddress, CodeHash: codeHash, ArtifactResolution: "code_hash"}
+		},
+		"management": func(detail *query.ProxyDetail) {
+			detail.Management = &query.ProxyManagement{Kind: "proxy_admin", Target: query.ProxyIdentity{
+				Address: managementAddress, CodeHash: codeHash, ArtifactResolution: "code_hash",
+			}}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			detail := base
+			proxyIdentity := *base.Proxy
+			implementationIdentity := *base.Implementation
+			detail.Proxy = &proxyIdentity
+			detail.Implementation = &implementationIdentity
+			mutate(&detail)
+			stub := &appProxyQueryStub{detail: detail}
+			if _, err := newProxyReaderAdapter(stub, 31337, false).Proxy(t.Context(), proxyAddress); err == nil {
+				t.Fatal("code-hash artifact escaped the current implementation role")
+			}
+		})
 	}
 }
 
@@ -297,7 +390,7 @@ func TestProxyReaderAdapterAllowsExactCloneBindingWithoutCloneArtifact(t *testin
 		},
 		Implementation: &query.ProxyIdentity{
 			Address: implementationAddress, CodeHash: codeHash,
-			Verified: true,
+			ArtifactResolution: "exact_address", Verified: true,
 		},
 	}}
 	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), cloneAddress)
@@ -308,5 +401,63 @@ func TestProxyReaderAdapterAllowsExactCloneBindingWithoutCloneArtifact(t *testin
 		detail.Implementation == nil || detail.Implementation.VerificationState != "verified" ||
 		detail.BindingId == nil || detail.ImplementationInteraction == nil {
 		t.Fatalf("clone detail = %+v", detail)
+	}
+}
+
+func TestProxyReaderAdapterMapsVerifiedCWIAImmutableArguments(t *testing.T) {
+	t.Parallel()
+	const (
+		proxyAddress          = "0x1111111111111111111111111111111111111111"
+		implementationAddress = "0x2222222222222222222222222222222222222222"
+		owner                 = "0x1234567890AbcdEF1234567890aBcdef12345678"
+		blockHash             = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		codeHash              = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		schemaHash            = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	)
+	stub := &appProxyQueryStub{detail: query.ProxyDetail{
+		Address: proxyAddress, Status: "verified",
+		Snapshot:      query.ProxySnapshot{Number: "42", Hash: blockHash},
+		Mechanism:     "cwia",
+		Pattern:       "clone",
+		Confidence:    "verified",
+		EvidenceState: "exact",
+		ImmutableArgs: "0x1234",
+		BindingID:     "ddeb27fb-d9a0-4624-be4d-4615062daed4",
+		Proxy: &query.ProxyIdentity{
+			Address: proxyAddress, CodeHash: codeHash, Verified: false,
+		},
+		Implementation: &query.ProxyIdentity{
+			Address: implementationAddress, CodeHash: codeHash,
+			ArtifactResolution: "exact_address", Verified: true,
+		},
+		ImmutableArgsDecoding: &query.CWIAImmutableArgsDecoding{
+			Status: query.CWIAArgsDecoded, SchemaResolution: "exact_address",
+			Schema: &query.CWIAImmutableArgSchema{
+				Version: 2, Source: "solidity_ast", Encoding: "solady-cwia-offsets",
+				HelperSHA256: "0xbc97b0d077a3c5d5603808caeeb3fe572dcb2448c5536b66316d1b6b129cfca3",
+				SHA256:       schemaHash,
+				Fields: []query.CWIAImmutableArgField{
+					{Name: "owner", Type: "address", Offset: 0, Role: "value", Getters: []string{"owner()"}, Size: cwiaargs.FixedSize(20)},
+					{Name: "number", Type: "uint256", Offset: 20, Role: "value", Getters: []string{"number()"}, Size: cwiaargs.FixedSize(32)},
+				},
+			},
+			Arguments: []query.CWIAImmutableArgValue{
+				{Name: "owner", Type: "address", Offset: 0, Length: 20, Value: owner},
+				{Name: "number", Type: "uint256", Offset: 20, Length: 32, Value: "1606938044258990275541962092341162602522202993782792835301418"},
+			},
+		},
+	}}
+	detail, err := newProxyReaderAdapter(stub, 31337, false).Proxy(context.Background(), proxyAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Mechanism == nil || *detail.Mechanism != "cwia" || detail.ImmutableArgs == nil ||
+		detail.ImmutableArgsDecoding == nil || detail.ImmutableArgsDecoding.Status != "decoded" ||
+		detail.ImmutableArgsDecoding.Schema == nil ||
+		detail.ImmutableArgsDecoding.Schema.Sha256 != schemaHash ||
+		len(detail.ImmutableArgsDecoding.Arguments) != 2 ||
+		detail.ImmutableArgsDecoding.Arguments[0].Value != owner ||
+		detail.ImplementationInteraction == nil {
+		t.Fatalf("CWIA detail=%+v", detail)
 	}
 }

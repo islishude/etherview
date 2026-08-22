@@ -30,11 +30,11 @@ and user/operator evidence sufficient for a production public release.
 
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
-| P70-T01 | blocked | P10–P68 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
-| P70-T02 | blocked | P10–P68 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
-| P70-T03 | blocked | P10–P68 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
+| P70-T01 | blocked | P10–P69 | Execution/API/token/proxy/verification/authentication/billing conformance matrix | conformance suite |
+| P70-T02 | blocked | P10–P69 | Threat model, security audit, dependency, compiler, session, and payment supply-chain review | security gates |
+| P70-T03 | blocked | P10–P69 | Monolith/split E2E, migration/rollback, outage, reorg, payment, and soak suite | release CI |
 | P70-T04 | blocked | P60 | 500 RPS reference capacity report and tuning guide | load report |
-| P70-T05 | blocked | P00–P68 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
+| P70-T05 | blocked | P00–P69 | User/operator/API/authentication/billing/runbook/upgrade documentation | doc review and link check |
 | P70-T06 | todo | P70-T01–P70-T05, P70-T08, P70-T09 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release | release verification |
 | P70-T07 | done | P60 | Database read/write pool split configuration, deployment wiring, and capacity guidance | helm config/schema tests |
 | P70-T08 | done | P10, P20, P30-T07, P40, P50, P60 | Authenticated local/remote genesis account state, predeploy enrichment, native API, and block-zero UI | root, persistence, API, browser, security, and split-role tests |
@@ -73,6 +73,7 @@ and user/operator evidence sufficient for a production public release.
 | P70-T41 | done | P70-T35 | Render a per-start Preview Genesis runtime copy from the checked-in template while preserving persistent-volume identity semantics | script, Makefile, Compose, and Preview runtime checks |
 | P70-T42 | done | P70-T41 | Keep Preview recreation strictly Genesis-immutable, including when the default runtime copy is absent | Makefile, documentation, and focused lifecycle regression |
 | P70-T43 | done | P70-T31 | Disable disposable Foundry project caching so repeated one-shot verification clients cannot race an empty tmpfs cache while retaining offline solc availability | pinned client-config assertion and production Foundry E2E |
+| P70-T44 | done | P70-T19, P70-T27 | Remove every disposable Compose project resource during Go-owned test teardown, including volumes referenced only by inactive one-off client profiles | focused command regression and Hardhat project cleanup inspection |
 
 ## Acceptance
 
@@ -152,6 +153,10 @@ and user/operator evidence sufficient for a production public release.
       writes a Genesis file; without a complete custom override it requires the
       existing default runtime copy and directs operators to `make
       start-preview` when that copy is absent.
+- [x] P70-T44: every Go-owned disposable Compose teardown includes resources
+      unused by the active service profiles before removing project volumes and
+      orphans, so one-off Hardhat build volumes cannot survive a successful or
+      failed test cleanup.
 - [x] P70-T19: `make test-integration` owns a fresh PostgreSQL 18 lifecycle
       when no external disposable URL is supplied; the explicit race variant,
       production-image schema E2E, and unified plugin/standalone Compose
@@ -352,6 +357,14 @@ those gates.
 
 ## Evidence
 
+- P70-T44 adds Compose's global `--all-resources` selection to the shared
+  `internal/testcompose.Project.Down` boundary before `down --volumes
+  --remove-orphans`, with an exact command-construction regression for an
+  inactive-profile project. Focused ordinary, race, and vet checks pass for
+  `internal/testcompose`; `make plan-check` and `git diff --check` pass. The
+  prebuilt production Hardhat gate passes monolith in 113.75s and the complete
+  six-role topology in 107.59s, and the filtered Docker inventory contains no
+  `hardhat-build` volume or Hardhat project container afterward.
 - P70-T43 diagnoses GitHub Actions run 32546457689 job 96965663361 as
   disposable Foundry client cache instability: the first real verification
   completed, while the repeated already-verified command occasionally raced a

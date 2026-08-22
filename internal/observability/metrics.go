@@ -645,7 +645,7 @@ func boundedJobStage(value string) string {
 
 func boundedProxyDetector(value string) string {
 	switch strings.TrimSpace(value) {
-	case "openzeppelin", "safe":
+	case "openzeppelin", "safe", "solady-cwia":
 		return strings.TrimSpace(value)
 	default:
 		return "other"
@@ -654,7 +654,7 @@ func boundedProxyDetector(value string) string {
 
 func boundedProxyFamily(value string) string {
 	switch strings.TrimSpace(value) {
-	case "erc1167", "erc1967", "safe", "custom":
+	case "erc1167", "erc1967", "safe", "cwia", "custom":
 		return strings.TrimSpace(value)
 	case "":
 		return "none"

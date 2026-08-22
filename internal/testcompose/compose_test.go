@@ -50,6 +50,28 @@ func TestProjectCommandKeepsFilesProfilesAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestProjectDownRemovesAllResources(t *testing.T) {
+	t.Setenv("COMPOSE", "docker compose")
+	executor := &recordingExecutor{}
+	project := New("/repo", "runtime", "compose.yaml")
+	project.Profiles = []string{"distributed"}
+	project.Executor = executor
+
+	if err := project.Down(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	wantArguments := []string{
+		"compose", "-p", "runtime",
+		"-f", filepath.Join("/repo", "compose.yaml"),
+		"--profile", "distributed",
+		"--all-resources", "down", "--volumes", "--remove-orphans",
+	}
+	if !slices.Equal(executor.command.Args, wantArguments) {
+		t.Fatalf("arguments = %#v, want %#v", executor.command.Args, wantArguments)
+	}
+}
+
 func TestProjectPortNormalizesIPv4AndIPv6Bindings(t *testing.T) {
 	for _, test := range []struct {
 		name   string

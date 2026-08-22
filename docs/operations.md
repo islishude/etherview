@@ -646,6 +646,14 @@ No database rollback or legacy reindex is required because old readers exclude
 the `proxy_v2` candidate kind. Re-enable shadow collection before public
 exposure; validation rejects the inverse configuration.
 
+Solady legacy CWIA authority is not controlled by the V2 public flag. Migration
+`0050` only extends the existing `proxy@2` contracts and never enqueues or
+replays history. New blocks first processed after deployment can publish
+`mechanism=cwia`; no historical CWIA coverage is claimed. If an existing P58
+bounded shadow sample is later run on this build, review any `cwia` outcomes
+and legacy diffs in that same cohort without treating them as a separately
+approved CWIA backfill.
+
 The list command is newest-first and bounded to 1–1000 rows. Its default JSON
 output and optional `--format table` both report `failure_present` without
 returning stored nested error text. Use the stable

@@ -86,7 +86,9 @@ func CompileAndVerify(
 	if err != nil {
 		return nil, CompilationFailure{Message: "modified compiler execution failed"}
 	}
-	candidates, err := ExtractCandidatesV2(originalOutput, modifiedOutput, language, version)
+	candidates, err := extractCandidatesV2WithInput(
+		originalOutput, modifiedOutput, language, version, prepared, false,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +109,19 @@ func extractCandidatesV2(
 	modifiedOutput json.RawMessage,
 	language Language,
 	version string,
+	deriveMissingYulRuntime bool,
+) ([]CandidateArtifact, error) {
+	return extractCandidatesV2WithInput(
+		originalOutput, modifiedOutput, language, version, nil, deriveMissingYulRuntime,
+	)
+}
+
+func extractCandidatesV2WithInput(
+	originalOutput json.RawMessage,
+	modifiedOutput json.RawMessage,
+	language Language,
+	version string,
+	input json.RawMessage,
 	deriveMissingYulRuntime bool,
 ) ([]CandidateArtifact, error) {
 	original, err := compilerContractDocuments(originalOutput)
@@ -143,6 +158,20 @@ func extractCandidatesV2(
 	}
 	if !equalStringMapsByKey(originalImmutables, modifiedImmutables) {
 		return nil, errors.New("dual compilation changed immutable declarations")
+	}
+	var originalCWIA map[string]json.RawMessage
+	if language == LanguageSolidity && len(input) != 0 {
+		originalCWIA, err = deriveSoladyLegacyCWIAAnalyses(originalOutput, input)
+		if err != nil {
+			return nil, err
+		}
+		modifiedCWIA, deriveErr := deriveSoladyLegacyCWIAAnalyses(modifiedOutput, input)
+		if deriveErr != nil {
+			return nil, deriveErr
+		}
+		if !equalCWIAAnalyses(originalCWIA, modifiedCWIA) {
+			return nil, errors.New("dual compilation changed CWIA immutable argument analysis")
+		}
 	}
 	candidates := make([]CandidateArtifact, 0, len(originalNames))
 	for _, name := range originalNames {
@@ -190,6 +219,11 @@ func extractCandidatesV2(
 		if immutables, exists := originalImmutables[first.FullyQualifiedName()]; exists && len(immutables) != 0 {
 			first.CompilationArtifacts = mergeArtifactField(
 				first.CompilationArtifacts, "immutableVariables", immutables,
+			)
+		}
+		if analysis, exists := originalCWIA[first.FullyQualifiedName()]; exists {
+			first.CompilationArtifacts = mergeArtifactField(
+				first.CompilationArtifacts, cwiaASTArtifactField, analysis,
 			)
 		}
 		candidates = append(candidates, first)

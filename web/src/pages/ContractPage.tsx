@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
 import { ApiError } from "@/api/client";
+import { CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { AbiFunctionExplorer } from "@/contracts/AbiFunctionForm";
@@ -98,8 +99,14 @@ export function ContractPage({ address }: { address: string }) {
   const validAddress = isAddress(address);
   const requestedTab = contractTabFromHash(location.hash);
   const activeTab = requestedTab ?? "code";
-  const artifact = useVerifiedContractArtifact(address, validAddress);
   const proxy = useContractProxy(address, validAddress);
+	const artifact = useVerifiedContractArtifact(address, validAddress);
+	const showDirectArtifact = validAddress && !proxy.isPending && (
+		proxy.data === undefined || (
+			proxy.data.state !== "unavailable" && proxy.data.state !== "failed" &&
+			proxy.data.detail.mechanism !== "cwia"
+		)
+	);
   const interactionTargets = useMemo<readonly ContractInteractionTarget[]>(() => {
     if (!validAddress) return [];
     try {
@@ -188,7 +195,7 @@ export function ContractPage({ address }: { address: string }) {
     validAddress && isDiamond && activeTab === "diamond-cuts",
   );
 
-  const contractQueriesPending = artifact.isPending || proxy.isPending
+	const contractQueriesPending = artifact.isPending || proxy.isPending
     || (implementationAddress.length > 0 && implementationArtifact.isPending)
     || (managementAddress.length > 0 && managementArtifact.isPending);
   const contractQueryErrors = [
@@ -207,7 +214,7 @@ export function ContractPage({ address }: { address: string }) {
     const next: Array<{ id: ContractTab; label: string }> = [
       { id: "code", label: t("contracts.tabs.code") },
     ];
-    if (artifact.data?.abi) {
+    if (showDirectArtifact && artifact.data?.abi) {
       next.push(
         { id: "read-contract", label: t("contracts.tabs.readContract") },
         { id: "write-contract", label: t("contracts.tabs.writeContract") },
@@ -238,7 +245,7 @@ export function ContractPage({ address }: { address: string }) {
       next.push({ id: requestedTab, label: contractTabLabel(requestedTab, t) });
     }
     return next;
-  }, [artifact.data?.abi, clone, contractQueriesSettling, detected, diamond, implementationArtifact.data?.abi, implementationArtifactMatches, isDiamond, managementArtifact.data?.abi, managementArtifactMatches, requestedTab, t]);
+  }, [artifact.data?.abi, clone, contractQueriesSettling, detected, diamond, implementationArtifact.data?.abi, implementationArtifactMatches, isDiamond, managementArtifact.data?.abi, managementArtifactMatches, requestedTab, showDirectArtifact, t]);
 
   useEffect(() => {
     if (!requestedTab || contractQueriesSettling || tabs.some((tab) => tab.id === requestedTab)) return;
@@ -319,12 +326,14 @@ export function ContractPage({ address }: { address: string }) {
                       {showProxySummary ? (
                         <ProxySummary detail={proxyDetail} loading={proxy.isPending} error={proxy.error} />
                       ) : null}
-                      <ArtifactPanel
-                        address={address}
-                        artifact={artifact.data}
-                        error={artifact.error}
-                        loading={artifact.isPending}
-                      />
+										{showDirectArtifact ? (
+											<ArtifactPanel
+												address={address}
+												artifact={artifact.data}
+												error={artifact.error}
+												loading={artifact.isPending}
+											/>
+										) : null}
                     </>
                   )}
                   {(activeTab === "read-contract" || activeTab === "write-contract") && (
@@ -619,9 +628,7 @@ function ProxySummary({
     .filter((outcome) => outcome.family && outcome.status !== "not-detected")
     .map((outcome) => `${outcome.family}${outcome.variant ? ` (${outcome.variant})` : ""}`)
     .join(" → ");
-  const eyebrow = diamond
-    ? "ERC-2535 Diamond"
-    : v2Primary?.family === "safe" ? "Safe Proxy" : "OpenZeppelin 5.x";
+  const eyebrow = proxyEyebrow(detail, v2Primary?.family, diamond !== undefined);
   return (
     <details className="panel proxy-summary">
       <summary className="panel-heading">
@@ -709,11 +716,10 @@ function ProxySummary({
             value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
             mono
           />
-          {detail.immutable_args ? (
-            <Fact label={t("contracts.proxy.immutableArgs")} value={detail.immutable_args} mono />
-          ) : null}
+          <ImmutableArgsFacts detail={detail} t={t} />
         </dl>
       ) : null}
+      <CWIAImmutableArgsDetails detail={detail} t={t} />
       {detail && detail.evidence.length > 0 ? (
         <details className="proxy-evidence">
           <summary>{t("contracts.proxy.evidence", { count: detail.evidence.length })}</summary>
@@ -730,12 +736,11 @@ function ProxySummary({
       ) : null}
       {diamond ? (
         <p className="context-note" role="note">{t("contracts.diamond.interactionSafety")}</p>
-      ) : detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
+		) : detail?.mechanism === "cwia" ? null
+			: detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
         <p className="chain-warning" role="status">{t("contracts.proxy.writeDisabled")}</p>
       ) : null}
-      {detail?.pattern === "clone" ? (
-        <p className="context-note" role="note">{t("contracts.proxy.cloneImmutable")}</p>
-      ) : null}
+      <CloneImmutabilityNote detail={detail} t={t} />
     </details>
   );
 }
@@ -744,12 +749,267 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
   return <div><dt>{label}</dt><dd className={mono ? "mono-wrap" : undefined}>{value}</dd></div>;
 }
 
+function proxyEyebrow(
+  detail: ContractProxyDetails | undefined,
+  family: string | undefined,
+  diamond: boolean,
+): string {
+  if (diamond) return "ERC-2535 Diamond";
+  if (detail?.mechanism === "cwia" || family === "cwia") return "Solady legacy CWIA";
+  if (family === "safe") return "Safe Proxy";
+  return "OpenZeppelin 5.x";
+}
+
+function ImmutableArgsFacts({
+  detail,
+  t,
+}: {
+  detail: ContractProxyDetails;
+  t: Translate;
+}) {
+  return (
+    <>
+      {detail.immutable_args ? (
+        <Fact label={t("contracts.proxy.immutableArgs")} value={detail.immutable_args} mono />
+      ) : null}
+      {detail.immutable_args_decoding ? (
+        <Fact
+          label={t("contracts.proxy.cwia.schemaStatus")}
+          value={cwiaDecodingStatusLabel(detail.immutable_args_decoding, t)}
+        />
+      ) : null}
+      {detail.immutable_args_decoding?.schema ? (
+		<>
+			<Fact
+				label={t("contracts.proxy.cwia.schemaSource")}
+				value={t("contracts.proxy.cwia.source.solidityAst")}
+			/>
+			{detail.immutable_args_decoding.schema_resolution ? (
+				<Fact
+					label={t("contracts.proxy.cwia.schemaResolution")}
+					value={t(`contracts.proxy.cwia.resolution.${detail.immutable_args_decoding.schema_resolution}`)}
+				/>
+			) : null}
+			<Fact
+				label={t("contracts.proxy.cwia.helperDigest")}
+				value={detail.immutable_args_decoding.schema.helper_sha256}
+				mono
+			/>
+			<Fact
+				label={t("contracts.proxy.cwia.schemaDigest")}
+				value={detail.immutable_args_decoding.schema.sha256}
+				mono
+			/>
+		</>
+      ) : null}
+    </>
+  );
+}
+
+function CloneImmutabilityNote({
+  detail,
+  t,
+}: {
+  detail: ContractProxyDetails | undefined;
+  t: Translate;
+}) {
+  if (detail?.pattern !== "clone") return null;
+  return (
+    <p className="context-note" role="note">
+      {t(detail.mechanism === "cwia"
+        ? "contracts.proxy.cwia.immutable"
+        : "contracts.proxy.cloneImmutable")}
+    </p>
+  );
+}
+
+function CWIAImmutableArgsDetails({
+	detail,
+	t,
+}: {
+	detail: ContractProxyDetails | undefined;
+	t: Translate;
+}) {
+	const decoding = detail?.immutable_args_decoding;
+	if (!decoding) return null;
+  if (decoding.status !== "decoded") {
+    return (
+      <p className="chain-warning" role="status">
+        {t("contracts.proxy.cwia.readOnly", {
+          reason: cwiaDecodingReasonLabel(decoding.reason, t),
+        })}
+      </p>
+    );
+  }
+	return (
+		<>
+			{detail?.status !== "verified" ? (
+				<p className="chain-warning" role="status">
+					{t("contracts.proxy.cwia.readOnly", {
+						reason: t("contracts.proxy.cwia.reason.proxyNotVerified"),
+					})}
+				</p>
+			) : null}
+			<CWIAImmutableArgumentsTable arguments={decoding.arguments} t={t} />
+		</>
+	);
+}
+
+export function formatCWIAArgumentValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+		return JSON.stringify(value);
+	}
+	return "—";
+}
+
+type CWIAArgument = NonNullable<
+	ContractProxyDetails["immutable_args_decoding"]
+>["arguments"][number];
+
+export type CWIAArgumentRow = Readonly<{
+	key: string;
+	name: string;
+	type: string;
+	offset: number;
+	data: string;
+	depth: 0 | 1;
+	composite: boolean;
+}>;
+
+export type CWIAArgumentOmission = Readonly<{
+	name: string;
+	count: number;
+}>;
+
+const MAX_CWIA_ARRAY_ROWS = 64;
+
+export function flattenCWIAArgumentRows(
+	arguments_: readonly CWIAArgument[],
+): Readonly<{
+	rows: readonly CWIAArgumentRow[];
+	omissions: readonly CWIAArgumentOmission[];
+}> {
+	const rows: CWIAArgumentRow[] = [];
+	const omissions: CWIAArgumentOmission[] = [];
+	for (const argument of arguments_) {
+		const data = formatCWIAArgumentValue(argument.value);
+		const values = Array.isArray(argument.value) &&
+			argument.value.every((item) => typeof item === "string")
+			? argument.value
+			: undefined;
+		rows.push({
+			key: `${argument.offset}:${argument.name}`,
+			name: argument.name,
+			type: argument.type,
+			offset: argument.offset,
+			data,
+			depth: 0,
+			composite: values !== undefined,
+		});
+		if (!values) continue;
+		const elementType = argument.type.replace(/\[\]$/u, "");
+		for (const [index, value] of values.slice(0, MAX_CWIA_ARRAY_ROWS).entries()) {
+			rows.push({
+				key: `${argument.offset}:${argument.name}:${index}`,
+				name: `${argument.name}[${index}]`,
+				type: elementType,
+				offset: argument.offset + index * 32,
+				data: value,
+				depth: 1,
+				composite: false,
+			});
+		}
+		const omitted = values.length - MAX_CWIA_ARRAY_ROWS;
+		if (omitted > 0) omissions.push({ name: argument.name, count: omitted });
+	}
+	return { rows, omissions };
+}
+
+function CWIAImmutableArgumentsTable({
+	arguments: arguments_,
+	t,
+}: {
+	arguments: readonly CWIAArgument[];
+	t: Translate;
+}) {
+	const flattened = flattenCWIAArgumentRows(arguments_);
+	return (
+		<section aria-label={t("contracts.proxy.cwia.arguments")} className="proxy-evidence">
+			<h3>{t("contracts.proxy.cwia.arguments")}</h3>
+			<div className="cwia-arguments-scroll" tabIndex={0}>
+				<div className="cwia-arguments-table" role="table" aria-label={t("contracts.proxy.cwia.arguments")}>
+					<div className="cwia-arguments-row cwia-arguments-header" role="row">
+						<span role="columnheader">{t("contracts.proxy.cwia.columns.name")}</span>
+						<span role="columnheader">{t("contracts.proxy.cwia.columns.type")}</span>
+						<span role="columnheader">{t("contracts.proxy.cwia.columns.offset")}</span>
+						<span role="columnheader">{t("contracts.proxy.cwia.columns.data")}</span>
+					</div>
+					{flattened.rows.map((row) => (
+						<div
+							className={`cwia-arguments-row cwia-argument-depth-${row.depth}${row.composite ? " cwia-argument-composite" : ""}`}
+							key={row.key}
+							role="row"
+						>
+							<span className="cwia-argument-name" role="cell">{row.name}</span>
+							<code className="cwia-argument-type" role="cell">{row.type}</code>
+							<code className="cwia-argument-offset" role="cell">{row.offset}</code>
+							<span className="cwia-argument-data" role="cell">
+								<CopyableField value={row.data}><code>{row.data}</code></CopyableField>
+							</span>
+						</div>
+					))}
+				</div>
+			</div>
+			{flattened.omissions.map((omission) => (
+				<p className="quiet" key={omission.name} role="note">
+					{t("contracts.proxy.cwia.arrayRowsOmitted", omission)}
+				</p>
+			))}
+		</section>
+	);
+}
+
+function cwiaDecodingStatusLabel(
+	decoding: NonNullable<ContractProxyDetails["immutable_args_decoding"]>,
+	t: Translate,
+): string {
+	switch (decoding.status) {
+    case "decoded": return t("contracts.proxy.cwia.status.decoded");
+    case "schema_unavailable": return t("contracts.proxy.cwia.status.schemaUnavailable");
+    case "schema_invalid": return t("contracts.proxy.cwia.status.schemaInvalid");
+    case "data_invalid": return t("contracts.proxy.cwia.status.dataInvalid");
+  }
+}
+
+function cwiaDecodingReasonLabel(
+  reason: NonNullable<ContractProxyDetails["immutable_args_decoding"]>["reason"],
+  t: Translate,
+): string {
+	switch (reason) {
+		case "ast_unavailable": return t("contracts.proxy.cwia.reason.astUnavailable");
+		case "malformed_analysis": return t("contracts.proxy.cwia.reason.malformedAnalysis");
+		case "unsupported_access": return t("contracts.proxy.cwia.reason.unsupportedAccess");
+		case "ambiguous_layout": return t("contracts.proxy.cwia.reason.ambiguousLayout");
+		case "incomplete_layout": return t("contracts.proxy.cwia.reason.incompleteLayout");
+		case "schema_conflict": return t("contracts.proxy.cwia.reason.schemaConflict");
+    case "limit_exceeded": return t("contracts.proxy.cwia.reason.limitExceeded");
+    case "length_mismatch": return t("contracts.proxy.cwia.reason.lengthMismatch");
+    case "noncanonical_value": return t("contracts.proxy.cwia.reason.noncanonicalValue");
+    case undefined: return t("contracts.proxy.cwia.reason.unknown");
+  }
+}
+
 function IdentityFact({
   label,
   identity,
 }: {
   label: string;
-  identity?: { address: string; verification_state: "unverified" | "verified" };
+  identity?: {
+		address: string;
+		verification_state: "unverified" | "verified";
+		artifact_resolution?: "exact_address" | "code_hash";
+	};
 }) {
   const { t } = useTranslation();
   return (
@@ -759,7 +1019,7 @@ function IdentityFact({
         {identity ? (
           <>
             <AddressIdentity address={identity.address} compact={false} contract />{" "}
-            <small>{proxyVerificationLabel(identity.verification_state, t)}</small>
+			<small>{proxyIdentityVerificationLabel(identity, t)}</small>
           </>
         ) : "—"}
       </dd>
@@ -1129,6 +1389,7 @@ function proxyMechanismLabel(
 ): string {
   switch (mechanism) {
     case "eip1167": return t("contracts.proxy.enums.mechanism.eip1167");
+    case "cwia": return t("contracts.proxy.enums.mechanism.cwia");
     case "eip1967": return t("contracts.proxy.enums.mechanism.eip1967");
     case "beacon": return t("contracts.proxy.enums.mechanism.beacon");
   }
@@ -1165,6 +1426,22 @@ function proxyVerificationLabel(
     case "unverified": return t("contracts.proxy.enums.verification.unverified");
     case "verified": return t("contracts.proxy.enums.verification.verified");
   }
+}
+
+function proxyIdentityVerificationLabel(
+	identity: {
+		verification_state: "unverified" | "verified";
+		artifact_resolution?: "exact_address" | "code_hash";
+	},
+	t: Translate,
+): string {
+	if (identity.verification_state === "verified" && identity.artifact_resolution === "exact_address") {
+		return t("contracts.proxy.enums.verification.verifiedAtAddress");
+	}
+	if (identity.verification_state === "unverified" && identity.artifact_resolution === "code_hash") {
+		return t("contracts.proxy.enums.verification.verifiedByCodeHash");
+	}
+	return t("contracts.proxy.enums.verification.unverified");
 }
 
 function proxyEvidenceSourceLabel(

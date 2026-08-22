@@ -49,7 +49,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 Production shadow sampling requires an operator-controlled deployment and the
 review cohort defined in the rollout runbook. Enabling
 `features.proxy_detection_v2` in that environment and completing the recorded
-sample clears the remaining P58-T04 merge condition.
+sample clears the remaining P58-T04 merge condition. Once P69 is deployed, the
+same review must include any `cwia` outcomes, conflicts, unknowns, and legacy
+diffs observed in that already bounded cohort; P69 does not itself execute or
+broaden the historical sample and does not enable public V2.
 
 ## Evidence
 

@@ -560,6 +560,8 @@ func TestExactProxyVerificationTargetCoversSupportedManagementShapes(t *testing.
 	}
 	clone := base
 	clone.kind, clone.pattern = "eip1167", "clone"
+	cwia := base
+	cwia.kind, cwia.pattern = "cwia", "clone"
 	erc1967 := base
 	erc1967.kind, erc1967.pattern = "eip1967", "erc1967"
 	erc1967.artifactResolution = sql.NullInt64{Int64: 2, Valid: true}
@@ -584,7 +586,7 @@ func TestExactProxyVerificationTargetCoversSupportedManagementShapes(t *testing.
 	beaconProxy.beaconAddress, beaconProxy.beaconCodeHash = beacon, beaconHash
 	beaconProxy.managementKind = "upgradeable_beacon"
 	beaconProxy.managementAddress, beaconProxy.managementCodeHash = beacon, beaconHash
-	for _, target := range []proxyVerificationTarget{clone, erc1967, uups, transparent, beaconProxy} {
+	for _, target := range []proxyVerificationTarget{clone, cwia, erc1967, uups, transparent, beaconProxy} {
 		if !validExactProxyVerificationTarget(target) {
 			t.Fatalf("valid target rejected: %+v", target)
 		}

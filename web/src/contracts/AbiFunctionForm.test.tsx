@@ -734,6 +734,46 @@ describe("AbiFunctionExplorer", () => {
     );
   });
 
+	it("keeps the displayed target when a fresh read sees a transient unavailable proxy stage", async () => {
+		vi.mocked(getContractProxyResponse)
+			.mockResolvedValueOnce(proxyResponse({
+				address: PROXY,
+				status: "unavailable",
+				snapshot: {
+					chain_id: "31337",
+					block_number: "21",
+					block_hash: `0x${"77".repeat(32)}`,
+				},
+				evidence: [],
+			}))
+			.mockResolvedValue(proxyResponse());
+		const readContract = vi.fn(async () => encodeFunctionResult({
+			abi: [uupsABI[1]],
+			functionName: "value",
+			result: 42n,
+		}));
+		const onBindingChanged = vi.fn();
+		mockWallet({ readContract });
+		renderExplorer([uupsABI[1]], "read", implementationTargets(), onBindingChanged);
+		const user = userEvent.setup();
+		const card = await openFunctionCard(user, "value()");
+
+		await user.click(card.getByRole("button", { name: "Read contract" }));
+
+		expect(await card.findByRole("alert")).toHaveTextContent(
+			"The latest proxy stage is temporarily unavailable",
+		);
+		expect(onBindingChanged).not.toHaveBeenCalled();
+		expect(readContract).not.toHaveBeenCalled();
+
+		await user.click(card.getByRole("button", { name: "Read contract" }));
+
+		expect(await card.findByText("42")).toBeVisible();
+		expect(getContractProxyResponse).toHaveBeenCalledTimes(2);
+		expect(readContract).toHaveBeenCalledOnce();
+		expect(onBindingChanged).not.toHaveBeenCalled();
+	});
+
   it("blocks a changed binding before send and requests a visible refresh", async () => {
     vi.mocked(getContractProxyResponse).mockResolvedValue(
       proxyResponse(uupsDetails({ binding_id: NEXT_BINDING_ID })),
@@ -938,6 +978,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
       address: PROXY,
       code_hash: PROXY_HASH,
       verification_state: "verified",
+			artifact_resolution: "exact_address",
       artifact_kind: "erc1967_proxy",
       standard_version: "5.6.1",
     },
@@ -945,6 +986,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
       address: IMPLEMENTATION,
       code_hash: IMPLEMENTATION_HASH,
       verification_state: "verified",
+			artifact_resolution: "exact_address",
       artifact_kind: "uups_implementation",
       standard_version: "5.6.1",
     },
@@ -955,6 +997,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
         address: PROXY,
         code_hash: PROXY_HASH,
         verification_state: "verified",
+				artifact_resolution: "exact_address",
         artifact_kind: "erc1967_proxy",
         standard_version: "5.6.1",
       },
@@ -962,6 +1005,7 @@ function uupsDetails(overrides: Partial<ProxyDetails> = {}): ProxyDetails {
         address: IMPLEMENTATION,
         code_hash: IMPLEMENTATION_HASH,
         verification_state: "verified",
+				artifact_resolution: "exact_address",
         artifact_kind: "uups_implementation",
         standard_version: "5.6.1",
       },
@@ -977,6 +1021,7 @@ function managementDetails(pattern: "transparent" | "beacon"): ProxyDetails {
     address: ADMIN,
     code_hash: ADMIN_HASH,
     verification_state: "verified" as const,
+		artifact_resolution: "exact_address" as const,
     artifact_kind: pattern === "transparent"
       ? "proxy_admin" as const
       : "upgradeable_beacon" as const,
@@ -988,6 +1033,7 @@ function managementDetails(pattern: "transparent" | "beacon"): ProxyDetails {
       address: IMPLEMENTATION,
       code_hash: IMPLEMENTATION_HASH,
       verification_state: "verified",
+			artifact_resolution: "exact_address",
     },
     ...(pattern === "transparent"
       ? { admin: managementIdentity }

@@ -616,6 +616,7 @@ func TestUnverifiedContractIsNotAnEmptySuccess(t *testing.T) {
 	db := fakeDatabase(t,
 		currentArtifactTargetExpectation(currentCodeHash),
 		sqlExpectation{contains: "FROM verified_contracts AS verified", columns: fakeColumns(24)},
+		sqlExpectation{contains: "SELECT binding.implementation_address", columns: fakeColumns(1)},
 	)
 	backend := testPostgresBackend(t, db, PostgresOptions{ChainID: 1})
 	result, err := backend.Execute(context.Background(), Request{Module: "contract", Action: "getabi", Values: url.Values{"address": {testContract}}})

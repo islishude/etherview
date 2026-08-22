@@ -36,7 +36,8 @@ batch semantics are not core v1 scope.
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P68 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -295,6 +296,26 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   processor; updates the Go license scanner for the current toolchain; and
   closes the common, PostgreSQL, schema, runtime, browser, Hardhat, Foundry,
   and strict one-attempt Preview acceptance matrix.
+- P69 is complete: exact Solady legacy LibCWIA recognition now publishes
+  `cwia` through the existing `proxy@2` authority, retains raw packed arguments,
+  binds implementation ABI/source and Etherscan projection. P69-T06 replaces
+  the provisional NatSpec schema with a bounded, source-authenticated Solidity
+  AST derivation while preserving the exact binding and schema-digest write
+  fence. P69-T05 closes the Preview
+  interaction regression: exact detected-but-unverified CWIA shells retain
+  code-hash-authenticated implementation reads while writes continue to require
+  the fresh exact binding and decoded-schema digest. P69-T07 separates
+  exact-address verification from read-only code-hash artifact availability for
+  every current singular proxy implementation and presents immutable arguments
+  in a copyable accessible Name/Type/Offset/Data table. P69-T08 keeps those
+  published interaction tabs stable when an operation fence observes a
+  transient unavailable latest proxy stage, without weakening fresh-call or
+  write authorization. P69-T09 removes the shell's direct Verified artifact
+  submission surface while retaining implementation source, ABI, and proxy
+  interaction.
+  Migration `0050` schedules no historical backfill and public proxy V2 remains
+  disabled. Reviewable commands and results remain in
+  [P69 evidence](docs/plans/P69-solady-legacy-cwia-proxies.md#evidence).
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

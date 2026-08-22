@@ -266,13 +266,13 @@ func (e BillingConfigScheme) Valid() bool {
 
 // Defines values for BillingConfigX402Version.
 const (
-	N2 BillingConfigX402Version = 2
+	BillingConfigX402VersionN2 BillingConfigX402Version = 2
 )
 
 // Valid indicates whether the value is a known member of the BillingConfigX402Version enum.
 func (e BillingConfigX402Version) Valid() bool {
 	switch e {
-	case N2:
+	case BillingConfigX402VersionN2:
 		return true
 	default:
 		return false
@@ -303,6 +303,312 @@ func (e BillingPaymentState) Valid() bool {
 	case BillingPaymentStateSettling:
 		return true
 	case BillingPaymentStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgFieldRole.
+const (
+	Length CWIAImmutableArgFieldRole = "length"
+	Value  CWIAImmutableArgFieldRole = "value"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgFieldRole enum.
+func (e CWIAImmutableArgFieldRole) Valid() bool {
+	switch e {
+	case Length:
+		return true
+	case Value:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgSchemaEncoding.
+const (
+	SoladyCwiaOffsets CWIAImmutableArgSchemaEncoding = "solady-cwia-offsets"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgSchemaEncoding enum.
+func (e CWIAImmutableArgSchemaEncoding) Valid() bool {
+	switch e {
+	case SoladyCwiaOffsets:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgSchemaSource.
+const (
+	SolidityAst CWIAImmutableArgSchemaSource = "solidity_ast"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgSchemaSource enum.
+func (e CWIAImmutableArgSchemaSource) Valid() bool {
+	switch e {
+	case SolidityAst:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgSchemaVersion.
+const (
+	CWIAImmutableArgSchemaVersionN2 CWIAImmutableArgSchemaVersion = 2
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgSchemaVersion enum.
+func (e CWIAImmutableArgSchemaVersion) Valid() bool {
+	switch e {
+	case CWIAImmutableArgSchemaVersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgSizeKind.
+const (
+	Field     CWIAImmutableArgSizeKind = "field"
+	Fixed     CWIAImmutableArgSizeKind = "fixed"
+	Remaining CWIAImmutableArgSizeKind = "remaining"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgSizeKind enum.
+func (e CWIAImmutableArgSizeKind) Valid() bool {
+	switch e {
+	case Field:
+		return true
+	case Fixed:
+		return true
+	case Remaining:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgSizeMultiplier.
+const (
+	N1  CWIAImmutableArgSizeMultiplier = 1
+	N32 CWIAImmutableArgSizeMultiplier = 32
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgSizeMultiplier enum.
+func (e CWIAImmutableArgSizeMultiplier) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	case N32:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgType.
+const (
+	CWIAImmutableArgTypeAddress  CWIAImmutableArgType = "address"
+	CWIAImmutableArgTypeBytes    CWIAImmutableArgType = "bytes"
+	CWIAImmutableArgTypeBytes32  CWIAImmutableArgType = "bytes32"
+	CWIAImmutableArgTypeBytes321 CWIAImmutableArgType = "bytes32[]"
+	CWIAImmutableArgTypeUint104  CWIAImmutableArgType = "uint104"
+	CWIAImmutableArgTypeUint112  CWIAImmutableArgType = "uint112"
+	CWIAImmutableArgTypeUint120  CWIAImmutableArgType = "uint120"
+	CWIAImmutableArgTypeUint128  CWIAImmutableArgType = "uint128"
+	CWIAImmutableArgTypeUint136  CWIAImmutableArgType = "uint136"
+	CWIAImmutableArgTypeUint144  CWIAImmutableArgType = "uint144"
+	CWIAImmutableArgTypeUint152  CWIAImmutableArgType = "uint152"
+	CWIAImmutableArgTypeUint16   CWIAImmutableArgType = "uint16"
+	CWIAImmutableArgTypeUint160  CWIAImmutableArgType = "uint160"
+	CWIAImmutableArgTypeUint168  CWIAImmutableArgType = "uint168"
+	CWIAImmutableArgTypeUint176  CWIAImmutableArgType = "uint176"
+	CWIAImmutableArgTypeUint184  CWIAImmutableArgType = "uint184"
+	CWIAImmutableArgTypeUint192  CWIAImmutableArgType = "uint192"
+	CWIAImmutableArgTypeUint200  CWIAImmutableArgType = "uint200"
+	CWIAImmutableArgTypeUint208  CWIAImmutableArgType = "uint208"
+	CWIAImmutableArgTypeUint216  CWIAImmutableArgType = "uint216"
+	CWIAImmutableArgTypeUint224  CWIAImmutableArgType = "uint224"
+	CWIAImmutableArgTypeUint232  CWIAImmutableArgType = "uint232"
+	CWIAImmutableArgTypeUint24   CWIAImmutableArgType = "uint24"
+	CWIAImmutableArgTypeUint240  CWIAImmutableArgType = "uint240"
+	CWIAImmutableArgTypeUint248  CWIAImmutableArgType = "uint248"
+	CWIAImmutableArgTypeUint256  CWIAImmutableArgType = "uint256"
+	CWIAImmutableArgTypeUint2561 CWIAImmutableArgType = "uint256[]"
+	CWIAImmutableArgTypeUint32   CWIAImmutableArgType = "uint32"
+	CWIAImmutableArgTypeUint40   CWIAImmutableArgType = "uint40"
+	CWIAImmutableArgTypeUint48   CWIAImmutableArgType = "uint48"
+	CWIAImmutableArgTypeUint56   CWIAImmutableArgType = "uint56"
+	CWIAImmutableArgTypeUint64   CWIAImmutableArgType = "uint64"
+	CWIAImmutableArgTypeUint72   CWIAImmutableArgType = "uint72"
+	CWIAImmutableArgTypeUint8    CWIAImmutableArgType = "uint8"
+	CWIAImmutableArgTypeUint80   CWIAImmutableArgType = "uint80"
+	CWIAImmutableArgTypeUint88   CWIAImmutableArgType = "uint88"
+	CWIAImmutableArgTypeUint96   CWIAImmutableArgType = "uint96"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgType enum.
+func (e CWIAImmutableArgType) Valid() bool {
+	switch e {
+	case CWIAImmutableArgTypeAddress:
+		return true
+	case CWIAImmutableArgTypeBytes:
+		return true
+	case CWIAImmutableArgTypeBytes32:
+		return true
+	case CWIAImmutableArgTypeBytes321:
+		return true
+	case CWIAImmutableArgTypeUint104:
+		return true
+	case CWIAImmutableArgTypeUint112:
+		return true
+	case CWIAImmutableArgTypeUint120:
+		return true
+	case CWIAImmutableArgTypeUint128:
+		return true
+	case CWIAImmutableArgTypeUint136:
+		return true
+	case CWIAImmutableArgTypeUint144:
+		return true
+	case CWIAImmutableArgTypeUint152:
+		return true
+	case CWIAImmutableArgTypeUint16:
+		return true
+	case CWIAImmutableArgTypeUint160:
+		return true
+	case CWIAImmutableArgTypeUint168:
+		return true
+	case CWIAImmutableArgTypeUint176:
+		return true
+	case CWIAImmutableArgTypeUint184:
+		return true
+	case CWIAImmutableArgTypeUint192:
+		return true
+	case CWIAImmutableArgTypeUint200:
+		return true
+	case CWIAImmutableArgTypeUint208:
+		return true
+	case CWIAImmutableArgTypeUint216:
+		return true
+	case CWIAImmutableArgTypeUint224:
+		return true
+	case CWIAImmutableArgTypeUint232:
+		return true
+	case CWIAImmutableArgTypeUint24:
+		return true
+	case CWIAImmutableArgTypeUint240:
+		return true
+	case CWIAImmutableArgTypeUint248:
+		return true
+	case CWIAImmutableArgTypeUint256:
+		return true
+	case CWIAImmutableArgTypeUint2561:
+		return true
+	case CWIAImmutableArgTypeUint32:
+		return true
+	case CWIAImmutableArgTypeUint40:
+		return true
+	case CWIAImmutableArgTypeUint48:
+		return true
+	case CWIAImmutableArgTypeUint56:
+		return true
+	case CWIAImmutableArgTypeUint64:
+		return true
+	case CWIAImmutableArgTypeUint72:
+		return true
+	case CWIAImmutableArgTypeUint8:
+		return true
+	case CWIAImmutableArgTypeUint80:
+		return true
+	case CWIAImmutableArgTypeUint88:
+		return true
+	case CWIAImmutableArgTypeUint96:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgsDecodingReason.
+const (
+	AmbiguousLayout   CWIAImmutableArgsDecodingReason = "ambiguous_layout"
+	AstUnavailable    CWIAImmutableArgsDecodingReason = "ast_unavailable"
+	IncompleteLayout  CWIAImmutableArgsDecodingReason = "incomplete_layout"
+	LengthMismatch    CWIAImmutableArgsDecodingReason = "length_mismatch"
+	LimitExceeded     CWIAImmutableArgsDecodingReason = "limit_exceeded"
+	MalformedAnalysis CWIAImmutableArgsDecodingReason = "malformed_analysis"
+	NoncanonicalValue CWIAImmutableArgsDecodingReason = "noncanonical_value"
+	SchemaConflict    CWIAImmutableArgsDecodingReason = "schema_conflict"
+	UnsupportedAccess CWIAImmutableArgsDecodingReason = "unsupported_access"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgsDecodingReason enum.
+func (e CWIAImmutableArgsDecodingReason) Valid() bool {
+	switch e {
+	case AmbiguousLayout:
+		return true
+	case AstUnavailable:
+		return true
+	case IncompleteLayout:
+		return true
+	case LengthMismatch:
+		return true
+	case LimitExceeded:
+		return true
+	case MalformedAnalysis:
+		return true
+	case NoncanonicalValue:
+		return true
+	case SchemaConflict:
+		return true
+	case UnsupportedAccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIAImmutableArgsDecodingStatus.
+const (
+	CWIAImmutableArgsDecodingStatusDataInvalid       CWIAImmutableArgsDecodingStatus = "data_invalid"
+	CWIAImmutableArgsDecodingStatusDecoded           CWIAImmutableArgsDecodingStatus = "decoded"
+	CWIAImmutableArgsDecodingStatusSchemaInvalid     CWIAImmutableArgsDecodingStatus = "schema_invalid"
+	CWIAImmutableArgsDecodingStatusSchemaUnavailable CWIAImmutableArgsDecodingStatus = "schema_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the CWIAImmutableArgsDecodingStatus enum.
+func (e CWIAImmutableArgsDecodingStatus) Valid() bool {
+	switch e {
+	case CWIAImmutableArgsDecodingStatusDataInvalid:
+		return true
+	case CWIAImmutableArgsDecodingStatusDecoded:
+		return true
+	case CWIAImmutableArgsDecodingStatusSchemaInvalid:
+		return true
+	case CWIAImmutableArgsDecodingStatusSchemaUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CWIASchemaResolution.
+const (
+	CWIASchemaResolutionCodeHash     CWIASchemaResolution = "code_hash"
+	CWIASchemaResolutionExactAddress CWIASchemaResolution = "exact_address"
+)
+
+// Valid indicates whether the value is a known member of the CWIASchemaResolution enum.
+func (e CWIASchemaResolution) Valid() bool {
+	switch e {
+	case CWIASchemaResolutionCodeHash:
+		return true
+	case CWIASchemaResolutionExactAddress:
 		return true
 	default:
 		return false
@@ -432,6 +738,24 @@ const (
 func (e CompilationFailureOutcomeKind) Valid() bool {
 	switch e {
 	case CompilationFailure:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContractArtifactResolution.
+const (
+	ContractArtifactResolutionCodeHash     ContractArtifactResolution = "code_hash"
+	ContractArtifactResolutionExactAddress ContractArtifactResolution = "exact_address"
+)
+
+// Valid indicates whether the value is a known member of the ContractArtifactResolution enum.
+func (e ContractArtifactResolution) Valid() bool {
+	switch e {
+	case ContractArtifactResolutionCodeHash:
+		return true
+	case ContractArtifactResolutionExactAddress:
 		return true
 	default:
 		return false
@@ -1002,6 +1326,7 @@ func (e ProxyDetectionV2EvidenceKind) Valid() bool {
 // Defines values for ProxyDetectionV2Family.
 const (
 	ProxyDetectionV2FamilyCustom  ProxyDetectionV2Family = "custom"
+	ProxyDetectionV2FamilyCwia    ProxyDetectionV2Family = "cwia"
 	ProxyDetectionV2FamilyErc1167 ProxyDetectionV2Family = "erc1167"
 	ProxyDetectionV2FamilyErc1967 ProxyDetectionV2Family = "erc1967"
 	ProxyDetectionV2FamilyErc2535 ProxyDetectionV2Family = "erc2535"
@@ -1012,6 +1337,8 @@ const (
 func (e ProxyDetectionV2Family) Valid() bool {
 	switch e {
 	case ProxyDetectionV2FamilyCustom:
+		return true
+	case ProxyDetectionV2FamilyCwia:
 		return true
 	case ProxyDetectionV2FamilyErc1167:
 		return true
@@ -1218,6 +1545,7 @@ func (e ProxyManagementKind) Valid() bool {
 // Defines values for ProxyMechanism.
 const (
 	ProxyMechanismBeacon  ProxyMechanism = "beacon"
+	ProxyMechanismCwia    ProxyMechanism = "cwia"
 	ProxyMechanismEip1167 ProxyMechanism = "eip1167"
 	ProxyMechanismEip1967 ProxyMechanism = "eip1967"
 )
@@ -1226,6 +1554,8 @@ const (
 func (e ProxyMechanism) Valid() bool {
 	switch e {
 	case ProxyMechanismBeacon:
+		return true
+	case ProxyMechanismCwia:
 		return true
 	case ProxyMechanismEip1167:
 		return true
@@ -2403,24 +2733,6 @@ func (e VerifiedContractKind) Valid() bool {
 	}
 }
 
-// Defines values for VerifiedContractResolution.
-const (
-	VerifiedContractResolutionCodeHash     VerifiedContractResolution = "code_hash"
-	VerifiedContractResolutionExactAddress VerifiedContractResolution = "exact_address"
-)
-
-// Valid indicates whether the value is a known member of the VerifiedContractResolution enum.
-func (e VerifiedContractResolution) Valid() bool {
-	switch e {
-	case VerifiedContractResolutionCodeHash:
-		return true
-	case VerifiedContractResolutionExactAddress:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for VerifierLanguage.
 const (
 	VerifierLanguageGeas     VerifierLanguage = "geas"
@@ -3083,6 +3395,86 @@ type BlockWithdrawal struct {
 	ValidatorIndex Quantity `json:"validator_index"`
 }
 
+// CWIAImmutableArgField defines model for CWIAImmutableArgField.
+type CWIAImmutableArgField struct {
+	Getters []string                  `json:"getters"`
+	Name    string                    `json:"name"`
+	Offset  int                       `json:"offset"`
+	Role    CWIAImmutableArgFieldRole `json:"role"`
+	Size    CWIAImmutableArgSize      `json:"size"`
+	Type    CWIAImmutableArgType      `json:"type"`
+}
+
+// CWIAImmutableArgFieldRole defines model for CWIAImmutableArgFieldRole.
+type CWIAImmutableArgFieldRole string
+
+// CWIAImmutableArgSchema defines model for CWIAImmutableArgSchema.
+type CWIAImmutableArgSchema struct {
+	Encoding CWIAImmutableArgSchemaEncoding `json:"encoding"`
+	Fields   []CWIAImmutableArgField        `json:"fields"`
+
+	// HelperSha256 A 32-byte hash; responses use normalized lowercase hexadecimal.
+	HelperSha256 Hash `json:"helper_sha256"`
+
+	// Sha256 A 32-byte hash; responses use normalized lowercase hexadecimal.
+	Sha256  Hash                          `json:"sha256"`
+	Source  CWIAImmutableArgSchemaSource  `json:"source"`
+	Version CWIAImmutableArgSchemaVersion `json:"version"`
+}
+
+// CWIAImmutableArgSchemaEncoding defines model for CWIAImmutableArgSchema.Encoding.
+type CWIAImmutableArgSchemaEncoding string
+
+// CWIAImmutableArgSchemaSource defines model for CWIAImmutableArgSchema.Source.
+type CWIAImmutableArgSchemaSource string
+
+// CWIAImmutableArgSchemaVersion defines model for CWIAImmutableArgSchema.Version.
+type CWIAImmutableArgSchemaVersion int
+
+// CWIAImmutableArgSize defines model for CWIAImmutableArgSize.
+type CWIAImmutableArgSize struct {
+	Bytes      *int                            `json:"bytes,omitempty"`
+	Field      *string                         `json:"field,omitempty"`
+	Kind       CWIAImmutableArgSizeKind        `json:"kind"`
+	Multiplier *CWIAImmutableArgSizeMultiplier `json:"multiplier,omitempty"`
+}
+
+// CWIAImmutableArgSizeKind defines model for CWIAImmutableArgSize.Kind.
+type CWIAImmutableArgSizeKind string
+
+// CWIAImmutableArgSizeMultiplier defines model for CWIAImmutableArgSize.Multiplier.
+type CWIAImmutableArgSizeMultiplier int
+
+// CWIAImmutableArgType defines model for CWIAImmutableArgType.
+type CWIAImmutableArgType string
+
+// CWIAImmutableArgValue defines model for CWIAImmutableArgValue.
+type CWIAImmutableArgValue struct {
+	Length int                  `json:"length"`
+	Name   string               `json:"name"`
+	Offset int                  `json:"offset"`
+	Type   CWIAImmutableArgType `json:"type"`
+	Value  interface{}          `json:"value"`
+}
+
+// CWIAImmutableArgsDecoding defines model for CWIAImmutableArgsDecoding.
+type CWIAImmutableArgsDecoding struct {
+	Arguments        []CWIAImmutableArgValue          `json:"arguments"`
+	Reason           *CWIAImmutableArgsDecodingReason `json:"reason,omitempty"`
+	Schema           *CWIAImmutableArgSchema          `json:"schema,omitempty"`
+	SchemaResolution *CWIASchemaResolution            `json:"schema_resolution,omitempty"`
+	Status           CWIAImmutableArgsDecodingStatus  `json:"status"`
+}
+
+// CWIAImmutableArgsDecodingReason defines model for CWIAImmutableArgsDecodingReason.
+type CWIAImmutableArgsDecodingReason string
+
+// CWIAImmutableArgsDecodingStatus defines model for CWIAImmutableArgsDecodingStatus.
+type CWIAImmutableArgsDecodingStatus string
+
+// CWIASchemaResolution defines model for CWIASchemaResolution.
+type CWIASchemaResolution string
+
 // CatalogSnapshot defines model for CatalogSnapshot.
 type CatalogSnapshot struct {
 	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
@@ -3228,6 +3620,9 @@ type Completeness struct {
 	State    StageState `json:"state"`
 	Trace    StageState `json:"trace"`
 }
+
+// ContractArtifactResolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
+type ContractArtifactResolution string
 
 // ContractArtifactSource defines model for ContractArtifactSource.
 type ContractArtifactSource struct {
@@ -3808,6 +4203,9 @@ type ProxyContractIdentity struct {
 	Address      Address            `json:"address"`
 	ArtifactKind *ProxyArtifactKind `json:"artifact_kind,omitempty"`
 
+	// ArtifactResolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
+	ArtifactResolution *ContractArtifactResolution `json:"artifact_resolution,omitempty"`
+
 	// CodeHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 	CodeHash          Hash                                  `json:"code_hash"`
 	StandardVersion   *ProxyContractIdentityStandardVersion `json:"standard_version,omitempty"`
@@ -3828,12 +4226,13 @@ type ProxyDetails struct {
 	Beacon  *ProxyContractIdentity `json:"beacon,omitempty"`
 
 	// BindingId Opaque current interaction-binding identity. Clients must compare it immediately before implementation-as-proxy or management writes.
-	BindingId      *openapi_types.UUID        `json:"binding_id,omitempty"`
-	Confidence     *ProxyConfidence           `json:"confidence,omitempty"`
-	Evidence       []ProxyRecognitionEvidence `json:"evidence"`
-	EvidenceState  *ProxyEvidenceState        `json:"evidence_state,omitempty"`
-	ImmutableArgs  *string                    `json:"immutable_args,omitempty"`
-	Implementation *ProxyContractIdentity     `json:"implementation,omitempty"`
+	BindingId             *openapi_types.UUID        `json:"binding_id,omitempty"`
+	Confidence            *ProxyConfidence           `json:"confidence,omitempty"`
+	Evidence              []ProxyRecognitionEvidence `json:"evidence"`
+	EvidenceState         *ProxyEvidenceState        `json:"evidence_state,omitempty"`
+	ImmutableArgs         *string                    `json:"immutable_args,omitempty"`
+	ImmutableArgsDecoding *CWIAImmutableArgsDecoding `json:"immutable_args_decoding,omitempty"`
+	Implementation        *ProxyContractIdentity     `json:"implementation,omitempty"`
 
 	// ImplementationAddresses Unordered distinct external Diamond facet addresses. This compatibility field excludes immutable functions implemented by the Diamond itself and is absent for singular proxies.
 	ImplementationAddresses   *[]Address                      `json:"implementation_addresses,omitempty"`
@@ -5179,32 +5578,31 @@ type VerificationTransformationValues struct {
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi                   *[]map[string]interface{}  `json:"abi,omitempty"`
-	CompilationArtifacts  map[string]interface{}     `json:"compilation_artifacts"`
-	CompilerVersion       string                     `json:"compiler_version"`
-	ConstructorArguments  *string                    `json:"constructor_arguments,omitempty"`
-	ContractName          string                     `json:"contract_name"`
-	CreationCodeArtifacts map[string]interface{}     `json:"creation_code_artifacts"`
-	CreationMatch         *VerificationMatchDetails  `json:"creation_match,omitempty"`
-	FileName              string                     `json:"file_name"`
-	IsBlueprint           bool                       `json:"is_blueprint"`
-	Kind                  VerifiedContractKind       `json:"kind"`
-	Language              VerifierLanguage           `json:"language"`
-	Libraries             map[string]string          `json:"libraries"`
-	Resolution            VerifiedContractResolution `json:"resolution"`
-	RuntimeCodeArtifacts  map[string]interface{}     `json:"runtime_code_artifacts"`
-	RuntimeMatch          *VerificationMatchDetails  `json:"runtime_match,omitempty"`
-	Settings              map[string]interface{}     `json:"settings"`
-	Source                ContractArtifactSource     `json:"source"`
-	Sources               map[string]interface{}     `json:"sources"`
-	Target                ContractArtifactTarget     `json:"target"`
+	Abi                   *[]map[string]interface{} `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
+	CompilerVersion       string                    `json:"compiler_version"`
+	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
+	ContractName          string                    `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
+	FileName              string                    `json:"file_name"`
+	IsBlueprint           bool                      `json:"is_blueprint"`
+	Kind                  VerifiedContractKind      `json:"kind"`
+	Language              VerifierLanguage          `json:"language"`
+	Libraries             map[string]string         `json:"libraries"`
+
+	// Resolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
+	Resolution           ContractArtifactResolution `json:"resolution"`
+	RuntimeCodeArtifacts map[string]interface{}     `json:"runtime_code_artifacts"`
+	RuntimeMatch         *VerificationMatchDetails  `json:"runtime_match,omitempty"`
+	Settings             map[string]interface{}     `json:"settings"`
+	Source               ContractArtifactSource     `json:"source"`
+	Sources              map[string]interface{}     `json:"sources"`
+	Target               ContractArtifactTarget     `json:"target"`
 }
 
 // VerifiedContractKind defines model for VerifiedContract.Kind.
 type VerifiedContractKind string
-
-// VerifiedContractResolution defines model for VerifiedContract.Resolution.
-type VerifiedContractResolution string
 
 // VerifiedContractResponse defines model for VerifiedContractResponse.
 type VerifiedContractResponse struct {

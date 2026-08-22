@@ -5,7 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "@/auth/AuthProvider";
+import type { ContractProxyDetails } from "@/contracts/proxy";
 import i18n from "@/i18n";
+import { flattenCWIAArgumentRows, formatCWIAArgumentValue } from "@/pages/ContractPage";
 import { makeRouter } from "@/router";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { WalletProvider } from "@/wallet/WalletProvider";
@@ -37,8 +39,39 @@ const bindingId = "018f3b52-0b3d-7bf1-b65f-6f214827cb41";
 const nextCursor = "proxy/snapshot + page=2?fork=canonical/#";
 
 type ExactPattern = "uups" | "transparent" | "beacon";
-type ContractPattern = ExactPattern | "clone" | "none";
+type ContractPattern = ExactPattern | "clone" | "cwia" | "none";
 type HistoryKind = "upgrades" | "initializations";
+
+it("formats bounded CWIA scalar and array values without guessing dynamic text", () => {
+	expect(formatCWIAArgumentValue("42")).toBe("42");
+	expect(formatCWIAArgumentValue(["1", "2"])).toBe('["1","2"]');
+	expect(formatCWIAArgumentValue([])).toBe("[]");
+	expect(formatCWIAArgumentValue([true])).toBe("—");
+});
+
+it("flattens bounded CWIA arrays with exact element offsets and explicit omission", () => {
+	const values = Array.from({ length: 65 }, (_, index) => String(index));
+	const words = [`0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`];
+	const flattened = flattenCWIAArgumentRows([
+		{ name: "items", type: "uint256[]", offset: 10, length: 65 * 32, value: values },
+		{ name: "words", type: "bytes32[]", offset: 2090, length: 64, value: words },
+	]);
+	expect(flattened.rows).toHaveLength(68);
+	expect(flattened.omissions).toEqual([{ name: "items", count: 1 }]);
+	expect(flattened.rows[0]).toMatchObject({
+		name: "items", type: "uint256[]", offset: 10,
+		data: JSON.stringify(values), composite: true,
+	});
+	expect(flattened.rows[1]).toMatchObject({
+		name: "items[0]", type: "uint256", offset: 10, data: "0", depth: 1,
+	});
+	expect(flattened.rows[64]).toMatchObject({
+		name: "items[63]", type: "uint256", offset: 2026, data: "63", depth: 1,
+	});
+	expect(flattened.rows[66]).toMatchObject({
+		name: "words[0]", type: "bytes32", offset: 2090, data: words[0], depth: 1,
+	});
+});
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -323,6 +356,7 @@ describe("contract proxy route", () => {
         name: "Write implementation (as proxy)",
       }),
     ).toBeVisible();
+		expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
     await waitFor(() => {
       expect(
         contractRequests(fetcher).some(({ url }) =>
@@ -331,6 +365,90 @@ describe("contract proxy route", () => {
       ).toBe(false);
     });
   });
+
+		it("shows verified Solady CWIA raw and decoded immutable arguments", async () => {
+			const fetcher = installContractAPI({ pattern: "cwia" });
+
+			renderContractRoute();
+
+			await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+			expect(await screen.findByText("Solady legacy CWIA bytecode")).toBeVisible();
+			expect(screen.getByText("Verified Solidity AST and decoded")).toBeVisible();
+			expect(screen.getByText("Verified Solidity AST", { exact: true })).toBeVisible();
+			expect(screen.getByText("Verified at address", { exact: true })).toBeVisible();
+			expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+			expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
+			expect(screen.getByText(`0x${"12".repeat(65)}`)).toBeVisible();
+			const decoded = screen.getByRole("region", { name: "Decoded immutable arguments" });
+			const table = within(decoded).getByRole("table", { name: "Decoded immutable arguments" });
+			for (const heading of ["Name", "Type", "Offset", "Data"]) {
+				expect(within(table).getByRole("columnheader", { name: heading })).toBeVisible();
+			}
+			expect(within(table).getByText("owner", { exact: true })).toBeVisible();
+			expect(within(table).getByText("address", { exact: true })).toBeVisible();
+			expect(within(decoded).getByText("0x1234567890AbcdEF1234567890aBcdef12345678")).toBeVisible();
+			expect(within(table).getByText("number", { exact: true })).toBeVisible();
+			expect(within(table).getByText("uint256", { exact: true })).toBeVisible();
+			expect(within(decoded).getByText("1606938044258990275541962092341162602522202993782792835301418")).toBeVisible();
+			expect(within(table).getByText("data_length", { exact: true })).toBeVisible();
+			expect(within(table).getByText("data", { exact: true })).toBeVisible();
+			expect(within(table).getAllByRole("button", { name: "Copy" })).toHaveLength(4);
+			expect(within(decoded).getByText("0x68656c6c6f2c776f726c64")).toBeVisible();
+			expect(screen.getByText(/fixed implementation and no upgrade controls/u)).toBeVisible();
+		const tabs = screen.getByRole("tablist", { name: "Contract interaction sections" });
+		expect(within(tabs).queryByRole("tab", { name: "Upgrade history" })).toBeNull();
+		await waitFor(() => {
+			expect(contractRequests(fetcher).some(({ url }) => url.pathname.endsWith("/proxy/upgrades")))
+				.toBe(false);
+		});
+	});
+
+	it("keeps verified CWIA writes read-only when its AST analysis is unavailable", async () => {
+		installContractAPI({ pattern: "cwia", cwiaSchemaStatus: "schema_unavailable" });
+
+		renderContractRoute();
+		await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+		expect(await screen.findByText("Verified Solidity AST unavailable")).toBeVisible();
+		expect(screen.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u)).toBeVisible();
+	});
+
+	it("keeps exact detected CWIA implementation reads visible before proxy verification", async () => {
+		const fetcher = installContractAPI({ pattern: "cwia", cwiaUnverified: true });
+		const user = userEvent.setup();
+
+		renderContractRoute();
+		const tabs = await screen.findByRole("tablist", {
+			name: "Contract interaction sections",
+		});
+		expect(within(tabs).queryByRole("tab", { name: "Read contract" })).toBeNull();
+		expect(await within(tabs).findByRole("tab", {
+			name: "Read implementation (as proxy)",
+		})).toBeVisible();
+		expect(within(tabs).getByRole("tab", {
+			name: "Write implementation (as proxy)",
+		})).toBeVisible();
+
+		await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+		expect(await screen.findByText("Verified Solidity AST and decoded")).toBeVisible();
+		expect(screen.getByText("Verified by code hash", { exact: true })).toBeVisible();
+		expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+		expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
+		expect(screen.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
+		expect(screen.queryByText("Verified Solidity AST unavailable")).toBeNull();
+
+		await user.click(within(tabs).getByRole("tab", {
+			name: "Read implementation (as proxy)",
+		}));
+		expect(await screen.findByText("value()", { exact: true })).toBeVisible();
+
+		await user.click(within(tabs).getByRole("tab", {
+			name: "Write implementation (as proxy)",
+		}));
+		expect(await screen.findByText(
+			"This ABI has no callable state-changing functions for this target.",
+		)).toBeVisible();
+		expectAnonymousContractRequests(fetcher);
+	});
 
   it("hides proxy identity and proxy histories for a non-proxy contract", async () => {
     const fetcher = installContractAPI({ pattern: "none" });
@@ -491,6 +609,8 @@ function installContractAPI({
   diamondDetection,
   proxyStatus,
   verificationStatus,
+	cwiaSchemaStatus,
+	cwiaUnverified,
 }: {
   pattern: ContractPattern;
   staleHistory?: HistoryKind;
@@ -500,6 +620,8 @@ function installContractAPI({
   diamondDetection?: boolean;
   proxyStatus?: number;
   verificationStatus?: number;
+	cwiaSchemaStatus?: "decoded" | "schema_unavailable";
+	cwiaUnverified?: boolean;
 }) {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
     const url = new URL(String(input), "http://localhost");
@@ -531,13 +653,18 @@ function installContractAPI({
           { status: proxyStatus },
         );
       }
-      const detail = diamondDetection ? diamondProxyDetail() : proxyDetail(pattern);
+      const detail = diamondDetection
+			? diamondProxyDetail()
+			: cwiaUnverified
+				? unverifiedCWIAProxyDetail()
+				: proxyDetail(pattern, cwiaSchemaStatus);
       return envelope(safeDetection ? {
         ...detail,
         proxy_detection_v2: safeProxyDetection(),
       } : detail);
     }
     if (url.pathname.endsWith("/verification")) {
+      const address = url.pathname.split("/").at(-2) ?? "";
       if (verificationStatus !== undefined) {
         return Response.json(
           {
@@ -550,7 +677,18 @@ function installContractAPI({
           { status: verificationStatus },
         );
       }
-      const address = url.pathname.split("/").at(-2) ?? "";
+			if (cwiaUnverified && address === proxyAddress) {
+				return Response.json(
+					{
+						error: {
+							code: "not_found",
+							message: "no verified artifact",
+							request_id: "contract-page-test",
+						},
+					},
+					{ status: 404 },
+				);
+			}
       const codeHash = address === implementationAddress
         ? implementationArtifactCodeHash
         : address === managementAddress
@@ -786,7 +924,10 @@ function snapshot() {
   };
 }
 
-function proxyDetail(pattern: ContractPattern) {
+function proxyDetail(
+	pattern: ContractPattern,
+	cwiaSchemaStatus: "decoded" | "schema_unavailable" = "decoded",
+) {
   if (pattern === "none") {
     return {
       address: proxyAddress,
@@ -795,7 +936,9 @@ function proxyDetail(pattern: ContractPattern) {
       evidence: [],
     };
   }
-  const management = pattern === "transparent"
+  const clone = pattern === "clone" || pattern === "cwia";
+	const proxyPattern = clone ? "clone" : pattern;
+	const management = pattern === "transparent"
     ? {
         kind: "proxy_admin" as const,
         target: currentIdentity(managementAddress, "proxy_admin"),
@@ -808,8 +951,8 @@ function proxyDetail(pattern: ContractPattern) {
           affected_proxy_count: "2",
         }
       : undefined;
-  const mechanism = pattern === "clone"
-    ? "eip1167"
+  const mechanism = clone
+    ? pattern === "cwia" ? "cwia" : "eip1167"
     : pattern === "beacon"
       ? "beacon"
       : "eip1967";
@@ -818,12 +961,12 @@ function proxyDetail(pattern: ContractPattern) {
     status: "verified",
     snapshot: snapshot(),
     mechanism,
-    pattern,
-    ...(pattern === "clone" ? {} : { standard_version: "5.6.1" }),
+    pattern: proxyPattern,
+    ...(clone ? {} : { standard_version: "5.6.1" }),
     evidence_state: "exact",
     confidence: "verified",
     binding_id: bindingId,
-    proxy: pattern === "clone"
+    proxy: clone
       ? {
           address: proxyAddress,
           code_hash: hash,
@@ -843,8 +986,8 @@ function proxyDetail(pattern: ContractPattern) {
     ),
 	implementation_interaction: {
 		mechanism,
-		pattern,
-		proxy: pattern === "clone"
+		pattern: proxyPattern,
+		proxy: clone
 			? {
 				address: proxyAddress,
 				code_hash: hash,
@@ -873,7 +1016,34 @@ function proxyDetail(pattern: ContractPattern) {
       ? { beacon: currentIdentity(managementAddress, "upgradeable_beacon") }
       : {}),
     ...(management ? { management } : {}),
-    ...(pattern === "clone" ? { immutable_args: "0x1234" } : {}),
+		...(clone ? { immutable_args: pattern === "cwia" ? `0x${"12".repeat(65)}` : "0x1234" } : {}),
+		...(pattern === "cwia" ? {
+			immutable_args_decoding: cwiaSchemaStatus === "decoded"
+				? {
+					status: "decoded" as const,
+					schema_resolution: "exact_address" as const,
+					schema: {
+						version: 2 as const,
+						source: "solidity_ast" as const,
+						encoding: "solady-cwia-offsets" as const,
+						helper_sha256: `0x${"bc".repeat(32)}`,
+						sha256: `0x${"ef".repeat(32)}`,
+						fields: [
+							{ name: "owner", type: "address" as const, offset: 0, role: "value" as const, getters: ["owner()"], size: { kind: "fixed" as const, bytes: 20 } },
+							{ name: "number", type: "uint256" as const, offset: 20, role: "value" as const, getters: ["number()"], size: { kind: "fixed" as const, bytes: 32 } },
+							{ name: "data_length", type: "uint16" as const, offset: 52, role: "length" as const, getters: ["data()"], size: { kind: "fixed" as const, bytes: 2 } },
+							{ name: "data", type: "bytes" as const, offset: 54, role: "value" as const, getters: ["data()"], size: { kind: "field" as const, field: "data_length", multiplier: 1 as const } },
+						],
+					},
+					arguments: [
+						{ name: "owner", type: "address", offset: 0, length: 20, value: "0x1234567890AbcdEF1234567890aBcdef12345678" },
+						{ name: "number", type: "uint256", offset: 20, length: 32, value: "1606938044258990275541962092341162602522202993782792835301418" },
+						{ name: "data_length", type: "uint16", offset: 52, length: 2, value: "11" },
+						{ name: "data", type: "bytes", offset: 54, length: 11, value: "0x68656c6c6f2c776f726c64" },
+					],
+				}
+				: { status: "schema_unavailable" as const, reason: "ast_unavailable" as const, arguments: [] },
+		} : {}),
     evidence: pattern === "beacon"
       ? [{
           source: "runtime_immutable",
@@ -885,6 +1055,30 @@ function proxyDetail(pattern: ContractPattern) {
         }]
       : [],
   };
+}
+
+function unverifiedCWIAProxyDetail(): ContractProxyDetails {
+	const detail = proxyDetail("cwia", "decoded") as ContractProxyDetails;
+	const implementation = {
+		...detail.implementation!,
+		verification_state: "unverified" as const,
+		artifact_resolution: "code_hash" as const,
+	};
+	return {
+		...detail,
+		status: "detected_unverified",
+		confidence: "high",
+		binding_id: undefined,
+		implementation,
+		implementation_interaction: {
+			...detail.implementation_interaction!,
+			implementation,
+		},
+		immutable_args_decoding: {
+			...detail.immutable_args_decoding!,
+			schema_resolution: "code_hash",
+		},
+	};
 }
 
 function currentIdentity(
@@ -901,6 +1095,7 @@ function currentIdentity(
     address,
     code_hash: hash,
     verification_state: "verified",
+		artifact_resolution: "exact_address" as const,
     ...(artifactKind ? { artifact_kind: artifactKind } : {}),
     ...(artifactKind && artifactKind !== "erc1967_proxy"
       ? { standard_version: "5.6.1" }

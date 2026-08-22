@@ -27,6 +27,22 @@ func insertVerifiedContractFixture(
 	compilerVersion, contractName, abi, sources, settings string,
 ) {
 	t.Helper()
+	insertVerifiedContractFixtureWithCompilationArtifacts(
+		t, ctx, db, address, codeHash, validFrom, validTo,
+		compilerVersion, contractName, abi, sources, settings, `{}`,
+	)
+}
+
+func insertVerifiedContractFixtureWithCompilationArtifacts(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	address, codeHash []byte,
+	validFrom uint64,
+	validTo *uint64,
+	compilerVersion, contractName, abi, sources, settings, compilationArtifacts string,
+) {
+	t.Helper()
 	jobID := uuid.NewString()
 	blockHash := sha256.Sum256([]byte("etherview:verification-fixture:block:" + jobID))
 	compilerDigest := sha256.Sum256([]byte("etherview:verification-fixture:compiler"))
@@ -34,12 +50,13 @@ func insertVerifiedContractFixture(
 	catalogDigest := sha256.Sum256([]byte("etherview:verification-fixture:catalog"))
 	fileName := "Fixture.sol"
 	request := map[string]any{
-		"kind":                   "address",
-		"language":               "solidity",
-		"compiler_version":       compilerVersion,
-		"standard_json":          json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`),
-		"standard_json_variants": []json.RawMessage{json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`)},
-		"bytecodes":              []map[string]string{{"runtime_bytecode": "0x00"}},
+		"kind":                      "address",
+		"language":                  "solidity",
+		"solidity_analysis_version": 1,
+		"compiler_version":          compilerVersion,
+		"standard_json":             json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`),
+		"standard_json_variants":    []json.RawMessage{json.RawMessage(`{"language":"Solidity","sources":{"Fixture.sol":{"content":"contract Fixture {}"}},"settings":{}}`)},
+		"bytecodes":                 []map[string]string{{"runtime_bytecode": "0x00"}},
 		"target": map[string]any{
 			"chain_id": 1, "address": "0x" + hex.EncodeToString(address),
 			"code_hash":        "0x" + hex.EncodeToString(codeHash),
@@ -59,6 +76,10 @@ func insertVerifiedContractFixture(
 	if err := json.Unmarshal([]byte(settings), &settingsObject); err != nil {
 		t.Fatalf("decode fixture settings: %v", err)
 	}
+	var compilationObject any
+	if err := json.Unmarshal([]byte(compilationArtifacts), &compilationObject); err != nil {
+		t.Fatalf("decode fixture compilation artifacts: %v", err)
+	}
 	var abiValue any
 	if err := json.Unmarshal([]byte(abi), &abiValue); err != nil {
 		t.Fatalf("decode fixture ABI: %v", err)
@@ -68,7 +89,7 @@ func insertVerifiedContractFixture(
 		"contract_name": contractName, "language": "solidity",
 		"compiler_version": compilerVersion, "abi": abiValue,
 		"sources": sourceObject, "settings": settingsObject,
-		"compilation_artifacts":   map[string]any{},
+		"compilation_artifacts":   compilationObject,
 		"creation_code_artifacts": map[string]any{},
 		"runtime_code_artifacts":  map[string]any{},
 		"runtime_match": map[string]any{
@@ -146,9 +167,9 @@ func insertVerifiedContractFixture(
 		) VALUES (
 			$1::uuid, $2, 'verification_success', $3::jsonb, $4, $5,
 			'solidity', $6, 'full', $7::jsonb, $8::jsonb, $9::jsonb,
-			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
+			$10::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
 		)`, jobID, requestDigest[:], string(outcome), fileName, contractName,
-		compilerVersion, abi, sources, settings,
+		compilerVersion, abi, sources, settings, compilationArtifacts,
 	); err != nil {
 		t.Fatalf("insert verifier-v2 fixture result: %v", err)
 	}
@@ -162,9 +183,10 @@ func insertVerifiedContractFixture(
 		) VALUES (
 			1, $1, $2, $3, $4, $5::uuid, $6, $7, $8, 'solidity', $9,
 			'full', $10::jsonb, $11::jsonb, $12::jsonb,
-			'{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
+			$13::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, FALSE
 		)`, address, codeHash, int64(validFrom), validToValue, jobID,
 		requestDigest[:], fileName, contractName, compilerVersion, abi, sources, settings,
+		compilationArtifacts,
 	); err != nil {
 		t.Fatalf("insert sourced verified-contract fixture: %v", err)
 	}

@@ -255,6 +255,7 @@ type Querier interface {
 	GetBillingPaymentForInspection(ctx context.Context, iD pgtype.UUID, chainID pgtype.Numeric) (BillingPayment, error)
 	GetBlockTransactionTargetByHash(ctx context.Context, column1 pgtype.Numeric, hash []byte) (GetBlockTransactionTargetByHashRow, error)
 	GetBlockTransactionTargetByNumber(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric) (GetBlockTransactionTargetByNumberRow, error)
+	GetCWIAImplementationAnalyses(ctx context.Context, arg GetCWIAImplementationAnalysesParams) ([]GetCWIAImplementationAnalysesRow, error)
 	GetCanonicalBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric) (GetCanonicalBlockRow, error)
 	GetCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (GetCanonicalTipRow, error)
 	GetChainIdentity(ctx context.Context, chainID pgtype.Numeric) (GetChainIdentityRow, error)

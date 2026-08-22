@@ -113,10 +113,14 @@ func assertProxyInteractionBoundary(
 		"ProxyDetailStatus": {
 			"not_detected", "detected_unverified", "verified", "unavailable", "failed",
 		},
-		"ProxyMechanism":            {"eip1167", "eip1967", "beacon"},
-		"ProxyPattern":              {"clone", "erc1967", "transparent", "uups", "beacon", "unknown"},
-		"ProxyManagementKind":       {"proxy_admin", "upgradeable_beacon"},
-		"ProxyHistoryCoverageState": {"complete", "partial"},
+		"ProxyMechanism":             {"eip1167", "cwia", "eip1967", "beacon"},
+		"ProxyPattern":               {"clone", "erc1967", "transparent", "uups", "beacon", "unknown"},
+		"ProxyManagementKind":        {"proxy_admin", "upgradeable_beacon"},
+		"ContractArtifactResolution": {"exact_address", "code_hash"},
+		"ProxyHistoryCoverageState":  {"complete", "partial"},
+		"CWIAImmutableArgsDecodingStatus": {
+			"decoded", "schema_unavailable", "schema_invalid", "data_invalid",
+		},
 	} {
 		assertEnum(t, mappingValue(t, schemas, name), want...)
 	}
@@ -130,6 +134,22 @@ func assertProxyInteractionBoundary(
 	details := mappingValue(t, schemas, "ProxyDetails")
 	assertRequired(t, details, "address", "status", "snapshot", "evidence")
 	detailProperties := mappingValue(t, details, "properties")
+	assertScalar(t, mappingValue(t, mappingValue(t, detailProperties, "immutable_args_decoding"), "$ref"),
+		"#/components/schemas/CWIAImmutableArgsDecoding")
+	cwiaDecoding := mappingValue(t, schemas, "CWIAImmutableArgsDecoding")
+	assertRequired(t, cwiaDecoding, "status", "arguments")
+	cwiaSchema := mappingValue(t, schemas, "CWIAImmutableArgSchema")
+	assertRequired(t, cwiaSchema,
+		"version", "source", "encoding", "helper_sha256", "sha256", "fields")
+	assertEnum(t, mappingValue(t, schemas, "CWIAImmutableArgsDecodingReason"),
+		"ast_unavailable", "malformed_analysis", "unsupported_access",
+		"ambiguous_layout", "incomplete_layout", "schema_conflict",
+		"limit_exceeded", "length_mismatch", "noncanonical_value")
+	identity := mappingValue(t, schemas, "ProxyContractIdentity")
+	identityProperties := mappingValue(t, identity, "properties")
+	assertScalar(t,
+		mappingValue(t, mappingValue(t, identityProperties, "artifact_resolution"), "$ref"),
+		"#/components/schemas/ContractArtifactResolution")
 	for _, identity := range []string{"proxy", "implementation", "admin", "beacon"} {
 		assertScalar(
 			t,

@@ -61,7 +61,8 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 		}
 		beforeCounters := detectionContext.Counters()
 		adapter := &openZeppelinProxyDetectorAdapter{legacy: detector, candidate: candidate}
-		detectors := []ProxyDetector{adapter}
+		cwiaDetector := &soladyLegacyCWIAProxyDetector{candidate: candidate}
+		detectors := []ProxyDetector{cwiaDetector, adapter}
 		if detector.diamondEnabled {
 			detectors = append(detectors, newDiamondProxyDetector(candidate))
 		}
@@ -72,15 +73,25 @@ func (detector rpcProxyDetector) detectBlock(ctx context.Context, job Job, candi
 		if err != nil {
 			return nil, err
 		}
+		if cwiaDetector.err != nil {
+			// CWIA is part of the authoritative legacy projection. Preserve the
+			// stage-level fixed-block RPC failure contract when its implementation
+			// code cannot be read.
+			return nil, cwiaDetector.err
+		}
 		if adapter.err != nil {
 			// The framework runs in compatibility mode until the V2 observation is
 			// persisted. Preserve proxy@2's stage-level RPC failure contract.
 			return nil, adapter.err
 		}
-		if adapter.legacyResult == nil {
-			return nil, Permanent(errors.New("OpenZeppelin detector omitted its legacy result"))
+		legacyResult := adapter.legacyResult
+		if cwiaDetector.legacyResult != nil {
+			legacyResult = cwiaDetector.legacyResult
 		}
-		detection := *adapter.legacyResult
+		if legacyResult == nil {
+			return nil, Permanent(errors.New("proxy detector framework omitted its legacy result"))
+		}
+		detection := *legacyResult
 		compareLegacyProxyProjection(detection, &resolved)
 		detection.v2 = resolved
 		detection.v2Active = true
@@ -159,6 +170,16 @@ func (detector rpcProxyDetector) detect(
 			immutableArgs: common.CopyBytes(minimal.TrailingData),
 		}
 		return detection, nil
+	}
+	if cwia, matched, cwiaErr := resolveSoladyLegacyCWIA(
+		ctx,
+		candidate,
+		code,
+		func(ctx context.Context, address common.Address) ([]byte, error) {
+			return detector.getCode(ctx, address, blockReference)
+		},
+	); matched {
+		return cwia, cwiaErr
 	}
 	implementationWord, err := detector.getStorage(ctx, candidate.address, EIP1967ImplementationSlot, blockReference)
 	if err != nil {

@@ -651,6 +651,16 @@ func TestOperationalMetricLabelsUseClosedStateMappings(t *testing.T) {
 			t.Fatalf("boundedMaintenanceOperation(%q) = %q", operation, got)
 		}
 	}
+	for _, detector := range []string{"openzeppelin", "safe", "solady-cwia"} {
+		if got := boundedProxyDetector(detector); got != detector {
+			t.Fatalf("boundedProxyDetector(%q) = %q", detector, got)
+		}
+	}
+	for _, family := range []string{"erc1167", "erc1967", "safe", "cwia", "custom"} {
+		if got := boundedProxyFamily(family); got != family {
+			t.Fatalf("boundedProxyFamily(%q) = %q", family, got)
+		}
+	}
 	for _, value := range []string{"pending-replay-42", "https://rpc.invalid/key", strings.Repeat("x", 200)} {
 		if boundedJobStatus(value) != "other" || boundedJobStage(value) != "other" || boundedMaintenanceOperation(value) != "other" ||
 			boundedRPCPurpose(value) != "other" || boundedRPCResult(value) != "other" || boundedRateDecision(value) != "other" ||

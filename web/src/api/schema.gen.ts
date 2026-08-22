@@ -1585,6 +1585,11 @@ export interface components {
             /** @description Published trace@3 state for the exact current canonical indexed block, not a claim of gap-free historical Trace coverage. */
             trace: components["schemas"]["StageState"];
         };
+        /**
+         * @description How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
+         * @enum {string}
+         */
+        ContractArtifactResolution: "exact_address" | "code_hash";
         ContractArtifactSource: {
             address: components["schemas"]["Address"];
             code_hash: components["schemas"]["Hash"];
@@ -1600,6 +1605,57 @@ export interface components {
             chain_id: components["schemas"]["Quantity"];
             code_hash: components["schemas"]["Hash"];
         };
+        CWIAImmutableArgField: {
+            getters: string[];
+            name: string;
+            offset: number;
+            role: components["schemas"]["CWIAImmutableArgFieldRole"];
+            size: components["schemas"]["CWIAImmutableArgSize"];
+            type: components["schemas"]["CWIAImmutableArgType"];
+        };
+        /** @enum {string} */
+        CWIAImmutableArgFieldRole: "value" | "length";
+        CWIAImmutableArgSchema: {
+            /** @enum {string} */
+            encoding: "solady-cwia-offsets";
+            fields: components["schemas"]["CWIAImmutableArgField"][];
+            helper_sha256: components["schemas"]["Hash"];
+            sha256: components["schemas"]["Hash"];
+            /** @enum {string} */
+            source: "solidity_ast";
+            /** @enum {integer} */
+            version: 2;
+        };
+        CWIAImmutableArgsDecoding: {
+            arguments: components["schemas"]["CWIAImmutableArgValue"][];
+            reason?: components["schemas"]["CWIAImmutableArgsDecodingReason"];
+            schema?: components["schemas"]["CWIAImmutableArgSchema"];
+            schema_resolution?: components["schemas"]["CWIASchemaResolution"];
+            status: components["schemas"]["CWIAImmutableArgsDecodingStatus"];
+        };
+        /** @enum {string} */
+        CWIAImmutableArgsDecodingReason: "ast_unavailable" | "malformed_analysis" | "unsupported_access" | "ambiguous_layout" | "incomplete_layout" | "schema_conflict" | "limit_exceeded" | "length_mismatch" | "noncanonical_value";
+        /** @enum {string} */
+        CWIAImmutableArgsDecodingStatus: "decoded" | "schema_unavailable" | "schema_invalid" | "data_invalid";
+        CWIAImmutableArgSize: {
+            bytes?: number;
+            field?: string;
+            /** @enum {string} */
+            kind: "fixed" | "field" | "remaining";
+            /** @enum {integer} */
+            multiplier?: 1 | 32;
+        };
+        /** @enum {string} */
+        CWIAImmutableArgType: "address" | "uint8" | "uint16" | "uint24" | "uint32" | "uint40" | "uint48" | "uint56" | "uint64" | "uint72" | "uint80" | "uint88" | "uint96" | "uint104" | "uint112" | "uint120" | "uint128" | "uint136" | "uint144" | "uint152" | "uint160" | "uint168" | "uint176" | "uint184" | "uint192" | "uint200" | "uint208" | "uint216" | "uint224" | "uint232" | "uint240" | "uint248" | "uint256" | "bytes32" | "bytes" | "uint256[]" | "bytes32[]";
+        CWIAImmutableArgValue: {
+            length: number;
+            name: string;
+            offset: number;
+            type: components["schemas"]["CWIAImmutableArgType"];
+            value: unknown;
+        };
+        /** @enum {string} */
+        CWIASchemaResolution: "exact_address" | "code_hash";
         /** @description A canonical non-negative fixed-point decimal with at most 18 fractional digits. */
         Decimal: string;
         DelegationBinding: {
@@ -1911,6 +1967,7 @@ export interface components {
         ProxyContractIdentity: {
             address: components["schemas"]["Address"];
             artifact_kind?: components["schemas"]["ProxyArtifactKind"];
+            artifact_resolution?: components["schemas"]["ContractArtifactResolution"];
             code_hash: components["schemas"]["Hash"];
             /** @enum {string} */
             standard_version?: "5.6.1";
@@ -1929,6 +1986,7 @@ export interface components {
             evidence: components["schemas"]["ProxyRecognitionEvidence"][];
             evidence_state?: components["schemas"]["ProxyEvidenceState"];
             immutable_args?: string;
+            immutable_args_decoding?: components["schemas"]["CWIAImmutableArgsDecoding"];
             implementation?: components["schemas"]["ProxyContractIdentity"];
             /** @description Unordered distinct external Diamond facet addresses. This compatibility field excludes immutable functions implemented by the Diamond itself and is absent for singular proxies. */
             implementation_addresses?: components["schemas"]["Address"][];
@@ -1971,7 +2029,7 @@ export interface components {
         /** @enum {string} */
         ProxyDetectionV2EvidenceKind: "runtime-bytecode" | "runtime-code-hash" | "storage-slot" | "contract-call" | "factory-log" | "deployment-registry" | "execution-trace" | "loupe-call" | "diamond-cut-event" | "facet-code" | "erc165" | "verified-source";
         /** @enum {string} */
-        ProxyDetectionV2Family: "erc1167" | "erc1967" | "erc2535" | "safe" | "custom";
+        ProxyDetectionV2Family: "erc1167" | "cwia" | "erc1967" | "erc2535" | "safe" | "custom";
         /** @enum {string} */
         ProxyDetectionV2ImplementationRole: "implementation" | "singleton";
         ProxyDetectionV2Outcome: {
@@ -2064,7 +2122,7 @@ export interface components {
         /** @enum {string} */
         ProxyManagementKind: "proxy_admin" | "upgradeable_beacon";
         /** @enum {string} */
-        ProxyMechanism: "eip1167" | "eip1967" | "beacon";
+        ProxyMechanism: "eip1167" | "cwia" | "eip1967" | "beacon";
         /** @enum {string} */
         ProxyPattern: "clone" | "erc1967" | "transparent" | "uups" | "beacon" | "unknown";
         ProxyRecognitionEvidence: {
@@ -2708,8 +2766,7 @@ export interface components {
             };
         };
         VerifiedContract: components["schemas"]["VerificationSuccess"] & {
-            /** @enum {string} */
-            resolution: "exact_address" | "code_hash";
+            resolution: components["schemas"]["ContractArtifactResolution"];
             source: components["schemas"]["ContractArtifactSource"];
             target: components["schemas"]["ContractArtifactTarget"];
         };

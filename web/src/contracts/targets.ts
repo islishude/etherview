@@ -31,6 +31,7 @@ interface BaseInteractionTarget {
   readonly transactionTarget: Address;
   readonly abiAddress: Address;
   readonly abiCodeHash?: string;
+	readonly abiArtifactResolution?: components["schemas"]["ContractArtifactResolution"];
   readonly supportsWrites: boolean;
   readonly requiresFreshBinding: boolean;
 }
@@ -50,6 +51,7 @@ interface BoundInteractionTarget extends BaseInteractionTarget {
 	readonly proxyPattern?: ProxyPattern;
 	readonly beaconAddress?: Address;
 	readonly beaconCodeHash?: string;
+	readonly cwiaSchemaSHA256?: string;
   readonly standardVersion?: "5.6.1";
   readonly requiresFreshBinding: true;
 }
@@ -75,7 +77,7 @@ export interface DiamondFacetInteractionTarget extends BaseInteractionTarget {
 
 export interface ImplementationAsProxyTarget extends BoundInteractionTarget {
   readonly kind: "implementation_as_proxy";
-  readonly supportsWrites: true;
+  readonly supportsWrites: boolean;
 }
 
 export interface UUPSImplementationDirectTarget extends BoundInteractionTarget {
@@ -132,6 +134,7 @@ export type InteractionFenceErrorCode =
   | "PROVIDER_CHANGED"
   | "PROVIDER_REVISION_CHANGED"
   | "FRESH_PROXY_REQUIRED"
+	| "FRESH_PROXY_UNAVAILABLE"
   | "FRESH_BINDING_REQUIRED"
   | "BINDING_CHANGED"
   | "TARGET_CHANGED"
@@ -146,6 +149,7 @@ const FENCE_ERROR_MESSAGES: Record<InteractionFenceErrorCode, string> = {
   PROVIDER_CHANGED: "The injected wallet provider changed",
   PROVIDER_REVISION_CHANGED: "The injected wallet session changed",
   FRESH_PROXY_REQUIRED: "A fresh proxy response is required",
+	FRESH_PROXY_UNAVAILABLE: "The fresh proxy stage is unavailable",
   FRESH_BINDING_REQUIRED: "A fresh delegation binding is required",
   BINDING_CHANGED: "The verified proxy binding changed; refresh before continuing",
   TARGET_CHANGED: "The verified interaction target changed; refresh before continuing",
@@ -241,12 +245,25 @@ export function buildContractInteractionTargets(
 
 	const binding = exactBinding(proxy, address);
 	const interaction = standardImplementationInteraction(proxy, address);
-	if (interaction) {
+	const cwiaBinding = interaction?.mechanism === "cwia" &&
+		binding?.mechanism === "cwia" && binding.pattern === "clone" &&
+		interaction.implementation.artifactResolution === "exact_address"
+		? binding
+		: undefined;
+	const cwiaSchemaSHA256 = cwiaBinding
+		? verifiedCWIASchemaSHA256(proxy)
+		: undefined;
+	const cwiaReadable = interaction?.mechanism !== "cwia" ||
+		exactCWIAReadObservation(proxy, interaction.pattern);
+	if (interaction && cwiaReadable) {
 		targets.push(freezeTarget({
 			kind: "implementation_as_proxy",
 			transactionTarget: address,
 			abiAddress: interaction.implementation.address,
 			abiCodeHash: interaction.implementation.codeHash,
+			...(interaction.implementation.artifactResolution === undefined
+				? {}
+				: { abiArtifactResolution: interaction.implementation.artifactResolution }),
 			proxyAddress: address,
 			proxyCodeHash: interaction.proxy.codeHash,
 			proxyChainID: interaction.chainID,
@@ -259,8 +276,17 @@ export function buildContractInteractionTargets(
 			...(interaction.standardVersion === undefined
 				? {}
 				: { standardVersion: interaction.standardVersion }),
-			...(binding?.pattern === "uups" ? { bindingId: binding.bindingId } : {}),
-			supportsWrites: true,
+			...(interaction.mechanism === "cwia" && cwiaBinding
+				? { bindingId: cwiaBinding.bindingId }
+				: binding?.pattern === "uups"
+					? { bindingId: binding.bindingId }
+				: {}),
+			...(interaction.mechanism === "cwia" && cwiaSchemaSHA256
+				? { cwiaSchemaSHA256 }
+				: {}),
+			supportsWrites: interaction.implementation.artifactResolution === "exact_address" &&
+				(interaction.mechanism !== "cwia" ||
+					(cwiaBinding !== undefined && cwiaSchemaSHA256 !== undefined)),
 			requiresFreshBinding: true,
 		}));
 	}
@@ -446,6 +472,9 @@ export function assertFreshInteractionFence(
   if (!addressesMatch(freshResponse.details.address, fence.target.proxyAddress)) {
     throw new InteractionFenceError("TARGET_CHANGED");
   }
+	if (freshResponse.details.status === "unavailable") {
+		throw new InteractionFenceError("FRESH_PROXY_UNAVAILABLE");
+	}
 	if (
 		fence.target.kind !== "diamond_facet" &&
 		fence.target.bindingId !== undefined &&
@@ -659,6 +688,7 @@ function exactBinding(proxy: ProxyDetails | undefined, address: Address) {
     proxy.evidence_state !== "exact" ||
     !proxy.pattern ||
     proxy.pattern === "unknown" ||
+		!proxy.mechanism ||
     (proxy.pattern === "clone"
       ? proxy.standard_version !== undefined
       : proxy.standard_version !== "5.6.1") ||
@@ -763,6 +793,27 @@ function standardImplementationInteraction(
 	} as const;
 }
 
+function verifiedCWIASchemaSHA256(proxy: ProxyDetails | undefined): string | undefined {
+	const decoding = proxy?.immutable_args_decoding;
+	if (proxy?.mechanism !== "cwia" || decoding?.status !== "decoded" ||
+		!decoding.schema || !HASH_PATTERN.test(decoding.schema.sha256)) {
+		return undefined;
+	}
+	return decoding.schema.sha256.toLowerCase();
+}
+
+function exactCWIAReadObservation(
+	proxy: ProxyDetails | undefined,
+	interactionPattern: ProxyPattern | undefined,
+): boolean {
+	return proxy?.mechanism === "cwia" &&
+		proxy.pattern === "clone" &&
+		interactionPattern === "clone" &&
+		proxy.evidence_state === "exact" &&
+		(proxy.confidence === "high" || proxy.confidence === "verified") &&
+		(proxy.status === "detected_unverified" || proxy.status === "verified");
+}
+
 function exactManagement(
   proxy: ProxyDetails | undefined,
   managementKind: "proxy_admin" | "upgradeable_beacon",
@@ -783,6 +834,7 @@ function exactManagement(
 function exactVerifiedIdentity(
   identity: components["schemas"]["ProxyContractIdentity"] | undefined,
 ) {
+	if (identity?.artifact_resolution !== "exact_address") return undefined;
   return exactCodeIdentity(identity, "verified");
 }
 
@@ -808,7 +860,8 @@ function exactCodeIdentity(
     return {
       address: getAddress(identity.address),
       codeHash: identity.code_hash.toLowerCase(),
-      artifactKind: identity.artifact_kind,
+		artifactKind: identity.artifact_kind,
+		artifactResolution: identity.artifact_resolution,
     } as const;
   } catch {
     return undefined;
@@ -829,6 +882,11 @@ function validateTarget(target: ContractInteractionTarget): void {
     if (target.abiCodeHash !== undefined && !HASH_PATTERN.test(target.abiCodeHash)) {
       throw new Error("invalid code hash");
     }
+		if (target.abiArtifactResolution !== undefined &&
+			target.abiArtifactResolution !== "exact_address" &&
+			target.abiArtifactResolution !== "code_hash") {
+			throw new Error("invalid artifact resolution");
+		}
     if (target.requiresFreshBinding) {
       if (target.kind === "delegated_eoa") {
         getAddress(target.authorityAddress);
@@ -866,9 +924,21 @@ function validateTarget(target: ContractInteractionTarget): void {
 		if (target.beaconCodeHash !== undefined && !HASH_PATTERN.test(target.beaconCodeHash)) {
 			throw new Error("invalid beacon code hash");
 		}
-		if ((target.beaconAddress === undefined) !== (target.beaconCodeHash === undefined)) {
-			throw new Error("incomplete beacon identity");
-		}
+			if ((target.beaconAddress === undefined) !== (target.beaconCodeHash === undefined)) {
+				throw new Error("incomplete beacon identity");
+			}
+			if (target.proxyMechanism === "cwia") {
+				if (target.kind !== "implementation_as_proxy" || target.proxyPattern !== "clone" ||
+					target.supportsWrites !== (
+						target.bindingId !== undefined && target.cwiaSchemaSHA256 !== undefined &&
+						target.abiArtifactResolution === "exact_address"
+					) ||
+					target.cwiaSchemaSHA256 !== undefined && !HASH_PATTERN.test(target.cwiaSchemaSHA256)) {
+					throw new Error("invalid CWIA interaction fence");
+				}
+			} else if (target.cwiaSchemaSHA256 !== undefined) {
+				throw new Error("non-CWIA target carries a CWIA schema digest");
+			}
     }
   } catch (error) {
     throw new InteractionFenceError("INVALID_TARGET", { cause: error });
@@ -903,6 +973,7 @@ function targetsMatch(
     loaded.transactionTarget === fresh.transactionTarget &&
     loaded.abiAddress === fresh.abiAddress &&
     loaded.abiCodeHash === fresh.abiCodeHash &&
+		loaded.abiArtifactResolution === fresh.abiArtifactResolution &&
     loaded.supportsWrites === fresh.supportsWrites &&
     loaded.requiresFreshBinding === fresh.requiresFreshBinding &&
     boundTargetFieldsMatch(loaded, fresh)
@@ -937,8 +1008,9 @@ function boundTargetFieldsMatch(
 		loaded.bindingId === fresh.bindingId &&
 		loaded.proxyMechanism === fresh.proxyMechanism &&
 		loaded.proxyPattern === fresh.proxyPattern &&
-		loaded.beaconAddress === fresh.beaconAddress &&
-		loaded.beaconCodeHash === fresh.beaconCodeHash &&
+			loaded.beaconAddress === fresh.beaconAddress &&
+			loaded.beaconCodeHash === fresh.beaconCodeHash &&
+			loaded.cwiaSchemaSHA256 === fresh.cwiaSchemaSHA256 &&
     loaded.standardVersion === fresh.standardVersion &&
     managementImpact(loaded) === managementImpact(fresh)
   );

@@ -110,7 +110,12 @@ replace a required `make test-e2e` pass.
   layouts. It compiles and deploys an implementation plus EIP-1967 proxy,
   verifies both sources through the public compatibility API and official
   compiler catalog, polls durable proxy verification, upgrades and rebinds the
-  proxy, and checks normalized public/persistent parity. The `all` or `api`
+  proxy, and checks normalized public/persistent parity. The same pinned
+  fixture deploys `solady@0.1.26` legacy LibCWIA with packed
+  owner/uint256/uint16/bytes arguments, derives its schema from canonical
+  helper calls in the dual-compiled Solidity AST, checks exact raw and typed
+  dynamic arguments, exercises a delegated storage write, binds it as mechanism
+  `cwia`, and proves it has no upgrade history in both topologies. The `all` or `api`
   process consumes the durable job, resolves and checksum-validates the
   architecture-independent `emscripten-wasm32` artifact, and runs each bounded
   Standard JSON compilation in a fresh permission-restricted Node SEA subprocess.
@@ -315,6 +320,9 @@ shell at this boundary is intentionally limited to the small Compose/Buildx
 selectors and the production-image payload inspection script. Extend
 `internal/testcompose`, the managed integration runner, or the build-tagged
 runtime suite instead of introducing a new shell smoke harness.
+Go-owned disposable Compose teardown includes all project resources so named
+volumes created by explicitly targeted services in inactive profiles cannot
+survive `down --volumes`.
 
 For example:
 

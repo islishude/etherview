@@ -71,19 +71,76 @@ func TestApplyProxyDetectionKeepsInteractionUnverified(t *testing.T) {
 		ImplementationCodeHash: common.BigToHash(proxyTestBig(72)).Bytes(),
 		AdminAddress:           admin.Bytes(), AdminCodeHash: common.BigToHash(proxyTestBig(73)).Bytes(),
 		Confidence: "high", EvidenceState: "exact",
-		ProxyVerified: true, ImplementationVerified: true, AdminVerified: true,
+		ProxyVerified: true, ImplementationVerified: true,
+		ImplementationArtifactAvailable: true, AdminVerified: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if detail.Status != ProxyStatusDetectedUnverified || detail.BindingID != "" ||
 		detail.Management != nil ||
+		detail.Proxy.ArtifactResolution != "exact_address" ||
+		detail.Implementation.ArtifactResolution != "exact_address" ||
+		detail.Admin.ArtifactResolution != "exact_address" ||
 		detail.Proxy.ArtifactKind != "" || detail.Proxy.StandardVersion != "" ||
 		detail.Admin.ArtifactKind != "" || len(detail.Evidence) != 3 {
 		t.Fatalf("detail=%+v evidence=%+v", detail, detail.Evidence)
 	}
 	if detail.Evidence[2].Subject != "admin" || detail.Evidence[2].Source != "admin_slot" {
 		t.Fatalf("unbound admin evidence=%+v, want admin_slot", detail.Evidence[2])
+	}
+}
+
+func TestApplyProxyDetectionSeparatesCodeHashArtifactFromExactVerification(t *testing.T) {
+	t.Parallel()
+	address := common.HexToAddress("0x0000000000000000000000000000000000000011")
+	implementation := common.HexToAddress("0x0000000000000000000000000000000000000022")
+	for _, test := range []struct{ kind, pattern string }{
+		{kind: "eip1167", pattern: "clone"},
+		{kind: "cwia", pattern: "clone"},
+		{kind: "eip1967", pattern: "erc1967"},
+		{kind: "beacon", pattern: "beacon"},
+	} {
+		var beaconAddress, beaconCodeHash, implementationObservationBlockHash []byte
+		implementationObservationBlockNumber := ""
+		if test.kind == "beacon" {
+			beaconAddress = common.HexToAddress("0x0000000000000000000000000000000000000033").Bytes()
+			beaconCodeHash = common.BigToHash(proxyTestBig(73)).Bytes()
+			implementationObservationBlockNumber = "7"
+			implementationObservationBlockHash = common.BigToHash(proxyTestBig(7)).Bytes()
+		}
+		detail := ProxyDetail{Address: address.Hex()}
+		err := applyProxyDetection(&detail, address, dbgen.GetLatestPublishedProxyDetectionRow{
+			ObservationBlockNumber: "7", ObservationBlockHash: common.BigToHash(proxyTestBig(7)).Bytes(),
+			ProxyCodeHash: common.BigToHash(proxyTestBig(71)).Bytes(), ProxyKind: test.kind,
+			ProxyPattern: test.pattern, ImplementationAddress: implementation.Bytes(),
+			ImplementationCodeHash: common.BigToHash(proxyTestBig(72)).Bytes(),
+			BeaconAddress:          beaconAddress, BeaconCodeHash: beaconCodeHash,
+			ImplementationObservationBlockNumber: implementationObservationBlockNumber,
+			ImplementationObservationBlockHash:   implementationObservationBlockHash,
+			Confidence:                           "high", EvidenceState: "exact", ImplementationArtifactAvailable: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.Implementation == nil || detail.Implementation.Verified ||
+			detail.Implementation.ArtifactResolution != "code_hash" ||
+			detail.Proxy.ArtifactResolution != "" {
+			t.Fatalf("%s detail=%+v", test.kind, detail)
+		}
+	}
+	detail := ProxyDetail{Address: address.Hex()}
+	if err := applyProxyDetection(&detail, address, dbgen.GetLatestPublishedProxyDetectionRow{
+		ObservationBlockNumber: "7", ObservationBlockHash: common.BigToHash(proxyTestBig(7)).Bytes(),
+		ProxyCodeHash: common.BigToHash(proxyTestBig(71)).Bytes(), ProxyKind: "eip1167",
+		ProxyPattern: "clone", ImplementationAddress: implementation.Bytes(),
+		ImplementationCodeHash: common.BigToHash(proxyTestBig(72)).Bytes(),
+		Confidence:             "high", EvidenceState: "exact",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Implementation == nil || detail.Implementation.ArtifactResolution != "" {
+		t.Fatalf("no-artifact implementation detail=%+v", detail.Implementation)
 	}
 }
 

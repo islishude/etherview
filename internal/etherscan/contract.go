@@ -19,8 +19,12 @@ import (
 
 type verifiedContractRecord struct {
 	CodeHash        []byte
+	TargetCodeHash  []byte
 	SourceAddress   []byte
 	Similar         bool
+	Proxy           string
+	Implementation  string
+	ProxyFallback   bool
 	ABI             []byte
 	Sources         []byte
 	Settings        []byte
@@ -43,10 +47,58 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 	if len(resolved.Target.CodeHash) == 0 {
 		return verifiedContractRecord{}, ErrStateUnavailable
 	}
+	targetCodeHash := bytes.Clone(resolved.Target.CodeHash)
 	if !found {
-		return verifiedContractRecord{}, ErrContractUnverified
+		proxy, implementation, proxyErr := b.currentVerifiedProxy(
+			ctx,
+			values.Get("address"),
+			targetCodeHash,
+		)
+		if proxyErr != nil {
+			return verifiedContractRecord{}, proxyErr
+		}
+		if proxy != "1" || !common.IsHexAddress(implementation) {
+			return verifiedContractRecord{}, ErrContractUnverified
+		}
+		resolved, found, err = b.artifacts.ResolveCurrent(
+			ctx,
+			b.chain,
+			common.HexToAddress(implementation).Bytes(),
+		)
+		if err != nil {
+			return verifiedContractRecord{}, fmt.Errorf("resolve verified proxy implementation: %w", err)
+		}
+		if len(resolved.Target.CodeHash) == 0 {
+			return verifiedContractRecord{}, ErrStateUnavailable
+		}
+		if !found {
+			return verifiedContractRecord{}, ErrContractUnverified
+		}
+		recheckedProxy, recheckedImplementation, recheckErr := b.currentVerifiedProxy(
+			ctx,
+			values.Get("address"),
+			targetCodeHash,
+		)
+		if recheckErr != nil {
+			return verifiedContractRecord{}, recheckErr
+		}
+		if recheckedProxy != "1" || !strings.EqualFold(recheckedImplementation, implementation) {
+			return verifiedContractRecord{}, ErrContractUnverified
+		}
+		record := verifiedContractRecordFromResolution(resolved)
+		record.TargetCodeHash = targetCodeHash
+		record.Proxy = "1"
+		record.Implementation = implementation
+		record.ProxyFallback = true
+		return validateVerifiedContractRecord(record, resolved.Source.CodeHash)
 	}
-	record := verifiedContractRecord{
+	record := verifiedContractRecordFromResolution(resolved)
+	record.TargetCodeHash = targetCodeHash
+	return validateVerifiedContractRecord(record, resolved.Source.CodeHash)
+}
+
+func verifiedContractRecordFromResolution(resolved contractartifact.Result) verifiedContractRecord {
+	return verifiedContractRecord{
 		CodeHash: resolved.Target.CodeHash, SourceAddress: resolved.Source.Address,
 		Similar: resolved.Resolution == contractartifact.ResolutionCodeHash,
 		ABI:     resolved.Source.ABI, Sources: resolved.Source.Sources,
@@ -55,10 +107,16 @@ func (b *PostgresBackend) verifiedContract(ctx context.Context, values url.Value
 		MatchKind:       resolved.Source.MatchType, ContractName: resolved.Source.ContractName,
 		FileName: resolved.Source.FileName,
 	}
+}
+
+func validateVerifiedContractRecord(
+	record verifiedContractRecord,
+	sourceCodeHash []byte,
+) (verifiedContractRecord, error) {
 	if len(record.CodeHash) != 32 {
 		return verifiedContractRecord{}, errors.New("stored canonical contract code hash is invalid")
 	}
-	if len(resolved.Source.CodeHash) != 32 || !bytes.Equal(record.CodeHash, resolved.Source.CodeHash) {
+	if len(record.TargetCodeHash) != 32 || len(sourceCodeHash) != 32 || !bytes.Equal(record.CodeHash, sourceCodeHash) {
 		return verifiedContractRecord{}, errors.New("stored verified contract code hash does not match canonical code")
 	}
 	if len(record.SourceAddress) != common.AddressLength {
@@ -117,13 +175,19 @@ func (b *PostgresBackend) contractSource(ctx context.Context, values url.Values)
 	if err != nil {
 		return nil, err
 	}
-	proxy, implementation, err := b.currentVerifiedProxy(ctx, values.Get("address"), record.CodeHash)
-	if err != nil {
-		return nil, err
+	proxy, implementation := record.Proxy, record.Implementation
+	if proxy == "" {
+		proxy, implementation, err = b.currentVerifiedProxy(ctx, values.Get("address"), record.TargetCodeHash)
+		if err != nil {
+			return nil, err
+		}
 	}
 	similarMatch := ""
 	if record.Similar {
 		similarMatch = common.BytesToAddress(record.SourceAddress).Hex()
+		settings.constructorArguments = ""
+	}
+	if record.ProxyFallback {
 		settings.constructorArguments = ""
 	}
 	compilerType := "solc"

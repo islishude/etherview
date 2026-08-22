@@ -131,6 +131,69 @@ func (q *Queries) CountCurrentBeaconProxies(ctx context.Context, beaconAddress [
 	return proxy_count, err
 }
 
+const GetCWIAImplementationAnalyses = `-- name: GetCWIAImplementationAnalyses :many
+SELECT (verified.address = $1::bytea
+        AND verified.valid_from_block <= $2::numeric
+        AND (verified.valid_to_block IS NULL OR
+             verified.valid_to_block >= $2::numeric))::boolean AS exact,
+       verified.compilation_artifacts->'soladyLegacyCWIAImmutableArgs' AS analysis
+FROM verified_contracts AS verified
+JOIN verification_jobs AS job
+  ON job.id = verified.verification_job_id
+ AND job.request_digest = verified.request_digest
+ AND job.kind = 'address'
+ AND job.status = 'succeeded'
+WHERE verified.chain_id = $3::numeric
+  AND verified.code_hash = $4::bytea
+  AND verified.language = 'solidity'
+  AND job.request->>'solidity_analysis_version' = '1'
+  AND verified.compilation_artifacts ? 'soladyLegacyCWIAImmutableArgs'
+ORDER BY exact DESC,
+         (verified.match_type = 'full') DESC,
+         verified.request_digest,
+         verified.verification_job_id,
+         verified.address,
+         verified.valid_from_block DESC
+LIMIT 17
+`
+
+type GetCWIAImplementationAnalysesParams struct {
+	ImplementationAddress  []byte         `db:"implementation_address" json:"implementation_address"`
+	SnapshotNumber         pgtype.Numeric `db:"snapshot_number" json:"snapshot_number"`
+	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	ImplementationCodeHash []byte         `db:"implementation_code_hash" json:"implementation_code_hash"`
+}
+
+type GetCWIAImplementationAnalysesRow struct {
+	Exact    bool        `db:"exact" json:"exact"`
+	Analysis interface{} `db:"analysis" json:"analysis"`
+}
+
+func (q *Queries) GetCWIAImplementationAnalyses(ctx context.Context, arg GetCWIAImplementationAnalysesParams) ([]GetCWIAImplementationAnalysesRow, error) {
+	rows, err := q.db.Query(ctx, GetCWIAImplementationAnalyses,
+		arg.ImplementationAddress,
+		arg.SnapshotNumber,
+		arg.ChainID,
+		arg.ImplementationCodeHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCWIAImplementationAnalysesRow{}
+	for rows.Next() {
+		var i GetCWIAImplementationAnalysesRow
+		if err := rows.Scan(&i.Exact, &i.Analysis); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const GetCurrentVerifiedProxyBinding = `-- name: GetCurrentVerifiedProxyBinding :one
 WITH canonical_tip AS (
     SELECT number, block_hash
@@ -963,6 +1026,11 @@ SELECT effective.block_number::text AS observation_block_number,
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
            WHERE verified.chain_id = effective.chain_id
+             AND verified.code_hash = effective.current_implementation_code_hash
+       ) AS implementation_artifact_available,
+       EXISTS (
+           SELECT 1 FROM verified_contracts AS verified
+           WHERE verified.chain_id = effective.chain_id
              AND verified.address = effective.admin_address
              AND verified.code_hash = effective.admin_code_hash
              AND verified.valid_from_block <= effective.context_number
@@ -1002,6 +1070,7 @@ type GetLatestPublishedProxyDetectionRow struct {
 	ImplementationObservationBlockHash   []byte  `db:"implementation_observation_block_hash" json:"implementation_observation_block_hash"`
 	ProxyVerified                        bool    `db:"proxy_verified" json:"proxy_verified"`
 	ImplementationVerified               bool    `db:"implementation_verified" json:"implementation_verified"`
+	ImplementationArtifactAvailable      bool    `db:"implementation_artifact_available" json:"implementation_artifact_available"`
 	AdminVerified                        bool    `db:"admin_verified" json:"admin_verified"`
 	BeaconVerified                       bool    `db:"beacon_verified" json:"beacon_verified"`
 }
@@ -1030,6 +1099,7 @@ func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID 
 		&i.ImplementationObservationBlockHash,
 		&i.ProxyVerified,
 		&i.ImplementationVerified,
+		&i.ImplementationArtifactAvailable,
 		&i.AdminVerified,
 		&i.BeaconVerified,
 	)

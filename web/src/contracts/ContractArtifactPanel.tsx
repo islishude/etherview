@@ -286,19 +286,27 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
   return (
 		<div className="contract-code-view">
 			{artifact.resolution === "code_hash" ? (
-				<p className="chain-warning" role="status">
+				<p className="context-note" role="status">
 					{t("contracts.artifact.similarMatch")}{" "}
 					<AddressIdentity address={artifact.source.address} compact={false} contract />
 				</p>
 			) : null}
       <header className="artifact-hero">
         <div>
-          <span className="eyebrow">{t("contracts.artifact.verified")}</span>
+					<span className="eyebrow">
+						{t(artifact.resolution === "code_hash"
+							? "contracts.artifact.verifiedByCodeHash"
+							: "contracts.artifact.verified")}
+					</span>
           <h2>{artifact.contract_name}</h2>
           <p className="quiet">{t("contracts.readIndependent")}</p>
         </div>
         <div className="artifact-badges" aria-label={t("contracts.artifact.status")}>
-          <span className="availability yes">{t("contracts.artifact.verified")}</span>
+			<span className="availability yes">
+				{t(artifact.resolution === "code_hash"
+					? "contracts.artifact.verifiedByCodeHash"
+					: "contracts.artifact.verified")}
+			</span>
           {matchType ? (
             <span className={matchType === "full" ? "artifact-match full" : "artifact-match partial"}>
               {t(`contracts.artifact.match.${matchType}`)}

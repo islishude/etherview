@@ -315,7 +315,8 @@ executors. The routing and lag contract is specified in
   non-zero indexing starts, internally called contracts, and silent supported
   slot changes receive an exact-block probe. Exact empty code is stored as a
   zero-length value with Keccak-256(empty), not SQL `NULL`.
-- Proxy observations retain EIP-1167 immutable arguments, direct EIP-1967
+- Proxy observations retain EIP-1167 immutable arguments, exact Solady legacy
+  LibCWIA fixed implementations and raw arguments, direct EIP-1967
   implementations, OpenZeppelin 5.x pattern evidence, admin and beacon code
   identities, and the final implementation behind a beacon. A shared beacon
   implementation is read and observed once per beacon and immutable block,
@@ -327,6 +328,42 @@ executors. The routing and lag contract is specified in
   additionally requires the applicable runtime, immutable, verified-artifact,
   fixed-block probe, and code-identity evidence; incomplete evidence remains
   generic or partial.
+- A legacy LibCWIA runtime is exact only when its complete 98-byte shell, both
+  appended-length words, fixed implementation position, product-bounded raw
+  arguments, and non-zero/non-self target agree. It is mechanism `cwia` and
+  immutable pattern `clone`, not ERC-1167, and needs no creation trace because
+  the shell actively copies its trailing arguments into calldata. Typed values
+  come only from the verifier's bounded, dual-compiled Solidity AST analysis
+  of calls that resolve to the exact canonical Solady `0.1.26` legacy helper
+  source. Raw bytes remain authoritative; a matching verified implementation
+  code hash may serve typed reads, while writes additionally require the exact
+  current binding, exact-address implementation artifact, and a complete
+  decoded schema digest. Decoded fields use a bounded accessible
+  Name/Type/Offset/Data table, with complete copyable array parents and at most
+  64 offset-derived element rows per array. Migration and startup
+  schedule no historical CWIA replay; see
+  [ADR-0042](../decisions/ADR-0042-solady-legacy-cwia-identity.md).
+- Current CWIA, EIP-1167, EIP-1967, and Beacon implementation identities keep
+  exact address verification separate from same-runtime artifact reuse:
+  `verified + exact_address` is independently verified, while
+  `unverified + code_hash` is read-only source/ABI availability. Exact address
+  takes precedence. Proxy shells, admins, beacons, management targets,
+  historical implementations, Diamonds, and Safe singletons never receive
+  this code-hash substitution, and code-hash availability never creates a
+  binding or browser write authority.
+- Every implementation-as-proxy operation still fetches a fresh proxy
+  snapshot. A transient `unavailable` latest proxy stage aborts only that
+  operation before wallet RPC; it is not treated as target-change evidence and
+  therefore cannot erase the last published target or redirect the active tab.
+  The next attempt refetches, while real identity or binding differences keep
+  the existing refresh-and-fail-closed fence.
+- Once the current proxy projection recognizes mechanism `cwia`, the shell's
+  Code tab omits the direct Verified artifact and submission panel. Source and
+  ABI presentation remains attached to the fixed implementation identity;
+  ordinary contracts and other proxy mechanisms retain their direct artifact
+  surface. A transient unavailable classification suppresses this choice and
+  is re-read every 500 ms until publication, preventing a direct-entry flash
+  without serializing the independent artifact request.
 - Proxy, implementation, admin, and beacon code hashes, block hash,
   canonicality, confidence, and bounded controlled provenance commit in one
   idempotent stage transaction. Append-only proxy and beacon generation
@@ -342,7 +379,8 @@ executors. The routing and lag contract is specified in
   one exact-block memoized context and retains every resolver outcome. Its Safe
   detector fingerprints the already-fetched runtime before reading slot 0, so
   a non-Safe bulk candidate adds no Safe RPC. Canonical Safe shell identity and
-  official singleton identity remain independent. V2 is generation-fenced
+  official singleton identity remain independent. Its dedicated CWIA detector
+  reports the exact legacy shell without attributing it to OpenZeppelin. V2 is generation-fenced
   additive evidence and cannot authorize legacy proxy interaction; see
   [ADR-0032](../decisions/ADR-0032-evidence-based-proxy-detection.md).
   Ambiguous slots, self/empty implementations, and reverting or malformed

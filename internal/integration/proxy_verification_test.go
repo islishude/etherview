@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/cwiaargs"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -235,6 +236,129 @@ func TestProxyVerificationIsDurableIdempotentAndCodeChangeSafe(t *testing.T) {
 		SELECT count(*) FROM verification_results
 		WHERE outcome_kind = 'proxy_verification_success'`, 2)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_proxy_bindings`, 2)
+}
+
+func TestSoladyLegacyCWIAVerificationBindingAndRawArguments(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := testBundle(0, testHash(95_500), testHash(0), testHash(95_501), "cwia-verification")
+	commitCanonical(t, ctx, core, block)
+	reference := mustBlockRef(t, block)
+	proxy, implementation, owner := testAddress(9_550), testAddress(9_551), testAddress(9_552)
+	args := append(owner.Bytes(), make([]byte, 32)...)
+	args[len(args)-1] = 42
+	proxyCode := soladyLegacyCWIARuntime(implementation, args)
+	implementationCode := []byte{0x60, 0x55}
+	proxyHash := common.BytesToHash(crypto.Keccak256(proxyCode))
+	implementationHash := common.BytesToHash(crypto.Keccak256(implementationCode))
+	insertProxyVerificationCode(t, ctx, db, reference, proxy, proxyHash, proxyCode)
+	insertProxyVerificationCode(t, ctx, db, reference, implementation, implementationHash, implementationCode)
+	insertProxyVerificationObservationKind(
+		t, ctx, db, reference, proxy, proxyHash, implementation, implementationHash, "cwia", args,
+	)
+	publishProxyVerificationObservation(
+		t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode,
+	)
+	schema, err := cwiaargs.FinalizeSchema([]cwiaargs.Field{
+		{Name: "owner", Type: "address", Offset: 0, Role: cwiaargs.FieldRoleValue, Getters: []string{"owner()"}, Size: cwiaargs.FixedSize(20)},
+		{Name: "number", Type: "uint256", Offset: 20, Role: cwiaargs.FieldRoleValue, Getters: []string{"number()"}, Size: cwiaargs.FixedSize(32)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := cwiaargs.DerivedAnalysis(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compilationArtifacts, err := json.Marshal(map[string]any{
+		"soladyLegacyCWIAImmutableArgs": analysis,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceAddress := testAddress(9_553)
+	insertVerifiedContractFixtureWithCompilationArtifacts(
+		t, ctx, db, sourceAddress.Bytes(), implementationHash.Bytes(), 0, nil,
+		"0.8.30+commit.73712a01", "CWIAImplementation", `[]`,
+		`{"Fixture.sol":{"content":"contract Fixture {}"}}`,
+		`{"optimizer":{"enabled":false,"runs":200}}`, string(compilationArtifacts),
+	)
+	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unbound, err := reader.Proxy(ctx, proxy.Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unbound.Status != query.ProxyStatusDetectedUnverified ||
+		unbound.Implementation == nil || unbound.Implementation.Verified ||
+		unbound.Implementation.ArtifactResolution != "code_hash" ||
+		unbound.ImmutableArgsDecoding == nil ||
+		unbound.ImmutableArgsDecoding.Status != query.CWIAArgsDecoded ||
+		unbound.ImmutableArgsDecoding.SchemaResolution != cwiaargs.ResolutionCodeHash ||
+		len(unbound.ImmutableArgsDecoding.Arguments) != 2 {
+		t.Fatalf("unbound code-hash CWIA detail=%+v", unbound)
+	}
+	insertVerifiedContractFixtureWithCompilationArtifacts(
+		t, ctx, db, implementation.Bytes(), implementationHash.Bytes(), 0, nil,
+		"0.8.30+commit.73712a01", "CWIAImplementation", `[]`,
+		`{"Fixture.sol":{"content":"contract Fixture {}"}}`,
+		`{"optimizer":{"enabled":false,"runs":200}}`, string(compilationArtifacts),
+	)
+
+	repository, err := verify.NewPostgresRepository(db, verify.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := verify.NewService(repository, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := etherscan.NewPostgresBackend(db, etherscan.PostgresOptions{ChainID: 1, Verification: service})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := backend.Execute(ctx, etherscan.Request{
+		Module: "contract", Action: "verifyproxycontract",
+		Values: url.Values{
+			"address": {proxy.Hex()}, "expectedimplementation": {implementation.Hex()},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	guid, _ := result.(string)
+	completeProxyVerification(t, ctx, repository, guid)
+	assertProxyVerificationSource(t, ctx, backend, proxy, implementation, true)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_proxy_bindings
+		WHERE verification_job_id = $1::uuid AND proxy_kind = 'cwia'
+		  AND proxy_pattern = 'clone' AND standard_version IS NULL
+		  AND management_kind = 'none'`, 1, guid)
+
+	detail, err := reader.Proxy(ctx, proxy.Hex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Status != query.ProxyStatusVerified || detail.Mechanism != "cwia" ||
+		detail.Pattern != "clone" || !strings.EqualFold(detail.ImmutableArgs, hexutil.Encode(args)) ||
+		detail.Implementation == nil || !detail.Implementation.Verified ||
+		detail.Implementation.ArtifactResolution != "exact_address" ||
+		detail.ImmutableArgsDecoding == nil ||
+		detail.ImmutableArgsDecoding.Status != query.CWIAArgsDecoded ||
+		detail.ImmutableArgsDecoding.Schema == nil ||
+		detail.ImmutableArgsDecoding.SchemaResolution != cwiaargs.ResolutionExactAddress ||
+		len(detail.ImmutableArgsDecoding.Arguments) != 2 ||
+		detail.ImmutableArgsDecoding.Arguments[0].Value != owner.Hex() ||
+		detail.ImmutableArgsDecoding.Arguments[1].Value != "42" {
+		t.Fatalf("CWIA proxy detail=%+v", detail)
+	}
 }
 
 func TestProxyVerificationAtoBtoACreatesFreshBindingIdentity(t *testing.T) {
@@ -1852,17 +1976,35 @@ func insertProxyVerificationObservation(
 	implementationHash common.Hash,
 ) {
 	t.Helper()
+	insertProxyVerificationObservationKind(
+		t, ctx, db, block, proxy, proxyHash, implementation, implementationHash, "eip1167", nil,
+	)
+}
+
+func insertProxyVerificationObservationKind(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	proxy common.Address,
+	proxyHash common.Hash,
+	implementation common.Address,
+	implementationHash common.Hash,
+	kind string,
+	immutableArgs []byte,
+) {
+	t.Helper()
 	execFixture(t, ctx, db, `
 		INSERT INTO proxy_observations (
 			chain_id, proxy_address, block_number, block_hash, stage_version,
 			proxy_code_hash, proxy_kind, proxy_pattern, implementation_address,
-			implementation_code_hash, confidence, evidence_state, canonical
+			implementation_code_hash, immutable_args, confidence, evidence_state, canonical
 		) VALUES (
-			1, $1, $2::numeric, $3, 2, $4, 'eip1167', 'clone', $5,
-			$6, 'high', 'exact', TRUE
+			1, $1, $2::numeric, $3, 2, $4, $5, 'clone', $6,
+			$7, $8, 'high', 'exact', TRUE
 		)`,
 		proxy.Bytes(), block.Number, block.Hash.Bytes(), proxyHash.Bytes(),
-		implementation.Bytes(), implementationHash.Bytes())
+		kind, implementation.Bytes(), implementationHash.Bytes(), immutableArgs)
 }
 
 func cloneRuntime(implementation common.Address) []byte {

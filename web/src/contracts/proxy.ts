@@ -22,6 +22,7 @@ type Address = components["schemas"]["Address"];
 type Quantity = components["schemas"]["Quantity"];
 
 export const DEFAULT_PROXY_HISTORY_LIMIT = 20;
+const UNAVAILABLE_PROXY_REFETCH_INTERVAL_MS = 500;
 
 export interface ContractProxyManagementArtifact {
   address: Address;
@@ -211,6 +212,10 @@ export function useContractProxy(address: string, enabled = true) {
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
+		refetchInterval: (query) =>
+			query.state.data?.state === "unavailable"
+				? UNAVAILABLE_PROXY_REFETCH_INTERVAL_MS
+				: false,
   });
 }
 
@@ -280,12 +285,14 @@ export function adaptContractProxy(
     typeof detail.binding_id === "string" &&
     detail.binding_id.length > 0;
   const implementationArtifactAddress =
-    exactBinding && detail.implementation?.verification_state === "verified"
+    exactBinding && detail.implementation?.verification_state === "verified" &&
+		detail.implementation.artifact_resolution === "exact_address"
       ? detail.implementation.address
       : undefined;
   const management = detail.management;
   const managementArtifact =
-    exactBinding && management?.target.verification_state === "verified"
+    exactBinding && management?.target.verification_state === "verified" &&
+		management.target.artifact_resolution === "exact_address"
       ? {
           address: management.target.address,
           kind: management.kind,

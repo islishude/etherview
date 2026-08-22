@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { AbiCoder, Interface, keccak256, toUtf8Bytes } from "ethers";
+import { AbiCoder, Interface, keccak256, solidityPacked, toUtf8Bytes } from "ethers";
 import { createTransactionSender } from "./transaction-sender.mjs";
 
 const OPENZEPPELIN_VERSION = "5.6.1";
@@ -161,6 +161,12 @@ const badUUIDArtifact = await projectArtifact(
 const cloneFactoryArtifact = await projectArtifact(
   "./build/artifacts/contracts/CloneFactory.sol/CloneFactory.json",
 );
+const myAccountArtifact = await projectArtifact(
+  "./build/artifacts/contracts/MyAccount.sol/MyAccount.json",
+);
+const myAccountFactoryArtifact = await projectArtifact(
+  "./build/artifacts/contracts/MyAccountFactory.sol/MyAccountFactory.json",
+);
 const valueFacetArtifact = await projectArtifact(
   "./build/artifacts/contracts/DiamondFixture.sol/ValueFacet.json",
 );
@@ -268,6 +274,46 @@ const immutableCloneInitialization = await sendTransaction(owner, {
   data: initializeData(42n),
 });
 
+const cwiaFactoryDeployment = await deploy(owner, myAccountFactoryArtifact);
+const cwiaFactoryInterface = new Interface(myAccountFactoryArtifact.abi);
+const myAccountInterface = new Interface(myAccountArtifact.abi);
+const [cwiaImplementation] = await call(
+  cwiaFactoryDeployment.address,
+  cwiaFactoryInterface,
+  "implementation",
+);
+const cwiaNumber = (1n << 200n) + 42n;
+const cwiaData = toUtf8Bytes("hello,world");
+const cwiaDataHex = solidityPacked(["bytes"], [cwiaData]);
+const cwiaCreateTransaction = await sendTransaction(owner, {
+  to: cwiaFactoryDeployment.address,
+  data: cwiaFactoryInterface.encodeFunctionData("create", [owner, cwiaNumber, cwiaData]),
+});
+const [cwiaAccount] = await call(
+  cwiaFactoryDeployment.address,
+  cwiaFactoryInterface,
+  "account",
+);
+const [observedCWIAOwner] = await call(cwiaAccount, myAccountInterface, "owner");
+const [observedCWIANumber] = await call(cwiaAccount, myAccountInterface, "number");
+const [observedCWIAData] = await call(cwiaAccount, myAccountInterface, "data");
+const [infoOwner, infoNumber] = await call(cwiaAccount, myAccountInterface, "getInfo");
+assert.equal(observedCWIAOwner.toLowerCase(), owner.toLowerCase(), "CWIA owner");
+assert.equal(observedCWIANumber, cwiaNumber, "CWIA number");
+assert.equal(observedCWIAData, cwiaDataHex, "CWIA data");
+assert.equal(infoOwner.toLowerCase(), owner.toLowerCase(), "CWIA info owner");
+assert.equal(infoNumber, cwiaNumber, "CWIA info number");
+const cwiaSetStoredTransaction = await sendTransaction(owner, {
+  to: cwiaAccount,
+  data: myAccountInterface.encodeFunctionData("setStored", [777n]),
+});
+const [cwiaStored] = await call(cwiaAccount, myAccountInterface, "stored");
+assert.equal(cwiaStored, 777n, "CWIA delegated storage write");
+const cwiaImmutableArgs = solidityPacked(
+  ["address", "uint256", "uint16", "bytes"],
+  [owner, cwiaNumber, cwiaData.length, cwiaData],
+);
+
 const valueFacetDeployment = await deploy(owner, valueFacetArtifact);
 const mathFacetDeployment = await deploy(owner, mathFacetArtifact);
 const diamondDeployment = await deploy(owner, diamondArtifact, [
@@ -307,7 +353,7 @@ assert.equal(
 );
 
 const output = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   openzeppelinVersion: OPENZEPPELIN_VERSION,
   owner,
   // The primary fields keep the production Go harness concise while now
@@ -340,6 +386,16 @@ const output = {
     immutableArgs: immutableArgsClone,
     immutableArgsData: immutableArgs,
   },
+  cwia: {
+    factory: cwiaFactoryDeployment.address,
+    implementation: cwiaImplementation,
+    account: cwiaAccount,
+    owner,
+    number: cwiaNumber.toString(),
+    data: cwiaDataHex,
+    immutableArgs: cwiaImmutableArgs,
+    stored: cwiaStored.toString(),
+  },
   diamond: {
     address: diamondDeployment.address,
     facets: [valueFacetDeployment.address, mathFacetDeployment.address],
@@ -360,6 +416,9 @@ const output = {
     standardCloneInitialization,
     immutableArgsClone: immutableCloneTransaction,
     immutableArgsCloneInitialization: immutableCloneInitialization,
+    cwiaFactory: cwiaFactoryDeployment.transaction,
+    cwiaCreate: cwiaCreateTransaction,
+    cwiaSetStored: cwiaSetStoredTransaction,
     diamondValueFacet: valueFacetDeployment.transaction,
     diamondMathFacet: mathFacetDeployment.transaction,
     diamond: diamondDeployment.transaction,

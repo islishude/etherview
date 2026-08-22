@@ -16,6 +16,7 @@ type ProxyPattern string
 
 const (
 	ProxyMinimal1167 ProxyKind = "eip1167"
+	ProxyCWIA        ProxyKind = "cwia"
 	ProxyEIP1967     ProxyKind = "eip1967"
 	ProxyBeacon      ProxyKind = "beacon"
 

@@ -67,6 +67,16 @@ type hardhatDeployment struct {
 		ImmutableArgs     string `json:"immutableArgs"`
 		ImmutableArgsData string `json:"immutableArgsData"`
 	} `json:"clones"`
+	CWIA struct {
+		Factory        string `json:"factory"`
+		Implementation string `json:"implementation"`
+		Account        string `json:"account"`
+		Owner          string `json:"owner"`
+		Number         string `json:"number"`
+		Data           string `json:"data"`
+		ImmutableArgs  string `json:"immutableArgs"`
+		Stored         string `json:"stored"`
+	} `json:"cwia"`
 	Diamond struct {
 		Address string   `json:"address"`
 		Facets  []string `json:"facets"`
@@ -316,6 +326,9 @@ func runHardhat3Mode(
 		"cloneFactory":            deployment.Clones.Factory,
 		"standardClone":           deployment.Clones.Standard,
 		"immutableArgumentsClone": deployment.Clones.ImmutableArgs,
+		"cwiaFactory":             deployment.CWIA.Factory,
+		"cwiaImplementation":      deployment.CWIA.Implementation,
+		"cwiaAccount":             deployment.CWIA.Account,
 		"diamond":                 deployment.Diamond.Address,
 	} {
 		if !common.IsHexAddress(address) {
@@ -341,13 +354,18 @@ func runHardhat3Mode(
 	}
 	if !strings.EqualFold(deployment.Proxy, deployment.UUPS.Proxy) ||
 		!strings.HasPrefix(deployment.InitializationData.UUPS, "0x") ||
-		!strings.HasPrefix(deployment.Clones.ImmutableArgsData, "0x") {
+		!strings.HasPrefix(deployment.Clones.ImmutableArgsData, "0x") ||
+		!strings.EqualFold(deployment.CWIA.Owner, deployment.Owner) ||
+		len(deployment.CWIA.ImmutableArgs) != 2+2*(20+32+2+11) ||
+		deployment.CWIA.Data != "0x68656c6c6f2c776f726c64" ||
+		deployment.CWIA.Number == "" || deployment.CWIA.Stored != "777" {
 		t.Fatalf("primary UUPS fixture is incomplete: %#v", deployment)
 	}
 	for _, name := range []string{
 		"implementationV1", "implementationV2", "badUUID", "transparent", "uups",
 		"beacon", "beaconProxyA", "beaconProxyB", "cloneFactory", "standardClone",
 		"standardCloneInitialization", "immutableArgsClone", "immutableArgsCloneInitialization",
+		"cwiaFactory", "cwiaCreate", "cwiaSetStored",
 		"diamondValueFacet", "diamondMathFacet", "diamond", "diamondSetValue",
 	} {
 		transaction, exists := deployment.Transactions[name]
@@ -363,10 +381,13 @@ func runHardhat3Mode(
 	}
 	waitHardhatProxyObservation(t, ctx, h, deployment.Clones.Standard, deployment.Implementation)
 	waitHardhatProxyObservation(t, ctx, h, deployment.Clones.ImmutableArgs, deployment.Implementation)
+	waitHardhatProxyObservation(t, ctx, h, deployment.CWIA.Account, deployment.CWIA.Implementation)
 	waitHardhatDiamond(t, ctx, h, deployment)
-	waitHardhatClone(t, ctx, h, deployment.Clones.Standard, deployment.Implementation, "0x")
+	waitHardhatClone(t, ctx, h, deployment.Clones.Standard, deployment.Implementation, "eip1167", "0x")
 	waitHardhatClone(t, ctx, h, deployment.Clones.ImmutableArgs,
-		deployment.Implementation, deployment.Clones.ImmutableArgsData)
+		deployment.Implementation, "eip1167", deployment.Clones.ImmutableArgsData)
+	waitHardhatClone(t, ctx, h, deployment.CWIA.Account,
+		deployment.CWIA.Implementation, "cwia", deployment.CWIA.ImmutableArgs)
 	for _, address := range []string{
 		deployment.Proxy, deployment.Transparent.Proxy,
 		deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
@@ -378,6 +399,7 @@ func runHardhat3Mode(
 		deployment.Implementation, deployment.ImplementationV2,
 		deployment.Proxy, deployment.Transparent.Proxy, deployment.Transparent.Admin,
 		deployment.Beacon.Beacon, deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
+		deployment.CWIA.Factory, deployment.CWIA.Implementation, deployment.CWIA.Account,
 	} {
 		waitHardhatContractCode(t, ctx, h, address)
 	}
@@ -419,6 +441,8 @@ func runHardhat3Mode(
 	}
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v1",
 		"contracts/Implementation.sol:Implementation", deployment.Implementation, nil)
+	verifyHardhatAddress(t, ctx, h, apiKey, "cwia-implementation",
+		"contracts/MyAccount.sol:MyAccount", deployment.CWIA.Implementation, nil)
 	assertHardhatHistoricalMethod(
 		t, ctx, h, deployment.Clones.Standard, cloneInitialization.Hash,
 		"initialize", initializeSignature,
@@ -449,7 +473,8 @@ func runHardhat3Mode(
 			proxy, []any{deployment.Beacon.Beacon, initializer}, index > 0)
 	}
 	for _, address := range []string{
-		deployment.Implementation, deployment.Proxy, deployment.Transparent.Proxy,
+		deployment.Implementation, deployment.CWIA.Implementation,
+		deployment.Proxy, deployment.Transparent.Proxy,
 		deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
 	} {
 		waitHardhatSource(t, ctx, h, apiKey, address)
@@ -511,8 +536,15 @@ func runHardhat3Mode(
 	}
 	for _, clone := range []string{deployment.Clones.Standard, deployment.Clones.ImmutableArgs} {
 		submitAndWaitHardhatProxy(t, ctx, h, apiKey, clone, deployment.Implementation)
-		waitHardhatVerifiedProxyBinding(t, ctx, h, clone, deployment.Implementation, "clone")
+		waitHardhatVerifiedProxyBinding(t, ctx, h, clone, deployment.Implementation)
 	}
+	submitAndWaitHardhatProxy(t, ctx, h, apiKey, deployment.CWIA.Account, deployment.CWIA.Implementation)
+	waitHardhatVerifiedProxyBinding(t, ctx, h, deployment.CWIA.Account, deployment.CWIA.Implementation)
+	assertHardhatProxySource(t, ctx, h, apiKey, deployment.CWIA.Account, deployment.CWIA.Implementation, true)
+	assertHardhatHistoricalMethod(
+		t, ctx, h, deployment.CWIA.Account, deployment.Transactions["cwiaSetStored"].Hash,
+		"setStored", "setStored(uint256)",
+	)
 
 	h.enterPhase("proxy upgrade invalidation and rebinding")
 	runNodeCommand(t, ctx, h, apiKey, "upgrade", map[string]string{
@@ -550,8 +582,11 @@ func runHardhat3Mode(
 		}
 	}
 	for _, proxy := range []string{deployment.Clones.Standard, deployment.Clones.ImmutableArgs} {
-		waitHardhatVerifiedProxyBinding(t, ctx, h, proxy, deployment.Implementation, "clone")
+		waitHardhatVerifiedProxyBinding(t, ctx, h, proxy, deployment.Implementation)
 	}
+	waitHardhatVerifiedProxyBinding(
+		t, ctx, h, deployment.CWIA.Account, deployment.CWIA.Implementation,
+	)
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v2",
 		"contracts/Implementation.sol:ImplementationV2", deployment.ImplementationV2, nil)
 	waitHardhatSource(t, ctx, h, apiKey, deployment.ImplementationV2)
@@ -562,7 +597,7 @@ func runHardhat3Mode(
 	h.enterPhase("anonymous verified artifact and native proxy API")
 	assertHardhatNativeProxyAPI(t, ctx, h, deployment, upgrade)
 	assertHardhatClonesHaveNoUpgrades(t, ctx, h,
-		deployment.Clones.Standard, deployment.Clones.ImmutableArgs)
+		deployment.Clones.Standard, deployment.Clones.ImmutableArgs, deployment.CWIA.Account)
 
 	snapshot := captureHardhatProxySnapshot(t, ctx, h, deployment.Proxy, deployment.Diamond.Address)
 	h.writeJSONArtifact(mode+"-proxy-summary.json", snapshot)
@@ -1283,7 +1318,7 @@ func waitHardhatVerifiedProxyBinding(
 	t *testing.T,
 	ctx context.Context,
 	h *harness,
-	proxy, implementation, pattern string,
+	proxy, implementation string,
 ) {
 	t.Helper()
 	waitFor(t, ctx, "current verified proxy binding "+proxy, func() (bool, string, error) {
@@ -1306,7 +1341,7 @@ func waitHardhatVerifiedProxyBinding(
 			WHERE binding.chain_id = 1
 			  AND binding.proxy_address = $1
 			  AND binding.implementation_address = $2
-			  AND binding.proxy_pattern = $3
+			  AND binding.proxy_pattern = 'clone'
 			  AND proxy_interaction_coverage_contains(
 				  binding.chain_id,
 				  binding.observation_block_number,
@@ -1314,8 +1349,45 @@ func waitHardhatVerifiedProxyBinding(
 				  tip.number,
 				  tip.block_hash
 			  )`, common.HexToAddress(proxy).Bytes(),
-			common.HexToAddress(implementation).Bytes(), pattern).Scan(&count)
-		return err == nil && count == 1, fmt.Sprintf("bindings=%d", count), err
+			common.HexToAddress(implementation).Bytes()).Scan(&count)
+		if err != nil || count == 1 {
+			return err == nil && count == 1, fmt.Sprintf("bindings=%d", count), err
+		}
+		var diagnostic string
+		diagnosticErr := h.db.QueryRow(ctx, `
+			WITH canonical_tip AS (
+				SELECT number, block_hash
+				FROM canonical_blocks
+				WHERE chain_id = 1
+				ORDER BY number DESC
+				LIMIT 1
+			)
+			SELECT COALESCE((
+				SELECT jsonb_build_object(
+					'observation_block_number', binding.observation_block_number,
+					'observation_block_hash', '0x' || encode(binding.observation_block_hash, 'hex'),
+					'implementation', '0x' || encode(binding.implementation_address, 'hex'),
+					'pattern', binding.proxy_pattern,
+					'observation_canonical', EXISTS (
+						SELECT 1 FROM canonical_blocks AS canonical
+						WHERE canonical.chain_id = binding.chain_id
+						  AND canonical.number = binding.observation_block_number
+						  AND canonical.block_hash = binding.observation_block_hash
+					),
+					'coverage', proxy_interaction_coverage_contains(
+						binding.chain_id, binding.observation_block_number,
+						binding.observation_block_hash, tip.number, tip.block_hash
+					),
+					'tip_number', tip.number,
+					'tip_hash', '0x' || encode(tip.block_hash, 'hex')
+				)
+				FROM verified_proxy_bindings AS binding
+				CROSS JOIN canonical_tip AS tip
+				WHERE binding.chain_id = 1 AND binding.proxy_address = $1
+				ORDER BY binding.created_at DESC
+				LIMIT 1
+			), '{}'::jsonb)::text`, common.HexToAddress(proxy).Bytes()).Scan(&diagnostic)
+		return false, fmt.Sprintf("bindings=%d diagnostic=%s", count, diagnostic), diagnosticErr
 	})
 }
 
@@ -1342,14 +1414,14 @@ func waitHardhatClone(
 	t *testing.T,
 	ctx context.Context,
 	h *harness,
-	clone, implementation, immutableArgs string,
+	clone, implementation, kind, immutableArgs string,
 ) {
 	t.Helper()
 	waitFor(t, ctx, "exact clone "+clone, func() (bool, string, error) {
-		var gotImplementation, gotPattern, gotArgs string
+		var gotImplementation, gotKind, gotPattern, gotArgs string
 		err := h.db.QueryRow(ctx, `
 			SELECT '0x' || encode(observation.implementation_address, 'hex'),
-			       observation.proxy_pattern,
+			       observation.proxy_kind, observation.proxy_pattern,
 			       COALESCE('0x' || encode(observation.immutable_args, 'hex'), '0x')
 			FROM proxy_observations AS observation
 			JOIN canonical_blocks AS canonical
@@ -1361,13 +1433,13 @@ func waitHardhatClone(
 			  AND observation.canonical
 			ORDER BY observation.block_number DESC
 			LIMIT 1`, common.HexToAddress(clone).Bytes()).Scan(
-			&gotImplementation, &gotPattern, &gotArgs,
+			&gotImplementation, &gotKind, &gotPattern, &gotArgs,
 		)
-		matched := err == nil && gotPattern == "clone" &&
+		matched := err == nil && gotKind == kind && gotPattern == "clone" &&
 			strings.EqualFold(gotImplementation, implementation) &&
 			strings.EqualFold(gotArgs, immutableArgs)
-		return matched, fmt.Sprintf("pattern=%s implementation=%s args=%s",
-			gotPattern, gotImplementation, gotArgs), err
+		return matched, fmt.Sprintf("kind=%s pattern=%s implementation=%s args=%s",
+			gotKind, gotPattern, gotImplementation, gotArgs), err
 	})
 }
 
@@ -1405,6 +1477,9 @@ type hardhatProxyDetailExpectation struct {
 	managementTarget    string
 	affectedProxyCount  string
 	immutableArgs       *string
+	cwiaOwner           string
+	cwiaNumber          string
+	cwiaData            string
 	expectProxyVerified bool
 }
 
@@ -1425,9 +1500,11 @@ func assertHardhatNativeProxyAPI(
 	}
 
 	assertHardhatAnonymousArtifact(t, ctx, h, deployment.ImplementationV2, "ImplementationV2")
+	assertHardhatAnonymousArtifact(t, ctx, h, deployment.CWIA.Implementation, "MyAccount")
 	assertHardhatAnonymousArtifact(t, ctx, h, deployment.Transparent.Proxy, "TransparentUpgradeableProxy")
 
 	immutableArgs := deployment.Clones.ImmutableArgsData
+	cwiaArgs := deployment.CWIA.ImmutableArgs
 	for _, expectation := range []hardhatProxyDetailExpectation{
 		{
 			address: deployment.Proxy, pattern: gen.ProxyPatternUups,
@@ -1462,6 +1539,12 @@ func assertHardhatNativeProxyAPI(
 			address: deployment.Clones.ImmutableArgs, pattern: gen.ProxyPatternClone,
 			mechanism: gen.ProxyMechanismEip1167, implementation: deployment.Implementation,
 			immutableArgs: &immutableArgs,
+		},
+		{
+			address: deployment.CWIA.Account, pattern: gen.ProxyPatternClone,
+			mechanism: gen.ProxyMechanismCwia, implementation: deployment.CWIA.Implementation,
+			immutableArgs: &cwiaArgs, cwiaOwner: deployment.CWIA.Owner,
+			cwiaNumber: deployment.CWIA.Number, cwiaData: deployment.CWIA.Data,
 		},
 	} {
 		assertHardhatProxyDetail(t, ctx, h, snapshot, expectation)
@@ -1530,7 +1613,7 @@ func assertHardhatAnonymousArtifact(
 	var response gen.VerifiedContractResponse
 	h.mustGetJSON(ctx, hardhatContractAPIPath(address, "/verification", nil), &response)
 	if response.Meta.ChainId != "1" || response.Meta.RequestId == "" ||
-		response.Data.Resolution != gen.VerifiedContractResolutionExactAddress ||
+		response.Data.Resolution != gen.ContractArtifactResolutionExactAddress ||
 		!strings.EqualFold(response.Data.Target.Address, address) ||
 		response.Data.Target.ChainId != "1" || response.Data.ContractName != contractName ||
 		!common.IsHexHash(response.Data.Target.CodeHash) ||
@@ -1601,6 +1684,27 @@ func assertHardhatProxyDetail(
 		!strings.EqualFold(*response.Data.ImmutableArgs, *expectation.immutableArgs)) {
 		t.Fatalf("clone %s immutable args = %#v, want %s",
 			expectation.address, response.Data.ImmutableArgs, *expectation.immutableArgs)
+	}
+	if expectation.cwiaOwner != "" {
+		decoding := response.Data.ImmutableArgsDecoding
+		if decoding == nil || decoding.Status != gen.CWIAImmutableArgsDecodingStatusDecoded ||
+			decoding.Schema == nil || !common.IsHexHash(string(decoding.Schema.Sha256)) ||
+			decoding.Schema.Version != gen.CWIAImmutableArgSchemaVersionN2 ||
+			decoding.Schema.Source != gen.SolidityAst ||
+			decoding.Schema.Encoding != gen.SoladyCwiaOffsets ||
+			decoding.SchemaResolution == nil ||
+			*decoding.SchemaResolution != gen.CWIASchemaResolutionExactAddress ||
+			len(decoding.Schema.Fields) != 4 || len(decoding.Arguments) != 4 ||
+			decoding.Arguments[0].Name != "owner" || decoding.Arguments[0].Type != "address" ||
+			!strings.EqualFold(fmt.Sprint(decoding.Arguments[0].Value), expectation.cwiaOwner) ||
+			decoding.Arguments[1].Name != "number" || decoding.Arguments[1].Type != "uint256" ||
+			fmt.Sprint(decoding.Arguments[1].Value) != expectation.cwiaNumber ||
+			decoding.Arguments[2].Name != "data_length" || decoding.Arguments[2].Type != "uint16" ||
+			fmt.Sprint(decoding.Arguments[2].Value) != "11" ||
+			decoding.Arguments[3].Name != "data" || decoding.Arguments[3].Type != "bytes" ||
+			!strings.EqualFold(fmt.Sprint(decoding.Arguments[3].Value), expectation.cwiaData) {
+			t.Fatalf("CWIA immutable argument decoding %s = %#v", expectation.address, decoding)
+		}
 	}
 }
 
@@ -2313,7 +2417,7 @@ func captureHardhatProxySnapshot(
 		    AND catalog_generation_id IS NOT NULL
 		    AND executor_digest IS NOT NULL
 		    AND executor_kind = 'node_solcjs_v1'
-		    AND execution_policy = 'trusted_subprocess') = 8,
+		    AND execution_policy = 'trusted_subprocess') = 9,
 		  count(*) FILTER (WHERE language = 'yul' AND status = 'succeeded'
 		    AND compiler_version = '0.8.30+commit.73712a01'
 		    AND compiler_platform = 'emscripten-wasm32'
@@ -2323,7 +2427,7 @@ func captureHardhatProxySnapshot(
 		    AND executor_kind = 'node_solcjs_v1'
 		    AND execution_policy = 'trusted_subprocess') = 1,
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
-		    AND compiler_digest IS NOT NULL) = 8
+		    AND compiler_digest IS NOT NULL) = 9
 		FROM verification_jobs`).Scan(
 		&result.AddressJobs, &result.YulJobs, &result.ProxyJobs,
 		&result.ExecutorProvenance, &result.YulProvenance,
@@ -2401,9 +2505,9 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if result.AddressJobs != 8 || result.ProxyJobs != 10 ||
-		result.CompilerResults != 9 || result.ProxyResults != 10 ||
-		result.ProxyBindings != 10 || result.CatalogEntries == 0 ||
+	if result.AddressJobs != 9 || result.ProxyJobs != 11 ||
+		result.CompilerResults != 10 || result.ProxyResults != 11 ||
+		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
 		!result.ExecutorProvenance || !result.CompilerProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
 		result.DiamondState != "confirmed" || result.DiamondFacets != 3 ||

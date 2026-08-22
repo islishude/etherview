@@ -12,6 +12,7 @@ import {
   listContractDiamondCuts,
   listContractProxyInitializations,
   listContractProxyUpgrades,
+	useContractProxy,
   useVerifiedContractArtifact,
   type ContractProxyDetails,
 } from "./proxy";
@@ -107,6 +108,33 @@ describe("proxy API adapter", () => {
 	]),
 	).toMatchObject({ target: { code_hash: oldHash } });
   });
+
+	it("refetches an unavailable proxy classification until a published state is available", async () => {
+		const fetcher = vi.fn<typeof fetch>()
+			.mockResolvedValueOnce(envelope({
+				address: proxyAddress,
+				status: "unavailable",
+				snapshot: snapshot(),
+				evidence: [],
+			}))
+			.mockResolvedValue(envelope(verifiedProxyDetail()));
+		vi.stubGlobal("fetch", fetcher);
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+		});
+
+		const { result } = renderHook(
+			() => useContractProxy(proxyAddress),
+			{ wrapper: queryWrapper(queryClient) },
+		);
+
+		await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
+		await waitFor(
+			() => expect(result.current.data?.state).toBe("verified"),
+			{ timeout: 2_000 },
+		);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
 
   it("exposes implementation and management artifacts only for an exact verified binding", async () => {
     vi.stubGlobal(
@@ -343,6 +371,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
       address: proxyAddress,
       code_hash: hash,
       verification_state: "verified",
+			artifact_resolution: "exact_address",
       artifact_kind: "transparent_proxy",
       standard_version: "5.6.1",
     },
@@ -350,6 +379,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
       address: implementationAddress,
       code_hash: hash,
       verification_state: "verified",
+			artifact_resolution: "exact_address",
     },
     management: {
       kind: "proxy_admin",
@@ -357,6 +387,7 @@ function verifiedProxyDetail(): ContractProxyDetails {
         address: managementAddress,
         code_hash: hash,
         verification_state: "verified",
+			artifact_resolution: "exact_address",
         artifact_kind: "proxy_admin",
         standard_version: "5.6.1",
       },

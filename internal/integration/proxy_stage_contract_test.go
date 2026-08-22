@@ -3,8 +3,10 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -562,6 +564,195 @@ func TestProxyPoisonCandidateDoesNotBlockValidProxyInSamePostgresBlock(t *testin
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM block_journals WHERE chain_id = 1 AND block_hash = $1 AND stage = 'proxy@2' AND canonical`, 1, mustBytes(t, block.Block.Hash()))
 }
 
+func TestProxyStagePersistsExactSoladyLegacyCWIA(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, _ := store.NewPostgresRepository(db)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	proxy, implementation, owner := testAddress(9_410), testAddress(9_411), testAddress(9_412)
+	args := append(owner.Bytes(), make([]byte, 32)...)
+	args[len(args)-1] = 42
+	runtime := soladyLegacyCWIARuntime(implementation, args)
+	block, err := newIntegrationBundle(integrationBundleOptions{
+		Number:     0,
+		ParentHash: testHash(0),
+		ExtraData:  []byte("solady-legacy-cwia"),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType, To: &proxy,
+		}},
+		Withdrawals: []*types.Withdrawal{},
+		RawExtra:    map[string]any{"integrationVariant": "solady-legacy-cwia"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerFixtureIdentities(testHash(94_100), block.Block.Hash(), testHash(94_101), block.Block.Transactions()[0].Hash())
+	commitCanonical(t, ctx, repository, block)
+	calls := make(map[string][]string)
+	states := map[string]map[string]proxyContractState{
+		block.Block.Hash().String(): {
+			proxy.String():          {code: runtime},
+			implementation.String(): {code: []byte{0x60, 0x00}},
+		},
+	}
+	pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
+		proxyStateEndpoint(t, "state-cwia", states, nil, &sync.Mutex{}, calls),
+	}, ethrpc.PoolOptions{})
+	processor, err := enrich.NewPostgresProxyProcessorWithOptions(
+		db,
+		pool,
+		enrich.ProxyLimits{},
+		enrich.ProxyDetectionOptions{Enabled: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := processor.Process(ctx, proxyJob(t, block, "cwia"))
+	if err != nil || result.State != enrich.ResultComplete || result.Details["proxies"] != "1" {
+		t.Fatalf("CWIA proxy result=%+v err=%v", result, err)
+	}
+	var kind, pattern, storedArgs, runtimeKind string
+	if err := db.QueryRowContext(ctx, `
+		SELECT proxy_kind, proxy_pattern,
+		       '0x' || encode(immutable_args, 'hex'),
+		       details->>'cwia_runtime'
+		FROM proxy_observations
+		WHERE chain_id = 1 AND proxy_address = $1 AND block_hash = $2
+		  AND stage_version = 2 AND canonical`, proxy.Bytes(), block.Block.Hash().Bytes()).Scan(
+		&kind, &pattern, &storedArgs, &runtimeKind,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "cwia" || pattern != "clone" || runtimeKind != "solady-legacy-libcwia" ||
+		!strings.EqualFold(storedArgs, hexutil.Encode(args)) {
+		t.Fatalf("CWIA observation kind=%s pattern=%s args=%s runtime=%s", kind, pattern, storedArgs, runtimeKind)
+	}
+	var family, variant, detector string
+	if err := db.QueryRowContext(ctx, `
+		SELECT details->'primary'->>'family', details->'primary'->>'variant',
+		       details->'primary'->>'detector'
+		FROM proxy_detection_evidence
+		WHERE chain_id = 1 AND address = $1 AND block_hash = $2
+		  AND candidate_kind = 'proxy_v2' AND reason = 'resolver'`,
+		proxy.Bytes(), block.Block.Hash().Bytes()).Scan(&family, &variant, &detector); err != nil {
+		t.Fatal(err)
+	}
+	if family != "cwia" || variant != "solady-legacy-libcwia" || detector != "solady-cwia" {
+		t.Fatalf("CWIA V2 family=%s variant=%s detector=%s", family, variant, detector)
+	}
+	for _, entries := range calls {
+		for _, entry := range entries {
+			if strings.Contains(entry, "eth_getStorageAt") || strings.Contains(entry, "eth_call") {
+				t.Fatalf("CWIA detection issued a non-code RPC: %v", calls)
+			}
+		}
+	}
+}
+
+func TestSoladyLegacyCWIAReplayReorgAndRestartRetainExactForks(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, _ := store.NewPostgresRepository(db)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	genesis := testBundle(0, testHash(94_200), testHash(0), testHash(94_201), "cwia-reorg-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	proxy := testAddress(9_420)
+	oldImplementation, newImplementation := testAddress(9_421), testAddress(9_422)
+	oldArgs, newArgs := []byte{0x01}, []byte{0x02, 0x03}
+	oldBlock, err := newIntegrationBundle(integrationBundleOptions{
+		Number: 1, ParentHash: genesis.Block.Hash(), ExtraData: []byte("cwia-old"),
+		Transactions: []integrationTransactionOptions{{Type: types.DynamicFeeTxType, To: &proxy}},
+		Withdrawals:  []*types.Withdrawal{}, RawExtra: map[string]any{"integrationVariant": "cwia-old"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBlock, err := newIntegrationBundle(integrationBundleOptions{
+		Number: 1, ParentHash: genesis.Block.Hash(), ExtraData: []byte("cwia-new"),
+		Transactions: []integrationTransactionOptions{{Type: types.DynamicFeeTxType, To: &proxy}},
+		Withdrawals:  []*types.Withdrawal{}, RawExtra: map[string]any{"integrationVariant": "cwia-new"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerFixtureIdentities(testHash(94_202), oldBlock.Block.Hash(), testHash(94_203), oldBlock.Block.Transactions()[0].Hash())
+	registerFixtureIdentities(testHash(94_204), newBlock.Block.Hash(), testHash(94_205), newBlock.Block.Transactions()[0].Hash())
+	states := map[string]map[string]proxyContractState{
+		oldBlock.Block.Hash().String(): {
+			proxy.String():             {code: soladyLegacyCWIARuntime(oldImplementation, oldArgs)},
+			oldImplementation.String(): {code: []byte{0x60, 0x01}},
+		},
+		newBlock.Block.Hash().String(): {
+			proxy.String():             {code: soladyLegacyCWIARuntime(newImplementation, newArgs)},
+			newImplementation.String(): {code: []byte{0x60, 0x02}},
+		},
+	}
+	pool, _ := ethrpc.NewPool([]ethrpc.Endpoint{
+		proxyStateEndpoint(t, "state-cwia-reorg", states, nil, &sync.Mutex{}, make(map[string][]string)),
+	}, ethrpc.PoolOptions{})
+	processor, err := enrich.NewPostgresProxyProcessorWithOptions(
+		db, pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{Enabled: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, _ := enrich.NewPostgresJobQueue(db)
+	worker, _ := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "cwia-reorg", LeaseDuration: 2 * time.Second, PollInterval: time.Millisecond,
+	})
+	commitCanonical(t, ctx, repository, oldBlock)
+	oldJob := runDurableProxyBlock(t, ctx, db, queue, worker, oldBlock)
+	assertPublishedProxyObservationGeneration(t, ctx, db, oldBlock, proxy, oldJob.Job.ID, 1, true)
+	assertCWIAObservation(t, ctx, db, oldBlock, proxy, oldImplementation, oldArgs, true)
+
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{oldBlock}, []chainbundle.Bundle{newBlock}, "CWIA fork")
+	assertPublishedProxyObservationGeneration(t, ctx, db, oldBlock, proxy, oldJob.Job.ID, 1, false)
+	assertCWIAObservation(t, ctx, db, oldBlock, proxy, oldImplementation, oldArgs, false)
+	restartedWorker, _ := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{
+		ID: "cwia-restart", LeaseDuration: 2 * time.Second, PollInterval: time.Millisecond,
+	})
+	newJob := runDurableProxyBlock(t, ctx, db, queue, restartedWorker, newBlock)
+	assertPublishedProxyObservationGeneration(t, ctx, db, newBlock, proxy, newJob.Job.ID, 1, true)
+	assertCWIAObservation(t, ctx, db, newBlock, proxy, newImplementation, newArgs, true)
+
+	replay, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.ProxyStage, ChainID: "1", BlockHash: newBlock.Block.Hash(), BlockNumber: 1,
+		Replay: enrich.ReplaySource{Kind: "fixture", Key: "cwia-replay"},
+	})
+	if err != nil || !replay.Replayed {
+		t.Fatalf("request CWIA replay: result=%+v err=%v", replay, err)
+	}
+	processOne(t, ctx, restartedWorker)
+	assertPublishedGeneration(t, ctx, db, replay.Job.ID, 2)
+	assertPublishedProxyObservationGeneration(t, ctx, db, newBlock, proxy, replay.Job.ID, 2, true)
+	assertCWIAObservation(t, ctx, db, newBlock, proxy, newImplementation, newArgs, true)
+}
+
+func assertCWIAObservation(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block chainbundle.Bundle,
+	proxy, implementation common.Address,
+	args []byte,
+	canonical bool,
+) {
+	t.Helper()
+	var gotImplementation, gotArgs []byte
+	var gotCanonical bool
+	if err := db.QueryRowContext(ctx, `
+		SELECT implementation_address, immutable_args, canonical
+		FROM proxy_observations
+		WHERE chain_id = 1 AND proxy_address = $1 AND block_hash = $2
+		  AND stage_version = 2 AND proxy_kind = 'cwia' AND proxy_pattern = 'clone'`,
+		proxy.Bytes(), block.Block.Hash().Bytes()).Scan(&gotImplementation, &gotArgs, &gotCanonical); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotImplementation, implementation.Bytes()) || !bytes.Equal(gotArgs, args) || gotCanonical != canonical {
+		t.Fatalf("CWIA observation implementation=%x args=%x canonical=%t", gotImplementation, gotArgs, gotCanonical)
+	}
+}
+
 func proxyStateEndpoint(
 	t *testing.T,
 	name string,
@@ -580,6 +771,20 @@ func proxyStateEndpoint(
 		}),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
 	}
+}
+
+func soladyLegacyCWIARuntime(implementation common.Address, args []byte) []byte {
+	prefix := hexutil.MustDecode("0x36602c57343d527f9e4ac34f21c619cefc926c8bd93b54bf5a39c7ab2127a895af1cc0691d7e3dff593da1005b363d3d373d3d3d3d61")
+	middle := hexutil.MustDecode("0x806062363936013d73")
+	suffix := hexutil.MustDecode("0x5af43d3d93803e606057fd5bf3")
+	extraLength := len(args) + 2
+	runtime := append([]byte(nil), prefix...)
+	runtime = binary.BigEndian.AppendUint16(runtime, uint16(extraLength))
+	runtime = append(runtime, middle...)
+	runtime = append(runtime, implementation.Bytes()...)
+	runtime = append(runtime, suffix...)
+	runtime = append(runtime, args...)
+	return binary.BigEndian.AppendUint16(runtime, uint16(extraLength))
 }
 
 func proxyCreationBundle(

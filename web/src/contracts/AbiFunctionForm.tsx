@@ -814,8 +814,10 @@ function interactionBindingContext(target: ContractInteractionTarget): readonly 
 		target.proxyCodeHash,
 		target.abiAddress,
 		target.abiCodeHash ?? "",
+		target.abiArtifactResolution ?? "",
 		target.beaconAddress ?? "",
 		target.beaconCodeHash ?? "",
+		target.cwiaSchemaSHA256 ?? "",
 	];
 }
 
@@ -849,6 +851,9 @@ function interactionErrorMessage(error: unknown, t: Translate): string {
   }
   if (error instanceof InteractionFenceError) {
     if (bindingChanged(error)) return t("contracts.functions.bindingChanged");
+		if (error.code === "FRESH_PROXY_UNAVAILABLE") {
+			return t("contracts.functions.proxyTemporarilyUnavailable");
+		}
     if (["CHAIN_CHANGED"].includes(error.code)) return t("wallet.errors.chainMismatch");
     if (["ACCOUNT_CHANGED"].includes(error.code)) return t("wallet.errors.accountChanged");
     if (["PROVIDER_CHANGED", "PROVIDER_REVISION_CHANGED"].includes(error.code)) {

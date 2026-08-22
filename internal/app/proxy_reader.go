@@ -168,6 +168,21 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 			model.ImplementationAddresses = &addresses
 		}
 	}
+	for _, current := range []struct {
+		role     string
+		identity *query.ProxyIdentity
+	}{
+		{role: "proxy", identity: detail.Proxy},
+		{role: "admin", identity: detail.Admin},
+		{role: "beacon", identity: detail.Beacon},
+	} {
+		if current.identity != nil && current.identity.ArtifactResolution == "code_hash" {
+			return gen.ProxyDetails{}, fmt.Errorf("%s identity cannot reuse a code-hash artifact", current.role)
+		}
+	}
+	if detail.Management != nil && detail.Management.Target.ArtifactResolution == "code_hash" {
+		return gen.ProxyDetails{}, errors.New("management identity cannot reuse a code-hash artifact")
+	}
 	if model.Proxy, err = proxyCurrentIdentity(detail.Proxy); err != nil {
 		return gen.ProxyDetails{}, fmt.Errorf("invalid proxy identity: %w", err)
 	}
@@ -226,6 +241,16 @@ func (adapter proxyReaderAdapter) proxyDetails(detail query.ProxyDetail) (gen.Pr
 			return gen.ProxyDetails{}, errors.New("proxy immutable arguments are invalid")
 		}
 		model.ImmutableArgs = &detail.ImmutableArgs
+	}
+	if model.ImmutableArgsDecoding, err = cwiaImmutableArgsDecoding(detail.ImmutableArgsDecoding); err != nil {
+		return gen.ProxyDetails{}, err
+	}
+	if model.Mechanism != nil && *model.Mechanism == gen.ProxyMechanismCwia {
+		if model.ImmutableArgs == nil || model.ImmutableArgsDecoding == nil {
+			return gen.ProxyDetails{}, errors.New("CWIA proxy detail lacks immutable argument state")
+		}
+	} else if model.ImmutableArgsDecoding != nil {
+		return gen.ProxyDetails{}, errors.New("non-CWIA proxy detail carries CWIA argument decoding")
 	}
 	if detail.BindingID != "" {
 		identifier, parseErr := uuid.Parse(detail.BindingID)
@@ -502,6 +527,135 @@ func proxyImplementationInteraction(
 	return interaction, nil
 }
 
+func cwiaImmutableArgsDecoding(
+	value *query.CWIAImmutableArgsDecoding,
+) (*gen.CWIAImmutableArgsDecoding, error) {
+	if value == nil {
+		return nil, nil
+	}
+	status := gen.CWIAImmutableArgsDecodingStatus(value.Status)
+	if !status.Valid() || len(value.Arguments) > 64 {
+		return nil, errors.New("CWIA immutable argument decoding is outside the public contract")
+	}
+	model := &gen.CWIAImmutableArgsDecoding{
+		Status: status, Arguments: make([]gen.CWIAImmutableArgValue, len(value.Arguments)),
+	}
+	if value.Reason != "" {
+		reason := gen.CWIAImmutableArgsDecodingReason(value.Reason)
+		if !reason.Valid() {
+			return nil, errors.New("CWIA immutable argument decoding reason is invalid")
+		}
+		model.Reason = &reason
+	}
+	if value.Schema != nil {
+		if value.Schema.Version != 2 || value.Schema.Source != "solidity_ast" ||
+			value.Schema.Encoding != "solady-cwia-offsets" ||
+			len(value.Schema.Fields) == 0 || len(value.Schema.Fields) > 64 {
+			return nil, errors.New("CWIA immutable argument schema is invalid")
+		}
+		digest, err := proxyHash(value.Schema.SHA256)
+		if err != nil {
+			return nil, errors.New("CWIA immutable argument schema digest is invalid")
+		}
+		helperDigest, err := proxyHash(value.Schema.HelperSHA256)
+		if err != nil {
+			return nil, errors.New("CWIA helper source digest is invalid")
+		}
+		schema := &gen.CWIAImmutableArgSchema{
+			Version:      gen.CWIAImmutableArgSchemaVersion(value.Schema.Version),
+			Encoding:     gen.CWIAImmutableArgSchemaEncoding(value.Schema.Encoding),
+			Source:       gen.CWIAImmutableArgSchemaSource(value.Schema.Source),
+			HelperSha256: helperDigest, Sha256: digest,
+			Fields: make([]gen.CWIAImmutableArgField, len(value.Schema.Fields)),
+		}
+		if !schema.Version.Valid() || !schema.Source.Valid() || !schema.Encoding.Valid() {
+			return nil, errors.New("CWIA immutable argument schema version or encoding is invalid")
+		}
+		for index, field := range value.Schema.Fields {
+			fieldType := gen.CWIAImmutableArgType(field.Type)
+			role := gen.CWIAImmutableArgFieldRole(field.Role)
+			sizeKind := gen.CWIAImmutableArgSizeKind(field.Size.Kind)
+			if field.Name == "" || len(field.Name) > 64 || !fieldType.Valid() || !role.Valid() ||
+				!sizeKind.Valid() || field.Offset < 0 || field.Offset > enrich.MaxCloneImmutableArgs ||
+				len(field.Getters) > 16 {
+				return nil, errors.New("CWIA immutable argument schema field is invalid")
+			}
+			size := gen.CWIAImmutableArgSize{Kind: sizeKind}
+			if field.Size.Bytes != nil {
+				bytes := *field.Size.Bytes
+				size.Bytes = &bytes
+			}
+			if field.Size.Field != "" {
+				lengthField := field.Size.Field
+				size.Field = &lengthField
+			}
+			if field.Size.Multiplier != 0 {
+				multiplier := gen.CWIAImmutableArgSizeMultiplier(field.Size.Multiplier)
+				if !multiplier.Valid() {
+					return nil, errors.New("CWIA immutable argument schema multiplier is invalid")
+				}
+				size.Multiplier = &multiplier
+			}
+			schema.Fields[index] = gen.CWIAImmutableArgField{
+				Name: field.Name, Type: fieldType, Offset: field.Offset, Role: role,
+				Getters: append([]string(nil), field.Getters...), Size: size,
+			}
+		}
+		model.Schema = schema
+	}
+	if value.SchemaResolution != "" {
+		resolution := gen.CWIASchemaResolution(value.SchemaResolution)
+		if !resolution.Valid() {
+			return nil, errors.New("CWIA schema resolution is invalid")
+		}
+		model.SchemaResolution = &resolution
+	}
+	for index, argument := range value.Arguments {
+		argumentType := gen.CWIAImmutableArgType(argument.Type)
+		if argument.Name == "" || len(argument.Name) > 64 || !argumentType.Valid() ||
+			argument.Offset < 0 || argument.Length < 0 ||
+			argument.Offset+argument.Length > enrich.MaxCloneImmutableArgs {
+			return nil, errors.New("CWIA immutable argument value is invalid")
+		}
+		var publicValue any
+		switch typed := argument.Value.(type) {
+		case string:
+			publicValue = typed
+		case []string:
+			publicValue = append([]string(nil), typed...)
+		default:
+			return nil, errors.New("CWIA immutable argument value type is invalid")
+		}
+		model.Arguments[index] = gen.CWIAImmutableArgValue{
+			Name: argument.Name, Type: argumentType, Offset: argument.Offset,
+			Length: argument.Length, Value: publicValue,
+		}
+	}
+	switch status {
+	case gen.CWIAImmutableArgsDecodingStatusDecoded:
+		if model.Reason != nil || model.Schema == nil || model.SchemaResolution == nil ||
+			len(model.Arguments) != len(model.Schema.Fields) {
+			return nil, errors.New("decoded CWIA immutable arguments have an invalid shape")
+		}
+		for index, argument := range model.Arguments {
+			field := model.Schema.Fields[index]
+			if argument.Name != field.Name || argument.Type != field.Type || argument.Offset != field.Offset {
+				return nil, errors.New("decoded CWIA immutable arguments disagree with their schema")
+			}
+		}
+	case gen.CWIAImmutableArgsDecodingStatusSchemaUnavailable,
+		gen.CWIAImmutableArgsDecodingStatusSchemaInvalid:
+		if model.Reason == nil || model.Schema != nil || model.SchemaResolution != nil || len(model.Arguments) != 0 {
+			return nil, errors.New("unavailable CWIA immutable arguments have an invalid shape")
+		}
+	case gen.CWIAImmutableArgsDecodingStatusDataInvalid:
+		if model.Reason == nil || model.Schema == nil || model.SchemaResolution == nil || len(model.Arguments) != 0 {
+			return nil, errors.New("invalid CWIA immutable argument data has an invalid shape")
+		}
+	}
+	return model, nil
+}
+
 func (adapter proxyReaderAdapter) proxyUpgradeHistory(page query.ProxyUpgradePage) (gen.ProxyUpgradeHistory, error) {
 	if len(page.Items) > 100 {
 		return gen.ProxyUpgradeHistory{}, errors.New("proxy upgrade history exceeds the public bound")
@@ -722,6 +876,17 @@ func proxyCurrentIdentity(identity *query.ProxyIdentity) (*gen.ProxyContractIden
 		Address:           address,
 		CodeHash:          codeHash,
 		VerificationState: state,
+	}
+	if identity.ArtifactResolution != "" {
+		resolution := gen.ContractArtifactResolution(identity.ArtifactResolution)
+		if !resolution.Valid() ||
+			(identity.Verified && resolution != gen.ContractArtifactResolutionExactAddress) ||
+			(!identity.Verified && resolution != gen.ContractArtifactResolutionCodeHash) {
+			return nil, errors.New("proxy artifact resolution disagrees with exact verification")
+		}
+		model.ArtifactResolution = &resolution
+	} else if identity.Verified {
+		return nil, errors.New("verified proxy identity lacks exact artifact resolution")
 	}
 	if identity.ArtifactKind != "" {
 		value := gen.ProxyArtifactKind(identity.ArtifactKind)

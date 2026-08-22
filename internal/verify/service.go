@@ -120,6 +120,7 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 			request.StandardJSONVariants = []json.RawMessage{prepared}
 		}
 	}
+	normalizeSolidityAnalysisVersion(request)
 	maximumPairs := 1
 	if request.Kind == JobSolidityBatchMultipart || request.Kind == JobSolidityBatchStandardJSON {
 		maximumPairs = 100
@@ -208,7 +209,7 @@ func validateProxyVerificationSubmission(request *SubmissionV2) error {
 		return errors.New("proxy verification standard version is invalid")
 	}
 	switch target.Kind {
-	case "eip1167":
+	case "eip1167", "cwia":
 		if target.Pattern != "clone" {
 			return errors.New("proxy verification kind and pattern disagree")
 		}

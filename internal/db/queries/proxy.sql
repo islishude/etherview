@@ -323,6 +323,11 @@ SELECT effective.block_number::text AS observation_block_number,
        EXISTS (
            SELECT 1 FROM verified_contracts AS verified
            WHERE verified.chain_id = effective.chain_id
+             AND verified.code_hash = effective.current_implementation_code_hash
+       ) AS implementation_artifact_available,
+       EXISTS (
+           SELECT 1 FROM verified_contracts AS verified
+           WHERE verified.chain_id = effective.chain_id
              AND verified.address = effective.admin_address
              AND verified.code_hash = effective.admin_code_hash
              AND verified.valid_from_block <= effective.context_number
@@ -818,6 +823,31 @@ SELECT verification_job_id::text AS binding_id,
            WHERE generation.id = current_binding.beacon_generation_id
        ) ELSE observation_block_hash END::bytea AS implementation_observation_block_hash
 FROM current_binding;
+
+-- name: GetCWIAImplementationAnalyses :many
+SELECT (verified.address = sqlc.arg(implementation_address)::bytea
+        AND verified.valid_from_block <= sqlc.arg(snapshot_number)::numeric
+        AND (verified.valid_to_block IS NULL OR
+             verified.valid_to_block >= sqlc.arg(snapshot_number)::numeric))::boolean AS exact,
+       verified.compilation_artifacts->'soladyLegacyCWIAImmutableArgs' AS analysis
+FROM verified_contracts AS verified
+JOIN verification_jobs AS job
+  ON job.id = verified.verification_job_id
+ AND job.request_digest = verified.request_digest
+ AND job.kind = 'address'
+ AND job.status = 'succeeded'
+WHERE verified.chain_id = sqlc.arg(chain_id)::numeric
+  AND verified.code_hash = sqlc.arg(implementation_code_hash)::bytea
+  AND verified.language = 'solidity'
+  AND job.request->>'solidity_analysis_version' = '1'
+  AND verified.compilation_artifacts ? 'soladyLegacyCWIAImmutableArgs'
+ORDER BY exact DESC,
+         (verified.match_type = 'full') DESC,
+         verified.request_digest,
+         verified.verification_job_id,
+         verified.address,
+         verified.valid_from_block DESC
+LIMIT 17;
 
 -- name: CountCurrentBeaconProxies :one
 WITH canonical_tip AS (

@@ -13,6 +13,11 @@ const beaconProxyAddress = "0x5000000000000000000000000000000000000005";
 const beaconImplementation = "0x6000000000000000000000000000000000000006";
 const cloneAddress = "0x7000000000000000000000000000000000000007";
 const cloneImplementation = "0x8000000000000000000000000000000000000008";
+const cwiaAddress = "0xa00000000000000000000000000000000000000a";
+const cwiaReadOnlyAddress = "0xc00000000000000000000000000000000000000c";
+const cwiaUnverifiedAddress = "0xe00000000000000000000000000000000000000e";
+const cwiaImplementation = "0xb00000000000000000000000000000000000000b";
+const cwiaCodeHashImplementation = "0xf00000000000000000000000000000000000000f";
 const proxyAdminAddress = "0x9000000000000000000000000000000000000009";
 const upgradeableBeacon = "0x2000000000000000000000000000000000000020";
 const oldImplementation = "0x4000000000000000000000000000000000000040";
@@ -1376,6 +1381,221 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
     pathname === `/api/v1/contracts/${proxyAdminAddress}/verification`)).toBe(true);
   expect(contractRequests.some(({ pathname }) =>
     pathname === `/api/v1/contracts/${upgradeableBeacon}/verification`)).toBe(true);
+});
+
+test("Solady legacy CWIA displays verified packed arguments and gates writes on its schema", async ({
+	page,
+}) => {
+	test.setTimeout(120_000);
+	let transientProxyReads = 0;
+	let allowReadOnlyClassification = false;
+	await page.route(new RegExp(
+		`/api/v1/contracts/${cwiaReadOnlyAddress}/proxy$`,
+		"iu",
+	), async (route) => {
+		if (!allowReadOnlyClassification) {
+			await fulfillAPIEnvelope(route, {
+				address: cwiaReadOnlyAddress,
+				status: "unavailable",
+				snapshot: {
+					chain_id: "1",
+					block_number: "43",
+					block_hash: codeHash,
+				},
+				evidence: [],
+			});
+			return;
+		}
+		await route.continue();
+	});
+	await page.route(new RegExp(
+		`/api/v1/contracts/${cwiaUnverifiedAddress}/proxy$`,
+		"iu",
+	), async (route) => {
+		transientProxyReads += 1;
+		if (transientProxyReads === 2 || transientProxyReads === 3) {
+			await fulfillAPIEnvelope(route, {
+				address: cwiaUnverifiedAddress,
+				status: "unavailable",
+				snapshot: {
+					chain_id: "1",
+					block_number: "43",
+					block_hash: codeHash,
+				},
+				evidence: [],
+			});
+			return;
+		}
+		await route.continue();
+	});
+	await page.addInitScript(() => {
+		const requests: WalletRequest[] = [];
+		const listeners = new Map<string, Set<(value: unknown) => void>>();
+		const account = "0x2222222222222222222222222222222222222222";
+		const provider = {
+			async request({ method, params }: WalletRequest) {
+				requests.push({ method, params });
+				if (method === "eth_requestAccounts" || method === "eth_accounts") return [account];
+				if (method === "eth_chainId") return "0x1";
+				if (method === "eth_call") return `0x${"0".repeat(63)}2`;
+				throw new Error(`unexpected wallet method: ${method}`);
+			},
+			on(event: string, listener: (value: unknown) => void) {
+				const current = listeners.get(event) ?? new Set();
+				current.add(listener);
+				listeners.set(event, current);
+			},
+			removeListener(event: string, listener: (value: unknown) => void) {
+				listeners.get(event)?.delete(listener);
+			},
+		};
+		const detail = {
+			info: {
+				uuid: "00000000-0000-4000-8000-000000000069",
+				name: "CWIA E2E Wallet",
+				icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>",
+				rdns: "org.etherview.cwia-e2e",
+			},
+			provider,
+		};
+		window.addEventListener("eip6963:requestProvider", () => {
+			window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
+		});
+		(window as WalletWindow).__etherviewE2EWallet = {
+			requests,
+			resolveWrite() {},
+			setMode() {},
+			emit(event, value) {
+				for (const listener of listeners.get(event) ?? []) listener(value);
+			},
+		};
+	});
+	const requestedPaths: string[] = [];
+	page.on("request", (request) => {
+		const url = new URL(request.url());
+		if (url.pathname.startsWith("/api/v1/contracts/")) requestedPaths.push(url.pathname);
+	});
+
+	await page.goto(`/address/${cwiaAddress}#code`);
+	await expect(page.getByRole("heading", { name: "Proxy identity", level: 2 })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+	await page.getByRole("heading", { name: "Proxy identity" }).click();
+	await expect(page.getByText("Solady legacy CWIA bytecode", { exact: true })).toBeVisible();
+	await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
+	await expect(page.getByText("Exact implementation address", { exact: true })).toBeVisible();
+	const argumentsRegion = page.getByRole("region", { name: "Decoded immutable arguments" });
+	const argumentsTable = argumentsRegion.getByRole("table", { name: "Decoded immutable arguments" });
+	for (const heading of ["Name", "Type", "Offset", "Data"]) {
+		await expect(argumentsTable.getByRole("columnheader", { name: heading })).toBeVisible();
+	}
+	await expect(argumentsRegion.getByText("owner", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("address", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("0", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("0x2222222222222222222222222222222222222222", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("number", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("uint256", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("20", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("42", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("data_length", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByText("data", { exact: true })).toBeVisible();
+	await expect(argumentsRegion.getByRole("button", { name: "Copy" })).toHaveCount(4);
+	await expect(argumentsRegion.getByText("0x68656c6c6f2c776f726c64", { exact: true })).toBeVisible();
+	const writableTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+	await expect(writableTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
+	await activateInView(writableTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
+	await expect(page.getByText("setValue(uint256)", { exact: true })).toBeVisible();
+
+	await page.goto(`/address/${cwiaReadOnlyAddress}#code`);
+	await expect(page.getByRole("tab", { name: "Code" })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+	allowReadOnlyClassification = true;
+	await expect(page.getByRole("heading", { name: "Proxy identity" })).toBeVisible();
+	await page.getByRole("heading", { name: "Proxy identity" }).click();
+	await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
+	await expect(page.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u)).toBeVisible();
+	const readOnlyTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+	await activateInView(readOnlyTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
+	await expect(page.getByText("value()", { exact: true })).toBeVisible();
+	await activateInView(readOnlyTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
+	await expect(page.getByText("This ABI has no callable state-changing functions for this target.", { exact: true })).toBeVisible();
+	await expect.poll(() => requestedPaths.some((pathname) => pathname.endsWith("/proxy/upgrades"))).toBe(false);
+
+	await page.goto(`/address/${cwiaUnverifiedAddress}#code`);
+	await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+	await page.getByRole("heading", { name: "Proxy identity" }).click();
+	await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
+	await expect(page.getByText("Matching implementation code hash", { exact: true })).toBeVisible();
+	await expect(page.getByText("Verified by code hash", { exact: true })).toBeVisible();
+	await expect(page.getByText(/writes are disabled.*proxy binding is not verified/u)).toBeVisible();
+	await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toHaveCount(0);
+	const unverifiedTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
+	await expect(unverifiedTabs.getByRole("tab", { name: "Read contract" })).toHaveCount(0);
+	await activateInView(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
+	await expect(page.getByText("value()", { exact: true })).toBeVisible();
+	await activateInView(page.getByText("Connect wallet", { exact: true }).first());
+	await activateInView(page.getByRole("button", { name: /CWIA E2E Wallet/u }));
+	const readValue = page.getByRole("button", { name: "Read contract" });
+	await activateInView(readValue);
+	await expect(page.getByRole("alert")).toContainText(
+		"The latest proxy stage is temporarily unavailable",
+	);
+	await expect(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" })).toBeVisible();
+	await expect(unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" })).toBeVisible();
+	await expect(page).toHaveURL(new RegExp(`${cwiaUnverifiedAddress}#read-implementation$`, "u"));
+	expect(transientProxyReads).toBe(2);
+	let walletRequests = await page.evaluate(
+		() => (window as WalletWindow).__etherviewE2EWallet.requests,
+	);
+	expect(walletRequests.some(({ method }) => method === "eth_call")).toBe(false);
+
+	await activateInView(readValue);
+	await expect(page.getByRole("alert")).toContainText(
+		"The latest proxy stage is temporarily unavailable",
+	);
+	expect(transientProxyReads).toBe(3);
+	await activateInView(readValue);
+	await expect(page.locator(".abi-output").getByText("2", { exact: true })).toBeVisible();
+	expect(transientProxyReads).toBe(4);
+	walletRequests = await page.evaluate(
+		() => (window as WalletWindow).__etherviewE2EWallet.requests,
+	);
+	expect(walletRequests.filter(({ method }) => method === "eth_call")).toHaveLength(1);
+	await activateInView(unverifiedTabs.getByRole("tab", { name: "Write implementation (as proxy)" }));
+	await expect(page.getByText("This ABI has no callable state-changing functions for this target.", { exact: true })).toBeVisible();
+
+	await page.goto(`/address/${cwiaCodeHashImplementation}#code`);
+	await expect(page.getByRole("heading", { name: "MyAccount", level: 2 })).toBeVisible();
+	await expect(page.getByText("Source verified by code hash")).toHaveCount(2);
+	await expect(page.getByText("Source code verified", { exact: true })).toHaveCount(0);
+	await expect(page.getByRole("status")).toContainText(
+		"Source verified by identical runtime code hash:",
+	);
+	await expect(page.getByRole("link", { name: cwiaImplementation })).toBeVisible();
+	await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
+	await activateInView(page.getByRole("button", { name: "切换到中文" }));
+	await expect(page.getByText("源码已通过代码哈希验证")).toHaveCount(2);
+	await expect(page.getByRole("status")).toContainText("源码已通过相同运行时代码哈希验证：");
+	await activateInView(page.getByRole("button", { name: "Switch to English" }));
+
+	await page.goto(`/address/${cwiaAddress}#code`);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.getByRole("heading", { name: "Proxy identity" }).click();
+	const argumentsScroll = page.locator(".cwia-arguments-scroll");
+	await expect(argumentsScroll).toBeVisible();
+	await expect.poll(() => argumentsScroll.evaluate((element) =>
+		element.scrollWidth > element.clientWidth)).toBe(true);
+	await argumentsScroll.focus();
+	await expect(argumentsScroll).toBeFocused();
+	await activateInView(page.getByRole("button", { name: "Switch color theme" }));
+	await activateInView(page.getByRole("button", { name: "切换到中文" }));
+	const localizedArguments = page.getByRole("region", { name: "已解码 immutable 参数" });
+	for (const heading of ["名称", "类型", "偏移", "数据"]) {
+		await expect(localizedArguments.getByRole("columnheader", { name: heading })).toBeVisible();
+	}
+	await assertA11yAndNoOverflow(page, "decoded CWIA table in Chinese dark narrow mode");
 });
 
 test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut history", async ({

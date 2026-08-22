@@ -282,8 +282,9 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			// and are classified by ExtractCandidatesV2 below.
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
-		candidates, err := extractCandidatesV2(
+		candidates, err := extractCandidatesV2WithInput(
 			first, second, request.Language, request.CompilerVersion,
+			input,
 			request.Kind == JobAddress && request.Target != nil && request.Target.GenesisPredeploy,
 		)
 		if err != nil {

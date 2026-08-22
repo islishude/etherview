@@ -1977,6 +1977,90 @@ tbody tr:hover {
   margin: 0.7rem 0 0;
 }
 
+.cwia-arguments-scroll {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 0.8rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.cwia-arguments-scroll:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.cwia-arguments-table {
+  min-width: 48rem;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.cwia-arguments-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(9rem, 0.7fr) minmax(6rem, 0.45fr) minmax(19rem, 1.6fr);
+  min-height: 2.45rem;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.cwia-arguments-row:last-child {
+  border-bottom: 0;
+}
+
+.cwia-arguments-header {
+  min-height: 2.15rem;
+  background: var(--surface-raised);
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cwia-arguments-row > [role="cell"],
+.cwia-arguments-row > [role="columnheader"] {
+  min-width: 0;
+  padding: 0.48rem 0.65rem;
+}
+
+.cwia-argument-name {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+.cwia-argument-type,
+.cwia-argument-offset {
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.cwia-argument-data {
+  overflow: hidden;
+}
+
+.cwia-argument-data .copyable-field {
+  max-width: 100%;
+}
+
+.cwia-argument-data code {
+  display: block;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cwia-argument-composite {
+  background: color-mix(in srgb, var(--surface-raised) 48%, transparent);
+}
+
+.cwia-argument-depth-1 .cwia-argument-name {
+  padding-inline-start: 1.25rem;
+}
+
 .transaction-log-topics {
   display: grid;
   gap: 0.45rem;

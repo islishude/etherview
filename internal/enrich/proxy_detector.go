@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ProxyDetectorFrameworkVersion = "proxy-detectors@1"
+	ProxyDetectorFrameworkVersion = "proxy-detectors@2"
 	DiamondMaxFacets              = 256
 	DiamondMaxSelectorsTotal      = 16_384
 	DiamondMaxSelectorsPerFacet   = 4_096
@@ -59,6 +59,7 @@ const (
 	ProxyFamilyERC1967 ProxyFamily = "erc1967"
 	ProxyFamilyERC2535 ProxyFamily = "erc2535"
 	ProxyFamilySafe    ProxyFamily = "safe"
+	ProxyFamilyCWIA    ProxyFamily = "cwia"
 	ProxyFamilyCustom  ProxyFamily = "custom"
 )
 
@@ -424,6 +425,11 @@ func (detector *openZeppelinProxyDetectorAdapter) Detect(
 		detector.legacy.codeCache = make(map[common.Address][]byte)
 	}
 	detector.legacy.codeCache[detectionContext.Address()] = common.CopyBytes(code)
+	if _, matched := DetectSoladyLegacyCWIA(code); matched {
+		// The authoritative legacy projection is supplied by the dedicated CWIA
+		// detector. Do not misattribute this non-OpenZeppelin shell.
+		return nil, nil
+	}
 	legacy, err := detector.legacy.detect(ctx, detector.candidate, detectionContext.blockReference())
 	if err != nil {
 		detector.err = err
@@ -540,6 +546,8 @@ func proxyFamilyForKind(kind ProxyKind) ProxyFamily {
 	switch kind {
 	case ProxyMinimal1167:
 		return ProxyFamilyERC1167
+	case ProxyCWIA:
+		return ProxyFamilyCWIA
 	case ProxyEIP1967, ProxyBeacon:
 		return ProxyFamilyERC1967
 	default:
@@ -1067,9 +1075,12 @@ func proxyConfidenceRank(confidence ProxyDetectionConfidence) int {
 func proxyDetectionsConflict(left, right ProxyDetectionV2) bool {
 	if left.Family != right.Family {
 		if left.Proxy == right.Proxy && ((left.Family == ProxyFamilyERC1967 && right.Family == ProxyFamilyERC2535) ||
-			(left.Family == ProxyFamilyERC2535 && right.Family == ProxyFamilyERC1967)) {
+			(left.Family == ProxyFamilyERC2535 && right.Family == ProxyFamilyERC1967) ||
+			(left.Family == ProxyFamilyCWIA && right.Family == ProxyFamilyERC2535) ||
+			(left.Family == ProxyFamilyERC2535 && right.Family == ProxyFamilyCWIA)) {
 			// An ERC-1967 shell may delegate into a Diamond router. Loupe calls at
 			// the outer address then legitimately expose both compositional layers.
+			// The same applies to an immutable CWIA delegate shell.
 			return false
 		}
 		return true

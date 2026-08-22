@@ -1,5 +1,12 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+	createMemoryHistory,
+	createRootRoute,
+	createRoute,
+	createRouter,
+	RouterContextProvider,
+} from "@tanstack/react-router";
 import { encodeAbiParameters } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -155,6 +162,36 @@ describe("contract artifact view models", () => {
 });
 
 describe("ContractArtifactPanel", () => {
+	it("presents a code-hash artifact as verified source without claiming address verification", () => {
+		const sourceAddress = "0x2222222222222222222222222222222222222222";
+		const rootRoute = createRootRoute();
+		const addressRoute = createRoute({
+			getParentRoute: () => rootRoute,
+			path: "/address/$address",
+			component: () => null,
+		});
+		const router = createRouter({
+			history: createMemoryHistory({ initialEntries: ["/"] }),
+			routeTree: rootRoute.addChildren([addressRoute]),
+		});
+		render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
+			resolution: "code_hash",
+			source: {
+				address: sourceAddress,
+				code_hash: `0x${"ab".repeat(32)}`,
+				valid_from_block: "1",
+				created_at: "2026-08-02T00:00:01Z",
+			},
+		})} /></RouterContextProvider>);
+
+		expect(screen.getAllByText("Source verified by code hash")).toHaveLength(2);
+		expect(screen.queryByText("Source code verified", { exact: true })).toBeNull();
+		expect(screen.getByRole("status")).toHaveTextContent(
+			"Source verified by identical runtime code hash:",
+		);
+		expect(screen.getAllByRole("link", { name: sourceAddress })).not.toHaveLength(0);
+	});
+
   it("shows decoded constructor parameters and preserves copyable raw encoding", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

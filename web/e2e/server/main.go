@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,42 +15,47 @@ import (
 )
 
 const (
-	testAddress               = "0x1111111111111111111111111111111111111111"
-	unverifiedAddress         = "0x1212121212121212121212121212121212121212"
-	testEOA                   = "0x2222222222222222222222222222222222222222"
-	delegatedAddress          = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-	clearedDelegationAddress  = "0x7777777777777777777777777777777777777777"
-	delegatedDelegate         = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-	uupsProxyAddress          = "0x3000000000000000000000000000000000000003"
-	uupsImplementation        = "0x4000000000000000000000000000000000000004"
-	beaconProxyAddress        = "0x5000000000000000000000000000000000000005"
-	beaconImplementation      = "0x6000000000000000000000000000000000000006"
-	cloneAddress              = "0x7000000000000000000000000000000000000007"
-	cloneImplementation       = "0x8000000000000000000000000000000000000008"
-	proxyAdminAddress         = "0x9000000000000000000000000000000000000009"
-	upgradeableBeacon         = "0x2000000000000000000000000000000000000020"
-	transparentImplementation = "0x3000000000000000000000000000000000000030"
-	oldImplementation         = "0x4000000000000000000000000000000000000040"
-	diamondAddress            = "0xd000000000000000000000000000000000000000"
-	diamondWriteFacet         = "0xd100000000000000000000000000000000000001"
-	diamondLoupeFacet         = "0xd200000000000000000000000000000000000002"
-	diamondInitAddress        = "0xd300000000000000000000000000000000000003"
-	testHash                  = "0x1111111111111111111111111111111111111111111111111111111111111111"
-	secondHash                = "0x2222222222222222222222222222222222222222222222222222222222222222"
-	orphanHash                = "0x3333333333333333333333333333333333333333333333333333333333333333"
-	testTransactionHash       = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	compoundTransactionHash   = "0xabababababababababababababababababababababababababababababababab"
-	secondTransactionHash     = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	pendingTransactionHash    = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	failedTxHash              = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-	delegationTransactionHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-	clearingTransactionHash   = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-	parentHash                = "0x0000000000000000000000000000000000000000000000000000000000000000"
-	blockCursor               = "blocks/snapshot + page=2"
-	transactionCursor         = "transactions/snapshot?generation=7 + page=2&exact=true/#"
-	searchCursor              = "search/snapshot + page=2"
-	testVerificationJobID     = "123e4567-e89b-42d3-a456-426614174000"
-	testReadAPIKey            = "ev_e2e_read"
+	testAddress                = "0x1111111111111111111111111111111111111111"
+	unverifiedAddress          = "0x1212121212121212121212121212121212121212"
+	testEOA                    = "0x2222222222222222222222222222222222222222"
+	delegatedAddress           = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+	clearedDelegationAddress   = "0x7777777777777777777777777777777777777777"
+	delegatedDelegate          = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+	uupsProxyAddress           = "0x3000000000000000000000000000000000000003"
+	uupsImplementation         = "0x4000000000000000000000000000000000000004"
+	beaconProxyAddress         = "0x5000000000000000000000000000000000000005"
+	beaconImplementation       = "0x6000000000000000000000000000000000000006"
+	cloneAddress               = "0x7000000000000000000000000000000000000007"
+	cloneImplementation        = "0x8000000000000000000000000000000000000008"
+	cwiaAddress                = "0xa00000000000000000000000000000000000000a"
+	cwiaReadOnlyAddress        = "0xc00000000000000000000000000000000000000c"
+	cwiaUnverifiedAddress      = "0xe00000000000000000000000000000000000000e"
+	cwiaImplementation         = "0xb00000000000000000000000000000000000000b"
+	cwiaCodeHashImplementation = "0xf00000000000000000000000000000000000000f"
+	proxyAdminAddress          = "0x9000000000000000000000000000000000000009"
+	upgradeableBeacon          = "0x2000000000000000000000000000000000000020"
+	transparentImplementation  = "0x3000000000000000000000000000000000000030"
+	oldImplementation          = "0x4000000000000000000000000000000000000040"
+	diamondAddress             = "0xd000000000000000000000000000000000000000"
+	diamondWriteFacet          = "0xd100000000000000000000000000000000000001"
+	diamondLoupeFacet          = "0xd200000000000000000000000000000000000002"
+	diamondInitAddress         = "0xd300000000000000000000000000000000000003"
+	testHash                   = "0x1111111111111111111111111111111111111111111111111111111111111111"
+	secondHash                 = "0x2222222222222222222222222222222222222222222222222222222222222222"
+	orphanHash                 = "0x3333333333333333333333333333333333333333333333333333333333333333"
+	testTransactionHash        = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	compoundTransactionHash    = "0xabababababababababababababababababababababababababababababababab"
+	secondTransactionHash      = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pendingTransactionHash     = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	failedTxHash               = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	delegationTransactionHash  = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	clearingTransactionHash    = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	parentHash                 = "0x0000000000000000000000000000000000000000000000000000000000000000"
+	blockCursor                = "blocks/snapshot + page=2"
+	transactionCursor          = "transactions/snapshot?generation=7 + page=2&exact=true/#"
+	searchCursor               = "search/snapshot + page=2"
+	testVerificationJobID      = "123e4567-e89b-42d3-a456-426614174000"
+	testReadAPIKey             = "ev_e2e_read"
 )
 
 func main() {
@@ -496,6 +502,12 @@ func main() {
 		case unverifiedAddress:
 			writeEnvelope(response, map[string]any{
 				"address": unverifiedAddress, "type": "contract", "balance": "0", "nonce": "1",
+				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
+				"has_delegation_history": false,
+			})
+		case cwiaUnverifiedAddress:
+			writeEnvelope(response, map[string]any{
+				"address": cwiaUnverifiedAddress, "type": "contract", "balance": "0", "nonce": "1",
 				"code_hash": testHash, "at_block": secondHash, "completeness": completeness(),
 				"has_delegation_history": false,
 			})
@@ -1204,7 +1216,7 @@ func homeStreamSession(request *http.Request) string {
 func contractArtifact(address string) (map[string]any, bool) {
 	var contractName string
 	var abi []any
-	switch address {
+	switch strings.ToLower(address) {
 	case testAddress:
 		contractName = "TransparentUpgradeableProxy"
 		abi = proxyContractABI()
@@ -1216,6 +1228,9 @@ func contractArtifact(address string) (map[string]any, bool) {
 		abi = proxyContractABI()
 	case cloneAddress:
 		contractName = "MinimalClone"
+		abi = proxyContractABI()
+	case cwiaAddress, cwiaReadOnlyAddress:
+		contractName = "SoladyLegacyCWIA"
 		abi = proxyContractABI()
 	case diamondAddress:
 		contractName = "DiamondRouter"
@@ -1232,7 +1247,7 @@ func contractArtifact(address string) (map[string]any, bool) {
 	case diamondLoupeFacet:
 		contractName = "DiamondLoupeFacet"
 		abi = diamondLoupeABI()
-	case delegatedDelegate:
+	case "0x5fbdb2315678afecb367f032d93f642f64180aa3":
 		contractName = "DelegatedDisperser"
 		abi = []any{
 			map[string]any{
@@ -1258,6 +1273,9 @@ func contractArtifact(address string) (map[string]any, bool) {
 		abi = implementationABI(false)
 	case cloneImplementation:
 		contractName = "CloneImplementation"
+		abi = implementationABI(false)
+	case cwiaImplementation, cwiaCodeHashImplementation:
+		contractName = "MyAccount"
 		abi = implementationABI(false)
 	case proxyAdminAddress:
 		contractName = "ProxyAdmin"
@@ -1290,7 +1308,7 @@ func contractArtifact(address string) (map[string]any, bool) {
 	}
 
 	fileName := contractName + ".sol"
-	return map[string]any{
+	artifact := map[string]any{
 		"kind": "verification_success", "resolution": "exact_address",
 		"target": map[string]any{
 			"chain_id": "1", "address": address, "code_hash": testHash,
@@ -1315,7 +1333,12 @@ func contractArtifact(address string) (map[string]any, bool) {
 		"runtime_match": map[string]any{
 			"match_type": "full", "transformations": []any{}, "values": map[string]any{},
 		},
-	}, true
+	}
+	if strings.EqualFold(address, cwiaCodeHashImplementation) {
+		artifact["resolution"] = "code_hash"
+		artifact["source"].(map[string]any)["address"] = cwiaImplementation
+	}
+	return artifact, true
 }
 
 func proxyContractABI() []any {
@@ -1396,7 +1419,8 @@ func diamondLoupeABI() []any {
 }
 
 func contractProxy(address string) (map[string]any, bool) {
-	if address == diamondAddress {
+	normalizedAddress := strings.ToLower(address)
+	if normalizedAddress == diamondAddress {
 		return diamondProxyDetail(), true
 	}
 	var mechanism, pattern, implementation, bindingID, proxyArtifactKind string
@@ -1404,7 +1428,7 @@ func contractProxy(address string) (map[string]any, bool) {
 	var admin map[string]any
 	var beacon map[string]any
 	var immutableArgs string
-	switch address {
+	switch normalizedAddress {
 	case testAddress:
 		mechanism, pattern = "eip1967", "transparent"
 		implementation = transparentImplementation
@@ -1433,6 +1457,20 @@ func contractProxy(address string) (map[string]any, bool) {
 		implementation = cloneImplementation
 		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb44"
 		immutableArgs = "0x1234"
+	case cwiaAddress:
+		mechanism, pattern = "cwia", "clone"
+		implementation = cwiaImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb45"
+		immutableArgs = cwiaFixtureImmutableArgs()
+	case cwiaReadOnlyAddress:
+		mechanism, pattern = "cwia", "clone"
+		implementation = cwiaImplementation
+		bindingID = "018f3b52-0b3d-7bf1-b65f-6f214827cb46"
+		immutableArgs = cwiaFixtureImmutableArgs()
+	case cwiaUnverifiedAddress:
+		mechanism, pattern = "cwia", "clone"
+		implementation = cwiaCodeHashImplementation
+		immutableArgs = cwiaFixtureImmutableArgs()
 	default:
 		return nil, false
 	}
@@ -1444,22 +1482,35 @@ func contractProxy(address string) (map[string]any, bool) {
 	proxyIdentity := contractIdentity(address, proxyArtifactKind)
 	if pattern == "clone" {
 		proxyIdentity["verification_state"] = "unverified"
+		delete(proxyIdentity, "artifact_resolution")
+	}
+	status, confidence := "verified", "verified"
+	if normalizedAddress == cwiaUnverifiedAddress {
+		status, confidence = "detected_unverified", "high"
+	}
+	implementationIdentity := contractIdentity(implementation, implementationKind)
+	if normalizedAddress == cwiaUnverifiedAddress {
+		implementationIdentity["verification_state"] = "unverified"
+		implementationIdentity["artifact_resolution"] = "code_hash"
 	}
 	detail := map[string]any{
-		"address": address, "status": "verified", "snapshot": contractSnapshot(),
+		"address": address, "status": status, "snapshot": contractSnapshot(),
 		"mechanism": mechanism, "pattern": pattern,
-		"evidence_state": "exact", "confidence": "verified", "binding_id": bindingID,
+		"evidence_state": "exact", "confidence": confidence,
 		"proxy":          proxyIdentity,
-		"implementation": contractIdentity(implementation, implementationKind),
+		"implementation": implementationIdentity,
 		"evidence": []any{map[string]any{
-			"source": "verified_artifact", "subject": "proxy", "result": "authoritative",
+			"source": "runtime_code", "subject": "proxy", "result": "authoritative",
 			"address": address, "code_hash": testHash,
 		}},
+	}
+	if bindingID != "" {
+		detail["binding_id"] = bindingID
 	}
 	interaction := map[string]any{
 		"mechanism": mechanism, "pattern": pattern,
 		"proxy":          proxyIdentity,
-		"implementation": contractIdentity(implementation, implementationKind),
+		"implementation": implementationIdentity,
 	}
 	if beacon != nil {
 		interaction["beacon"] = beacon
@@ -1480,12 +1531,52 @@ func contractProxy(address string) (map[string]any, bool) {
 	if immutableArgs != "" {
 		detail["immutable_args"] = immutableArgs
 	}
+	if mechanism == "cwia" {
+		switch normalizedAddress {
+		case cwiaAddress:
+			detail["immutable_args_decoding"] = cwiaFixtureDecoding("exact_address")
+		case cwiaReadOnlyAddress:
+			detail["immutable_args_decoding"] = map[string]any{
+				"status": "schema_unavailable", "reason": "ast_unavailable", "arguments": []any{},
+			}
+		default:
+			detail["immutable_args_decoding"] = cwiaFixtureDecoding("code_hash")
+		}
+	}
 	return detail, true
+}
+
+func cwiaFixtureImmutableArgs() string {
+	return "0x" + testEOA[2:] + fmt.Sprintf("%064x", 0x2a) + "000b68656c6c6f2c776f726c64"
+}
+
+func cwiaFixtureDecoding(resolution string) map[string]any {
+	return map[string]any{
+		"status": "decoded", "schema_resolution": resolution,
+		"schema": map[string]any{
+			"version": 2, "source": "solidity_ast", "encoding": "solady-cwia-offsets",
+			"helper_sha256": "0xbc97b0d077a3c5d5603808caeeb3fe572dcb2448c5536b66316d1b6b129cfca3",
+			"sha256":        orphanHash,
+			"fields": []any{
+				map[string]any{"name": "owner", "type": "address", "offset": 0, "role": "value", "getters": []any{"owner()"}, "size": map[string]any{"kind": "fixed", "bytes": 20}},
+				map[string]any{"name": "number", "type": "uint256", "offset": 20, "role": "value", "getters": []any{"number()"}, "size": map[string]any{"kind": "fixed", "bytes": 32}},
+				map[string]any{"name": "data_length", "type": "uint16", "offset": 52, "role": "length", "getters": []any{"data()"}, "size": map[string]any{"kind": "fixed", "bytes": 2}},
+				map[string]any{"name": "data", "type": "bytes", "offset": 54, "role": "value", "getters": []any{"data()"}, "size": map[string]any{"kind": "field", "field": "data_length", "multiplier": 1}},
+			},
+		},
+		"arguments": []any{
+			map[string]any{"name": "owner", "type": "address", "offset": 0, "length": 20, "value": testEOA},
+			map[string]any{"name": "number", "type": "uint256", "offset": 20, "length": 32, "value": "42"},
+			map[string]any{"name": "data_length", "type": "uint16", "offset": 52, "length": 2, "value": "11"},
+			map[string]any{"name": "data", "type": "bytes", "offset": 54, "length": 11, "value": "0x68656c6c6f2c776f726c64"},
+		},
+	}
 }
 
 func contractIdentity(address, artifactKind string) map[string]any {
 	identity := map[string]any{
 		"address": address, "code_hash": testHash, "verification_state": "verified",
+		"artifact_resolution": "exact_address",
 	}
 	if artifactKind != "" {
 		identity["artifact_kind"] = artifactKind

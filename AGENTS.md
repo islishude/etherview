@@ -103,6 +103,31 @@ driver solely because an older evidence entry cites it.
   fails permanently with `ErrStoredUncleHeadersUnavailable` and requires an
   exact endpoint- and block-identity-bound RPC repair before it can become a
   verified bundle.
+- Solady legacy LibCWIA is a distinct `cwia` immutable-clone mechanism, never
+  an ERC-1167 alias. Accept only its exact 98-byte shell and matching embedded
+  and footer lengths; persist raw arguments without the footer. Typed decoding
+  comes only from a bounded dual-compiled Solidity AST analysis whose
+  `_getArg*` declarations resolve to the exact canonical Solady `0.1.26`
+  helper source. A matching verified implementation code hash may serve typed
+  reads; CWIA writes additionally require the exact current proxy binding and
+  a successfully decoded schema digest.
+  Migration and startup never schedule historical CWIA backfill.
+- Keep current proxy implementation verification provenance explicit:
+  `verified + exact_address` is independent address verification, while
+  `unverified + code_hash` is read-only artifact reuse. Code-hash reuse never
+  creates a binding or authorizes writes, proxy/admin/beacon management,
+  historical identities, Diamond facets, or Safe singletons.
+- A fresh interaction fence that observes a transient latest proxy stage of
+  `unavailable` fails that operation before wallet RPC but does not claim the
+  target changed, replace the displayed published target, or redirect its tab.
+  Real binding, code, artifact-resolution, schema, and management changes still
+  refresh and fail closed.
+- Recognized CWIA shell addresses hide the direct Verified artifact and
+  verification-submission panel. Keep source/ABI provenance on the fixed
+  implementation identity and preserve the direct artifact surface for
+  non-CWIA contracts and proxies. Suppress the choice while proxy
+  classification is transiently unavailable and poll that classification at a
+  bounded 500 ms interval; do not serialize the independent artifact fetch.
 - Public quantities beyond JavaScript's safe integer range are strings. Public
   HTTP contracts start in `api/openapi.yaml`; SQL starts in
   `internal/db/queries/`. Production executable SQL must originate there; only

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/cwiaargs"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -39,11 +41,12 @@ type ProxySnapshot struct {
 }
 
 type ProxyIdentity struct {
-	Address         string
-	CodeHash        string
-	ArtifactKind    string
-	StandardVersion string
-	Verified        bool
+	Address            string
+	CodeHash           string
+	ArtifactResolution string
+	ArtifactKind       string
+	StandardVersion    string
+	Verified           bool
 }
 
 type ProxyEvidence struct {
@@ -63,23 +66,24 @@ type ProxyManagement struct {
 }
 
 type ProxyDetail struct {
-	Address         string
-	Status          string
-	Snapshot        ProxySnapshot
-	Mechanism       string
-	Pattern         string
-	StandardVersion string
-	Confidence      string
-	EvidenceState   string
-	ImmutableArgs   string
-	BindingID       string
-	Proxy           *ProxyIdentity
-	Implementation  *ProxyIdentity
-	Admin           *ProxyIdentity
-	Beacon          *ProxyIdentity
-	Management      *ProxyManagement
-	Evidence        []ProxyEvidence
-	DetectionV2     json.RawMessage
+	Address               string
+	Status                string
+	Snapshot              ProxySnapshot
+	Mechanism             string
+	Pattern               string
+	StandardVersion       string
+	Confidence            string
+	EvidenceState         string
+	ImmutableArgs         string
+	ImmutableArgsDecoding *CWIAImmutableArgsDecoding
+	BindingID             string
+	Proxy                 *ProxyIdentity
+	Implementation        *ProxyIdentity
+	Admin                 *ProxyIdentity
+	Beacon                *ProxyIdentity
+	Management            *ProxyManagement
+	Evidence              []ProxyEvidence
+	DetectionV2           json.RawMessage
 }
 
 type ProxyHistoryCoverage struct {
@@ -189,6 +193,8 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		return ProxyDetail{}, err
 	}
 	result := ProxyDetail{Address: address.Hex(), Evidence: []ProxyEvidence{}}
+	cwiaAnalysis := cwiaargs.UnavailableAnalysis()
+	cwiaResolution := ""
 	err = r.withProxyReadTransaction(ctx, func(queries *dbgen.Queries) error {
 		snapshot, queryErr := queries.GetProxyAPISnapshot(ctx, chainID)
 		if queryErr != nil {
@@ -250,16 +256,15 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		binding, bindingErr := queries.GetCurrentVerifiedProxyBinding(
 			ctx, chainID, address.Bytes(),
 		)
-		if errors.Is(bindingErr, pgx.ErrNoRows) {
-			return nil
-		}
-		if bindingErr != nil {
+		if bindingErr != nil && !errors.Is(bindingErr, pgx.ErrNoRows) {
 			return bindingErr
 		}
-		if queryErr = applyVerifiedProxyBinding(&result, address, binding); queryErr != nil {
-			return queryErr
+		if bindingErr == nil {
+			if queryErr = applyVerifiedProxyBinding(&result, address, binding); queryErr != nil {
+				return queryErr
+			}
 		}
-		if result.Management != nil && result.Management.Kind == "upgradeable_beacon" {
+		if bindingErr == nil && result.Management != nil && result.Management.Kind == "upgradeable_beacon" {
 			count, countErr := queries.CountCurrentBeaconProxies(
 				ctx, binding.BeaconAddress, chainID,
 			)
@@ -271,6 +276,34 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 			}
 			result.Management.AffectedProxyCount = count
 		}
+		if result.Mechanism == string(enrich.ProxyCWIA) {
+			if result.Implementation == nil {
+				return errors.New("CWIA implementation identity is missing")
+			}
+			implementation, parseErr := ethrpc.ParseAddress(result.Implementation.Address)
+			if parseErr != nil {
+				return errors.New("CWIA implementation address is invalid")
+			}
+			codeHash, parseErr := hexutil.Decode(result.Implementation.CodeHash)
+			if parseErr != nil || len(codeHash) != common.HashLength {
+				return errors.New("CWIA implementation code hash is invalid")
+			}
+			snapshotNumber, parseErr := parseDecimalUint64(result.Snapshot.Number)
+			if parseErr != nil {
+				return errors.New("CWIA schema snapshot number is invalid")
+			}
+			rows, analysisErr := queries.GetCWIAImplementationAnalyses(
+				ctx, dbgen.GetCWIAImplementationAnalysesParams{
+					ImplementationAddress: implementation.Bytes(),
+					SnapshotNumber:        numericUint64(snapshotNumber), ChainID: chainID,
+					ImplementationCodeHash: codeHash,
+				},
+			)
+			if analysisErr != nil {
+				return analysisErr
+			}
+			cwiaAnalysis, cwiaResolution = selectCWIAAnalysis(rows)
+		}
 		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -278,6 +311,10 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 	}
 	if err != nil {
 		return ProxyDetail{}, fmt.Errorf("query proxy detail: %w", err)
+	}
+	if result.Mechanism == string(enrich.ProxyCWIA) {
+		decoding := cwiaargs.Decode(result.ImmutableArgs, cwiaAnalysis, cwiaResolution)
+		result.ImmutableArgsDecoding = &decoding
 	}
 	return result, nil
 }
@@ -714,6 +751,9 @@ func applyProxyDetection(
 	if implementation == nil && row.ProxyKind != "beacon" {
 		return errors.New("stored proxy implementation identity is missing")
 	}
+	if implementation != nil && !implementation.Verified && row.ImplementationArtifactAvailable {
+		implementation.ArtifactResolution = "code_hash"
+	}
 	admin, err := optionalCurrentProxyIdentity(row.AdminAddress, row.AdminCodeHash, row.AdminVerified)
 	if err != nil {
 		return err
@@ -873,7 +913,7 @@ func recognitionEvidence(
 		Address: detail.Address, CodeHash: identityHash(detail.Proxy), BlockNumber: blockNumber, BlockHash: blockHash}}
 	if detail.Implementation != nil && implementationBlockNumber != "" && implementationBlockHash != "" {
 		source := "implementation_slot"
-		if detail.Mechanism == "eip1167" {
+		if detail.Mechanism == "eip1167" || detail.Mechanism == "cwia" {
 			source = "runtime_code"
 		} else if detail.Beacon != nil {
 			source = "direct_call"
@@ -1096,8 +1136,12 @@ func currentProxyIdentity(address, codeHash []byte, verified bool) (*ProxyIdenti
 	if len(address) != common.AddressLength || len(codeHash) != common.HashLength {
 		return nil, errors.New("stored current proxy identity is invalid")
 	}
-	return &ProxyIdentity{Address: common.BytesToAddress(address).Hex(),
-		CodeHash: strings.ToLower(common.BytesToHash(codeHash).Hex()), Verified: verified}, nil
+	identity := &ProxyIdentity{Address: common.BytesToAddress(address).Hex(),
+		CodeHash: strings.ToLower(common.BytesToHash(codeHash).Hex()), Verified: verified}
+	if verified {
+		identity.ArtifactResolution = "exact_address"
+	}
+	return identity, nil
 }
 
 func optionalCurrentProxyIdentity(address, codeHash []byte, verified bool) (*ProxyIdentity, error) {

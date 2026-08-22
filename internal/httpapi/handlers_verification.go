@@ -607,7 +607,7 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		fileName = "unknown"
 	}
 	model := gen.VerifiedContract{
-		Resolution: gen.VerifiedContractResolution(contract.Resolution),
+		Resolution: gen.ContractArtifactResolution(contract.Resolution),
 		Target: gen.ContractArtifactTarget{
 			ChainId: strconv.FormatUint(contract.Target.ChainID, 10),
 			Address: targetAddress, CodeHash: contract.Target.CodeHash,

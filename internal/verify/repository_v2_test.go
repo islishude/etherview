@@ -449,6 +449,12 @@ func TestValidateProxyVerificationSubmissionAcceptsSupportedPatterns(t *testing.
 			ImplementationCodeHash:  "0x" + strings.Repeat("33", 32),
 		},
 		{
+			Kind: "cwia", Pattern: "clone", ManagementKind: "none",
+			ObservationGenerationID: "1",
+			ImplementationAddress:   "0x" + strings.Repeat("22", 20),
+			ImplementationCodeHash:  "0x" + strings.Repeat("33", 32),
+		},
+		{
 			Kind: "eip1967", Pattern: "erc1967", StandardVersion: "5.6.1",
 			ManagementKind:          "none",
 			ObservationGenerationID: "1",

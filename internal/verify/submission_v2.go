@@ -21,6 +21,7 @@ type SubmissionV2 struct {
 	ExecutorKind         string                   `json:"executor_kind,omitempty"`
 	ExecutionPolicy      string                   `json:"execution_policy,omitempty"`
 	ExecutorDigest       string                   `json:"executor_sha256,omitempty"`
+	SolidityAnalysis     int                      `json:"solidity_analysis_version,omitempty"`
 }
 
 // ProxyVerificationTarget binds a compatibility request to one exact

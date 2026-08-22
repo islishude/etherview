@@ -4501,6 +4501,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MethodSource"
+    ContractArtifactResolution:
+      type: string
+      description: >-
+        How the published source artifact was resolved for the requested code
+        identity. exact_address is an independent address verification;
+        code_hash reuses an artifact verified at a different address with the
+        identical runtime code hash and grants no proxy binding or write
+        authority. On ProxyContractIdentity, exact_address accompanies
+        verification_state=verified, while code_hash accompanies
+        verification_state=unverified; the field is omitted when no artifact
+        is available.
+      enum: [exact_address, code_hash]
     VerifiedContract:
       allOf:
         - $ref: "#/components/schemas/VerificationSuccess"
@@ -4511,8 +4523,7 @@ components:
             - source
           properties:
             resolution:
-              type: string
-              enum: [exact_address, code_hash]
+              $ref: "#/components/schemas/ContractArtifactResolution"
             target:
               $ref: "#/components/schemas/ContractArtifactTarget"
             source:
@@ -4553,7 +4564,7 @@ components:
       enum: [not_detected, detected_unverified, verified, unavailable, failed]
     ProxyMechanism:
       type: string
-      enum: [eip1167, eip1967, beacon]
+      enum: [eip1167, cwia, eip1967, beacon]
     ProxyPattern:
       type: string
       enum: [clone, erc1967, transparent, uups, beacon, unknown]
@@ -4625,6 +4636,8 @@ components:
           $ref: "#/components/schemas/Hash"
         verification_state:
           $ref: "#/components/schemas/ProxyVerificationState"
+        artifact_resolution:
+          $ref: "#/components/schemas/ContractArtifactResolution"
         artifact_kind:
           $ref: "#/components/schemas/ProxyArtifactKind"
         standard_version:
@@ -4664,10 +4677,144 @@ components:
       enum: [high, medium, low]
     ProxyDetectionV2Family:
       type: string
-      enum: [erc1167, erc1967, erc2535, safe, custom]
+      enum: [erc1167, cwia, erc1967, erc2535, safe, custom]
     ProxyDetectionV2ImplementationRole:
       type: string
       enum: [implementation, singleton]
+    CWIAImmutableArgsDecodingStatus:
+      type: string
+      enum: [decoded, schema_unavailable, schema_invalid, data_invalid]
+    CWIAImmutableArgsDecodingReason:
+      type: string
+      enum:
+        - ast_unavailable
+        - malformed_analysis
+        - unsupported_access
+        - ambiguous_layout
+        - incomplete_layout
+        - schema_conflict
+        - limit_exceeded
+        - length_mismatch
+        - noncanonical_value
+    CWIAImmutableArgType:
+      type: string
+      enum: [address, uint8, uint16, uint24, uint32, uint40, uint48, uint56, uint64, uint72, uint80, uint88, uint96, uint104, uint112, uint120, uint128, uint136, uint144, uint152, uint160, uint168, uint176, uint184, uint192, uint200, uint208, uint216, uint224, uint232, uint240, uint248, uint256, bytes32, bytes, 'uint256[]', 'bytes32[]']
+    CWIAImmutableArgFieldRole:
+      type: string
+      enum: [value, length]
+    CWIAImmutableArgSize:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [fixed, field, remaining]
+        bytes:
+          type: integer
+          minimum: 0
+          maximum: 24531
+        field:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        multiplier:
+          type: integer
+          enum: [1, 32]
+    CWIAImmutableArgField:
+      type: object
+      additionalProperties: false
+      required: [name, type, offset, role, getters, size]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        type:
+          $ref: "#/components/schemas/CWIAImmutableArgType"
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 24530
+        role:
+          $ref: "#/components/schemas/CWIAImmutableArgFieldRole"
+        getters:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            minLength: 3
+            maxLength: 256
+        size:
+          $ref: "#/components/schemas/CWIAImmutableArgSize"
+    CWIAImmutableArgSchema:
+      type: object
+      additionalProperties: false
+      required: [version, source, encoding, helper_sha256, sha256, fields]
+      properties:
+        version:
+          type: integer
+          enum: [2]
+        source:
+          type: string
+          enum: [solidity_ast]
+        encoding:
+          type: string
+          enum: [solady-cwia-offsets]
+        helper_sha256:
+          $ref: "#/components/schemas/Hash"
+        sha256:
+          $ref: "#/components/schemas/Hash"
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/CWIAImmutableArgField"
+    CWIAImmutableArgValue:
+      type: object
+      additionalProperties: false
+      required: [name, type, offset, length, value]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        type:
+          $ref: "#/components/schemas/CWIAImmutableArgType"
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 24530
+        length:
+          type: integer
+          minimum: 0
+          maximum: 24531
+        value: {}
+    CWIASchemaResolution:
+      type: string
+      enum: [exact_address, code_hash]
+    CWIAImmutableArgsDecoding:
+      type: object
+      additionalProperties: false
+      required: [status, arguments]
+      properties:
+        status:
+          $ref: "#/components/schemas/CWIAImmutableArgsDecodingStatus"
+        reason:
+          $ref: "#/components/schemas/CWIAImmutableArgsDecodingReason"
+        schema:
+          $ref: "#/components/schemas/CWIAImmutableArgSchema"
+        schema_resolution:
+          $ref: "#/components/schemas/CWIASchemaResolution"
+        arguments:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/CWIAImmutableArgValue"
     ProxyTargetRole:
       type: string
       enum: [implementation, singleton, beacon, facet, immutable]
@@ -4964,6 +5111,8 @@ components:
           type: string
           pattern: '^0x([0-9a-fA-F]{2})*$'
           maxLength: 49064
+        immutable_args_decoding:
+          $ref: "#/components/schemas/CWIAImmutableArgsDecoding"
         binding_id:
           type: string
           format: uuid

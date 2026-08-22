@@ -203,7 +203,7 @@ func validExactProxyVerificationTarget(target proxyVerificationTarget) bool {
 		return false
 	}
 	switch target.kind {
-	case "eip1167":
+	case "eip1167", "cwia":
 		if target.pattern != "clone" {
 			return false
 		}

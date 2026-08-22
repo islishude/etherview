@@ -70,7 +70,7 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 	data := gen.BillingConfig{
 		Enabled:     h.cfg.Features.X402Billing,
 		Scheme:      gen.BillingConfigSchemeExact,
-		X402Version: gen.N2,
+		X402Version: gen.BillingConfigX402VersionN2,
 		Routes:      make([]gen.BillingRoutePrice, 0, len(h.cfg.Billing.Routes)),
 	}
 	if !data.Enabled {

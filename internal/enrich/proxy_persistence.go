@@ -565,6 +565,11 @@ func (processor *PostgresProxyProcessor) persistProxyObservation(ctx context.Con
 		details["immutable_args_bytes"] = len(resolved.immutableArgs)
 		details["immutable_args_creation_authenticated"] = resolved.immutableArgsExact
 	}
+	if resolved.kind == ProxyCWIA {
+		details["cwia_runtime"] = soladyLegacyCWIAVariant
+		details["immutable_args_bytes"] = len(resolved.immutableArgs)
+		details["immutable_args_runtime_authenticated"] = true
+	}
 	if resolved.admin != nil {
 		// The ERC-1967 admin slot is compatibility evidence only. In particular,
 		// it is not the immutable _admin authority of an OZ 5.x transparent proxy.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/cwiaargs"
 	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verifiedselector"
 )
@@ -21,6 +22,7 @@ func (repository *PostgresRepository) SubmitV2(
 	ctx context.Context,
 	request SubmissionV2,
 ) (VerificationJob, bool, error) {
+	normalizeSolidityAnalysisVersion(&request)
 	encoded, err := json.Marshal(request)
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
 		return VerificationJob{}, false, errors.New("v2 verification request exceeds configured bounds")
@@ -62,6 +64,18 @@ func (repository *PostgresRepository) SubmitV2(
 		return VerificationJob{}, false, fmt.Errorf("submit v2 verification job: %w", err)
 	}
 	return job, created, nil
+}
+
+func normalizeSolidityAnalysisVersion(request *SubmissionV2) {
+	if request != nil && request.Language == LanguageSolidity &&
+		request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
+		request.Kind != JobProxy {
+		request.SolidityAnalysis = cwiaargs.AnalysisVersion
+		return
+	}
+	if request != nil {
+		request.SolidityAnalysis = 0
+	}
 }
 
 func (repository *PostgresRepository) Claim(

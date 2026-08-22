@@ -141,7 +141,7 @@ func (p *Project) Up(ctx context.Context, services ...string) error {
 }
 
 func (p *Project) Down(ctx context.Context) error {
-	_, err := p.Run(ctx, "down", "--volumes", "--remove-orphans")
+	_, err := p.Run(ctx, "--all-resources", "down", "--volumes", "--remove-orphans")
 	return err
 }
 
