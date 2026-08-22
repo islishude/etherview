@@ -14,6 +14,12 @@ type AuthenticatedCompilation struct {
 	Candidates   []CandidateArtifact
 }
 
+// RestoreCandidateArtifact validates a persisted public candidate document and
+// reconstructs the private matcher indexes from its stable artifact fields.
+func RestoreCandidateArtifact(candidate CandidateArtifact) (CandidateArtifact, error) {
+	return hydrateCandidateArtifact(candidate)
+}
+
 func hydrateCandidateArtifact(candidate CandidateArtifact) (CandidateArtifact, error) {
 	if !validStandardJSONSourceName(candidate.FileName) ||
 		!solidityContractNamePattern.MatchString(candidate.ContractName) ||

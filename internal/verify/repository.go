@@ -45,6 +45,7 @@ const (
 	JobSourcify                  JobKind = "sourcify"
 	JobSourcifyFromEtherscan     JobKind = "sourcify_from_etherscan"
 	JobProxy                     JobKind = "proxy"
+	JobDerived                   JobKind = "derived"
 )
 
 type ErrorCode string

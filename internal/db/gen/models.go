@@ -442,6 +442,48 @@ type CoreIndexConfiguration struct {
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type DerivedVerificationAttempt struct {
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber       pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash         []byte             `db:"block_hash" json:"block_hash"`
+	TransactionHash   []byte             `db:"transaction_hash" json:"transaction_hash"`
+	TracePath         string             `db:"trace_path" json:"trace_path"`
+	CreatorAddress    []byte             `db:"creator_address" json:"creator_address"`
+	CreatedAddress    []byte             `db:"created_address" json:"created_address"`
+	CallType          string             `db:"call_type" json:"call_type"`
+	CompilationID     pgtype.UUID        `db:"compilation_id" json:"compilation_id"`
+	FileName          *string            `db:"file_name" json:"file_name"`
+	ContractName      *string            `db:"contract_name" json:"contract_name"`
+	Status            string             `db:"status" json:"status"`
+	CreationMatch     []byte             `db:"creation_match" json:"creation_match"`
+	RuntimeMatch      []byte             `db:"runtime_match" json:"runtime_match"`
+	VerificationJobID pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type DerivedVerificationScan struct {
+	CompilationID         pgtype.UUID        `db:"compilation_id" json:"compilation_id"`
+	ChainID               pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	CreatorAddress        []byte             `db:"creator_address" json:"creator_address"`
+	CreatorCodeHash       []byte             `db:"creator_code_hash" json:"creator_code_hash"`
+	ValidFromBlock        pgtype.Numeric     `db:"valid_from_block" json:"valid_from_block"`
+	ValidToBlock          pgtype.Numeric     `db:"valid_to_block" json:"valid_to_block"`
+	CursorBlockNumber     pgtype.Numeric     `db:"cursor_block_number" json:"cursor_block_number"`
+	CursorTransactionHash []byte             `db:"cursor_transaction_hash" json:"cursor_transaction_hash"`
+	CursorTracePath       string             `db:"cursor_trace_path" json:"cursor_trace_path"`
+	Status                string             `db:"status" json:"status"`
+	LeasedBy              *string            `db:"leased_by" json:"leased_by"`
+	LeaseToken            *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt        pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+	AttemptCount          int32              `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
+	LastError             *string            `db:"last_error" json:"last_error"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type DiamondCutEvent struct {
 	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`

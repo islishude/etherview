@@ -22,6 +22,17 @@ type SubmissionV2 struct {
 	ExecutionPolicy      string                   `json:"execution_policy,omitempty"`
 	ExecutorDigest       string                   `json:"executor_sha256,omitempty"`
 	SolidityAnalysis     int                      `json:"solidity_analysis_version,omitempty"`
+	CompilationID        string                   `json:"compilation_id,omitempty"`
+	DerivedFrom          *DerivedVerificationFrom `json:"derived_from,omitempty"`
+}
+
+type DerivedVerificationFrom struct {
+	CreatorAddress  string `json:"creator_address"`
+	TransactionHash string `json:"transaction_hash"`
+	TracePath       string `json:"trace_path"`
+	CallType        string `json:"call_type"`
+	BlockNumber     uint64 `json:"block_number"`
+	BlockHash       string `json:"block_hash"`
 }
 
 // ProxyVerificationTarget binds a compatibility request to one exact

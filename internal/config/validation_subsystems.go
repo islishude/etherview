@@ -280,6 +280,16 @@ func validateVerificationConfig(c Config) error {
 	if c.Verification.WorkerCount <= 0 || c.Verification.WorkerCount > 64 {
 		errs = append(errs, errors.New("verification.worker_count must be between 1 and 64"))
 	}
+	if c.Verification.DerivedWorkerCount <= 0 || c.Verification.DerivedWorkerCount > 64 {
+		errs = append(errs, errors.New("verification.derived_worker_count must be between 1 and 64"))
+	}
+	if c.Verification.DerivedMaxTracesPerScan <= 0 ||
+		c.Verification.DerivedMaxTracesPerScan > 10_000 {
+		errs = append(errs, errors.New("verification.derived_max_traces_per_scan must be between 1 and 10000"))
+	}
+	if c.Verification.DerivedBackfillEnabled && !c.Verification.DerivedEnabled {
+		errs = append(errs, errors.New("verification.derived_backfill_enabled requires derived_enabled"))
+	}
 	if c.Verification.Timeout <= 0 || c.Verification.Timeout > 30*time.Minute {
 		errs = append(errs, errors.New("verification.timeout must be between 1ns and 30m"))
 	}

@@ -34,6 +34,12 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				addWorkerComponentKeys(
 					add, "40-contract-verification", cfg.Verification.WorkerCount,
 				)
+				if cfg.Verification.DerivedEnabled {
+					addWorkerComponentKeys(
+						add, "41-factory-derived-verification",
+						cfg.Verification.DerivedWorkerCount,
+					)
+				}
 			}
 		case components.RoleSync:
 			if wakeEnabled {

@@ -82,6 +82,16 @@ type Querier interface {
 	DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
+	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) error
+	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
+	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
+	DerivedVerifyInsertJob(ctx context.Context, arg DerivedVerifyInsertJobParams) error
+	DerivedVerifyListHistoricalTraces(ctx context.Context, arg DerivedVerifyListHistoricalTracesParams) ([]DerivedVerifyListHistoricalTracesRow, error)
+	DerivedVerifyLoadCompilationCandidates(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
+	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
+	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) ([]DerivedVerifyPublicationEvidenceRow, error)
+	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) error
+	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error
 	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) ([]EnrichClaimCandidateRow, error)
 	EnrichClearABIReplayOutputs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
 	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) ([]EnrichInlineAuthenticateCloneCreationStatement1Row, error)

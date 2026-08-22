@@ -26,8 +26,8 @@ human-readable provenance without extending Sourcify consent.
 |---|---|---|---|---|
 | P71-T01 | done | P30-T17 | Reusable candidate matcher and one submitted/derived publication transaction with unchanged ordinary verification behavior | verifier unit and PostgreSQL publication regressions |
 | P71-T02 | done | P71-T01 | Fresh-schema authenticated compilation-unit and bounded candidate persistence on successful address verification | codec, digest/provenance, idempotency, migration, and PostgreSQL round-trip tests |
-| P71-T03 | in_progress | P71-T02 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
-| P71-T04 | todo | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
+| P71-T03 | done | P71-T02 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
+| P71-T04 | in_progress | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
 | P71-T05 | todo | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
 | P71-T06 | todo | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
 
@@ -75,4 +75,14 @@ None.
   ./internal/store -count=1`, `make generate-check`, `make source-check`, the
   complete owned PostgreSQL 18 `make test-integration` gate, and
   `git diff --check` pass on 2026-08-22.
-- P71-T03 is claimed on 2026-08-22.
+- P71-T03 was claimed on 2026-08-22.
+- P71-T03 adds migration `0052`, durable historical scan leases and bounded
+  cursor pagination, explicit pending/no-match/runtime-mismatch/ambiguous/stale
+  attempts, a database-only unique creation/runtime matcher, and internal
+  `derived` jobs that recheck canonical trace/runtime evidence before using the
+  shared verified-contract/selector/proxy-replay transaction. Publication is
+  feature-gated and defaults off. Focused verify/derived/config/app/store tests,
+  `make generate-check`, `make source-check`, `git diff --check`, and the
+  complete owned PostgreSQL 18 `make test-integration` gate pass on 2026-08-23,
+  including an exact Factory-to-CREATE2-child backfill.
+- P71-T04 is claimed on 2026-08-23.

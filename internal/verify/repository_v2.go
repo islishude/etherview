@@ -272,13 +272,6 @@ func (repository *PostgresRepository) CompleteV2(
 	); err != nil {
 		return err
 	}
-	if authenticatedCompilation != nil {
-		if err := repository.persistAuthenticatedCompilationTx(
-			ctx, tx, job, *authenticatedCompilation,
-		); err != nil {
-			return err
-		}
-	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
 		if err := repository.publishVerifiedContractTx(ctx, tx, verifiedPublication{
 			Job: job, Fields: resultFields, BlockNumber: publicationBlockNumber,
@@ -286,6 +279,21 @@ func (repository *PostgresRepository) CompleteV2(
 			Target: publicationTarget, AuthenticatedArtifact: authenticatedArtifact,
 		}); err != nil {
 			return err
+		}
+		if authenticatedCompilation != nil {
+			compilationID, err := repository.persistAuthenticatedCompilationTx(
+				ctx, tx, job, *authenticatedCompilation,
+			)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyEnqueueHistoricalScan,
+				compilationID, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+				publicationAddress, publicationCodeHash,
+				strconv.FormatUint(publicationBlockNumber, 10), nil,
+			); err != nil {
+				return fmt.Errorf("enqueue historical derived verification: %w", err)
+			}
 		}
 	}
 	return tx.Commit()
@@ -296,14 +304,14 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 	tx *sql.Tx,
 	job VerificationJob,
 	compilation AuthenticatedCompilation,
-) error {
+) (string, error) {
 	id, err := randomUUID(repository.random)
 	if err != nil {
-		return err
+		return "", err
 	}
 	compiler := job.Compiler
 	if compiler == nil {
-		return errors.New("authenticated compilation compiler provenance is unavailable")
+		return "", errors.New("authenticated compilation compiler provenance is unavailable")
 	}
 	storedID := ""
 	err = tx.QueryRowContext(ctx, dbgen.VerifyInlineCompleteV2Statement6,
@@ -314,10 +322,10 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 		string(compilation.StandardJSON), []byte(compilation.StandardJSON),
 	).Scan(&storedID)
 	if err != nil {
-		return fmt.Errorf("persist authenticated compilation unit: %w", err)
+		return "", fmt.Errorf("persist authenticated compilation unit: %w", err)
 	}
 	if storedID != id {
-		return errors.New("persisted authenticated compilation identity changed")
+		return "", errors.New("persisted authenticated compilation identity changed")
 	}
 	for _, candidate := range compilation.Candidates {
 		creation, _ := decodeBytecode(candidate.CreationBytecode)
@@ -327,10 +335,10 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 			creation, runtime, string(candidate.CompilationArtifacts),
 			string(candidate.CreationCodeArtifacts), string(candidate.RuntimeCodeArtifacts),
 		); err != nil {
-			return fmt.Errorf("persist authenticated compilation candidate: %w", err)
+			return "", fmt.Errorf("persist authenticated compilation candidate: %w", err)
 		}
 	}
-	return nil
+	return id, nil
 }
 
 type verifiedPublication struct {
