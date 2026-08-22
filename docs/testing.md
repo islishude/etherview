@@ -227,7 +227,10 @@ replace a required `make test-e2e` pass.
   orphan authorizations, retained orphan PostgreSQL evidence, API/SSE/SPA
   behavior, an SSE event delivered after an idle period longer than the
   production server's test write timeout, RPC and PostgreSQL outage recovery,
-  API process restart, bounded load, and final durable/public parity.
+  API process restart, bounded load, and final durable/public parity. The
+  test-only ordinary-response write timeout and load request timeout share one
+  2-second budget; the SSE client is independently context-bounded and stays
+  idle for three times that budget before requiring the durable event.
   The distributed scenario additionally proves config-only identity binding
   and continues after one of two sync and enrichment replicas is stopped. It
   then recreates the production API with a Go-generated, test-only temporary

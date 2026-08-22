@@ -50,8 +50,9 @@ import (
 )
 
 const (
-	runtimeTimeout = 15 * time.Minute
-	waitTimeout    = 3 * time.Minute
+	runtimeTimeout            = 15 * time.Minute
+	waitTimeout               = 3 * time.Minute
+	runtimeServerWriteTimeout = 2 * time.Second
 
 	// NoCBOR.sol is the repository's reviewed Solidity 0.8.30 fixture from
 	// internal/verify/testdata/compiler/solidity/output.no-cbor.json. Deploying
@@ -627,7 +628,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			BaseURL: h.baseURL,
 			Paths:   []string{"/api/v1/config", "/api/v1/status", "/api/v1/blocks?limit=20", "/api/v1/transactions?limit=20"},
 			Rate:    40, Duration: 3 * time.Second, Concurrency: 16,
-			RequestTimeout: 2 * time.Second, MaximumP95: time.Second,
+			RequestTimeout: runtimeServerWriteTimeout, MaximumP95: time.Second,
 			MaximumErrorRate: 0, MinimumThroughputRatio: 0.8, MaximumLag: 0,
 			Profile: "p70-runtime-" + mode, Revision: "working-tree",
 			Dataset:  "deterministic-competing-hash-contract-runtime",
@@ -703,14 +704,15 @@ func runtimeEnvironment(root string, baseTimestamp uint64) map[string]string {
 				baseTimestamp,
 			),
 		),
-		"ETHERVIEW_CONFIG_FILE":        filepath.Join(root, "deploy/config.example.yaml"),
-		"ETHERVIEW_RPC_URLS":           "http://runtime-fixture:8545",
-		"ETHERVIEW_CHAIN_ID":           "1",
-		"ETHERVIEW_CHAIN_GENESIS_HASH": "",
-		"ETHERVIEW_ADAPTER_NAMESPACE":  "runtime-e2e",
-		"ETHERVIEW_PORT":               "0",
-		"ETHERVIEW_METRICS_PORT":       "0",
-		"POSTGRES_PASSWORD":            "etherview-runtime-e2e",
+		"ETHERVIEW_CONFIG_FILE":                  filepath.Join(root, "deploy/config.example.yaml"),
+		"ETHERVIEW_RPC_URLS":                     "http://runtime-fixture:8545",
+		"ETHERVIEW_CHAIN_ID":                     "1",
+		"ETHERVIEW_CHAIN_GENESIS_HASH":           "",
+		"ETHERVIEW_ADAPTER_NAMESPACE":            "runtime-e2e",
+		"ETHERVIEW_RUNTIME_SERVER_WRITE_TIMEOUT": runtimeServerWriteTimeout.String(),
+		"ETHERVIEW_PORT":                         "0",
+		"ETHERVIEW_METRICS_PORT":                 "0",
+		"POSTGRES_PASSWORD":                      "etherview-runtime-e2e",
 	}
 }
 
@@ -1203,7 +1205,7 @@ func (h *harness) waitDatabaseUnavailable(ctx context.Context) {
 }
 
 func (h *harness) validateSSE(ctx context.Context) {
-	streamCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	streamCtx, cancel := context.WithTimeout(ctx, 10*runtimeServerWriteTimeout)
 	defer cancel()
 	var after int64
 	if err := h.db.QueryRow(ctx, `
@@ -1217,7 +1219,12 @@ func (h *harness) validateSSE(ctx context.Context) {
 		h.t.Fatal(err)
 	}
 	request.Header.Set("Last-Event-ID", strconv.FormatInt(after, 10))
-	response, err := h.http.Do(request)
+	streamClient := *h.http
+	// The shared API client has a whole-request timeout for ordinary responses.
+	// SSE is bounded by streamCtx instead so the idle-deadline regression can
+	// intentionally outlive that ordinary client budget.
+	streamClient.Timeout = 0
+	response, err := streamClient.Do(request)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -1226,10 +1233,11 @@ func (h *harness) validateSSE(ctx context.Context) {
 		response.Header.Get("Content-Type") != "text/event-stream; charset=utf-8" {
 		h.t.Fatalf("SSE status=%d headers=%v", response.StatusCode, response.Header)
 	}
-	// The production server is configured with a 250ms write timeout. Stay idle
-	// beyond that whole-response deadline, then commit a durable event. The SSE
-	// frame must still arrive because streaming applies the timeout per write.
-	time.Sleep(750 * time.Millisecond)
+	// The ordinary-response write deadline and bounded-load request deadline use
+	// the same fixture constant. Stay idle beyond that whole-response deadline,
+	// then commit a durable event. The SSE frame must still arrive because
+	// streaming applies the timeout per write.
+	time.Sleep(3 * runtimeServerWriteTimeout)
 	var eventID int64
 	if err := h.db.QueryRow(ctx, `
 		INSERT INTO runtime_events (chain_id, event_type, payload)

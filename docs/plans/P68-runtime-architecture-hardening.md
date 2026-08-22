@@ -30,6 +30,7 @@ schema remain unchanged.
 | P68-T05 | done | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
 | P68-T06 | done | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
 | P68-T07 | done | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
+| P68-T08 | done | P68-T01, P68-T07 | Align runtime E2E ordinary-response write deadlines with its bounded-load request budget while retaining the longer-idle SSE deadline regression | focused runtime tests, Compose validation, and production-topology E2E |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -64,6 +65,21 @@ None.
 
 ## Evidence
 
+- P68-T08 diagnoses GitHub Actions run 32544852014 job 96961409931 as a
+  runtime-fixture budget conflict: one `listTransactions` request completed on
+  the server in 259ms with status 200 but crossed the test-only 250ms ordinary
+  response write timeout, so the load client observed one transport error in
+  120 requests and correctly failed its zero-error threshold. The fixture now
+  shares one 2-second budget between ordinary response writes and load
+  requests. SSE uses the same production Transport/TLS settings with a
+  context-bounded streaming client, stays idle for three times that write
+  budget, and retains its per-write deadline assertion. Tagged focused tests,
+  `make lint-go plan-check`, `make compose-check`, and the current-baseline
+  production image's full `make test-runtime-e2e-prebuilt` pass; the latter
+  completes monolith in 38.27s and the six-role topology in 48.23s. Two exact
+  `make test-runtime-e2e` rebuild attempts reached no code because Docker timed
+  out reading the same two modules from `proxy.golang.org`; this external
+  download failure is not recorded as rebuilt-image evidence.
 - P68-T01 baseline: current focused event, HTTP, and component tests plus
   `make lint` pass on `main@a860089`. Review identified production SSE lifetime
   and shutdown gaps, durable replay I/O under the fanout mutex, repeated Redis
