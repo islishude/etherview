@@ -819,6 +819,69 @@ func (e DelegationHistoryItemKind) Valid() bool {
 	}
 }
 
+// Defines values for DerivedContractCallType.
+const (
+	DerivedContractCallTypeCREATE  DerivedContractCallType = "CREATE"
+	DerivedContractCallTypeCREATE2 DerivedContractCallType = "CREATE2"
+)
+
+// Valid indicates whether the value is a known member of the DerivedContractCallType enum.
+func (e DerivedContractCallType) Valid() bool {
+	switch e {
+	case DerivedContractCallTypeCREATE:
+		return true
+	case DerivedContractCallTypeCREATE2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DerivedContractStatus.
+const (
+	DerivedContractStatusAmbiguous       DerivedContractStatus = "ambiguous"
+	DerivedContractStatusMatched         DerivedContractStatus = "matched"
+	DerivedContractStatusNoMatch         DerivedContractStatus = "no_match"
+	DerivedContractStatusPendingRuntime  DerivedContractStatus = "pending_runtime"
+	DerivedContractStatusRuntimeMismatch DerivedContractStatus = "runtime_mismatch"
+)
+
+// Valid indicates whether the value is a known member of the DerivedContractStatus enum.
+func (e DerivedContractStatus) Valid() bool {
+	switch e {
+	case DerivedContractStatusAmbiguous:
+		return true
+	case DerivedContractStatusMatched:
+		return true
+	case DerivedContractStatusNoMatch:
+		return true
+	case DerivedContractStatusPendingRuntime:
+		return true
+	case DerivedContractStatusRuntimeMismatch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DerivedVerificationProvenanceCallType.
+const (
+	DerivedVerificationProvenanceCallTypeCREATE  DerivedVerificationProvenanceCallType = "CREATE"
+	DerivedVerificationProvenanceCallTypeCREATE2 DerivedVerificationProvenanceCallType = "CREATE2"
+)
+
+// Valid indicates whether the value is a known member of the DerivedVerificationProvenanceCallType enum.
+func (e DerivedVerificationProvenanceCallType) Valid() bool {
+	switch e {
+	case DerivedVerificationProvenanceCallTypeCREATE:
+		return true
+	case DerivedVerificationProvenanceCallTypeCREATE2:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiamondCompleteness.
 const (
 	DiamondCompletenessComplete DiamondCompleteness = "complete"
@@ -2661,6 +2724,27 @@ func (e VerificationMatchType) Valid() bool {
 	}
 }
 
+// Defines values for VerificationOrigin.
+const (
+	VerificationOriginFactoryDerived VerificationOrigin = "factory_derived"
+	VerificationOriginSourcify       VerificationOrigin = "sourcify"
+	VerificationOriginSubmitted      VerificationOrigin = "submitted"
+)
+
+// Valid indicates whether the value is a known member of the VerificationOrigin enum.
+func (e VerificationOrigin) Valid() bool {
+	switch e {
+	case VerificationOriginFactoryDerived:
+		return true
+	case VerificationOriginSourcify:
+		return true
+	case VerificationOriginSubmitted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VerificationSuccessKind.
 const (
 	VerificationSuccessKindVerificationSuccess VerificationSuccessKind = "verification_success"
@@ -3732,6 +3816,58 @@ type DelegationHistoryResponse struct {
 	Data []DelegationHistoryItem `json:"data"`
 	Meta Meta                    `json:"meta"`
 }
+
+// DerivedContract defines model for DerivedContract.
+type DerivedContract struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address      Address `json:"address"`
+	AutoVerified bool    `json:"auto_verified"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber  Quantity                `json:"block_number"`
+	CallType     DerivedContractCallType `json:"call_type"`
+	ContractName *string                 `json:"contract_name,omitempty"`
+	FileName     *string                 `json:"file_name,omitempty"`
+	Status       DerivedContractStatus   `json:"status"`
+	TracePath    string                  `json:"trace_path"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+}
+
+// DerivedContractCallType defines model for DerivedContract.CallType.
+type DerivedContractCallType string
+
+// DerivedContractStatus defines model for DerivedContract.Status.
+type DerivedContractStatus string
+
+// DerivedVerificationProvenance defines model for DerivedVerificationProvenance.
+type DerivedVerificationProvenance struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity                              `json:"block_number"`
+	CallType    DerivedVerificationProvenanceCallType `json:"call_type"`
+
+	// CreatedAddress A 20-byte address; responses use the EIP-55 checksum form.
+	CreatedAddress Address `json:"created_address"`
+
+	// CreatorAddress A 20-byte address; responses use the EIP-55 checksum form.
+	CreatorAddress     Address `json:"creator_address"`
+	ParentContractName string  `json:"parent_contract_name"`
+	ParentFileName     string  `json:"parent_file_name"`
+	TracePath          string  `json:"trace_path"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+}
+
+// DerivedVerificationProvenanceCallType defines model for DerivedVerificationProvenance.CallType.
+type DerivedVerificationProvenanceCallType string
 
 // DiamondCompleteness defines model for DiamondCompleteness.
 type DiamondCompleteness string
@@ -5521,6 +5657,9 @@ type VerificationMatchDetails struct {
 // VerificationMatchType defines model for VerificationMatchType.
 type VerificationMatchType string
 
+// VerificationOrigin defines model for VerificationOrigin.
+type VerificationOrigin string
+
 // VerificationOutcome defines model for VerificationOutcome.
 type VerificationOutcome struct {
 	union json.RawMessage
@@ -5578,18 +5717,20 @@ type VerificationTransformationValues struct {
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi                   *[]map[string]interface{} `json:"abi,omitempty"`
-	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
-	CompilerVersion       string                    `json:"compiler_version"`
-	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
-	ContractName          string                    `json:"contract_name"`
-	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
-	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
-	FileName              string                    `json:"file_name"`
-	IsBlueprint           bool                      `json:"is_blueprint"`
-	Kind                  VerifiedContractKind      `json:"kind"`
-	Language              VerifierLanguage          `json:"language"`
-	Libraries             map[string]string         `json:"libraries"`
+	Abi                   *[]map[string]interface{}      `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}         `json:"compilation_artifacts"`
+	CompilerVersion       string                         `json:"compiler_version"`
+	ConstructorArguments  *string                        `json:"constructor_arguments,omitempty"`
+	ContractName          string                         `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}         `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails      `json:"creation_match,omitempty"`
+	DerivedChildren       []DerivedContract              `json:"derived_children"`
+	DerivedFrom           *DerivedVerificationProvenance `json:"derived_from,omitempty"`
+	FileName              string                         `json:"file_name"`
+	IsBlueprint           bool                           `json:"is_blueprint"`
+	Kind                  VerifiedContractKind           `json:"kind"`
+	Language              VerifierLanguage               `json:"language"`
+	Libraries             map[string]string              `json:"libraries"`
 
 	// Resolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
 	Resolution           ContractArtifactResolution `json:"resolution"`
@@ -5599,6 +5740,7 @@ type VerifiedContract struct {
 	Source               ContractArtifactSource     `json:"source"`
 	Sources              map[string]interface{}     `json:"sources"`
 	Target               ContractArtifactTarget     `json:"target"`
+	VerificationOrigin   VerificationOrigin         `json:"verification_origin"`
 }
 
 // VerifiedContractKind defines model for VerifiedContract.Kind.

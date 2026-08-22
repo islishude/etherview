@@ -1310,6 +1310,7 @@ func contractArtifact(address string) (map[string]any, bool) {
 	fileName := contractName + ".sol"
 	artifact := map[string]any{
 		"kind": "verification_success", "resolution": "exact_address",
+		"verification_origin": "submitted", "derived_children": []any{},
 		"target": map[string]any{
 			"chain_id": "1", "address": address, "code_hash": testHash,
 			"block_number": "100", "block_hash": secondHash,
@@ -1337,6 +1338,21 @@ func contractArtifact(address string) (map[string]any, bool) {
 	if strings.EqualFold(address, cwiaCodeHashImplementation) {
 		artifact["resolution"] = "code_hash"
 		artifact["source"].(map[string]any)["address"] = cwiaImplementation
+	}
+	if strings.EqualFold(address, testAddress) {
+		artifact["verification_origin"] = "factory_derived"
+		artifact["derived_from"] = map[string]any{
+			"creator_address": uupsProxyAddress, "created_address": testAddress,
+			"transaction_hash": testTransactionHash, "trace_path": "0.1",
+			"call_type": "CREATE2", "block_number": "100", "block_hash": secondHash,
+			"parent_file_name": "Factory.sol", "parent_contract_name": "Factory",
+		}
+		artifact["derived_children"] = []any{map[string]any{
+			"address": uupsImplementation, "transaction_hash": secondTransactionHash,
+			"trace_path": "0.2", "call_type": "CREATE", "block_number": "101",
+			"block_hash": testHash, "status": "matched", "auto_verified": true,
+			"file_name": "Child.sol", "contract_name": "Child",
+		}}
 	}
 	return artifact, true
 }

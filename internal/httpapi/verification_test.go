@@ -73,7 +73,8 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 			Status: verify.JobQueued, CreatedAt: now, UpdatedAt: now,
 		},
 		contract: verify.VerifiedContract{
-			Resolution: "exact_address",
+			Resolution:         "exact_address",
+			VerificationOrigin: verify.VerificationOriginFactoryDerived,
 			Target: verify.ContractCodeIdentity{
 				ChainID: 1, Address: address, CodeHash: target.CodeHash,
 				BlockNumber: 7, BlockHash: target.AtBlockHash,
@@ -91,6 +92,19 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 				MatchType: verify.VerificationMatchFull,
 			},
 			Libraries: map[string]string{}, IsBlueprint: false, CreatedAt: now,
+			DerivedFrom: &verify.DerivedVerificationProvenance{
+				CreatorAddress: address, CreatedAddress: address,
+				TransactionHash: "0x" + strings.Repeat("4", 64), TracePath: "0.1",
+				CallType: "CREATE2", BlockNumber: 7,
+				BlockHash: target.AtBlockHash, ParentFileName: "Factory.sol",
+				ParentContractName: "Factory",
+			},
+			DerivedChildren: []verify.DerivedContract{{
+				Address: address, TransactionHash: "0x" + strings.Repeat("5", 64),
+				TracePath: "0.2", CallType: "CREATE", BlockNumber: 8,
+				BlockHash: "0x" + strings.Repeat("6", 64), Status: "matched",
+				FileName: "Child.sol", ContractName: "Child", AutoVerified: true,
+			}},
 		},
 	}
 	cfg := config.Default()
@@ -189,7 +203,10 @@ func TestVerifierV2RoutesBindAddressAndRemoveV1Surface(t *testing.T) {
 	response = httptest.NewRecorder()
 	protected.ServeHTTP(response, read)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Counter.sol") ||
-		!strings.Contains(response.Body.String(), `"transformations":[]`) {
+		!strings.Contains(response.Body.String(), `"transformations":[]`) ||
+		!strings.Contains(response.Body.String(), `"verification_origin":"factory_derived"`) ||
+		!strings.Contains(response.Body.String(), `"parent_contract_name":"Factory"`) ||
+		!strings.Contains(response.Body.String(), `"contract_name":"Child"`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	response = httptest.NewRecorder()

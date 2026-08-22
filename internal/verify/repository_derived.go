@@ -12,8 +12,93 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/db/gen"
 )
+
+func (repository *PostgresRepository) loadDerivedArtifactDetails(
+	ctx context.Context,
+	resolved contractartifact.Result,
+	contract *VerifiedContract,
+) error {
+	if contract == nil {
+		return errors.New("verified contract provenance target is nil")
+	}
+	contract.VerificationOrigin = VerificationOriginSubmitted
+	var kind JobKind
+	err := repository.db.QueryRowContext(
+		ctx, dbgen.DerivedVerifyArtifactJobKind, resolved.Source.VerificationJobID,
+	).Scan(&kind)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if kind == JobSourcify || kind == JobSourcifyFromEtherscan {
+		contract.VerificationOrigin = VerificationOriginSourcify
+	}
+	if kind == JobDerived {
+		contract.VerificationOrigin = VerificationOriginFactoryDerived
+		var creator, created, transaction, blockHash []byte
+		var tracePath, callType, blockNumber, parentFile, parentContract string
+		err := repository.db.QueryRowContext(
+			ctx, dbgen.DerivedVerifyArtifactProvenance,
+			resolved.Source.VerificationJobID,
+		).Scan(
+			&creator, &created, &transaction, &tracePath, &callType,
+			&blockNumber, &blockHash, &parentFile, &parentContract,
+		)
+		if err != nil {
+			return fmt.Errorf("load derived verification provenance: %w", err)
+		}
+		number, err := strconv.ParseUint(blockNumber, 10, 64)
+		if err != nil || len(creator) != 20 || len(created) != 20 ||
+			len(transaction) != 32 || len(blockHash) != 32 {
+			return errors.New("stored derived verification provenance is invalid")
+		}
+		contract.DerivedFrom = &DerivedVerificationProvenance{
+			CreatorAddress:  "0x" + hex.EncodeToString(creator),
+			CreatedAddress:  "0x" + hex.EncodeToString(created),
+			TransactionHash: "0x" + hex.EncodeToString(transaction),
+			TracePath:       tracePath, CallType: callType, BlockNumber: number,
+			BlockHash:      "0x" + hex.EncodeToString(blockHash),
+			ParentFileName: parentFile, ParentContractName: parentContract,
+		}
+	}
+	contract.DerivedChildren = make([]DerivedContract, 0)
+	if resolved.Resolution != contractartifact.ResolutionExactAddress {
+		return nil
+	}
+	rows, err := repository.db.QueryContext(
+		ctx, dbgen.DerivedVerifyCreatedContracts,
+		resolved.Target.ChainID, resolved.Target.Address,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close() //nolint:errcheck
+	for rows.Next() {
+		var child DerivedContract
+		var address, transaction, blockHash []byte
+		var blockNumber string
+		var fileName, contractName sql.NullString
+		if err := rows.Scan(
+			&address, &transaction, &child.TracePath, &child.CallType,
+			&blockNumber, &blockHash, &child.Status, &fileName,
+			&contractName, &child.AutoVerified,
+		); err != nil {
+			return err
+		}
+		child.BlockNumber, err = strconv.ParseUint(blockNumber, 10, 64)
+		if err != nil || len(address) != 20 || len(transaction) != 32 || len(blockHash) != 32 {
+			return errors.New("stored derived child provenance is invalid")
+		}
+		child.Address = "0x" + hex.EncodeToString(address)
+		child.TransactionHash = "0x" + hex.EncodeToString(transaction)
+		child.BlockHash = "0x" + hex.EncodeToString(blockHash)
+		child.FileName, child.ContractName = fileName.String, contractName.String
+		contract.DerivedChildren = append(contract.DerivedChildren, child)
+	}
+	return rows.Err()
+}
 
 var (
 	ErrDerivedEvidenceStale = errors.New("derived verification evidence is stale")
@@ -321,7 +406,7 @@ func loadDerivedCandidatesTx(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var candidates []CandidateArtifact
 	for rows.Next() {
 		var language Language

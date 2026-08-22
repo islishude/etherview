@@ -625,7 +625,9 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 		CompilationArtifacts: compilation, CreationCodeArtifacts: creationArtifacts,
 		RuntimeCodeArtifacts: runtimeArtifacts, CreationMatch: matchDetailsModel(contract.CreationMatch),
 		RuntimeMatch: matchDetailsModel(contract.RuntimeMatch), Libraries: contract.Libraries,
-		IsBlueprint: contract.IsBlueprint,
+		IsBlueprint:        contract.IsBlueprint,
+		VerificationOrigin: gen.VerificationOrigin(contract.VerificationOrigin),
+		DerivedChildren:    make([]gen.DerivedContract, 0, len(contract.DerivedChildren)),
 	}
 	if model.Libraries == nil {
 		model.Libraries = map[string]string{}
@@ -637,6 +639,45 @@ func verifiedContractModel(contract verify.VerifiedContract) (gen.VerifiedContra
 	if contract.Source.ValidToBlock != nil {
 		value := strconv.FormatUint(*contract.Source.ValidToBlock, 10)
 		model.Source.ValidToBlock = &value
+	}
+	if contract.DerivedFrom != nil {
+		creator, err := checksumAddress(contract.DerivedFrom.CreatorAddress)
+		if err != nil {
+			return gen.VerifiedContract{}, err
+		}
+		created, err := checksumAddress(contract.DerivedFrom.CreatedAddress)
+		if err != nil {
+			return gen.VerifiedContract{}, err
+		}
+		model.DerivedFrom = &gen.DerivedVerificationProvenance{
+			CreatorAddress: creator, CreatedAddress: created,
+			TransactionHash:    contract.DerivedFrom.TransactionHash,
+			TracePath:          contract.DerivedFrom.TracePath,
+			CallType:           gen.DerivedVerificationProvenanceCallType(contract.DerivedFrom.CallType),
+			BlockNumber:        strconv.FormatUint(contract.DerivedFrom.BlockNumber, 10),
+			BlockHash:          contract.DerivedFrom.BlockHash,
+			ParentFileName:     contract.DerivedFrom.ParentFileName,
+			ParentContractName: contract.DerivedFrom.ParentContractName,
+		}
+	}
+	for _, child := range contract.DerivedChildren {
+		address, err := checksumAddress(child.Address)
+		if err != nil {
+			return gen.VerifiedContract{}, err
+		}
+		item := gen.DerivedContract{
+			Address: address, TransactionHash: child.TransactionHash,
+			TracePath: child.TracePath, CallType: gen.DerivedContractCallType(child.CallType),
+			BlockNumber: strconv.FormatUint(child.BlockNumber, 10), BlockHash: child.BlockHash,
+			Status: gen.DerivedContractStatus(child.Status), AutoVerified: child.AutoVerified,
+		}
+		if child.FileName != "" {
+			item.FileName = &child.FileName
+		}
+		if child.ContractName != "" {
+			item.ContractName = &child.ContractName
+		}
+		model.DerivedChildren = append(model.DerivedChildren, item)
 	}
 	return model, nil
 }

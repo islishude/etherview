@@ -291,6 +291,21 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt(lookup, "VERIFICATION_WORKER_COUNT", &cfg.Verification.WorkerCount); err != nil {
 		return err
 	}
+	if err := setBool(lookup, "DERIVED_VERIFY_ENABLED", &cfg.Verification.DerivedEnabled); err != nil {
+		return err
+	}
+	if err := setBool(lookup, "DERIVED_VERIFY_BACKFILL_ENABLED", &cfg.Verification.DerivedBackfillEnabled); err != nil {
+		return err
+	}
+	if err := setBool(lookup, "DERIVED_VERIFY_FORWARD_ENABLED", &cfg.Verification.DerivedForwardEnabled); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "DERIVED_VERIFY_WORKER_COUNT", &cfg.Verification.DerivedWorkerCount); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "DERIVED_VERIFY_MAX_TRACES_PER_SCAN", &cfg.Verification.DerivedMaxTracesPerScan); err != nil {
+		return err
+	}
 	if err := setDuration(lookup, "VERIFICATION_CATALOG_REFRESH_INTERVAL", &cfg.Verification.CatalogRefreshInterval); err != nil {
 		return err
 	}

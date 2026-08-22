@@ -84,6 +84,36 @@ func TestVerificationRuntimePathsDefaultAndEnvironmentOverride(t *testing.T) {
 	}
 }
 
+func TestDerivedVerificationEnvironmentAndRolloutDependencies(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	values := map[string]string{
+		"ETHERVIEW_DERIVED_VERIFY_ENABLED":             "true",
+		"ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED":    "true",
+		"ETHERVIEW_DERIVED_VERIFY_FORWARD_ENABLED":     "true",
+		"ETHERVIEW_DERIVED_VERIFY_WORKER_COUNT":        "3",
+		"ETHERVIEW_DERIVED_VERIFY_MAX_TRACES_PER_SCAN": "250",
+	}
+	if err := applyEnvironment(&cfg, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Verification.DerivedEnabled || !cfg.Verification.DerivedBackfillEnabled ||
+		!cfg.Verification.DerivedForwardEnabled || cfg.Verification.DerivedWorkerCount != 3 ||
+		cfg.Verification.DerivedMaxTracesPerScan != 250 {
+		t.Fatalf("derived verification environment = %+v", cfg.Verification)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid derived rollout rejected: %v", err)
+	}
+	cfg.Verification.DerivedBackfillEnabled = false
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "derived_forward_enabled") {
+		t.Fatalf("forward without backfill error = %v", err)
+	}
+}
+
 func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

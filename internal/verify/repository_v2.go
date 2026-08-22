@@ -600,6 +600,9 @@ func (repository *PostgresRepository) VerifiedContract(
 	if len(resolved.Source.ConstructorArguments) > 0 {
 		contract.ConstructorArguments = "0x" + hex.EncodeToString(resolved.Source.ConstructorArguments)
 	}
+	if err := repository.loadDerivedArtifactDetails(ctx, resolved, &contract); err != nil {
+		return VerifiedContract{}, false, err
+	}
 	return contract, true, nil
 }
 

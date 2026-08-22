@@ -315,6 +315,12 @@ S3-compatible service or PostgreSQL endpoint on another port. Setting
 `networkPolicy.enabled=false` is explicit and is rejected while public
 verification is enabled.
 
+Factory-derived verification is disabled by default. Enable
+`config.verification.derived_enabled`, then
+`derived_backfill_enabled`, and finally `derived_forward_enabled` in that
+order. The forward flag is rejected unless historical publication is enabled;
+`derived_worker_count` and `derived_max_traces_per_scan` bound API-role work.
+
 Billing cannot use shared broad HTTPS. Set
 `networkPolicy.allowExternalHTTPS=false`; put reviewed HTTPS RPC and adapter
 ranges in `networkPolicy.runtimeHTTPSCIDRs`. Compiler downloads remain scoped

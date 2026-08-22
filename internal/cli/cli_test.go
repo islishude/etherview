@@ -427,6 +427,21 @@ func TestOperationalCommandsParseConfigAndForwardArguments(t *testing.T) {
 			},
 		},
 		{
+			name: "admin derived verification backfill",
+			args: []string{
+				"admin", "derived-verification", "backfill", "--address",
+				"0x0000000000000000000000000000000000000001", "--reason",
+				"reviewed rollout", "--config=" + path,
+			},
+			assert: func(t *testing.T, backend *fakeBackend) {
+				if backend.adminResource != "derived-verification" ||
+					backend.adminAction != "backfill" ||
+					strings.Join(backend.adminArgs, " ") != "--address 0x0000000000000000000000000000000000000001 --reason reviewed rollout" {
+					t.Fatalf("admin resource=%q action=%q args=%v", backend.adminResource, backend.adminAction, backend.adminArgs)
+				}
+			},
+		},
+		{
 			name: "admin user set role",
 			args: []string{
 				"admin", "user", "set-role",

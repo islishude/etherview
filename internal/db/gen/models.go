@@ -464,6 +464,15 @@ type DerivedVerificationAttempt struct {
 	StaleFromStatus   *string            `db:"stale_from_status" json:"stale_from_status"`
 }
 
+type DerivedVerificationBackfillRequest struct {
+	ID             int64              `db:"id" json:"id"`
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	CreatorAddress []byte             `db:"creator_address" json:"creator_address"`
+	Reason         string             `db:"reason" json:"reason"`
+	ScanCount      int32              `db:"scan_count" json:"scan_count"`
+	RequestedAt    pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+}
+
 type DerivedVerificationForwardBlock struct {
 	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`

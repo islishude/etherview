@@ -402,6 +402,11 @@ config:
     max_output_bytes: 67108864
     timeout: 2m
     worker_count: 1
+    derived_enabled: false
+    derived_backfill_enabled: false
+    derived_forward_enabled: false
+    derived_worker_count: 1
+    derived_max_traces_per_scan: 100
     cache_directory: /var/lib/etherview/compilers/cache
     executor_path: /opt/etherview/solcjs/etherview-solcjs
     geas_path: /usr/local/bin/etherview-geas-compiler

@@ -45,6 +45,7 @@ type Registry struct {
 	enrichmentJobs                map[pair]uint64
 	traceJobs                     map[string]uint64
 	verifyJobs                    map[string]uint64
+	derivedVerification           map[pair]uint64
 	metadata                      map[string]uint64
 	maintenance                   map[pair]uint64
 	analyticsRollups              map[string]uint64
@@ -114,6 +115,7 @@ func NewRegistry(version, role string) *Registry {
 		enrichmentJobs:                make(map[pair]uint64),
 		traceJobs:                     make(map[string]uint64),
 		verifyJobs:                    make(map[string]uint64),
+		derivedVerification:           make(map[pair]uint64),
 		metadata:                      make(map[string]uint64),
 		maintenance:                   make(map[pair]uint64),
 		analyticsRollups:              make(map[string]uint64),
@@ -283,6 +285,23 @@ func (registry *Registry) RecordTraceJob(result string) {
 // RecordVerificationJob increments a normalized verification-job result.
 func (registry *Registry) RecordVerificationJob(result string) {
 	registry.increment(registry.verifyJobs, boundedJobResult(result))
+}
+
+// RecordDerivedVerification increments the closed derived-verification
+// operation/result vocabulary without address, chain, or candidate labels.
+func (registry *Registry) RecordDerivedVerification(kind, result string) {
+	switch kind {
+	case "scan", "match", "publish":
+	default:
+		kind = "other"
+	}
+	switch result {
+	case "trace", "matched", "pending_runtime", "ambiguous", "no_match",
+		"runtime_mismatch", "stale":
+	default:
+		result = "other"
+	}
+	registry.incrementPair(registry.derivedVerification, kind, result)
 }
 
 // SetVerificationCompilerAvailable records one bounded compiler family's
@@ -464,6 +483,7 @@ func (registry *Registry) Gather() string {
 	fmt.Fprintf(&output, "etherview_safe_proxy_compatible_candidate_total %d\n", registry.safeProxyCompatibleCandidates)
 	writeCounters(&output, "etherview_trace_jobs_total", "Trace jobs grouped by result.", "result", registry.traceJobs)
 	writeCounters(&output, "etherview_verification_jobs_total", "Verification jobs grouped by result.", "result", registry.verifyJobs)
+	writePairCounters(&output, "etherview_derived_verification_total", "Factory-derived verification operations grouped by bounded kind and result.", "kind", "result", registry.derivedVerification)
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
 	writePairCounters(&output, "etherview_maintenance_requests_total", "Repair and reindex executions grouped by operation and result.", "operation", "result", registry.maintenance)
 	writeCounters(&output, "etherview_analytics_rollup_recomputes_total", "Historical analytics rollup recomputes grouped by outcome.", "result", registry.analyticsRollups)

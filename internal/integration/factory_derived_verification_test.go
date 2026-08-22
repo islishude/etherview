@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/contractartifact"
+	"github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
@@ -228,6 +229,17 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		WHERE chain_id = 1 AND block_hash = $1 AND status = 'succeeded'`, 1,
 		forwardBlock.Block.Hash().Bytes(),
 	)
+	childArtifact, found, err := repository.VerifiedContract(
+		ctx, 1, "0x"+hex.EncodeToString(childAddress),
+	)
+	if err != nil || !found || childArtifact.VerificationOrigin != verify.VerificationOriginFactoryDerived ||
+		childArtifact.DerivedFrom == nil ||
+		childArtifact.DerivedFrom.CreatorAddress != "0x"+hex.EncodeToString(factoryAddress) ||
+		childArtifact.DerivedFrom.ParentContractName != "A" ||
+		len(childArtifact.DerivedChildren) != 1 ||
+		childArtifact.DerivedChildren[0].Address != "0x"+hex.EncodeToString(grandchildAddress) {
+		t.Fatalf("child provenance: found=%t artifact=%+v error=%v", found, childArtifact, err)
+	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_attempts
 		WHERE chain_id = 1 AND created_address = $1`, 0, wrongEpochChildAddress)
@@ -313,6 +325,23 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	if _, found, err := repository.VerifiedContract(ctx, 1, "0x"+hex.EncodeToString(childAddress)); err != nil || !found {
 		t.Fatalf("reattached derived publication did not recover: found=%t error=%v", found, err)
 	}
+	var requestID int64
+	var scanCount int
+	var requestedAt time.Time
+	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRequestBackfill,
+		"1", childAddress, "reviewed integration backfill",
+	).Scan(&requestID, &scanCount, &requestedAt); err != nil {
+		t.Fatalf("request derived backfill: %v", err)
+	}
+	if requestID <= 0 || scanCount != 1 || requestedAt.IsZero() {
+		t.Fatalf("derived backfill request id=%d scans=%d at=%s", requestID, scanCount, requestedAt)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_backfill_requests
+		WHERE id = $1 AND chain_id = 1 AND creator_address = $2
+		  AND reason = 'reviewed integration backfill' AND scan_count = 1`, 1,
+		requestID, childAddress,
+	)
 }
 
 func derivedCandidate(name, creation, runtime string) verify.CandidateArtifact {

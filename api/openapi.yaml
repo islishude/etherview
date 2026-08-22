@@ -4521,6 +4521,8 @@ components:
             - resolution
             - target
             - source
+            - verification_origin
+            - derived_children
           properties:
             resolution:
               $ref: "#/components/schemas/ContractArtifactResolution"
@@ -4528,6 +4530,92 @@ components:
               $ref: "#/components/schemas/ContractArtifactTarget"
             source:
               $ref: "#/components/schemas/ContractArtifactSource"
+            verification_origin:
+              $ref: "#/components/schemas/VerificationOrigin"
+            derived_from:
+              $ref: "#/components/schemas/DerivedVerificationProvenance"
+            derived_children:
+              type: array
+              maxItems: 100
+              items:
+                $ref: "#/components/schemas/DerivedContract"
+    VerificationOrigin:
+      type: string
+      enum: [submitted, sourcify, factory_derived]
+    DerivedVerificationProvenance:
+      type: object
+      additionalProperties: false
+      required:
+        - creator_address
+        - created_address
+        - transaction_hash
+        - trace_path
+        - call_type
+        - block_number
+        - block_hash
+        - parent_file_name
+        - parent_contract_name
+      properties:
+        creator_address:
+          $ref: "#/components/schemas/Address"
+        created_address:
+          $ref: "#/components/schemas/Address"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        trace_path:
+          type: string
+          maxLength: 2048
+        call_type:
+          type: string
+          enum: [CREATE, CREATE2]
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        parent_file_name:
+          type: string
+          maxLength: 384
+        parent_contract_name:
+          type: string
+          maxLength: 256
+    DerivedContract:
+      type: object
+      additionalProperties: false
+      required:
+        - address
+        - transaction_hash
+        - trace_path
+        - call_type
+        - block_number
+        - block_hash
+        - status
+        - auto_verified
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        trace_path:
+          type: string
+          maxLength: 2048
+        call_type:
+          type: string
+          enum: [CREATE, CREATE2]
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        status:
+          type: string
+          enum: [pending_runtime, matched, ambiguous, no_match, runtime_mismatch]
+        file_name:
+          type: string
+          maxLength: 384
+        contract_name:
+          type: string
+          maxLength: 256
+        auto_verified:
+          type: boolean
     ContractArtifactTarget:
       type: object
       additionalProperties: false

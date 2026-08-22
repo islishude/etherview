@@ -73,10 +73,9 @@ func MatchCandidate(
 	input MatchInput,
 	requireRuntime bool,
 ) (CandidateMatch, bool, error) {
-	results, err := VerifyCandidateArtifacts([]CandidateArtifact{candidate}, BytecodePair{
-		Creation: input.Creation,
-		Runtime:  input.Runtime,
-	}, "", requireRuntime)
+	results, err := VerifyCandidateArtifacts(
+		[]CandidateArtifact{candidate}, BytecodePair(input), "", requireRuntime,
+	)
 	if err != nil {
 		return CandidateMatch{}, false, err
 	}
@@ -84,12 +83,7 @@ func MatchCandidate(
 		return CandidateMatch{}, false, nil
 	}
 	result := results[0]
-	return CandidateMatch{
-		Candidate: result.Candidate,
-		Creation:  result.Creation,
-		Runtime:   result.Runtime,
-		Blueprint: result.Blueprint,
-	}, true, nil
+	return CandidateMatch(result), true, nil
 }
 
 type CompilationFailure struct {

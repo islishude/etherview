@@ -52,6 +52,125 @@ func (q *Queries) DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerif
 	return err
 }
 
+const DerivedVerifyArtifactJobKind = `-- name: DerivedVerifyArtifactJobKind :many
+SELECT kind
+FROM verification_jobs
+WHERE id = $1::uuid
+  AND status = 'succeeded'
+`
+
+func (q *Queries) DerivedVerifyArtifactJobKind(ctx context.Context, dollar_1 pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyArtifactJobKind, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var kind string
+		if err := rows.Scan(&kind); err != nil {
+			return nil, err
+		}
+		items = append(items, kind)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const DerivedVerifyArtifactProvenance = `-- name: DerivedVerifyArtifactProvenance :many
+SELECT attempt.creator_address, attempt.created_address,
+       attempt.transaction_hash, attempt.trace_path, attempt.call_type,
+       attempt.block_number::text, attempt.block_hash,
+       parent.file_name, parent.contract_name
+FROM derived_verification_attempts AS attempt
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = attempt.chain_id
+ AND canonical.number = attempt.block_number
+ AND canonical.block_hash = attempt.block_hash
+JOIN normalized_traces AS trace
+  ON trace.chain_id = attempt.chain_id
+ AND trace.block_number = attempt.block_number
+ AND trace.block_hash = attempt.block_hash
+ AND trace.transaction_hash = attempt.transaction_hash
+ AND trace.trace_path = attempt.trace_path
+ AND trace.canonical
+JOIN derived_verification_scans AS scan
+  ON scan.compilation_id = attempt.compilation_id
+ AND scan.chain_id = attempt.chain_id
+ AND scan.creator_address = attempt.creator_address
+ AND scan.valid_from_block <= attempt.block_number
+ AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
+JOIN verified_contracts AS parent
+  ON parent.chain_id = scan.chain_id
+ AND parent.address = scan.creator_address
+ AND parent.code_hash = scan.creator_code_hash
+ AND parent.valid_from_block <= attempt.block_number
+ AND (parent.valid_to_block IS NULL OR parent.valid_to_block >= attempt.block_number)
+WHERE attempt.verification_job_id = $1::uuid
+  AND attempt.status = 'matched'
+  AND scan.creator_code_hash = (
+      SELECT observation.code_hash
+      FROM contract_code_observations AS observation
+      JOIN canonical_blocks AS observation_canonical
+        ON observation_canonical.chain_id = observation.chain_id
+       AND observation_canonical.number = observation.block_number
+       AND observation_canonical.block_hash = observation.block_hash
+      WHERE observation.chain_id = attempt.chain_id
+        AND observation.address = attempt.creator_address
+        AND observation.canonical
+        AND observation.block_number <= attempt.block_number
+      ORDER BY observation.block_number DESC, observation.observed_at DESC,
+               observation.code_hash DESC
+      LIMIT 1
+  )
+ORDER BY parent.verification_job_id
+LIMIT 1
+`
+
+type DerivedVerifyArtifactProvenanceRow struct {
+	CreatorAddress     []byte `db:"creator_address" json:"creator_address"`
+	CreatedAddress     []byte `db:"created_address" json:"created_address"`
+	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
+	TracePath          string `db:"trace_path" json:"trace_path"`
+	CallType           string `db:"call_type" json:"call_type"`
+	AttemptBlockNumber string `db:"attempt_block_number" json:"attempt_block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	FileName           string `db:"file_name" json:"file_name"`
+	ContractName       string `db:"contract_name" json:"contract_name"`
+}
+
+func (q *Queries) DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyArtifactProvenanceRow, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyArtifactProvenance, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DerivedVerifyArtifactProvenanceRow{}
+	for rows.Next() {
+		var i DerivedVerifyArtifactProvenanceRow
+		if err := rows.Scan(
+			&i.CreatorAddress,
+			&i.CreatedAddress,
+			&i.TransactionHash,
+			&i.TracePath,
+			&i.CallType,
+			&i.AttemptBlockNumber,
+			&i.BlockHash,
+			&i.FileName,
+			&i.ContractName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const DerivedVerifyClaimForwardBlock = `-- name: DerivedVerifyClaimForwardBlock :many
 WITH exhausted AS (
     UPDATE derived_verification_forward_blocks
@@ -194,6 +313,75 @@ func (q *Queries) DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, 
 			&i.ScanCursorBlockNumber,
 			&i.CursorTransactionHash,
 			&i.CursorTracePath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const DerivedVerifyCreatedContracts = `-- name: DerivedVerifyCreatedContracts :many
+SELECT attempt.created_address, attempt.transaction_hash, attempt.trace_path,
+       attempt.call_type, attempt.block_number::text, attempt.block_hash,
+       attempt.status, attempt.file_name, attempt.contract_name,
+       (attempt.verification_job_id IS NOT NULL) AS auto_verified
+FROM derived_verification_attempts AS attempt
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = attempt.chain_id
+ AND canonical.number = attempt.block_number
+ AND canonical.block_hash = attempt.block_hash
+JOIN normalized_traces AS trace
+  ON trace.chain_id = attempt.chain_id
+ AND trace.block_number = attempt.block_number
+ AND trace.block_hash = attempt.block_hash
+ AND trace.transaction_hash = attempt.transaction_hash
+ AND trace.trace_path = attempt.trace_path
+ AND trace.canonical
+WHERE attempt.chain_id = $1::numeric
+  AND attempt.creator_address = $2
+  AND attempt.status <> 'stale'
+ORDER BY attempt.block_number DESC, attempt.transaction_hash DESC,
+         attempt.trace_path DESC, attempt.compilation_id
+LIMIT 100
+`
+
+type DerivedVerifyCreatedContractsRow struct {
+	CreatedAddress     []byte      `db:"created_address" json:"created_address"`
+	TransactionHash    []byte      `db:"transaction_hash" json:"transaction_hash"`
+	TracePath          string      `db:"trace_path" json:"trace_path"`
+	CallType           string      `db:"call_type" json:"call_type"`
+	AttemptBlockNumber string      `db:"attempt_block_number" json:"attempt_block_number"`
+	BlockHash          []byte      `db:"block_hash" json:"block_hash"`
+	Status             string      `db:"status" json:"status"`
+	FileName           *string     `db:"file_name" json:"file_name"`
+	ContractName       *string     `db:"contract_name" json:"contract_name"`
+	AutoVerified       interface{} `db:"auto_verified" json:"auto_verified"`
+}
+
+func (q *Queries) DerivedVerifyCreatedContracts(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte) ([]DerivedVerifyCreatedContractsRow, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyCreatedContracts, column1, creatorAddress)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DerivedVerifyCreatedContractsRow{}
+	for rows.Next() {
+		var i DerivedVerifyCreatedContractsRow
+		if err := rows.Scan(
+			&i.CreatedAddress,
+			&i.TransactionHash,
+			&i.TracePath,
+			&i.CallType,
+			&i.AttemptBlockNumber,
+			&i.BlockHash,
+			&i.Status,
+			&i.FileName,
+			&i.ContractName,
+			&i.AutoVerified,
 		); err != nil {
 			return nil, err
 		}
@@ -862,6 +1050,54 @@ func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVer
 		arg.Status,
 	)
 	return err
+}
+
+const DerivedVerifyRequestBackfill = `-- name: DerivedVerifyRequestBackfill :many
+WITH reset AS (
+    UPDATE derived_verification_scans AS scan
+    SET status = 'queued', redispatch_requested = FALSE,
+        cursor_block_number = scan.valid_from_block,
+        cursor_transaction_hash = decode(repeat('00', 32), 'hex'),
+        cursor_trace_path = '', attempt_count = 0, last_error = NULL,
+        leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
+        updated_at = clock_timestamp()
+    WHERE scan.chain_id = $1::numeric
+      AND ($2::bytea IS NULL OR scan.creator_address = $2)
+      AND scan.status <> 'running'
+    RETURNING scan.id
+)
+INSERT INTO derived_verification_backfill_requests (
+    chain_id, creator_address, reason, scan_count
+)
+SELECT $1::numeric, $2, $3, count(*)::integer
+FROM reset
+RETURNING id, scan_count, requested_at
+`
+
+type DerivedVerifyRequestBackfillRow struct {
+	ID          int64              `db:"id" json:"id"`
+	ScanCount   int32              `db:"scan_count" json:"scan_count"`
+	RequestedAt pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+}
+
+func (q *Queries) DerivedVerifyRequestBackfill(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte, reason string) ([]DerivedVerifyRequestBackfillRow, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyRequestBackfill, column1, creatorAddress, reason)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DerivedVerifyRequestBackfillRow{}
+	for rows.Next() {
+		var i DerivedVerifyRequestBackfillRow
+		if err := rows.Scan(&i.ID, &i.ScanCount, &i.RequestedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const DerivedVerifyRetryForwardBlock = `-- name: DerivedVerifyRetryForwardBlock :exec

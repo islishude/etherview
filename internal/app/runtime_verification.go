@@ -79,6 +79,7 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 						PollInterval:   cfg.Runtime.PollInterval,
 						MaxTraces:      cfg.Verification.DerivedMaxTracesPerScan,
 						PublishMatches: cfg.Verification.DerivedBackfillEnabled,
+						Observer:       businessObserver,
 					})
 				},
 			); err != nil {

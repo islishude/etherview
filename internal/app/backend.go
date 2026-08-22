@@ -16,6 +16,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/adminstore"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/config"
@@ -113,9 +114,53 @@ func (b *Backend) Admin(ctx context.Context, cfg config.Config, resource, action
 		return b.adminUser(ctx, db, cfg, action, args)
 	case "billing":
 		return b.adminBilling(ctx, db, cfg, action, args)
+	case "derived-verification":
+		return b.adminDerivedVerification(ctx, db, cfg, action, args)
 	default:
 		return fmt.Errorf("unsupported admin resource %q", resource)
 	}
+}
+
+func (b *Backend) adminDerivedVerification(
+	ctx context.Context,
+	db *sql.DB,
+	cfg config.Config,
+	action string,
+	args []string,
+) error {
+	if action != "backfill" {
+		return fmt.Errorf("unsupported derived-verification admin action %q", action)
+	}
+	fs := flag.NewFlagSet("admin derived-verification backfill", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	address := fs.String("address", "", "optional factory address")
+	reason := fs.String("reason", "", "operator audit reason")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*reason) == "" || len(*reason) > 512 {
+		return errors.New("derived-verification backfill requires a bounded --reason")
+	}
+	var addressBytes any
+	if *address != "" {
+		if !common.IsHexAddress(*address) {
+			return errors.New("derived-verification backfill address is invalid")
+		}
+		addressBytes = common.HexToAddress(*address).Bytes()
+	}
+	var id int64
+	var count int
+	var requestedAt time.Time
+	err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRequestBackfill,
+		strconv.FormatUint(cfg.Chain.ID, 10), addressBytes, strings.TrimSpace(*reason),
+	).Scan(&id, &count, &requestedAt)
+	if err != nil {
+		return err
+	}
+	return writeIndentedJSON(b.output(), map[string]any{
+		"id": id, "status": "queued", "scan_count": count,
+		"requested_at": requestedAt.UTC(),
+	})
 }
 
 func (b *Backend) adminRepair(ctx context.Context, db *sql.DB, cfg config.Config, action string, args []string) error {

@@ -162,6 +162,54 @@ describe("contract artifact view models", () => {
 });
 
 describe("ContractArtifactPanel", () => {
+	it("explains factory-derived verification and lists bounded created contracts", () => {
+		const creator = "0x2222222222222222222222222222222222222222";
+		const child = "0x3333333333333333333333333333333333333333";
+		const transaction = `0x${"44".repeat(32)}`;
+		const rootRoute = createRootRoute();
+		const addressRoute = createRoute({
+			getParentRoute: () => rootRoute,
+			path: "/address/$address",
+			component: () => null,
+		});
+		const router = createRouter({
+			history: createMemoryHistory({ initialEntries: ["/"] }),
+			routeTree: rootRoute.addChildren([addressRoute]),
+		});
+		render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
+			verification_origin: "factory_derived",
+			derived_from: {
+				creator_address: creator,
+				created_address: "0x1111111111111111111111111111111111111111",
+				transaction_hash: transaction,
+				trace_path: "0.1",
+				call_type: "CREATE2",
+				block_number: "2",
+				block_hash: `0x${"55".repeat(32)}`,
+				parent_file_name: "Factory.sol",
+				parent_contract_name: "Factory",
+			},
+			derived_children: [{
+				address: child,
+				transaction_hash: transaction,
+				trace_path: "0.2",
+				call_type: "CREATE",
+				block_number: "3",
+				block_hash: `0x${"66".repeat(32)}`,
+				status: "matched",
+				auto_verified: true,
+				contract_name: "Child",
+				file_name: "Child.sol",
+			}],
+		})} /></RouterContextProvider>);
+
+		expect(screen.getByRole("status")).toHaveTextContent("Auto-verified from verified factory:");
+		expect(screen.getByText("Factory-derived")).toBeVisible();
+		expect(screen.getByRole("heading", { name: "Created contracts" })).toBeVisible();
+		expect(screen.getByRole("link", { name: child })).toBeVisible();
+		expect(screen.getByText("Auto-verified")).toBeVisible();
+	});
+
 	it("presents a code-hash artifact as verified source without claiming address verification", () => {
 		const sourceAddress = "0x2222222222222222222222222222222222222222";
 		const rootRoute = createRootRoute();
@@ -443,6 +491,8 @@ function fixtureArtifact(
 ): VerifiedContractArtifact {
   return {
     kind: "verification_success",
+		verification_origin: "submitted",
+		derived_children: [],
 		resolution: "exact_address",
 		target: {
 			chain_id: "1",

@@ -26,6 +26,16 @@ type Options struct {
 	PollInterval   time.Duration
 	MaxTraces      int
 	PublishMatches bool
+	Observer       Observer
+}
+
+type Observation struct {
+	Kind   string
+	Result string
+}
+
+type Observer interface {
+	RecordDerivedVerification(Observation)
 }
 
 func (options *Options) defaults() {
@@ -122,6 +132,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	for _, trace := range traces {
+		worker.observe("scan", "trace")
 		status, unique, err := classifyTrace(candidates, trace)
 		if err != nil {
 			worker.retry(ctx, lease) //nolint:errcheck
@@ -142,7 +153,11 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 				worker.retry(ctx, lease) //nolint:errcheck
 				return true, fmt.Errorf("publish derived verification: %w", err)
 			}
+			if unique {
+				worker.observe("publish", "matched")
+			}
 		}
+		worker.observe("match", status)
 		if !unique {
 			if err := worker.recordAttempt(ctx, lease, trace, status); err != nil {
 				worker.retry(ctx, lease) //nolint:errcheck
@@ -170,6 +185,12 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return true, errors.New("derived verification scan lease was lost")
 	}
 	return true, nil
+}
+
+func (worker *Worker) observe(kind, result string) {
+	if worker.options.Observer != nil {
+		worker.options.Observer.RecordDerivedVerification(Observation{Kind: kind, Result: result})
+	}
 }
 
 func (worker *Worker) claim(ctx context.Context) (scanLease, bool, error) {
@@ -206,7 +227,7 @@ func (worker *Worker) loadCandidates(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var candidates []verify.CandidateArtifact
 	for rows.Next() {
 		var language verify.Language
@@ -255,7 +276,7 @@ func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceC
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var traces []traceCandidate
 	for rows.Next() {
 		var trace traceCandidate

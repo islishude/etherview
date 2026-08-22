@@ -1690,6 +1690,32 @@ export interface components {
             data: components["schemas"]["DelegationHistoryItem"][];
             meta: components["schemas"]["Meta"];
         };
+        DerivedContract: {
+            address: components["schemas"]["Address"];
+            auto_verified: boolean;
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            call_type: "CREATE" | "CREATE2";
+            contract_name?: string;
+            file_name?: string;
+            /** @enum {string} */
+            status: "pending_runtime" | "matched" | "ambiguous" | "no_match" | "runtime_mismatch";
+            trace_path: string;
+            transaction_hash: components["schemas"]["Hash"];
+        };
+        DerivedVerificationProvenance: {
+            block_hash: components["schemas"]["Hash"];
+            block_number: components["schemas"]["Quantity"];
+            /** @enum {string} */
+            call_type: "CREATE" | "CREATE2";
+            created_address: components["schemas"]["Address"];
+            creator_address: components["schemas"]["Address"];
+            parent_contract_name: string;
+            parent_file_name: string;
+            trace_path: string;
+            transaction_hash: components["schemas"]["Hash"];
+        };
         /** @enum {string} */
         DiamondCompleteness: "complete" | "partial" | "unknown";
         DiamondCut: {
@@ -2706,6 +2732,8 @@ export interface components {
         };
         /** @enum {string} */
         VerificationMatchType: "full" | "partial";
+        /** @enum {string} */
+        VerificationOrigin: "submitted" | "sourcify" | "factory_derived";
         VerificationOutcome: components["schemas"]["CompilationFailureOutcome"] | components["schemas"]["VerificationFailureOutcome"] | components["schemas"]["VerificationSuccessOutcome"] | components["schemas"]["BatchResultsOutcome"] | components["schemas"]["SourcifySuccessOutcome"];
         VerificationSuccess: {
             abi?: {
@@ -2766,9 +2794,12 @@ export interface components {
             };
         };
         VerifiedContract: components["schemas"]["VerificationSuccess"] & {
+            derived_children: components["schemas"]["DerivedContract"][];
+            derived_from?: components["schemas"]["DerivedVerificationProvenance"];
             resolution: components["schemas"]["ContractArtifactResolution"];
             source: components["schemas"]["ContractArtifactSource"];
             target: components["schemas"]["ContractArtifactTarget"];
+            verification_origin: components["schemas"]["VerificationOrigin"];
         };
         VerifiedContractResponse: {
             data: components["schemas"]["VerifiedContract"];

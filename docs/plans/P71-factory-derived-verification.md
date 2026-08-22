@@ -1,6 +1,6 @@
 # P71 — Factory-derived Contract Verification
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -29,30 +29,30 @@ human-readable provenance without extending Sourcify consent.
 | P71-T03 | done | P71-T02 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
 | P71-T04 | done | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
 | P71-T05 | done | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
-| P71-T06 | in_progress | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
+| P71-T06 | done | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] Verifying only a Factory persists its complete bounded authenticated
+- [x] Verifying only a Factory persists its complete bounded authenticated
       compilation candidate set and can auto-verify a previously created child
       without another public verification submission.
-- [ ] Derived verification requires one unique fully qualified candidate to
+- [x] Derived verification requires one unique fully qualified candidate to
       match both trace init code and exact canonical deployed runtime code.
-- [ ] Constructor arguments, libraries, immutables, and compiler auxdata retain
+- [x] Constructor arguments, libraries, immutables, and compiler auxdata retain
       the same transformation-aware semantics as direct verification.
-- [ ] Historical and future CREATE/CREATE2 events propagate asynchronously;
+- [x] Historical and future CREATE/CREATE2 events propagate asynchronously;
       nested children participate one durable event at a time.
-- [ ] Parent and child evidence is bound to chain, block number/hash, runtime
+- [x] Parent and child evidence is bound to chain, block number/hash, runtime
       code identity, transaction hash, trace path, and compilation provenance.
-- [ ] Reorgs, address code replacement, retries, and repeated enqueue never
+- [x] Reorgs, address code replacement, retries, and repeated enqueue never
       expose stale or duplicate current verification.
-- [ ] Derived verification neither invokes debug/archive RPC on its normal path
+- [x] Derived verification neither invokes debug/archive RPC on its normal path
       nor submits child sources to Sourcify.
-- [ ] API and Web explain the creator, creation transaction, trace path, call
+- [x] API and Web explain the creator, creation transaction, trace path, call
       type, and parent compilation while keeping hostile output bounded.
-- [ ] Ordinary address verification, selector publication, proxy replay,
+- [x] Ordinary address verification, selector publication, proxy replay,
       Sourcify, monolith/split parity, and ingestion latency do not regress.
 
 ## Current Blockers
@@ -107,3 +107,14 @@ None.
   and the complete owned PostgreSQL 18 `make test-integration` gate pass on
   2026-08-23; the temporary diagnostic database and volume were removed.
 - P71-T06 is claimed on 2026-08-23.
+- P71-T06 adds migration `0055`, required generated `verification_origin`,
+  `derived_from`, and bounded `derived_children` API fields, bilingual
+  Factory-derived Web provenance and Created contracts presentation, staged
+  environment/Compose/Helm configuration, closed-label operational metrics,
+  and an audited reason-required admin backfill request plus runbook. All 359
+  Vitest cases, real Chrome `make test-e2e` (24/24, including bilingual 390px
+  overflow and accessibility), `make deployment-check`, the complete owned
+  PostgreSQL 18 `make test-integration`, and aggregate `make check` pass on
+  2026-08-23. `make check` includes generation/source checks, Go vet and strict
+  lint, ordinary/race tests, vulnerability/secret/npm audits, license policy,
+  Dockerfile/Compose validation, and Helm lint/template/render.
