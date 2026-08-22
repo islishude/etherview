@@ -83,6 +83,15 @@ func TestHomeFeedPublishesCompleteSnapshotsAndDisconnectsSlowSubscribers(t *test
 		len(updated.Data.Blocks) != 1 || len(updated.Data.Transactions) != 1 {
 		t.Fatalf("updated publication = %+v", updated)
 	}
+	// Receiving from the active channel proves that publish reached that
+	// subscriber, but map iteration may still be processing the slow one. Wait
+	// for the complete fanout while its initial publication remains buffered.
+	feed.mu.Lock()
+	remainingSubscribers := len(feed.subscribers)
+	feed.mu.Unlock()
+	if remainingSubscribers != 1 {
+		t.Fatalf("home feed subscribers after fanout = %d, want 1", remainingSubscribers)
+	}
 	if first, open := <-slow; !open || first.EventID != 0 {
 		t.Fatalf("slow initial publication = %+v open=%t", first, open)
 	}

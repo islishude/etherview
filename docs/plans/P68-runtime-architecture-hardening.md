@@ -31,6 +31,7 @@ schema remain unchanged.
 | P68-T06 | done | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
 | P68-T07 | done | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
 | P68-T08 | done | P68-T01, P68-T07 | Align runtime E2E ordinary-response write deadlines with its bounded-load request budget while retaining the longer-idle SSE deadline regression | focused runtime tests, Compose validation, and production-topology E2E |
+| P68-T09 | done | P68-T01, P68-T07 | Make the home-feed slow-subscriber race regression wait for the complete fanout operation before inspecting disconnect state | focused repeated race test, HTTP API race tests, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -65,6 +66,16 @@ None.
 
 ## Evidence
 
+- P68-T09 diagnoses GitHub Actions run 32549443570 job 96973645743 as a test
+  synchronization race: receiving the active subscriber's update did not prove
+  that the map-ordered fanout had finished processing the still-buffered slow
+  subscriber. The regression now acquires the feed mutex before inspecting the
+  post-fanout subscriber count and closed channel, preserving production
+  semantics while removing the scheduling assumption. Its race-focused case
+  passes 1,000 consecutive runs, the complete HTTP API race package passes 20
+  consecutive runs, and the exact CI command `make install-lint-tools
+  toolchain-check plan-check generate-check lint test test-race` passes with
+  writable repository-specific caches.
 - P68-T08 diagnoses GitHub Actions run 32544852014 job 96961409931 as a
   runtime-fixture budget conflict: one `listTransactions` request completed on
   the server in 259ms with status 200 but crossed the test-only 250ms ordinary
