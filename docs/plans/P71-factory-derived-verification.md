@@ -27,8 +27,8 @@ human-readable provenance without extending Sourcify consent.
 | P71-T01 | done | P30-T17 | Reusable candidate matcher and one submitted/derived publication transaction with unchanged ordinary verification behavior | verifier unit and PostgreSQL publication regressions |
 | P71-T02 | done | P71-T01 | Fresh-schema authenticated compilation-unit and bounded candidate persistence on successful address verification | codec, digest/provenance, idempotency, migration, and PostgreSQL round-trip tests |
 | P71-T03 | done | P71-T02 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
-| P71-T04 | in_progress | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
-| P71-T05 | todo | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
+| P71-T04 | done | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
+| P71-T05 | in_progress | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
 | P71-T06 | todo | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
@@ -86,3 +86,13 @@ None.
   complete owned PostgreSQL 18 `make test-integration` gate pass on 2026-08-23,
   including an exact Factory-to-CREATE2-child backfill.
 - P71-T04 is claimed on 2026-08-23.
+- P71-T04 adds canonical `ResolveAtBlock`, creator-code resolution at every
+  trace and publication block, migration `0053` attempt stale-state retention
+  across trace detach/reattach, and address-scoped publication serialization.
+  Repeated derived completion and pre-existing exact child verification add
+  provenance without overwriting or creating a second publication. Focused
+  resolver/verifier/derived/store tests, `make source-check`, `git diff
+  --check`, and the complete owned PostgreSQL 18 `make test-integration` gate
+  pass on 2026-08-23, including code replacement, duplicate completion, and
+  detach/reattach current-artifact assertions.
+- P71-T05 is claimed on 2026-08-23.

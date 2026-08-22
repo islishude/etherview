@@ -368,8 +368,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   shared publication boundary without changing submitted-verification
   behavior; P71-T02 now persists immutable authenticated compilation units and
   complete bounded candidate sets; P71-T03 completes feature-gated historical
-  CREATE/CREATE2 derivation and P71-T04 is hardening code epochs, reorgs, and
-  idempotency.
+  CREATE/CREATE2 derivation; P71-T04 completes historical code-epoch,
+  reorg/reattach, and idempotency hardening, and P71-T05 is adding forward and
+  transitive propagation.
 
 ## Global Release Gates
 

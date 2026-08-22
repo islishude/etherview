@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/verify"
@@ -25,25 +26,34 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	genesis := testBundle(0, testHash(7_500), testHash(0), testHash(8_500), "derived-genesis")
 	factoryBlock := testBundle(1, testHash(7_501), testHash(7_500), testHash(8_501), "derived-factory")
 	childBlock := testBundle(2, testHash(7_502), testHash(7_501), testHash(8_502), "derived-child")
+	replacementBlock := testBundle(3, testHash(7_503), testHash(7_502), testHash(8_503), "derived-replaced-factory")
 	commitCanonical(t, ctx, core, genesis)
 	commitCanonical(t, ctx, core, factoryBlock)
 	commitCanonical(t, ctx, core, childBlock)
+	commitCanonical(t, ctx, core, replacementBlock)
 
 	factoryAddress := mustBytes(t, testAddress(750))
 	childAddress := mustBytes(t, testAddress(751))
+	wrongEpochChildAddress := mustBytes(t, testAddress(752))
 	factoryRuntime := []byte{0x60, 0xaa}
 	childCreation := []byte{0x60, 0x10}
 	childRuntime := []byte{0x60, 0x11}
 	factoryCodeHash := keccak256(factoryRuntime)
 	childCodeHash := keccak256(childRuntime)
+	replacementFactoryRuntime := []byte{0x60, 0xbb}
+	replacementFactoryCodeHash := keccak256(replacementFactoryRuntime)
 	execFixture(t, ctx, db, `
 		INSERT INTO contract_code_observations (
 			chain_id, address, block_number, block_hash, code_hash, code, canonical
 		) VALUES
 			(1, $1, 1, $2, $3, $4, TRUE),
-			(1, $5, 2, $6, $7, $8, TRUE)`,
+			(1, $5, 2, $6, $7, $8, TRUE),
+			(1, $9, 3, $10, $11, $12, TRUE),
+			(1, $13, 3, $10, $7, $8, TRUE)`,
 		factoryAddress, factoryBlock.Block.Hash().Bytes(), factoryCodeHash, factoryRuntime,
 		childAddress, childBlock.Block.Hash().Bytes(), childCodeHash, childRuntime,
+		factoryAddress, replacementBlock.Block.Hash().Bytes(), replacementFactoryCodeHash, replacementFactoryRuntime,
+		wrongEpochChildAddress,
 	)
 	execFixture(t, ctx, db, `
 		INSERT INTO normalized_traces (
@@ -57,6 +67,19 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		)`,
 		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
 		factoryAddress, childAddress, childCreation, childRuntime,
+	)
+	execFixture(t, ctx, db, `
+		INSERT INTO normalized_traces (
+			chain_id, block_number, block_hash, transaction_hash,
+			transaction_index, trace_path, parent_path, depth, call_type,
+			from_address, created_address, value, gas, gas_used, input, output,
+			error, reverted, canonical
+		) VALUES (
+			1, 3, $1, $2, 0, '0', '', 1, 'CREATE', $3, $4,
+			0, 50000, 21000, $5, $6, NULL, FALSE, TRUE
+		)`,
+		replacementBlock.Block.Hash().Bytes(), replacementBlock.Block.Transactions()[0].Hash().Bytes(),
+		factoryAddress, wrongEpochChildAddress, childCreation, childRuntime,
 	)
 
 	generation, compilerDigest, executorDigest := insertVerifierV2Compiler(t, ctx, db)
@@ -134,6 +157,91 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		WHERE chain_id = 1 AND creator_address = $1 AND status = 'succeeded'`, 1,
 		factoryAddress,
 	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE chain_id = 1 AND created_address = $1`, 0, wrongEpochChildAddress)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verified_contracts
+		WHERE chain_id = 1 AND address = $1`, 0, wrongEpochChildAddress)
+
+	var compilationID string
+	if err := db.QueryRowContext(ctx, `
+		SELECT id::text FROM verification_compilation_units
+		WHERE source_job_id = (
+			SELECT verification_job_id FROM verified_contracts
+			WHERE chain_id = 1 AND address = $1 AND code_hash = $2
+		)`, factoryAddress, factoryCodeHash).Scan(&compilationID); err != nil {
+		t.Fatal(err)
+	}
+	identity := verify.DerivedTraceIdentity{
+		CompilationID: compilationID, BlockNumber: 2,
+		BlockHash:   childBlock.Block.Hash().Bytes(),
+		Transaction: childBlock.Block.Transactions()[0].Hash().Bytes(), TracePath: "0",
+	}
+	firstJobID, err := repository.CompleteDerived(ctx, identity)
+	if err != nil {
+		t.Fatalf("repeat derived publication: %v", err)
+	}
+	secondJobID, err := repository.CompleteDerived(ctx, identity)
+	if err != nil || secondJobID != firstJobID {
+		t.Fatalf("idempotent derived publication: first=%s second=%s error=%v", firstJobID, secondJobID, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_jobs
+		WHERE kind = 'derived' AND address = $1`, 1, childAddress)
+
+	resolver, err := contractartifact.NewResolver(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, found, err := resolver.ResolveAtBlock(
+		ctx, "1", factoryAddress, 2, childBlock.Block.Hash().Bytes(),
+	)
+	if err != nil || !found || resolved.Resolution != contractartifact.ResolutionExactAddress ||
+		!json.Valid(resolved.Source.Sources) {
+		t.Fatalf("resolve historical factory: found=%t result=%+v error=%v", found, resolved, err)
+	}
+	_, found, err = resolver.ResolveAtBlock(
+		ctx, "1", factoryAddress, 3, replacementBlock.Block.Hash().Bytes(),
+	)
+	if err != nil || found {
+		t.Fatalf("replacement factory reused old artifact: found=%t error=%v", found, err)
+	}
+
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET canonical = FALSE
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '0'`,
+		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
+	)
+	execFixture(t, ctx, db, `
+		UPDATE contract_code_observations SET canonical = FALSE
+		WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
+		childAddress, childBlock.Block.Hash().Bytes(),
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE created_address = $1 AND status = 'stale'
+		  AND stale_from_status = 'matched'`, 1, childAddress)
+	if _, found, err := repository.VerifiedContract(ctx, 1, "0x"+hex.EncodeToString(childAddress)); err != nil || found {
+		t.Fatalf("orphan derived publication remained current: found=%t error=%v", found, err)
+	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET canonical = TRUE
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2 AND trace_path = '0'`,
+		childBlock.Block.Hash().Bytes(), childBlock.Block.Transactions()[0].Hash().Bytes(),
+	)
+	execFixture(t, ctx, db, `
+		UPDATE contract_code_observations SET canonical = TRUE
+		WHERE chain_id = 1 AND address = $1 AND block_hash = $2`,
+		childAddress, childBlock.Block.Hash().Bytes(),
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE created_address = $1 AND status = 'matched'
+		  AND stale_from_status IS NULL`, 1, childAddress)
+	if _, found, err := repository.VerifiedContract(ctx, 1, "0x"+hex.EncodeToString(childAddress)); err != nil || !found {
+		t.Fatalf("reattached derived publication did not recover: found=%t error=%v", found, err)
+	}
 }
 
 func derivedCandidate(name, creation, runtime string) verify.CandidateArtifact {

@@ -248,7 +248,7 @@ func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceC
 	}
 	rows, err := worker.db.QueryContext(ctx, dbgen.DerivedVerifyListHistoricalTraces,
 		lease.CompilationID, lease.ChainID, lease.CreatorAddress,
-		lease.ValidFromBlock, validTo, lease.CursorBlockNumber,
+		lease.CreatorCodeHash, lease.ValidFromBlock, validTo, lease.CursorBlockNumber,
 		lease.CursorTransactionHash, lease.CursorTracePath, worker.options.MaxTraces,
 	)
 	if err != nil {

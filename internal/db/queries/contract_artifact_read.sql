@@ -58,3 +58,31 @@ JOIN LATERAL (
              candidate.code_hash DESC
     LIMIT 1
 ) AS observation ON TRUE;
+
+-- name: ContractArtifactTargetAtBlock :many
+WITH context_block AS (
+    SELECT canonical.number, canonical.block_hash
+    FROM canonical_blocks AS canonical
+    WHERE canonical.chain_id = $1::numeric
+      AND canonical.number = $3::numeric
+      AND canonical.block_hash = $4
+)
+SELECT observation.code_hash, context.number::text, context.block_hash,
+       context.number::text
+FROM context_block AS context
+JOIN LATERAL (
+    SELECT candidate.code_hash
+    FROM contract_code_observations AS candidate
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = candidate.chain_id
+     AND canonical.number = candidate.block_number
+     AND canonical.block_hash = candidate.block_hash
+    WHERE candidate.chain_id = $1::numeric
+      AND candidate.address = $2
+      AND candidate.canonical
+      AND candidate.block_number <= context.number
+    ORDER BY candidate.block_number DESC,
+             candidate.observed_at DESC,
+             candidate.code_hash DESC
+    LIMIT 1
+) AS observation ON TRUE;

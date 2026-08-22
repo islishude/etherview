@@ -82,17 +82,32 @@ LEFT JOIN derived_verification_attempts AS attempt
  AND attempt.compilation_id = $1::uuid
 WHERE trace.chain_id = $2::numeric
   AND trace.from_address = $3
+  AND $4 = (
+      SELECT observation.code_hash
+      FROM contract_code_observations AS observation
+      JOIN canonical_blocks AS observation_canonical
+        ON observation_canonical.chain_id = observation.chain_id
+       AND observation_canonical.number = observation.block_number
+       AND observation_canonical.block_hash = observation.block_hash
+      WHERE observation.chain_id = trace.chain_id
+        AND observation.address = trace.from_address
+        AND observation.canonical
+        AND observation.block_number <= trace.block_number
+      ORDER BY observation.block_number DESC, observation.observed_at DESC,
+               observation.code_hash DESC
+      LIMIT 1
+  )
   AND trace.canonical AND NOT trace.reverted
   AND trace.call_type IN ('CREATE', 'CREATE2')
   AND trace.created_address IS NOT NULL
   AND octet_length(trace.input) > 0
-  AND trace.block_number >= $4::numeric
-  AND ($5::numeric IS NULL OR trace.block_number <= $5::numeric)
+  AND trace.block_number >= $5::numeric
+  AND ($6::numeric IS NULL OR trace.block_number <= $6::numeric)
   AND (trace.block_number, trace.transaction_hash, trace.trace_path) >
-      ($6::numeric, $7::bytea, $8::text)
+      ($7::numeric, $8::bytea, $9::text)
   AND (attempt.id IS NULL OR attempt.status = 'pending_runtime')
 ORDER BY trace.block_number, trace.transaction_hash, trace.trace_path
-LIMIT $9;
+LIMIT $10;
 
 -- name: DerivedVerifyRecordAttempt :exec
 INSERT INTO derived_verification_attempts (
@@ -159,6 +174,21 @@ JOIN contract_code_observations AS runtime
  AND runtime.canonical
 WHERE unit.id = $1::uuid
   AND trace.from_address = scan.creator_address
+  AND scan.creator_code_hash = (
+      SELECT observation.code_hash
+      FROM contract_code_observations AS observation
+      JOIN canonical_blocks AS observation_canonical
+        ON observation_canonical.chain_id = observation.chain_id
+       AND observation_canonical.number = observation.block_number
+       AND observation_canonical.block_hash = observation.block_hash
+      WHERE observation.chain_id = trace.chain_id
+        AND observation.address = trace.from_address
+        AND observation.canonical
+        AND observation.block_number <= trace.block_number
+      ORDER BY observation.block_number DESC, observation.observed_at DESC,
+               observation.code_hash DESC
+      LIMIT 1
+  )
   AND trace.canonical AND NOT trace.reverted
   AND trace.call_type IN ('CREATE', 'CREATE2')
   AND trace.created_address IS NOT NULL
@@ -166,6 +196,19 @@ WHERE unit.id = $1::uuid
   AND trace.block_number >= parent.valid_from_block
   AND (parent.valid_to_block IS NULL OR trace.block_number <= parent.valid_to_block)
 FOR SHARE OF unit, scan, parent, trace, canonical, runtime;
+
+-- name: DerivedVerifyLockTarget :many
+SELECT pg_advisory_xact_lock(hashtextextended(
+    'etherview:derived-verification:' || $1::numeric::text || ':' || encode($2::bytea, 'hex'),
+    0
+));
+
+-- name: DerivedVerifyExistingPublication :many
+SELECT verification_job_id::text
+FROM verified_contracts
+WHERE chain_id = $1::numeric AND address = $2 AND code_hash = $3
+  AND valid_from_block = $4::numeric
+LIMIT 1;
 
 -- name: DerivedVerifyInsertJob :exec
 INSERT INTO verification_jobs (

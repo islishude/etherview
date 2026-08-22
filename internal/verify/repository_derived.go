@@ -105,6 +105,30 @@ func (repository *PostgresRepository) CompleteDerived(
 	if err != nil {
 		return "", err
 	}
+	if _, err := tx.ExecContext(
+		ctx, dbgen.DerivedVerifyLockTarget, evidence.ChainID, evidence.CreatedAddress,
+	); err != nil {
+		return "", fmt.Errorf("lock derived verification target: %w", err)
+	}
+	var existingJobID string
+	err = tx.QueryRowContext(ctx, dbgen.DerivedVerifyExistingPublication,
+		evidence.ChainID, evidence.CreatedAddress, evidence.RuntimeCodeHash,
+		strconv.FormatUint(evidence.BlockNumber, 10),
+	).Scan(&existingJobID)
+	if err == nil {
+		if err := repository.recordDerivedMatchTx(
+			ctx, tx, identity.CompilationID, evidence, match, existingJobID,
+		); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(); err != nil {
+			return "", err
+		}
+		return existingJobID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
 	jobID, err := randomUUID(repository.random)
 	if err != nil {
 		return "", err
@@ -187,25 +211,47 @@ func (repository *PostgresRepository) CompleteDerived(
 	}); err != nil {
 		return "", err
 	}
-	attemptID, err := randomUUID(repository.random)
-	if err != nil {
-		return "", err
-	}
-	creationMatch, _ := json.Marshal(match.Creation)
-	runtimeMatch, _ := json.Marshal(match.Runtime)
-	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyMatchAttempt,
-		attemptID, evidence.ChainID, strconv.FormatUint(evidence.BlockNumber, 10),
-		evidence.BlockHash, evidence.TransactionHash, evidence.TracePath,
-		evidence.CreatorAddress, evidence.CreatedAddress, evidence.CallType,
-		identity.CompilationID, match.Candidate.FileName, match.Candidate.ContractName,
-		string(creationMatch), string(runtimeMatch), jobID,
+	if err := repository.recordDerivedMatchTx(
+		ctx, tx, identity.CompilationID, evidence, match, jobID,
 	); err != nil {
-		return "", fmt.Errorf("record derived verification match: %w", err)
+		return "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return jobID, nil
+}
+
+func (repository *PostgresRepository) recordDerivedMatchTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	compilationID string,
+	evidence derivedPublicationEvidence,
+	match CandidateMatch,
+	jobID string,
+) error {
+	attemptID, err := randomUUID(repository.random)
+	if err != nil {
+		return err
+	}
+	creationMatch, err := json.Marshal(match.Creation)
+	if err != nil {
+		return err
+	}
+	runtimeMatch, err := json.Marshal(match.Runtime)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyMatchAttempt,
+		attemptID, evidence.ChainID, strconv.FormatUint(evidence.BlockNumber, 10),
+		evidence.BlockHash, evidence.TransactionHash, evidence.TracePath,
+		evidence.CreatorAddress, evidence.CreatedAddress, evidence.CallType,
+		compilationID, match.Candidate.FileName, match.Candidate.ContractName,
+		string(creationMatch), string(runtimeMatch), jobID,
+	); err != nil {
+		return fmt.Errorf("record derived verification match: %w", err)
+	}
+	return nil
 }
 
 func loadDerivedPublicationEvidence(

@@ -461,6 +461,7 @@ type DerivedVerificationAttempt struct {
 	VerificationJobID pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
 	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	StaleFromStatus   *string            `db:"stale_from_status" json:"stale_from_status"`
 }
 
 type DerivedVerificationScan struct {

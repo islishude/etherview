@@ -68,6 +68,7 @@ type Querier interface {
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
 	ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) ([]ContractArtifactArtifactSourceRow, error)
 	ContractArtifactCurrentTarget(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]ContractArtifactCurrentTargetRow, error)
+	ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) ([]ContractArtifactTargetAtBlockRow, error)
 	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error)
 	CountDirtyAnalyticsHours(ctx context.Context, chainID pgtype.Numeric, toTime pgtype.Timestamptz, fromTime pgtype.Timestamptz) (string, error)
@@ -85,9 +86,11 @@ type Querier interface {
 	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) error
 	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
 	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
+	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) ([]string, error)
 	DerivedVerifyInsertJob(ctx context.Context, arg DerivedVerifyInsertJobParams) error
 	DerivedVerifyListHistoricalTraces(ctx context.Context, arg DerivedVerifyListHistoricalTracesParams) ([]DerivedVerifyListHistoricalTracesRow, error)
 	DerivedVerifyLoadCompilationCandidates(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
+	DerivedVerifyLockTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]interface{}, error)
 	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
 	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) ([]DerivedVerifyPublicationEvidenceRow, error)
 	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) error
