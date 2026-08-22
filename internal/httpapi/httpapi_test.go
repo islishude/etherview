@@ -19,7 +19,7 @@ import (
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/observability"
-	"github.com/islishude/etherview/web"
+	webui "github.com/islishude/etherview/web"
 )
 
 type fakeReader struct {
@@ -321,7 +321,8 @@ func TestReadyUsesUncachedReadinessStatusWhenProvided(t *testing.T) {
 	}
 	handler, err := New(Options{
 		Config: config.Default(), Reader: reader,
-		RequestID: func() string { return "ready-request" },
+		ReadinessStatus: reader.ReadinessStatus,
+		RequestID:       func() string { return "ready-request" },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -621,9 +622,11 @@ func TestPublicHTTPServerUsesStableErrorLogger(t *testing.T) {
 }
 
 func TestRoutePatternUsesRegisteredMuxPatternsAndBoundsCatchAll(t *testing.T) {
+	webHandler := webui.NewHandler()
 	handler, err := New(Options{
 		Config: config.Default(), Reader: fakeReader{}, Catalog: &fakeCatalog{},
-		Web: webui.NewHandler(), Etherscan: http.NotFoundHandler(), Metrics: http.NotFoundHandler(),
+		Web: webHandler, WebRoutePattern: webHandler.RoutePattern,
+		Etherscan: http.NotFoundHandler(), Metrics: http.NotFoundHandler(),
 		Events: events.NewBroker(8),
 	})
 	if err != nil {

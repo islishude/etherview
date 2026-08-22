@@ -32,10 +32,17 @@ var embedded embed.FS
 
 var distribution = mustSub(embedded, "dist")
 
+// RouteHandler serves and classifies the embedded SPA without exposing raw
+// navigation or asset paths as observability labels.
+type RouteHandler interface {
+	http.Handler
+	RoutePattern(*http.Request) string
+}
+
 // NewHandler returns a handler for the embedded SPA. API and operational paths
 // intentionally never receive the index fallback, so a missing backend route
 // cannot be disguised as a successful HTML response.
-func NewHandler() http.Handler {
+func NewHandler() RouteHandler {
 	return &handler{assets: distribution, nonceGenerator: generateCSPNonce}
 }
 

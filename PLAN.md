@@ -285,8 +285,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   and enforces migration/partition as the only raw-SQL boundary. P68-T04 splits
   shared and per-role runtime builders, preserves the independent executable
   component manifest, and separates configuration load, override, and pure
-  subsystem validation. P68-T05 is claimed for explicit HTTP capability
-  modules and startup dependency rejection.
+  subsystem validation. P68-T05 splits HTTP routes and handlers by explicit
+  capabilities, rejects incomplete enabled production modules before route
+  registration, and removes inferred reader/catalog/Web capability discovery.
+  P68-T06 is claimed for Web page/language modularization and pinned Biome
+  quality gates.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

@@ -37,6 +37,14 @@ SSE clears the idle deadline and reapplies it around each individual write and
 flush, preserving both indefinite idle subscriptions and a bounded slow-client
 write.
 
+The native API mux is composed from explicit operations, identity/billing,
+native, catalog, analytics, metadata, verification, and external-surface route
+modules. Production assembly declares its required capability set, and handler
+construction validates every dependency before registering any route. Optional
+features keep their stable disabled routes and typed unavailable responses;
+enabled production modules never infer dependencies through reader/catalog/Web
+type assertions or silently omit a route.
+
 The public API listener optionally serves TLS from one startup-loaded
 certificate/private-key pair as specified by
 [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md). TLS is enabled

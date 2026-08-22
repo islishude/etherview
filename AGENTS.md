@@ -144,6 +144,10 @@ driver solely because an older evidence entry cites it.
   inside the injected-provider module and its closed allowlist; raw providers
   never escape. A submitted transaction without a trustworthy matching hash is
   an unknown outcome, not a retryable failure.
+- Keep native HTTP routes in explicit capability modules. Production API
+  assembly must declare required capabilities and pass their dependencies
+  directly; do not recover capabilities through reader/catalog/Web type
+  assertions or silently omit an enabled module's routes.
 - Validate SPA routing, CSP, cache, and security headers against the built
   distribution served by Go, not a Vite development server.
 

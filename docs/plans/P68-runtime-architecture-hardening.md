@@ -27,8 +27,8 @@ schema remain unchanged.
 | P68-T02 | done | P68-T01 | Move all static read-path SQL into named sqlc queries without changing snapshots, cursors, ordering, or reader routing | generation, focused query/catalog/compatibility tests, PostgreSQL integration and race |
 | P68-T03 | done | P68-T02 | Move correctness/write SQL into sqlc transactions, isolate migration and validated partition DDL as the only raw-SQL executors, and enforce the boundary | generation, source-boundary tests, lease/replay/reorg integration and race |
 | P68-T04 | done | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
-| P68-T05 | in_progress | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
-| P68-T06 | todo | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
+| P68-T05 | done | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
+| P68-T06 | in_progress | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
 | P68-T07 | todo | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
@@ -130,3 +130,19 @@ None.
   `make test-runtime-e2e` passes in 74.387s: monolith in 31.92s and the complete
   six-role topology in 41.29s, including pending identity, publication, reorg,
   RPC/PostgreSQL outage recovery, restart, API/SSE/SPA/load, and process TLS.
+- P68-T05 composes the public mux from eight explicit capability modules and
+  validates the production Native, Catalog, Analytics, Compatibility, Events,
+  Home, Metadata, Proxy, Verification, and Web dependency set before any route
+  registration. Catalog/address/delegation/readiness/Web dependencies are now
+  passed directly; capability discovery no longer depends on reader, catalog,
+  or SPA type assertions. Disabled metadata and verification paths retain
+  their stable typed responses. HTTP handlers and models are split by domain,
+  reducing `httpapi.go` from 3,588 to 710 lines without route or response
+  changes. Capability omission and deterministic-error tests, focused race,
+  `go test ./... -count=1`, `make generate-check`, and `make lint-go` pass.
+  The embedded production SPA Playwright gate passes 23/23, including CSP,
+  reserved-route isolation, deep links, accessibility, responsive layouts,
+  SIWE/billing/admin, and wallet boundaries. The rebuilt production
+  `make test-runtime-e2e` passes in 76.329s: monolith in 32.71s and the complete
+  six-role topology in 42.45s through publication, reorg, outages, restart,
+  API/SSE/SPA/load, and process-native TLS.

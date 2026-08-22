@@ -164,7 +164,10 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			baseReader = searchRoutingReader{Reader: reader, search: writerSearchReader}
 		}
 		publicReader := baseReader
-		var compatibilityState etherscan.StateProvider
+		var (
+			compatibilityState etherscan.StateProvider
+			delegationBindings httpapi.DelegationBindingReader
+		)
 		if canonicalState != nil {
 			stateReader := &state.Reader{
 				Base: baseReader, Pool: rpcBuild.Pool, Completeness: completeness,
@@ -172,9 +175,13 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			}
 			publicReader = stateReader
 			compatibilityState = stateReader
+			delegationBindings = stateReader
 		}
+		readinessStatus := publicReader.Status
 		if redisAccelerator != nil {
-			publicReader = redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
+			cachedReader := redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}
+			publicReader = cachedReader
+			readinessStatus = cachedReader.ReadinessStatus
 		}
 		// Included identity must win over a node-local replacement observation,
 		// so the unified detail lookup cannot inherit replica lag when enabled.
@@ -297,15 +304,19 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 				Observer: registry, TrustedProxies: trustedProxies,
 			}.Wrap
 		}
+		proxyReader := newProxyReaderAdapter(
+			writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,
+		)
+		webHandler := webui.NewHandler()
 		handler, err := httpapi.New(httpapi.Options{
 			Config: cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
-			AddressNames: addressNames,
-			Genesis:      reader, Catalog: catalogReader, Web: webui.NewHandler(),
-			Analytics: analyticsReader,
-			ProxyReader: newProxyReaderAdapter(
-				writerReader, cfg.Chain.ID, cfg.Features.ProxyDetectionV2Public,
-			),
-			Etherscan: compatibility, Events: broker, HomeSnapshots: homeFeed,
+			AddressEnrichment: catalogReader, AddressNames: addressNames,
+			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,
+			Genesis: reader, Catalog: catalogReader, Web: webHandler,
+			WebRoutePattern: webHandler.RoutePattern,
+			Analytics:       analyticsReader,
+			ProxyReader:     proxyReader,
+			Etherscan:       compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
 			CompilerCatalog:     compilerCatalog,
@@ -317,6 +328,12 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Billing:     billingDispatcher, BillingReader: billingReader, Quota: quota,
 			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
+			ReadinessStatus: readinessStatus,
+			Requirements: httpapi.CapabilityRequirements{
+				Native: true, Catalog: true, Analytics: true,
+				Compatibility: true, Events: true, HomeSnapshots: true,
+				Metadata: true, Proxy: true, Verification: true, Web: true,
+			},
 		})
 		if err != nil {
 			return err
