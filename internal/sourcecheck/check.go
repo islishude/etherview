@@ -2,6 +2,7 @@
 package sourcecheck
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -13,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 )
+
+const maximumProductionGoLines = 2000
 
 var (
 	selectStatement = regexp.MustCompile(`(?is)^SELECT\s+(?:[^;]*\sFROM\s|[a-z_][a-z0-9_]*\s*\()`)
@@ -91,11 +94,31 @@ func Check(root string) Report {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(relative, ".go") || strings.HasSuffix(relative, "_test.go") || rawSQLExecutors[relative] {
+		if !strings.HasSuffix(relative, ".go") || strings.HasSuffix(relative, "_test.go") {
 			return nil
 		}
 		report.GoFiles++
-		file, err := parser.ParseFile(set, path, nil, 0)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		lines := bytes.Count(content, []byte{'\n'})
+		if len(content) > 0 && content[len(content)-1] != '\n' {
+			lines++
+		}
+		if lines > maximumProductionGoLines {
+			report.Diagnostics = append(report.Diagnostics, Diagnostic{
+				Path: relative,
+				Message: fmt.Sprintf(
+					"hand-written production Go file has %d lines; maximum is %d",
+					lines, maximumProductionGoLines,
+				),
+			})
+		}
+		if rawSQLExecutors[relative] {
+			return nil
+		}
+		file, err := parser.ParseFile(set, path, content, 0)
 		if err != nil {
 			return err
 		}

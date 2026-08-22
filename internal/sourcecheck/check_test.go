@@ -3,6 +3,7 @@ package sourcecheck
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +13,17 @@ func TestCheckRejectsProductionSQLAndUnexpectedSQLFiles(t *testing.T) {
 	writeFixture(t, root, "scripts/query.sql", "SELECT 1;\n")
 	report := Check(root)
 	if report.OK() || len(report.Diagnostics) != 2 {
+		t.Fatalf("report=%+v", report)
+	}
+}
+
+func TestCheckRejectsOversizedProductionGoFile(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/example/oversized.go",
+		"package example\n"+strings.Repeat("// line\n", maximumProductionGoLines))
+	report := Check(root)
+	if report.OK() || len(report.Diagnostics) != 1 ||
+		!strings.Contains(report.Diagnostics[0].Message, "maximum is 2000") {
 		t.Fatalf("report=%+v", report)
 	}
 }

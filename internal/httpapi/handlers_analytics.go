@@ -11,11 +11,7 @@ import (
 )
 
 func (h *Handler) nftBalances(w http.ResponseWriter, r *http.Request) {
-	owner, ok := parseAddressPath(w, r)
-	if !ok {
-		return
-	}
-	limit, cursor, ok := parseCatalogPage(w, r)
+	owner, limit, cursor, ok := parseCatalogAddressPage(w, r)
 	if !ok {
 		return
 	}
@@ -35,11 +31,7 @@ func (h *Handler) nftBalances(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) erc20Balances(w http.ResponseWriter, r *http.Request) {
-	owner, ok := parseAddressPath(w, r)
-	if !ok {
-		return
-	}
-	limit, cursor, ok := parseCatalogPage(w, r)
+	owner, limit, cursor, ok := parseCatalogAddressPage(w, r)
 	if !ok {
 		return
 	}

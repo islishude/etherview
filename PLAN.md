@@ -35,7 +35,7 @@ batch semantics are not core v1 scope.
 | P65 | [User Authentication](docs/plans/P65-user-auth.md) | done | P40, P50 | SIWE wallet login, revocable sessions, profiles, administration, and scoped user API keys with a tabbed `/account` workspace |
 | P66 | [x402 API Billing](docs/plans/P66-x402-billing.md) | blocked | P40, P60; optional P65 | Accountless exact-EVM per-request payment and durable reconciliation |
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
-| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | in_progress | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
+| P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P68 | Security, conformance, performance, E2E, documentation, and v1 release |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
@@ -275,7 +275,7 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   production-schema, monolith/six-role runtime, security, license, and common
   gates. Reviewable commands and results remain in
   [P67 evidence](docs/plans/P67-ens-primary-names.md#evidence).
-- P68 is in progress: P68-T01 completes the production SSE lifetime/shutdown
+- P68 is complete: P68-T01 completes the production SSE lifetime/shutdown
   contract, non-blocking durable event replay, optional Redis invalidation
   recovery, typed mempool failure classification, and monolith/six-role runtime
   acceptance. P68-T02 moves static read-path SQL into named sqlc sources while
@@ -290,8 +290,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   registration, and removes inferred reader/catalog/Web capability discovery.
   P68-T06 splits core pages and both languages by domain and adds exact pinned
   Biome hook, unused-code, complexity, function, and production file-size
-  gates. P68-T07 is claimed for the final Go quality baseline and full
-  acceptance matrix.
+  gates. P68-T07 adds production Go duplication, cognitive-complexity, and
+  2,000-line source boundaries; splits the remaining oversized proxy
+  processor; updates the Go license scanner for the current toolchain; and
+  closes the common, PostgreSQL, schema, runtime, browser, Hardhat, Foundry,
+  and strict one-attempt Preview acceptance matrix.
 - P70 is blocked: P70-T07 completes the optional API read pool with
   writer-authoritative routing, fail-closed readiness, deployment wiring, and
   capacity guidance. P70-T09 has implemented direct reviewed go-ethereum

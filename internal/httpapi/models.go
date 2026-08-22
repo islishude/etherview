@@ -98,6 +98,21 @@ func parseCatalogPage(w http.ResponseWriter, r *http.Request) (int, string, bool
 	return limit, cursor, true
 }
 
+func parseCatalogAddressPage(
+	w http.ResponseWriter,
+	r *http.Request,
+) (string, int, string, bool) {
+	address, ok := parseAddressPath(w, r)
+	if !ok {
+		return "", 0, "", false
+	}
+	limit, cursor, ok := parseCatalogPage(w, r)
+	if !ok {
+		return "", 0, "", false
+	}
+	return address, limit, cursor, true
+}
+
 func parseAddressPath(w http.ResponseWriter, r *http.Request) (string, bool) {
 	address := strings.ToLower(r.PathValue("address"))
 	if !addressPattern.MatchString(address) {

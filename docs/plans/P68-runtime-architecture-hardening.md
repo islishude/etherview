@@ -1,6 +1,6 @@
 # P68 — Runtime and Architecture Hardening
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -29,32 +29,32 @@ schema remain unchanged.
 | P68-T04 | done | P68-T03 | Split runtime assembly and configuration loading/validation into narrow role and subsystem builders while retaining an independent executable component manifest | config, component graph, monolith/split parity, deployment checks |
 | P68-T05 | done | P68-T04 | Split HTTP routes into explicit capability modules and reject enabled modules with missing dependencies at startup | handler/route/capability tests, generation, browser and runtime gates |
 | P68-T06 | done | P68-T05 | Split core Web pages and language resources by domain and add pinned Biome hook, complexity, function, and file-size linting | TypeScript, Vitest, accessibility, responsive and embedded-browser gates |
-| P68-T07 | in_progress | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
+| P68-T07 | done | P68-T06 | Close the selected Go complexity/duplication baseline, wire source and SQL checks into repository gates, and complete full acceptance evidence | lint, common gates, PostgreSQL, browser, production topology, Hardhat, Foundry and Preview suites |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] Idle SSE connections survive longer than `server.write_timeout`, while
+- [x] Idle SSE connections survive longer than `server.write_timeout`, while
       each individual write and flush remains bounded by that timeout.
-- [ ] Active event and home streams close promptly on process cancellation and
+- [x] Active event and home streams close promptly on process cancellation and
       cannot exhaust the graceful-shutdown budget.
-- [ ] Durable replay performs no PostgreSQL or optional-adapter I/O while the
+- [x] Durable replay performs no PostgreSQL or optional-adapter I/O while the
       fanout mutex is held; replay/live delivery remains ordered and duplicate
       free under bounded concurrency.
-- [ ] Redis loss disables cache reads, suppresses repeated backend calls during
+- [x] Redis loss disables cache reads, suppresses repeated backend calls during
       backoff, and permits exactly one recovery probe without affecting API
       correctness or readiness.
-- [ ] Mempool RPC, invalid-snapshot, and storage failures use typed
+- [x] Mempool RPC, invalid-snapshot, and storage failures use typed
       classification rather than error-message inspection.
-- [ ] Production static SQL originates in `internal/db/queries`; only the
+- [x] Production static SQL originates in `internal/db/queries`; only the
       migration runner and validated partition-DDL module may execute raw SQL.
-- [ ] Runtime roles, HTTP capabilities, and Web pages have explicit modular
+- [x] Runtime roles, HTTP capabilities, and Web pages have explicit modular
       dependencies with no hidden type assertions or reader fallbacks.
-- [ ] No hand-written production Go file exceeds 2,000 lines; selected Go and
+- [x] No hand-written production Go file exceeds 2,000 lines; selected Go and
       Web complexity, function-size, duplication, hook, and file-size gates
       pass without blanket suppressions.
-- [ ] OpenAPI, database schema, public routes and response shapes, configuration
+- [x] OpenAPI, database schema, public routes and response shapes, configuration
       keys, and monolith/split behavior remain unchanged except for the approved
       corrected stream and startup-failure semantics.
 
@@ -161,3 +161,29 @@ None.
   Playwright gate passes 23/23, including bilingual deep links, responsive and
   WCAG 2.1 AA checks, hashed asset/CSP isolation, SIWE/billing/admin, and wallet
   boundaries.
+- P68-T07 splits the former 2,291-line proxy processor into orchestration,
+  candidate loading, block-pinned RPC detection, and transactional persistence
+  files, each no larger than 820 lines. Shared catalog address/page parsing
+  removes the selected HTTP duplication without changing validation order or
+  responses. Production Go now enables `dupl` at 150 tokens and `gocognit` at
+  150, with only those two structural checks excluded from test fixtures.
+  `make source-check` also rejects hand-written production Go files above 2,000
+  physical lines while preserving the generated-source and two raw-SQL
+  executor boundaries; it passes over 297 Go files and 93 SQL sources.
+- P68-T07 updates the pinned Go license scanner to the maintained v2 module and
+  its canonical BSD-2-Clause attribution. Focused config, source-boundary,
+  enrichment, and HTTP tests pass ordinarily and under the race detector;
+  `make lint-go` reports zero issues. The owned PostgreSQL 18 integration and
+  integration-race suites pass all seven tagged packages in 146.847s and
+  162.284s. Fresh production-image schema migration passes through
+  `0049_ens_primary_names`; the monolith/six-role runtime gate passes in
+  74.653s; the embedded Chromium suite passes 23/23; real Hardhat 3 and Foundry
+  production gates pass both topologies in 215.587s and 97.303s.
+- The strict Preview metadata gate initially rejected two runs after the public
+  `ipfs.io` request exceeded the checked-in 10-second budget twice before an
+  eventual third-attempt success. Preview alone now permits a bounded
+  30-second cold public-gateway fetch, while defaults and the production
+  example remain at 10 seconds. Its exact rerun passes in 37.704s with one
+  durable attempt, 205 bytes, the fixed SHA-256, public-network policy, and
+  restart-stable persistence. The aggregate `make check`, `make plan-check`,
+  and `git diff --check` pass on the completed tree.

@@ -189,7 +189,7 @@ expected_geth_licenses="$(printf '%s\n' \
 	"github.com/ethereum/go-ethereum/crypto/bn256,https://github.com/ethereum/go-ethereum/blob/$actual_version/crypto/bn256/LICENSE,BSD-3-Clause" \
 	"github.com/ethereum/go-ethereum/crypto/keccak,https://github.com/ethereum/go-ethereum/blob/$actual_version/crypto/keccak/LICENSE,BSD-3-Clause" \
 	"github.com/ethereum/go-ethereum/crypto/secp256k1,https://github.com/ethereum/go-ethereum/blob/$actual_version/crypto/secp256k1/LICENSE,BSD-3-Clause" \
-	"github.com/ethereum/go-ethereum/metrics,https://github.com/ethereum/go-ethereum/blob/$actual_version/metrics/LICENSE,BSD-2-Clause-FreeBSD" |
+	"github.com/ethereum/go-ethereum/metrics,https://github.com/ethereum/go-ethereum/blob/$actual_version/metrics/LICENSE,BSD-2-Clause" |
 	LC_ALL=C sort)"
 if [ "$reported_geth_licenses" != "$expected_geth_licenses" ]; then
 	echo "license-check: go-ethereum scanner attribution changed" >&2

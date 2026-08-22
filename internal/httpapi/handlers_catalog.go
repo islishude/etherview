@@ -221,11 +221,7 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) tokenTransfers(w http.ResponseWriter, r *http.Request) {
-	address, ok := parseAddressPath(w, r)
-	if !ok {
-		return
-	}
-	limit, cursor, ok := parseCatalogPage(w, r)
+	address, limit, cursor, ok := parseCatalogAddressPage(w, r)
 	if !ok {
 		return
 	}

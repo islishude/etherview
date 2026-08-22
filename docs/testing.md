@@ -272,9 +272,11 @@ replace a required `make test-e2e` pass.
   bounded structured network evidence, and restart-stable persistence. Public
   DNS is accepted directly; only Docker fake-IP `198.18.0.0/15` may use the
   Preview metadata exception. Other private routes, alternate gateways,
-  retries, content drift, and internal fixtures fail. Run `make preview-cert`
-  once first. This live external-service gate is explicit and is not included
-  in `make check`.
+  retries, content drift, and internal fixtures fail. The checked-in Preview
+  keeps this cold public-gateway request bounded to 30 seconds so it can remain
+  one durable attempt; the ordinary metadata default remains 10 seconds. Run
+  `make preview-cert` once first. This live external-service gate is explicit
+  and is not included in `make check`.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,
   30-second smoke with p95, error-rate, throughput, and final core-lag
   thresholds. Set the typed `ETHERVIEW_LOAD_*` environment inputs, encode the

@@ -24,7 +24,7 @@ GOLANGCI_LINT ?= golangci-lint
 
 GOVULNCHECK_VERSION ?= v1.6.0
 GITLEAKS_VERSION ?= v8.30.1
-GO_LICENSES_VERSION ?= v1.6.0
+GO_LICENSES_VERSION ?= v2.0.1
 GOLANGCI_LINT_VERSION ?= v2.12.2
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 
@@ -249,7 +249,7 @@ lint: lint-go web-lint
 install-security-tools:
 	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	$(GO) install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
-	$(GO) install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+	$(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
 
 install-lint-tools:
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
