@@ -52,7 +52,7 @@ replace a required `make test-e2e` pass.
 
 ## Common Gates
 
-- `make toolchain-check`: require at least Go 1.26.5, Node 24.18.0, and npm
+- `make toolchain-check`: require at least Go 1.27.0, Node 24.18.0, and npm
   11.16.0 before generating or validating artifacts. Compatible newer stable
   versions are supported; older, malformed, and prerelease versions fail.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,

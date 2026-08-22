@@ -316,8 +316,8 @@ func TestReadyRequiresRuntimeLifecycleAndDurableCoreReadiness(t *testing.T) {
 func TestReadyUsesUncachedReadinessStatusWhenProvided(t *testing.T) {
 	t.Parallel()
 	reader := &readinessOverrideReader{
-		fakeReader: fakeReader{status: StatusSnapshot{CoreReady: true}},
-		readiness:  StatusSnapshot{CoreReady: false},
+		status:    StatusSnapshot{CoreReady: true},
+		readiness: StatusSnapshot{CoreReady: false},
 	}
 	handler, err := New(Options{
 		Config: config.Default(), Reader: reader,

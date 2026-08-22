@@ -167,7 +167,7 @@ change. Add a nested `AGENTS.md` only for genuinely different subtree rules.
 The Makefile is the command source of truth; `docs/testing.md` defines scope and
 evidence rules.
 
-- Toolchains are minimums, not exact ceilings: Go 1.26.5, Node.js 24.18.0, and
+- Toolchains are minimums, not exact ceilings: Go 1.27.0, Node.js 24.18.0, and
   npm 11.16.0. Compatible newer stable versions must pass `make
   toolchain-check`.
 - Add regressions for malformed RPC data, reorgs, optional-capability loss,
