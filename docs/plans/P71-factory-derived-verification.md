@@ -30,6 +30,7 @@ human-readable provenance without extending Sourcify consent.
 | P71-T04 | done | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
 | P71-T05 | done | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
 | P71-T06 | done | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
+| P71-T07 | done | P71-T06 | Enable dry-run, backfill publication, and forward propagation in the local Preview Compose configuration only | Preview Compose/config regression and common configuration gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -118,3 +119,13 @@ None.
   2026-08-23. `make check` includes generation/source checks, Go vet and strict
   lint, ordinary/race tests, vulnerability/secret/npm audits, license policy,
   Dockerfile/Compose validation, and Helm lint/template/render.
+- P71-T07 is claimed on 2026-08-23.
+- P71-T07 enables `derived_enabled`, `derived_backfill_enabled`, and
+  `derived_forward_enabled` in the tracked Preview-only configuration. The
+  Preview Compose regression requires all six application roles to mount that
+  exact read-only file, requires all three Preview flags to remain enabled,
+  and proves the default example and Helm values remain disabled. `go test
+  ./internal/config ./internal/app -count=1`, `node --check
+  .github/scripts/preview-compose-check.mjs`, `make plan-check`, `make
+  compose-check`, `make deployment-check`, and `git diff --check` pass on
+  2026-08-23.

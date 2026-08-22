@@ -17,6 +17,18 @@ const runtimePathEnvironment = {
 };
 const expectRuntimePathOverride =
   process.env.ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE === "true";
+const previewConfig = fs.readFileSync(
+  new URL("../../deploy/preview.config.yaml", import.meta.url),
+  "utf8",
+);
+const defaultConfig = fs.readFileSync(
+  new URL("../../deploy/config.example.yaml", import.meta.url),
+  "utf8",
+);
+const helmValues = fs.readFileSync(
+  new URL("../../deploy/helm/etherview/values.yaml", import.meta.url),
+  "utf8",
+);
 const removedEnvironment = [
   "ETHERVIEW_COMPILER_SANDBOX",
   "ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
@@ -31,6 +43,11 @@ assert.ok(
   "removed Preview compiler-runner service",
 );
 assertNoPlatform(config, "compose.preview.yaml");
+for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forward_enabled"]) {
+  assert.match(previewConfig, new RegExp(`^\\s+${key}: true$`, "m"), `Preview ${key}`);
+  assert.match(defaultConfig, new RegExp(`^\\s+${key}: false$`, "m"), `default ${key}`);
+  assert.match(helmValues, new RegExp(`^\\s+${key}: false$`, "m"), `Helm ${key}`);
+}
 
 const geth = requireService("geth");
 assert.equal(geth.image, "ethereum/client-go:v1.17.5", "Preview Geth image");
@@ -119,6 +136,14 @@ for (const role of roles) {
   }
   const cacheMounts = volumeMounts(service).filter(
     (mount) => mount.target === cachePath,
+  );
+  const configMounts = volumeMounts(service).filter(
+    (mount) => mount.target === "/etc/etherview/config.yaml",
+  );
+  assert.equal(configMounts.length, 1, `${role} Preview config mount count`);
+  assert.ok(
+    configMounts[0].source.endsWith("/deploy/preview.config.yaml"),
+    `${role} Preview config source`,
   );
   assert.equal(cacheMounts.length, role === "api" ? 1 : 0, `${role} compiler cache scope`);
   if (role === "api") {

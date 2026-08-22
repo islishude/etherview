@@ -376,6 +376,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   bounded metrics, audited backfill operations, and complete PostgreSQL,
   browser, deployment, ordinary/race, security, license, and common-gate
   evidence in [P71 evidence](docs/plans/P71-factory-derived-verification.md#evidence).
+  P71-T07 enables the already shipped feature only in the local Preview
+  Compose configuration, while retaining production/default-off behavior.
 
 ## Global Release Gates
 
