@@ -956,7 +956,8 @@ WITH request(
            selector.signature
     FROM request
     JOIN LATERAL (
-        SELECT observation.implementation_address,
+        SELECT observation.proxy_kind, observation.proxy_pattern,
+               observation.evidence_state, observation.implementation_address,
                observation.implementation_code_hash
         FROM proxy_observations AS observation
         JOIN canonical_blocks AS canonical
@@ -990,9 +991,15 @@ WITH request(
     ) AS route ON NOT request.exact_address_only
     JOIN verified_function_selector_sets AS indexed
       ON indexed.chain_id = $1::numeric
-     AND indexed.address = route.implementation_address
      AND indexed.code_hash = route.implementation_code_hash
      AND indexed.status = 'complete'
+     AND (
+         indexed.address = route.implementation_address OR (
+             route.proxy_kind = 'cwia'
+             AND route.proxy_pattern = 'clone'
+             AND route.evidence_state = 'exact'
+         )
+     )
     JOIN verified_function_selectors AS selector
       ON selector.verification_job_id = indexed.verification_job_id
      AND selector.chain_id = indexed.chain_id

@@ -1021,7 +1021,10 @@ WITH published_proxy_candidates AS (
 		                   ELSE proxy.effective_implementation END,
 		       CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_code_hash
-		                   ELSE proxy.effective_implementation_hash END
+		                   ELSE proxy.effective_implementation_hash END,
+		       (proxy.proxy_kind = 'cwia'
+		        AND proxy.effective_pattern = 'clone'
+		        AND proxy.evidence_state = 'exact')::boolean
 		FROM selected_proxy AS proxy
 		LEFT JOIN published_beacon AS beacon
 		  ON proxy.effective_pattern = 'beacon'
@@ -1041,6 +1044,7 @@ type EnrichInlineLoadProxyABIBindingStatement1Params struct {
 type EnrichInlineLoadProxyABIBindingStatement1Row struct {
 	Column1 interface{} `db:"column_1" json:"column_1"`
 	Column2 interface{} `db:"column_2" json:"column_2"`
+	Column3 bool        `db:"column_3" json:"column_3"`
 }
 
 func (q *Queries) EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context, arg EnrichInlineLoadProxyABIBindingStatement1Params) ([]EnrichInlineLoadProxyABIBindingStatement1Row, error) {
@@ -1059,7 +1063,7 @@ func (q *Queries) EnrichInlineLoadProxyABIBindingStatement1(ctx context.Context,
 	items := []EnrichInlineLoadProxyABIBindingStatement1Row{}
 	for rows.Next() {
 		var i EnrichInlineLoadProxyABIBindingStatement1Row
-		if err := rows.Scan(&i.Column1, &i.Column2); err != nil {
+		if err := rows.Scan(&i.Column1, &i.Column2, &i.Column3); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

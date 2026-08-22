@@ -35,6 +35,7 @@ successfully decoded complete schema.
 | P69-T07 | done | P69-T06 | Separate exact implementation verification from code-hash artifact availability and replace immutable-argument facts with an accessible Name/Type/Offset/Data table | query/API/write-fence tests; bilingual browser/Preview regressions; common gates |
 | P69-T08 | done | P69-T07 | Keep published proxy interaction tabs stable when a fresh operation fence observes a transient latest-stage unavailable snapshot, while failing that operation closed and preserving real target-change refreshes | target/form/page tests; real-Chromium transient-stage regression; live Preview reproduction |
 | P69-T09 | done | P69-T08 | Hide the direct verified-artifact submission surface on recognized CWIA shell addresses while retaining implementation artifact source/ABI and proxy interaction | page/unit/browser regressions; live Preview inspection |
+| P69-T10 | done | P69-T09 | Resolve exact legacy CWIA event, Trace, Method, selector, and calldata ABI from an exact-address implementation artifact first or a same-chain same-code artifact without granting verification or write authority | focused query/ABI tests; PostgreSQL integration/race; production Hardhat monolith/split; common gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
@@ -81,6 +82,10 @@ Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 - [x] Recognized CWIA shell addresses do not expose a direct Verified artifact
       section or verification-submission entry; implementation artifact and
       implementation-as-proxy surfaces remain available.
+- [x] Event, Trace, Method, selector, and calldata decoding prefer the exact
+      implementation artifact and otherwise use only a same-chain same-code
+      artifact behind an exact CWIA observation, without granting verification
+      or write authority.
 
 ## Current Blockers
 
@@ -208,6 +213,27 @@ None.
   Read/Write-as-proxy, Initialization history, and Proxy identity remain. Its
   implementation `0xCafac3dD18aC6c6e92c921884f9E4176737C052c` still resolves
   the code-hash artifact and verified source after classification completes.
+- P69-T10 extends only exact legacy CWIA observations: ABI stage and bounded
+  read-time log, Trace, calldata, global Method, and Address Method queries
+  prefer an exact implementation artifact and otherwise accept a same-chain
+  same-implementation-code artifact as `proxy_implementation/high`, retaining
+  the artifact source address. Exact implementation verification supersedes
+  the fallback, while proxy verification state, write fences, other proxy
+  mechanisms, public contracts, stage versions, and migration behavior remain
+  unchanged. PostgreSQL coverage proves late artifact availability without ABI
+  replay, persisted generation-fenced bindings/decodings, and exact-address
+  precedence.
+- P69-T10 gates pass: focused enrich/catalog/query and integration tests;
+  `make generate-check`, `make source-check`, and `make plan-check`; PostgreSQL
+  integration (157.09s) and race (173.06s); and the real Solady production
+  Hardhat gate in monolith (118.77s) and six-role distributed (114.58s). The
+  Hardhat fixture verifies a sibling `MyAccount` first, then requires decoded
+  CWIA Method, calldata, `StoredSet(uint256)` event, and root Trace before
+  force-verifying the real implementation for the existing write binding.
+  `make check` passes generated/source/plan checks, zero-issue Go/Web lint,
+  358 Web tests, ordinary/race suites, security/license scans, Buildx,
+  Compose, and Helm gates; the known eight low-severity transitive Hardhat
+  `elliptic` findings remain unchanged.
 - Final gates pass: the bytecode fuzz target executed 591,964 inputs in five
   seconds; `make test-integration` and `make test-integration-race` pass the
   exact fork/replay/restart and verification-schema regressions against owned

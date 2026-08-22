@@ -874,10 +874,11 @@ func loadVerifiedABIBinding(
 
 func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, codeRange abiBlockRange) (persistedABIBinding, bool, error) {
 	var implementationAddressBytes, implementationCodeHashBytes []byte
+	var allowCodeHashArtifact bool
 	err := tx.QueryRowContext(ctx, dbgen.EnrichInlineLoadProxyABIBindingStatement1, target.ChainID, target.Address[:], target.CodeHash[:],
 		strconv.FormatUint(target.BlockNumber, 10), target.BlockHash[:], ProxyStage.Version,
 	).Scan(
-		&implementationAddressBytes, &implementationCodeHashBytes,
+		&implementationAddressBytes, &implementationCodeHashBytes, &allowCodeHashArtifact,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return persistedABIBinding{}, false, nil
@@ -903,9 +904,47 @@ func loadProxyABIBinding(ctx context.Context, tx *sql.Tx, target ABIIdentity, co
 	if !ok {
 		return persistedABIBinding{}, false, Permanent(errors.New("proxy and code ABI ranges do not intersect"))
 	}
-	return loadVerifiedABIBinding(
+	exact, found, err := loadVerifiedABIBinding(
 		ctx, tx, target, implementationAddress, implementationCodeHash, baseRange, ABISourceProxyImplementation,
 	)
+	if err != nil || found || !allowCodeHashArtifact {
+		return exact, found, err
+	}
+	return loadProxyCodeHashABIBinding(
+		ctx, tx, target, implementationAddress, implementationCodeHash, baseRange,
+	)
+}
+
+func loadProxyCodeHashABIBinding(
+	ctx context.Context,
+	tx *sql.Tx,
+	target ABIIdentity,
+	implementationAddress common.Address,
+	implementationCodeHash common.Hash,
+	validity abiBlockRange,
+) (persistedABIBinding, bool, error) {
+	var sourceAddressBytes, abi []byte
+	err := tx.QueryRowContext(
+		ctx, dbgen.EnrichInlineLoadSameCodeABIBindingStatement1,
+		target.ChainID, implementationCodeHash[:], implementationAddress[:],
+		strconv.FormatUint(target.BlockNumber, 10),
+	).Scan(&sourceAddressBytes, &abi)
+	if errors.Is(err, sql.ErrNoRows) {
+		return persistedABIBinding{}, false, nil
+	}
+	if err != nil {
+		return persistedABIBinding{}, false, fmt.Errorf("query CWIA implementation code-hash ABI: %w", err)
+	}
+	if len(sourceAddressBytes) != common.AddressLength {
+		return persistedABIBinding{}, false, Permanent(errors.New("CWIA implementation ABI source address is invalid"))
+	}
+	binding := ABIBinding{
+		Identity: target, Source: ABISourceProxyImplementation,
+		SourceAddress:  common.BytesToAddress(sourceAddressBytes),
+		SourceCodeHash: implementationCodeHash,
+		ValidFromBlock: validity.from, ValidToBlock: validity.to,
+	}
+	return persistedABIBinding{binding: binding, abi: append([]byte(nil), abi...)}, true, nil
 }
 
 type abiIdentifier struct {

@@ -1640,7 +1640,9 @@ WITH target_code AS (
         LIMIT 1
     )
 ), historical_proxy AS (
-    SELECT observation.implementation_address, observation.implementation_code_hash
+    SELECT observation.proxy_kind, observation.proxy_pattern,
+           observation.evidence_state, observation.implementation_address,
+           observation.implementation_code_hash
     FROM proxy_observations AS observation
     JOIN canonical_blocks AS canonical
       ON canonical.chain_id = observation.chain_id
@@ -1715,13 +1717,20 @@ WITH target_code AS (
     SELECT target_code.code_hash, verified.abi, 'proxy_implementation',
 	           'proxy_implementation', verified.address, verified.code_hash,
 	           decode(repeat('00', 32), 'hex'),
-           0::numeric, NULL::numeric, 2,
+           0::numeric, NULL::numeric,
+           CASE WHEN verified.address = proxy.implementation_address THEN 2 ELSE 3 END,
            verified.created_at, verified.request_digest, verified.verification_job_id
     FROM verified_contracts AS verified, target_code, historical_proxy AS proxy
     WHERE verified.chain_id = $1::numeric
-      AND verified.address = proxy.implementation_address
       AND verified.code_hash = proxy.implementation_code_hash
       AND verified.abi IS NOT NULL
+      AND (
+          verified.address = proxy.implementation_address OR (
+              proxy.proxy_kind = 'cwia'
+              AND proxy.proxy_pattern = 'clone'
+              AND proxy.evidence_state = 'exact'
+          )
+      )
 )
 SELECT target_code_hash, abi, registry_source, source_kind,
        source_address, source_code_hash, selector_scope,

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,6 +70,7 @@ type hardhatDeployment struct {
 	} `json:"clones"`
 	CWIA struct {
 		Factory        string `json:"factory"`
+		ArtifactSource string `json:"artifactSource"`
 		Implementation string `json:"implementation"`
 		Account        string `json:"account"`
 		Owner          string `json:"owner"`
@@ -327,6 +329,7 @@ func runHardhat3Mode(
 		"standardClone":           deployment.Clones.Standard,
 		"immutableArgumentsClone": deployment.Clones.ImmutableArgs,
 		"cwiaFactory":             deployment.CWIA.Factory,
+		"cwiaArtifactSource":      deployment.CWIA.ArtifactSource,
 		"cwiaImplementation":      deployment.CWIA.Implementation,
 		"cwiaAccount":             deployment.CWIA.Account,
 		"diamond":                 deployment.Diamond.Address,
@@ -365,7 +368,7 @@ func runHardhat3Mode(
 		"implementationV1", "implementationV2", "badUUID", "transparent", "uups",
 		"beacon", "beaconProxyA", "beaconProxyB", "cloneFactory", "standardClone",
 		"standardCloneInitialization", "immutableArgsClone", "immutableArgsCloneInitialization",
-		"cwiaFactory", "cwiaCreate", "cwiaSetStored",
+		"cwiaFactory", "cwiaArtifactSource", "cwiaCreate", "cwiaSetStored",
 		"diamondValueFacet", "diamondMathFacet", "diamond", "diamondSetValue",
 	} {
 		transaction, exists := deployment.Transactions[name]
@@ -399,7 +402,8 @@ func runHardhat3Mode(
 		deployment.Implementation, deployment.ImplementationV2,
 		deployment.Proxy, deployment.Transparent.Proxy, deployment.Transparent.Admin,
 		deployment.Beacon.Beacon, deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
-		deployment.CWIA.Factory, deployment.CWIA.Implementation, deployment.CWIA.Account,
+		deployment.CWIA.Factory, deployment.CWIA.ArtifactSource,
+		deployment.CWIA.Implementation, deployment.CWIA.Account,
 	} {
 		waitHardhatContractCode(t, ctx, h, address)
 	}
@@ -441,8 +445,9 @@ func runHardhat3Mode(
 	}
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v1",
 		"contracts/Implementation.sol:Implementation", deployment.Implementation, nil)
-	verifyHardhatAddress(t, ctx, h, apiKey, "cwia-implementation",
-		"contracts/MyAccount.sol:MyAccount", deployment.CWIA.Implementation, nil)
+	verifyHardhatAddress(t, ctx, h, apiKey, "cwia-artifact-source",
+		"contracts/MyAccount.sol:MyAccount", deployment.CWIA.ArtifactSource, nil)
+	assertHardhatCWIAImplementationCodeHashABI(t, ctx, h, deployment)
 	assertHardhatHistoricalMethod(
 		t, ctx, h, deployment.Clones.Standard, cloneInitialization.Hash,
 		"initialize", initializeSignature,
@@ -473,12 +478,15 @@ func runHardhat3Mode(
 			proxy, []any{deployment.Beacon.Beacon, initializer}, index > 0)
 	}
 	for _, address := range []string{
-		deployment.Implementation, deployment.CWIA.Implementation,
+		deployment.Implementation, deployment.CWIA.ArtifactSource,
 		deployment.Proxy, deployment.Transparent.Proxy,
 		deployment.Beacon.Proxies[0], deployment.Beacon.Proxies[1],
 	} {
 		waitHardhatSource(t, ctx, h, apiKey, address)
 	}
+	verifyHardhatAddressWithForce(t, ctx, h, apiKey, "cwia-implementation",
+		"contracts/MyAccount.sol:MyAccount", deployment.CWIA.Implementation, nil, true)
+	waitHardhatSource(t, ctx, h, apiKey, deployment.CWIA.Implementation)
 	waitHardhatProxyResolution(t, ctx, h, deployment.Proxy, "uups")
 	waitHardhatProxyResolution(t, ctx, h, deployment.Transparent.Proxy, "transparent")
 	waitHardhatRuntimeImmutableAuthority(
@@ -1466,6 +1474,86 @@ func assertHardhatClonesHaveNoUpgrades(
 	}
 }
 
+func assertHardhatCWIAImplementationCodeHashABI(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	deployment hardhatDeployment,
+) {
+	t.Helper()
+	transactionHash := deployment.Transactions["cwiaSetStored"].Hash
+	assertHardhatHistoricalMethod(
+		t, ctx, h, deployment.CWIA.Account, transactionHash,
+		"setStored", "setStored(uint256)",
+	)
+
+	var calldata gen.TransactionCalldataResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+transactionHash+"/calldata", &calldata)
+	if calldata.Data.Decoding.Status != gen.TransactionCalldataDecodingStatusDecoded ||
+		calldata.Data.Decoding.FunctionName == nil ||
+		*calldata.Data.Decoding.FunctionName != "setStored" ||
+		calldata.Data.Decoding.Signature == nil ||
+		*calldata.Data.Decoding.Signature != "setStored(uint256)" ||
+		len(calldata.Data.Decoding.Inputs) != 1 {
+		t.Fatalf("CWIA code-hash calldata = %#v", calldata.Data)
+	}
+	assertHardhatCWIAABISource(
+		t, calldata.Data.Decoding.AbiSource, deployment.CWIA.ArtifactSource,
+		gen.ABISourceKindProxyImplementation,
+	)
+
+	var logs gen.TransactionLogResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+transactionHash+"/logs?limit=100", &logs)
+	if len(logs.Data.Items) != 1 ||
+		logs.Data.Items[0].Decoding.Status != gen.TransactionLogDecodingStatusDecoded ||
+		logs.Data.Items[0].Decoding.EventName == nil ||
+		*logs.Data.Items[0].Decoding.EventName != "StoredSet" ||
+		logs.Data.Items[0].Decoding.Signature == nil ||
+		*logs.Data.Items[0].Decoding.Signature != "StoredSet(uint256)" ||
+		len(logs.Data.Items[0].Decoding.Arguments) != 1 {
+		t.Fatalf("CWIA code-hash log = %#v", logs.Data)
+	}
+	assertHardhatCWIAABISource(
+		t, logs.Data.Items[0].Decoding.AbiSource, deployment.CWIA.ArtifactSource,
+		gen.ABISourceKindCodeHash, gen.ABISourceKindProxyImplementation,
+	)
+
+	var trace gen.TransactionTraceResponse
+	h.mustGetJSON(ctx, "/api/v1/transactions/"+transactionHash+"/trace", &trace)
+	var root *gen.TraceFrame
+	for index := range trace.Data.Frames {
+		if len(trace.Data.Frames[index].Path) == 0 {
+			root = &trace.Data.Frames[index]
+			break
+		}
+	}
+	if root == nil || root.Decoding == nil ||
+		root.Decoding.Status != gen.TraceCallDecodingStatusDecoded ||
+		root.Decoding.FunctionName == nil || *root.Decoding.FunctionName != "setStored" ||
+		root.Decoding.Signature == nil || *root.Decoding.Signature != "setStored(uint256)" ||
+		len(root.Decoding.Inputs) != 1 {
+		t.Fatalf("CWIA code-hash Trace = %#v", trace.Data)
+	}
+	assertHardhatCWIAABISource(
+		t, root.Decoding.AbiSource, deployment.CWIA.ArtifactSource,
+		gen.ABISourceKindProxyImplementation,
+	)
+}
+
+func assertHardhatCWIAABISource(
+	t *testing.T,
+	source *gen.ABISource,
+	artifactSource string,
+	kinds ...gen.ABISourceKind,
+) {
+	t.Helper()
+	if source == nil || source.Address == nil || source.CodeHash == nil ||
+		!strings.EqualFold(string(*source.Address), artifactSource) ||
+		!common.IsHexHash(string(*source.CodeHash)) || !slices.Contains(kinds, source.Kind) {
+		t.Fatalf("CWIA ABI source = %#v, want address %s and one of %v", source, artifactSource, kinds)
+	}
+}
+
 type hardhatProxyDetailExpectation struct {
 	address             string
 	pattern             gen.ProxyPattern
@@ -2417,7 +2505,7 @@ func captureHardhatProxySnapshot(
 		    AND catalog_generation_id IS NOT NULL
 		    AND executor_digest IS NOT NULL
 		    AND executor_kind = 'node_solcjs_v1'
-		    AND execution_policy = 'trusted_subprocess') = 9,
+		    AND execution_policy = 'trusted_subprocess') = 10,
 		  count(*) FILTER (WHERE language = 'yul' AND status = 'succeeded'
 		    AND compiler_version = '0.8.30+commit.73712a01'
 		    AND compiler_platform = 'emscripten-wasm32'
@@ -2427,7 +2515,7 @@ func captureHardhatProxySnapshot(
 		    AND executor_kind = 'node_solcjs_v1'
 		    AND execution_policy = 'trusted_subprocess') = 1,
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
-		    AND compiler_digest IS NOT NULL) = 9
+		    AND compiler_digest IS NOT NULL) = 10
 		FROM verification_jobs`).Scan(
 		&result.AddressJobs, &result.YulJobs, &result.ProxyJobs,
 		&result.ExecutorProvenance, &result.YulProvenance,
@@ -2505,8 +2593,8 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if result.AddressJobs != 9 || result.ProxyJobs != 11 ||
-		result.CompilerResults != 10 || result.ProxyResults != 11 ||
+	if result.AddressJobs != 10 || result.ProxyJobs != 11 ||
+		result.CompilerResults != 11 || result.ProxyResults != 11 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
 		!result.ExecutorProvenance || !result.CompilerProvenance ||
 		result.CurrentProxyKind != "eip1967" ||

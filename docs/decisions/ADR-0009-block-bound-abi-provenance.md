@@ -35,11 +35,16 @@ independently of source would let guessed material be published as verified.
   separately from the target identity and never extends the source artifact's
   `verified` address range backward.
 - A historical proxy binding consumes an already persisted canonical proxy
-  observation; the ABI comes from a verified artifact for that observation's
-  implementation address and code hash. Its valid range is the intersection of
-  target code, proxy implementation, and verified-artifact ranges. It has
-  source `proxy_implementation` and confidence `high`. ABI processing does not
-  discover proxies.
+  observation. The ABI normally comes from a verified artifact for that
+  observation's implementation address and code hash. An exact legacy CWIA
+  `clone` observation with `evidence_state=exact` may instead use a same-chain
+  artifact whose runtime code hash equals the observed implementation code
+  hash when no exact-address artifact covers the context. The artifact's real
+  source address and code hash remain in provenance; the binding still has
+  source `proxy_implementation` and confidence `high` because the CWIA shell,
+  not code-hash reuse alone, proves the route. Its valid range is the
+  intersection of target code and the exact observed proxy context. ABI
+  processing does not discover or verify proxies.
 - Signature candidates are selected only for identifiers actually observed at
   the target. The worker parses each stored ABI entry, reconstructs its
   canonical signature, and verifies its selector/topic before use. Such
@@ -63,6 +68,13 @@ independently of source would let guessed material be published as verified.
   proxy observation valid at that block (`high`). This projection performs no
   RPC and no write, does not change the historical stage generation, and is
   isolated by the exact canonical block hash.
+- The same bounded read-time rule applies to transaction calldata, call-like
+  Trace frames, and transaction-list Method selectors. For an exact legacy
+  CWIA shell, implementation-address selector sets are considered first and
+  same-chain same-implementation-code selector sets may fill an otherwise
+  unavailable route. Conflicting selector or ABI candidates remain ambiguous.
+  Code-hash resolution never creates a proxy-verification binding, extends an
+  address verification range, or authorizes an implementation-as-proxy write.
 - Anonymous events are candidates only within the exact contract-specific ABI
   set. Indexed dynamic values remain their 32-byte topic hash and carry an
   explicit hashed marker. Parsing and decoding share the same limits for ABI
@@ -102,6 +114,11 @@ independently of source would let guessed material be published as verified.
   `abi@4` result. When only exact runtime equality reaches back before the
   artifact's address validity, the result is `code_hash`/`high`, not
   `verified`. Raw log bytes remain available for every status.
+- Exact legacy CWIA interactions receive the same late-artifact behavior
+  through `proxy_implementation` provenance: the implementation route is
+  block-proven while the ABI artifact may resolve from another same-code
+  address. Other proxy mechanisms retain their existing exact implementation
+  artifact requirement.
 
 ADR-0034 extends this boundary in `abi@4`: calls bind to the execution
 address/code hash proven by raw `state_diff@3` or its transaction-positioned

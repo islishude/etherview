@@ -274,6 +274,7 @@ const immutableCloneInitialization = await sendTransaction(owner, {
   data: initializeData(42n),
 });
 
+const cwiaArtifactDeployment = await deploy(owner, myAccountArtifact);
 const cwiaFactoryDeployment = await deploy(owner, myAccountFactoryArtifact);
 const cwiaFactoryInterface = new Interface(myAccountFactoryArtifact.abi);
 const myAccountInterface = new Interface(myAccountArtifact.abi);
@@ -388,6 +389,7 @@ const output = {
   },
   cwia: {
     factory: cwiaFactoryDeployment.address,
+    artifactSource: cwiaArtifactDeployment.address,
     implementation: cwiaImplementation,
     account: cwiaAccount,
     owner,
@@ -417,6 +419,7 @@ const output = {
     immutableArgsClone: immutableCloneTransaction,
     immutableArgsCloneInitialization: immutableCloneInitialization,
     cwiaFactory: cwiaFactoryDeployment.transaction,
+    cwiaArtifactSource: cwiaArtifactDeployment.transaction,
     cwiaCreate: cwiaCreateTransaction,
     cwiaSetStored: cwiaSetStoredTransaction,
     diamondValueFacet: valueFacetDeployment.transaction,

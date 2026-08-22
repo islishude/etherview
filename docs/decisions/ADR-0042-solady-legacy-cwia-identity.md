@@ -106,6 +106,16 @@ derive access offsets without retaining the complete AST or parsing source text.
   operation always performs another fresh fence. Actual binding, code,
   artifact-resolution, schema, or management changes retain the existing
   target-change refresh and fail-closed behavior.
+- The exact CWIA shell observation may also route that same code-hash-resolved
+  implementation ABI into block-bound transaction events, call-like Trace
+  frames, transaction Method selectors, and calldata reads. Exact-address
+  implementation artifacts are considered first; the fallback requires the
+  same chain and observed implementation runtime code hash, retains the
+  artifact's actual source address, and publishes only
+  `proxy_implementation/high` ABI provenance. Missing, conflicting, excessive,
+  unpublished, or noncanonical evidence remains unavailable or ambiguous.
+  Read-time correction performs no RPC, write, replay, or verification-state
+  mutation.
 - The Web presents decoded immutable arguments as an accessible,
   horizontally-scrollable `Name / Type / Offset / Data` table. Scalar and
   dynamic values occupy one row; supported arrays retain one copyable complete
@@ -138,4 +148,7 @@ separate operator decision. Existing verification artifacts are not backfilled;
 resubmission under the new analysis version derives the schema. Existing
 same-code artifacts become immediately useful for read-only current
 implementation presentation without rewriting verification history or
-upgrading the implementation address's verification state.
+upgrading the implementation address's verification state. Blocks first
+processed with the CWIA ABI route may also persist implementation-code-hash ABI
+decodings; older blocks are not automatically reindexed, although an existing
+complete published observation can support a pure read-time projection.

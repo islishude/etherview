@@ -351,6 +351,14 @@ executors. The routing and lag contract is specified in
   historical implementations, Diamonds, and Safe singletons never receive
   this code-hash substitution, and code-hash availability never creates a
   binding or browser write authority.
+- Exact legacy CWIA is additionally permitted to use the observed
+  implementation code hash as a read-only ABI route for events, Trace calls,
+  Method selectors, and transaction calldata. The exact implementation
+  artifact is preferred; otherwise a same-chain same-code artifact contributes
+  `proxy_implementation/high` provenance with its real source address. The
+  route remains block-hash-bound and generation-fenced, performs no RPC during
+  reads, and cannot change verification state or authorize writes. Other proxy
+  mechanisms retain their existing implementation-artifact rules.
 - Every implementation-as-proxy operation still fetches a fresh proxy
   snapshot. A transient `unavailable` latest proxy stage aborts only that
   operation before wallet RPC; it is not treated as target-change evidence and

@@ -115,7 +115,11 @@ replace a required `make test-e2e` pass.
   owner/uint256/uint16/bytes arguments, derives its schema from canonical
   helper calls in the dual-compiled Solidity AST, checks exact raw and typed
   dynamic arguments, exercises a delegated storage write, binds it as mechanism
-  `cwia`, and proves it has no upgrade history in both topologies. The `all` or `api`
+  `cwia`, and proves it has no upgrade history in both topologies. A separate
+  verified `MyAccount` deployment shares the implementation runtime code hash;
+  before the factory-owned implementation address is verified, the gate
+  requires CWIA Method, calldata, emitted event, and root Trace decoding to use
+  that artifact without opening proxy writes. The `all` or `api`
   process consumes the durable job, resolves and checksum-validates the
   architecture-independent `emscripten-wasm32` artifact, and runs each bounded
   Standard JSON compilation in a fresh permission-restricted Node SEA subprocess.

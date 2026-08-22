@@ -6,6 +6,8 @@ import {CWIA} from "solady/src/utils/legacy/CWIA.sol";
 contract MyAccount is CWIA {
     error Unauthorized();
 
+    event StoredSet(uint256 value);
+
     uint256 public stored;
 
     function owner() public pure returns (address) {
@@ -29,5 +31,6 @@ contract MyAccount is CWIA {
     function setStored(uint256 next) external {
         if (msg.sender != _getArgAddress(0)) revert Unauthorized();
         stored = next;
+        emit StoredSet(next);
     }
 }

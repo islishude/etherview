@@ -508,7 +508,10 @@ WITH published_proxy_candidates AS (
 		                   ELSE proxy.effective_implementation END,
 		       CASE WHEN proxy.effective_pattern = 'beacon'
 		                   THEN beacon.implementation_code_hash
-		                   ELSE proxy.effective_implementation_hash END
+		                   ELSE proxy.effective_implementation_hash END,
+		       (proxy.proxy_kind = 'cwia'
+		        AND proxy.effective_pattern = 'clone'
+		        AND proxy.evidence_state = 'exact')::boolean
 		FROM selected_proxy AS proxy
 		LEFT JOIN published_beacon AS beacon
 		  ON proxy.effective_pattern = 'beacon'

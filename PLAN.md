@@ -313,6 +313,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   write authorization. P69-T09 removes the shell's direct Verified artifact
   submission surface while retaining implementation source, ABI, and proxy
   interaction.
+  P69-T10 extends the block-bound ABI candidate path so exact CWIA shells decode
+  events, traces, Method, selectors, and calldata from a matching implementation
+  code-hash artifact without granting verification or write authority.
   Migration `0050` schedules no historical backfill and public proxy V2 remains
   disabled. Reviewable commands and results remain in
   [P69 evidence](docs/plans/P69-solady-legacy-cwia-proxies.md#evidence).

@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
+	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/enrich"
@@ -542,6 +543,210 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 			}[table], mustBytes(t, reference.Hash),
 		)
 	}
+}
+
+func TestExactCWIAUsesImplementationCodeHashArtifactAcrossABIReads(t *testing.T) {
+	db := newMigratedPostgres(t)
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresABIProcessor(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+
+	genesis := testBundle(0, testHash(80_100), testHash(0), testHash(80_101), "cwia-abi-genesis")
+	commitCanonical(t, ctx, repository, genesis)
+	proxy, implementation := testAddress(801), testAddress(802)
+	artifactSource, recipient, caller := testAddress(803), testAddress(804), testAddress(805)
+	bundle := abiFixtureBundleAt(
+		t, 1, genesis.Block.Hash(), proxy, proxy, recipient, caller, "cwia-code-hash-abi",
+	)
+	commitCanonical(t, ctx, repository, bundle)
+	reference := mustBlockRef(t, bundle)
+	implementationRuntime := []byte{0x60, 0x51}
+	implementationCode := crypto.Keccak256Hash(implementationRuntime)
+	proxyRuntime := soladyLegacyCWIARuntime(implementation, []byte{0x01, 0x02})
+	proxyCode := crypto.Keccak256Hash(proxyRuntime)
+	execFixture(t, ctx, db, `
+		INSERT INTO contract_code_observations (
+			chain_id, address, block_number, block_hash, code_hash, code, canonical
+		) VALUES (1, $1, $2::numeric, $3, $4, $5, TRUE)`,
+		mustBytes(t, proxy), fmt.Sprint(reference.Number), mustBytes(t, reference.Hash),
+		mustBytes(t, proxyCode), proxyRuntime)
+	publishABIStateDiff(t, ctx, db, reference, map[common.Address][]byte{proxy: proxyRuntime})
+	publishABITrace(t, ctx, db, reference, bundle, implementation, recipient, caller)
+	insertCWIAABIProxyObservation(
+		t, ctx, db, reference, proxy, proxyCode, implementation, implementationCode,
+	)
+	publishABIProxyStage(t, ctx, db, reference, map[string]proxyContractState{
+		proxy.String():          {code: proxyRuntime},
+		implementation.String(): {code: implementationRuntime},
+	})
+
+	result, err := processor.Process(ctx, abiIntegrationJob(t, reference))
+	if err != nil {
+		t.Fatalf("process CWIA ABI before artifact verification: %v", err)
+	}
+	if result.State != enrich.ResultComplete {
+		t.Fatalf("CWIA ABI before artifact verification = %+v", result)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM contract_abis
+		WHERE chain_id = 1 AND block_hash = $1 AND address = $2
+		  AND source = 'proxy_implementation'`, 0,
+		mustBytes(t, reference.Hash), mustBytes(t, proxy))
+
+	insertABIVerifiedContract(t, ctx, db, artifactSource, implementationCode)
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionReader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionHash := bundle.Block.Transactions()[0].Hash()
+	assertCWIAReadTimeABIProjection(
+		t, ctx, catalogReader, transactionReader, proxy, artifactSource,
+		transactionHash, implementationCode,
+	)
+
+	result, err = processor.Process(ctx, abiIntegrationJob(t, reference))
+	if err != nil {
+		t.Fatalf("reprocess CWIA ABI with code-hash artifact: %v", err)
+	}
+	if result.State != enrich.ResultComplete || result.Details["decoded"] == "0" {
+		t.Fatalf("CWIA ABI code-hash result = %+v", result)
+	}
+	assertABIBinding(
+		t, ctx, db, reference, proxy, proxyCode, "proxy_implementation", "high",
+		artifactSource, implementationCode,
+	)
+	assertABIDecodingSources(t, ctx, db, reference, map[string]string{
+		"transaction_calldata:": "decoded:proxy_implementation:high",
+		"log:0":                 "decoded:proxy_implementation:high",
+		"trace_calldata:":       "decoded:proxy_implementation:high",
+	})
+
+	insertABIVerifiedContract(t, ctx, db, implementation, implementationCode)
+	if _, err := processor.Process(ctx, abiIntegrationJob(t, reference)); err != nil {
+		t.Fatalf("reprocess CWIA ABI with exact implementation artifact: %v", err)
+	}
+	assertABIBinding(
+		t, ctx, db, reference, proxy, proxyCode, "proxy_implementation", "high",
+		implementation, implementationCode,
+	)
+}
+
+func insertCWIAABIProxyObservation(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	block store.BlockRef,
+	proxy common.Address,
+	proxyCode common.Hash,
+	implementation common.Address,
+	implementationCode common.Hash,
+) {
+	t.Helper()
+	execFixture(t, ctx, db, `
+		INSERT INTO proxy_observations (
+			chain_id, proxy_address, block_number, block_hash, stage_version,
+			proxy_code_hash, proxy_kind, proxy_pattern, implementation_address,
+			implementation_code_hash, immutable_args, confidence,
+			evidence_state, canonical, details
+		) VALUES (
+			1, $1, $2::numeric, $3, 2, $4, 'cwia', 'clone', $5, $6, $7,
+			'high', 'exact', TRUE, '{"fixture":"cwia-code-hash-abi"}'::jsonb
+		)`, mustBytes(t, proxy), fmt.Sprint(block.Number), mustBytes(t, block.Hash),
+		mustBytes(t, proxyCode), mustBytes(t, implementation),
+		mustBytes(t, implementationCode), []byte{0x01, 0x02})
+}
+
+func assertCWIAReadTimeABIProjection(
+	t *testing.T,
+	ctx context.Context,
+	catalogReader *catalog.Postgres,
+	transactionReader *query.PostgresReader,
+	proxy common.Address,
+	artifactSource common.Address,
+	transactionHash common.Hash,
+	implementationCode common.Hash,
+) {
+	t.Helper()
+	transactions, _, err := transactionReader.Transactions(ctx, "", 10)
+	if err != nil {
+		t.Fatalf("list CWIA transactions after code-hash verification: %v", err)
+	}
+	assertCWIAListedMethod(t, transactions, transactionHash)
+	addressTransactions, _, err := transactionReader.AddressTransactions(ctx, proxy.String(), "", 10)
+	if err != nil {
+		t.Fatalf("list CWIA address transactions after code-hash verification: %v", err)
+	}
+	assertCWIAListedMethod(t, addressTransactions, transactionHash)
+
+	calldata, err := catalogReader.TransactionCalldata(ctx, "1", transactionHash.String())
+	if err != nil {
+		t.Fatalf("read CWIA calldata after code-hash verification: %v", err)
+	}
+	if calldata.Decoding.Status != "decoded" || calldata.Decoding.Signature != "transfer(address,uint256)" ||
+		calldata.Decoding.ABISource == nil || calldata.Decoding.ABISource.Kind != "proxy_implementation" ||
+		!strings.EqualFold(calldata.Decoding.ABISource.Address, artifactSource.String()) ||
+		calldata.Decoding.ABISource.CodeHash != implementationCode.Hex() ||
+		len(calldata.Decoding.Inputs) != 2 {
+		t.Fatalf("CWIA calldata code-hash projection = %+v", calldata)
+	}
+	logs, err := catalogReader.TransactionLogs(ctx, catalog.TransactionResourceRequest{
+		ChainID: "1", TransactionHash: transactionHash.String(), Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("read CWIA logs after code-hash verification: %v", err)
+	}
+	if len(logs.Items) != 1 || logs.Items[0].Decoding.Status != "decoded" ||
+		logs.Items[0].Decoding.Signature != "Transfer(address,address,uint256)" ||
+		logs.Items[0].Decoding.ABISource == nil ||
+		logs.Items[0].Decoding.ABISource.Kind != "proxy_implementation" ||
+		!strings.EqualFold(logs.Items[0].Decoding.ABISource.Address, artifactSource.String()) ||
+		logs.Items[0].Decoding.ABISource.CodeHash != implementationCode.Hex() {
+		t.Fatalf("CWIA log code-hash projection = %+v", logs)
+	}
+	trace, err := catalogReader.TransactionTrace(ctx, "1", transactionHash.String())
+	if err != nil {
+		t.Fatalf("read CWIA Trace after code-hash verification: %v", err)
+	}
+	if len(trace.Frames) == 0 || trace.Frames[0].Decoding == nil ||
+		trace.Frames[0].Decoding.Status != "decoded" ||
+		trace.Frames[0].Decoding.Signature != "transfer(address,uint256)" ||
+		trace.Frames[0].Decoding.ABISource == nil ||
+		trace.Frames[0].Decoding.ABISource.Kind != "proxy_implementation" ||
+		!strings.EqualFold(trace.Frames[0].Decoding.ABISource.Address, artifactSource.String()) ||
+		trace.Frames[0].Decoding.ABISource.CodeHash != implementationCode.Hex() {
+		t.Fatalf("CWIA Trace code-hash projection = %+v", trace)
+	}
+}
+
+func assertCWIAListedMethod(
+	t *testing.T,
+	transactions []gen.Transaction,
+	transactionHash common.Hash,
+) {
+	t.Helper()
+	for _, transaction := range transactions {
+		if !strings.EqualFold(transaction.Hash, transactionHash.String()) {
+			continue
+		}
+		if transaction.Method == nil || *transaction.Method != "transfer" ||
+			transaction.MethodSignature == nil ||
+			*transaction.MethodSignature != "transfer(address,uint256)" {
+			t.Fatalf("CWIA Method projection = %+v", transaction)
+		}
+		return
+	}
+	t.Fatalf("CWIA transaction %s is missing from Method projection", transactionHash)
 }
 
 func publishABIStage(
