@@ -176,6 +176,7 @@ func (repository *PostgresRepository) CompleteV2(
 	lease VerificationLease,
 	outcomeKind string,
 	outcome json.RawMessage,
+	compilations ...AuthenticatedCompilation,
 ) error {
 	if err := validateVerificationLease(lease); err != nil {
 		return err
@@ -187,6 +188,10 @@ func (repository *PostgresRepository) CompleteV2(
 	case "compilation_failure", "verification_failure", "verification_success", "batch_results", "sourcify_success":
 	default:
 		return errors.New("v2 verification outcome kind is invalid")
+	}
+	if len(compilations) > 1 || (len(compilations) == 1 &&
+		(lease.Job.Kind != JobAddress || outcomeKind != "verification_success")) {
+		return errors.New("v2 authenticated compilation is invalid for outcome")
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,6 +208,16 @@ func (repository *PostgresRepository) CompleteV2(
 	resultFields, err := decodeV2ResultFields(outcomeKind, outcome)
 	if err != nil {
 		return err
+	}
+	var authenticatedCompilation *AuthenticatedCompilation
+	if len(compilations) == 1 {
+		validated, validateErr := validateAuthenticatedCompilation(
+			job, compilations[0], repository.options.MaxResultBytes,
+		)
+		if validateErr != nil {
+			return validateErr
+		}
+		authenticatedCompilation = &validated
 	}
 	var (
 		publicationBlockNumber uint64
@@ -257,6 +272,13 @@ func (repository *PostgresRepository) CompleteV2(
 	); err != nil {
 		return err
 	}
+	if authenticatedCompilation != nil {
+		if err := repository.persistAuthenticatedCompilationTx(
+			ctx, tx, job, *authenticatedCompilation,
+		); err != nil {
+			return err
+		}
+	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
 		if err := repository.publishVerifiedContractTx(ctx, tx, verifiedPublication{
 			Job: job, Fields: resultFields, BlockNumber: publicationBlockNumber,
@@ -267,6 +289,48 @@ func (repository *PostgresRepository) CompleteV2(
 		}
 	}
 	return tx.Commit()
+}
+
+func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	job VerificationJob,
+	compilation AuthenticatedCompilation,
+) error {
+	id, err := randomUUID(repository.random)
+	if err != nil {
+		return err
+	}
+	compiler := job.Compiler
+	if compiler == nil {
+		return errors.New("authenticated compilation compiler provenance is unavailable")
+	}
+	storedID := ""
+	err = tx.QueryRowContext(ctx, dbgen.VerifyInlineCompleteV2Statement6,
+		id, job.ID, job.RequestDigest[:], job.RequestV2.Language,
+		job.RequestV2.CompilerVersion, compiler.Platform,
+		compiler.CatalogGeneration, compiler.Digest[:], compiler.ExecutorKind,
+		compiler.ExecutionPolicy, compiler.ExecutorDigest[:],
+		string(compilation.StandardJSON), []byte(compilation.StandardJSON),
+	).Scan(&storedID)
+	if err != nil {
+		return fmt.Errorf("persist authenticated compilation unit: %w", err)
+	}
+	if storedID != id {
+		return errors.New("persisted authenticated compilation identity changed")
+	}
+	for _, candidate := range compilation.Candidates {
+		creation, _ := decodeBytecode(candidate.CreationBytecode)
+		runtime, _ := decodeBytecode(candidate.RuntimeBytecode)
+		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement7,
+			id, candidate.FileName, candidate.ContractName, string(candidate.ABI),
+			creation, runtime, string(candidate.CompilationArtifacts),
+			string(candidate.CreationCodeArtifacts), string(candidate.RuntimeCodeArtifacts),
+		); err != nil {
+			return fmt.Errorf("persist authenticated compilation candidate: %w", err)
+		}
+	}
+	return nil
 }
 
 type verifiedPublication struct {

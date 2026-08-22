@@ -17,20 +17,21 @@ import (
 type verifyMemoryRepository struct {
 	mu sync.Mutex
 
-	lease      VerificationLease
-	claimFound bool
-	claimError error
-	renewError error
-	bindError  error
-	bindings   []CompilerProvenance
-	failures   []ErrorCode
-	outcomes   []string
-	payloads   []json.RawMessage
-	submitJob  VerificationJob
-	submitErr  error
-	submits    int
-	job        VerificationJob
-	jobFound   bool
+	lease        VerificationLease
+	claimFound   bool
+	claimError   error
+	renewError   error
+	bindError    error
+	bindings     []CompilerProvenance
+	failures     []ErrorCode
+	outcomes     []string
+	payloads     []json.RawMessage
+	compilations []AuthenticatedCompilation
+	submitJob    VerificationJob
+	submitErr    error
+	submits      int
+	job          VerificationJob
+	jobFound     bool
 }
 
 func (repository *verifyMemoryRepository) Claim(
@@ -67,11 +68,13 @@ func (repository *verifyMemoryRepository) CompleteV2(
 	_ VerificationLease,
 	kind string,
 	payload json.RawMessage,
+	compilations ...AuthenticatedCompilation,
 ) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	repository.outcomes = append(repository.outcomes, kind)
 	repository.payloads = append(repository.payloads, append(json.RawMessage(nil), payload...))
+	repository.compilations = append(repository.compilations, compilations...)
 	return nil
 }
 
@@ -440,6 +443,12 @@ func TestWorkerPublishesSolidityGenesisRuntimeOnlyVerification(t *testing.T) {
 		outcome.ConstructorArguments != "" {
 		t.Fatalf("runtime-only Solidity outcome=%+v", outcome)
 	}
+	if len(repository.compilations) != 1 ||
+		len(repository.compilations[0].Candidates) != 1 ||
+		repository.compilations[0].Candidates[0].FullyQualifiedName() != "Proxy.sol:Proxy" ||
+		!json.Valid(repository.compilations[0].StandardJSON) {
+		t.Fatalf("authenticated compilations = %+v", repository.compilations)
+	}
 	assertNoCreationEvidence(t, repository.payloads[0])
 }
 
@@ -627,6 +636,7 @@ func TestWorkerBindsSolcJSAndCompilesDeterminismInputsSeparately(t *testing.T) {
 		repository.bindings[0].Platform != CompilerPlatformEmscriptenWASM32 ||
 		len(repository.outcomes) != 1 ||
 		repository.outcomes[0] != "verification_success" ||
+		len(repository.compilations) != 0 ||
 		len(repository.failures) != 0 {
 		t.Fatalf(
 			"bindings=%#v outcomes=%v failures=%v",

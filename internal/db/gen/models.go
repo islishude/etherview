@@ -1660,6 +1660,35 @@ type UupsImplementationObservationGeneration struct {
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type VerificationCompilationContract struct {
+	CompilationID         pgtype.UUID `db:"compilation_id" json:"compilation_id"`
+	FileName              string      `db:"file_name" json:"file_name"`
+	ContractName          string      `db:"contract_name" json:"contract_name"`
+	Abi                   []byte      `db:"abi" json:"abi"`
+	CreationBytecode      []byte      `db:"creation_bytecode" json:"creation_bytecode"`
+	RuntimeBytecode       []byte      `db:"runtime_bytecode" json:"runtime_bytecode"`
+	CompilationArtifacts  []byte      `db:"compilation_artifacts" json:"compilation_artifacts"`
+	CreationCodeArtifacts []byte      `db:"creation_code_artifacts" json:"creation_code_artifacts"`
+	RuntimeCodeArtifacts  []byte      `db:"runtime_code_artifacts" json:"runtime_code_artifacts"`
+}
+
+type VerificationCompilationUnit struct {
+	ID                  pgtype.UUID        `db:"id" json:"id"`
+	SourceJobID         pgtype.UUID        `db:"source_job_id" json:"source_job_id"`
+	RequestDigest       []byte             `db:"request_digest" json:"request_digest"`
+	Language            string             `db:"language" json:"language"`
+	CompilerVersion     string             `db:"compiler_version" json:"compiler_version"`
+	CompilerPlatform    string             `db:"compiler_platform" json:"compiler_platform"`
+	CatalogGenerationID int64              `db:"catalog_generation_id" json:"catalog_generation_id"`
+	CompilerSha256      []byte             `db:"compiler_sha256" json:"compiler_sha256"`
+	ExecutorKind        string             `db:"executor_kind" json:"executor_kind"`
+	ExecutionPolicy     string             `db:"execution_policy" json:"execution_policy"`
+	ExecutorSha256      []byte             `db:"executor_sha256" json:"executor_sha256"`
+	StandardJson        []byte             `db:"standard_json" json:"standard_json"`
+	StandardJsonPayload []byte             `db:"standard_json_payload" json:"standard_json_payload"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type VerificationJob struct {
 	ID                  pgtype.UUID        `db:"id" json:"id"`
 	Kind                string             `db:"kind" json:"kind"`

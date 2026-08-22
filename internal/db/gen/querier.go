@@ -498,6 +498,8 @@ type Querier interface {
 	VerifyInlineCompleteV2Statement3(ctx context.Context, arg VerifyInlineCompleteV2Statement3Params) error
 	VerifyInlineCompleteV2Statement4(ctx context.Context, arg VerifyInlineCompleteV2Statement4Params) error
 	VerifyInlineCompleteV2Statement5(ctx context.Context, arg VerifyInlineCompleteV2Statement5Params) error
+	VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) ([]string, error)
+	VerifyInlineCompleteV2Statement7(ctx context.Context, arg VerifyInlineCompleteV2Statement7Params) error
 	VerifyInlineFailStatement1(ctx context.Context, column1 pgtype.UUID, leaseToken *string, errorCode *string) error
 	VerifyInlineLookupStatement1(ctx context.Context, language string, version string) ([]VerifyInlineLookupStatement1Row, error)
 	VerifyInlineLookupStatement2(ctx context.Context, language string) ([]bool, error)

@@ -111,6 +111,27 @@ INSERT INTO verified_contract_proxy_artifacts (
 					$5::uuid, $6, $7, $8, $9, $10
 				);
 
+-- name: VerifyInlineCompleteV2Statement6 :many
+INSERT INTO verification_compilation_units (
+			id, source_job_id, request_digest, language, compiler_version,
+			compiler_platform, catalog_generation_id, compiler_sha256,
+			executor_kind, execution_policy, executor_sha256,
+			standard_json, standard_json_payload
+		) VALUES (
+			$1::uuid, $2::uuid, $3, $4, $5, $6, $7::bigint, $8, $9, $10, $11,
+			$12::jsonb, $13
+		)
+		RETURNING id::text;
+
+-- name: VerifyInlineCompleteV2Statement7 :exec
+INSERT INTO verification_compilation_contracts (
+			compilation_id, file_name, contract_name, abi, creation_bytecode,
+			runtime_bytecode, compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts
+		) VALUES (
+			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb
+		);
+
 -- name: VerifyInlineFailStatement1 :exec
 UPDATE verification_jobs
 		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $3,

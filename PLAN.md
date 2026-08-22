@@ -366,7 +366,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   documentation, and artifact work.
 - P71 is in progress: P71-T01 completed the reusable verifier matcher and
   shared publication boundary without changing submitted-verification
-  behavior; P71-T02 is adding authenticated compilation-unit persistence.
+  behavior; P71-T02 now persists immutable authenticated compilation units and
+  complete bounded candidate sets, and P71-T03 is implementing historical
+  CREATE/CREATE2 derivation.
 
 ## Global Release Gates
 

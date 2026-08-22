@@ -451,6 +451,106 @@ func (q *Queries) VerifyInlineCompleteV2Statement5(ctx context.Context, arg Veri
 	return err
 }
 
+const VerifyInlineCompleteV2Statement6 = `-- name: VerifyInlineCompleteV2Statement6 :many
+INSERT INTO verification_compilation_units (
+			id, source_job_id, request_digest, language, compiler_version,
+			compiler_platform, catalog_generation_id, compiler_sha256,
+			executor_kind, execution_policy, executor_sha256,
+			standard_json, standard_json_payload
+		) VALUES (
+			$1::uuid, $2::uuid, $3, $4, $5, $6, $7::bigint, $8, $9, $10, $11,
+			$12::jsonb, $13
+		)
+		RETURNING id::text
+`
+
+type VerifyInlineCompleteV2Statement6Params struct {
+	Column1             pgtype.UUID `db:"column_1" json:"column_1"`
+	Column2             pgtype.UUID `db:"column_2" json:"column_2"`
+	RequestDigest       []byte      `db:"request_digest" json:"request_digest"`
+	Language            string      `db:"language" json:"language"`
+	CompilerVersion     string      `db:"compiler_version" json:"compiler_version"`
+	CompilerPlatform    string      `db:"compiler_platform" json:"compiler_platform"`
+	Column7             int64       `db:"column_7" json:"column_7"`
+	CompilerSha256      []byte      `db:"compiler_sha256" json:"compiler_sha256"`
+	ExecutorKind        string      `db:"executor_kind" json:"executor_kind"`
+	ExecutionPolicy     string      `db:"execution_policy" json:"execution_policy"`
+	ExecutorSha256      []byte      `db:"executor_sha256" json:"executor_sha256"`
+	Column12            []byte      `db:"column_12" json:"column_12"`
+	StandardJsonPayload []byte      `db:"standard_json_payload" json:"standard_json_payload"`
+}
+
+func (q *Queries) VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) ([]string, error) {
+	rows, err := q.db.Query(ctx, VerifyInlineCompleteV2Statement6,
+		arg.Column1,
+		arg.Column2,
+		arg.RequestDigest,
+		arg.Language,
+		arg.CompilerVersion,
+		arg.CompilerPlatform,
+		arg.Column7,
+		arg.CompilerSha256,
+		arg.ExecutorKind,
+		arg.ExecutionPolicy,
+		arg.ExecutorSha256,
+		arg.Column12,
+		arg.StandardJsonPayload,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const VerifyInlineCompleteV2Statement7 = `-- name: VerifyInlineCompleteV2Statement7 :exec
+INSERT INTO verification_compilation_contracts (
+			compilation_id, file_name, contract_name, abi, creation_bytecode,
+			runtime_bytecode, compilation_artifacts, creation_code_artifacts,
+			runtime_code_artifacts
+		) VALUES (
+			$1::uuid, $2, $3, $4::jsonb, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb
+		)
+`
+
+type VerifyInlineCompleteV2Statement7Params struct {
+	Column1          pgtype.UUID `db:"column_1" json:"column_1"`
+	FileName         string      `db:"file_name" json:"file_name"`
+	ContractName     string      `db:"contract_name" json:"contract_name"`
+	Column4          []byte      `db:"column_4" json:"column_4"`
+	CreationBytecode []byte      `db:"creation_bytecode" json:"creation_bytecode"`
+	RuntimeBytecode  []byte      `db:"runtime_bytecode" json:"runtime_bytecode"`
+	Column7          []byte      `db:"column_7" json:"column_7"`
+	Column8          []byte      `db:"column_8" json:"column_8"`
+	Column9          []byte      `db:"column_9" json:"column_9"`
+}
+
+func (q *Queries) VerifyInlineCompleteV2Statement7(ctx context.Context, arg VerifyInlineCompleteV2Statement7Params) error {
+	_, err := q.db.Exec(ctx, VerifyInlineCompleteV2Statement7,
+		arg.Column1,
+		arg.FileName,
+		arg.ContractName,
+		arg.Column4,
+		arg.CreationBytecode,
+		arg.RuntimeBytecode,
+		arg.Column7,
+		arg.Column8,
+		arg.Column9,
+	)
+	return err
+}
+
 const VerifyInlineFailStatement1 = `-- name: VerifyInlineFailStatement1 :exec
 UPDATE verification_jobs
 		SET status = 'failed', outcome_kind = NULL, outcome = NULL, error_code = $3,
