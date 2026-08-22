@@ -1,0 +1,70 @@
+# P71 — Factory-derived Contract Verification
+
+Status: `in_progress`
+
+## Outcome
+
+Persist every bounded candidate from an authenticated successful Solidity
+compilation, then use canonical CREATE and CREATE2 traces plus exact historical
+runtime-code observations to auto-verify uniquely matched child contracts.
+Derived publication reuses the ordinary verified-contract transaction, remains
+code-epoch and reorg fenced, propagates asynchronously, and exposes bounded
+human-readable provenance without extending Sourcify consent.
+
+## References
+
+- [Architecture](../architecture/overview.md)
+- [ADR-0007: Block-scoped derived canonicality journals](../decisions/ADR-0007-block-scoped-derived-canonicality-journals.md)
+- [ADR-0009: Block-bound ABI provenance](../decisions/ADR-0009-block-bound-abi-provenance.md)
+- [ADR-0024: Verifier v2 workflow](../decisions/ADR-0024-verifier-v2-workflow.md)
+- [ADR-0043: Factory-derived verification provenance](../decisions/ADR-0043-factory-derived-verification-provenance.md)
+- [Testing](../testing.md)
+
+## Work Items
+
+| ID | Status | Depends on | Deliverable | Verification |
+|---|---|---|---|---|
+| P71-T01 | done | P30-T17 | Reusable candidate matcher and one submitted/derived publication transaction with unchanged ordinary verification behavior | verifier unit and PostgreSQL publication regressions |
+| P71-T02 | in_progress | P71-T01 | Fresh-schema authenticated compilation-unit and bounded candidate persistence on successful address verification | codec, digest/provenance, idempotency, migration, and PostgreSQL round-trip tests |
+| P71-T03 | todo | P71-T02 | Historical canonical CREATE/CREATE2 scanner, creation/runtime unique matcher, durable attempts, and internal derived publication | Factory-to-child Solidity fixtures and PostgreSQL integration tests |
+| P71-T04 | todo | P71-T03 | Historical parent code-epoch resolution, publication-time canonical recheck, stale handling, and retry idempotency | reorg, reattach, code replacement, and duplicate-work tests |
+| P71-T05 | todo | P71-T04 | Trace-stage-completion forward enqueue and transitive asynchronous propagation without ingestion-path matching | future-child, nested-factory, retry, and monolith/split tests |
+| P71-T06 | todo | P71-T05 | Generated provenance/children API, bilingual Web presentation, bounded configuration, metrics, admin backfill, and operations guidance | generated API, Web, observability, browser, deployment, and common gates |
+
+Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
+
+## Acceptance
+
+- [ ] Verifying only a Factory persists its complete bounded authenticated
+      compilation candidate set and can auto-verify a previously created child
+      without another public verification submission.
+- [ ] Derived verification requires one unique fully qualified candidate to
+      match both trace init code and exact canonical deployed runtime code.
+- [ ] Constructor arguments, libraries, immutables, and compiler auxdata retain
+      the same transformation-aware semantics as direct verification.
+- [ ] Historical and future CREATE/CREATE2 events propagate asynchronously;
+      nested children participate one durable event at a time.
+- [ ] Parent and child evidence is bound to chain, block number/hash, runtime
+      code identity, transaction hash, trace path, and compilation provenance.
+- [ ] Reorgs, address code replacement, retries, and repeated enqueue never
+      expose stale or duplicate current verification.
+- [ ] Derived verification neither invokes debug/archive RPC on its normal path
+      nor submits child sources to Sourcify.
+- [ ] API and Web explain the creator, creation transaction, trace path, call
+      type, and parent compilation while keeping hostile output bounded.
+- [ ] Ordinary address verification, selector publication, proxy replay,
+      Sourcify, monolith/split parity, and ingestion latency do not regress.
+
+## Current Blockers
+
+None.
+
+## Evidence
+
+- P71-T01 exposes one-candidate creation/runtime matching through the existing
+  transformation engine and extracts one transaction-local publication helper
+  for verified contracts, selector indexes, authenticated proxy artifacts, and
+  proxy replay. `go test ./internal/verify -count=1`, the complete owned
+  PostgreSQL 18 `make test-integration` gate, `make plan-check`, and
+  `git diff --check` pass on 2026-08-22.
+- P71-T02 is claimed on 2026-08-22.

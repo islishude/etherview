@@ -63,6 +63,47 @@ func TestExtractAndVerifyAllCandidates(t *testing.T) {
 	}
 }
 
+func TestMatchCandidateReusesCreationAndRuntimeMatcher(t *testing.T) {
+	t.Parallel()
+	aux := solidityAuxdata(t, map[string]any{"ipfs": []byte{1, 2, 3}})
+	modifiedAux := solidityAuxdata(t, map[string]any{"ipfs": []byte{4, 5, 6}})
+	creation := append([]byte{0x60, 0x00, 0x56}, aux...)
+	runtime := append([]byte{0x60, 0x01, 0x56}, aux...)
+	original := candidateCompilerOutput(t, map[string]map[string]candidateOutputFixture{
+		"Factory.sol": {"Child": {creation: creation, runtime: runtime}},
+	})
+	modified := candidateCompilerOutput(t, map[string]map[string]candidateOutputFixture{
+		"Factory.sol": {"Child": {
+			creation: append([]byte{0x60, 0x00, 0x56}, modifiedAux...),
+			runtime:  append([]byte{0x60, 0x01, 0x56}, modifiedAux...),
+		}},
+	})
+	candidates, err := ExtractCandidatesV2(
+		original, modified, LanguageSolidity, "0.8.30+commit.73712a01",
+	)
+	if err != nil {
+		t.Fatalf("extract candidates: %v", err)
+	}
+	match, ok, err := MatchCandidate(candidates[0], MatchInput{
+		Creation: "0x" + hex.EncodeToString(creation),
+		Runtime:  "0x" + hex.EncodeToString(runtime),
+	}, true)
+	if err != nil || !ok || match.Creation == nil || match.Runtime == nil {
+		t.Fatalf("match = %+v, ok = %t, error = %v", match, ok, err)
+	}
+	if match.Candidate.FullyQualifiedName() != "Factory.sol:Child" ||
+		match.Creation.MatchType != VerificationMatchFull ||
+		match.Runtime.MatchType != VerificationMatchFull {
+		t.Fatalf("unexpected match = %+v", match)
+	}
+	_, ok, err = MatchCandidate(candidates[0], MatchInput{
+		Creation: "0x" + hex.EncodeToString(creation), Runtime: "0x6002",
+	}, true)
+	if err != nil || ok {
+		t.Fatalf("runtime mismatch ok = %t, error = %v", ok, err)
+	}
+}
+
 func TestExtractCandidatesRequiresStableDualCompilationShape(t *testing.T) {
 	t.Parallel()
 	aux := solidityAuxdata(t, map[string]any{"solc": []byte{0, 8, 30}})

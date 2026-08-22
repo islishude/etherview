@@ -258,56 +258,78 @@ func (repository *PostgresRepository) CompleteV2(
 		return err
 	}
 	if job.Kind == JobAddress && outcomeKind == "verification_success" {
-		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement4, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publicationAddress,
-			publicationCodeHash, strconv.FormatUint(publicationBlockNumber, 10),
-			job.ID, job.RequestDigest[:],
-			resultFields.FileName, resultFields.ContractName, resultFields.Language,
-			resultFields.CompilerVersion, resultFields.RuntimeMatch, resultFields.ABI,
-			resultFields.Sources, resultFields.Settings, resultFields.CompilationArtifacts,
-			resultFields.CreationArtifacts, resultFields.RuntimeArtifacts,
-			resultFields.ConstructorArguments, resultFields.Libraries, resultFields.Blueprint,
-		); err != nil {
-			return err
-		}
-		if authenticatedArtifact != nil {
-			var immutable any
-			if authenticatedArtifact.RuntimeImmutable != nil {
-				immutable = authenticatedArtifact.RuntimeImmutable[:]
-			}
-			if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement5, strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
-				publicationAddress, publicationCodeHash,
-				strconv.FormatUint(publicationBlockNumber, 10),
-				job.ID, job.RequestDigest[:], authenticatedArtifact.Kind,
-				authenticatedArtifact.StandardVersion, immutable,
-				authenticatedArtifact.SourceManifestSHA256[:],
-			); err != nil {
-				return fmt.Errorf("publish authenticated OpenZeppelin proxy artifact: %w", err)
-			}
-		}
-		var selectorABI []byte
-		if resultFields.ABI != nil {
-			encoded, ok := resultFields.ABI.(string)
-			if !ok {
-				return errors.New("verification ABI selector projection is invalid")
-			}
-			selectorABI = []byte(encoded)
-		}
-		if err := verifiedselector.Persist(ctx, tx, verifiedselector.Identity{
-			JobID: job.ID, RequestDigest: job.RequestDigest[:],
-			ChainID: strconv.FormatUint(job.RequestV2.Target.ChainID, 10),
+		if err := repository.publishVerifiedContractTx(ctx, tx, verifiedPublication{
+			Job: job, Fields: resultFields, BlockNumber: publicationBlockNumber,
 			Address: publicationAddress, CodeHash: publicationCodeHash,
-			ValidFromBlock: publicationBlockNumber,
-		}, selectorABI); err != nil {
-			return err
-		}
-		if err := repository.requestVerificationProxyReplayTx(
-			ctx, tx, job, publicationBlockNumber, publicationTarget,
-			authenticatedArtifact,
-		); err != nil {
+			Target: publicationTarget, AuthenticatedArtifact: authenticatedArtifact,
+		}); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+type verifiedPublication struct {
+	Job                   VerificationJob
+	Fields                v2ResultFields
+	BlockNumber           uint64
+	Address               []byte
+	CodeHash              []byte
+	Target                common.Address
+	AuthenticatedArtifact *recognizedProxyArtifact
+}
+
+func (repository *PostgresRepository) publishVerifiedContractTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	publication verifiedPublication,
+) error {
+	job, fields := publication.Job, publication.Fields
+	chainID := strconv.FormatUint(job.RequestV2.Target.ChainID, 10)
+	blockNumber := strconv.FormatUint(publication.BlockNumber, 10)
+	if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement4,
+		chainID, publication.Address, publication.CodeHash, blockNumber,
+		job.ID, job.RequestDigest[:], fields.FileName, fields.ContractName,
+		fields.Language, fields.CompilerVersion, fields.RuntimeMatch, fields.ABI,
+		fields.Sources, fields.Settings, fields.CompilationArtifacts,
+		fields.CreationArtifacts, fields.RuntimeArtifacts,
+		fields.ConstructorArguments, fields.Libraries, fields.Blueprint,
+	); err != nil {
+		return err
+	}
+	if publication.AuthenticatedArtifact != nil {
+		artifact := publication.AuthenticatedArtifact
+		var immutable any
+		if artifact.RuntimeImmutable != nil {
+			immutable = artifact.RuntimeImmutable[:]
+		}
+		if _, err := tx.ExecContext(ctx, dbgen.VerifyInlineCompleteV2Statement5,
+			chainID, publication.Address, publication.CodeHash, blockNumber,
+			job.ID, job.RequestDigest[:], artifact.Kind,
+			artifact.StandardVersion, immutable, artifact.SourceManifestSHA256[:],
+		); err != nil {
+			return fmt.Errorf("publish authenticated OpenZeppelin proxy artifact: %w", err)
+		}
+	}
+	var selectorABI []byte
+	if fields.ABI != nil {
+		encoded, ok := fields.ABI.(string)
+		if !ok {
+			return errors.New("verification ABI selector projection is invalid")
+		}
+		selectorABI = []byte(encoded)
+	}
+	if err := verifiedselector.Persist(ctx, tx, verifiedselector.Identity{
+		JobID: job.ID, RequestDigest: job.RequestDigest[:], ChainID: chainID,
+		Address: publication.Address, CodeHash: publication.CodeHash,
+		ValidFromBlock: publication.BlockNumber,
+	}, selectorABI); err != nil {
+		return err
+	}
+	return repository.requestVerificationProxyReplayTx(
+		ctx, tx, job, publication.BlockNumber, publication.Target,
+		publication.AuthenticatedArtifact,
+	)
 }
 
 func proxyArtifactAttestationValues(artifact *recognizedProxyArtifact) (any, any, any, any) {
