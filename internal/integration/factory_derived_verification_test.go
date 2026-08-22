@@ -27,6 +27,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	factoryBlock := testBundle(1, testHash(7_501), testHash(7_500), testHash(8_501), "derived-factory")
 	childBlock := testBundle(2, testHash(7_502), testHash(7_501), testHash(8_502), "derived-child")
 	replacementBlock := testBundle(3, testHash(7_503), testHash(7_502), testHash(8_503), "derived-replaced-factory")
+	forwardBlock := testBundle(4, testHash(7_504), testHash(7_503), testHash(8_504), "derived-forward-child")
 	commitCanonical(t, ctx, core, genesis)
 	commitCanonical(t, ctx, core, factoryBlock)
 	commitCanonical(t, ctx, core, childBlock)
@@ -35,9 +36,12 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	factoryAddress := mustBytes(t, testAddress(750))
 	childAddress := mustBytes(t, testAddress(751))
 	wrongEpochChildAddress := mustBytes(t, testAddress(752))
+	grandchildAddress := mustBytes(t, testAddress(753))
 	factoryRuntime := []byte{0x60, 0xaa}
 	childCreation := []byte{0x60, 0x10}
 	childRuntime := []byte{0x60, 0x11}
+	grandchildCreation := []byte{0x60, 0x12}
+	grandchildRuntime := []byte{0x60, 0x13}
 	factoryCodeHash := keccak256(factoryRuntime)
 	childCodeHash := keccak256(childRuntime)
 	replacementFactoryRuntime := []byte{0x60, 0xbb}
@@ -112,6 +116,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		Candidates: []verify.CandidateArtifact{
 			derivedCandidate("A", "0x6000", "0x"+hex.EncodeToString(factoryRuntime)),
 			derivedCandidate("Child", "0x"+hex.EncodeToString(childCreation), "0x"+hex.EncodeToString(childRuntime)),
+			derivedCandidate("Grandchild", "0x"+hex.EncodeToString(grandchildCreation), "0x"+hex.EncodeToString(grandchildRuntime)),
 		},
 	}
 	if err := repository.CompleteV2(
@@ -156,6 +161,72 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		SELECT count(*) FROM derived_verification_scans
 		WHERE chain_id = 1 AND creator_address = $1 AND status = 'succeeded'`, 1,
 		factoryAddress,
+	)
+	processed, err = worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("settle transitive child scan: processed=%t error=%v", processed, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_scans
+		WHERE chain_id = 1 AND creator_address = $1 AND status = 'succeeded'`, 1,
+		childAddress,
+	)
+
+	commitCanonical(t, ctx, core, forwardBlock)
+	grandchildCodeHash := keccak256(grandchildRuntime)
+	execFixture(t, ctx, db, `
+		INSERT INTO contract_code_observations (
+			chain_id, address, block_number, block_hash, code_hash, code, canonical
+		) VALUES (1, $1, 4, $2, $3, $4, TRUE)`,
+		grandchildAddress, forwardBlock.Block.Hash().Bytes(), grandchildCodeHash, grandchildRuntime,
+	)
+	execFixture(t, ctx, db, `
+		INSERT INTO normalized_traces (
+			chain_id, block_number, block_hash, transaction_hash,
+			transaction_index, trace_path, parent_path, depth, call_type,
+			from_address, created_address, value, gas, gas_used, input, output,
+			error, reverted, canonical
+		) VALUES (
+			1, 4, $1, $2, 0, '0', '', 1, 'CREATE', $3, $4,
+			0, 50000, 21000, $5, $6, NULL, FALSE, TRUE
+		)`,
+		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
+		childAddress, grandchildAddress, grandchildCreation, grandchildRuntime,
+	)
+	execFixture(t, ctx, db, `
+		INSERT INTO block_stage_results (
+			chain_id, block_number, block_hash, stage, stage_version, state, details
+		) VALUES (1, 4, $1, 'trace', 3, 'complete', '{"frames":1}')`,
+		forwardBlock.Block.Hash().Bytes(),
+	)
+	forwardWorker, err := derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
+		WorkerID: "derived-forward", LeaseDuration: time.Minute,
+		PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err = forwardWorker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("dispatch forward derived block: processed=%t error=%v", processed, err)
+	}
+	processed, err = worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("process forward derived scan: processed=%t error=%v", processed, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*)
+		FROM verified_contracts AS verified
+		JOIN verification_jobs AS job ON job.id = verified.verification_job_id
+		WHERE verified.chain_id = 1 AND verified.address = $1
+		  AND verified.code_hash = $2 AND verified.valid_from_block = 4
+		  AND verified.contract_name = 'Grandchild' AND job.kind = 'derived'`, 1,
+		grandchildAddress, grandchildCodeHash,
+	)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_forward_blocks
+		WHERE chain_id = 1 AND block_hash = $1 AND status = 'succeeded'`, 1,
+		forwardBlock.Block.Hash().Bytes(),
 	)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM derived_verification_attempts

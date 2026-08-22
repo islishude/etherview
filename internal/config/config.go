@@ -234,6 +234,7 @@ type VerificationConfig struct {
 	UnsafeAllowPrivateDownloadNetworks bool `yaml:"unsafe_allow_private_download_networks"`
 	DerivedEnabled                     bool `yaml:"derived_enabled"`
 	DerivedBackfillEnabled             bool `yaml:"derived_backfill_enabled"`
+	DerivedForwardEnabled              bool `yaml:"derived_forward_enabled"`
 	DerivedWorkerCount                 int  `yaml:"derived_worker_count"`
 	DerivedMaxTracesPerScan            int  `yaml:"derived_max_traces_per_scan"`
 }

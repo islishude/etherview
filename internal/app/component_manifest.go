@@ -40,6 +40,12 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 						cfg.Verification.DerivedWorkerCount,
 					)
 				}
+				if cfg.Verification.DerivedForwardEnabled {
+					addWorkerComponentKeys(
+						add, "42-factory-derived-forward",
+						cfg.Verification.DerivedWorkerCount,
+					)
+				}
 			}
 		case components.RoleSync:
 			if wakeEnabled {

@@ -80,6 +80,7 @@ func (worker *Worker) Run(ctx context.Context) error {
 }
 
 type scanLease struct {
+	ID                    string
 	CompilationID         string
 	ChainID               string
 	CreatorAddress        []byte
@@ -139,7 +140,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			}
 			if err != nil {
 				worker.retry(ctx, lease) //nolint:errcheck
-				return true, err
+				return true, fmt.Errorf("publish derived verification: %w", err)
 			}
 		}
 		if !unique {
@@ -159,7 +160,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		cursorPath = last.TracePath
 	}
 	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyAdvanceScan,
-		lease.CompilationID, lease.Token, lease.WorkerID, done,
+		lease.ID, lease.Token, lease.WorkerID, done,
 		cursorBlock, cursorTransaction, cursorPath,
 	)
 	if err != nil {
@@ -178,7 +179,7 @@ func (worker *Worker) claim(ctx context.Context) (scanLease, bool, error) {
 	err := worker.db.QueryRowContext(ctx, dbgen.DerivedVerifyClaimScan,
 		worker.options.WorkerID, token, microseconds,
 	).Scan(
-		&lease.CompilationID, &lease.ChainID, &lease.CreatorAddress,
+		&lease.ID, &lease.CompilationID, &lease.ChainID, &lease.CreatorAddress,
 		&lease.CreatorCodeHash, &lease.ValidFromBlock, &lease.ValidToBlock,
 		&lease.CursorBlockNumber, &lease.CursorTransactionHash,
 		&lease.CursorTracePath,
@@ -325,12 +326,15 @@ func (worker *Worker) recordAttempt(
 		trace.CreatorAddress, trace.CreatedAddress, trace.CallType,
 		lease.CompilationID, status,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("record derived verification attempt %s: %w", status, err)
+	}
+	return nil
 }
 
 func (worker *Worker) retry(ctx context.Context, lease scanLease) error {
 	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRetryScan,
-		lease.CompilationID, lease.Token, lease.WorkerID, "processing_failed",
+		lease.ID, lease.Token, lease.WorkerID, "processing_failed",
 	)
 	if err != nil {
 		return err

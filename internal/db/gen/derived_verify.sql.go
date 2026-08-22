@@ -13,19 +13,24 @@ import (
 
 const DerivedVerifyAdvanceScan = `-- name: DerivedVerifyAdvanceScan :exec
 UPDATE derived_verification_scans
-SET status = CASE WHEN $4::boolean THEN 'succeeded' ELSE 'queued' END,
+SET status = CASE
+        WHEN redispatch_requested THEN 'queued'
+        WHEN $4::boolean THEN 'succeeded'
+        ELSE 'queued'
+    END,
+    redispatch_requested = FALSE,
     cursor_block_number = $5::numeric,
     cursor_transaction_hash = $6,
     cursor_trace_path = $7,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     last_error = NULL, updated_at = clock_timestamp()
-WHERE compilation_id = $1::uuid AND status = 'running'
+WHERE id = $1::bigint AND status = 'running'
   AND lease_token = $2 AND lease_expires_at > clock_timestamp()
   AND leased_by = $3
 `
 
 type DerivedVerifyAdvanceScanParams struct {
-	Column1               pgtype.UUID    `db:"column_1" json:"column_1"`
+	Column1               int64          `db:"column_1" json:"column_1"`
 	LeaseToken            *string        `db:"lease_token" json:"lease_token"`
 	LeasedBy              *string        `db:"leased_by" json:"leased_by"`
 	Column4               bool           `db:"column_4" json:"column_4"`
@@ -47,33 +52,99 @@ func (q *Queries) DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerif
 	return err
 }
 
+const DerivedVerifyClaimForwardBlock = `-- name: DerivedVerifyClaimForwardBlock :many
+WITH exhausted AS (
+    UPDATE derived_verification_forward_blocks
+    SET status = 'failed', last_error = 'attempts_exhausted',
+        leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
+        updated_at = clock_timestamp()
+    WHERE (chain_id, block_hash) = (
+        SELECT chain_id, block_hash
+        FROM derived_verification_forward_blocks
+        WHERE (status = 'queued' OR
+               (status = 'running' AND lease_expires_at <= clock_timestamp()))
+          AND attempt_count >= max_attempts
+        ORDER BY updated_at, chain_id, block_number, block_hash
+        FOR UPDATE SKIP LOCKED LIMIT 1
+    )
+    RETURNING chain_id, block_hash
+), candidate AS (
+    SELECT chain_id, block_hash
+    FROM derived_verification_forward_blocks
+    WHERE (status = 'queued' OR
+           (status = 'running' AND lease_expires_at <= clock_timestamp()))
+      AND attempt_count < max_attempts
+      AND NOT EXISTS (
+          SELECT 1 FROM exhausted
+          WHERE exhausted.chain_id = derived_verification_forward_blocks.chain_id
+            AND exhausted.block_hash = derived_verification_forward_blocks.block_hash
+      )
+    ORDER BY updated_at, chain_id, block_number, block_hash
+    FOR UPDATE SKIP LOCKED LIMIT 1
+)
+UPDATE derived_verification_forward_blocks AS block
+SET status = 'running', leased_by = $1, lease_token = $2,
+    lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 microsecond'),
+    attempt_count = block.attempt_count + 1, last_error = NULL,
+    updated_at = clock_timestamp()
+FROM candidate
+WHERE block.chain_id = candidate.chain_id AND block.block_hash = candidate.block_hash
+RETURNING block.chain_id::text, block.block_number::text, block.block_hash
+`
+
+type DerivedVerifyClaimForwardBlockRow struct {
+	BlockChainID     string `db:"block_chain_id" json:"block_chain_id"`
+	BlockBlockNumber string `db:"block_block_number" json:"block_block_number"`
+	BlockHash        []byte `db:"block_hash" json:"block_hash"`
+}
+
+func (q *Queries) DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyClaimForwardBlock, leasedBy, leaseToken, column3)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DerivedVerifyClaimForwardBlockRow{}
+	for rows.Next() {
+		var i DerivedVerifyClaimForwardBlockRow
+		if err := rows.Scan(&i.BlockChainID, &i.BlockBlockNumber, &i.BlockHash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const DerivedVerifyClaimScan = `-- name: DerivedVerifyClaimScan :many
 WITH exhausted AS (
     UPDATE derived_verification_scans
     SET status = 'failed', last_error = 'attempts_exhausted',
         leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
         updated_at = clock_timestamp()
-    WHERE compilation_id = (
-        SELECT compilation_id
+    WHERE id = (
+        SELECT id
         FROM derived_verification_scans
         WHERE (status = 'queued' OR
                (status = 'running' AND lease_expires_at <= clock_timestamp()))
           AND attempt_count >= max_attempts
-        ORDER BY updated_at, compilation_id
+        ORDER BY updated_at, id
         FOR UPDATE SKIP LOCKED LIMIT 1
     )
-    RETURNING compilation_id
+    RETURNING id
 ), candidate AS (
-    SELECT compilation_id
+    SELECT id
     FROM derived_verification_scans
     WHERE (status = 'queued' OR
            (status = 'running' AND lease_expires_at <= clock_timestamp()))
       AND attempt_count < max_attempts
       AND NOT EXISTS (
           SELECT 1 FROM exhausted
-          WHERE exhausted.compilation_id = derived_verification_scans.compilation_id
+          WHERE exhausted.id = derived_verification_scans.id
       )
-    ORDER BY updated_at, compilation_id
+    ORDER BY updated_at, id
     FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE derived_verification_scans AS scan
@@ -82,8 +153,8 @@ SET status = 'running', leased_by = $1, lease_token = $2,
     attempt_count = scan.attempt_count + 1, last_error = NULL,
     updated_at = clock_timestamp()
 FROM candidate
-WHERE scan.compilation_id = candidate.compilation_id
-RETURNING scan.compilation_id::text, scan.chain_id::text,
+WHERE scan.id = candidate.id
+RETURNING scan.id::text, scan.compilation_id::text, scan.chain_id::text,
           scan.creator_address, scan.creator_code_hash,
           scan.valid_from_block::text, scan.valid_to_block::text,
           scan.cursor_block_number::text, scan.cursor_transaction_hash,
@@ -91,6 +162,7 @@ RETURNING scan.compilation_id::text, scan.chain_id::text,
 `
 
 type DerivedVerifyClaimScanRow struct {
+	ScanID                string `db:"scan_id" json:"scan_id"`
 	ScanCompilationID     string `db:"scan_compilation_id" json:"scan_compilation_id"`
 	ScanChainID           string `db:"scan_chain_id" json:"scan_chain_id"`
 	CreatorAddress        []byte `db:"creator_address" json:"creator_address"`
@@ -112,6 +184,7 @@ func (q *Queries) DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, 
 	for rows.Next() {
 		var i DerivedVerifyClaimScanRow
 		if err := rows.Scan(
+			&i.ScanID,
 			&i.ScanCompilationID,
 			&i.ScanChainID,
 			&i.CreatorAddress,
@@ -132,12 +205,60 @@ func (q *Queries) DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, 
 	return items, nil
 }
 
+const DerivedVerifyDispatchForwardBlock = `-- name: DerivedVerifyDispatchForwardBlock :execrows
+UPDATE derived_verification_scans AS scan
+SET status = CASE WHEN scan.status = 'succeeded' THEN 'queued' ELSE scan.status END,
+    redispatch_requested = CASE
+        WHEN scan.status = 'running' THEN TRUE ELSE scan.redispatch_requested
+    END,
+    updated_at = clock_timestamp()
+WHERE scan.status IN ('succeeded', 'running')
+  AND scan.chain_id = $1::numeric
+  AND EXISTS (
+      SELECT 1
+      FROM normalized_traces AS trace
+      WHERE trace.chain_id = scan.chain_id
+        AND trace.block_number = $2::numeric
+        AND trace.block_hash = $3
+        AND trace.from_address = scan.creator_address
+        AND trace.canonical AND NOT trace.reverted
+        AND trace.call_type IN ('CREATE', 'CREATE2')
+        AND trace.created_address IS NOT NULL
+        AND octet_length(trace.input) > 0
+        AND scan.creator_code_hash = (
+            SELECT observation.code_hash
+            FROM contract_code_observations AS observation
+            JOIN canonical_blocks AS observation_canonical
+              ON observation_canonical.chain_id = observation.chain_id
+             AND observation_canonical.number = observation.block_number
+             AND observation_canonical.block_hash = observation.block_hash
+            WHERE observation.chain_id = trace.chain_id
+              AND observation.address = trace.from_address
+              AND observation.canonical
+              AND observation.block_number <= trace.block_number
+            ORDER BY observation.block_number DESC, observation.observed_at DESC,
+                     observation.code_hash DESC
+            LIMIT 1
+        )
+  )
+`
+
+func (q *Queries) DerivedVerifyDispatchForwardBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, DerivedVerifyDispatchForwardBlock, column1, column2, blockHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const DerivedVerifyEnqueueHistoricalScan = `-- name: DerivedVerifyEnqueueHistoricalScan :exec
 INSERT INTO derived_verification_scans (
     compilation_id, chain_id, creator_address, creator_code_hash,
     valid_from_block, valid_to_block, cursor_block_number
 ) VALUES ($1::uuid, $2::numeric, $3, $4, $5::numeric, $6::numeric, $5::numeric)
-ON CONFLICT (compilation_id) DO NOTHING
+ON CONFLICT (
+    compilation_id, creator_address, creator_code_hash, valid_from_block
+) DO NOTHING
 `
 
 type DerivedVerifyEnqueueHistoricalScanParams struct {
@@ -199,6 +320,34 @@ func (q *Queries) DerivedVerifyExistingPublication(ctx context.Context, arg Deri
 		return nil, err
 	}
 	return items, nil
+}
+
+const DerivedVerifyFinishForwardBlock = `-- name: DerivedVerifyFinishForwardBlock :exec
+UPDATE derived_verification_forward_blocks
+SET status = CASE WHEN redispatch_requested THEN 'queued' ELSE 'succeeded' END,
+    redispatch_requested = FALSE,
+    leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
+    last_error = NULL, updated_at = clock_timestamp()
+WHERE chain_id = $1::numeric AND block_hash = $2
+  AND status = 'running' AND leased_by = $3 AND lease_token = $4
+  AND lease_expires_at > clock_timestamp()
+`
+
+type DerivedVerifyFinishForwardBlockParams struct {
+	Column1    pgtype.Numeric `db:"column_1" json:"column_1"`
+	BlockHash  []byte         `db:"block_hash" json:"block_hash"`
+	LeasedBy   *string        `db:"leased_by" json:"leased_by"`
+	LeaseToken *string        `db:"lease_token" json:"lease_token"`
+}
+
+func (q *Queries) DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyFinishForwardBlock,
+		arg.Column1,
+		arg.BlockHash,
+		arg.LeasedBy,
+		arg.LeaseToken,
+	)
+	return err
 }
 
 const DerivedVerifyInsertJob = `-- name: DerivedVerifyInsertJob :exec
@@ -534,10 +683,19 @@ SELECT trace.chain_id::text, trace.block_number::text, trace.block_hash,
 FROM verification_compilation_units AS unit
 JOIN derived_verification_scans AS scan ON scan.compilation_id = unit.id
 JOIN verified_contracts AS parent
-  ON parent.verification_job_id = unit.source_job_id
- AND parent.chain_id = scan.chain_id
+  ON parent.chain_id = scan.chain_id
  AND parent.address = scan.creator_address
  AND parent.code_hash = scan.creator_code_hash
+ AND (
+      parent.verification_job_id = unit.source_job_id OR
+      EXISTS (
+          SELECT 1
+          FROM derived_verification_attempts AS parent_attempt
+          WHERE parent_attempt.compilation_id = unit.id
+            AND parent_attempt.verification_job_id = parent.verification_job_id
+            AND parent_attempt.status = 'matched'
+      )
+ )
 JOIN normalized_traces AS trace
   ON trace.chain_id = scan.chain_id
  AND trace.block_number = $2::numeric
@@ -706,19 +864,46 @@ func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVer
 	return err
 }
 
+const DerivedVerifyRetryForwardBlock = `-- name: DerivedVerifyRetryForwardBlock :exec
+UPDATE derived_verification_forward_blocks
+SET status = 'queued', leased_by = NULL, lease_token = NULL,
+    lease_expires_at = NULL, last_error = $5, updated_at = clock_timestamp()
+WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
+  AND status = 'running' AND leased_by = $4
+`
+
+type DerivedVerifyRetryForwardBlockParams struct {
+	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
+	BlockHash []byte         `db:"block_hash" json:"block_hash"`
+	LeasedBy  *string        `db:"leased_by" json:"leased_by"`
+	LastError *string        `db:"last_error" json:"last_error"`
+}
+
+func (q *Queries) DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyRetryForwardBlock,
+		arg.Column1,
+		arg.Column2,
+		arg.BlockHash,
+		arg.LeasedBy,
+		arg.LastError,
+	)
+	return err
+}
+
 const DerivedVerifyRetryScan = `-- name: DerivedVerifyRetryScan :exec
 UPDATE derived_verification_scans
 SET status = 'queued', leased_by = NULL, lease_token = NULL,
     lease_expires_at = NULL, last_error = $4, updated_at = clock_timestamp()
-WHERE compilation_id = $1::uuid AND status = 'running'
+WHERE id = $1::bigint AND status = 'running'
   AND lease_token = $2 AND leased_by = $3
 `
 
 type DerivedVerifyRetryScanParams struct {
-	Column1    pgtype.UUID `db:"column_1" json:"column_1"`
-	LeaseToken *string     `db:"lease_token" json:"lease_token"`
-	LeasedBy   *string     `db:"leased_by" json:"leased_by"`
-	LastError  *string     `db:"last_error" json:"last_error"`
+	Column1    int64   `db:"column_1" json:"column_1"`
+	LeaseToken *string `db:"lease_token" json:"lease_token"`
+	LeasedBy   *string `db:"leased_by" json:"leased_by"`
+	LastError  *string `db:"last_error" json:"last_error"`
 }
 
 func (q *Queries) DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error {

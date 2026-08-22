@@ -290,6 +290,10 @@ func validateVerificationConfig(c Config) error {
 	if c.Verification.DerivedBackfillEnabled && !c.Verification.DerivedEnabled {
 		errs = append(errs, errors.New("verification.derived_backfill_enabled requires derived_enabled"))
 	}
+	if c.Verification.DerivedForwardEnabled &&
+		(!c.Verification.DerivedEnabled || !c.Verification.DerivedBackfillEnabled) {
+		errs = append(errs, errors.New("verification.derived_forward_enabled requires derived backfill"))
+	}
 	if c.Verification.Timeout <= 0 || c.Verification.Timeout > 30*time.Minute {
 		errs = append(errs, errors.New("verification.timeout must be between 1ns and 30m"))
 	}

@@ -116,6 +116,9 @@ func (repository *PostgresRepository) CompleteDerived(
 		strconv.FormatUint(evidence.BlockNumber, 10),
 	).Scan(&existingJobID)
 	if err == nil {
+		if err := enqueueDerivedTargetTx(ctx, tx, identity.CompilationID, evidence); err != nil {
+			return "", err
+		}
 		if err := repository.recordDerivedMatchTx(
 			ctx, tx, identity.CompilationID, evidence, match, existingJobID,
 		); err != nil {
@@ -211,6 +214,9 @@ func (repository *PostgresRepository) CompleteDerived(
 	}); err != nil {
 		return "", err
 	}
+	if err := enqueueDerivedTargetTx(ctx, tx, identity.CompilationID, evidence); err != nil {
+		return "", err
+	}
 	if err := repository.recordDerivedMatchTx(
 		ctx, tx, identity.CompilationID, evidence, match, jobID,
 	); err != nil {
@@ -220,6 +226,21 @@ func (repository *PostgresRepository) CompleteDerived(
 		return "", err
 	}
 	return jobID, nil
+}
+
+func enqueueDerivedTargetTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	compilationID string,
+	evidence derivedPublicationEvidence,
+) error {
+	if _, err := tx.ExecContext(ctx, dbgen.DerivedVerifyEnqueueHistoricalScan,
+		compilationID, evidence.ChainID, evidence.CreatedAddress,
+		evidence.RuntimeCodeHash, strconv.FormatUint(evidence.BlockNumber, 10), nil,
+	); err != nil {
+		return fmt.Errorf("enqueue transitive derived verification: %w", err)
+	}
+	return nil
 }
 
 func (repository *PostgresRepository) recordDerivedMatchTx(

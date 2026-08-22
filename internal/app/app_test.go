@@ -313,6 +313,10 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 	cfg := config.Default()
 	cfg.Runtime.WorkerCount = 2
 	cfg.Verification.WorkerCount = 2
+	cfg.Verification.DerivedWorkerCount = 2
+	cfg.Verification.DerivedEnabled = true
+	cfg.Verification.DerivedBackfillEnabled = true
+	cfg.Verification.DerivedForwardEnabled = true
 	cfg.Features.Trace = true
 	cfg.Features.Verification = true
 	cfg.Features.NFTMetadata = true
@@ -334,6 +338,8 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api",
 			"35-compiler-catalog-refresher",
 			"40-contract-verification-01", "40-contract-verification-02",
+			"41-factory-derived-verification-01", "41-factory-derived-verification-02",
+			"42-factory-derived-forward-01", "42-factory-derived-forward-02",
 		}},
 		{role: components.RoleMetadata, want: []string{
 			"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery",

@@ -464,6 +464,22 @@ type DerivedVerificationAttempt struct {
 	StaleFromStatus   *string            `db:"stale_from_status" json:"stale_from_status"`
 }
 
+type DerivedVerificationForwardBlock struct {
+	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
+	Status              string             `db:"status" json:"status"`
+	RedispatchRequested bool               `db:"redispatch_requested" json:"redispatch_requested"`
+	LeasedBy            *string            `db:"leased_by" json:"leased_by"`
+	LeaseToken          *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt      pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+	AttemptCount        int32              `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts         int32              `db:"max_attempts" json:"max_attempts"`
+	LastError           *string            `db:"last_error" json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type DerivedVerificationScan struct {
 	CompilationID         pgtype.UUID        `db:"compilation_id" json:"compilation_id"`
 	ChainID               pgtype.Numeric     `db:"chain_id" json:"chain_id"`
@@ -483,6 +499,8 @@ type DerivedVerificationScan struct {
 	LastError             *string            `db:"last_error" json:"last_error"`
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                    *int64             `db:"id" json:"id"`
+	RedispatchRequested   bool               `db:"redispatch_requested" json:"redispatch_requested"`
 }
 
 type DiamondCutEvent struct {

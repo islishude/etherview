@@ -369,8 +369,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   behavior; P71-T02 now persists immutable authenticated compilation units and
   complete bounded candidate sets; P71-T03 completes feature-gated historical
   CREATE/CREATE2 derivation; P71-T04 completes historical code-epoch,
-  reorg/reattach, and idempotency hardening, and P71-T05 is adding forward and
-  transitive propagation.
+  reorg/reattach, and idempotency hardening. P71-T05 now dispatches
+  post-`trace@3` work durably
+  and propagates through derived children; P71-T06 is adding the public
+  provenance/product/operations surface and final gates.
 
 ## Global Release Gates
 
