@@ -771,6 +771,8 @@ downstream range an operator intends to rebuild. See
 
 ## Source-of-Truth Routing
 
+- `AGENTS.md`: compact repository instruction entry point.
+- `docs/development.md`: engineering workflow and change-routing rules.
 - This file: current architecture facts.
 - `docs/decisions/`: why consequential choices were made.
 - `docs/plans/`: pending and completed delivery work.
