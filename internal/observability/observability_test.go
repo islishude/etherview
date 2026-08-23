@@ -237,10 +237,14 @@ func TestDerivedVerificationMetricsUseClosedLabels(t *testing.T) {
 	t.Parallel()
 	registry := NewRegistry("test", "api")
 	registry.RecordDerivedVerification("match", "ambiguous")
+	registry.RecordDerivedVerification("dispatch", "trace_generation")
+	registry.RecordDerivedVerification("rewind", "pending_runtime")
 	registry.RecordDerivedVerification("hostile-kind", "hostile-result")
 	metrics := registry.Gather()
 	for _, expected := range []string{
 		`etherview_derived_verification_total{kind="match",result="ambiguous"} 1`,
+		`etherview_derived_verification_total{kind="dispatch",result="trace_generation"} 1`,
+		`etherview_derived_verification_total{kind="rewind",result="pending_runtime"} 1`,
 		`etherview_derived_verification_total{kind="other",result="other"} 1`,
 	} {
 		if !strings.Contains(metrics, expected) {

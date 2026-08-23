@@ -157,13 +157,14 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 				worker.observe("publish", "matched")
 			}
 		}
-		worker.observe("match", status)
 		if !unique {
-			if err := worker.recordAttempt(ctx, lease, trace, status); err != nil {
+			status, err = worker.recordAttempt(ctx, lease, trace, status)
+			if err != nil {
 				worker.retry(ctx, lease) //nolint:errcheck
 				return true, err
 			}
 		}
+		worker.observe("match", status)
 	}
 	done := len(traces) < worker.options.MaxTraces
 	cursorBlock, cursorTransaction, cursorPath := lease.CursorBlockNumber,
@@ -340,17 +341,24 @@ func (worker *Worker) recordAttempt(
 	lease scanLease,
 	trace traceCandidate,
 	status string,
-) error {
-	_, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRecordAttempt,
+) (string, error) {
+	var stored string
+	err := worker.db.QueryRowContext(ctx, dbgen.DerivedVerifyRecordAttempt,
 		uuid.NewString(), lease.ChainID, strconv.FormatUint(trace.BlockNumber, 10),
 		trace.BlockHash, trace.TransactionHash, trace.TracePath,
 		trace.CreatorAddress, trace.CreatedAddress, trace.CallType,
 		lease.CompilationID, status,
-	)
-	if err != nil {
-		return fmt.Errorf("record derived verification attempt %s: %w", status, err)
+	).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "stale", nil
 	}
-	return nil
+	if err != nil {
+		return "", fmt.Errorf("record derived verification attempt %s: %w", status, err)
+	}
+	if stored != status && stored != "stale" {
+		return "", errors.New("stored derived verification attempt status is invalid")
+	}
+	return stored, nil
 }
 
 func (worker *Worker) retry(ctx context.Context, lease scanLease) error {
