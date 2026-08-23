@@ -482,6 +482,9 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	if rows.Next() {
 		t.Fatal("unexpected extra terminal maintenance audit row")
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 
 	var jobStatus, leasedBy, leaseToken string
 	if err := db.QueryRowContext(ctx, `

@@ -159,6 +159,12 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 			}
 		}
 		t.Fatalf("current Beacon proxy count = %s, want 2", beaconProxyCount)
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	commitCanonical(t, ctx, repository, oldUpgrade)
