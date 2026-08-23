@@ -229,7 +229,8 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	owner := testAddress(900)
 	erc721, erc1155 := testAddress(721), testAddress(1155)
 	rpc := &exactNFTCaller{owner: owner, erc1155Balance: "7"}
-	pool := newNFTStatePool(t, rpc)
+	observer := &exactNFTObserver{}
+	pool := newNFTStatePool(t, rpc, observer)
 	canonical := state.PostgresCanonicalSource{DB: db, ChainID: "1"}
 	reconciler, err := state.NewNFTReconciler(db, pool, canonical)
 	if err != nil {
@@ -238,10 +239,6 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	reference := mustBlockRef(t, replacement)
 	snapshot := catalog.Snapshot{
 		ChainID: "1", BlockNumber: fmt.Sprint(reference.Number), BlockHash: reference.Hash.String(),
-	}
-	ownership, err := reconciler.Owner(ctx, snapshot, erc721.String(), "42")
-	if err != nil || !ownership.Exists || ownership.Confidence != catalog.NFTStateConfidenceRPCExact {
-		t.Fatalf("exact owner=%+v error=%v", ownership, err)
 	}
 	balances, err := reconciler.Balances(ctx, snapshot, owner.String(), []catalog.NFTBalanceCandidate{
 		{Standard: "erc721", TokenAddress: erc721.String(), TokenID: "42"},
@@ -253,6 +250,18 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	}
 	if rpc.calls != 2 {
 		t.Fatalf("exact NFT RPC calls=%d, want ownerOf plus balanceOf", rpc.calls)
+	}
+	if len(observer.observations) != 1 || observer.observations[0].Method != "eth_call" ||
+		observer.observations[0].BatchSize != 2 || observer.observations[0].SuccessCount != 2 ||
+		observer.observations[0].ErrorCount != 0 {
+		t.Fatalf("exact NFT RPC observations=%+v", observer.observations)
+	}
+	ownership, err := reconciler.Owner(ctx, snapshot, erc721.String(), "42")
+	if err != nil || !ownership.Exists || ownership.Confidence != catalog.NFTStateConfidenceRPCExact {
+		t.Fatalf("cached exact owner=%+v error=%v", ownership, err)
+	}
+	if rpc.calls != 2 || len(observer.observations) != 1 {
+		t.Fatalf("cached exact owner made an RPC call: calls=%d observations=%+v", rpc.calls, observer.observations)
 	}
 	for _, selector := range rpc.selectors {
 		if selector["blockHash"] != reference.Hash.String() || selector["requireCanonical"] != true {
@@ -363,6 +372,14 @@ type exactNFTCaller struct {
 	selectors      []map[string]any
 }
 
+type exactNFTObserver struct {
+	observations []ethrpc.Observation
+}
+
+func (observer *exactNFTObserver) RecordRPC(observation ethrpc.Observation) {
+	observer.observations = append(observer.observations, observation)
+}
+
 type gatedExactNFTCaller struct {
 	delegate *exactNFTCaller
 	started  chan struct{}
@@ -446,12 +463,16 @@ func (caller *exactNFTCaller) Call(
 	return hexutil.Bytes(output), nil
 }
 
-func newNFTStatePool(t *testing.T, service any) *ethrpc.Pool {
+func newNFTStatePool(t *testing.T, service any, observers ...ethrpc.Observer) *ethrpc.Pool {
 	t.Helper()
+	var observer ethrpc.Observer
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
 	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
 		Name: "exact-nft-state", Client: newIntegrationRPCClient(t, "eth", service),
 		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
-	}}, ethrpc.PoolOptions{})
+	}}, ethrpc.PoolOptions{Observer: observer})
 	if err != nil {
 		t.Fatal(err)
 	}

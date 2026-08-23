@@ -72,6 +72,7 @@ type testStateRPC struct {
 	nonce      uint64
 	code       []byte
 	callResult []byte
+	callFn     func(map[string]any, rpc.BlockNumberOrHash) (hexutil.Bytes, error)
 	err        error
 }
 
@@ -118,6 +119,9 @@ func (service *testStateRPC) GetCode(_ context.Context, address common.Address, 
 func (service *testStateRPC) Call(_ context.Context, call map[string]any, selector rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
 	service.method = "eth_call"
 	service.params = []any{call, selector}
+	if service.callFn != nil {
+		return service.callFn(call, selector)
+	}
 	if service.err != nil {
 		return nil, service.err
 	}

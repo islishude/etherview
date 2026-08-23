@@ -46,6 +46,12 @@ type parsedNFTCandidate struct {
 	tokenID  *big.Int
 }
 
+type nftBalanceBatchResult struct {
+	index            int
+	balance          catalog.NFTBalanceObservation
+	ownerObservation *catalog.NFTOwnerObservation
+}
+
 var _ catalog.NFTStateReconciler = (*NFTReconciler)(nil)
 
 func NewNFTReconciler(db *sql.DB, pool *ethrpc.Pool, canonical CanonicalSource) (*NFTReconciler, error) {
@@ -168,35 +174,16 @@ func (reconciler *NFTReconciler) Balances(
 	if err != nil {
 		return nil, nftRPCUnavailable()
 	}
+	batchResults, err := callNFTBalanceBatch(ctx, endpoint, reference, ownerAddress, parsed, missing)
+	if err != nil {
+		reconciler.pool.ReportFailure(endpoint.Name)
+		return nil, err
+	}
 	ownerObservations := make(map[int]catalog.NFTOwnerObservation)
-	for _, index := range missing {
-		candidate := parsed[index]
-		switch candidate.standard {
-		case standardERC721:
-			observation, callErr := callERC721Owner(ctx, endpoint, reference, candidate.address, candidate.tokenID)
-			if callErr != nil {
-				reconciler.pool.ReportFailure(endpoint.Name)
-				return nil, callErr
-			}
-			ownerObservations[index] = observation
-			balance := "0"
-			if observation.Exists {
-				observedOwner, parseErr := ethrpc.ParseAddress(observation.Owner)
-				if parseErr != nil {
-					return nil, errors.New("invalid persisted ERC-721 owner")
-				}
-				if observedOwner == ownerAddress {
-					balance = "1"
-				}
-			}
-			results[index] = exactNFTBalance(balance)
-		case standardERC1155:
-			balance, callErr := callERC1155Balance(ctx, endpoint, reference, candidate.address, ownerAddress, candidate.tokenID)
-			if callErr != nil {
-				reconciler.pool.ReportFailure(endpoint.Name)
-				return nil, callErr
-			}
-			results[index] = exactNFTBalance(balance)
+	for _, result := range batchResults {
+		results[result.index] = result.balance
+		if result.ownerObservation != nil {
+			ownerObservations[result.index] = *result.ownerObservation
 		}
 	}
 	reconciler.pool.ReportSuccess(endpoint.Name)
@@ -296,10 +283,18 @@ func callERC721Owner(
 	contract common.Address,
 	tokenID *big.Int,
 ) (catalog.NFTOwnerObservation, error) {
+	result, err := fixedNFTCall(ctx, endpoint, reference, contract, erc721OwnerCallData(tokenID))
+	return decodeERC721Owner(result, err)
+}
+
+func erc721OwnerCallData(tokenID *big.Int) []byte {
 	callData := make([]byte, 4+32)
 	copy(callData, erc721OwnerOfSelector)
 	tokenID.FillBytes(callData[4:])
-	result, err := fixedNFTCall(ctx, endpoint, reference, contract, callData)
+	return callData
+}
+
+func decodeERC721Owner(result []byte, err error) (catalog.NFTOwnerObservation, error) {
 	if err != nil {
 		if nftExecutionReverted(err) {
 			return catalog.NFTOwnerObservation{Confidence: catalog.NFTStateConfidenceRPCExact}, nil
@@ -335,16 +330,91 @@ func callERC1155Balance(
 	owner common.Address,
 	tokenID *big.Int,
 ) (string, error) {
+	result, err := fixedNFTCall(ctx, endpoint, reference, contract, erc1155BalanceCallData(owner, tokenID))
+	return decodeERC1155Balance(result, err)
+}
+
+func erc1155BalanceCallData(owner common.Address, tokenID *big.Int) []byte {
 	ownerBytes := owner.Bytes()
 	callData := make([]byte, 4+64)
 	copy(callData, erc1155BalanceOfSelector)
 	copy(callData[4+32-len(ownerBytes):4+32], ownerBytes)
 	tokenID.FillBytes(callData[4+32:])
-	result, err := fixedNFTCall(ctx, endpoint, reference, contract, callData)
+	return callData
+}
+
+func decodeERC1155Balance(result []byte, err error) (string, error) {
 	if err != nil || len(result) != 32 {
 		return "", nftRPCUnavailable()
 	}
 	return new(big.Int).SetBytes(result).String(), nil
+}
+
+func callNFTBalanceBatch(
+	ctx context.Context,
+	endpoint *ethrpc.Endpoint,
+	reference CanonicalRef,
+	owner common.Address,
+	candidates []parsedNFTCandidate,
+	missing []int,
+) ([]nftBalanceBatchResult, error) {
+	rpcResults := make([]hexutil.Bytes, len(missing))
+	elements := make([]rpc.BatchElem, len(missing))
+	for batchIndex, candidateIndex := range missing {
+		candidate := candidates[candidateIndex]
+		var callData []byte
+		switch candidate.standard {
+		case standardERC721:
+			callData = erc721OwnerCallData(candidate.tokenID)
+		case standardERC1155:
+			callData = erc1155BalanceCallData(owner, candidate.tokenID)
+		default:
+			return nil, errors.New("NFT balance candidate has an unsupported standard")
+		}
+		elements[batchIndex] = rpc.BatchElem{
+			Method: "eth_call",
+			Args: []any{
+				fixedNFTCallObject(candidate.address, callData),
+				canonicalSelector(reference),
+			},
+			Result: &rpcResults[batchIndex],
+		}
+	}
+	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
+		return nil, nftRPCUnavailable()
+	}
+	results := make([]nftBalanceBatchResult, len(missing))
+	for batchIndex, candidateIndex := range missing {
+		candidate := candidates[candidateIndex]
+		result := nftBalanceBatchResult{index: candidateIndex}
+		switch candidate.standard {
+		case standardERC721:
+			observation, err := decodeERC721Owner(rpcResults[batchIndex], elements[batchIndex].Error)
+			if err != nil {
+				return nil, err
+			}
+			balance := "0"
+			if observation.Exists {
+				observedOwner, err := ethrpc.ParseAddress(observation.Owner)
+				if err != nil {
+					return nil, errors.New("invalid persisted ERC-721 owner")
+				}
+				if observedOwner == owner {
+					balance = "1"
+				}
+			}
+			result.balance = exactNFTBalance(balance)
+			result.ownerObservation = &observation
+		case standardERC1155:
+			balance, err := decodeERC1155Balance(rpcResults[batchIndex], elements[batchIndex].Error)
+			if err != nil {
+				return nil, err
+			}
+			result.balance = exactNFTBalance(balance)
+		}
+		results[batchIndex] = result
+	}
+	return results, nil
 }
 
 func fixedNFTCall(
@@ -354,12 +424,21 @@ func fixedNFTCall(
 	contract common.Address,
 	callData []byte,
 ) ([]byte, error) {
-	call := map[string]any{"to": contract, "data": hexutil.Bytes(callData)}
 	var result hexutil.Bytes
-	if err := endpoint.CallContext(ctx, &result, "eth_call", call, canonicalSelector(reference)); err != nil {
+	if err := endpoint.CallContext(
+		ctx,
+		&result,
+		"eth_call",
+		fixedNFTCallObject(contract, callData),
+		canonicalSelector(reference),
+	); err != nil {
 		return nil, err
 	}
 	return []byte(result), nil
+}
+
+func fixedNFTCallObject(contract common.Address, callData []byte) map[string]any {
+	return map[string]any{"to": contract, "data": hexutil.Bytes(callData)}
 }
 
 func nftExecutionReverted(err error) bool {

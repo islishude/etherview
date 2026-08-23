@@ -38,6 +38,7 @@ search documents, and rollup statistics without delaying core readiness.
 | P20-T12 | done | P20-T11 | Preserve historical migration replay and DEFAULT-partition evacuation after adding state differences | migration replay and partition lifecycle integration tests |
 | P20-T13 | done | P20-T03, P20-T07, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests |
 | P20-T14 | done | P20-T05, P20-T11 | Block-hash-batched Geth call and state-difference tracing without per-transaction debug fallback | block envelope, fallback, budget, PostgreSQL, runtime, and common-gate tests |
+| P20-T15 | done | P20-T09 | Batch uncached exact ERC-721/ERC-1155 balance calls without changing snapshot or persistence semantics | mixed-batch, failure, cache, and reorg tests |
 
 ## Acceptance
 
@@ -84,6 +85,20 @@ search documents, and rollup statistics without delaying core readiness.
 None.
 
 ## Evidence
+
+- P20-T15: address NFT balance reconciliation retains exact block-hash cache
+  lookup and persistence, but sends every uncached mixed ERC-721 `ownerOf` and
+  ERC-1155 `balanceOf` candidate on a page through one observed `eth_call`
+  batch. The single-owner path remains a single call; revert-as-not-found,
+  fail-closed malformed/transport handling, candidate order, one-endpoint
+  pinning, canonical rechecks, write-once observations, and reorg behavior are
+  unchanged.
+- P20-T15 verification: `go test ./internal/state -count=1`, `go test -race
+  ./internal/state -count=1`, `go vet ./internal/state`, `make
+  test-integration-race`, and `make check` passed. PostgreSQL 18 integration
+  observed one two-element mixed batch, cache reuse without another RPC,
+  immutable conflict handling, and orphan-cache rejection. `make plan-check`
+  and `git diff --check` passed.
 
 - P20-T14: `trace@3` and `state_diff@2` now share a hostile-input block-trace
   envelope that binds exact transaction count, order, and `txHash`, rejects

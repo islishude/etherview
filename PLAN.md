@@ -64,9 +64,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   `abi@2` add shared Beacon observations, exact Clone evidence, canonical
   upgrade/initialization facts, and generation-safe replay. Trace and StateDiff
   now bind one strict `debug_traceBlockByHash` response per non-empty block,
-  with no per-transaction debug fallback or partial publication. Reviewable
-  commands and results remain in [P20
-  evidence](docs/plans/P20-enrichment.md#evidence).
+  with no per-transaction debug fallback or partial publication. P20-T15
+  batches uncached exact NFT balance calls without changing their snapshot,
+  caching, or persistence semantics. Reviewable commands and results remain in
+  [P20 evidence](docs/plans/P20-enrichment.md#evidence).
 - P30 is complete: P30-T16 adds authenticated runtime-only verification
   for canonical Genesis predeploys across native and Etherscan-compatible address
   submission without weakening ordinary creation-fact requirements. Its
