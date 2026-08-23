@@ -207,8 +207,39 @@ describe("ContractArtifactPanel", () => {
 		expect(screen.getByText("Factory-derived")).toBeVisible();
 		expect(screen.getByRole("heading", { name: "Created contracts" })).toBeVisible();
 		expect(screen.getByRole("link", { name: child })).toBeVisible();
-		expect(screen.getByText("Auto-verified")).toBeVisible();
-	});
+			expect(screen.getByText("Auto-verified")).toBeVisible();
+		});
+
+		it("shows additive factory creation provenance without changing submitted origin", () => {
+			const creator = "0x2222222222222222222222222222222222222222";
+			const rootRoute = createRootRoute();
+			const addressRoute = createRoute({
+				getParentRoute: () => rootRoute,
+				path: "/address/$address",
+				component: () => null,
+			});
+			const router = createRouter({
+				history: createMemoryHistory({ initialEntries: ["/"] }),
+				routeTree: rootRoute.addChildren([addressRoute]),
+			});
+			render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
+				verification_origin: "submitted",
+				derived_from: {
+					creator_address: creator,
+					created_address: "0x1111111111111111111111111111111111111111",
+					transaction_hash: `0x${"44".repeat(32)}`,
+					trace_path: "0.1",
+					call_type: "CREATE",
+					block_number: "2",
+					block_hash: `0x${"55".repeat(32)}`,
+					parent_file_name: "Factory.sol",
+					parent_contract_name: "Factory",
+				},
+			})} /></RouterContextProvider>);
+
+			expect(screen.getByRole("status")).toHaveTextContent("Created by verified factory compilation:");
+			expect(screen.queryByText("Factory-derived")).not.toBeInTheDocument();
+		});
 
 	it("presents a code-hash artifact as verified source without claiming address verification", () => {
 		const sourceAddress = "0x2222222222222222222222222222222222222222";
@@ -222,8 +253,20 @@ describe("ContractArtifactPanel", () => {
 			history: createMemoryHistory({ initialEntries: ["/"] }),
 			routeTree: rootRoute.addChildren([addressRoute]),
 		});
-		render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
-			resolution: "code_hash",
+			render(<RouterContextProvider router={router}><ContractArtifactPanel artifact={fixtureArtifact({
+				resolution: "code_hash",
+				verification_origin: "factory_derived",
+				derived_from: {
+					creator_address: "0x3333333333333333333333333333333333333333",
+					created_address: "0x1111111111111111111111111111111111111111",
+					transaction_hash: `0x${"44".repeat(32)}`,
+					trace_path: "0.1",
+					call_type: "CREATE",
+					block_number: "2",
+					block_hash: `0x${"55".repeat(32)}`,
+					parent_file_name: "Factory.sol",
+					parent_contract_name: "Factory",
+				},
 			source: {
 				address: sourceAddress,
 				code_hash: `0x${"ab".repeat(32)}`,
@@ -232,7 +275,8 @@ describe("ContractArtifactPanel", () => {
 			},
 		})} /></RouterContextProvider>);
 
-		expect(screen.getAllByText("Source verified by code hash")).toHaveLength(2);
+			expect(screen.getAllByText("Source verified by code hash")).toHaveLength(2);
+			expect(screen.queryByText("Auto-verified from verified factory:")).not.toBeInTheDocument();
 		expect(screen.queryByText("Source code verified", { exact: true })).toBeNull();
 		expect(screen.getByRole("status")).toHaveTextContent(
 			"Source verified by identical runtime code hash:",

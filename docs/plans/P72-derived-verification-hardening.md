@@ -25,7 +25,7 @@ complexity.
 |---|---|---|---|---|
 | P72-T01 | done | P71 | Generation-bound trace/proxy forward events, fork-aware scan rewind, canonical attempt writes, and success-reset pagination budgets | state-machine unit and PostgreSQL reorg/pagination regressions; generation/source/plan checks |
 | P72-T02 | done | P72-T01 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
-| P72-T03 | todo | P72-T02 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
+| P72-T03 | done | P72-T02 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
 | P72-T04 | todo | P72-T03 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
 | P72-T05 | todo | P72-T04 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
 
@@ -81,3 +81,13 @@ None.
   stale prepared-evidence rejection. `make test-runtime-e2e` passes monolith and
   distributed topologies in 82.36s after one unchanged retry for a Docker Hub
   authentication TLS timeout.
+- P72-T03 binds parent FQN to the authenticated compilation source or exact
+  transitive parent attempt and scopes created contracts by source compilation
+  plus the current same-code epoch boundary. Directly submitted children retain
+  `verification_origin=submitted` while exposing additive exact-address
+  `derived_from`; code-hash reuse exposes no target creation claim. OpenAPI
+  descriptions and bilingual Web copy document the unchanged wire shape. The
+  focused owned PostgreSQL 18 integration package passes in 155.791s with
+  late-verification, A-to-B-to-A, direct-child/no-second-job, transitive, and
+  code-epoch assertions. All 360 Vitest cases, Web/Go lint, generation,
+  source/plan checks, and `git diff --check` pass on 2026-08-23.

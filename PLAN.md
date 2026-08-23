@@ -385,8 +385,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 - P72 is in progress: P72-T01 completes generation-bound trace/proxy forward
   events, fork-aware rescan, canonical attempt writes, pending-runtime wakeup,
   and success-reset pagination budgets. P72-T02 adds heartbeat-fenced leases,
-  one prepared match, and short canonical publication. Provenance and structural
-  hardening proceed in the remaining dependency-ordered items.
+  one prepared match, and short canonical publication. P72-T03 completes
+  compilation/epoch-bound provenance and additive submitted-child creation
+  evidence without a wire-shape change. Structural hardening and final
+  acceptance proceed in the remaining dependency-ordered items.
 
 ## Global Release Gates
 

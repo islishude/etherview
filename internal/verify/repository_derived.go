@@ -37,23 +37,30 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 	}
 	if kind == JobDerived {
 		contract.VerificationOrigin = VerificationOriginFactoryDerived
-		var creator, created, transaction, blockHash []byte
-		var tracePath, callType, blockNumber, parentFile, parentContract string
-		err := repository.db.QueryRowContext(
-			ctx, dbgen.DerivedVerifyArtifactProvenance,
-			resolved.Source.VerificationJobID,
-		).Scan(
-			&creator, &created, &transaction, &tracePath, &callType,
-			&blockNumber, &blockHash, &parentFile, &parentContract,
-		)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrDerivedEvidenceStale
-		}
-		if err != nil {
-			return fmt.Errorf("load derived verification provenance: %w", err)
-		}
-		number, err := strconv.ParseUint(blockNumber, 10, 64)
-		if err != nil || len(creator) != 20 || len(created) != 20 ||
+	}
+	contract.DerivedChildren = make([]DerivedContract, 0)
+	if resolved.Resolution != contractartifact.ResolutionExactAddress {
+		return nil
+	}
+
+	var creator, created, transaction, blockHash []byte
+	var tracePath, callType, blockNumber, parentFile, parentContract string
+	err = repository.db.QueryRowContext(
+		ctx, dbgen.DerivedVerifyArtifactProvenance,
+		resolved.Source.VerificationJobID,
+	).Scan(
+		&creator, &created, &transaction, &tracePath, &callType,
+		&blockNumber, &blockHash, &parentFile, &parentContract,
+	)
+	if errors.Is(err, sql.ErrNoRows) && kind == JobDerived {
+		return ErrDerivedEvidenceStale
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("load derived verification provenance: %w", err)
+	}
+	if err == nil {
+		number, parseErr := strconv.ParseUint(blockNumber, 10, 64)
+		if parseErr != nil || len(creator) != 20 || len(created) != 20 ||
 			len(transaction) != 32 || len(blockHash) != 32 {
 			return errors.New("stored derived verification provenance is invalid")
 		}
@@ -66,13 +73,11 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 			ParentFileName: parentFile, ParentContractName: parentContract,
 		}
 	}
-	contract.DerivedChildren = make([]DerivedContract, 0)
-	if resolved.Resolution != contractartifact.ResolutionExactAddress {
-		return nil
-	}
 	rows, err := repository.db.QueryContext(
 		ctx, dbgen.DerivedVerifyCreatedContracts,
 		resolved.Target.ChainID, resolved.Target.Address,
+		resolved.Source.CodeHash, resolved.Source.VerificationJobID,
+		resolved.Target.BlockNumber,
 	)
 	if err != nil {
 		return err

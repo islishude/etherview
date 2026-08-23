@@ -650,6 +650,20 @@ size alone is not sufficient justification to weaken those invariants.
   transformations and are classified as full or partial. Address publication
   requires a canonical runtime match and the exact immutable job result; a
   creation-only result is never address publication evidence.
+- Successful Solidity address verification also retains one immutable bounded
+  compilation unit. Factory-derived scans match its complete candidate set
+  against canonical non-reverted CREATE/CREATE2 input and exact child runtime
+  observations without RPC or recompilation. Each successful `trace@3` or
+  `proxy@2` publication generation creates one durable forward event; events
+  merge a fork-aware rescan floor, proxy publication wakes pending-runtime
+  attempts, and successful pages reset rather than consume the failure budget.
+- The scan lease heartbeats during bounded work. Candidate hydration, matching,
+  uniqueness, and result construction occur once without a database snapshot;
+  the final short transaction rechecks the canonical block, trace, creator code
+  epoch, child runtime, immutable compilation identity, and prepared digests.
+  Public creation provenance is exact-address and additive: submitted source
+  origin remains submitted, children are scoped to the source compilation/code
+  epoch, and code-hash artifact reuse never claims target-address creation.
 - The `all` or `api` process owns official catalog discovery, checksum-addressed
   artifact caching, and execution. Only the published
   `emscripten-wasm32/list.json` catalog is accepted; this is an

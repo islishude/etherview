@@ -549,11 +549,113 @@ WHERE id = $1::bigint AND chain_id = $2::numeric AND block_number = $3::numeric
   AND status = 'running' AND leased_by = $7;
 
 -- name: DerivedVerifyArtifactProvenance :many
-SELECT attempt.creator_address, attempt.created_address,
-       attempt.transaction_hash, attempt.trace_path, attempt.call_type,
-       attempt.block_number::text, attempt.block_hash,
-       parent.file_name, parent.contract_name
+WITH exact AS (
+    SELECT attempt.*, scan.creator_code_hash, unit.source_job_id
+    FROM derived_verification_attempts AS attempt
+    JOIN verification_compilation_units AS unit
+      ON unit.id = attempt.compilation_id
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = attempt.chain_id
+     AND canonical.number = attempt.block_number
+     AND canonical.block_hash = attempt.block_hash
+    JOIN normalized_traces AS trace
+      ON trace.chain_id = attempt.chain_id
+     AND trace.block_number = attempt.block_number
+     AND trace.block_hash = attempt.block_hash
+     AND trace.transaction_hash = attempt.transaction_hash
+     AND trace.trace_path = attempt.trace_path
+     AND trace.canonical AND NOT trace.reverted
+    JOIN derived_verification_scans AS scan
+      ON scan.compilation_id = attempt.compilation_id
+     AND scan.chain_id = attempt.chain_id
+     AND scan.creator_address = attempt.creator_address
+     AND scan.valid_from_block <= attempt.block_number
+     AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
+     AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
+    WHERE attempt.verification_job_id = $1::uuid
+      AND attempt.status = 'matched'
+      AND scan.creator_code_hash = (
+          SELECT observation.code_hash
+          FROM contract_code_observations AS observation
+          JOIN canonical_blocks AS observation_canonical
+            ON observation_canonical.chain_id = observation.chain_id
+           AND observation_canonical.number = observation.block_number
+           AND observation_canonical.block_hash = observation.block_hash
+          WHERE observation.chain_id = attempt.chain_id
+            AND observation.address = attempt.creator_address
+            AND observation.canonical
+            AND observation.block_number <= attempt.block_number
+          ORDER BY observation.block_number DESC, observation.observed_at DESC,
+                   observation.code_hash DESC
+          LIMIT 1
+      )
+), parents AS (
+    SELECT exact.id AS attempt_id, parent.file_name, parent.contract_name
+    FROM exact
+    JOIN verified_contracts AS parent
+     ON parent.chain_id = exact.chain_id
+     AND parent.address = exact.creator_address
+     AND parent.code_hash = exact.creator_code_hash
+     AND (
+          parent.verification_job_id = exact.source_job_id OR
+          EXISTS (
+              SELECT 1
+              FROM derived_verification_attempts AS parent_attempt
+              WHERE parent_attempt.compilation_id = exact.compilation_id
+                AND parent_attempt.verification_job_id = parent.verification_job_id
+                AND parent_attempt.created_address = exact.creator_address
+                AND parent_attempt.status = 'matched'
+          )
+     )
+)
+SELECT exact.creator_address, exact.created_address,
+       exact.transaction_hash, exact.trace_path, exact.call_type,
+       exact.block_number::text, exact.block_hash,
+       min(parents.file_name)::text AS file_name,
+       min(parents.contract_name)::text AS contract_name
+FROM exact
+JOIN parents ON parents.attempt_id = exact.id
+GROUP BY exact.id, exact.creator_address, exact.created_address,
+         exact.transaction_hash, exact.trace_path, exact.call_type,
+         exact.block_number, exact.block_hash
+HAVING count(*) = 1;
+
+-- name: DerivedVerifyArtifactJobKind :many
+SELECT kind
+FROM verification_jobs
+WHERE id = $1::uuid
+  AND status = 'succeeded';
+
+-- name: DerivedVerifyCreatedContracts :many
+WITH source_compilations AS (
+    SELECT unit.id
+    FROM verification_compilation_units AS unit
+    WHERE unit.source_job_id = $4::uuid
+    UNION
+    SELECT source_attempt.compilation_id
+    FROM derived_verification_attempts AS source_attempt
+    WHERE source_attempt.verification_job_id = $4::uuid
+      AND source_attempt.status = 'matched'
+), epoch AS (
+    SELECT COALESCE(max(different.block_number), -1::numeric) AS last_different
+    FROM contract_code_observations AS different
+    JOIN canonical_blocks AS different_canonical
+      ON different_canonical.chain_id = different.chain_id
+     AND different_canonical.number = different.block_number
+     AND different_canonical.block_hash = different.block_hash
+    WHERE different.chain_id = $1::numeric
+      AND different.address = $2
+      AND different.code_hash <> $3
+      AND different.block_number <= $5::numeric
+      AND different.canonical
+)
+SELECT attempt.created_address, attempt.transaction_hash, attempt.trace_path,
+       attempt.call_type, attempt.block_number::text, attempt.block_hash,
+       attempt.status, attempt.file_name, attempt.contract_name,
+       (attempt.verification_job_id IS NOT NULL) AS auto_verified
 FROM derived_verification_attempts AS attempt
+JOIN source_compilations AS source ON source.id = attempt.compilation_id
+CROSS JOIN epoch
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = attempt.chain_id
  AND canonical.number = attempt.block_number
@@ -564,19 +666,19 @@ JOIN normalized_traces AS trace
  AND trace.block_hash = attempt.block_hash
  AND trace.transaction_hash = attempt.transaction_hash
  AND trace.trace_path = attempt.trace_path
- AND trace.canonical
+ AND trace.canonical AND NOT trace.reverted
 JOIN derived_verification_scans AS scan
   ON scan.compilation_id = attempt.compilation_id
  AND scan.chain_id = attempt.chain_id
  AND scan.creator_address = attempt.creator_address
- AND scan.valid_from_block <= attempt.block_number
- AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
-JOIN verified_contracts AS parent
-  ON parent.chain_id = scan.chain_id
- AND parent.address = scan.creator_address
- AND parent.code_hash = scan.creator_code_hash
-WHERE attempt.verification_job_id = $1::uuid
-  AND attempt.status = 'matched'
+ AND scan.creator_code_hash = $3
+ AND attempt.block_number >= scan.valid_from_block
+ AND (scan.valid_to_block IS NULL OR attempt.block_number <= scan.valid_to_block)
+ AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
+WHERE attempt.chain_id = $1::numeric
+  AND attempt.creator_address = $2
+  AND attempt.status <> 'stale'
+  AND attempt.block_number > epoch.last_different
   AND scan.creator_code_hash = (
       SELECT observation.code_hash
       FROM contract_code_observations AS observation
@@ -592,35 +694,6 @@ WHERE attempt.verification_job_id = $1::uuid
                observation.code_hash DESC
       LIMIT 1
   )
-ORDER BY parent.verification_job_id
-LIMIT 1;
-
--- name: DerivedVerifyArtifactJobKind :many
-SELECT kind
-FROM verification_jobs
-WHERE id = $1::uuid
-  AND status = 'succeeded';
-
--- name: DerivedVerifyCreatedContracts :many
-SELECT attempt.created_address, attempt.transaction_hash, attempt.trace_path,
-       attempt.call_type, attempt.block_number::text, attempt.block_hash,
-       attempt.status, attempt.file_name, attempt.contract_name,
-       (attempt.verification_job_id IS NOT NULL) AS auto_verified
-FROM derived_verification_attempts AS attempt
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = attempt.chain_id
- AND canonical.number = attempt.block_number
- AND canonical.block_hash = attempt.block_hash
-JOIN normalized_traces AS trace
-  ON trace.chain_id = attempt.chain_id
- AND trace.block_number = attempt.block_number
- AND trace.block_hash = attempt.block_hash
- AND trace.transaction_hash = attempt.transaction_hash
- AND trace.trace_path = attempt.trace_path
- AND trace.canonical
-WHERE attempt.chain_id = $1::numeric
-  AND attempt.creator_address = $2
-  AND attempt.status <> 'stale'
 ORDER BY attempt.block_number DESC, attempt.transaction_hash DESC,
          attempt.trace_path DESC, attempt.compilation_id
 LIMIT 100;

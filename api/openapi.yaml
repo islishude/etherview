@@ -4531,10 +4531,20 @@ components:
             source:
               $ref: "#/components/schemas/ContractArtifactSource"
             verification_origin:
+              description: >-
+                Origin of the published source artifact. A submitted artifact
+                can also carry additive exact-address derived_from creation
+                provenance without changing this value.
               $ref: "#/components/schemas/VerificationOrigin"
             derived_from:
+              description: >-
+                Canonical factory-creation provenance for this exact verified
+                address and code epoch. Omitted for code-hash artifact reuse.
               $ref: "#/components/schemas/DerivedVerificationProvenance"
             derived_children:
+              description: >-
+                At most the newest 100 canonical derived attempts made by this
+                exact source address, code hash, compilation, and validity epoch.
               type: array
               maxItems: 100
               items:

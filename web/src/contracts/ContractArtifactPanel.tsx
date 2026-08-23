@@ -287,9 +287,11 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 
   return (
 		<div className="contract-code-view">
-			{verificationOrigin === "factory_derived" && artifact.derived_from ? (
-				<p className="context-note" role="status">
-					{t("contracts.artifact.autoVerifiedFromFactory")} {" "}
+				{artifact.resolution === "exact_address" && artifact.derived_from ? (
+					<p className="context-note" role="status">
+						{t(verificationOrigin === "factory_derived"
+							? "contracts.artifact.autoVerifiedFromFactory"
+							: "contracts.artifact.creationProvenanceFromFactory")} {" "}
 					<AddressIdentity address={artifact.derived_from.creator_address} compact={false} contract />
 					{" · "}{artifact.derived_from.call_type}{" · "}
 					<a href={`/tx/${artifact.derived_from.transaction_hash}`}>

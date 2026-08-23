@@ -365,6 +365,29 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		) VALUES (1, $1, 4, $2, $3, $4, TRUE)`,
 		pendingGrandchildAddress, forwardBlock.Block.Hash().Bytes(), grandchildCodeHash,
 		grandchildRuntime)
+	directChildSubmission := verifierV2AddressSubmission(
+		pendingGrandchildAddress, grandchildCodeHash,
+		forwardBlock.Block.Hash().Bytes(), grandchildRuntime,
+	)
+	directChildSubmission.Target.CreationBytecode = "0x" + hex.EncodeToString(grandchildCreation)
+	directChildSubmission.Bytecodes[0].Creation = directChildSubmission.Target.CreationBytecode
+	if _, created, submitErr := repository.SubmitV2(ctx, directChildSubmission); submitErr != nil || !created {
+		t.Fatalf("submit directly verified child: created=%t error=%v", created, submitErr)
+	}
+	directChildLease, found, claimErr := repository.Claim(ctx, "direct-child-verifier", time.Minute)
+	if claimErr != nil || !found {
+		t.Fatalf("claim directly verified child: found=%t error=%v", found, claimErr)
+	}
+	if err := repository.BindCompiler(
+		ctx, directChildLease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CompleteV2(
+		ctx, directChildLease, "verification_success", verifierV2SuccessOutcome(t, "full"),
+	); err != nil {
+		t.Fatalf("complete directly verified child: %v", err)
+	}
 	var proxyJobID int64
 	if err := db.QueryRowContext(ctx, `
 		INSERT INTO durable_jobs (
@@ -393,6 +416,19 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		WHERE compilation_id = $1::uuid AND created_address = $2
 		  AND status = 'matched' AND verification_job_id IS NOT NULL`, 1,
 		compilationID, pendingGrandchildAddress)
+	directChildArtifact, found, err := repository.VerifiedContract(
+		ctx, 1, "0x"+hex.EncodeToString(pendingGrandchildAddress),
+	)
+	if err != nil || !found ||
+		directChildArtifact.VerificationOrigin != verify.VerificationOriginSubmitted ||
+		directChildArtifact.DerivedFrom == nil ||
+		directChildArtifact.DerivedFrom.CreatorAddress != "0x"+hex.EncodeToString(childAddress) ||
+		directChildArtifact.DerivedFrom.CreatedAddress != "0x"+hex.EncodeToString(pendingGrandchildAddress) {
+		t.Fatalf("direct child additive provenance: found=%t artifact=%+v error=%v", found, directChildArtifact, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_jobs
+		WHERE address = $1 AND kind = 'derived'`, 0, pendingGrandchildAddress)
 	identity := verify.DerivedTraceIdentity{
 		CompilationID: compilationID, BlockNumber: 1,
 		BlockHash:   factoryBlock.Block.Hash().Bytes(),
@@ -561,7 +597,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
 		childAddress, grandchildAddress, grandchildRuntime,
 	)
-	pagedObserver := &derivedObservationRecorder{}
+	pagedObserver := &derivedObservationRecorder{scanDelay: 2 * time.Millisecond}
 	pagedWorker, err := derivedverify.NewWorker(db, repository, derivedverify.Options{
 		WorkerID: "derived-pagination", LeaseDuration: 300 * time.Millisecond,
 		PollInterval: time.Millisecond, MaxTraces: 100, PublishMatches: true,
@@ -609,14 +645,51 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		SELECT count(*) FROM derived_verification_attempts
 		WHERE id = '00000000-0000-0000-0000-000000000099'::uuid
 		  AND status = 'stale' AND stale_from_status = 'no_match'`, 1)
+
+	// Re-verifying the same runtime after an A-to-B-to-A code replacement creates
+	// a distinct source epoch. Its created-contract projection cannot reuse the
+	// first A epoch's attempts merely because address and code hash are equal.
+	secondFactorySubmission := verifierV2AddressSubmission(
+		factoryAddress, factoryCodeHash, forwardBlock.Block.Hash().Bytes(), factoryRuntime,
+	)
+	secondFactorySubmission.StandardJSON = unit.StandardJSON
+	secondFactorySubmission.StandardJSONVariants = []json.RawMessage{unit.StandardJSON}
+	if _, created, submitErr := repository.SubmitV2(ctx, secondFactorySubmission); submitErr != nil || !created {
+		t.Fatalf("submit second factory epoch: created=%t error=%v", created, submitErr)
+	}
+	secondFactoryLease, found, claimErr := repository.Claim(ctx, "second-factory-verifier", time.Minute)
+	if claimErr != nil || !found {
+		t.Fatalf("claim second factory epoch: found=%t error=%v", found, claimErr)
+	}
+	if err := repository.BindCompiler(
+		ctx, secondFactoryLease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CompleteV2(
+		ctx, secondFactoryLease, "verification_success", verifierV2SuccessOutcome(t, "partial"), unit,
+	); err != nil {
+		t.Fatalf("complete second factory epoch: %v", err)
+	}
+	secondFactoryArtifact, found, err := repository.VerifiedContract(
+		ctx, 1, "0x"+hex.EncodeToString(factoryAddress),
+	)
+	if err != nil || !found || secondFactoryArtifact.Target.BlockNumber != 4 ||
+		len(secondFactoryArtifact.DerivedChildren) != 0 {
+		t.Fatalf("second factory epoch projection: found=%t artifact=%+v error=%v", found, secondFactoryArtifact, err)
+	}
 }
 
 type derivedObservationRecorder struct {
 	mu           sync.Mutex
+	scanDelay    time.Duration
 	observations []derivedverify.Observation
 }
 
 func (recorder *derivedObservationRecorder) RecordDerivedVerification(observation derivedverify.Observation) {
+	if observation.Kind == "scan" && observation.Result == "trace" && recorder.scanDelay > 0 {
+		time.Sleep(recorder.scanDelay)
+	}
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	recorder.observations = append(recorder.observations, observation)

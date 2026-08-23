@@ -40,9 +40,25 @@ runtime similarity would not prove source provenance.
   does not overwrite an existing exact verification and never inherits a
   user's Sourcify submission consent.
 - Historical scans are enqueued after compilation-unit publication. Forward
-  work is enqueued in bounded batches only after trace-stage publication, not
-  while trace rows are inserted. A newly derived child may enqueue its own
-  scan, making transitive propagation durable rather than recursive.
+  work is an immutable event keyed by the exact successful `trace@3` or
+  `proxy@2` durable publication job and generation. Trace generations request
+  fork-aware rescan floors for CREATE/CREATE2 work; proxy generations wake
+  pending-runtime attempts only after exact code publication. A newly derived
+  child may enqueue its own scan, making transitive propagation durable rather
+  than recursive.
+- Successful scan pages reset the consecutive-failure budget. A forward event
+  racing a running scan merges a durable earliest rescan block that the old
+  lease must consume before it can advance again; replacement forks and
+  same-hash new generations therefore cannot be hidden behind an old cursor.
+- Candidate hydration, transformation matching, uniqueness classification, and
+  result construction occur once outside a database transaction under a
+  heartbeat-renewed scan lease. The final short transaction locks and rechecks
+  only the exact canonical evidence and prepared digests before publication.
+- Creation provenance and verification origin are independent additive facts.
+  A directly submitted exact-address artifact remains `submitted` when a later
+  factory match records its canonical creation. Parent identity and child lists
+  bind the exact compilation and creator code epoch; code-hash reuse never
+  inherits target-address creation provenance.
 - PostgreSQL remains authoritative. Configuration bounds candidates, bytecode,
   traces per scan, attempts, and workers; feature publication is disabled by
   default for staged rollout. Metrics and the public API expose only stable,
@@ -57,3 +73,9 @@ non-canonical evidence fails closed. Persisted compilation input and candidate
 bytecode increase storage use, and the API role gains a separately bounded
 derived-work loop, but neither ingestion correctness nor readiness depends on
 that loop.
+
+Schema migration `0057` changes the derived queue protocol. Environments with
+derived workers enabled replace every `all`/`api` replica together; the
+migration preserves existing scan and attempt state but does not silently
+requeue failed or pending historical work. Recovery remains an audited explicit
+backfill.

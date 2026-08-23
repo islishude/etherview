@@ -2794,11 +2794,14 @@ export interface components {
             };
         };
         VerifiedContract: components["schemas"]["VerificationSuccess"] & {
+            /** @description At most the newest 100 canonical derived attempts made by this exact source address, code hash, compilation, and validity epoch. */
             derived_children: components["schemas"]["DerivedContract"][];
+            /** @description Canonical factory-creation provenance for this exact verified address and code epoch. Omitted for code-hash artifact reuse. */
             derived_from?: components["schemas"]["DerivedVerificationProvenance"];
             resolution: components["schemas"]["ContractArtifactResolution"];
             source: components["schemas"]["ContractArtifactSource"];
             target: components["schemas"]["ContractArtifactTarget"];
+            /** @description Origin of the published source artifact. A submitted artifact can also carry additive exact-address derived_from creation provenance without changing this value. */
             verification_origin: components["schemas"]["VerificationOrigin"];
         };
         VerifiedContractResponse: {
