@@ -24,7 +24,7 @@ complexity.
 | ID | Status | Depends on | Deliverable | Verification |
 |---|---|---|---|---|
 | P72-T01 | done | P71 | Generation-bound trace/proxy forward events, fork-aware scan rewind, canonical attempt writes, and success-reset pagination budgets | state-machine unit and PostgreSQL reorg/pagination regressions; generation/source/plan checks |
-| P72-T02 | todo | P72-T01 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
+| P72-T02 | done | P72-T01 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
 | P72-T03 | todo | P72-T02 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
 | P72-T04 | todo | P72-T03 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
 | P72-T05 | todo | P72-T04 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
@@ -71,3 +71,13 @@ None.
   covers five exact 100-trace pages plus the terminal empty page, same-hash new
   trace generation, recoverable failed-scan rewind, duplicate event idempotency,
   proxy-generation pending wake, and detach-before-attempt persistence.
+- P72-T02 adds shared heartbeat guards for scan and forward-event leases, exact
+  renew/final CAS fencing, one opaque prepared match per trace, and a short
+  publication transaction that compares creation/runtime/Standard-JSON digests
+  before publishing. Matcher work and result construction now hold no database
+  transaction or canonical row lock. Derived/verifier unit and race tests pass;
+  the owned PostgreSQL 18 `make test-integration-race` gate passes in 180.020s,
+  including a 300ms lease with observed renewals across five 100-trace pages and
+  stale prepared-evidence rejection. `make test-runtime-e2e` passes monolith and
+  distributed topologies in 82.36s after one unchanged retry for a Docker Hub
+  authentication TLS timeout.

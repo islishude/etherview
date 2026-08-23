@@ -116,6 +116,74 @@ type DerivedTraceIdentity struct {
 	TracePath     string
 }
 
+// PreparedDerivedMatch is an opaque, transformation-aware unique match. Only
+// PrepareDerivedMatch can construct a valid value; publication rechecks its
+// exact block evidence before trusting the immutable compilation result.
+type PreparedDerivedMatch struct {
+	match            CandidateMatch
+	outcome          json.RawMessage
+	creationHash     [sha256.Size]byte
+	runtimeHash      [sha256.Size]byte
+	standardJSONHash [sha256.Size]byte
+}
+
+func PrepareDerivedMatch(
+	candidates []CandidateArtifact,
+	standardJSON json.RawMessage,
+	input MatchInput,
+) (PreparedDerivedMatch, string, error) {
+	if input.Runtime == "" || input.Runtime == "0x" {
+		return PreparedDerivedMatch{}, "pending_runtime", nil
+	}
+	creation, err := decodeBytecode(input.Creation)
+	if err != nil || len(creation) == 0 {
+		return PreparedDerivedMatch{}, "", errors.New("derived creation evidence is invalid")
+	}
+	runtime, err := decodeBytecode(input.Runtime)
+	if err != nil || len(runtime) == 0 || !jsonObject(standardJSON) {
+		return PreparedDerivedMatch{}, "", errors.New("derived runtime evidence is invalid")
+	}
+	creationMatches := 0
+	confirmed := make([]CandidateMatch, 0, 1)
+	for _, candidate := range candidates {
+		match, ok, matchErr := MatchCandidate(candidate, input, false)
+		if matchErr != nil {
+			return PreparedDerivedMatch{}, "", matchErr
+		}
+		if ok && match.Creation != nil {
+			creationMatches++
+			if match.Runtime != nil {
+				confirmed = append(confirmed, match)
+			}
+		}
+	}
+	switch {
+	case creationMatches == 0:
+		return PreparedDerivedMatch{}, "no_match", nil
+	case len(confirmed) == 0:
+		return PreparedDerivedMatch{}, "runtime_mismatch", nil
+	case len(confirmed) > 1:
+		return PreparedDerivedMatch{}, "ambiguous", nil
+	}
+	outcome, err := derivedVerificationOutcome(confirmed[0], standardJSON)
+	if err != nil {
+		return PreparedDerivedMatch{}, "", err
+	}
+	return PreparedDerivedMatch{
+		match: confirmed[0], outcome: outcome,
+		creationHash: sha256.Sum256(creation), runtimeHash: sha256.Sum256(runtime),
+		standardJSONHash: sha256.Sum256(standardJSON),
+	}, "matched", nil
+}
+
+func (prepared PreparedDerivedMatch) valid() bool {
+	return prepared.match.Creation != nil && prepared.match.Runtime != nil &&
+		prepared.match.Candidate.FileName != "" && prepared.match.Candidate.ContractName != "" &&
+		jsonObject(prepared.outcome) && prepared.creationHash != [sha256.Size]byte{} &&
+		prepared.runtimeHash != [sha256.Size]byte{} &&
+		prepared.standardJSONHash != [sha256.Size]byte{}
+}
+
 type derivedPublicationEvidence struct {
 	ChainID              string
 	BlockNumber          uint64
@@ -146,10 +214,12 @@ type derivedPublicationEvidence struct {
 func (repository *PostgresRepository) CompleteDerived(
 	ctx context.Context,
 	identity DerivedTraceIdentity,
+	prepared PreparedDerivedMatch,
 ) (string, error) {
 	if repository == nil || repository.db == nil || !validUUID(identity.CompilationID) ||
 		identity.BlockNumber == 0 || len(identity.BlockHash) != 32 ||
-		len(identity.Transaction) != 32 || identity.TracePath == "" || len(identity.TracePath) > 2048 {
+		len(identity.Transaction) != 32 || identity.TracePath == "" || len(identity.TracePath) > 2048 ||
+		!prepared.valid() {
 		return "", errors.New("derived verification trace identity is invalid")
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
@@ -164,29 +234,13 @@ func (repository *PostgresRepository) CompleteDerived(
 	if err != nil {
 		return "", err
 	}
-	candidates, err := loadDerivedCandidatesTx(ctx, tx, identity.CompilationID, evidence)
-	if err != nil {
-		return "", err
+	if sha256.Sum256(evidence.CreationCode) != prepared.creationHash ||
+		sha256.Sum256(evidence.RuntimeCode) != prepared.runtimeHash ||
+		sha256.Sum256(evidence.StandardJSON) != prepared.standardJSONHash {
+		return "", ErrDerivedEvidenceStale
 	}
-	var confirmed []CandidateMatch
-	for _, candidate := range candidates {
-		match, ok, matchErr := MatchCandidate(candidate, MatchInput{
-			Creation: "0x" + hex.EncodeToString(evidence.CreationCode),
-			Runtime:  "0x" + hex.EncodeToString(evidence.RuntimeCode),
-		}, false)
-		if matchErr != nil {
-			return "", matchErr
-		}
-		if ok && match.Creation != nil && match.Runtime != nil {
-			confirmed = append(confirmed, match)
-		}
-	}
-	if len(confirmed) != 1 {
-		return "", ErrDerivedNotUnique
-	}
-	match := confirmed[0]
-	outcome, err := derivedVerificationOutcome(match, evidence.StandardJSON)
-	if err != nil || len(outcome) > repository.options.MaxResultBytes {
+	match, outcome := prepared.match, prepared.outcome
+	if len(outcome) > repository.options.MaxResultBytes {
 		return "", errors.New("derived verification outcome is invalid")
 	}
 	fields, err := decodeV2ResultFields("verification_success", outcome)
@@ -401,54 +455,6 @@ func loadDerivedPublicationEvidence(
 		return derivedPublicationEvidence{}, ErrDerivedEvidenceStale
 	}
 	return evidence, nil
-}
-
-func loadDerivedCandidatesTx(
-	ctx context.Context,
-	tx *sql.Tx,
-	compilationID string,
-	evidence derivedPublicationEvidence,
-) ([]CandidateArtifact, error) {
-	rows, err := tx.QueryContext(ctx, dbgen.DerivedVerifyLoadCompilationCandidates, compilationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close() //nolint:errcheck
-	var candidates []CandidateArtifact
-	for rows.Next() {
-		var language Language
-		var version string
-		var standardJSON []byte
-		var candidate CandidateArtifact
-		var creation, runtime []byte
-		if err := rows.Scan(
-			&language, &version, &standardJSON, &candidate.FileName,
-			&candidate.ContractName, &candidate.ABI, &creation, &runtime,
-			&candidate.CompilationArtifacts, &candidate.CreationCodeArtifacts,
-			&candidate.RuntimeCodeArtifacts,
-		); err != nil {
-			return nil, err
-		}
-		if language != evidence.Language || version != evidence.CompilerVersion ||
-			!json.Valid(standardJSON) {
-			return nil, errors.New("stored derived compilation identity is invalid")
-		}
-		candidate.Language, candidate.CompilerVersion = language, version
-		candidate.CreationBytecode = "0x" + hex.EncodeToString(creation)
-		candidate.RuntimeBytecode = "0x" + hex.EncodeToString(runtime)
-		candidate, err = RestoreCandidateArtifact(candidate)
-		if err != nil {
-			return nil, err
-		}
-		candidates = append(candidates, candidate)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(candidates) == 0 || len(candidates) > maxStandardJSONSelectorEntries {
-		return nil, errors.New("stored derived compilation candidates are invalid")
-	}
-	return candidates, nil
 }
 
 func derivedVerificationOutcome(

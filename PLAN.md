@@ -384,7 +384,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   including the reproduced Preview ProxyAdmin recovery.
 - P72 is in progress: P72-T01 completes generation-bound trace/proxy forward
   events, fork-aware rescan, canonical attempt writes, pending-runtime wakeup,
-  and success-reset pagination budgets. Lease/publication and provenance
+  and success-reset pagination budgets. P72-T02 adds heartbeat-fenced leases,
+  one prepared match, and short canonical publication. Provenance and structural
   hardening proceed in the remaining dependency-ordered items.
 
 ## Global Release Gates

@@ -156,6 +156,14 @@ WHERE trace.chain_id = $2::numeric
 ORDER BY trace.block_number, trace.transaction_hash, trace.trace_path
 LIMIT $10;
 
+-- name: DerivedVerifyRenewScan :exec
+UPDATE derived_verification_scans
+SET lease_expires_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND status = 'running'
+  AND lease_token = $2 AND leased_by = $3
+  AND lease_expires_at > clock_timestamp();
+
 -- name: DerivedVerifyRecordAttempt :many
 WITH evidence AS (
     SELECT trace.chain_id, trace.block_number, trace.block_hash,
@@ -511,6 +519,15 @@ SET status = CASE WHEN scan.status = 'running' THEN 'running' ELSE 'queued' END,
     updated_at = clock_timestamp()
 FROM pending
 WHERE scan.id = pending.id;
+
+-- name: DerivedVerifyRenewForwardEvent :exec
+UPDATE derived_verification_forward_blocks
+SET lease_expires_at = clock_timestamp() + ($8 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
+  AND source_job_id = $4::bigint AND source_generation = $5::bigint
+  AND status = 'running' AND leased_by = $6 AND lease_token = $7
+  AND lease_expires_at > clock_timestamp();
 
 -- name: DerivedVerifyFinishForwardBlock :exec
 UPDATE derived_verification_forward_blocks

@@ -35,7 +35,7 @@ type ForwardWorker struct {
 func NewForwardWorker(db *sql.DB, options ForwardOptions) (*ForwardWorker, error) {
 	options.defaults()
 	if db == nil || strings.TrimSpace(options.WorkerID) == "" ||
-		len(options.WorkerID) > 128 || options.LeaseDuration < time.Millisecond ||
+		len(options.WorkerID) > 128 || options.LeaseDuration < 3*time.Millisecond ||
 		options.PollInterval <= 0 {
 		return nil, errors.New("derived forward worker configuration is invalid")
 	}
@@ -82,6 +82,24 @@ func (worker *ForwardWorker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || !found {
 		return found, err
 	}
+	err = runWithLeaseHeartbeat(
+		ctx, worker.options.LeaseDuration,
+		func(renewContext context.Context) error {
+			return worker.renew(renewContext, lease)
+		},
+		worker.options.Observer,
+		func(operationContext context.Context, guard *leaseHeartbeatGuard) error {
+			return worker.processLease(operationContext, guard, lease)
+		},
+	)
+	return true, err
+}
+
+func (worker *ForwardWorker) processLease(
+	ctx context.Context,
+	guard *leaseHeartbeatGuard,
+	lease forwardLease,
+) error {
 	var dispatchErr error
 	var affected int64
 	switch lease.SourceStage {
@@ -105,8 +123,7 @@ func (worker *ForwardWorker) ProcessOne(ctx context.Context) (bool, error) {
 		dispatchErr = errors.New("derived forward event stage is invalid")
 	}
 	if dispatchErr != nil {
-		worker.retry(ctx, lease) //nolint:errcheck
-		return true, dispatchErr
+		return worker.failLease(ctx, guard, lease, dispatchErr)
 	}
 	worker.observe("dispatch", lease.SourceStage+"_generation")
 	if affected > 0 {
@@ -116,17 +133,23 @@ func (worker *ForwardWorker) ProcessOne(ctx context.Context) (bool, error) {
 		}
 		worker.observe("rewind", result)
 	}
-	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyFinishForwardBlock,
-		lease.ID, lease.ChainID, lease.BlockHash, lease.SourceJobID,
-		lease.Generation, lease.WorkerID, lease.Token,
-	)
-	if err != nil {
-		return true, err
-	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return true, errors.New("derived forward block lease was lost")
-	}
-	return true, nil
+	return guard.finalize(func() error {
+		if err := worker.renew(ctx, lease); err != nil {
+			return err
+		}
+		result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyFinishForwardBlock,
+			lease.ID, lease.ChainID, lease.BlockHash, lease.SourceJobID,
+			lease.Generation, lease.WorkerID, lease.Token,
+		)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			worker.observe("lease", "lost")
+			return errors.New("derived forward event lease was lost")
+		}
+		return nil
+	})
 }
 
 func (worker *ForwardWorker) observe(kind, result string) {
@@ -156,6 +179,32 @@ func (worker *ForwardWorker) claim(ctx context.Context) (forwardLease, bool, err
 		return forwardLease{}, false, errors.New("stored derived forward block is invalid")
 	}
 	return lease, true, nil
+}
+
+func (worker *ForwardWorker) renew(ctx context.Context, lease forwardLease) error {
+	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyRenewForwardEvent,
+		lease.ID, lease.ChainID, lease.BlockHash, lease.SourceJobID,
+		lease.Generation, lease.WorkerID, lease.Token,
+		worker.options.LeaseDuration.Microseconds(),
+	)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		worker.observe("lease", "lost")
+		return errors.New("derived forward event lease was lost")
+	}
+	return nil
+}
+
+func (worker *ForwardWorker) failLease(
+	ctx context.Context,
+	guard *leaseHeartbeatGuard,
+	lease forwardLease,
+	cause error,
+) error {
+	retryErr := guard.finalize(func() error { return worker.retry(ctx, lease) })
+	return errors.Join(cause, retryErr)
 }
 
 func (worker *ForwardWorker) retry(ctx context.Context, lease forwardLease) error {

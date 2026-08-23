@@ -1290,6 +1290,67 @@ func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVer
 	return items, nil
 }
 
+const DerivedVerifyRenewForwardEvent = `-- name: DerivedVerifyRenewForwardEvent :exec
+UPDATE derived_verification_forward_blocks
+SET lease_expires_at = clock_timestamp() + ($8 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
+  AND source_job_id = $4::bigint AND source_generation = $5::bigint
+  AND status = 'running' AND leased_by = $6 AND lease_token = $7
+  AND lease_expires_at > clock_timestamp()
+`
+
+type DerivedVerifyRenewForwardEventParams struct {
+	Column1    int64          `db:"column_1" json:"column_1"`
+	Column2    pgtype.Numeric `db:"column_2" json:"column_2"`
+	BlockHash  []byte         `db:"block_hash" json:"block_hash"`
+	Column4    int64          `db:"column_4" json:"column_4"`
+	Column5    int64          `db:"column_5" json:"column_5"`
+	LeasedBy   *string        `db:"leased_by" json:"leased_by"`
+	LeaseToken *string        `db:"lease_token" json:"lease_token"`
+	Column8    interface{}    `db:"column_8" json:"column_8"`
+}
+
+func (q *Queries) DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyRenewForwardEvent,
+		arg.Column1,
+		arg.Column2,
+		arg.BlockHash,
+		arg.Column4,
+		arg.Column5,
+		arg.LeasedBy,
+		arg.LeaseToken,
+		arg.Column8,
+	)
+	return err
+}
+
+const DerivedVerifyRenewScan = `-- name: DerivedVerifyRenewScan :exec
+UPDATE derived_verification_scans
+SET lease_expires_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND status = 'running'
+  AND lease_token = $2 AND leased_by = $3
+  AND lease_expires_at > clock_timestamp()
+`
+
+type DerivedVerifyRenewScanParams struct {
+	Column1    int64       `db:"column_1" json:"column_1"`
+	LeaseToken *string     `db:"lease_token" json:"lease_token"`
+	LeasedBy   *string     `db:"leased_by" json:"leased_by"`
+	Column4    interface{} `db:"column_4" json:"column_4"`
+}
+
+func (q *Queries) DerivedVerifyRenewScan(ctx context.Context, arg DerivedVerifyRenewScanParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyRenewScan,
+		arg.Column1,
+		arg.LeaseToken,
+		arg.LeasedBy,
+		arg.Column4,
+	)
+	return err
+}
+
 const DerivedVerifyRequestBackfill = `-- name: DerivedVerifyRequestBackfill :many
 WITH selected AS (
     SELECT scan.compilation_id, scan.chain_id, scan.creator_address, scan.creator_code_hash, scan.valid_from_block, scan.valid_to_block, scan.cursor_block_number, scan.cursor_transaction_hash, scan.cursor_trace_path, scan.status, scan.leased_by, scan.lease_token, scan.lease_expires_at, scan.attempt_count, scan.max_attempts, scan.last_error, scan.created_at, scan.updated_at, scan.id, scan.rescan_from_block,

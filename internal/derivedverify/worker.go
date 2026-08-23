@@ -1,6 +1,7 @@
 package derivedverify
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -17,7 +18,11 @@ import (
 )
 
 type Publisher interface {
-	CompleteDerived(context.Context, verify.DerivedTraceIdentity) (string, error)
+	CompleteDerived(
+		context.Context,
+		verify.DerivedTraceIdentity,
+		verify.PreparedDerivedMatch,
+	) (string, error)
 }
 
 type Options struct {
@@ -59,7 +64,7 @@ type Worker struct {
 func NewWorker(db *sql.DB, publisher Publisher, options Options) (*Worker, error) {
 	options.defaults()
 	if db == nil || publisher == nil || strings.TrimSpace(options.WorkerID) == "" ||
-		len(options.WorkerID) > 128 || options.LeaseDuration < time.Millisecond ||
+		len(options.WorkerID) > 128 || options.LeaseDuration < 3*time.Millisecond ||
 		options.PollInterval <= 0 || options.MaxTraces <= 0 || options.MaxTraces > 10_000 {
 		return nil, errors.New("derived verification worker configuration is invalid")
 	}
@@ -121,28 +126,60 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || !found {
 		return found, err
 	}
-	candidates, err := worker.loadCandidates(ctx, lease.CompilationID)
+	err = runWithLeaseHeartbeat(
+		ctx, worker.options.LeaseDuration,
+		func(renewContext context.Context) error {
+			return worker.renew(renewContext, lease)
+		},
+		worker.options.Observer,
+		func(operationContext context.Context, guard *leaseHeartbeatGuard) error {
+			return worker.processLease(operationContext, guard, lease)
+		},
+	)
+	return true, err
+}
+
+func (worker *Worker) processLease(
+	ctx context.Context,
+	guard *leaseHeartbeatGuard,
+	lease scanLease,
+) error {
+	compilation, err := worker.loadCandidates(ctx, lease.CompilationID)
 	if err != nil {
-		worker.retry(ctx, lease) //nolint:errcheck
-		return true, err
+		return worker.failLease(ctx, guard, lease, err)
 	}
 	traces, err := worker.listTraces(ctx, lease)
 	if err != nil {
-		worker.retry(ctx, lease) //nolint:errcheck
-		return true, err
+		return worker.failLease(ctx, guard, lease, err)
 	}
 	for _, trace := range traces {
 		worker.observe("scan", "trace")
-		status, unique, err := classifyTrace(candidates, trace)
+		prepared, status, err := verify.PrepareDerivedMatch(
+			compilation.Candidates, compilation.StandardJSON,
+			verify.MatchInput{
+				Creation: "0x" + hex.EncodeToString(trace.CreationCode),
+				Runtime:  "0x" + hex.EncodeToString(trace.RuntimeCode),
+			},
+		)
 		if err != nil {
-			worker.retry(ctx, lease) //nolint:errcheck
-			return true, err
+			return worker.failLease(ctx, guard, lease, err)
 		}
+		unique := status == "matched"
 		if unique && worker.options.PublishMatches {
-			_, err = worker.publisher.CompleteDerived(ctx, verify.DerivedTraceIdentity{
-				CompilationID: lease.CompilationID, BlockNumber: trace.BlockNumber,
-				BlockHash: trace.BlockHash, Transaction: trace.TransactionHash,
-				TracePath: trace.TracePath,
+			err = guard.exclusive(func() error {
+				if renewErr := worker.renew(ctx, lease); renewErr != nil {
+					return renewErr
+				}
+				_, publishErr := worker.publisher.CompleteDerived(
+					ctx,
+					verify.DerivedTraceIdentity{
+						CompilationID: lease.CompilationID, BlockNumber: trace.BlockNumber,
+						BlockHash: trace.BlockHash, Transaction: trace.TransactionHash,
+						TracePath: trace.TracePath,
+					},
+					prepared,
+				)
+				return publishErr
 			})
 			if errors.Is(err, verify.ErrDerivedEvidenceStale) {
 				status, unique, err = "stale", false, nil
@@ -150,18 +187,22 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 				status, unique, err = "ambiguous", false, nil
 			}
 			if err != nil {
-				worker.retry(ctx, lease) //nolint:errcheck
-				return true, fmt.Errorf("publish derived verification: %w", err)
+				return worker.failLease(
+					ctx, guard, lease, fmt.Errorf("publish derived verification: %w", err),
+				)
 			}
 			if unique {
 				worker.observe("publish", "matched")
 			}
 		}
 		if !unique {
-			status, err = worker.recordAttempt(ctx, lease, trace, status)
+			err = guard.exclusive(func() error {
+				var recordErr error
+				status, recordErr = worker.recordAttempt(ctx, lease, trace, status)
+				return recordErr
+			})
 			if err != nil {
-				worker.retry(ctx, lease) //nolint:errcheck
-				return true, err
+				return worker.failLease(ctx, guard, lease, err)
 			}
 		}
 		worker.observe("match", status)
@@ -175,17 +216,33 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		cursorTransaction = last.TransactionHash
 		cursorPath = last.TracePath
 	}
-	result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyAdvanceScan,
-		lease.ID, lease.Token, lease.WorkerID, done,
-		cursorBlock, cursorTransaction, cursorPath,
-	)
-	if err != nil {
-		return true, err
-	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return true, errors.New("derived verification scan lease was lost")
-	}
-	return true, nil
+	return guard.finalize(func() error {
+		if err := worker.renew(ctx, lease); err != nil {
+			return err
+		}
+		result, err := worker.db.ExecContext(ctx, dbgen.DerivedVerifyAdvanceScan,
+			lease.ID, lease.Token, lease.WorkerID, done,
+			cursorBlock, cursorTransaction, cursorPath,
+		)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			worker.observe("lease", "lost")
+			return errors.New("derived verification scan lease was lost")
+		}
+		return nil
+	})
+}
+
+func (worker *Worker) failLease(
+	ctx context.Context,
+	guard *leaseHeartbeatGuard,
+	lease scanLease,
+	cause error,
+) error {
+	retryErr := guard.finalize(func() error { return worker.retry(ctx, lease) })
+	return errors.Join(cause, retryErr)
 }
 
 func (worker *Worker) observe(kind, result string) {
@@ -220,16 +277,31 @@ func (worker *Worker) claim(ctx context.Context) (scanLease, bool, error) {
 	return lease, true, nil
 }
 
+func (worker *Worker) renew(ctx context.Context, lease scanLease) error {
+	result, err := worker.db.ExecContext(
+		ctx, dbgen.DerivedVerifyRenewScan,
+		lease.ID, lease.Token, lease.WorkerID, worker.options.LeaseDuration.Microseconds(),
+	)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		worker.observe("lease", "lost")
+		return errors.New("derived verification scan lease was lost")
+	}
+	return nil
+}
+
 func (worker *Worker) loadCandidates(
 	ctx context.Context,
 	compilationID string,
-) ([]verify.CandidateArtifact, error) {
+) (verify.AuthenticatedCompilation, error) {
 	rows, err := worker.db.QueryContext(ctx, dbgen.DerivedVerifyLoadCompilationCandidates, compilationID)
 	if err != nil {
-		return nil, err
+		return verify.AuthenticatedCompilation{}, err
 	}
 	defer rows.Close() //nolint:errcheck
-	var candidates []verify.CandidateArtifact
+	var compilation verify.AuthenticatedCompilation
 	for rows.Next() {
 		var language verify.Language
 		var version string
@@ -241,27 +313,32 @@ func (worker *Worker) loadCandidates(
 			&candidate.CompilationArtifacts, &candidate.CreationCodeArtifacts,
 			&candidate.RuntimeCodeArtifacts,
 		); err != nil {
-			return nil, err
+			return verify.AuthenticatedCompilation{}, err
 		}
 		if language != verify.LanguageSolidity || !json.Valid(standardJSON) {
-			return nil, errors.New("stored derived verification compilation is invalid")
+			return verify.AuthenticatedCompilation{}, errors.New("stored derived verification compilation is invalid")
+		}
+		if len(compilation.StandardJSON) == 0 {
+			compilation.StandardJSON = append(json.RawMessage(nil), standardJSON...)
+		} else if !bytes.Equal(compilation.StandardJSON, standardJSON) {
+			return verify.AuthenticatedCompilation{}, errors.New("stored derived verification Standard JSON conflicts")
 		}
 		candidate.Language, candidate.CompilerVersion = language, version
 		candidate.CreationBytecode = "0x" + hex.EncodeToString(creation)
 		candidate.RuntimeBytecode = "0x" + hex.EncodeToString(runtime)
 		candidate, err = verify.RestoreCandidateArtifact(candidate)
 		if err != nil {
-			return nil, err
+			return verify.AuthenticatedCompilation{}, err
 		}
-		candidates = append(candidates, candidate)
+		compilation.Candidates = append(compilation.Candidates, candidate)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return verify.AuthenticatedCompilation{}, err
 	}
-	if len(candidates) == 0 || len(candidates) > 4096 {
-		return nil, errors.New("stored derived verification candidates are invalid")
+	if len(compilation.Candidates) == 0 || len(compilation.Candidates) > 4096 {
+		return verify.AuthenticatedCompilation{}, errors.New("stored derived verification candidates are invalid")
 	}
-	return candidates, nil
+	return compilation, nil
 }
 
 func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceCandidate, error) {
@@ -299,41 +376,6 @@ func (worker *Worker) listTraces(ctx context.Context, lease scanLease) ([]traceC
 		traces = append(traces, trace)
 	}
 	return traces, rows.Err()
-}
-
-func classifyTrace(
-	candidates []verify.CandidateArtifact,
-	trace traceCandidate,
-) (string, bool, error) {
-	if len(trace.RuntimeCode) == 0 {
-		return "pending_runtime", false, nil
-	}
-	creationMatches, confirmed := 0, 0
-	for _, candidate := range candidates {
-		match, ok, err := verify.MatchCandidate(candidate, verify.MatchInput{
-			Creation: "0x" + hex.EncodeToString(trace.CreationCode),
-			Runtime:  "0x" + hex.EncodeToString(trace.RuntimeCode),
-		}, false)
-		if err != nil {
-			return "", false, err
-		}
-		if ok && match.Creation != nil {
-			creationMatches++
-			if match.Runtime != nil {
-				confirmed++
-			}
-		}
-	}
-	switch {
-	case creationMatches == 0:
-		return "no_match", false, nil
-	case confirmed == 0:
-		return "runtime_mismatch", false, nil
-	case confirmed > 1:
-		return "ambiguous", false, nil
-	default:
-		return "matched", true, nil
-	}
 }
 
 func (worker *Worker) recordAttempt(

@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -396,14 +398,44 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		BlockHash:   factoryBlock.Block.Hash().Bytes(),
 		Transaction: factoryBlock.Block.Transactions()[0].Hash().Bytes(), TracePath: "1",
 	}
-	firstJobID, err := repository.CompleteDerived(ctx, identity)
+	preparedCandidates := make([]verify.CandidateArtifact, len(unit.Candidates))
+	for index, candidate := range unit.Candidates {
+		preparedCandidates[index], err = verify.RestoreCandidateArtifact(candidate)
+		if err != nil {
+			t.Fatalf("restore prepared candidate %d: %v", index, err)
+		}
+	}
+	preparedChild, preparedStatus, err := verify.PrepareDerivedMatch(
+		preparedCandidates, unit.StandardJSON,
+		verify.MatchInput{
+			Creation: "0x" + hex.EncodeToString(childCreation),
+			Runtime:  "0x" + hex.EncodeToString(childRuntime),
+		},
+	)
+	if err != nil || preparedStatus != "matched" {
+		t.Fatalf("prepare repeated derived match: status=%s error=%v", preparedStatus, err)
+	}
+	firstJobID, err := repository.CompleteDerived(ctx, identity, preparedChild)
 	if err != nil {
 		t.Fatalf("repeat derived publication: %v", err)
 	}
-	secondJobID, err := repository.CompleteDerived(ctx, identity)
+	secondJobID, err := repository.CompleteDerived(ctx, identity, preparedChild)
 	if err != nil || secondJobID != firstJobID {
 		t.Fatalf("idempotent derived publication: first=%s second=%s error=%v", firstJobID, secondJobID, err)
 	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET input = decode('6099', 'hex')
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes())
+	if _, err := repository.CompleteDerived(ctx, identity, preparedChild); !errors.Is(err, verify.ErrDerivedEvidenceStale) {
+		t.Fatalf("changed evidence publication error = %v", err)
+	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET input = $3
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes(), childCreation)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verification_jobs
 		WHERE kind = 'derived' AND address = $1`, 1, childAddress)
@@ -529,9 +561,11 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
 		childAddress, grandchildAddress, grandchildRuntime,
 	)
+	pagedObserver := &derivedObservationRecorder{}
 	pagedWorker, err := derivedverify.NewWorker(db, repository, derivedverify.Options{
-		WorkerID: "derived-pagination", LeaseDuration: time.Minute,
+		WorkerID: "derived-pagination", LeaseDuration: 300 * time.Millisecond,
 		PollInterval: time.Millisecond, MaxTraces: 100, PublishMatches: true,
+		Observer: pagedObserver,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -552,6 +586,9 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		  AND status = 'succeeded' AND attempt_count = 0`, 1,
 		compilationID, childAddress,
 	)
+	if pagedObserver.count("lease", "renewed") == 0 {
+		t.Fatal("short-lease pagination completed without exercising the heartbeat")
+	}
 
 	// A detach racing the non-match write cannot leave a live attempt after the
 	// canonicality trigger has already run.
@@ -572,6 +609,29 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		SELECT count(*) FROM derived_verification_attempts
 		WHERE id = '00000000-0000-0000-0000-000000000099'::uuid
 		  AND status = 'stale' AND stale_from_status = 'no_match'`, 1)
+}
+
+type derivedObservationRecorder struct {
+	mu           sync.Mutex
+	observations []derivedverify.Observation
+}
+
+func (recorder *derivedObservationRecorder) RecordDerivedVerification(observation derivedverify.Observation) {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.observations = append(recorder.observations, observation)
+}
+
+func (recorder *derivedObservationRecorder) count(kind, result string) int {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	count := 0
+	for _, observation := range recorder.observations {
+		if observation.Kind == kind && observation.Result == result {
+			count++
+		}
+	}
+	return count
 }
 
 func derivedCandidate(name, creation, runtime string) verify.CandidateArtifact {
