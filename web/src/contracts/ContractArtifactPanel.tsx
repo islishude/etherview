@@ -275,6 +275,8 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
   const abi = artifact.abi ?? [];
   const abiSummary = useMemo(() => summarizeABI(abi), [abi]);
   const matchType = artifact.runtime_match?.match_type ?? artifact.creation_match?.match_type;
+	const verificationOrigin = artifact.verification_origin ?? "submitted";
+	const derivedChildren = artifact.derived_children ?? [];
 
   useEffect(() => {
 		void artifact.source.address;
@@ -285,6 +287,16 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 
   return (
 		<div className="contract-code-view">
+			{verificationOrigin === "factory_derived" && artifact.derived_from ? (
+				<p className="context-note" role="status">
+					{t("contracts.artifact.autoVerifiedFromFactory")} {" "}
+					<AddressIdentity address={artifact.derived_from.creator_address} compact={false} contract />
+					{" · "}{artifact.derived_from.call_type}{" · "}
+					<a href={`/tx/${artifact.derived_from.transaction_hash}`}>
+						{t("contracts.artifact.creationTransaction")}
+					</a>
+				</p>
+			) : null}
 			{artifact.resolution === "code_hash" ? (
 				<p className="context-note" role="status">
 					{t("contracts.artifact.similarMatch")}{" "}
@@ -307,6 +319,11 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 					? "contracts.artifact.verifiedByCodeHash"
 					: "contracts.artifact.verified")}
 			</span>
+			{verificationOrigin === "factory_derived" ? (
+				<span className="artifact-match full">
+					{t("contracts.artifact.autoVerifiedBadge")}
+				</span>
+			) : null}
           {matchType ? (
             <span className={matchType === "full" ? "artifact-match full" : "artifact-match partial"}>
               {t(`contracts.artifact.match.${matchType}`)}
@@ -335,6 +352,35 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
           value={String(manifest.files.length)}
         />
       </dl>
+
+			{derivedChildren.length > 0 ? (
+				<section className="artifact-section" aria-labelledby="derived-contracts-title">
+					<div className="artifact-section-heading">
+						<div>
+							<span className="eyebrow">{t("contracts.artifact.factoryDeployments")}</span>
+							<h3 id="derived-contracts-title">{t("contracts.artifact.createdContracts")}</h3>
+						</div>
+					</div>
+					<div className="table-scroll" tabIndex={0} aria-label={t("contracts.artifact.createdContracts")}>
+						<table>
+							<thead><tr>
+								<th>{t("page.address")}</th><th>{t("table.status")}</th>
+								<th>{t("contracts.artifact.creationTransaction")}</th><th>{t("contracts.contractName")}</th>
+							</tr></thead>
+							<tbody>
+								{derivedChildren.map((child) => (
+									<tr key={`${child.block_hash}:${child.transaction_hash}:${child.trace_path}`}>
+										<td><AddressIdentity address={child.address} compact={false} contract /></td>
+										<td>{t(`contracts.artifact.derivedStatus.${child.status}`)}</td>
+										<td><a href={`/tx/${child.transaction_hash}`}><code>{child.transaction_hash}</code></a></td>
+										<td>{child.contract_name ?? "—"}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			) : null}
 
       <section className="artifact-section" aria-labelledby="contract-source-title">
         <div className="artifact-section-heading">

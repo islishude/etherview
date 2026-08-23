@@ -1142,6 +1142,10 @@ test("capability pages survive the embedded binary boundary in both accessible t
   page.on("console", onSourceConsole);
   await page.goto(`/address/${address}#code`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
+	await expect(page.getByText("Factory-derived", { exact: true })).toBeVisible();
+	await expect(page.getByRole("status")).toContainText("Auto-verified from verified factory:");
+	await expect(page.getByRole("heading", { name: "Created contracts" })).toBeVisible();
+	await expect(page.getByRole("link", { name: uupsImplementation })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();

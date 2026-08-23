@@ -38,6 +38,7 @@ batch semantics are not core v1 scope.
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P71 | [Factory-derived Contract Verification](docs/plans/P71-factory-derived-verification.md) | done | P20, P30, P40, P50, P60 | Authenticated compilation-unit persistence and canonical CREATE/CREATE2 verification propagation |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -363,6 +364,23 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   one-attempt PostgreSQL persistence, and metadata-worker restart stability.
   P66 live-payment evidence still gates conformance, security, release CI,
   documentation, and artifact work.
+- P71 is complete: P71-T01 completed the reusable verifier matcher and
+  shared publication boundary without changing submitted-verification
+  behavior; P71-T02 now persists immutable authenticated compilation units and
+  complete bounded candidate sets; P71-T03 completes feature-gated historical
+  CREATE/CREATE2 derivation; P71-T04 completes historical code-epoch,
+  reorg/reattach, and idempotency hardening. P71-T05 now dispatches
+  post-`trace@3` work durably
+  and propagates through derived children. P71-T06 adds generated provenance
+  and child projections, bilingual Web explanation, staged rollout controls,
+  bounded metrics, audited backfill operations, and complete PostgreSQL,
+  browser, deployment, ordinary/race, security, license, and common-gate
+  evidence in [P71 evidence](docs/plans/P71-factory-derived-verification.md#evidence).
+  P71-T07 enables the already shipped feature only in the local Preview
+  Compose configuration, while retaining production/default-off behavior.
+  P71-T08 corrects late-verification scans to begin at the authenticated
+  creator code epoch and adds real Hardhat/Foundry constructor-child gates,
+  including the reproduced Preview ProxyAdmin recovery.
 
 ## Global Release Gates
 

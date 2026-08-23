@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/etherview/internal/components"
+	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/verify"
 )
 
@@ -64,6 +65,43 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 			},
 		); err != nil {
 			return err
+		}
+		if cfg.Verification.DerivedEnabled {
+			if err := registerWorkerPool(
+				componentRegistry,
+				components.RoleAPI,
+				"41-factory-derived-verification",
+				"factory-derived-verification-worker",
+				cfg.Verification.DerivedWorkerCount,
+				func(_ int, serviceName string) (components.Service, error) {
+					return derivedverify.NewWorker(db, verificationRepository, derivedverify.Options{
+						WorkerID: serviceName, LeaseDuration: cfg.Runtime.LeaseDuration,
+						PollInterval:   cfg.Runtime.PollInterval,
+						MaxTraces:      cfg.Verification.DerivedMaxTracesPerScan,
+						PublishMatches: cfg.Verification.DerivedBackfillEnabled,
+						Observer:       businessObserver,
+					})
+				},
+			); err != nil {
+				return err
+			}
+		}
+		if cfg.Verification.DerivedForwardEnabled {
+			if err := registerWorkerPool(
+				componentRegistry,
+				components.RoleAPI,
+				"42-factory-derived-forward",
+				"factory-derived-forward-worker",
+				cfg.Verification.DerivedWorkerCount,
+				func(_ int, serviceName string) (components.Service, error) {
+					return derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
+						WorkerID: serviceName, LeaseDuration: cfg.Runtime.LeaseDuration,
+						PollInterval: cfg.Runtime.PollInterval,
+					})
+				},
+			); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

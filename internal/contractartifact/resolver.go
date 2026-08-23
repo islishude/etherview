@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+
 	"github.com/islishude/etherview/internal/db/gen"
 )
 
@@ -97,9 +99,64 @@ func (resolver *Resolver) ResolveCurrent(
 	if len(result.Target.CodeHash) != 32 || len(result.Target.BlockHash) != 32 {
 		return Result{}, false, errors.New("stored current contract code identity is invalid")
 	}
+	return resolveArtifactSourceTx(ctx, tx, result, contextNumber)
+}
+
+// ResolveAtBlock resolves only the canonical code identity and exact-address
+// verified epoch that were valid at one immutable block identity.
+func (resolver *Resolver) ResolveAtBlock(
+	ctx context.Context,
+	chainID string,
+	address []byte,
+	blockNumber uint64,
+	blockHash []byte,
+) (Result, bool, error) {
+	if resolver == nil || resolver.db == nil || chainID == "" || len(address) != 20 ||
+		len(blockHash) != 32 {
+		return Result{}, false, errors.New("contract artifact block identity is invalid")
+	}
+	tx, err := resolver.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return Result{}, false, fmt.Errorf("begin contract artifact snapshot: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	contextNumber := strconv.FormatUint(blockNumber, 10)
+	result := Result{Target: Target{
+		ChainID: chainID, Address: append([]byte(nil), address...),
+	}}
+	var sourceContext string
+	err = tx.QueryRowContext(
+		ctx, dbgen.ContractArtifactTargetAtBlock,
+		chainID, address, contextNumber, blockHash,
+	).Scan(
+		&result.Target.CodeHash, &result.Target.BlockNumber,
+		&result.Target.BlockHash, &sourceContext,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Result{}, false, nil
+	}
+	if err != nil {
+		return Result{}, false, fmt.Errorf("resolve historical contract code identity: %w", err)
+	}
+	if len(result.Target.CodeHash) != 32 || len(result.Target.BlockHash) != 32 ||
+		result.Target.BlockNumber != contextNumber || sourceContext != contextNumber {
+		return Result{}, false, errors.New("stored historical contract code identity is invalid")
+	}
+	return resolveArtifactSourceTx(ctx, tx, result, sourceContext)
+}
+
+func resolveArtifactSourceTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	result Result,
+	contextNumber string,
+) (Result, bool, error) {
 
 	var exact bool
-	err = tx.QueryRowContext(ctx, dbgen.ContractArtifactArtifactSource, chainID, address, result.Target.CodeHash, contextNumber).Scan(
+	err := tx.QueryRowContext(
+		ctx, dbgen.ContractArtifactArtifactSource,
+		result.Target.ChainID, result.Target.Address, result.Target.CodeHash, contextNumber,
+	).Scan(
 		&exact,
 		&result.Source.Address,
 		&result.Source.CodeHash,

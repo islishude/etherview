@@ -189,3 +189,76 @@ func (q *Queries) ContractArtifactCurrentTarget(ctx context.Context, column1 pgt
 	}
 	return items, nil
 }
+
+const ContractArtifactTargetAtBlock = `-- name: ContractArtifactTargetAtBlock :many
+WITH context_block AS (
+    SELECT canonical.number, canonical.block_hash
+    FROM canonical_blocks AS canonical
+    WHERE canonical.chain_id = $1::numeric
+      AND canonical.number = $3::numeric
+      AND canonical.block_hash = $4
+)
+SELECT observation.code_hash, context.number::text, context.block_hash,
+       context.number::text
+FROM context_block AS context
+JOIN LATERAL (
+    SELECT candidate.code_hash
+    FROM contract_code_observations AS candidate
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = candidate.chain_id
+     AND canonical.number = candidate.block_number
+     AND canonical.block_hash = candidate.block_hash
+    WHERE candidate.chain_id = $1::numeric
+      AND candidate.address = $2
+      AND candidate.canonical
+      AND candidate.block_number <= context.number
+    ORDER BY candidate.block_number DESC,
+             candidate.observed_at DESC,
+             candidate.code_hash DESC
+    LIMIT 1
+) AS observation ON TRUE
+`
+
+type ContractArtifactTargetAtBlockParams struct {
+	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	Address   []byte         `db:"address" json:"address"`
+	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
+	BlockHash []byte         `db:"block_hash" json:"block_hash"`
+}
+
+type ContractArtifactTargetAtBlockRow struct {
+	CodeHash        []byte `db:"code_hash" json:"code_hash"`
+	ContextNumber   string `db:"context_number" json:"context_number"`
+	BlockHash       []byte `db:"block_hash" json:"block_hash"`
+	ContextNumber_2 string `db:"context_number_2" json:"context_number_2"`
+}
+
+func (q *Queries) ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) ([]ContractArtifactTargetAtBlockRow, error) {
+	rows, err := q.db.Query(ctx, ContractArtifactTargetAtBlock,
+		arg.Column1,
+		arg.Address,
+		arg.Column3,
+		arg.BlockHash,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ContractArtifactTargetAtBlockRow{}
+	for rows.Next() {
+		var i ContractArtifactTargetAtBlockRow
+		if err := rows.Scan(
+			&i.CodeHash,
+			&i.ContextNumber,
+			&i.BlockHash,
+			&i.ContextNumber_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -14,6 +14,11 @@ const appServices = [
 const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const derivedEnvironment = [
+  "ETHERVIEW_DERIVED_VERIFY_ENABLED",
+  "ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED",
+  "ETHERVIEW_DERIVED_VERIFY_FORWARD_ENABLED",
+];
 
 assertNoPlatform(config, "compose");
 for (const name of appServices) {
@@ -45,6 +50,13 @@ for (const name of appServices) {
     name === compilerOwner ? "true" : undefined,
     `${name} Foundry fake-IP download exception scope`,
   );
+  for (const key of derivedEnvironment) {
+    assert.equal(
+      service.environment?.[key],
+      name === compilerOwner ? "true" : undefined,
+      `${name} Foundry derived verification scope ${key}`,
+    );
+  }
 }
 
 function volumeMounts(service) {

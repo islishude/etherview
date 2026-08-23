@@ -197,7 +197,13 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 }
 
 type v2CompletionRepository interface {
-	CompleteV2(context.Context, VerificationLease, string, json.RawMessage) error
+	CompleteV2(
+		context.Context,
+		VerificationLease,
+		string,
+		json.RawMessage,
+		...AuthenticatedCompilation,
+	) error
 }
 
 func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLease) error {
@@ -305,9 +311,10 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		return worker.failLease(ctx, lease, ErrorCompilerOutput)
 	}
 	results := make([]any, 0, len(request.Bytecodes))
+	var authenticatedCompilation *AuthenticatedCompilation
 	for _, bytecodes := range request.Bytecodes {
 		var selected *CandidateVerification
-		for _, candidates := range compiledVariants {
+		for variantIndex, candidates := range compiledVariants {
 			matches, err := VerifyCandidateArtifacts(
 				candidates, bytecodes, request.ContractNameHint, request.Kind == JobAddress,
 			)
@@ -317,6 +324,12 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 			if len(matches) > 0 {
 				candidate := matches[0]
 				selected = &candidate
+				if request.Kind == JobAddress && request.Language == LanguageSolidity {
+					authenticatedCompilation = &AuthenticatedCompilation{
+						StandardJSON: request.StandardJSONVariants[variantIndex],
+						Candidates:   candidates,
+					}
+				}
 				break
 			}
 		}
@@ -338,6 +351,11 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 	}
 	if failure, ok := results[0].(map[string]any); ok && failure["kind"] == "verification_failure" {
 		return worker.completeOutcomeV2(ctx, repository, lease, "verification_failure", failure)
+	}
+	if authenticatedCompilation != nil {
+		return worker.completeOutcomeV2(
+			ctx, repository, lease, "verification_success", results[0], *authenticatedCompilation,
+		)
 	}
 	return worker.completeOutcomeV2(ctx, repository, lease, "verification_success", results[0])
 }
@@ -681,12 +699,13 @@ func (worker *Worker) completeOutcomeV2(
 	lease VerificationLease,
 	kind string,
 	value any,
+	compilations ...AuthenticatedCompilation,
 ) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	if err := repository.CompleteV2(ctx, lease, kind, encoded); err != nil {
+	if err := repository.CompleteV2(ctx, lease, kind, encoded, compilations...); err != nil {
 		if errors.Is(err, ErrTargetNotCanonical) {
 			worker.observe(lease, JobEventTransitioned, "stale_target", kind, ErrorTargetNotCanonical)
 			return nil

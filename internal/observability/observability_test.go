@@ -233,6 +233,25 @@ func TestDurableMetricRefreshRetainsLastPostgresSnapshotOnFailure(t *testing.T) 
 	}
 }
 
+func TestDerivedVerificationMetricsUseClosedLabels(t *testing.T) {
+	t.Parallel()
+	registry := NewRegistry("test", "api")
+	registry.RecordDerivedVerification("match", "ambiguous")
+	registry.RecordDerivedVerification("hostile-kind", "hostile-result")
+	metrics := registry.Gather()
+	for _, expected := range []string{
+		`etherview_derived_verification_total{kind="match",result="ambiguous"} 1`,
+		`etherview_derived_verification_total{kind="other",result="other"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("derived metric missing %q:\n%s", expected, metrics)
+		}
+	}
+	if strings.Contains(metrics, "hostile-kind") || strings.Contains(metrics, "hostile-result") {
+		t.Fatalf("unbounded derived labels leaked:\n%s", metrics)
+	}
+}
+
 func TestX402MetricsUseOnlyClosedLabelsAndSingleExposition(t *testing.T) {
 	registry := NewRegistry("test", "api")
 	registry.ObserveX402Request("listBlocks", "settled")

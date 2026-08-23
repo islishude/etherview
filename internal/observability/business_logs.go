@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/enrich"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -349,11 +350,17 @@ func (observer *BusinessObserver) RecordVerificationJob(transition verify.JobTra
 	logger.LogAttrs(context.Background(), level, message, attributes...)
 }
 
+func (observer *BusinessObserver) RecordDerivedVerification(observation derivedverify.Observation) {
+	if observer != nil && observer.registry != nil {
+		observer.registry.RecordDerivedVerification(observation.Kind, observation.Result)
+	}
+}
+
 func boundedVerificationKind(value string) string {
 	switch verify.JobKind(value) {
 	case verify.JobAddress, verify.JobSolidityMultipart, verify.JobSolidityStandardJSON,
 		verify.JobSolidityBatchMultipart, verify.JobSolidityBatchStandardJSON,
-		verify.JobSourcify, verify.JobSourcifyFromEtherscan, verify.JobProxy:
+		verify.JobSourcify, verify.JobSourcifyFromEtherscan, verify.JobProxy, verify.JobDerived:
 		return value
 	default:
 		return "other"

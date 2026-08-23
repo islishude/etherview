@@ -69,11 +69,49 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 		t.Fatalf("bind verifier-v2 compiler: %v", err)
 	}
 	outcome := verifierV2SuccessOutcome(t, "full")
-	if err := repository.CompleteV2(ctx, lease, "verification_success", outcome); err != nil {
+	compilation := verify.AuthenticatedCompilation{
+		StandardJSON: submission.StandardJSONVariants[0],
+		Candidates: []verify.CandidateArtifact{{
+			FileName: "A.sol", ContractName: "A",
+			Language:         verify.LanguageSolidity,
+			CompilerVersion:  "0.8.30+commit.73712a01",
+			CreationBytecode: "0x6000",
+			RuntimeBytecode:  "0x" + hex.EncodeToString(runtime),
+			ABI:              json.RawMessage(`[]`), CompilationArtifacts: json.RawMessage(`{}`),
+			CreationCodeArtifacts: json.RawMessage(`{}`), RuntimeCodeArtifacts: json.RawMessage(`{}`),
+		}},
+	}
+	if err := repository.CompleteV2(
+		ctx, lease, "verification_success", outcome, compilation,
+	); err != nil {
 		t.Fatalf("complete verifier-v2 job: %v", err)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_results`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_contracts`, 1)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*)
+		FROM verification_compilation_units AS unit
+		JOIN verification_compilation_contracts AS candidate
+		  ON candidate.compilation_id = unit.id
+		WHERE unit.source_job_id = $1::uuid
+		  AND unit.request_digest = $2
+		  AND unit.standard_json_payload = $3
+		  AND unit.compiler_sha256 = $4
+		  AND unit.executor_sha256 = $5
+		  AND candidate.file_name = 'A.sol'
+		  AND candidate.contract_name = 'A'
+		  AND candidate.creation_bytecode = decode('6000', 'hex')
+		  AND candidate.runtime_bytecode = $6`, 1,
+		job.ID, job.RequestDigest[:], []byte(submission.StandardJSONVariants[0]),
+		compilerDigest[:], executorDigest[:], runtime,
+	)
+	if _, err := db.ExecContext(ctx, `
+		UPDATE verification_compilation_contracts SET contract_name = 'Changed'
+		WHERE compilation_id = (
+			SELECT id FROM verification_compilation_units WHERE source_job_id = $1::uuid
+		)`, job.ID); err == nil {
+		t.Fatal("immutable authenticated compilation candidate accepted an update")
+	}
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verified_function_selector_sets
 		WHERE verification_job_id = $1::uuid AND status = 'complete'

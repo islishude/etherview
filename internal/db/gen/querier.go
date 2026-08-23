@@ -68,6 +68,7 @@ type Querier interface {
 	ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Timestamptz, iD pgtype.UUID) (AuthChallenge, error)
 	ContractArtifactArtifactSource(ctx context.Context, arg ContractArtifactArtifactSourceParams) ([]ContractArtifactArtifactSourceRow, error)
 	ContractArtifactCurrentTarget(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]ContractArtifactCurrentTargetRow, error)
+	ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) ([]ContractArtifactTargetAtBlockRow, error)
 	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error)
 	CountDirtyAnalyticsHours(ctx context.Context, chainID pgtype.Numeric, toTime pgtype.Timestamptz, fromTime pgtype.Timestamptz) (string, error)
@@ -82,6 +83,27 @@ type Querier interface {
 	DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
+	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) error
+	DerivedVerifyArtifactJobKind(ctx context.Context, dollar_1 pgtype.UUID) ([]string, error)
+	DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyArtifactProvenanceRow, error)
+	DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error)
+	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
+	DerivedVerifyCreatedContracts(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte) ([]DerivedVerifyCreatedContractsRow, error)
+	DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg DerivedVerifyCreatorCodeEpochStartParams) ([]string, error)
+	DerivedVerifyDispatchForwardBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
+	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
+	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) ([]string, error)
+	DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) error
+	DerivedVerifyInsertJob(ctx context.Context, arg DerivedVerifyInsertJobParams) error
+	DerivedVerifyListHistoricalTraces(ctx context.Context, arg DerivedVerifyListHistoricalTracesParams) ([]DerivedVerifyListHistoricalTracesRow, error)
+	DerivedVerifyLoadCompilationCandidates(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
+	DerivedVerifyLockTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]interface{}, error)
+	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
+	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) ([]DerivedVerifyPublicationEvidenceRow, error)
+	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) error
+	DerivedVerifyRequestBackfill(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte, reason string) ([]DerivedVerifyRequestBackfillRow, error)
+	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) error
+	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error
 	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) ([]EnrichClaimCandidateRow, error)
 	EnrichClearABIReplayOutputs(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, column3 []byte) error
 	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) ([]EnrichInlineAuthenticateCloneCreationStatement1Row, error)
@@ -498,6 +520,8 @@ type Querier interface {
 	VerifyInlineCompleteV2Statement3(ctx context.Context, arg VerifyInlineCompleteV2Statement3Params) error
 	VerifyInlineCompleteV2Statement4(ctx context.Context, arg VerifyInlineCompleteV2Statement4Params) error
 	VerifyInlineCompleteV2Statement5(ctx context.Context, arg VerifyInlineCompleteV2Statement5Params) error
+	VerifyInlineCompleteV2Statement6(ctx context.Context, arg VerifyInlineCompleteV2Statement6Params) ([]string, error)
+	VerifyInlineCompleteV2Statement7(ctx context.Context, arg VerifyInlineCompleteV2Statement7Params) error
 	VerifyInlineFailStatement1(ctx context.Context, column1 pgtype.UUID, leaseToken *string, errorCode *string) error
 	VerifyInlineLookupStatement1(ctx context.Context, language string, version string) ([]VerifyInlineLookupStatement1Row, error)
 	VerifyInlineLookupStatement2(ctx context.Context, language string) ([]bool, error)

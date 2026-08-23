@@ -13,6 +13,11 @@ const appServices = [
 const cachePath = "/var/lib/etherview/compilers";
 const unsafeDownloadEnvironment =
   "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
+const derivedEnvironment = [
+  "ETHERVIEW_DERIVED_VERIFY_ENABLED",
+  "ETHERVIEW_DERIVED_VERIFY_BACKFILL_ENABLED",
+  "ETHERVIEW_DERIVED_VERIFY_FORWARD_ENABLED",
+];
 const removedEnvironment = [
   "ETHERVIEW_COMPILER_SANDBOX",
   "ETHERVIEW_VERIFICATION_RUNNER_ENDPOINT",
@@ -65,6 +70,13 @@ for (const name of appServices) {
     name === compilerOwner ? "true" : undefined,
     `${name} Hardhat fake-IP download exception scope`,
   );
+  for (const key of derivedEnvironment) {
+    assert.equal(
+      service.environment?.[key],
+      name === compilerOwner ? "true" : undefined,
+      `${name} Hardhat derived verification scope ${key}`,
+    );
+  }
 }
 
 function volumeMounts(service) {

@@ -51,6 +51,41 @@ type CandidateVerification struct {
 	Blueprint bool                      `json:"isBlueprint"`
 }
 
+// MatchInput is the deployed creation and runtime bytecode presented to the
+// reusable verifier matcher. At least one bytecode must be present.
+type MatchInput struct {
+	Creation string
+	Runtime  string
+}
+
+// CandidateMatch is one candidate's transformation-aware match result.
+type CandidateMatch struct {
+	Candidate CandidateArtifact
+	Creation  *VerificationMatchDetails
+	Runtime   *VerificationMatchDetails
+	Blueprint bool
+}
+
+// MatchCandidate applies the same bounded transformation-aware matching used
+// by submitted verification to one authenticated compiler candidate.
+func MatchCandidate(
+	candidate CandidateArtifact,
+	input MatchInput,
+	requireRuntime bool,
+) (CandidateMatch, bool, error) {
+	results, err := VerifyCandidateArtifacts(
+		[]CandidateArtifact{candidate}, BytecodePair(input), "", requireRuntime,
+	)
+	if err != nil {
+		return CandidateMatch{}, false, err
+	}
+	if len(results) == 0 {
+		return CandidateMatch{}, false, nil
+	}
+	result := results[0]
+	return CandidateMatch(result), true, nil
+}
+
 type CompilationFailure struct {
 	Message string
 }

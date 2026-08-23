@@ -575,7 +575,11 @@
         },
         "verification": {
           "type": "object",
-          "required": ["executor_path", "geas_path"],
+          "required": [
+            "executor_path", "geas_path", "derived_enabled",
+            "derived_backfill_enabled", "derived_forward_enabled",
+            "derived_worker_count", "derived_max_traces_per_scan"
+          ],
           "propertyNames": {
             "not": {
               "enum": ["node_path", "wrapper_path", "manifest_path"]
@@ -593,7 +597,12 @@
               "minLength": 2,
               "maxLength": 4096,
               "pattern": "^/"
-            }
+            },
+            "derived_enabled": {"type": "boolean"},
+            "derived_backfill_enabled": {"type": "boolean"},
+            "derived_forward_enabled": {"type": "boolean"},
+            "derived_worker_count": {"type": "integer", "minimum": 1, "maximum": 64},
+            "derived_max_traces_per_scan": {"type": "integer", "minimum": 1, "maximum": 10000}
           }
         },
         "user_auth": {

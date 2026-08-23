@@ -158,6 +158,11 @@ verification:
   max_output_bytes: 67108864
   timeout: 2m
   worker_count: 1
+  derived_enabled: true
+  derived_backfill_enabled: true
+  derived_forward_enabled: true
+  derived_worker_count: 1
+  derived_max_traces_per_scan: 100
   # The API process owns the SEA executor and its rebuildable persistent cache.
   cache_directory: /var/lib/etherview/compilers/cache
   executor_path: /opt/etherview/solcjs/etherview-solcjs

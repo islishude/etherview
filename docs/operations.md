@@ -880,6 +880,55 @@ and accept that the old protected response cannot be recovered. Start a new
 invocation only after the first outcome is conclusively reconciled and an
 operator intentionally approves another real payment.
 
+### Factory-derived verification rollout and backfill
+
+Factory-derived verification consumes only PostgreSQL-persisted authenticated
+compilation units, canonical `trace@3` CREATE/CREATE2 frames, and canonical code
+observations. It does not require archive/debug RPC and never inherits a
+submitter's Sourcify consent. Roll out in this order on every `all`/`api`
+replica:
+
+1. Leave all derived flags false while migration `0051` starts retaining new
+   authenticated compilation units.
+2. Set `DERIVED_VERIFY_ENABLED=true` only. Workers record bounded dry-run
+   attempts but do not publish child verification.
+3. Review `etherview_derived_verification_total{kind,result}` for unexpected
+   ambiguity, runtime mismatch, stale evidence, or backlog growth, then set
+   `DERIVED_VERIFY_BACKFILL_ENABLED=true` to publish historical unique matches.
+4. Set `DERIVED_VERIFY_FORWARD_ENABLED=true` only after backfill is enabled.
+   The post-`trace@3` dispatcher then schedules future and transitive work
+   without running the matcher in the trace transaction.
+
+Worker and scan bounds are controlled by `DERIVED_VERIFY_WORKER_COUNT` and
+`DERIVED_VERIFY_MAX_TRACES_PER_SCAN`. To request an audited idempotent rescan of
+all eligible compilation epochs, or one factory only, use:
+
+```sh
+etherview admin derived-verification backfill \
+  --config /etc/etherview/config.yaml \
+  --reason "reviewed rollout backfill"
+
+etherview admin derived-verification backfill \
+  --config /etc/etherview/config.yaml \
+  --address 0x0000000000000000000000000000000000000001 \
+  --reason "retry factory after runtime observations arrived"
+```
+
+The command never deletes attempts or verified artifacts. For each unleased
+scan it first resolves the exact canonical creator-code epoch, queues one scan
+at that epoch start, and retains an incorrect later-start duplicate as failed
+with `superseded_epoch_start` so it cannot be forward-dispatched again.
+Existing terminal attempts keep publication idempotent, while pending-runtime
+attempts can be reconsidered. A reorg marks attempt provenance stale and
+current readers stop resolving the orphaned child until the exact block hash
+is reattached.
+
+For an existing Preview deployment, rebuild and recreate only the application
+services with `make recreate-preview`; do not remove the PostgreSQL or Geth
+volumes. Then run the address-scoped command inside the API container. This
+repairs scans created by an older binary whose cursor began at verification
+publication rather than at the creator code epoch.
+
 ### Runtime smoke verification fixture (development only)
 
 The runtime parity smoke target defaults `ETHERVIEW_RUNTIME_FIXTURE_IMAGE` to

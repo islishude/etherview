@@ -45,6 +45,7 @@ const (
 	JobSourcify                  JobKind = "sourcify"
 	JobSourcifyFromEtherscan     JobKind = "sourcify_from_etherscan"
 	JobProxy                     JobKind = "proxy"
+	JobDerived                   JobKind = "derived"
 )
 
 type ErrorCode string
@@ -130,6 +131,42 @@ type VerifiedContract struct {
 	Libraries             map[string]string
 	IsBlueprint           bool
 	CreatedAt             time.Time
+	VerificationOrigin    VerificationOrigin
+	DerivedFrom           *DerivedVerificationProvenance
+	DerivedChildren       []DerivedContract
+}
+
+type VerificationOrigin string
+
+const (
+	VerificationOriginSubmitted      VerificationOrigin = "submitted"
+	VerificationOriginSourcify       VerificationOrigin = "sourcify"
+	VerificationOriginFactoryDerived VerificationOrigin = "factory_derived"
+)
+
+type DerivedVerificationProvenance struct {
+	CreatorAddress     string
+	CreatedAddress     string
+	TransactionHash    string
+	TracePath          string
+	CallType           string
+	BlockNumber        uint64
+	BlockHash          string
+	ParentFileName     string
+	ParentContractName string
+}
+
+type DerivedContract struct {
+	Address         string
+	TransactionHash string
+	TracePath       string
+	CallType        string
+	BlockNumber     uint64
+	BlockHash       string
+	Status          string
+	FileName        string
+	ContractName    string
+	AutoVerified    bool
 }
 
 type ContractCodeIdentity struct {

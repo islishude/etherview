@@ -232,6 +232,11 @@ type VerificationConfig struct {
 	// addresses. HTTPS origin allowlisting, TLS, size, and SHA-256 checks remain
 	// mandatory.
 	UnsafeAllowPrivateDownloadNetworks bool `yaml:"unsafe_allow_private_download_networks"`
+	DerivedEnabled                     bool `yaml:"derived_enabled"`
+	DerivedBackfillEnabled             bool `yaml:"derived_backfill_enabled"`
+	DerivedForwardEnabled              bool `yaml:"derived_forward_enabled"`
+	DerivedWorkerCount                 int  `yaml:"derived_worker_count"`
+	DerivedMaxTracesPerScan            int  `yaml:"derived_max_traces_per_scan"`
 }
 
 // SourcifyConfig bounds the optional external Sourcify v2 interoperability
@@ -402,13 +407,15 @@ func Default() Config {
 			AnonymousBurst: 20,
 		},
 		Verification: VerificationConfig{
-			MaxInputBytes:  5 << 20,
-			MaxOutputBytes: 64 << 20,
-			WorkerCount:    1,
-			Timeout:        2 * time.Minute,
-			CacheDirectory: "/var/lib/etherview/compilers/cache",
-			ExecutorPath:   defaultVerificationExecutorPath,
-			GeasPath:       defaultVerificationGeasPath,
+			MaxInputBytes:           5 << 20,
+			MaxOutputBytes:          64 << 20,
+			WorkerCount:             1,
+			DerivedWorkerCount:      1,
+			DerivedMaxTracesPerScan: 100,
+			Timeout:                 2 * time.Minute,
+			CacheDirectory:          "/var/lib/etherview/compilers/cache",
+			ExecutorPath:            defaultVerificationExecutorPath,
+			GeasPath:                defaultVerificationGeasPath,
 			CatalogURLs: map[string]string{
 				"solidity": "auto",
 			},

@@ -29,6 +29,7 @@ const usage = `Usage:
   etherview admin billing inspect --id uuid [--config path] [--log-level level] [--log-format json|text]
   etherview admin billing reconcile --id uuid --outcome settled --transaction-hash hash [--config path] [--log-level level] [--log-format json|text]
   etherview admin billing reconcile --id uuid --outcome failed [--config path] [--log-level level] [--log-format json|text]
+  etherview admin derived-verification backfill --reason text [--address factory] [--config path] [--log-level level] [--log-format json|text]
   etherview version
 `
 
@@ -250,9 +251,9 @@ func (p Program) runAdmin(ctx context.Context, args []string) error {
 	if len(args) < 2 ||
 		(args[0] != "api-key" && args[0] != "label" &&
 			args[0] != "repair" && args[0] != "user" &&
-			args[0] != "billing") {
+			args[0] != "billing" && args[0] != "derived-verification") {
 		return errors.New(
-			"admin requires api-key, label, repair, user, or billing and an action",
+			"admin requires api-key, label, repair, user, billing, or derived-verification and an action",
 		)
 	}
 	resource, action := args[0], args[1]

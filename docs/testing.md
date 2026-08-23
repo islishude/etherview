@@ -111,6 +111,12 @@ replace a required `make test-e2e` pass.
   verifies both sources through the public compatibility API and official
   compiler catalog, polls durable proxy verification, upgrades and rebinds the
   proxy, and checks normalized public/persistent parity. The same pinned
+  OpenZeppelin fixture proves constructor-derived verification: verifying the
+  `TransparentUpgradeableProxy` after its deployment transaction must
+  automatically publish the constructor-created `ProxyAdmin` from the exact
+  creator code epoch, without a direct ProxyAdmin address-verification job.
+  The gate checks the CREATE trace/transaction/FQN provenance, derived native
+  API projection, management availability, and monolith/split parity. The same pinned
   fixture deploys `solady@0.1.26` legacy LibCWIA with packed
   owner/uint256/uint16/bytes arguments, derives its schema from canonical
   helper calls in the dual-compiled Solidity AST, checks exact raw and typed
@@ -162,10 +168,15 @@ replace a required `make test-e2e` pass.
   into the service selected by the active profile; the client URL selects
   `etherview:8080` for monolith and `api:8080` for distributed. Collapsing the
   two service entries would either drop one production topology or stop the
-  test from matching the production service graph. Forge deploys a contract
-  with a constructor and immutable fields, checks the initial unverified ABI,
+  test from matching the production service graph. Forge deploys a Factory
+  whose constructor creates a second contract with constructor arguments and
+  immutable fields, checks that both addresses initially have no verification,
   submits Standard JSON through the exact `/v2/api?chainid=1` custom-verifier
-  URL, watches status by POST, and confirms the public source and ABI. A second
+  URL only for the Factory, watches status by POST, and confirms the public
+  source and ABI. The child must receive exactly one derived job/result/
+  publication/attempt with exact CREATE transaction provenance, decoded
+  constructor arguments, runtime immutable references, and
+  `verification_origin=factory_derived`; the parent must list that child. A second
   Forge invocation must short-circuit as already verified without creating a
   job. Normalized snapshots require one successful job, result, and
   publication; exact constructor arguments and immutable references; the

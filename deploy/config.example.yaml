@@ -198,6 +198,13 @@ verification:
   timeout: 2m
   # Every API/all replica runs this many durable verification consumers.
   worker_count: 1
+  # Staged rollout: persist compilation units unconditionally, then enable the
+  # dry-run scanner, historical publication, and forward dispatch in order.
+  derived_enabled: false
+  derived_backfill_enabled: false
+  derived_forward_enabled: false
+  derived_worker_count: 1
+  derived_max_traces_per_scan: 100
   # API/all owns an architecture-native Node SEA subprocess and stores only
   # checksum-addressed official solc-js artifacts in this private rebuildable
   # cache. The standard Compose deployment mounts it from a named volume.

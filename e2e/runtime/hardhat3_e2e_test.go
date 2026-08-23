@@ -128,25 +128,29 @@ type hardhatSlotTamperReport struct {
 }
 
 type hardhatProxySnapshot struct {
-	AddressJobs        int64
-	YulJobs            int64
-	ProxyJobs          int64
-	CompilerResults    int64
-	YulResults         int64
-	ProxyResults       int64
-	ProxyBindings      int64
-	CatalogEntries     int64
-	CurrentProxy       string
-	CurrentImpl        string
-	CurrentProxyKind   string
-	ExecutorProvenance bool
-	YulProvenance      bool
-	CompilerProvenance bool
-	DiamondState       string
-	DiamondFacets      int64
-	DiamondSelectors   int64
-	DiamondCuts        int64
-	DiamondSingular    int64
+	AddressJobs         int64
+	DerivedJobs         int64
+	YulJobs             int64
+	ProxyJobs           int64
+	CompilerResults     int64
+	DerivedResults      int64
+	YulResults          int64
+	ProxyResults        int64
+	ProxyBindings       int64
+	DerivedPublications int64
+	DerivedAttempts     int64
+	CatalogEntries      int64
+	CurrentProxy        string
+	CurrentImpl         string
+	CurrentProxyKind    string
+	ExecutorProvenance  bool
+	YulProvenance       bool
+	CompilerProvenance  bool
+	DiamondState        string
+	DiamondFacets       int64
+	DiamondSelectors    int64
+	DiamondCuts         int64
+	DiamondSingular     int64
 }
 
 type hardhatCompilerCacheFile struct {
@@ -467,6 +471,7 @@ func runHardhat3Mode(
 		deployment.Transparent.Proxy, []any{
 			deployment.Implementation, deployment.Owner, deployment.InitializationData.Transparent,
 		})
+	waitHardhatDerivedProxyAdmin(t, ctx, h, apiKey, deployment)
 	for index, proxy := range deployment.Beacon.Proxies {
 		initializer := []string{
 			deployment.InitializationData.BeaconProxyA,
@@ -504,8 +509,7 @@ func runHardhat3Mode(
 	h.enterPhase("unverified proxy management fails closed")
 	before := hardhatProxyJobCount(t, ctx, h)
 	for name, proxy := range map[string]string{
-		"transparent": deployment.Transparent.Proxy,
-		"beacon":      deployment.Beacon.Proxies[0],
+		"beacon": deployment.Beacon.Proxies[0],
 	} {
 		if _, err := submitHardhatProxy(t, ctx, h, apiKey, proxy, deployment.Implementation); !errors.Is(err, errHardhatProxyTargetUnavailable) {
 			t.Fatalf("%s unverified management error = %v", name, err)
@@ -516,9 +520,6 @@ func runHardhat3Mode(
 	}
 
 	h.enterPhase("verified management and durable proxy bindings")
-	verifyHardhatAddress(t, ctx, h, apiKey, "proxy-admin",
-		"@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin",
-		deployment.Transparent.Admin, []any{deployment.Owner})
 	verifyHardhatAddress(t, ctx, h, apiKey, "upgradeable-beacon",
 		"@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol:UpgradeableBeacon",
 		deployment.Beacon.Beacon, []any{deployment.Implementation, deployment.Owner})
@@ -1156,6 +1157,90 @@ func waitHardhatSource(t *testing.T, ctx context.Context, h *harness, apiKey, ad
 		})
 		return err == nil && bytes.Contains(result, []byte(`"ContractName"`)), string(result), err
 	})
+}
+
+func waitHardhatDerivedProxyAdmin(
+	t *testing.T,
+	ctx context.Context,
+	h *harness,
+	apiKey string,
+	deployment hardhatDeployment,
+) {
+	t.Helper()
+	admin := common.HexToAddress(deployment.Transparent.Admin).Bytes()
+	proxy := common.HexToAddress(deployment.Transparent.Proxy).Bytes()
+	transaction := common.HexToHash(deployment.Transactions["transparent"].Hash).Bytes()
+	waitFor(t, ctx, "factory-derived ProxyAdmin verification", func() (bool, string, error) {
+		var addressJobs, derivedJobs, results, publications, attempts int64
+		var exactHistoricalEpoch bool
+		err := h.db.QueryRow(ctx, `
+			SELECT
+			  (SELECT count(*) FROM verification_jobs
+			   WHERE kind = 'address' AND chain_id = 1 AND address = $1),
+			  (SELECT count(*) FROM verification_jobs
+			   WHERE kind = 'derived' AND status = 'succeeded'
+			     AND chain_id = 1 AND address = $1),
+			  (SELECT count(*) FROM verification_results AS result
+			   JOIN verification_jobs AS job ON job.id = result.job_id
+			   WHERE job.kind = 'derived' AND job.address = $1
+			     AND result.outcome_kind = 'verification_success'),
+			  (SELECT count(*) FROM verified_contracts AS publication
+			   JOIN verification_jobs AS job ON job.id = publication.verification_job_id
+			   WHERE job.kind = 'derived' AND publication.address = $1
+			     AND publication.contract_name = 'ProxyAdmin'),
+			  (SELECT count(*) FROM derived_verification_attempts AS attempt
+			   WHERE attempt.status = 'matched' AND attempt.creator_address = $2
+			     AND attempt.created_address = $1 AND attempt.transaction_hash = $3
+			     AND attempt.call_type = 'CREATE' AND attempt.contract_name = 'ProxyAdmin'),
+			  EXISTS (
+			    SELECT 1
+			    FROM derived_verification_attempts AS attempt
+			    JOIN derived_verification_scans AS scan
+			      ON scan.compilation_id = attempt.compilation_id
+			     AND scan.creator_address = attempt.creator_address
+			    JOIN verification_compilation_units AS unit
+			      ON unit.id = attempt.compilation_id
+			    JOIN verified_contracts AS parent
+			      ON parent.verification_job_id = unit.source_job_id
+			    WHERE attempt.creator_address = $2 AND attempt.created_address = $1
+			      AND attempt.transaction_hash = $3 AND attempt.status = 'matched'
+			      AND scan.valid_from_block = attempt.block_number
+			      AND parent.valid_from_block > attempt.block_number
+			  )`, admin, proxy, transaction).Scan(
+			&addressJobs, &derivedJobs, &results, &publications, &attempts,
+			&exactHistoricalEpoch,
+		)
+		state := fmt.Sprintf(
+			"address=%d derived=%d results=%d publications=%d attempts=%d historical=%t",
+			addressJobs, derivedJobs, results, publications, attempts, exactHistoricalEpoch,
+		)
+		return err == nil && addressJobs == 0 && derivedJobs == 1 && results == 1 &&
+			publications == 1 && attempts == 1 && exactHistoricalEpoch, state, err
+	})
+	waitHardhatSource(t, ctx, h, apiKey, deployment.Transparent.Admin)
+	var child gen.VerifiedContractResponse
+	h.mustGetJSON(ctx, "/api/v1/contracts/"+deployment.Transparent.Admin+"/verification", &child)
+	if child.Data.VerificationOrigin != gen.VerificationOriginFactoryDerived ||
+		child.Data.DerivedFrom == nil ||
+		!strings.EqualFold(child.Data.DerivedFrom.CreatorAddress, deployment.Transparent.Proxy) ||
+		!strings.EqualFold(child.Data.DerivedFrom.CreatedAddress, deployment.Transparent.Admin) ||
+		!strings.EqualFold(child.Data.DerivedFrom.TransactionHash,
+			deployment.Transactions["transparent"].Hash) ||
+		child.Data.DerivedFrom.CallType != gen.DerivedVerificationProvenanceCallTypeCREATE ||
+		child.Data.DerivedFrom.ParentContractName != "TransparentUpgradeableProxy" ||
+		!strings.HasSuffix(child.Data.DerivedFrom.ParentFileName,
+			"/proxy/transparent/TransparentUpgradeableProxy.sol") ||
+		child.Data.ContractName != "ProxyAdmin" {
+		t.Fatalf("factory-derived ProxyAdmin API = %#v", child.Data)
+	}
+	var parent gen.VerifiedContractResponse
+	h.mustGetJSON(ctx, "/api/v1/contracts/"+deployment.Transparent.Proxy+"/verification", &parent)
+	if len(parent.Data.DerivedChildren) != 1 ||
+		!strings.EqualFold(parent.Data.DerivedChildren[0].Address, deployment.Transparent.Admin) ||
+		parent.Data.DerivedChildren[0].Status != gen.DerivedContractStatusMatched ||
+		!parent.Data.DerivedChildren[0].AutoVerified {
+		t.Fatalf("Transparent proxy derived children = %#v", parent.Data.DerivedChildren)
+	}
 }
 
 func assertHardhatProxySource(
@@ -2498,6 +2583,7 @@ func captureHardhatProxySnapshot(
 	if err := h.db.QueryRow(ctx, `
 		SELECT
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'),
+		  count(*) FILTER (WHERE kind = 'derived' AND status = 'succeeded'),
 		  count(*) FILTER (WHERE language = 'yul' AND status = 'succeeded'),
 		  count(*) FILTER (WHERE kind = 'proxy' AND status = 'succeeded'),
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
@@ -2505,7 +2591,7 @@ func captureHardhatProxySnapshot(
 		    AND catalog_generation_id IS NOT NULL
 		    AND executor_digest IS NOT NULL
 		    AND executor_kind = 'node_solcjs_v1'
-		    AND execution_policy = 'trusted_subprocess') = 10,
+		    AND execution_policy = 'trusted_subprocess') = 9,
 		  count(*) FILTER (WHERE language = 'yul' AND status = 'succeeded'
 		    AND compiler_version = '0.8.30+commit.73712a01'
 		    AND compiler_platform = 'emscripten-wasm32'
@@ -2515,9 +2601,9 @@ func captureHardhatProxySnapshot(
 		    AND executor_kind = 'node_solcjs_v1'
 		    AND execution_policy = 'trusted_subprocess') = 1,
 		  count(*) FILTER (WHERE kind = 'address' AND status = 'succeeded'
-		    AND compiler_digest IS NOT NULL) = 10
+		    AND compiler_digest IS NOT NULL) = 9
 		FROM verification_jobs`).Scan(
-		&result.AddressJobs, &result.YulJobs, &result.ProxyJobs,
+		&result.AddressJobs, &result.DerivedJobs, &result.YulJobs, &result.ProxyJobs,
 		&result.ExecutorProvenance, &result.YulProvenance,
 		&result.CompilerProvenance,
 	); err != nil {
@@ -2527,10 +2613,13 @@ func captureHardhatProxySnapshot(
 		SELECT
 		  count(*) FILTER (WHERE outcome_kind = 'verification_success'),
 		  count(*) FILTER (WHERE outcome_kind = 'verification_success'
+		    AND job_id IN (SELECT id FROM verification_jobs WHERE kind = 'derived')),
+		  count(*) FILTER (WHERE outcome_kind = 'verification_success'
 		    AND job_id IN (SELECT id FROM verification_jobs WHERE language = 'yul')),
 		  count(*) FILTER (WHERE outcome_kind = 'proxy_verification_success')
 		FROM verification_results`).Scan(
-		&result.CompilerResults, &result.YulResults, &result.ProxyResults,
+		&result.CompilerResults, &result.DerivedResults,
+		&result.YulResults, &result.ProxyResults,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -2538,6 +2627,17 @@ func captureHardhatProxySnapshot(
 		t.Fatalf("Yul compiler provenance is incomplete: %#v", result)
 	}
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM verified_proxy_bindings`).Scan(&result.ProxyBindings); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM verified_contracts AS publication
+		   JOIN verification_jobs AS job ON job.id = publication.verification_job_id
+		   WHERE job.kind = 'derived'),
+		  (SELECT count(*) FROM derived_verification_attempts
+		   WHERE status = 'matched' AND verification_job_id IS NOT NULL)`).Scan(
+		&result.DerivedPublications, &result.DerivedAttempts,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM compiler_catalog_entries`).Scan(&result.CatalogEntries); err != nil {
@@ -2593,8 +2693,10 @@ func captureHardhatProxySnapshot(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if result.AddressJobs != 10 || result.ProxyJobs != 11 ||
+	if result.AddressJobs != 9 || result.DerivedJobs != 1 || result.ProxyJobs != 11 ||
 		result.CompilerResults != 11 || result.ProxyResults != 11 ||
+		result.DerivedResults != 1 || result.DerivedPublications != 1 ||
+		result.DerivedAttempts != 1 ||
 		result.ProxyBindings != 11 || result.CatalogEntries == 0 ||
 		!result.ExecutorProvenance || !result.CompilerProvenance ||
 		result.CurrentProxyKind != "eip1967" ||
