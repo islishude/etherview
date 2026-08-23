@@ -94,6 +94,19 @@ function transactionTabsForType(type?: string): TransactionTab[] {
   return tabs;
 }
 
+function transactionActiveTab(tabs: readonly TransactionTab[], requested: string): TransactionTab {
+  return tabs.includes(requested as TransactionTab) ? requested as TransactionTab : "overview";
+}
+
+function matchingBlockIdentity(overviewBlockHash?: string, resourceBlockHash?: string): boolean {
+  return !resourceBlockHash || !overviewBlockHash || resourceBlockHash === overviewBlockHash;
+}
+
+function transactionMempoolExpiry(detail?: TransactionDetail): number {
+  if (detail?.kind !== "pending" && detail?.kind !== "replaced") return Number.NaN;
+  return Date.parse(detail.transaction.expires_at);
+}
+
 function gasUsageValue(gasLimit: string, gasUsed: string | undefined, locale: string): string {
   const quantities = `${formatInteger(gasLimit, locale)} | ${formatInteger(gasUsed, locale)}`;
   const percentage = formatPercentageRatio(gasUsed, gasLimit, locale);
@@ -667,22 +680,16 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   const { i18n, t } = useTranslation();
   const navigate = useNavigate();
   const transactionDetail = useTransaction(hash);
-  const [mempoolDetailExpired, setMempoolDetailExpired] = useState(false);
   const observedDetail = transactionDetail.data;
-  const observedExpiry = observedDetail?.kind === "pending" || observedDetail?.kind === "replaced"
-    ? Date.parse(observedDetail.transaction.expires_at)
-    : Number.NaN;
-  const detailExpired = mempoolDetailExpired
-    || (Number.isFinite(observedExpiry) && observedExpiry <= Date.now());
+  const observedExpiry = transactionMempoolExpiry(observedDetail);
+  const detailExpired = useMempoolDetailExpiry(observedExpiry);
   const detail = transactionDetail.error || detailExpired ? undefined : observedDetail;
   const included = detail?.kind === "included";
   const transaction = detail?.kind === "included"
     ? { ...transactionDetail, data: detail.transaction }
     : { ...transactionDetail, data: undefined };
   const transactionTabs = transactionTabsForType(transaction.data?.type);
-  const activeTab: TransactionTab = transactionTabs.includes(tab as TransactionTab)
-    ? tab as TransactionTab
-    : "overview";
+  const activeTab = transactionActiveTab(transactionTabs, tab);
   const calldataEnabled = included && activeTab === "overview"
     && Boolean(transaction.data?.to);
   const calldata = useTransactionCalldata(hash, calldataEnabled);
@@ -721,10 +728,8 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
   const locale = i18n.resolvedLanguage ?? "en";
   const lastIdentityRetry = useRef("");
-  const identityMatches = (blockHash?: string) =>
-    !blockHash || !transaction.data?.block_hash || blockHash === transaction.data.block_hash;
-  const tokenIdentityCurrent = identityMatches(tokenTransfers.data?.block_hash);
-  const internalIdentityCurrent = identityMatches(internalTransactions.data?.block_hash);
+  const tokenIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, tokenTransfers.data?.block_hash);
+  const internalIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, internalTransactions.data?.block_hash);
   const calldataIdentityCurrent = calldata.data === undefined || transaction.data === undefined
     || transactionCalldataIdentityMatches(transaction.data, calldata.data);
   const calldataIdentityRetryKey = !calldataIdentityCurrent && transaction.data && calldata.data
@@ -739,73 +744,26 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     : undefined;
   const failureIdentityRetryPending = failureIdentityRetryKey !== undefined
     && lastIdentityRetry.current !== failureIdentityRetryKey;
-  const transactionActionEvidence: TransactionActionEvidence = !transaction.data?.to
-    ? { state: "unavailable" }
-    : calldata.isPending || !calldataIdentityCurrent
-      && (calldata.isFetching || calldataIdentityRetryPending)
-      ? { state: "loading" }
-      : calldata.error !== null || calldata.data === undefined || !calldataIdentityCurrent
-        ? { state: "unavailable" }
-        : {
-            state: "current",
-            resolution: calldata.data.execution.resolution,
-            decoded: calldata.data.decoding.status === "decoded",
-          };
-  const logIdentityCurrent = identityMatches(logs.data?.block_hash);
-  const traceIdentityCurrent = identityMatches(trace.data?.block_hash);
-  const stateIdentityCurrent = identityMatches(stateChanges.data?.block_hash);
-  const authorizationIdentityCurrent = identityMatches(authorizations.data?.block_hash);
-  useEffect(() => {
-    if (activeTab === "access-list" || activeTab === "blob") return;
-    const resource = activeTab === "token-transfers" || activeTab === "overview"
-      ? tokenTransfers
-      : activeTab === "internal-transactions" ? internalTransactions
-      : activeTab === "logs" ? logs
-      : activeTab === "trace" ? trace
-      : activeTab === "authorizations" ? authorizations
-      : stateChanges;
-    const resourceBlockHash = resource.data?.block_hash;
-    const overviewBlockHash = transaction.data?.block_hash;
-    if (!resourceBlockHash || !overviewBlockHash || resourceBlockHash === overviewBlockHash) return;
-    const retryKey = `${activeTab}:${overviewBlockHash}:${resourceBlockHash}`;
-    if (lastIdentityRetry.current === retryKey) return;
-    lastIdentityRetry.current = retryKey;
-    void Promise.all([transaction.refetch(), resource.refetch()]);
-  }, [
-    activeTab,
-    authorizations,
-    internalTransactions,
-    logs,
-    stateChanges,
-    tokenTransfers,
-    trace,
-    transaction,
-  ]);
-  useEffect(() => {
-    if (!calldataEnabled || calldataIdentityCurrent) return;
-    if (calldataIdentityRetryKey === undefined
-      || lastIdentityRetry.current === calldataIdentityRetryKey) return;
-    lastIdentityRetry.current = calldataIdentityRetryKey;
-    void Promise.all([transaction.refetch(), calldata.refetch()]);
-  }, [
-    calldata,
-    calldataEnabled,
-    calldataIdentityCurrent,
-    calldataIdentityRetryKey,
-    transaction,
-  ]);
-  useEffect(() => {
-    if (!failureEnabled || failureIdentityCurrent || failureIdentityRetryKey === undefined ||
-      lastIdentityRetry.current === failureIdentityRetryKey) return;
-    lastIdentityRetry.current = failureIdentityRetryKey;
-    void Promise.all([transaction.refetch(), failure.refetch()]);
-  }, [
-    failure,
-    failureEnabled,
-    failureIdentityCurrent,
-    failureIdentityRetryKey,
-    transaction,
-  ]);
+  const transactionActionEvidence = resolveTransactionActionEvidence(
+    Boolean(transaction.data?.to), calldata.isPending, calldata.isFetching,
+    calldata.error, calldata.data, calldataIdentityCurrent, calldataIdentityRetryPending,
+  );
+  const logIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, logs.data?.block_hash);
+  const traceIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, trace.data?.block_hash);
+  const stateIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, stateChanges.data?.block_hash);
+  const authorizationIdentityCurrent = matchingBlockIdentity(transaction.data?.block_hash, authorizations.data?.block_hash);
+  useTransactionResourceIdentityRefresh(
+    activeTab, lastIdentityRetry, transaction,
+    tokenTransfers, internalTransactions, logs, trace, authorizations, stateChanges,
+  );
+  usePairedIdentityRefresh(
+    calldataEnabled, calldataIdentityCurrent, calldataIdentityRetryKey,
+    lastIdentityRetry, transaction.refetch, calldata.refetch,
+  );
+  usePairedIdentityRefresh(
+    failureEnabled, failureIdentityCurrent, failureIdentityRetryKey,
+    lastIdentityRetry, transaction.refetch, failure.refetch,
+  );
   const stateGroups = useMemo(() => {
     const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
     for (const change of stateChanges.data?.items ?? []) {
@@ -815,24 +773,6 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     }
     return [...groups.entries()];
   }, [stateChanges.data]);
-
-  useEffect(() => {
-    if (!Number.isFinite(observedExpiry)) {
-      setMempoolDetailExpired(false);
-      return;
-    }
-    if (observedExpiry <= Date.now()) {
-      setMempoolDetailExpired(true);
-      return;
-    }
-    setMempoolDetailExpired(false);
-    const maximumDelay = 2_147_483_647;
-    const timer = window.setTimeout(
-      () => setMempoolDetailExpired(true),
-      Math.min(observedExpiry - Date.now(), maximumDelay),
-    );
-    return () => window.clearTimeout(timer);
-  }, [observedExpiry]);
 
   if (detail?.kind === "pending" || detail?.kind === "replaced") {
     return (
@@ -1040,86 +980,15 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           )}
 
           {activeTab === "internal-transactions" && (
-            <section
-              className="panel transaction-tab-panel"
-              role="tabpanel"
-              aria-labelledby="transaction-internal-transactions-title"
-            >
-                <h2 id="transaction-internal-transactions-title">
-                  {t("addressTab.internalTransactions")}
-                </h2>
-                <QueryNotice
-                  loading={internalTransactions.isPending}
-                  error={internalTransactions.error}
-                />
-                {internalTransactions.data && !internalIdentityCurrent ? (
-                  <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
-                ) : null}
-                {internalIdentityCurrent && internalTransactions.data?.state !== "complete"
-                  && internalTransactions.data ? (
-                    <CapabilityDegraded stage="trace" state={internalTransactions.data.state} />
-                  ) : null}
-                {internalIdentityCurrent && internalTransactions.data?.state === "complete"
-                  && internalTransactions.data.items.length === 0 ? (
-                    <p className="empty-result">{t("state.noTransactionInternalTransactions")}</p>
-                  ) : null}
-                {internalIdentityCurrent && internalTransactions.data?.state === "complete"
-                  && internalTransactions.data.items.length > 0 ? (
-                    <div
-                      className="table-scroll"
-                      tabIndex={0}
-                      aria-label={t("addressTab.internalTransactions")}
-                    >
-                      <table>
-                        <caption className="sr-only">{t("addressTab.internalTransactions")}</caption>
-                        <thead>
-                          <tr>
-                            <th>{t("detail.callType")}</th>
-                            <th>{t("table.from")}</th>
-                            <th>{t("table.to")}</th>
-                            <th>{t("table.value", { symbol: nativeSymbol })}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {internalTransactions.data.items.map((item) => {
-                            const destination = item.created_address ?? item.to;
-                            return (
-                              <tr key={item.path.join(".")}>
-                                <td><span className="transaction-trace-kind">{item.call_type}</span></td>
-                                <td>
-                                  <AddressIdentity address={item.from} copy />
-                                </td>
-                                <td>
-                                  {destination ? (
-                                    <span className="table-primary">
-                                      <AddressIdentity address={destination} copy />
-                                      {item.created_address ? <small>{t("activity.created")}</small> : null}
-                                    </span>
-                                  ) : "—"}
-                                </td>
-                                <td>
-                                  <code>{formatNativeAmount(item.value, locale, nativeDecimals)}</code>
-                                  {nativeSymbol ? ` ${nativeSymbol}` : ""}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                {internalIdentityCurrent && internalTransactions.data ? (
-                  <CursorPagination
-                    busy={internalTransactions.isFetching}
-                    hasNext={Boolean(internalTransactions.data.next_cursor)}
-                    hasPrevious={internalPager.hasPrevious}
-                    label={t("addressTab.internalTransactions")}
-                    onNext={() => internalPager.next(internalTransactions.data?.next_cursor)}
-                    onPrevious={internalPager.previous}
-                    page={internalPager.page}
-                  />
-                ) : null}
-            </section>
+            <TransactionInternalTransactionsPanel
+              identityCurrent={internalIdentityCurrent}
+              locale={locale}
+              nativeDecimals={nativeDecimals}
+              nativeSymbol={nativeSymbol}
+              pager={internalPager}
+              resource={internalTransactions}
+              t={t}
+            />
           )}
 
           {activeTab === "access-list" && (
@@ -1348,6 +1217,104 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
         </>
       )}
     </Page>
+  );
+}
+
+type InternalTransactionsResource = ReturnType<typeof useTransactionInternalTransactions>;
+type CursorHistory = ReturnType<typeof useCursorHistory>;
+
+function TransactionInternalTransactionsPanel({
+  identityCurrent, locale, nativeDecimals, nativeSymbol, pager, resource, t,
+}: {
+  identityCurrent: boolean;
+  locale: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
+  pager: CursorHistory;
+  resource: InternalTransactionsResource;
+  t: Translate;
+}) {
+  return (
+            <section
+              className="panel transaction-tab-panel"
+              role="tabpanel"
+              aria-labelledby="transaction-internal-transactions-title"
+            >
+                <h2 id="transaction-internal-transactions-title">
+                  {t("addressTab.internalTransactions")}
+                </h2>
+                <QueryNotice
+                  loading={resource.isPending}
+                  error={resource.error}
+                />
+                {resource.data && !identityCurrent ? (
+                  <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+                ) : null}
+                {identityCurrent && resource.data?.state !== "complete"
+                  && resource.data ? (
+                    <CapabilityDegraded stage="trace" state={resource.data.state} />
+                  ) : null}
+                {identityCurrent && resource.data?.state === "complete"
+                  && resource.data.items.length === 0 ? (
+                    <p className="empty-result">{t("state.noTransactionInternalTransactions")}</p>
+                  ) : null}
+                {identityCurrent && resource.data?.state === "complete"
+                  && resource.data.items.length > 0 ? (
+                    <div
+                      className="table-scroll"
+                      tabIndex={0}
+                      aria-label={t("addressTab.internalTransactions")}
+                    >
+                      <table>
+                        <caption className="sr-only">{t("addressTab.internalTransactions")}</caption>
+                        <thead>
+                          <tr>
+                            <th>{t("detail.callType")}</th>
+                            <th>{t("table.from")}</th>
+                            <th>{t("table.to")}</th>
+                            <th>{t("table.value", { symbol: nativeSymbol })}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resource.data.items.map((item) => {
+                            const destination = item.created_address ?? item.to;
+                            return (
+                              <tr key={item.path.join(".")}>
+                                <td><span className="transaction-trace-kind">{item.call_type}</span></td>
+                                <td>
+                                  <AddressIdentity address={item.from} copy />
+                                </td>
+                                <td>
+                                  {destination ? (
+                                    <span className="table-primary">
+                                      <AddressIdentity address={destination} copy />
+                                      {item.created_address ? <small>{t("activity.created")}</small> : null}
+                                    </span>
+                                  ) : "—"}
+                                </td>
+                                <td>
+                                  <code>{formatNativeAmount(item.value, locale, nativeDecimals)}</code>
+                                  {nativeSymbol ? ` ${nativeSymbol}` : ""}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                {identityCurrent && resource.data ? (
+                  <CursorPagination
+                    busy={resource.isFetching}
+                    hasNext={Boolean(resource.data.next_cursor)}
+                    hasPrevious={pager.hasPrevious}
+                    label={t("addressTab.internalTransactions")}
+                    onNext={() => pager.next(resource.data?.next_cursor)}
+                    onPrevious={pager.previous}
+                    page={pager.page}
+                  />
+                ) : null}
+            </section>
   );
 }
 
@@ -1800,6 +1767,96 @@ type TransactionActionEvidence =
       resolution: TransactionCalldataResource["execution"]["resolution"];
       decoded: boolean;
     };
+
+type RefetchableBlockResource = {
+  data?: { block_hash?: string };
+  refetch: () => Promise<unknown>;
+};
+
+function resolveTransactionActionEvidence(
+  hasRecipient: boolean,
+  pending: boolean,
+  fetching: boolean,
+  error: unknown,
+  resource: TransactionCalldataResource | undefined,
+  identityCurrent: boolean,
+  retryPending: boolean,
+): TransactionActionEvidence {
+  if (!hasRecipient) return { state: "unavailable" };
+  if (pending || !identityCurrent && (fetching || retryPending)) return { state: "loading" };
+  if (error !== null || resource === undefined || !identityCurrent) return { state: "unavailable" };
+  return {
+    state: "current",
+    resolution: resource.execution.resolution,
+    decoded: resource.decoding.status === "decoded",
+  };
+}
+
+function useMempoolDetailExpiry(observedExpiry: number): boolean {
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    if (!Number.isFinite(observedExpiry)) {
+      setExpired(false);
+      return;
+    }
+    if (observedExpiry <= Date.now()) {
+      setExpired(true);
+      return;
+    }
+    setExpired(false);
+    const timer = window.setTimeout(
+      () => setExpired(true),
+      Math.min(observedExpiry - Date.now(), 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [observedExpiry]);
+  return expired || Number.isFinite(observedExpiry) && observedExpiry <= Date.now();
+}
+
+function useTransactionResourceIdentityRefresh(
+  activeTab: TransactionTab,
+  lastRetry: { current: string },
+  transaction: RefetchableBlockResource,
+  tokenTransfers: RefetchableBlockResource,
+  internalTransactions: RefetchableBlockResource,
+  logs: RefetchableBlockResource,
+  trace: RefetchableBlockResource,
+  authorizations: RefetchableBlockResource,
+  stateChanges: RefetchableBlockResource,
+): void {
+  useEffect(() => {
+    if (activeTab === "access-list" || activeTab === "blob") return;
+    const resource = activeTab === "token-transfers" || activeTab === "overview"
+      ? tokenTransfers
+      : activeTab === "internal-transactions" ? internalTransactions
+      : activeTab === "logs" ? logs
+      : activeTab === "trace" ? trace
+      : activeTab === "authorizations" ? authorizations
+      : stateChanges;
+    const resourceBlockHash = resource.data?.block_hash;
+    const overviewBlockHash = transaction.data?.block_hash;
+    if (!resourceBlockHash || !overviewBlockHash || resourceBlockHash === overviewBlockHash) return;
+    const retryKey = `${activeTab}:${overviewBlockHash}:${resourceBlockHash}`;
+    if (lastRetry.current === retryKey) return;
+    lastRetry.current = retryKey;
+    void Promise.all([transaction.refetch(), resource.refetch()]);
+  }, [activeTab, authorizations, internalTransactions, lastRetry, logs, stateChanges, tokenTransfers, trace, transaction]);
+}
+
+function usePairedIdentityRefresh(
+  enabled: boolean,
+  identityCurrent: boolean,
+  retryKey: string | undefined,
+  lastRetry: { current: string },
+  refetchOverview: () => Promise<unknown>,
+  refetchResource: () => Promise<unknown>,
+): void {
+  useEffect(() => {
+    if (!enabled || identityCurrent || retryKey === undefined || lastRetry.current === retryKey) return;
+    lastRetry.current = retryKey;
+    void Promise.all([refetchOverview(), refetchResource()]);
+  }, [enabled, identityCurrent, lastRetry, refetchOverview, refetchResource, retryKey]);
+}
 
 function transactionCalldataIdentityMatches(
   transaction: TransactionSummary,

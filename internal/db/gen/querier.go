@@ -88,9 +88,10 @@ type Querier interface {
 	DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyArtifactProvenanceRow, error)
 	DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error)
 	DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimScanRow, error)
-	DerivedVerifyCreatedContracts(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte) ([]DerivedVerifyCreatedContractsRow, error)
+	DerivedVerifyCreatedContracts(ctx context.Context, arg DerivedVerifyCreatedContractsParams) ([]DerivedVerifyCreatedContractsRow, error)
 	DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg DerivedVerifyCreatorCodeEpochStartParams) ([]string, error)
-	DerivedVerifyDispatchForwardBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
+	DerivedVerifyDispatchProxyEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
+	DerivedVerifyDispatchTraceEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error)
 	DerivedVerifyEnqueueHistoricalScan(ctx context.Context, arg DerivedVerifyEnqueueHistoricalScanParams) error
 	DerivedVerifyExistingPublication(ctx context.Context, arg DerivedVerifyExistingPublicationParams) ([]string, error)
 	DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) error
@@ -100,7 +101,9 @@ type Querier interface {
 	DerivedVerifyLockTarget(ctx context.Context, column1 pgtype.Numeric, column2 []byte) ([]interface{}, error)
 	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
 	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) ([]DerivedVerifyPublicationEvidenceRow, error)
-	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) error
+	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) ([]string, error)
+	DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) error
+	DerivedVerifyRenewScan(ctx context.Context, arg DerivedVerifyRenewScanParams) error
 	DerivedVerifyRequestBackfill(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte, reason string) ([]DerivedVerifyRequestBackfillRow, error)
 	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) error
 	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) error

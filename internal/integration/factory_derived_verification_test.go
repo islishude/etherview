@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,6 +40,7 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	childAddress := mustBytes(t, testAddress(751))
 	wrongEpochChildAddress := mustBytes(t, testAddress(752))
 	grandchildAddress := mustBytes(t, testAddress(753))
+	pendingGrandchildAddress := mustBytes(t, testAddress(754))
 	factoryRuntime := []byte{0x60, 0xaa}
 	childCreation := []byte{0x60, 0x10}
 	childRuntime := []byte{0x60, 0x11}
@@ -205,11 +208,21 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
 		childAddress, grandchildAddress, grandchildCreation, grandchildRuntime,
 	)
+	var traceJobID int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO durable_jobs (
+			chain_id, kind, stage, stage_version, idempotency_key, payload
+		) VALUES (1, 'enrichment', 'trace', 3, 'derived-forward-fixture',
+			jsonb_build_object('block_number', '4', 'block_hash', $1::text))
+		RETURNING id`, forwardBlock.Block.Hash().Hex()).Scan(&traceJobID); err != nil {
+		t.Fatal(err)
+	}
 	execFixture(t, ctx, db, `
-		INSERT INTO block_stage_results (
-			chain_id, block_number, block_hash, stage, stage_version, state, details
-		) VALUES (1, 4, $1, 'trace', 3, 'complete', '{"frames":1}')`,
-		forwardBlock.Block.Hash().Bytes(),
+		INSERT INTO durable_stage_publications (
+			job_id, job_generation, chain_id, block_number, block_hash,
+			stage, stage_version, state, details
+		) VALUES ($1, 1, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')`,
+		traceJobID, forwardBlock.Block.Hash().Bytes(),
 	)
 	forwardWorker, err := derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
 		WorkerID: "derived-forward", LeaseDuration: time.Minute,
@@ -240,6 +253,52 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		WHERE chain_id = 1 AND block_hash = $1 AND status = 'succeeded'`, 1,
 		forwardBlock.Block.Hash().Bytes(),
 	)
+
+	// The same block hash at a newer published trace generation is distinct
+	// forward evidence. It revives a recoverable failed scan and rewinds a cursor
+	// that has already advanced beyond the source block.
+	execFixture(t, ctx, db, `
+		UPDATE derived_verification_scans
+		SET status = 'failed', cursor_block_number = 10,
+			cursor_transaction_hash = decode(repeat('ff', 32), 'hex'),
+			cursor_trace_path = 'z', attempt_count = max_attempts,
+			last_error = 'attempts_exhausted'
+		WHERE creator_address = $1`, childAddress)
+	execFixture(t, ctx, db, `
+		INSERT INTO durable_stage_publications (
+			job_id, job_generation, chain_id, block_number, block_hash,
+			stage, stage_version, state, details
+		) VALUES ($1, 2, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')`,
+		traceJobID, forwardBlock.Block.Hash().Bytes(),
+	)
+	processed, err = forwardWorker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("dispatch replayed trace generation: processed=%t error=%v", processed, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_scans
+		WHERE creator_address = $1 AND status = 'queued'
+		  AND cursor_block_number = 4
+		  AND cursor_transaction_hash = decode(repeat('00', 32), 'hex')
+		  AND cursor_trace_path = '' AND attempt_count = 0
+		  AND last_error IS NULL`, 1, childAddress)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_forward_blocks
+		WHERE chain_id = 1 AND block_hash = $1 AND source_stage = 'trace'
+		  AND status = 'succeeded'`, 2, forwardBlock.Block.Hash().Bytes())
+	execFixture(t, ctx, db, `
+		INSERT INTO durable_stage_publications (
+			job_id, job_generation, chain_id, block_number, block_hash,
+			stage, stage_version, state, details
+		) VALUES ($1, 2, 1, 4, $2, 'trace', 3, 'complete', '{"frames":1}')
+		ON CONFLICT DO NOTHING`, traceJobID, forwardBlock.Block.Hash().Bytes())
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_forward_blocks
+		WHERE source_job_id = $1 AND source_generation = 2`, 1, traceJobID)
+	processed, err = worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("settle replayed trace generation: processed=%t error=%v", processed, err)
+	}
 	childArtifact, found, err := repository.VerifiedContract(
 		ctx, 1, "0x"+hex.EncodeToString(childAddress),
 	)
@@ -267,19 +326,152 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		)`, factoryAddress, factoryCodeHash).Scan(&compilationID); err != nil {
 		t.Fatal(err)
 	}
+
+	// Trace publication may precede the proxy generation that persists the
+	// created address's exact runtime. The later proxy generation must wake the
+	// pending attempt without an operator backfill.
+	execFixture(t, ctx, db, `
+		INSERT INTO normalized_traces (
+			chain_id, block_number, block_hash, transaction_hash,
+			transaction_index, trace_path, parent_path, depth, call_type,
+			from_address, created_address, value, gas, gas_used, input, output,
+			error, reverted, canonical
+		) VALUES (
+			1, 4, $1, $2, 0, 'pending', '0', 2, 'CREATE', $3, $4,
+			0, 50000, 21000, $5, $6, NULL, FALSE, TRUE
+		)`, forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
+		childAddress, pendingGrandchildAddress, grandchildCreation, grandchildRuntime)
+	execFixture(t, ctx, db, `
+		INSERT INTO durable_stage_publications (
+			job_id, job_generation, chain_id, block_number, block_hash,
+			stage, stage_version, state, details
+		) VALUES ($1, 3, 1, 4, $2, 'trace', 3, 'complete', '{"frames":2}')`,
+		traceJobID, forwardBlock.Block.Hash().Bytes())
+	processed, err = forwardWorker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("dispatch pending-runtime trace generation: processed=%t error=%v", processed, err)
+	}
+	processed, err = worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("record pending-runtime attempt: processed=%t error=%v", processed, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE compilation_id = $1::uuid AND created_address = $2
+		  AND status = 'pending_runtime'`, 1, compilationID, pendingGrandchildAddress)
+	execFixture(t, ctx, db, `
+		INSERT INTO contract_code_observations (
+			chain_id, address, block_number, block_hash, code_hash, code, canonical
+		) VALUES (1, $1, 4, $2, $3, $4, TRUE)`,
+		pendingGrandchildAddress, forwardBlock.Block.Hash().Bytes(), grandchildCodeHash,
+		grandchildRuntime)
+	directChildSubmission := verifierV2AddressSubmission(
+		pendingGrandchildAddress, grandchildCodeHash,
+		forwardBlock.Block.Hash().Bytes(), grandchildRuntime,
+	)
+	directChildSubmission.Target.CreationBytecode = "0x" + hex.EncodeToString(grandchildCreation)
+	directChildSubmission.Bytecodes[0].Creation = directChildSubmission.Target.CreationBytecode
+	if _, created, submitErr := repository.SubmitV2(ctx, directChildSubmission); submitErr != nil || !created {
+		t.Fatalf("submit directly verified child: created=%t error=%v", created, submitErr)
+	}
+	directChildLease, found, claimErr := repository.Claim(ctx, "direct-child-verifier", time.Minute)
+	if claimErr != nil || !found {
+		t.Fatalf("claim directly verified child: found=%t error=%v", found, claimErr)
+	}
+	if err := repository.BindCompiler(
+		ctx, directChildLease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CompleteV2(
+		ctx, directChildLease, "verification_success", verifierV2SuccessOutcome(t, "full"),
+	); err != nil {
+		t.Fatalf("complete directly verified child: %v", err)
+	}
+	var proxyJobID int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO durable_jobs (
+			chain_id, kind, stage, stage_version, idempotency_key, payload
+		) VALUES (1, 'enrichment', 'proxy', 2, 'derived-proxy-fixture',
+			jsonb_build_object('block_number', '4', 'block_hash', $1::text))
+		RETURNING id`, forwardBlock.Block.Hash().Hex()).Scan(&proxyJobID); err != nil {
+		t.Fatal(err)
+	}
+	execFixture(t, ctx, db, `
+		INSERT INTO durable_stage_publications (
+			job_id, job_generation, chain_id, block_number, block_hash,
+			stage, stage_version, state, details
+		) VALUES ($1, 1, 1, 4, $2, 'proxy', 2, 'complete', '{}')`,
+		proxyJobID, forwardBlock.Block.Hash().Bytes())
+	processed, err = forwardWorker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("dispatch pending-runtime proxy generation: processed=%t error=%v", processed, err)
+	}
+	processed, err = worker.ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("publish proxy-woken derived match: processed=%t error=%v", processed, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE compilation_id = $1::uuid AND created_address = $2
+		  AND status = 'matched' AND verification_job_id IS NOT NULL`, 1,
+		compilationID, pendingGrandchildAddress)
+	directChildArtifact, found, err := repository.VerifiedContract(
+		ctx, 1, "0x"+hex.EncodeToString(pendingGrandchildAddress),
+	)
+	if err != nil || !found ||
+		directChildArtifact.VerificationOrigin != verify.VerificationOriginSubmitted ||
+		directChildArtifact.DerivedFrom == nil ||
+		directChildArtifact.DerivedFrom.CreatorAddress != "0x"+hex.EncodeToString(childAddress) ||
+		directChildArtifact.DerivedFrom.CreatedAddress != "0x"+hex.EncodeToString(pendingGrandchildAddress) {
+		t.Fatalf("direct child additive provenance: found=%t artifact=%+v error=%v", found, directChildArtifact, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM verification_jobs
+		WHERE address = $1 AND kind = 'derived'`, 0, pendingGrandchildAddress)
 	identity := verify.DerivedTraceIdentity{
 		CompilationID: compilationID, BlockNumber: 1,
 		BlockHash:   factoryBlock.Block.Hash().Bytes(),
 		Transaction: factoryBlock.Block.Transactions()[0].Hash().Bytes(), TracePath: "1",
 	}
-	firstJobID, err := repository.CompleteDerived(ctx, identity)
+	preparedCandidates := make([]verify.CandidateArtifact, len(unit.Candidates))
+	for index, candidate := range unit.Candidates {
+		preparedCandidates[index], err = verify.RestoreCandidateArtifact(candidate)
+		if err != nil {
+			t.Fatalf("restore prepared candidate %d: %v", index, err)
+		}
+	}
+	preparedChild, preparedStatus, err := verify.PrepareDerivedMatch(
+		preparedCandidates, unit.StandardJSON,
+		verify.MatchInput{
+			Creation: "0x" + hex.EncodeToString(childCreation),
+			Runtime:  "0x" + hex.EncodeToString(childRuntime),
+		},
+	)
+	if err != nil || preparedStatus != "matched" {
+		t.Fatalf("prepare repeated derived match: status=%s error=%v", preparedStatus, err)
+	}
+	firstJobID, err := repository.CompleteDerived(ctx, identity, preparedChild)
 	if err != nil {
 		t.Fatalf("repeat derived publication: %v", err)
 	}
-	secondJobID, err := repository.CompleteDerived(ctx, identity)
+	secondJobID, err := repository.CompleteDerived(ctx, identity, preparedChild)
 	if err != nil || secondJobID != firstJobID {
 		t.Fatalf("idempotent derived publication: first=%s second=%s error=%v", firstJobID, secondJobID, err)
 	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET input = decode('6099', 'hex')
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes())
+	if _, err := repository.CompleteDerived(ctx, identity, preparedChild); !errors.Is(err, verify.ErrDerivedEvidenceStale) {
+		t.Fatalf("changed evidence publication error = %v", err)
+	}
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET input = $3
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = '1'`,
+		factoryBlock.Block.Hash().Bytes(), factoryBlock.Block.Transactions()[0].Hash().Bytes(), childCreation)
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verification_jobs
 		WHERE kind = 'derived' AND address = $1`, 1, childAddress)
@@ -374,6 +566,145 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 		  AND last_error = 'superseded_epoch_start'`, 1,
 		compilationID, factoryAddress,
 	)
+
+	// A successful page is progress, not a failed attempt. Five exact pages
+	// plus the terminal empty page must complete instead of exhausting the
+	// scan's default five-attempt failure budget.
+	execFixture(t, ctx, db, `
+		UPDATE derived_verification_scans
+		SET status = 'succeeded', attempt_count = 0, last_error = NULL
+		WHERE creator_address <> $1 AND status = 'queued'`, childAddress)
+	execFixture(t, ctx, db, `
+		UPDATE derived_verification_scans
+		SET status = 'queued', cursor_block_number = 1,
+			cursor_transaction_hash = decode(repeat('00', 32), 'hex'),
+			cursor_trace_path = '', attempt_count = 0, last_error = NULL
+		WHERE compilation_id = $1::uuid AND creator_address = $2`,
+		compilationID, childAddress,
+	)
+	execFixture(t, ctx, db, `
+		INSERT INTO normalized_traces (
+			chain_id, block_number, block_hash, transaction_hash,
+			transaction_index, trace_path, parent_path, depth, call_type,
+			from_address, created_address, value, gas, gas_used, input, output,
+			error, reverted, canonical
+		)
+		SELECT 1, 4, $1, $2, 0,
+		       'page.' || lpad(series::text, 4, '0'), '0', 2, 'CREATE',
+		       $3, $4, 0, 50000, 21000, decode('6099', 'hex'), $5,
+		       NULL, FALSE, TRUE
+		FROM generate_series(1, 500) AS series`,
+		forwardBlock.Block.Hash().Bytes(), forwardBlock.Block.Transactions()[0].Hash().Bytes(),
+		childAddress, grandchildAddress, grandchildRuntime,
+	)
+	pagedObserver := &derivedObservationRecorder{scanDelay: 2 * time.Millisecond}
+	pagedWorker, err := derivedverify.NewWorker(db, repository, derivedverify.Options{
+		WorkerID: "derived-pagination", LeaseDuration: 300 * time.Millisecond,
+		PollInterval: time.Millisecond, MaxTraces: 100, PublishMatches: true,
+		Observer: pagedObserver,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for page := 1; page <= 6; page++ {
+		processed, processErr := pagedWorker.ProcessOne(ctx)
+		if processErr != nil || !processed {
+			t.Fatalf("process derived page %d: processed=%t error=%v", page, processed, processErr)
+		}
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE compilation_id = $1::uuid AND creator_address = $2
+		  AND status = 'no_match'`, 500, compilationID, childAddress)
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_scans
+		WHERE compilation_id = $1::uuid AND creator_address = $2
+		  AND status = 'succeeded' AND attempt_count = 0`, 1,
+		compilationID, childAddress,
+	)
+	if pagedObserver.count("lease", "renewed") == 0 {
+		t.Fatal("short-lease pagination completed without exercising the heartbeat")
+	}
+
+	// A detach racing the non-match write cannot leave a live attempt after the
+	// canonicality trigger has already run.
+	execFixture(t, ctx, db, `
+		UPDATE normalized_traces SET canonical = FALSE
+		WHERE chain_id = 1 AND block_hash = $1 AND transaction_hash = $2
+		  AND trace_path = '0'`,
+		replacementBlock.Block.Hash().Bytes(), replacementBlock.Block.Transactions()[0].Hash().Bytes())
+	var racedStatus string
+	if err := db.QueryRowContext(ctx, dbgen.DerivedVerifyRecordAttempt,
+		"00000000-0000-0000-0000-000000000099", "1", "3",
+		replacementBlock.Block.Hash().Bytes(), replacementBlock.Block.Transactions()[0].Hash().Bytes(),
+		"0", factoryAddress, wrongEpochChildAddress, "CREATE", compilationID, "no_match",
+	).Scan(&racedStatus); err != nil || racedStatus != "stale" {
+		t.Fatalf("record detached attempt status=%q error=%v", racedStatus, err)
+	}
+	assertRowCount(t, ctx, db, `
+		SELECT count(*) FROM derived_verification_attempts
+		WHERE id = '00000000-0000-0000-0000-000000000099'::uuid
+		  AND status = 'stale' AND stale_from_status = 'no_match'`, 1)
+
+	// Re-verifying the same runtime after an A-to-B-to-A code replacement creates
+	// a distinct source epoch. Its created-contract projection cannot reuse the
+	// first A epoch's attempts merely because address and code hash are equal.
+	secondFactorySubmission := verifierV2AddressSubmission(
+		factoryAddress, factoryCodeHash, forwardBlock.Block.Hash().Bytes(), factoryRuntime,
+	)
+	secondFactorySubmission.StandardJSON = unit.StandardJSON
+	secondFactorySubmission.StandardJSONVariants = []json.RawMessage{unit.StandardJSON}
+	if _, created, submitErr := repository.SubmitV2(ctx, secondFactorySubmission); submitErr != nil || !created {
+		t.Fatalf("submit second factory epoch: created=%t error=%v", created, submitErr)
+	}
+	secondFactoryLease, found, claimErr := repository.Claim(ctx, "second-factory-verifier", time.Minute)
+	if claimErr != nil || !found {
+		t.Fatalf("claim second factory epoch: found=%t error=%v", found, claimErr)
+	}
+	if err := repository.BindCompiler(
+		ctx, secondFactoryLease, solcJSProvenance(generation, compilerDigest, executorDigest),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CompleteV2(
+		ctx, secondFactoryLease, "verification_success", verifierV2SuccessOutcome(t, "partial"), unit,
+	); err != nil {
+		t.Fatalf("complete second factory epoch: %v", err)
+	}
+	secondFactoryArtifact, found, err := repository.VerifiedContract(
+		ctx, 1, "0x"+hex.EncodeToString(factoryAddress),
+	)
+	if err != nil || !found || secondFactoryArtifact.Target.BlockNumber != 4 ||
+		len(secondFactoryArtifact.DerivedChildren) != 0 {
+		t.Fatalf("second factory epoch projection: found=%t artifact=%+v error=%v", found, secondFactoryArtifact, err)
+	}
+}
+
+type derivedObservationRecorder struct {
+	mu           sync.Mutex
+	scanDelay    time.Duration
+	observations []derivedverify.Observation
+}
+
+func (recorder *derivedObservationRecorder) RecordDerivedVerification(observation derivedverify.Observation) {
+	if observation.Kind == "scan" && observation.Result == "trace" && recorder.scanDelay > 0 {
+		time.Sleep(recorder.scanDelay)
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.observations = append(recorder.observations, observation)
+}
+
+func (recorder *derivedObservationRecorder) count(kind, result string) int {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	count := 0
+	for _, observation := range recorder.observations {
+		if observation.Kind == kind && observation.Result == result {
+			count++
+		}
+	}
+	return count
 }
 
 func derivedCandidate(name, creation, runtime string) verify.CandidateArtifact {

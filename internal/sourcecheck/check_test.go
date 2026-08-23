@@ -23,7 +23,18 @@ func TestCheckRejectsOversizedProductionGoFile(t *testing.T) {
 		"package example\n"+strings.Repeat("// line\n", maximumProductionGoLines))
 	report := Check(root)
 	if report.OK() || len(report.Diagnostics) != 1 ||
-		!strings.Contains(report.Diagnostics[0].Message, "maximum is 2000") {
+		!strings.Contains(report.Diagnostics[0].Message, "maximum is 1500") {
+		t.Fatalf("report=%+v", report)
+	}
+}
+
+func TestCheckRejectsOversizedTestGoFile(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/example/oversized_test.go",
+		"package example\n"+strings.Repeat("// line\n", maximumTestGoLines))
+	report := Check(root)
+	if report.OK() || len(report.Diagnostics) != 1 ||
+		!strings.Contains(report.Diagnostics[0].Message, "maximum is 2500") {
 		t.Fatalf("report=%+v", report)
 	}
 }

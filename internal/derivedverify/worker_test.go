@@ -1,6 +1,7 @@
 package derivedverify
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -27,9 +28,15 @@ func TestClassifyTraceRequiresUniqueCreationAndRuntimeMatch(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			status, unique, err := classifyTrace(test.candidates, traceCandidate{
-				CreationCode: test.creation, RuntimeCode: test.runtime,
-			})
+			_, status, err := verify.PrepareDerivedMatch(
+				test.candidates,
+				json.RawMessage(`{"sources":{},"settings":{}}`),
+				verify.MatchInput{
+					Creation: "0x" + hex.EncodeToString(test.creation),
+					Runtime:  "0x" + hex.EncodeToString(test.runtime),
+				},
+			)
+			unique := status == "matched"
 			if err != nil || status != test.want || unique != test.unique {
 				t.Fatalf("status=%q unique=%t error=%v", status, unique, err)
 			}

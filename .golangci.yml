@@ -24,7 +24,7 @@ linters:
     dupl:
       threshold: 150
     gocognit:
-      min-complexity: 150
+      min-complexity: 100
   exclusions:
     generated: strict
     rules:

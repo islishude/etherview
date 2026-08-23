@@ -474,19 +474,22 @@ type DerivedVerificationBackfillRequest struct {
 }
 
 type DerivedVerificationForwardBlock struct {
-	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	BlockNumber         pgtype.Numeric     `db:"block_number" json:"block_number"`
-	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
-	Status              string             `db:"status" json:"status"`
-	RedispatchRequested bool               `db:"redispatch_requested" json:"redispatch_requested"`
-	LeasedBy            *string            `db:"leased_by" json:"leased_by"`
-	LeaseToken          *string            `db:"lease_token" json:"lease_token"`
-	LeaseExpiresAt      pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
-	AttemptCount        int32              `db:"attempt_count" json:"attempt_count"`
-	MaxAttempts         int32              `db:"max_attempts" json:"max_attempts"`
-	LastError           *string            `db:"last_error" json:"last_error"`
-	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber      pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash        []byte             `db:"block_hash" json:"block_hash"`
+	Status           string             `db:"status" json:"status"`
+	LeasedBy         *string            `db:"leased_by" json:"leased_by"`
+	LeaseToken       *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt   pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+	AttemptCount     int32              `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts      int32              `db:"max_attempts" json:"max_attempts"`
+	LastError        *string            `db:"last_error" json:"last_error"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID               *int64             `db:"id" json:"id"`
+	SourceStage      *string            `db:"source_stage" json:"source_stage"`
+	SourceJobID      *int64             `db:"source_job_id" json:"source_job_id"`
+	SourceGeneration *int64             `db:"source_generation" json:"source_generation"`
 }
 
 type DerivedVerificationScan struct {
@@ -509,7 +512,7 @@ type DerivedVerificationScan struct {
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	ID                    *int64             `db:"id" json:"id"`
-	RedispatchRequested   bool               `db:"redispatch_requested" json:"redispatch_requested"`
+	RescanFromBlock       pgtype.Numeric     `db:"rescan_from_block" json:"rescan_from_block"`
 }
 
 type DiamondCutEvent struct {

@@ -18,7 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -715,36 +715,9 @@ func normalizeStateDiff(raw json.RawMessage, limits StateDiffLimits) ([]stateCha
 	if wire.Pre == nil || wire.Post == nil {
 		return nil, normalizedStateDiffCounts{}, errors.New("state difference must contain pre and post objects")
 	}
-	accounts := make(map[common.Address]*stateAccountPair, len(wire.Pre)+len(wire.Post))
-	for addressText, rawAccount := range wire.Pre {
-		address, err := ethrpc.ParseAddress(addressText)
-		if err != nil {
-			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains invalid account address")
-		}
-		pair := accounts[address]
-		if pair == nil {
-			pair = &stateAccountPair{address: address}
-			accounts[address] = pair
-		}
-		if pair.hasPre {
-			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains duplicate account address")
-		}
-		pair.pre, pair.hasPre = rawAccount, true
-	}
-	for addressText, rawAccount := range wire.Post {
-		address, err := ethrpc.ParseAddress(addressText)
-		if err != nil {
-			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains invalid account address")
-		}
-		pair := accounts[address]
-		if pair == nil {
-			pair = &stateAccountPair{address: address}
-			accounts[address] = pair
-		}
-		if pair.hasPost {
-			return nil, normalizedStateDiffCounts{}, errors.New("state difference contains duplicate account address")
-		}
-		pair.post, pair.hasPost = rawAccount, true
+	accounts, err := stateDiffAccountPairs(wire)
+	if err != nil {
+		return nil, normalizedStateDiffCounts{}, err
 	}
 	if len(accounts) > limits.MaxAccounts {
 		return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
@@ -872,6 +845,50 @@ func normalizeStateDiff(raw json.RawMessage, limits StateDiffLimits) ([]stateCha
 		return nil, normalizedStateDiffCounts{}, ErrStateDiffLimit
 	}
 	return changes, counts, nil
+}
+
+func stateDiffAccountPairs(wire stateDiffWire) (map[common.Address]*stateAccountPair, error) {
+	accounts := make(map[common.Address]*stateAccountPair, len(wire.Pre)+len(wire.Post))
+	for addressText, rawAccount := range wire.Pre {
+		if err := mergeStateDiffAccount(accounts, addressText, rawAccount, true); err != nil {
+			return nil, err
+		}
+	}
+	for addressText, rawAccount := range wire.Post {
+		if err := mergeStateDiffAccount(accounts, addressText, rawAccount, false); err != nil {
+			return nil, err
+		}
+	}
+	return accounts, nil
+}
+
+func mergeStateDiffAccount(
+	accounts map[common.Address]*stateAccountPair,
+	addressText string,
+	rawAccount json.RawMessage,
+	pre bool,
+) error {
+	address, err := ethrpc.ParseAddress(addressText)
+	if err != nil {
+		return errors.New("state difference contains invalid account address")
+	}
+	pair := accounts[address]
+	if pair == nil {
+		pair = &stateAccountPair{address: address}
+		accounts[address] = pair
+	}
+	if pre {
+		if pair.hasPre {
+			return errors.New("state difference contains duplicate account address")
+		}
+		pair.pre, pair.hasPre = rawAccount, true
+		return nil
+	}
+	if pair.hasPost {
+		return errors.New("state difference contains duplicate account address")
+	}
+	pair.post, pair.hasPost = rawAccount, true
+	return nil
 }
 
 func decodeStateAccount(raw json.RawMessage) (stateAccountWire, error) {

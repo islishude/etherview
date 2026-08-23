@@ -14,14 +14,21 @@ import (
 const DerivedVerifyAdvanceScan = `-- name: DerivedVerifyAdvanceScan :exec
 UPDATE derived_verification_scans
 SET status = CASE
-        WHEN redispatch_requested THEN 'queued'
+        WHEN rescan_from_block IS NOT NULL THEN 'queued'
         WHEN $4::boolean THEN 'succeeded'
         ELSE 'queued'
     END,
-    redispatch_requested = FALSE,
-    cursor_block_number = $5::numeric,
-    cursor_transaction_hash = $6,
-    cursor_trace_path = $7,
+    cursor_block_number = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
+        THEN rescan_from_block ELSE $5::numeric END,
+    cursor_transaction_hash = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
+        THEN decode(repeat('00', 32), 'hex') ELSE $6 END,
+    cursor_trace_path = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= $5::numeric
+        THEN '' ELSE $7 END,
+    rescan_from_block = NULL,
+    attempt_count = 0,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     last_error = NULL, updated_at = clock_timestamp()
 WHERE id = $1::bigint AND status = 'running'
@@ -80,63 +87,88 @@ func (q *Queries) DerivedVerifyArtifactJobKind(ctx context.Context, dollar_1 pgt
 }
 
 const DerivedVerifyArtifactProvenance = `-- name: DerivedVerifyArtifactProvenance :many
-SELECT attempt.creator_address, attempt.created_address,
-       attempt.transaction_hash, attempt.trace_path, attempt.call_type,
-       attempt.block_number::text, attempt.block_hash,
-       parent.file_name, parent.contract_name
-FROM derived_verification_attempts AS attempt
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = attempt.chain_id
- AND canonical.number = attempt.block_number
- AND canonical.block_hash = attempt.block_hash
-JOIN normalized_traces AS trace
-  ON trace.chain_id = attempt.chain_id
- AND trace.block_number = attempt.block_number
- AND trace.block_hash = attempt.block_hash
- AND trace.transaction_hash = attempt.transaction_hash
- AND trace.trace_path = attempt.trace_path
- AND trace.canonical
-JOIN derived_verification_scans AS scan
-  ON scan.compilation_id = attempt.compilation_id
- AND scan.chain_id = attempt.chain_id
- AND scan.creator_address = attempt.creator_address
- AND scan.valid_from_block <= attempt.block_number
- AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
-JOIN verified_contracts AS parent
-  ON parent.chain_id = scan.chain_id
- AND parent.address = scan.creator_address
- AND parent.code_hash = scan.creator_code_hash
-WHERE attempt.verification_job_id = $1::uuid
-  AND attempt.status = 'matched'
-  AND scan.creator_code_hash = (
-      SELECT observation.code_hash
-      FROM contract_code_observations AS observation
-      JOIN canonical_blocks AS observation_canonical
-        ON observation_canonical.chain_id = observation.chain_id
-       AND observation_canonical.number = observation.block_number
-       AND observation_canonical.block_hash = observation.block_hash
-      WHERE observation.chain_id = attempt.chain_id
-        AND observation.address = attempt.creator_address
-        AND observation.canonical
-        AND observation.block_number <= attempt.block_number
-      ORDER BY observation.block_number DESC, observation.observed_at DESC,
-               observation.code_hash DESC
-      LIMIT 1
-  )
-ORDER BY parent.verification_job_id
-LIMIT 1
+WITH exact AS (
+    SELECT attempt.id, attempt.chain_id, attempt.block_number, attempt.block_hash, attempt.transaction_hash, attempt.trace_path, attempt.creator_address, attempt.created_address, attempt.call_type, attempt.compilation_id, attempt.file_name, attempt.contract_name, attempt.status, attempt.creation_match, attempt.runtime_match, attempt.verification_job_id, attempt.created_at, attempt.updated_at, attempt.stale_from_status, scan.creator_code_hash, unit.source_job_id
+    FROM derived_verification_attempts AS attempt
+    JOIN verification_compilation_units AS unit
+      ON unit.id = attempt.compilation_id
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = attempt.chain_id
+     AND canonical.number = attempt.block_number
+     AND canonical.block_hash = attempt.block_hash
+    JOIN normalized_traces AS trace
+      ON trace.chain_id = attempt.chain_id
+     AND trace.block_number = attempt.block_number
+     AND trace.block_hash = attempt.block_hash
+     AND trace.transaction_hash = attempt.transaction_hash
+     AND trace.trace_path = attempt.trace_path
+     AND trace.canonical AND NOT trace.reverted
+    JOIN derived_verification_scans AS scan
+      ON scan.compilation_id = attempt.compilation_id
+     AND scan.chain_id = attempt.chain_id
+     AND scan.creator_address = attempt.creator_address
+     AND scan.valid_from_block <= attempt.block_number
+     AND (scan.valid_to_block IS NULL OR scan.valid_to_block >= attempt.block_number)
+     AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
+    WHERE attempt.verification_job_id = $1::uuid
+      AND attempt.status = 'matched'
+      AND scan.creator_code_hash = (
+          SELECT observation.code_hash
+          FROM contract_code_observations AS observation
+          JOIN canonical_blocks AS observation_canonical
+            ON observation_canonical.chain_id = observation.chain_id
+           AND observation_canonical.number = observation.block_number
+           AND observation_canonical.block_hash = observation.block_hash
+          WHERE observation.chain_id = attempt.chain_id
+            AND observation.address = attempt.creator_address
+            AND observation.canonical
+            AND observation.block_number <= attempt.block_number
+          ORDER BY observation.block_number DESC, observation.observed_at DESC,
+                   observation.code_hash DESC
+          LIMIT 1
+      )
+), parents AS (
+    SELECT exact.id AS attempt_id, parent.file_name, parent.contract_name
+    FROM exact
+    JOIN verified_contracts AS parent
+     ON parent.chain_id = exact.chain_id
+     AND parent.address = exact.creator_address
+     AND parent.code_hash = exact.creator_code_hash
+     AND (
+          parent.verification_job_id = exact.source_job_id OR
+          EXISTS (
+              SELECT 1
+              FROM derived_verification_attempts AS parent_attempt
+              WHERE parent_attempt.compilation_id = exact.compilation_id
+                AND parent_attempt.verification_job_id = parent.verification_job_id
+                AND parent_attempt.created_address = exact.creator_address
+                AND parent_attempt.status = 'matched'
+          )
+     )
+)
+SELECT exact.creator_address, exact.created_address,
+       exact.transaction_hash, exact.trace_path, exact.call_type,
+       exact.block_number::text, exact.block_hash,
+       min(parents.file_name)::text AS file_name,
+       min(parents.contract_name)::text AS contract_name
+FROM exact
+JOIN parents ON parents.attempt_id = exact.id
+GROUP BY exact.id, exact.creator_address, exact.created_address,
+         exact.transaction_hash, exact.trace_path, exact.call_type,
+         exact.block_number, exact.block_hash
+HAVING count(*) = 1
 `
 
 type DerivedVerifyArtifactProvenanceRow struct {
-	CreatorAddress     []byte `db:"creator_address" json:"creator_address"`
-	CreatedAddress     []byte `db:"created_address" json:"created_address"`
-	TransactionHash    []byte `db:"transaction_hash" json:"transaction_hash"`
-	TracePath          string `db:"trace_path" json:"trace_path"`
-	CallType           string `db:"call_type" json:"call_type"`
-	AttemptBlockNumber string `db:"attempt_block_number" json:"attempt_block_number"`
-	BlockHash          []byte `db:"block_hash" json:"block_hash"`
-	FileName           string `db:"file_name" json:"file_name"`
-	ContractName       string `db:"contract_name" json:"contract_name"`
+	CreatorAddress   []byte `db:"creator_address" json:"creator_address"`
+	CreatedAddress   []byte `db:"created_address" json:"created_address"`
+	TransactionHash  []byte `db:"transaction_hash" json:"transaction_hash"`
+	TracePath        string `db:"trace_path" json:"trace_path"`
+	CallType         string `db:"call_type" json:"call_type"`
+	ExactBlockNumber string `db:"exact_block_number" json:"exact_block_number"`
+	BlockHash        []byte `db:"block_hash" json:"block_hash"`
+	FileName         string `db:"file_name" json:"file_name"`
+	ContractName     string `db:"contract_name" json:"contract_name"`
 }
 
 func (q *Queries) DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 pgtype.UUID) ([]DerivedVerifyArtifactProvenanceRow, error) {
@@ -154,7 +186,7 @@ func (q *Queries) DerivedVerifyArtifactProvenance(ctx context.Context, dollar_1 
 			&i.TransactionHash,
 			&i.TracePath,
 			&i.CallType,
-			&i.AttemptBlockNumber,
+			&i.ExactBlockNumber,
 			&i.BlockHash,
 			&i.FileName,
 			&i.ContractName,
@@ -175,28 +207,37 @@ WITH exhausted AS (
     SET status = 'failed', last_error = 'attempts_exhausted',
         leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
         updated_at = clock_timestamp()
-    WHERE (chain_id, block_hash) = (
-        SELECT chain_id, block_hash
+    WHERE id = (
+        SELECT id
         FROM derived_verification_forward_blocks
         WHERE (status = 'queued' OR
                (status = 'running' AND lease_expires_at <= clock_timestamp()))
           AND attempt_count >= max_attempts
-        ORDER BY updated_at, chain_id, block_number, block_hash
+        ORDER BY updated_at, id
         FOR UPDATE SKIP LOCKED LIMIT 1
     )
-    RETURNING chain_id, block_hash
+    RETURNING id
 ), candidate AS (
-    SELECT chain_id, block_hash
-    FROM derived_verification_forward_blocks
-    WHERE (status = 'queued' OR
-           (status = 'running' AND lease_expires_at <= clock_timestamp()))
-      AND attempt_count < max_attempts
+    SELECT event.id
+    FROM derived_verification_forward_blocks AS event
+    JOIN durable_stage_publications AS publication
+      ON publication.job_id = event.source_job_id
+     AND publication.job_generation = event.source_generation
+     AND publication.chain_id = event.chain_id
+     AND publication.block_number = event.block_number
+     AND publication.block_hash = event.block_hash
+     AND publication.stage = event.source_stage
+     AND publication.state = 'complete'
+     AND ((publication.stage = 'trace' AND publication.stage_version = 3) OR
+          (publication.stage = 'proxy' AND publication.stage_version = 2))
+    WHERE (event.status = 'queued' OR
+           (event.status = 'running' AND event.lease_expires_at <= clock_timestamp()))
+      AND event.attempt_count < event.max_attempts
       AND NOT EXISTS (
           SELECT 1 FROM exhausted
-          WHERE exhausted.chain_id = derived_verification_forward_blocks.chain_id
-            AND exhausted.block_hash = derived_verification_forward_blocks.block_hash
+          WHERE exhausted.id = event.id
       )
-    ORDER BY updated_at, chain_id, block_number, block_hash
+    ORDER BY event.updated_at, event.id
     FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE derived_verification_forward_blocks AS block
@@ -205,14 +246,20 @@ SET status = 'running', leased_by = $1, lease_token = $2,
     attempt_count = block.attempt_count + 1, last_error = NULL,
     updated_at = clock_timestamp()
 FROM candidate
-WHERE block.chain_id = candidate.chain_id AND block.block_hash = candidate.block_hash
-RETURNING block.chain_id::text, block.block_number::text, block.block_hash
+WHERE block.id = candidate.id
+RETURNING block.id::text, block.chain_id::text, block.block_number::text,
+          block.block_hash, block.source_stage, block.source_job_id,
+          block.source_generation
 `
 
 type DerivedVerifyClaimForwardBlockRow struct {
-	BlockChainID     string `db:"block_chain_id" json:"block_chain_id"`
-	BlockBlockNumber string `db:"block_block_number" json:"block_block_number"`
-	BlockHash        []byte `db:"block_hash" json:"block_hash"`
+	BlockID          string  `db:"block_id" json:"block_id"`
+	BlockChainID     string  `db:"block_chain_id" json:"block_chain_id"`
+	BlockBlockNumber string  `db:"block_block_number" json:"block_block_number"`
+	BlockHash        []byte  `db:"block_hash" json:"block_hash"`
+	SourceStage      *string `db:"source_stage" json:"source_stage"`
+	SourceJobID      *int64  `db:"source_job_id" json:"source_job_id"`
+	SourceGeneration *int64  `db:"source_generation" json:"source_generation"`
 }
 
 func (q *Queries) DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *string, leaseToken *string, column3 interface{}) ([]DerivedVerifyClaimForwardBlockRow, error) {
@@ -224,7 +271,15 @@ func (q *Queries) DerivedVerifyClaimForwardBlock(ctx context.Context, leasedBy *
 	items := []DerivedVerifyClaimForwardBlockRow{}
 	for rows.Next() {
 		var i DerivedVerifyClaimForwardBlockRow
-		if err := rows.Scan(&i.BlockChainID, &i.BlockBlockNumber, &i.BlockHash); err != nil {
+		if err := rows.Scan(
+			&i.BlockID,
+			&i.BlockChainID,
+			&i.BlockBlockNumber,
+			&i.BlockHash,
+			&i.SourceStage,
+			&i.SourceJobID,
+			&i.SourceGeneration,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -323,11 +378,35 @@ func (q *Queries) DerivedVerifyClaimScan(ctx context.Context, leasedBy *string, 
 }
 
 const DerivedVerifyCreatedContracts = `-- name: DerivedVerifyCreatedContracts :many
+WITH source_compilations AS (
+    SELECT unit.id
+    FROM verification_compilation_units AS unit
+    WHERE unit.source_job_id = $4::uuid
+    UNION
+    SELECT source_attempt.compilation_id
+    FROM derived_verification_attempts AS source_attempt
+    WHERE source_attempt.verification_job_id = $4::uuid
+      AND source_attempt.status = 'matched'
+), epoch AS (
+    SELECT COALESCE(max(different.block_number), -1::numeric) AS last_different
+    FROM contract_code_observations AS different
+    JOIN canonical_blocks AS different_canonical
+      ON different_canonical.chain_id = different.chain_id
+     AND different_canonical.number = different.block_number
+     AND different_canonical.block_hash = different.block_hash
+    WHERE different.chain_id = $1::numeric
+      AND different.address = $2
+      AND different.code_hash <> $3
+      AND different.block_number <= $5::numeric
+      AND different.canonical
+)
 SELECT attempt.created_address, attempt.transaction_hash, attempt.trace_path,
        attempt.call_type, attempt.block_number::text, attempt.block_hash,
        attempt.status, attempt.file_name, attempt.contract_name,
        (attempt.verification_job_id IS NOT NULL) AS auto_verified
 FROM derived_verification_attempts AS attempt
+JOIN source_compilations AS source ON source.id = attempt.compilation_id
+CROSS JOIN epoch
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = attempt.chain_id
  AND canonical.number = attempt.block_number
@@ -338,14 +417,46 @@ JOIN normalized_traces AS trace
  AND trace.block_hash = attempt.block_hash
  AND trace.transaction_hash = attempt.transaction_hash
  AND trace.trace_path = attempt.trace_path
- AND trace.canonical
+ AND trace.canonical AND NOT trace.reverted
+JOIN derived_verification_scans AS scan
+  ON scan.compilation_id = attempt.compilation_id
+ AND scan.chain_id = attempt.chain_id
+ AND scan.creator_address = attempt.creator_address
+ AND scan.creator_code_hash = $3
+ AND attempt.block_number >= scan.valid_from_block
+ AND (scan.valid_to_block IS NULL OR attempt.block_number <= scan.valid_to_block)
+ AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
 WHERE attempt.chain_id = $1::numeric
   AND attempt.creator_address = $2
   AND attempt.status <> 'stale'
+  AND attempt.block_number > epoch.last_different
+  AND scan.creator_code_hash = (
+      SELECT observation.code_hash
+      FROM contract_code_observations AS observation
+      JOIN canonical_blocks AS observation_canonical
+        ON observation_canonical.chain_id = observation.chain_id
+       AND observation_canonical.number = observation.block_number
+       AND observation_canonical.block_hash = observation.block_hash
+      WHERE observation.chain_id = attempt.chain_id
+        AND observation.address = attempt.creator_address
+        AND observation.canonical
+        AND observation.block_number <= attempt.block_number
+      ORDER BY observation.block_number DESC, observation.observed_at DESC,
+               observation.code_hash DESC
+      LIMIT 1
+  )
 ORDER BY attempt.block_number DESC, attempt.transaction_hash DESC,
          attempt.trace_path DESC, attempt.compilation_id
 LIMIT 100
 `
+
+type DerivedVerifyCreatedContractsParams struct {
+	Column1         pgtype.Numeric `db:"column_1" json:"column_1"`
+	CreatorAddress  []byte         `db:"creator_address" json:"creator_address"`
+	CreatorCodeHash []byte         `db:"creator_code_hash" json:"creator_code_hash"`
+	Column4         pgtype.UUID    `db:"column_4" json:"column_4"`
+	Column5         pgtype.Numeric `db:"column_5" json:"column_5"`
+}
 
 type DerivedVerifyCreatedContractsRow struct {
 	CreatedAddress     []byte      `db:"created_address" json:"created_address"`
@@ -360,8 +471,14 @@ type DerivedVerifyCreatedContractsRow struct {
 	AutoVerified       interface{} `db:"auto_verified" json:"auto_verified"`
 }
 
-func (q *Queries) DerivedVerifyCreatedContracts(ctx context.Context, column1 pgtype.Numeric, creatorAddress []byte) ([]DerivedVerifyCreatedContractsRow, error) {
-	rows, err := q.db.Query(ctx, DerivedVerifyCreatedContracts, column1, creatorAddress)
+func (q *Queries) DerivedVerifyCreatedContracts(ctx context.Context, arg DerivedVerifyCreatedContractsParams) ([]DerivedVerifyCreatedContractsRow, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyCreatedContracts,
+		arg.Column1,
+		arg.CreatorAddress,
+		arg.CreatorCodeHash,
+		arg.Column4,
+		arg.Column5,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -471,14 +588,97 @@ func (q *Queries) DerivedVerifyCreatorCodeEpochStart(ctx context.Context, arg De
 	return items, nil
 }
 
-const DerivedVerifyDispatchForwardBlock = `-- name: DerivedVerifyDispatchForwardBlock :execrows
+const DerivedVerifyDispatchProxyEvent = `-- name: DerivedVerifyDispatchProxyEvent :execrows
+WITH pending AS (
+    SELECT scan.id, min(attempt.block_number) AS rewind_block
+    FROM derived_verification_scans AS scan
+    JOIN derived_verification_attempts AS attempt
+      ON attempt.compilation_id = scan.compilation_id
+     AND attempt.chain_id = scan.chain_id
+     AND attempt.creator_address = scan.creator_address
+     AND attempt.status = 'pending_runtime'
+    JOIN normalized_traces AS trace
+      ON trace.chain_id = attempt.chain_id
+     AND trace.block_number = attempt.block_number
+     AND trace.block_hash = attempt.block_hash
+     AND trace.transaction_hash = attempt.transaction_hash
+     AND trace.trace_path = attempt.trace_path
+     AND trace.canonical AND NOT trace.reverted
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = trace.chain_id
+     AND canonical.number = trace.block_number
+     AND canonical.block_hash = trace.block_hash
+    JOIN contract_code_observations AS runtime
+      ON runtime.chain_id = attempt.chain_id
+     AND runtime.address = attempt.created_address
+     AND runtime.block_number = attempt.block_number
+     AND runtime.block_hash = attempt.block_hash
+     AND runtime.canonical
+     AND octet_length(runtime.code) > 0
+    WHERE scan.chain_id = $1::numeric
+      AND attempt.block_number = $2::numeric
+      AND attempt.block_hash = $3
+      AND attempt.block_number >= scan.valid_from_block
+      AND (scan.valid_to_block IS NULL OR attempt.block_number <= scan.valid_to_block)
+      AND scan.status IN ('queued', 'succeeded', 'running', 'failed')
+      AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
+    GROUP BY scan.id
+)
 UPDATE derived_verification_scans AS scan
-SET status = CASE WHEN scan.status = 'succeeded' THEN 'queued' ELSE scan.status END,
-    redispatch_requested = CASE
-        WHEN scan.status = 'running' THEN TRUE ELSE scan.redispatch_requested
+SET status = CASE WHEN scan.status = 'running' THEN 'running' ELSE 'queued' END,
+    rescan_from_block = CASE
+        WHEN scan.status = 'running' THEN LEAST(
+            COALESCE(scan.rescan_from_block, pending.rewind_block), pending.rewind_block
+        )
+        ELSE NULL
     END,
+    cursor_block_number = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= pending.rewind_block
+        THEN pending.rewind_block ELSE scan.cursor_block_number END,
+    cursor_transaction_hash = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= pending.rewind_block
+        THEN decode(repeat('00', 32), 'hex') ELSE scan.cursor_transaction_hash END,
+    cursor_trace_path = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= pending.rewind_block
+        THEN '' ELSE scan.cursor_trace_path END,
+    attempt_count = CASE WHEN scan.status = 'running' THEN scan.attempt_count ELSE 0 END,
+    last_error = CASE WHEN scan.status = 'running' THEN scan.last_error ELSE NULL END,
     updated_at = clock_timestamp()
-WHERE scan.status IN ('succeeded', 'running')
+FROM pending
+WHERE scan.id = pending.id
+`
+
+func (q *Queries) DerivedVerifyDispatchProxyEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, DerivedVerifyDispatchProxyEvent, column1, column2, blockHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const DerivedVerifyDispatchTraceEvent = `-- name: DerivedVerifyDispatchTraceEvent :execrows
+UPDATE derived_verification_scans AS scan
+SET status = CASE WHEN scan.status = 'running' THEN 'running' ELSE 'queued' END,
+    rescan_from_block = CASE
+        WHEN scan.status = 'running' THEN LEAST(
+            COALESCE(scan.rescan_from_block, $2::numeric), $2::numeric
+        )
+        ELSE NULL
+    END,
+    cursor_block_number = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
+        THEN $2::numeric ELSE scan.cursor_block_number END,
+    cursor_transaction_hash = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
+        THEN decode(repeat('00', 32), 'hex') ELSE scan.cursor_transaction_hash END,
+    cursor_trace_path = CASE
+        WHEN scan.status <> 'running' AND scan.cursor_block_number >= $2::numeric
+        THEN '' ELSE scan.cursor_trace_path END,
+    attempt_count = CASE WHEN scan.status = 'running' THEN scan.attempt_count ELSE 0 END,
+    last_error = CASE WHEN scan.status = 'running' THEN scan.last_error ELSE NULL END,
+    updated_at = clock_timestamp()
+WHERE scan.status IN ('queued', 'succeeded', 'running', 'failed')
+  AND scan.last_error IS DISTINCT FROM 'superseded_epoch_start'
   AND scan.chain_id = $1::numeric
   AND EXISTS (
       SELECT 1
@@ -491,6 +691,8 @@ WHERE scan.status IN ('succeeded', 'running')
         AND trace.call_type IN ('CREATE', 'CREATE2')
         AND trace.created_address IS NOT NULL
         AND octet_length(trace.input) > 0
+        AND trace.block_number >= scan.valid_from_block
+        AND (scan.valid_to_block IS NULL OR trace.block_number <= scan.valid_to_block)
         AND scan.creator_code_hash = (
             SELECT observation.code_hash
             FROM contract_code_observations AS observation
@@ -509,8 +711,8 @@ WHERE scan.status IN ('succeeded', 'running')
   )
 `
 
-func (q *Queries) DerivedVerifyDispatchForwardBlock(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error) {
-	result, err := q.db.Exec(ctx, DerivedVerifyDispatchForwardBlock, column1, column2, blockHash)
+func (q *Queries) DerivedVerifyDispatchTraceEvent(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, DerivedVerifyDispatchTraceEvent, column1, column2, blockHash)
 	if err != nil {
 		return 0, err
 	}
@@ -590,18 +792,21 @@ func (q *Queries) DerivedVerifyExistingPublication(ctx context.Context, arg Deri
 
 const DerivedVerifyFinishForwardBlock = `-- name: DerivedVerifyFinishForwardBlock :exec
 UPDATE derived_verification_forward_blocks
-SET status = CASE WHEN redispatch_requested THEN 'queued' ELSE 'succeeded' END,
-    redispatch_requested = FALSE,
+SET status = 'succeeded', attempt_count = 0,
     leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
     last_error = NULL, updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND block_hash = $2
-  AND status = 'running' AND leased_by = $3 AND lease_token = $4
+WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
+  AND source_job_id = $4::bigint AND source_generation = $5::bigint
+  AND status = 'running' AND leased_by = $6 AND lease_token = $7
   AND lease_expires_at > clock_timestamp()
 `
 
 type DerivedVerifyFinishForwardBlockParams struct {
-	Column1    pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column1    int64          `db:"column_1" json:"column_1"`
+	Column2    pgtype.Numeric `db:"column_2" json:"column_2"`
 	BlockHash  []byte         `db:"block_hash" json:"block_hash"`
+	Column4    int64          `db:"column_4" json:"column_4"`
+	Column5    int64          `db:"column_5" json:"column_5"`
 	LeasedBy   *string        `db:"leased_by" json:"leased_by"`
 	LeaseToken *string        `db:"lease_token" json:"lease_token"`
 }
@@ -609,7 +814,10 @@ type DerivedVerifyFinishForwardBlockParams struct {
 func (q *Queries) DerivedVerifyFinishForwardBlock(ctx context.Context, arg DerivedVerifyFinishForwardBlockParams) error {
 	_, err := q.db.Exec(ctx, DerivedVerifyFinishForwardBlock,
 		arg.Column1,
+		arg.Column2,
 		arg.BlockHash,
+		arg.Column4,
+		arg.Column5,
 		arg.LeasedBy,
 		arg.LeaseToken,
 	)
@@ -1086,17 +1294,41 @@ func (q *Queries) DerivedVerifyPublicationEvidence(ctx context.Context, arg Deri
 	return items, nil
 }
 
-const DerivedVerifyRecordAttempt = `-- name: DerivedVerifyRecordAttempt :exec
+const DerivedVerifyRecordAttempt = `-- name: DerivedVerifyRecordAttempt :many
+WITH evidence AS (
+    SELECT trace.chain_id, trace.block_number, trace.block_hash,
+           trace.transaction_hash, trace.trace_path,
+           (trace.canonical AND NOT trace.reverted AND canonical.block_hash IS NOT NULL) AS live
+    FROM normalized_traces AS trace
+    LEFT JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = trace.chain_id
+     AND canonical.number = trace.block_number
+     AND canonical.block_hash = trace.block_hash
+    WHERE trace.chain_id = $2::numeric
+      AND trace.block_number = $3::numeric
+      AND trace.block_hash = $4
+      AND trace.transaction_hash = $5
+      AND trace.trace_path = $6
+      AND trace.from_address = $7
+      AND trace.created_address = $8
+      AND trace.call_type = $9
+)
 INSERT INTO derived_verification_attempts (
     id, chain_id, block_number, block_hash, transaction_hash, trace_path,
-    creator_address, created_address, call_type, compilation_id, status
+    creator_address, created_address, call_type, compilation_id, status,
+    stale_from_status
 ) VALUES (
     $1::uuid, $2::numeric, $3::numeric, $4, $5, $6, $7, $8, $9,
-    $10::uuid, $11
+    $10::uuid,
+    CASE WHEN (SELECT live FROM evidence) THEN $11 ELSE 'stale' END,
+    CASE WHEN (SELECT live FROM evidence) THEN NULL ELSE $11 END
 )
 ON CONFLICT (chain_id, block_hash, transaction_hash, trace_path, compilation_id)
-DO UPDATE SET status = EXCLUDED.status, updated_at = clock_timestamp()
+DO UPDATE SET status = EXCLUDED.status,
+              stale_from_status = EXCLUDED.stale_from_status,
+              updated_at = clock_timestamp()
 WHERE derived_verification_attempts.status = 'pending_runtime'
+RETURNING status
 `
 
 type DerivedVerifyRecordAttemptParams struct {
@@ -1110,11 +1342,11 @@ type DerivedVerifyRecordAttemptParams struct {
 	CreatedAddress  []byte         `db:"created_address" json:"created_address"`
 	CallType        string         `db:"call_type" json:"call_type"`
 	Column10        pgtype.UUID    `db:"column_10" json:"column_10"`
-	Status          string         `db:"status" json:"status"`
+	Column11        interface{}    `db:"column_11" json:"column_11"`
 }
 
-func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) error {
-	_, err := q.db.Exec(ctx, DerivedVerifyRecordAttempt,
+func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, DerivedVerifyRecordAttempt,
 		arg.Column1,
 		arg.Column2,
 		arg.Column3,
@@ -1125,14 +1357,90 @@ func (q *Queries) DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVer
 		arg.CreatedAddress,
 		arg.CallType,
 		arg.Column10,
-		arg.Status,
+		arg.Column11,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			return nil, err
+		}
+		items = append(items, status)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const DerivedVerifyRenewForwardEvent = `-- name: DerivedVerifyRenewForwardEvent :exec
+UPDATE derived_verification_forward_blocks
+SET lease_expires_at = clock_timestamp() + ($8 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND chain_id = $2::numeric AND block_hash = $3
+  AND source_job_id = $4::bigint AND source_generation = $5::bigint
+  AND status = 'running' AND leased_by = $6 AND lease_token = $7
+  AND lease_expires_at > clock_timestamp()
+`
+
+type DerivedVerifyRenewForwardEventParams struct {
+	Column1    int64          `db:"column_1" json:"column_1"`
+	Column2    pgtype.Numeric `db:"column_2" json:"column_2"`
+	BlockHash  []byte         `db:"block_hash" json:"block_hash"`
+	Column4    int64          `db:"column_4" json:"column_4"`
+	Column5    int64          `db:"column_5" json:"column_5"`
+	LeasedBy   *string        `db:"leased_by" json:"leased_by"`
+	LeaseToken *string        `db:"lease_token" json:"lease_token"`
+	Column8    interface{}    `db:"column_8" json:"column_8"`
+}
+
+func (q *Queries) DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyRenewForwardEvent,
+		arg.Column1,
+		arg.Column2,
+		arg.BlockHash,
+		arg.Column4,
+		arg.Column5,
+		arg.LeasedBy,
+		arg.LeaseToken,
+		arg.Column8,
+	)
+	return err
+}
+
+const DerivedVerifyRenewScan = `-- name: DerivedVerifyRenewScan :exec
+UPDATE derived_verification_scans
+SET lease_expires_at = clock_timestamp() + ($4 * INTERVAL '1 microsecond'),
+    updated_at = clock_timestamp()
+WHERE id = $1::bigint AND status = 'running'
+  AND lease_token = $2 AND leased_by = $3
+  AND lease_expires_at > clock_timestamp()
+`
+
+type DerivedVerifyRenewScanParams struct {
+	Column1    int64       `db:"column_1" json:"column_1"`
+	LeaseToken *string     `db:"lease_token" json:"lease_token"`
+	LeasedBy   *string     `db:"leased_by" json:"leased_by"`
+	Column4    interface{} `db:"column_4" json:"column_4"`
+}
+
+func (q *Queries) DerivedVerifyRenewScan(ctx context.Context, arg DerivedVerifyRenewScanParams) error {
+	_, err := q.db.Exec(ctx, DerivedVerifyRenewScan,
+		arg.Column1,
+		arg.LeaseToken,
+		arg.LeasedBy,
+		arg.Column4,
 	)
 	return err
 }
 
 const DerivedVerifyRequestBackfill = `-- name: DerivedVerifyRequestBackfill :many
 WITH selected AS (
-    SELECT scan.compilation_id, scan.chain_id, scan.creator_address, scan.creator_code_hash, scan.valid_from_block, scan.valid_to_block, scan.cursor_block_number, scan.cursor_transaction_hash, scan.cursor_trace_path, scan.status, scan.leased_by, scan.lease_token, scan.lease_expires_at, scan.attempt_count, scan.max_attempts, scan.last_error, scan.created_at, scan.updated_at, scan.id, scan.redispatch_requested,
+    SELECT scan.compilation_id, scan.chain_id, scan.creator_address, scan.creator_code_hash, scan.valid_from_block, scan.valid_to_block, scan.cursor_block_number, scan.cursor_transaction_hash, scan.cursor_trace_path, scan.status, scan.leased_by, scan.lease_token, scan.lease_expires_at, scan.attempt_count, scan.max_attempts, scan.last_error, scan.created_at, scan.updated_at, scan.id, scan.rescan_from_block,
            epoch.block_number AS epoch_start
     FROM derived_verification_scans AS scan
     JOIN LATERAL (
@@ -1195,17 +1503,17 @@ WITH selected AS (
         compilation_id, chain_id, creator_address, creator_code_hash,
         valid_from_block, valid_to_block, cursor_block_number,
         cursor_transaction_hash, cursor_trace_path, status,
-        redispatch_requested, attempt_count, max_attempts, last_error
+        rescan_from_block, attempt_count, max_attempts, last_error
     )
     SELECT compilation_id, chain_id, creator_address, creator_code_hash,
            epoch_start, valid_to_block, epoch_start,
-           decode(repeat('00', 32), 'hex'), '', 'queued', FALSE, 0,
+           decode(repeat('00', 32), 'hex'), '', 'queued', NULL, 0,
            max_attempts, NULL
     FROM targets
     ON CONFLICT (
         compilation_id, creator_address, creator_code_hash, valid_from_block
     ) DO UPDATE SET
-        status = 'queued', redispatch_requested = FALSE,
+        status = 'queued', rescan_from_block = NULL,
         cursor_block_number = EXCLUDED.valid_from_block,
         cursor_transaction_hash = decode(repeat('00', 32), 'hex'),
         cursor_trace_path = '', attempt_count = 0, last_error = NULL,
@@ -1215,7 +1523,7 @@ WITH selected AS (
     RETURNING id
 ), superseded AS (
     UPDATE derived_verification_scans AS scan
-    SET status = 'failed', redispatch_requested = FALSE,
+    SET status = 'failed', rescan_from_block = NULL,
         leased_by = NULL, lease_token = NULL, lease_expires_at = NULL,
         last_error = 'superseded_epoch_start', updated_at = clock_timestamp()
     FROM selected
@@ -1260,15 +1568,20 @@ func (q *Queries) DerivedVerifyRequestBackfill(ctx context.Context, column1 pgty
 const DerivedVerifyRetryForwardBlock = `-- name: DerivedVerifyRetryForwardBlock :exec
 UPDATE derived_verification_forward_blocks
 SET status = 'queued', leased_by = NULL, lease_token = NULL,
-    lease_expires_at = NULL, last_error = $5, updated_at = clock_timestamp()
-WHERE chain_id = $1::numeric AND block_number = $2::numeric AND block_hash = $3
-  AND status = 'running' AND leased_by = $4
+    lease_expires_at = NULL, last_error = $8, updated_at = clock_timestamp()
+WHERE id = $1::bigint AND chain_id = $2::numeric AND block_number = $3::numeric
+  AND block_hash = $4 AND source_job_id = $5::bigint
+  AND source_generation = $6::bigint
+  AND status = 'running' AND leased_by = $7
 `
 
 type DerivedVerifyRetryForwardBlockParams struct {
-	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column1   int64          `db:"column_1" json:"column_1"`
 	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
+	Column3   pgtype.Numeric `db:"column_3" json:"column_3"`
 	BlockHash []byte         `db:"block_hash" json:"block_hash"`
+	Column5   int64          `db:"column_5" json:"column_5"`
+	Column6   int64          `db:"column_6" json:"column_6"`
 	LeasedBy  *string        `db:"leased_by" json:"leased_by"`
 	LastError *string        `db:"last_error" json:"last_error"`
 }
@@ -1277,7 +1590,10 @@ func (q *Queries) DerivedVerifyRetryForwardBlock(ctx context.Context, arg Derive
 	_, err := q.db.Exec(ctx, DerivedVerifyRetryForwardBlock,
 		arg.Column1,
 		arg.Column2,
+		arg.Column3,
 		arg.BlockHash,
+		arg.Column5,
+		arg.Column6,
 		arg.LeasedBy,
 		arg.LastError,
 	)
@@ -1287,7 +1603,18 @@ func (q *Queries) DerivedVerifyRetryForwardBlock(ctx context.Context, arg Derive
 const DerivedVerifyRetryScan = `-- name: DerivedVerifyRetryScan :exec
 UPDATE derived_verification_scans
 SET status = 'queued', leased_by = NULL, lease_token = NULL,
-    lease_expires_at = NULL, last_error = $4, updated_at = clock_timestamp()
+    lease_expires_at = NULL,
+    cursor_block_number = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= cursor_block_number
+        THEN rescan_from_block ELSE cursor_block_number END,
+    cursor_transaction_hash = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= cursor_block_number
+        THEN decode(repeat('00', 32), 'hex') ELSE cursor_transaction_hash END,
+    cursor_trace_path = CASE
+        WHEN rescan_from_block IS NOT NULL AND rescan_from_block <= cursor_block_number
+        THEN '' ELSE cursor_trace_path END,
+    rescan_from_block = NULL,
+    last_error = $4, updated_at = clock_timestamp()
 WHERE id = $1::bigint AND status = 'running'
   AND lease_token = $2 AND leased_by = $3
 `

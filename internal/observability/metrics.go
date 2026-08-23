@@ -291,13 +291,14 @@ func (registry *Registry) RecordVerificationJob(result string) {
 // operation/result vocabulary without address, chain, or candidate labels.
 func (registry *Registry) RecordDerivedVerification(kind, result string) {
 	switch kind {
-	case "scan", "match", "publish":
+	case "scan", "match", "publish", "dispatch", "rewind", "lease":
 	default:
 		kind = "other"
 	}
 	switch result {
 	case "trace", "matched", "pending_runtime", "ambiguous", "no_match",
-		"runtime_mismatch", "stale":
+		"runtime_mismatch", "stale", "trace_generation", "proxy_generation",
+		"renewed", "lost":
 	default:
 		result = "other"
 	}

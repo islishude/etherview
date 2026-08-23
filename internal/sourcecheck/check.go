@@ -15,7 +15,10 @@ import (
 	"strings"
 )
 
-const maximumProductionGoLines = 2000
+const (
+	maximumProductionGoLines = 1500
+	maximumTestGoLines       = 2500
+)
 
 var (
 	selectStatement = regexp.MustCompile(`(?is)^SELECT\s+(?:[^;]*\sFROM\s|[a-z_][a-z0-9_]*\s*\()`)
@@ -94,7 +97,7 @@ func Check(root string) Report {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(relative, ".go") || strings.HasSuffix(relative, "_test.go") {
+		if !strings.HasSuffix(relative, ".go") {
 			return nil
 		}
 		report.GoFiles++
@@ -106,14 +109,23 @@ func Check(root string) Report {
 		if len(content) > 0 && content[len(content)-1] != '\n' {
 			lines++
 		}
-		if lines > maximumProductionGoLines {
+		limit := maximumProductionGoLines
+		kind := "production"
+		if strings.HasSuffix(relative, "_test.go") {
+			limit = maximumTestGoLines
+			kind = "test"
+		}
+		if lines > limit {
 			report.Diagnostics = append(report.Diagnostics, Diagnostic{
 				Path: relative,
 				Message: fmt.Sprintf(
-					"hand-written production Go file has %d lines; maximum is %d",
-					lines, maximumProductionGoLines,
+					"hand-written %s Go file has %d lines; maximum is %d",
+					kind, lines, limit,
 				),
 			})
+		}
+		if kind == "test" {
+			return nil
 		}
 		if rawSQLExecutors[relative] {
 			return nil

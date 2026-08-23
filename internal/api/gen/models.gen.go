@@ -5717,20 +5717,22 @@ type VerificationTransformationValues struct {
 
 // VerifiedContract defines model for VerifiedContract.
 type VerifiedContract struct {
-	Abi                   *[]map[string]interface{}      `json:"abi,omitempty"`
-	CompilationArtifacts  map[string]interface{}         `json:"compilation_artifacts"`
-	CompilerVersion       string                         `json:"compiler_version"`
-	ConstructorArguments  *string                        `json:"constructor_arguments,omitempty"`
-	ContractName          string                         `json:"contract_name"`
-	CreationCodeArtifacts map[string]interface{}         `json:"creation_code_artifacts"`
-	CreationMatch         *VerificationMatchDetails      `json:"creation_match,omitempty"`
-	DerivedChildren       []DerivedContract              `json:"derived_children"`
-	DerivedFrom           *DerivedVerificationProvenance `json:"derived_from,omitempty"`
-	FileName              string                         `json:"file_name"`
-	IsBlueprint           bool                           `json:"is_blueprint"`
-	Kind                  VerifiedContractKind           `json:"kind"`
-	Language              VerifierLanguage               `json:"language"`
-	Libraries             map[string]string              `json:"libraries"`
+	Abi                   *[]map[string]interface{} `json:"abi,omitempty"`
+	CompilationArtifacts  map[string]interface{}    `json:"compilation_artifacts"`
+	CompilerVersion       string                    `json:"compiler_version"`
+	ConstructorArguments  *string                   `json:"constructor_arguments,omitempty"`
+	ContractName          string                    `json:"contract_name"`
+	CreationCodeArtifacts map[string]interface{}    `json:"creation_code_artifacts"`
+	CreationMatch         *VerificationMatchDetails `json:"creation_match,omitempty"`
+
+	// DerivedChildren At most the newest 100 canonical derived attempts made by this exact source address, code hash, compilation, and validity epoch.
+	DerivedChildren []DerivedContract              `json:"derived_children"`
+	DerivedFrom     *DerivedVerificationProvenance `json:"derived_from,omitempty"`
+	FileName        string                         `json:"file_name"`
+	IsBlueprint     bool                           `json:"is_blueprint"`
+	Kind            VerifiedContractKind           `json:"kind"`
+	Language        VerifierLanguage               `json:"language"`
+	Libraries       map[string]string              `json:"libraries"`
 
 	// Resolution How the published source artifact was resolved for the requested code identity. exact_address is an independent address verification; code_hash reuses an artifact verified at a different address with the identical runtime code hash and grants no proxy binding or write authority. On ProxyContractIdentity, exact_address accompanies verification_state=verified, while code_hash accompanies verification_state=unverified; the field is omitted when no artifact is available.
 	Resolution           ContractArtifactResolution `json:"resolution"`

@@ -37,8 +37,9 @@ batch semantics are not core v1 scope.
 | P67 | [ENS Primary Names](docs/plans/P67-ens-primary-names.md) | done | P20, P40, P50, P60 | Snapshot-stable official and custom ENS forward resolution plus verified primary-name display |
 | P68 | [Runtime and Architecture Hardening](docs/plans/P68-runtime-architecture-hardening.md) | done | P00, P40, P50, P60 | Stream lifecycle correctness plus explicit SQL, runtime, HTTP, Web, and quality boundaries |
 | P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
-| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69 | Security, conformance, performance, E2E, documentation, and v1 release |
+| P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P71 | [Factory-derived Contract Verification](docs/plans/P71-factory-derived-verification.md) | done | P20, P30, P40, P50, P60 | Authenticated compilation-unit persistence and canonical CREATE/CREATE2 verification propagation |
+| P72 | [Factory-derived Verification Hardening](docs/plans/P72-derived-verification-hardening.md) | done | P71 | Generation-safe derived work, short publication, exact provenance, and structural hardening |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -381,10 +382,21 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P71-T08 corrects late-verification scans to begin at the authenticated
   creator code epoch and adds real Hardhat/Foundry constructor-child gates,
   including the reproduced Preview ProxyAdmin recovery.
+- P72 is complete: generation-bound trace/proxy events, fork-aware rescan,
+  pending-runtime wakeup, and success-reset pagination budgets prevent lost or
+  exhausted derived work. Heartbeat-fenced leases and one prepared match keep
+  publication short and stale-safe; compilation/epoch-bound provenance adds
+  exact factory creation evidence without changing the wire shape. Directly
+  related Go/Web/test modules now meet the lower enforced structural ceilings.
+  Coordinated `0057` rollout and explicit Preview recovery are documented, and
+  common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, real-Chromium,
+  deployment, generation, source, plan, and whitespace gates pass. Reviewable
+  commands and results remain in [P72
+  evidence](docs/plans/P72-derived-verification-hardening.md#evidence).
 
 ## Global Release Gates
 
-- [ ] Every P00–P68 plan is `done` with reviewable evidence.
+- [ ] Every required P00–P72 plan is `done` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and

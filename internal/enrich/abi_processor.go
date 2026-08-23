@@ -15,7 +15,7 @@ import (
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -216,88 +216,17 @@ func (processor *PostgresABIProcessor) processTx(ctx context.Context, tx *sql.Tx
 		}
 	}
 
-	counts := map[DecodeStatus]int{}
-	unbound := 0
-	diamondRouted := 0
-	routeCache := make(map[diamondABIRouteKey]diamondABIRoute)
-	facetBindingCache := make(map[diamondABIRouteKey]*persistedABIBinding)
-	for _, observation := range observations {
-		if !observation.identityResolved {
-			unbound++
-			continue
-		}
-		identity := observation.identity
-		activeRegistry := registry
-		routeWarning := diamondAuxiliaryWarnings[identity]
-		if selector, functionObservation := diamondFunctionObservation(observation); functionObservation {
-			key := routeKeyForObservation(observation, selector)
-			route, cached := routeCache[key]
-			if !cached {
-				route, err = resolveDiamondABIRoute(ctx, tx, job, observation, selector)
-				if err != nil {
-					return StageResult{}, err
-				}
-				routeCache[key] = route
-			}
-			if route.detected {
-				diamondRouted++
-				routeWarning = route.warning
-				routeRegistry, registryErr := NewABIRegistryWithLimits(processor.limits)
-				if registryErr != nil {
-					return StageResult{}, Permanent(registryErr)
-				}
-				candidates := []persistedABIBinding{}
-				if route.exact && route.facet != (common.Address{}) {
-					candidates, registryErr = diamondFunctionCandidates(
-						baseBindings[identity], route, selector, processor.limits,
-					)
-					if registryErr != nil {
-						return StageResult{}, Permanent(fmt.Errorf("filter target ABI for Diamond route: %w", registryErr))
-					}
-					if route.facet != observation.target {
-						facetCandidate, bindingCached := facetBindingCache[key]
-						if !bindingCached {
-							candidate, candidateFound, loadErr := loadDiamondFacetABIBinding(
-								ctx, tx, identity, route, selector, processor.limits,
-							)
-							if loadErr != nil {
-								return StageResult{}, loadErr
-							}
-							if candidateFound {
-								facetCandidate = &candidate
-							}
-							facetBindingCache[key] = facetCandidate
-						}
-						if facetCandidate != nil {
-							candidates = append(candidates, *facetCandidate)
-							bindingKey := abiBindingKey(*facetCandidate)
-							if _, alreadyPersisted := persistedBindings[bindingKey]; !alreadyPersisted {
-								if err := persistABIBinding(ctx, tx, *facetCandidate); err != nil {
-									return StageResult{}, err
-								}
-								persistedBindings[bindingKey] = struct{}{}
-								bindingsCount++
-							}
-						} else if routeWarning == "" {
-							routeWarning = "active Diamond facet has no selector-matching verified ABI"
-						}
-					}
-				}
-				for _, candidate := range candidates {
-					if err := routeRegistry.RegisterJSON(candidate.binding, candidate.abi); err != nil {
-						return StageResult{}, Permanent(fmt.Errorf("register Diamond-routed ABI binding: %w", err))
-					}
-				}
-				activeRegistry = routeRegistry
-			}
-		}
-		result := decodeABIObservation(activeRegistry, identity, observation)
-		appendDecodeWarning(&result, routeWarning)
-		if err := persistABIDecoding(ctx, tx, job, identity, observation, result); err != nil {
-			return StageResult{}, err
-		}
-		counts[result.result.Status]++
+	decoded, err := processor.decodeObservations(
+		ctx, tx, job, observations, registry, baseBindings,
+		persistedBindings, diamondAuxiliaryWarnings, bindingsCount,
+	)
+	if err != nil {
+		return StageResult{}, err
 	}
+	counts := decoded.counts
+	unbound := decoded.unbound
+	diamondRouted := decoded.diamondRouted
+	bindingsCount = decoded.bindings
 	return StageResult{
 		State: ResultComplete,
 		Details: map[string]string{

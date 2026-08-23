@@ -96,7 +96,7 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 				func(_ int, serviceName string) (components.Service, error) {
 					return derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
 						WorkerID: serviceName, LeaseDuration: cfg.Runtime.LeaseDuration,
-						PollInterval: cfg.Runtime.PollInterval,
+						PollInterval: cfg.Runtime.PollInterval, Observer: businessObserver,
 					})
 				},
 			); err != nil {

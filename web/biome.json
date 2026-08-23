@@ -17,13 +17,13 @@
         "noExcessiveCognitiveComplexity": {
           "level": "error",
           "options": {
-            "maxAllowedComplexity": 100
+            "maxAllowedComplexity": 75
           }
         },
         "noExcessiveLinesPerFunction": {
           "level": "error",
           "options": {
-            "maxLines": 600,
+            "maxLines": 400,
             "skipBlankLines": true,
             "skipIifes": true
           }
@@ -39,7 +39,7 @@
         "noExcessiveLinesPerFile": {
           "level": "error",
           "options": {
-            "maxLines": 2000,
+            "maxLines": 1400,
             "skipBlankLines": true
           }
         }
@@ -53,10 +53,23 @@
         "rules": {
           "complexity": {
             "noExcessiveCognitiveComplexity": "off",
-            "noExcessiveLinesPerFunction": "off"
+            "noExcessiveLinesPerFunction": {
+              "level": "error",
+              "options": {
+                "maxLines": 1000,
+                "skipBlankLines": true,
+                "skipIifes": true
+              }
+            }
           },
           "style": {
-            "noExcessiveLinesPerFile": "off"
+            "noExcessiveLinesPerFile": {
+              "level": "error",
+              "options": {
+                "maxLines": 2500,
+                "skipBlankLines": true
+              }
+            }
           }
         }
       }

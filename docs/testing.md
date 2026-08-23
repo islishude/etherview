@@ -58,18 +58,19 @@ replace a required `make test-e2e` pass.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
 - `make source-check`: reject production SQL literals outside the migration
-  runner and validated partition-DDL module, and reject `.sql` sources outside
-  `internal/db/queries` and `internal/store/migrations`. `make lint-go` includes
+  runner and validated partition-DDL module, reject `.sql` sources outside
+  `internal/db/queries` and `internal/store/migrations`, and cap hand-written Go
+  production/test files at 1,500/2,500 physical lines. `make lint-go` includes
   this boundary.
 - `make generate-check`: regenerate OpenAPI, SQL, and embedded frontend outputs
   and fail on a diff. It snapshots the checked-in baseline in a temporary
   directory before regeneration, so it also works before the repository has an
   initial Git `HEAD`.
 - `make web-lint`: run TypeScript project checking followed by the exact pinned
-  Biome policy. Biome enforces React hook placement/dependencies, unused
-  imports/variables, selected cognitive and function complexity, and a
-  production source-file size ceiling; generated OpenAPI and test-size
-  exceptions remain explicit in `web/biome.json`.
+  Biome policy. Production files/functions/cognitive complexity are capped at
+  1,400 lines, 400 lines, and 75; test files/functions are capped at 2,500 and
+  1,000 lines while test cognitive complexity remains excluded. Generated
+  OpenAPI remains the only generated-client exception in `web/biome.json`.
 - `make test`: Go and frontend unit tests.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
