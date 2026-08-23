@@ -223,10 +223,11 @@ an unreviewed compiler origin.
 Run `make test-preview-metadata` after `make preview-cert` for the fixed public
 CID/SHA-256 acceptance gate. The Go-owned target uses a unique Preview Compose
 project, a reviewed precompiled ERC-721 fixture, fresh volumes, and no internal
-metadata server. It requires one exact durable fetch, accepts only public IPs
-or Docker's `198.18.0.0/15` fake-IP with
-`network.policy_bypassed=true`, recreates the metadata role, and proves the
-attempt is not repeated. It is intentionally not part of `make check`.
+metadata server. It requires an initial exact durable fetch followed by one
+no-Transfer ERC-4906-triggered version at a changed URI, accepts only public IPs
+or Docker's `198.18.0.0/15` fake-IP with `network.policy_bypassed=true`,
+recreates the metadata role, and proves neither attempt is repeated. It is
+intentionally not part of `make check`.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
 the six application containers while preserving PostgreSQL, Geth, and the

@@ -13,25 +13,61 @@ import (
 
 const MetadataAnyNFTMetadata = `-- name: MetadataAnyNFTMetadata :many
 SELECT EXISTS (
-    SELECT 1 FROM external_metadata
-    WHERE chain_id = $1::numeric AND resource_kind = 'nft'
-      AND token_address = $2 AND token_id = $3::numeric
+    SELECT 1 FROM external_metadata AS metadata
+    WHERE metadata.chain_id = $1::numeric AND metadata.resource_kind = 'nft'
+      AND metadata.token_address = $2 AND metadata.token_id = $3::numeric
+) OR EXISTS (
+    SELECT 1 FROM nft_metadata_source_observations AS source
+    WHERE source.chain_id = $1::numeric
+      AND source.token_address = $2 AND source.token_id = $3::numeric
+) OR EXISTS (
+    SELECT 1 FROM nft_metadata_update_observations AS update
+    WHERE update.chain_id = $1::numeric AND update.state = 'accepted'
+      AND update.token_address = $2
+      AND (
+          (
+              update.event_kind IN ('erc4906_single', 'erc1155_uri')
+              AND update.from_token_id = $3::numeric
+          ) OR (
+              update.event_kind = 'erc4906_batch'
+              AND $3::numeric BETWEEN update.from_token_id AND update.to_token_id
+              AND (
+                  EXISTS (
+                      SELECT 1
+                      FROM token_events AS known_event
+                      WHERE known_event.chain_id = update.chain_id
+                        AND known_event.token_address = update.token_address
+                        AND known_event.token_id = $3::numeric
+                        AND known_event.standard = update.standard
+                        AND known_event.block_number <= update.block_number
+                  ) OR EXISTS (
+                      SELECT 1
+                      FROM nft_metadata_source_observations AS known_source
+                      WHERE known_source.chain_id = update.chain_id
+                        AND known_source.token_address = update.token_address
+                        AND known_source.token_id = $3::numeric
+                        AND known_source.standard = update.standard
+                        AND known_source.block_number <= update.block_number
+                  )
+              )
+          )
+      )
 )
 `
 
-func (q *Queries) MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]bool, error) {
+func (q *Queries) MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]*bool, error) {
 	rows, err := q.db.Query(ctx, MetadataAnyNFTMetadata, column1, tokenAddress, column3)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []bool{}
+	items := []*bool{}
 	for rows.Next() {
-		var exists bool
-		if err := rows.Scan(&exists); err != nil {
+		var column_1 *bool
+		if err := rows.Scan(&column_1); err != nil {
 			return nil, err
 		}
-		items = append(items, exists)
+		items = append(items, column_1)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -485,6 +521,71 @@ func (q *Queries) MetadataExistingNFTSource(ctx context.Context, arg MetadataExi
 	return items, nil
 }
 
+const MetadataExistingNFTUpdateObservation = `-- name: MetadataExistingNFTUpdateObservation :many
+SELECT block_number::text, block_hash, log_index, token_address,
+       standard, event_kind, state,
+       COALESCE(from_token_id::text, ''), COALESCE(to_token_id::text, ''), error_code
+FROM nft_metadata_update_observations
+WHERE chain_id = $1::numeric AND block_number = $2::numeric
+  AND block_hash = $3 AND log_index = $4
+`
+
+type MetadataExistingNFTUpdateObservationParams struct {
+	Column1   pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column2   pgtype.Numeric `db:"column_2" json:"column_2"`
+	BlockHash []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex  int64          `db:"log_index" json:"log_index"`
+}
+
+type MetadataExistingNFTUpdateObservationRow struct {
+	BlockNumber  string      `db:"block_number" json:"block_number"`
+	BlockHash    []byte      `db:"block_hash" json:"block_hash"`
+	LogIndex     int64       `db:"log_index" json:"log_index"`
+	TokenAddress []byte      `db:"token_address" json:"token_address"`
+	Standard     string      `db:"standard" json:"standard"`
+	EventKind    string      `db:"event_kind" json:"event_kind"`
+	State        string      `db:"state" json:"state"`
+	Coalesce     interface{} `db:"coalesce" json:"coalesce"`
+	Coalesce_2   interface{} `db:"coalesce_2" json:"coalesce_2"`
+	ErrorCode    *string     `db:"error_code" json:"error_code"`
+}
+
+func (q *Queries) MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) ([]MetadataExistingNFTUpdateObservationRow, error) {
+	rows, err := q.db.Query(ctx, MetadataExistingNFTUpdateObservation,
+		arg.Column1,
+		arg.Column2,
+		arg.BlockHash,
+		arg.LogIndex,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetadataExistingNFTUpdateObservationRow{}
+	for rows.Next() {
+		var i MetadataExistingNFTUpdateObservationRow
+		if err := rows.Scan(
+			&i.BlockNumber,
+			&i.BlockHash,
+			&i.LogIndex,
+			&i.TokenAddress,
+			&i.Standard,
+			&i.EventKind,
+			&i.State,
+			&i.Coalesce,
+			&i.Coalesce_2,
+			&i.ErrorCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const MetadataLockMetadataResource = `-- name: MetadataLockMetadataResource :many
 SELECT token_address = $3
    AND token_id = $4::numeric
@@ -570,44 +671,111 @@ func (q *Queries) MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, le
 }
 
 const MetadataNextNFTSource = `-- name: MetadataNextNFTSource :many
-SELECT event.token_address, event.token_id::text, event.block_number::text,
-       event.block_hash, event.standard
-FROM token_events AS event
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = event.chain_id
- AND canonical.number = event.block_number
- AND canonical.block_hash = event.block_hash
-WHERE event.chain_id = $1::numeric
-  AND event.token_id IS NOT NULL
-  AND event.standard IN ('erc721', 'erc1155')
-  AND NOT EXISTS (
-      SELECT 1
-      FROM external_metadata AS metadata
-      WHERE metadata.chain_id = event.chain_id
-        AND metadata.resource_kind = 'nft'
-        AND metadata.token_address = event.token_address
-        AND metadata.token_id = event.token_id
-        AND metadata.observed_block_hash = event.block_hash
-  )
-  AND NOT EXISTS (
-      SELECT 1
-      FROM nft_metadata_source_observations AS source
-      WHERE source.chain_id = event.chain_id
-        AND source.token_address = event.token_address
-        AND source.token_id = event.token_id
-        AND source.block_hash = event.block_hash
-  )
-ORDER BY event.block_number, event.log_index, event.sub_index,
-         event.token_address, event.token_id
+WITH known_ids AS (
+    SELECT event.chain_id, event.token_address, event.token_id,
+           event.standard, event.block_number, event.block_hash
+    FROM token_events AS event
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = event.chain_id
+     AND canonical.number = event.block_number
+     AND canonical.block_hash = event.block_hash
+    WHERE event.chain_id = $1::numeric
+      AND event.token_id IS NOT NULL
+      AND event.standard IN ('erc721', 'erc1155')
+    UNION
+    SELECT source.chain_id, source.token_address, source.token_id,
+           source.standard, source.block_number, source.block_hash
+    FROM nft_metadata_source_observations AS source
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = source.chain_id
+     AND canonical.number = source.block_number
+     AND canonical.block_hash = source.block_hash
+    WHERE source.chain_id = $1::numeric
+), candidates AS (
+    SELECT event.token_address, event.token_id, event.block_number,
+           event.block_hash, event.standard, 0::bigint AS signal_order,
+           event.log_index, event.sub_index
+    FROM token_events AS event
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = event.chain_id
+     AND canonical.number = event.block_number
+     AND canonical.block_hash = event.block_hash
+    WHERE event.chain_id = $1::numeric
+      AND event.token_id IS NOT NULL
+      AND event.standard IN ('erc721', 'erc1155')
+    UNION ALL
+    SELECT update.token_address, update.from_token_id, update.block_number,
+           update.block_hash, update.standard, 1::bigint,
+           update.log_index, 0
+    FROM nft_metadata_update_observations AS update
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = update.chain_id
+     AND canonical.number = update.block_number
+     AND canonical.block_hash = update.block_hash
+    WHERE update.chain_id = $1::numeric
+      AND update.state = 'accepted'
+      AND update.event_kind IN ('erc4906_single', 'erc1155_uri')
+    UNION ALL
+    SELECT update.token_address, known.token_id, update.block_number,
+           update.block_hash, update.standard, 2::bigint,
+           update.log_index, 0
+    FROM nft_metadata_update_observations AS update
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = update.chain_id
+     AND canonical.number = update.block_number
+     AND canonical.block_hash = update.block_hash
+    JOIN known_ids AS known
+      ON known.chain_id = update.chain_id
+     AND known.token_address = update.token_address
+     AND known.standard = update.standard
+     AND known.block_number <= update.block_number
+     AND known.token_id BETWEEN update.from_token_id AND update.to_token_id
+    WHERE update.chain_id = $1::numeric
+      AND update.state = 'accepted'
+      AND update.event_kind = 'erc4906_batch'
+), pending AS (
+    SELECT DISTINCT ON (
+        candidate.token_address, candidate.token_id, candidate.block_hash
+    )
+        candidate.token_address, candidate.token_id, candidate.block_number,
+        candidate.block_hash, candidate.standard, candidate.signal_order,
+        candidate.log_index, candidate.sub_index
+    FROM candidates AS candidate
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM external_metadata AS metadata
+        WHERE metadata.chain_id = $1::numeric
+          AND metadata.resource_kind = 'nft'
+          AND metadata.token_address = candidate.token_address
+          AND metadata.token_id = candidate.token_id
+          AND metadata.observed_block_hash = candidate.block_hash
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM nft_metadata_source_observations AS source
+        WHERE source.chain_id = $1::numeric
+          AND source.token_address = candidate.token_address
+          AND source.token_id = candidate.token_id
+          AND source.block_hash = candidate.block_hash
+    )
+    ORDER BY candidate.token_address, candidate.token_id,
+             candidate.block_hash, candidate.signal_order,
+             candidate.log_index, candidate.sub_index
+)
+SELECT pending.token_address, pending.token_id::text,
+       pending.block_number::text, pending.block_hash, pending.standard
+FROM pending
+ORDER BY pending.block_number, pending.signal_order, pending.log_index,
+         pending.sub_index, pending.token_address, pending.token_id
 LIMIT 1
 `
 
 type MetadataNextNFTSourceRow struct {
-	TokenAddress     []byte `db:"token_address" json:"token_address"`
-	EventTokenID     string `db:"event_token_id" json:"event_token_id"`
-	EventBlockNumber string `db:"event_block_number" json:"event_block_number"`
-	BlockHash        []byte `db:"block_hash" json:"block_hash"`
-	Standard         string `db:"standard" json:"standard"`
+	TokenAddress       []byte `db:"token_address" json:"token_address"`
+	PendingTokenID     string `db:"pending_token_id" json:"pending_token_id"`
+	PendingBlockNumber string `db:"pending_block_number" json:"pending_block_number"`
+	BlockHash          []byte `db:"block_hash" json:"block_hash"`
+	Standard           string `db:"standard" json:"standard"`
 }
 
 func (q *Queries) MetadataNextNFTSource(ctx context.Context, dollar_1 pgtype.Numeric) ([]MetadataNextNFTSourceRow, error) {
@@ -621,9 +789,96 @@ func (q *Queries) MetadataNextNFTSource(ctx context.Context, dollar_1 pgtype.Num
 		var i MetadataNextNFTSourceRow
 		if err := rows.Scan(
 			&i.TokenAddress,
-			&i.EventTokenID,
-			&i.EventBlockNumber,
+			&i.PendingTokenID,
+			&i.PendingBlockNumber,
 			&i.BlockHash,
+			&i.Standard,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const MetadataNextNFTUpdateLog = `-- name: MetadataNextNFTUpdateLog :many
+SELECT log.block_number::text, log.block_hash, log.log_index,
+       log.tx_hash, log.address, log.raw, token.standard
+FROM logs AS log
+JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = log.chain_id
+ AND canonical.number = log.block_number
+ AND canonical.block_hash = log.block_hash
+JOIN LATERAL (
+    SELECT observation.standard
+    FROM token_contracts AS observation
+    JOIN canonical_blocks AS token_canonical
+      ON token_canonical.chain_id = observation.chain_id
+     AND token_canonical.number = observation.observed_block_number
+     AND token_canonical.block_hash = observation.observed_block_hash
+    WHERE observation.chain_id = log.chain_id
+      AND observation.address = log.address
+      AND observation.observed_block_number <= log.block_number
+    ORDER BY observation.observed_block_number DESC,
+             observation.observed_block_hash DESC,
+             observation.code_hash DESC
+    LIMIT 1
+) AS token ON token.standard IN ('erc721', 'erc1155')
+WHERE log.chain_id = $1::numeric
+  AND log.topic0 IN ($2, $3, $4)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM nft_metadata_update_observations AS update
+      WHERE update.chain_id = log.chain_id
+        AND update.block_number = log.block_number
+        AND update.block_hash = log.block_hash
+        AND update.log_index = log.log_index
+  )
+ORDER BY log.block_number, log.log_index
+LIMIT 1
+`
+
+type MetadataNextNFTUpdateLogParams struct {
+	Column1  pgtype.Numeric `db:"column_1" json:"column_1"`
+	Topic0   []byte         `db:"topic0" json:"topic0"`
+	Topic0_2 []byte         `db:"topic0_2" json:"topic0_2"`
+	Topic0_3 []byte         `db:"topic0_3" json:"topic0_3"`
+}
+
+type MetadataNextNFTUpdateLogRow struct {
+	LogBlockNumber string `db:"log_block_number" json:"log_block_number"`
+	BlockHash      []byte `db:"block_hash" json:"block_hash"`
+	LogIndex       int64  `db:"log_index" json:"log_index"`
+	TxHash         []byte `db:"tx_hash" json:"tx_hash"`
+	Address        []byte `db:"address" json:"address"`
+	Raw            []byte `db:"raw" json:"raw"`
+	Standard       string `db:"standard" json:"standard"`
+}
+
+func (q *Queries) MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) ([]MetadataNextNFTUpdateLogRow, error) {
+	rows, err := q.db.Query(ctx, MetadataNextNFTUpdateLog,
+		arg.Column1,
+		arg.Topic0,
+		arg.Topic0_2,
+		arg.Topic0_3,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetadataNextNFTUpdateLogRow{}
+	for rows.Next() {
+		var i MetadataNextNFTUpdateLogRow
+		if err := rows.Scan(
+			&i.LogBlockNumber,
+			&i.BlockHash,
+			&i.LogIndex,
+			&i.TxHash,
+			&i.Address,
+			&i.Raw,
 			&i.Standard,
 		); err != nil {
 			return nil, err
@@ -691,28 +946,119 @@ func (q *Queries) MetadataSelectCanonicalNFTImage(ctx context.Context, column1 p
 }
 
 const MetadataSelectCanonicalNFTMetadata = `-- name: MetadataSelectCanonicalNFTMetadata :many
-SELECT metadata.state,
-       metadata.document,
-       metadata.observed_block_number::text,
-       metadata.observed_block_hash
-FROM external_metadata AS metadata
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = metadata.chain_id
- AND canonical.number = metadata.observed_block_number
- AND canonical.block_hash = metadata.observed_block_hash
-WHERE metadata.chain_id = $1::numeric
-  AND metadata.resource_kind = 'nft'
-  AND metadata.token_address = $2
-  AND metadata.token_id = $3::numeric
-ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash
-LIMIT 1
+WITH signals AS (
+    SELECT metadata.state,
+           metadata.observed_block_number AS block_number,
+           metadata.observed_block_hash AS block_hash,
+           3::bigint AS source_priority,
+           0::bigint AS source_order
+    FROM external_metadata AS metadata
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = metadata.chain_id
+     AND canonical.number = metadata.observed_block_number
+     AND canonical.block_hash = metadata.observed_block_hash
+    WHERE metadata.chain_id = $1::numeric
+      AND metadata.resource_kind = 'nft'
+      AND metadata.token_address = $2
+      AND metadata.token_id = $3::numeric
+    UNION ALL
+    SELECT CASE source.state WHEN 'found' THEN 'pending' ELSE 'unavailable' END,
+           source.block_number, source.block_hash,
+           2::bigint, 0::bigint
+    FROM nft_metadata_source_observations AS source
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = source.chain_id
+     AND canonical.number = source.block_number
+     AND canonical.block_hash = source.block_hash
+    WHERE source.chain_id = $1::numeric
+      AND source.token_address = $2
+      AND source.token_id = $3::numeric
+    UNION ALL
+    SELECT 'pending', update.block_number, update.block_hash,
+           1::bigint, update.log_index
+    FROM nft_metadata_update_observations AS update
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = update.chain_id
+     AND canonical.number = update.block_number
+     AND canonical.block_hash = update.block_hash
+    WHERE update.chain_id = $1::numeric
+      AND update.state = 'accepted'
+      AND update.token_address = $2
+      AND (
+          (
+              update.event_kind IN ('erc4906_single', 'erc1155_uri')
+              AND update.from_token_id = $3::numeric
+          ) OR (
+              update.event_kind = 'erc4906_batch'
+              AND $3::numeric BETWEEN update.from_token_id AND update.to_token_id
+              AND (
+                  EXISTS (
+                      SELECT 1
+                      FROM token_events AS known_event
+                      JOIN canonical_blocks AS known_canonical
+                        ON known_canonical.chain_id = known_event.chain_id
+                       AND known_canonical.number = known_event.block_number
+                       AND known_canonical.block_hash = known_event.block_hash
+                      WHERE known_event.chain_id = update.chain_id
+                        AND known_event.token_address = update.token_address
+                        AND known_event.token_id = $3::numeric
+                        AND known_event.standard = update.standard
+                        AND known_event.block_number <= update.block_number
+                  ) OR EXISTS (
+                      SELECT 1
+                      FROM nft_metadata_source_observations AS known_source
+                      JOIN canonical_blocks AS known_canonical
+                        ON known_canonical.chain_id = known_source.chain_id
+                       AND known_canonical.number = known_source.block_number
+                       AND known_canonical.block_hash = known_source.block_hash
+                      WHERE known_source.chain_id = update.chain_id
+                        AND known_source.token_address = update.token_address
+                        AND known_source.token_id = $3::numeric
+                        AND known_source.standard = update.standard
+                        AND known_source.block_number <= update.block_number
+                  )
+              )
+          )
+      )
+), latest_signal AS (
+    SELECT state, block_number, block_hash
+    FROM signals
+    ORDER BY block_number DESC, source_priority DESC, source_order DESC, block_hash DESC
+    LIMIT 1
+), content AS (
+    SELECT metadata.document,
+           metadata.observed_block_number AS block_number,
+           metadata.observed_block_hash AS block_hash
+    FROM external_metadata AS metadata
+    JOIN canonical_blocks AS canonical
+      ON canonical.chain_id = metadata.chain_id
+     AND canonical.number = metadata.observed_block_number
+     AND canonical.block_hash = metadata.observed_block_hash
+    WHERE metadata.chain_id = $1::numeric
+      AND metadata.resource_kind = 'nft'
+      AND metadata.token_address = $2
+      AND metadata.token_id = $3::numeric
+      AND metadata.state = 'available'
+    ORDER BY metadata.observed_block_number DESC, metadata.observed_block_hash DESC
+    LIMIT 1
+)
+SELECT latest_signal.state,
+       latest_signal.block_number::text,
+       latest_signal.block_hash,
+       content.document,
+       content.block_number::text,
+       content.block_hash
+FROM latest_signal
+LEFT JOIN content ON TRUE
 `
 
 type MetadataSelectCanonicalNFTMetadataRow struct {
-	State                       string `db:"state" json:"state"`
-	Document                    []byte `db:"document" json:"document"`
-	MetadataObservedBlockNumber string `db:"metadata_observed_block_number" json:"metadata_observed_block_number"`
-	ObservedBlockHash           []byte `db:"observed_block_hash" json:"observed_block_hash"`
+	State                   string `db:"state" json:"state"`
+	LatestSignalBlockNumber string `db:"latest_signal_block_number" json:"latest_signal_block_number"`
+	BlockHash               []byte `db:"block_hash" json:"block_hash"`
+	Document                []byte `db:"document" json:"document"`
+	ContentBlockNumber      string `db:"content_block_number" json:"content_block_number"`
+	BlockHash_2             []byte `db:"block_hash_2" json:"block_hash_2"`
 }
 
 func (q *Queries) MetadataSelectCanonicalNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTMetadataRow, error) {
@@ -726,9 +1072,11 @@ func (q *Queries) MetadataSelectCanonicalNFTMetadata(ctx context.Context, column
 		var i MetadataSelectCanonicalNFTMetadataRow
 		if err := rows.Scan(
 			&i.State,
+			&i.LatestSignalBlockNumber,
+			&i.BlockHash,
 			&i.Document,
-			&i.MetadataObservedBlockNumber,
-			&i.ObservedBlockHash,
+			&i.ContentBlockNumber,
+			&i.BlockHash_2,
 		); err != nil {
 			return nil, err
 		}

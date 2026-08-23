@@ -768,6 +768,12 @@ size alone is not sufficient justification to weaken those invariants.
   document facts are immutable and retained across reorgs. Media success and
   every early authentication or rate-limit error use no-store, restrictive CSP,
   nosniff, and same-origin resource headers.
+- The metadata role additionally scans canonical logs for exact ERC-4906
+  single/batch and ERC-1155 URI update signals. It retains accepted and
+  malformed log facts by block hash, treats event payloads only as triggers,
+  and reuses the one-endpoint EIP-1898 source discovery boundary at the event
+  block. Batch ranges yield only already discovered IDs one at a time. No
+  periodic, manual, browser-triggered, or request-time refresh exists.
 - NFT metadata display is a separate canonical PostgreSQL projection. It
   returns bounded inert text and scalar traits plus, when syntactically safe, an
   unverified HTTPS navigation target derived from `image` (with `ipfs://`
@@ -775,6 +781,9 @@ size alone is not sufficient justification to weaken those invariants.
   renders or prefetches that target and requires a bilingual confirmation before
   each opener-free, no-referrer external navigation. The authenticated media
   proxy remains the only server-side image retrieval path.
+  A newer pending or failed event refresh may retain the previous canonical
+  available document only with explicit latest/content observations and a
+  stale marker; reorg automatically removes orphan update influence.
 
 ## Operator Recovery Boundary
 

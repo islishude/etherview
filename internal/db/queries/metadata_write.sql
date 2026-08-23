@@ -64,6 +64,26 @@ INSERT INTO nft_metadata_source_observations (
 ON CONFLICT DO NOTHING
 RETURNING 1;
 
+-- name: MetadataWriteInsertNFTUpdateObservation :many
+WITH canonical AS (
+    SELECT 1
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+      AND number = $2::numeric
+      AND block_hash = $3
+    FOR KEY SHARE
+)
+INSERT INTO nft_metadata_update_observations (
+    chain_id, block_number, block_hash, log_index, token_address,
+    standard, event_kind, state, from_token_id, to_token_id, error_code
+)
+SELECT
+    $1::numeric, $2::numeric, $3, $4, $5,
+    $6, $7, $8, $9::numeric, $10::numeric, $11
+FROM canonical
+ON CONFLICT DO NOTHING
+RETURNING 1;
+
 -- name: MetadataWriteRecordMetadataRetry :exec
 UPDATE external_metadata
 SET state = 'pending', attempt_count = $6, last_error_code = $7, last_error = $8,

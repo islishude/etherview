@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/netpolicy"
 	"github.com/islishude/etherview/internal/testcompose"
@@ -43,7 +44,9 @@ const (
 	metadataTokenID         = "1"
 	metadataGateway         = "https://ipfs.io"
 	metadataURI             = "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	updatedMetadataURI      = metadataURI + "?revision=2"
 	resolvedMetadataURL     = "https://ipfs.io/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	updatedResolvedMetadata = resolvedMetadataURL + "?revision=2"
 	resolvedImageURL        = "https://ipfs.io/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
 	expectedMetadataSHA256  = "a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d"
 	expectedMetadataBytes   = 205
@@ -53,7 +56,7 @@ const (
 	// solc 0.8.30, optimizer runs=200, evmVersion=prague, and compiler metadata
 	// disabled. The live gate deploys this reviewed artifact without invoking a
 	// compiler, Hardhat, ethers, or cast.
-	previewNFTCreationBytecode = "0x60a0604052348015600e575f5ffd5b50336080819052604051600191905f907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef908290a460805161028561005b5f395f61013501526102855ff3fe608060405234801561000f575f5ffd5b506004361061003f575f3560e01c806301ffc9a7146100435780636352211e1461006b578063c87b56dd14610096575b5f5ffd5b6100566100513660046101ba565b6100b6565b60405190151581526020015b60405180910390f35b61007e6100793660046101e8565b6100ec565b6040516001600160a01b039091168152602001610062565b6100a96100a43660046101e8565b610159565b60405161006291906101ff565b5f6301ffc9a760e01b6001600160e01b0319831614806100e657506380ac58cd60e01b6001600160e01b03198316145b92915050565b5f816001146101325760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b60448201526064015b60405180910390fd5b507f0000000000000000000000000000000000000000000000000000000000000000919050565b60608160011461019b5760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b6044820152606401610129565b6040518060800160405280605081526020016102356050913992915050565b5f602082840312156101ca575f5ffd5b81356001600160e01b0319811681146101e1575f5ffd5b9392505050565b5f602082840312156101f8575f5ffd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f8301168401019150509291505056fe697066733a2f2f62616679626569626e736f7566723272656e717a73683334376e727835347763756274356c676b656976657a363378766976706c6677687470796d2f6d657461646174612e6a736f6e"
+	previewNFTCreationBytecode = "0x60a0604052348015600e575f5ffd5b50336080819052604051600191905f907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef908290a46080516103e16100625f395f8181610165015261021e01526103e15ff3fe608060405234801561000f575f5ffd5b506004361061004a575f3560e01c806301ffc9a71461004e5780636352211e14610076578063c87b56dd146100a1578063efcf5f33146100c1575b5f5ffd5b61006161005c3660046102bb565b6100cb565b60405190151581526020015b60405180910390f35b6100896100843660046102e9565b61011c565b6040516001600160a01b03909116815260200161006d565b6100b46100af3660046102e9565b610189565b60405161006d9190610300565b6100c9610213565b005b5f6301ffc9a760e01b6001600160e01b0319831614806100fb57506380ac58cd60e01b6001600160e01b03198316145b806101165750632483248360e11b6001600160e01b03198316145b92915050565b5f816001146101625760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b60448201526064015b60405180910390fd5b507f0000000000000000000000000000000000000000000000000000000000000000919050565b6060816001146101cb5760405162461bcd60e51b815260206004820152600d60248201526c36b4b9b9b4b733903a37b5b2b760991b6044820152606401610159565b5f5460ff16156101f4576040518060800160405280605b8152602001610386605b913992915050565b6040518060800160405280605081526020016103366050913992915050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146102775760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610159565b5f805460ff191660019081179091556040519081527ff8e1a15aba9398e019f0b49df1a4fde98ee17ae345cb5f6b5e2c27f5033e8ce79060200160405180910390a1565b5f602082840312156102cb575f5ffd5b81356001600160e01b0319811681146102e2575f5ffd5b9392505050565b5f602082840312156102f9575f5ffd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f8301168401019150509291505056fe697066733a2f2f62616679626569626e736f7566723272656e717a73683334376e727835347763756274356c676b656976657a363378766976706c6677687470796d2f6d657461646174612e6a736f6e697066733a2f2f62616679626569626e736f7566723272656e717a73683334376e727835347763756274356c676b656976657a363378766976706c6677687470796d2f6d657461646174612e6a736f6e3f7265766973696f6e3d32"
 )
 
 //go:embed testdata/metadata.json
@@ -69,15 +72,21 @@ type harness struct {
 	apiURL    string
 	artifacts string
 	image     string
+	developer common.Address
 	succeeded bool
 }
 
 type rpcReceipt struct {
-	TransactionHash common.Hash    `json:"transactionHash"`
-	BlockHash       common.Hash    `json:"blockHash"`
-	BlockNumber     hexutil.Uint64 `json:"blockNumber"`
-	ContractAddress common.Address `json:"contractAddress"`
-	Status          hexutil.Uint64 `json:"status"`
+	TransactionHash common.Hash     `json:"transactionHash"`
+	BlockHash       common.Hash     `json:"blockHash"`
+	BlockNumber     hexutil.Uint64  `json:"blockNumber"`
+	ContractAddress *common.Address `json:"contractAddress"`
+	Status          hexutil.Uint64  `json:"status"`
+	Logs            []rpcLog        `json:"logs"`
+}
+
+type rpcLog struct {
+	Topics []common.Hash `json:"topics"`
 }
 
 type metadataSnapshot struct {
@@ -196,16 +205,27 @@ func (h *harness) run(ctx context.Context) {
 	}
 	h.connect(ctx)
 	h.assertPublicConfig(ctx)
-	receipt := h.deployNFT(ctx)
-	h.waitTokenContract(ctx, receipt)
-	h.waitSourceObservation(ctx, receipt)
-	metadata := h.waitMetadata(ctx, receipt)
-	h.assertMetadataAPI(ctx, receipt)
-	job := h.waitJob(ctx, receipt)
-	h.assertAttempt(ctx, job.ID)
-	transition := h.assertTransitionLog(ctx, receipt, job)
-	h.restartMetadataAndAssertPersistence(ctx, receipt, metadata, job)
-	h.writeReport(ctx, receipt, metadata, job, transition)
+	initialReceipt := h.deployNFT(ctx)
+	contract := *initialReceipt.ContractAddress
+	h.waitTokenContract(ctx, initialReceipt)
+	h.waitSourceObservation(ctx, initialReceipt, contract, metadataURI)
+	h.waitMetadata(ctx, initialReceipt, contract, resolvedMetadataURL)
+	h.assertMetadataAPI(ctx, initialReceipt, contract)
+	initialJob := h.waitJob(ctx, initialReceipt, contract)
+	h.assertAttempt(ctx, initialJob.ID)
+	initialTransition := h.assertTransitionLog(ctx, initialReceipt, contract, initialJob)
+
+	updatedReceipt := h.updateMetadataURI(ctx, contract)
+	h.waitUpdateObservation(ctx, updatedReceipt, contract)
+	h.waitSourceObservation(ctx, updatedReceipt, contract, updatedMetadataURI)
+	updatedMetadata := h.waitMetadata(ctx, updatedReceipt, contract, updatedResolvedMetadata)
+	h.assertMetadataAPI(ctx, updatedReceipt, contract)
+	updatedJob := h.waitJob(ctx, updatedReceipt, contract)
+	h.assertAttempt(ctx, updatedJob.ID)
+	updatedTransition := h.assertTransitionLog(ctx, updatedReceipt, contract, updatedJob)
+	h.restartMetadataAndAssertPersistence(ctx, updatedReceipt, contract, updatedMetadata, updatedJob)
+	h.assertVersionHistory(ctx, contract, initialReceipt, updatedReceipt, initialJob, updatedJob)
+	h.writeReport(ctx, initialReceipt, updatedReceipt, updatedMetadata, updatedJob, initialTransition, updatedTransition)
 }
 
 func (h *harness) validateFixture() {
@@ -306,6 +326,7 @@ func (h *harness) deployNFT(ctx context.Context) rpcReceipt {
 		h.t.Fatal("Preview Geth exposes no unlocked development account")
 	}
 	developer := accounts[0]
+	h.developer = developer
 	var balance hexutil.Big
 	h.rpcCall(ctx, &balance, "eth_getBalance", developer, "latest")
 	if (*big.Int)(&balance).Sign() <= 0 {
@@ -327,11 +348,71 @@ func (h *harness) deployNFT(ctx context.Context) rpcReceipt {
 		}
 		return receipt.TransactionHash != (common.Hash{}), receipt.TransactionHash.Hex(), nil
 	})
-	if uint64(receipt.Status) != 1 || receipt.ContractAddress == (common.Address{}) ||
+	if uint64(receipt.Status) != 1 || receipt.ContractAddress == nil || *receipt.ContractAddress == (common.Address{}) ||
 		receipt.BlockHash == (common.Hash{}) || uint64(receipt.BlockNumber) == 0 {
 		h.t.Fatalf("Preview NFT deployment receipt = %#v", receipt)
 	}
 	return receipt
+}
+
+func (h *harness) updateMetadataURI(ctx context.Context, contract common.Address) rpcReceipt {
+	h.t.Helper()
+	selector := gethcrypto.Keccak256([]byte("updateMetadataURI()"))[:4]
+	var hash common.Hash
+	h.rpcCall(ctx, &hash, "eth_sendTransaction", map[string]any{
+		"from": h.developer, "to": contract, "data": hexutil.Bytes(selector),
+		"gas": "0x493e0", "gasPrice": "0x3b9aca00",
+	})
+	if hash == (common.Hash{}) {
+		h.t.Fatal("Preview metadata update returned an empty transaction hash")
+	}
+	var receipt rpcReceipt
+	waitFor(h.t, ctx, "Preview NFT metadata update receipt", func() (bool, string, error) {
+		err := h.rpc.CallContext(ctx, &receipt, "eth_getTransactionReceipt", hash)
+		if err != nil {
+			return false, err.Error(), err
+		}
+		return receipt.TransactionHash != (common.Hash{}), receipt.TransactionHash.Hex(), nil
+	})
+	metadataUpdateTopic := gethcrypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	if uint64(receipt.Status) != 1 || receipt.BlockHash == (common.Hash{}) ||
+		uint64(receipt.BlockNumber) == 0 || receipt.ContractAddress != nil ||
+		len(receipt.Logs) != 1 || len(receipt.Logs[0].Topics) != 1 || receipt.Logs[0].Topics[0] != metadataUpdateTopic {
+		h.t.Fatalf("Preview NFT metadata update receipt = %#v", receipt)
+	}
+	return receipt
+}
+
+func (h *harness) waitUpdateObservation(
+	ctx context.Context,
+	receipt rpcReceipt,
+	contract common.Address,
+) {
+	h.t.Helper()
+	waitFor(h.t, ctx, "exact ERC-4906 metadata update observation", func() (bool, string, error) {
+		var standard, kind, state, fromID, toID, number, hash string
+		err := h.db.QueryRow(ctx, `
+			SELECT standard, event_kind, state, from_token_id::text, to_token_id::text,
+			       block_number::text, '0x' || encode(block_hash, 'hex')
+			FROM nft_metadata_update_observations
+			WHERE chain_id = $1::numeric AND token_address = $2
+			  AND block_hash = $3 AND log_index = 0`,
+			previewChainID, contract.Bytes(), receipt.BlockHash.Bytes(),
+		).Scan(&standard, &kind, &state, &fromID, &toID, &number, &hash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, "not observed", nil
+		}
+		if err != nil {
+			return false, err.Error(), err
+		}
+		wantNumber := strconv.FormatUint(uint64(receipt.BlockNumber), 10)
+		if standard != "erc721" || kind != "erc4906_single" || state != "accepted" ||
+			fromID != metadataTokenID || toID != metadataTokenID || number != wantNumber ||
+			!strings.EqualFold(hash, receipt.BlockHash.Hex()) {
+			return false, fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s", standard, kind, state, fromID, toID, number, hash), nil
+		}
+		return true, "accepted", nil
+	})
 }
 
 func (h *harness) waitTokenContract(ctx context.Context, receipt rpcReceipt) {
@@ -362,7 +443,12 @@ func (h *harness) waitTokenContract(ctx context.Context, receipt rpcReceipt) {
 	})
 }
 
-func (h *harness) waitSourceObservation(ctx context.Context, receipt rpcReceipt) {
+func (h *harness) waitSourceObservation(
+	ctx context.Context,
+	receipt rpcReceipt,
+	contract common.Address,
+	expectedURI string,
+) {
 	h.t.Helper()
 	waitFor(h.t, ctx, "exact NFT metadata source observation", func() (bool, string, error) {
 		var standard, state, sourceURI, number, hash string
@@ -372,7 +458,7 @@ func (h *harness) waitSourceObservation(ctx context.Context, receipt rpcReceipt)
 			FROM nft_metadata_source_observations
 			WHERE chain_id = $1::numeric AND token_address = $2
 			  AND token_id = $3::numeric AND block_hash = $4`,
-			previewChainID, receipt.ContractAddress.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(),
+			previewChainID, contract.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(),
 		).Scan(&standard, &state, &sourceURI, &number, &hash)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, "not observed", nil
@@ -381,7 +467,7 @@ func (h *harness) waitSourceObservation(ctx context.Context, receipt rpcReceipt)
 			return false, err.Error(), err
 		}
 		wantNumber := strconv.FormatUint(uint64(receipt.BlockNumber), 10)
-		if standard != "erc721" || state != "found" || sourceURI != metadataURI ||
+		if standard != "erc721" || state != "found" || sourceURI != expectedURI ||
 			number != wantNumber || !strings.EqualFold(hash, receipt.BlockHash.Hex()) {
 			return false, fmt.Sprintf("%s:%s:%s:%s", standard, state, number, hash), nil
 		}
@@ -389,7 +475,12 @@ func (h *harness) waitSourceObservation(ctx context.Context, receipt rpcReceipt)
 	})
 }
 
-func (h *harness) waitMetadata(ctx context.Context, receipt rpcReceipt) metadataSnapshot {
+func (h *harness) waitMetadata(
+	ctx context.Context,
+	receipt rpcReceipt,
+	contract common.Address,
+	expectedResolvedURI string,
+) metadataSnapshot {
 	h.t.Helper()
 	var snapshot metadataSnapshot
 	waitFor(h.t, ctx, "available exact NFT metadata", func() (bool, string, error) {
@@ -402,7 +493,7 @@ func (h *harness) waitMetadata(ctx context.Context, receipt rpcReceipt) metadata
 			WHERE chain_id = $1::numeric AND resource_kind = 'nft'
 			  AND token_address = $2 AND token_id = $3::numeric
 			  AND observed_block_hash = $4`,
-			previewChainID, receipt.ContractAddress.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(),
+			previewChainID, contract.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(),
 		).Scan(
 			&snapshot.State, &snapshot.ResolvedURI, &snapshot.MediaType, &snapshot.ContentHash,
 			&snapshot.ContentSize, &snapshot.Document, &snapshot.AttemptCount, &snapshot.FetchedAt,
@@ -421,7 +512,7 @@ func (h *harness) waitMetadata(ctx context.Context, receipt rpcReceipt) metadata
 		}
 		return true, snapshot.ContentHash, nil
 	})
-	if snapshot.ResolvedURI != resolvedMetadataURL || snapshot.MediaType != "application/json" ||
+	if snapshot.ResolvedURI != expectedResolvedURI || snapshot.MediaType != "application/json" ||
 		snapshot.ContentHash != expectedMetadataSHA256 || snapshot.ContentSize != expectedMetadataBytes ||
 		snapshot.AttemptCount != 1 {
 		h.t.Fatalf("metadata snapshot = %#v", snapshot)
@@ -439,11 +530,11 @@ func (h *harness) waitMetadata(ctx context.Context, receipt rpcReceipt) metadata
 	return snapshot
 }
 
-func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt) {
+func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt, contract common.Address) {
 	h.t.Helper()
 	path := fmt.Sprintf(
 		"/api/v1/nfts/%s/%s/metadata",
-		receipt.ContractAddress.Hex(),
+		contract.Hex(),
 		metadataTokenID,
 	)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+path, nil)
@@ -483,7 +574,13 @@ func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt) {
 				BlockNumber string `json:"block_number"`
 				BlockHash   string `json:"block_hash"`
 			} `json:"observation"`
-			Image struct {
+			ContentObservation struct {
+				ChainID     string `json:"chain_id"`
+				BlockNumber string `json:"block_number"`
+				BlockHash   string `json:"block_hash"`
+			} `json:"content_observation"`
+			ContentStale bool `json:"content_stale"`
+			Image        struct {
 				State        string `json:"state"`
 				URL          string `json:"url"`
 				SourceScheme string `json:"source_scheme"`
@@ -494,13 +591,16 @@ func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt) {
 		h.t.Fatal(err)
 	}
 	data := payload.Data
-	if data.ChainID != previewChainID || !strings.EqualFold(data.TokenAddress, receipt.ContractAddress.Hex()) ||
+	if data.ChainID != previewChainID || !strings.EqualFold(data.TokenAddress, contract.Hex()) ||
 		data.TokenID != metadataTokenID || data.State != "available" || data.Name != "No time to explain!" ||
 		data.Description != "I said there was no time to explain, and I stand by that." ||
 		data.NameTruncated || data.DescriptionTruncated || len(data.Attributes) != 0 || data.OmittedAttributeCount != 0 ||
 		data.Observation.ChainID != previewChainID ||
 		data.Observation.BlockNumber != strconv.FormatUint(uint64(receipt.BlockNumber), 10) ||
 		!strings.EqualFold(data.Observation.BlockHash, receipt.BlockHash.Hex()) ||
+		data.ContentObservation.ChainID != previewChainID ||
+		data.ContentObservation.BlockNumber != strconv.FormatUint(uint64(receipt.BlockNumber), 10) ||
+		!strings.EqualFold(data.ContentObservation.BlockHash, receipt.BlockHash.Hex()) || data.ContentStale ||
 		data.Image.State != "available" || data.Image.URL != resolvedImageURL || data.Image.SourceScheme != "ipfs" {
 		h.t.Fatalf("metadata API payload = %#v", data)
 	}
@@ -528,7 +628,7 @@ func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt) {
 	}
 }
 
-func (h *harness) waitJob(ctx context.Context, receipt rpcReceipt) jobSnapshot {
+func (h *harness) waitJob(ctx context.Context, receipt rpcReceipt, contract common.Address) jobSnapshot {
 	h.t.Helper()
 	var snapshot jobSnapshot
 	waitFor(h.t, ctx, "successful durable metadata job", func() (bool, string, error) {
@@ -540,7 +640,7 @@ func (h *harness) waitJob(ctx context.Context, receipt rpcReceipt) jobSnapshot {
 			  AND payload->>'token_address' = $2
 			  AND payload->>'token_id' = $3
 			  AND payload->>'block_hash' = $4`,
-			previewChainID, strings.ToLower(receipt.ContractAddress.Hex()), metadataTokenID,
+			previewChainID, strings.ToLower(contract.Hex()), metadataTokenID,
 			strings.ToLower(receipt.BlockHash.Hex()),
 		).Scan(&snapshot.ID, &snapshot.Status, &snapshot.Attempts, &snapshot.MaxAttempts, &snapshot.Result)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -593,6 +693,7 @@ func (h *harness) assertAttempt(ctx context.Context, jobID int64) {
 func (h *harness) assertTransitionLog(
 	ctx context.Context,
 	receipt rpcReceipt,
+	contract common.Address,
 	job jobSnapshot,
 ) metadataTransitionLog {
 	h.t.Helper()
@@ -615,7 +716,7 @@ func (h *harness) assertTransitionLog(
 			continue
 		}
 		if record.Message == "metadata fetch transitioned" && record.Job.ID == job.ID &&
-			strings.EqualFold(record.NFT.Contract, receipt.ContractAddress.Hex()) && record.NFT.ID == metadataTokenID {
+			strings.EqualFold(record.NFT.Contract, contract.Hex()) && record.NFT.ID == metadataTokenID {
 			matches = append(matches, record)
 		}
 	}
@@ -638,7 +739,11 @@ func (h *harness) assertTransitionLog(
 
 func assertNetworkEvidence(t *testing.T, resolved []string, connected string, bypassed bool) {
 	t.Helper()
-	if len(resolved) == 0 || connected == "" {
+	// A subsequent request may reuse an already policy-checked keep-alive
+	// connection and therefore has no new DNS resolution list. The connected IP
+	// remains mandatory and is classified below with the same public/fake-IP
+	// policy; policy_bypassed is carried by the validated connection.
+	if connected == "" {
 		t.Fatalf("metadata network evidence is incomplete: resolved=%v connected=%q", resolved, connected)
 	}
 	fakeIP := false
@@ -661,6 +766,7 @@ func assertNetworkEvidence(t *testing.T, resolved []string, connected string, by
 func (h *harness) restartMetadataAndAssertPersistence(
 	ctx context.Context,
 	receipt rpcReceipt,
+	contract common.Address,
 	before metadataSnapshot,
 	job jobSnapshot,
 ) {
@@ -691,7 +797,7 @@ func (h *harness) restartMetadataAndAssertPersistence(
 				WHERE metadata.chain_id = $1::numeric AND metadata.resource_kind = 'nft'
 				  AND metadata.token_address = $2 AND metadata.token_id = $3::numeric
 				  AND metadata.observed_block_hash = $4`,
-				previewChainID, receipt.ContractAddress.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(), job.ID,
+				previewChainID, contract.Bytes(), metadataTokenID, receipt.BlockHash.Bytes(), job.ID,
 			).Scan(&state, &attemptCount, &attempts, &attemptRows)
 			if err != nil {
 				h.t.Fatal(err)
@@ -703,12 +809,57 @@ func (h *harness) restartMetadataAndAssertPersistence(
 	}
 }
 
+func (h *harness) assertVersionHistory(
+	ctx context.Context,
+	contract common.Address,
+	initialReceipt rpcReceipt,
+	updatedReceipt rpcReceipt,
+	initialJob jobSnapshot,
+	updatedJob jobSnapshot,
+) {
+	h.t.Helper()
+	var metadataRows, sourceRows, updateRows, jobRows, attemptRows int
+	var sources []string
+	if err := h.db.QueryRow(ctx, `
+		SELECT
+			(SELECT count(*)::int FROM external_metadata
+			 WHERE chain_id = $1::numeric AND resource_kind = 'nft'
+			   AND token_address = $2 AND token_id = $3::numeric),
+			(SELECT count(*)::int FROM nft_metadata_source_observations
+			 WHERE chain_id = $1::numeric AND token_address = $2 AND token_id = $3::numeric),
+			(SELECT count(*)::int FROM nft_metadata_update_observations
+			 WHERE chain_id = $1::numeric AND token_address = $2 AND state = 'accepted'),
+			(SELECT count(*)::int FROM durable_jobs
+			 WHERE id IN ($4, $5) AND kind = 'metadata' AND status = 'succeeded'),
+			(SELECT count(*)::int FROM external_metadata_attempts
+			 WHERE durable_job_id IN ($4, $5)),
+			(SELECT array_agg(source_uri ORDER BY block_number)
+			 FROM nft_metadata_source_observations
+			 WHERE chain_id = $1::numeric AND token_address = $2 AND token_id = $3::numeric)`,
+		previewChainID, contract.Bytes(), metadataTokenID, initialJob.ID, updatedJob.ID,
+	).Scan(&metadataRows, &sourceRows, &updateRows, &jobRows, &attemptRows, &sources); err != nil {
+		h.t.Fatal(err)
+	}
+	if metadataRows != 2 || sourceRows != 2 || updateRows != 1 || jobRows != 2 || attemptRows != 2 ||
+		!reflect.DeepEqual(sources, []string{metadataURI, updatedMetadataURI}) ||
+		initialReceipt.BlockHash == updatedReceipt.BlockHash ||
+		uint64(initialReceipt.BlockNumber) >= uint64(updatedReceipt.BlockNumber) {
+		h.t.Fatalf(
+			"metadata history rows=%d/%d/%d jobs=%d attempts=%d sources=%v blocks=%s/%s",
+			metadataRows, sourceRows, updateRows, jobRows, attemptRows, sources,
+			initialReceipt.BlockHash.Hex(), updatedReceipt.BlockHash.Hex(),
+		)
+	}
+}
+
 func (h *harness) writeReport(
 	ctx context.Context,
-	receipt rpcReceipt,
+	initialReceipt rpcReceipt,
+	updatedReceipt rpcReceipt,
 	metadata metadataSnapshot,
 	job jobSnapshot,
-	transition metadataTransitionLog,
+	initialTransition metadataTransitionLog,
+	updatedTransition metadataTransitionLog,
 ) {
 	h.t.Helper()
 	revision := strings.TrimSpace(commandOutput(ctx, h.root, "git", "rev-parse", "HEAD"))
@@ -716,13 +867,18 @@ func (h *harness) writeReport(
 	imageID := strings.TrimSpace(commandOutput(ctx, h.root, dockerCommand(), "image", "inspect", "--format", "{{.Id}}", h.image))
 	report := map[string]any{
 		"revision": revision, "dirty": dirty, "image_id": imageID,
-		"chain_id": previewChainID, "contract": strings.ToLower(receipt.ContractAddress.Hex()),
-		"token_id": metadataTokenID, "block_number": uint64(receipt.BlockNumber),
-		"block_hash":     strings.ToLower(receipt.BlockHash.Hex()),
-		"cid":            "bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym",
-		"content_sha256": metadata.ContentHash, "content_size": metadata.ContentSize,
-		"media_type": metadata.MediaType, "attempts": job.Attempts,
-		"policy_bypassed": transition.Network.PolicyBypassed,
+		"chain_id": previewChainID, "contract": strings.ToLower(initialReceipt.ContractAddress.Hex()),
+		"token_id":             metadataTokenID,
+		"initial_block_number": uint64(initialReceipt.BlockNumber),
+		"initial_block_hash":   strings.ToLower(initialReceipt.BlockHash.Hex()),
+		"updated_block_number": uint64(updatedReceipt.BlockNumber),
+		"updated_block_hash":   strings.ToLower(updatedReceipt.BlockHash.Hex()),
+		"cid":                  "bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym",
+		"content_sha256":       metadata.ContentHash, "content_size": metadata.ContentSize,
+		"media_type": metadata.MediaType, "updated_attempts": job.Attempts,
+		"source_versions": 2, "fetch_attempts": 2,
+		"initial_policy_bypassed": initialTransition.Network.PolicyBypassed,
+		"updated_policy_bypassed": updatedTransition.Network.PolicyBypassed,
 	}
 	encoded, err := json.Marshal(report)
 	if err != nil {

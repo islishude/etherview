@@ -6,12 +6,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -304,7 +315,8 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 	if err != nil || selected.State != metadata.StateAvailable || selected.Name != "Canonical NFT" ||
 		len(selected.Attributes) != 1 || selected.Attributes[0].Value != "9007199254740993" ||
 		selected.Image.URL != "https://ipfs.example/base/ipfs/bafybeigdyrzt1234567890/42.png" ||
-		selected.Observation.BlockHash != genesisHash {
+		selected.Observation.BlockHash != genesisHash || selected.ContentObservation == nil ||
+		selected.ContentObservation.BlockHash != genesisHash || selected.ContentStale {
 		t.Fatalf("canonical display selection=%+v err=%v", selected, err)
 	}
 	for index, state := range []metadata.State{
@@ -333,8 +345,58 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		t.Fatalf("insert newer display metadata: %v", err)
 	}
 	selected, err = reader.NFTMetadata(ctx, address, "42")
-	if err != nil || selected.Name != "New canonical NFT" || selected.Observation.BlockHash != newHash {
+	if err != nil || selected.Name != "New canonical NFT" || selected.Observation.BlockHash != newHash ||
+		selected.ContentObservation == nil || selected.ContentObservation.BlockHash != newHash || selected.ContentStale {
 		t.Fatalf("new display selection=%+v err=%v", selected, err)
+	}
+	updateTopic := crypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	updateBlock := metadataUpdateBundle(t, 2, newHash, "metadata-display-refresh", address, []*types.Log{{
+		Address: address, Topics: []common.Hash{updateTopic}, Data: metadataUint256(42),
+	}})
+	commitCanonical(t, ctx, core, updateBlock)
+	updateHash := updateBlock.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, address, updateHash, 2, "erc721")
+	repository, err := metadata.NewPostgresRepository(db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateDiscoverer, err := metadata.NewUpdateDiscoverer(repository, metadata.UpdateDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := updateDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process display update=%t err=%v", processed, err)
+	}
+	selected, err = reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.State != metadata.StatePending || !selected.ContentStale ||
+		selected.Observation.BlockHash != updateHash || selected.ContentObservation == nil ||
+		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
+		t.Fatalf("pending stale display selection=%+v err=%v", selected, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO external_metadata (
+			chain_id, resource_kind, resource_key, source_uri, state,
+			last_error_code, last_error, fetched_at, terminal_at,
+			token_address, token_id, observed_block_number, observed_block_hash, identity_hash
+		) VALUES (1, 'nft', 'display:42:2', 'https://metadata.example.invalid/42-v3.json', 'error',
+			'fetch_failed', 'bounded', clock_timestamp(), clock_timestamp(),
+			$1, 42, 2, $2, $2)`, address.Bytes(), updateHash.Bytes()); err != nil {
+		t.Fatalf("insert failed refreshed metadata: %v", err)
+	}
+	selected, err = reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.State != metadata.StateError || !selected.ContentStale ||
+		selected.Observation.BlockHash != updateHash || selected.ContentObservation == nil ||
+		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
+		t.Fatalf("failed stale display selection=%+v err=%v", selected, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 2`); err != nil {
+		t.Fatal(err)
+	}
+	selected, err = reader.NFTMetadata(ctx, address, "42")
+	if err != nil || selected.State != metadata.StateAvailable || selected.ContentStale ||
+		selected.Observation.BlockHash != newHash || selected.ContentObservation == nil ||
+		selected.ContentObservation.BlockHash != newHash || selected.Name != "New canonical NFT" {
+		t.Fatalf("post-reorg display selection=%+v err=%v", selected, err)
 	}
 	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
 		t.Fatal(err)
@@ -352,6 +414,439 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 	if _, err := reader.NFTMetadata(ctx, address, "99"); !errors.Is(err, metadata.ErrNFTMetadataNotFound) {
 		t.Fatalf("missing display error=%v", err)
 	}
+}
+
+func TestPostgresNFTMetadataUpdateObservationsAreExactImmutableAndReorgSafe(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := testAddress(940)
+	singleTopic := crypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	blockZero := metadataUpdateBundle(t, 0, common.Hash{}, "metadata-update-zero", token, []*types.Log{{
+		Address: token, Topics: []common.Hash{singleTopic}, Data: metadataUint256(42),
+	}})
+	commitCanonical(t, ctx, core, blockZero)
+	zeroHash := blockZero.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token, zeroHash, 0, "erc721")
+	repository, err := metadata.NewPostgresRepository(db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, found, err := repository.NextNFTUpdate(ctx)
+	if err != nil || !found || candidate.Token != token || candidate.BlockHash != zeroHash || candidate.Standard != metadata.NFTStandardERC721 {
+		t.Fatalf("update candidate=%+v found=%t err=%v", candidate, found, err)
+	}
+	discoverer, err := metadata.NewUpdateDiscoverer(repository, metadata.UpdateDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := discoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process update=%t err=%v", processed, err)
+	}
+	var state, kind, fromID, toID string
+	if err := db.QueryRowContext(ctx, `
+		SELECT state, event_kind, from_token_id::text, to_token_id::text
+		FROM nft_metadata_update_observations
+		WHERE chain_id = 1 AND block_number = 0 AND block_hash = $1 AND log_index = 0`,
+		zeroHash.Bytes(),
+	).Scan(&state, &kind, &fromID, &toID); err != nil {
+		t.Fatal(err)
+	}
+	if state != "accepted" || kind != "erc4906_single" || fromID != "42" || toID != "42" {
+		t.Fatalf("stored update=%s:%s:%s:%s", state, kind, fromID, toID)
+	}
+	observation := metadata.NFTUpdateObservation{
+		Candidate: candidate, Kind: metadata.NFTUpdateERC4906Single,
+		State: metadata.NFTUpdateAccepted, FromTokenID: "42", ToTokenID: "42",
+	}
+	const writers = 8
+	var wait sync.WaitGroup
+	errorsSeen := make(chan error, writers)
+	for range writers {
+		wait.Go(func() {
+			canonical, recordErr := repository.RecordNFTUpdate(ctx, observation)
+			if recordErr != nil {
+				errorsSeen <- recordErr
+			} else if !canonical {
+				errorsSeen <- errors.New("identical update observation became stale")
+			}
+		})
+	}
+	wait.Wait()
+	close(errorsSeen)
+	for recordErr := range errorsSeen {
+		t.Fatal(recordErr)
+	}
+	conflicting := observation
+	conflicting.State = metadata.NFTUpdateMalformed
+	conflicting.FromTokenID, conflicting.ToTokenID = "", ""
+	conflicting.ErrorCode = "data_length_invalid"
+	if _, err := repository.RecordNFTUpdate(ctx, conflicting); !errors.Is(err, metadata.ErrExactNFTUpdateConflict) {
+		t.Fatalf("conflicting update error=%v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE nft_metadata_update_observations SET error_code = 'mutated'
+		WHERE chain_id = 1 AND block_number = 0 AND block_hash = $1 AND log_index = 0`,
+		zeroHash.Bytes(),
+	); err == nil {
+		t.Fatal("direct mutation of exact NFT metadata update succeeded")
+	}
+
+	blockOne := metadataUpdateBundle(t, 1, zeroHash, "metadata-update-one", token, []*types.Log{{
+		Address: token, Topics: []common.Hash{singleTopic}, Data: metadataUint256(43),
+	}})
+	commitCanonical(t, ctx, core, blockOne)
+	oneHash := blockOne.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token, oneHash, 1, "erc721")
+	staleCandidate, found, err := repository.NextNFTUpdate(ctx)
+	if err != nil || !found || staleCandidate.BlockHash != oneHash {
+		t.Fatalf("stale candidate=%+v found=%t err=%v", staleCandidate, found, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 1`); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := repository.RecordNFTUpdate(ctx, metadata.NFTUpdateObservation{
+		Candidate: staleCandidate, Kind: metadata.NFTUpdateERC4906Single,
+		State: metadata.NFTUpdateAccepted, FromTokenID: "43", ToTokenID: "43",
+	})
+	if err != nil || canonical {
+		t.Fatalf("stale record canonical=%t err=%v", canonical, err)
+	}
+	var staleRows int
+	if err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM nft_metadata_update_observations
+		WHERE chain_id = 1 AND block_hash = $1`, oneHash.Bytes(),
+	).Scan(&staleRows); err != nil || staleRows != 0 {
+		t.Fatalf("stale update rows=%d err=%v", staleRows, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM canonical_blocks WHERE chain_id = 1 AND number = 0`); err != nil {
+		t.Fatal(err)
+	}
+	var retained int
+	if err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM nft_metadata_update_observations
+		WHERE chain_id = 1 AND block_hash = $1`, zeroHash.Bytes(),
+	).Scan(&retained); err != nil || retained != 1 {
+		t.Fatalf("retained orphan updates=%d err=%v", retained, err)
+	}
+	canonical, err = repository.RecordNFTUpdate(ctx, observation)
+	if err != nil || canonical {
+		t.Fatalf("retained orphan idempotency canonical=%t err=%v", canonical, err)
+	}
+}
+
+func TestPostgresNFTMetadataUpdateUsesLatestExactTokenStandard(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := testAddress(945)
+	blockZero := testBundle(0, testHash(946), common.Hash{}, testHash(9_460), "metadata-standard-base")
+	commitCanonical(t, ctx, core, blockZero)
+	zeroHash := blockZero.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token, zeroHash, 0, "erc721")
+
+	singleTopic := crypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	blockOne := metadataUpdateBundle(t, 1, zeroHash, "metadata-standard-mismatch", token, []*types.Log{{
+		Address: token, Topics: []common.Hash{singleTopic}, Data: metadataUint256(42),
+	}})
+	commitCanonical(t, ctx, core, blockOne)
+	oneHash := blockOne.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token, oneHash, 1, "erc1155")
+	repository, err := metadata.NewPostgresRepository(db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, found, err := repository.NextNFTUpdate(ctx)
+	if err != nil || !found || candidate.Standard != metadata.NFTStandardERC1155 || candidate.BlockHash != oneHash {
+		t.Fatalf("latest-standard candidate=%+v found=%t err=%v", candidate, found, err)
+	}
+	discoverer, err := metadata.NewUpdateDiscoverer(repository, metadata.UpdateDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := discoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process standard mismatch=%t err=%v", processed, err)
+	}
+	var state, errorCode string
+	if err := db.QueryRowContext(ctx, `
+		SELECT state, error_code
+		FROM nft_metadata_update_observations
+		WHERE chain_id = 1 AND block_hash = $1 AND log_index = 0`,
+		oneHash.Bytes(),
+	).Scan(&state, &errorCode); err != nil {
+		t.Fatal(err)
+	}
+	if state != "malformed" || errorCode != "standard_mismatch" {
+		t.Fatalf("latest-standard observation=%s:%s", state, errorCode)
+	}
+}
+
+func TestPostgresNFTMetadataUpdateSignalsDriveBoundedExactSourceRefresh(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := metadata.NewPostgresRepository(db, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token721 := testAddress(950)
+	token1155 := testAddress(951)
+	blockZero := testBundle(0, testHash(952), common.Hash{}, testHash(9_520), "metadata-refresh-base")
+	commitCanonical(t, ctx, core, blockZero)
+	zeroHash := blockZero.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token721, zeroHash, 0, "erc721")
+	const sameURI = "https://metadata.example/42.json"
+	for _, tokenID := range []string{"5", "20", "42", "500"} {
+		if err := repository.RecordNFTSource(ctx, metadata.NFTSourceObservation{
+			Candidate: metadata.NFTSourceCandidate{
+				ChainID: "1", Token: token721, TokenID: tokenID, BlockNumber: 0,
+				BlockHash: zeroHash, Standard: metadata.NFTStandardERC721,
+			},
+			State: metadata.NFTSourceFound, SourceURI: sameURI,
+		}); err != nil {
+			t.Fatalf("record initial source %s: %v", tokenID, err)
+		}
+	}
+
+	singleTopic := crypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	blockOne := metadataUpdateBundle(t, 1, zeroHash, "metadata-refresh-single", token721, []*types.Log{{
+		Address: token721, Topics: []common.Hash{singleTopic}, Data: metadataUint256(42),
+	}})
+	commitCanonical(t, ctx, core, blockOne)
+	oneHash := blockOne.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token721, oneHash, 1, "erc721")
+	updateDiscoverer, err := metadata.NewUpdateDiscoverer(repository, metadata.UpdateDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := updateDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process direct update=%t err=%v", processed, err)
+	}
+	rpcService := &metadataRefreshRPC{erc721URI: sameURI, erc1155URI: "https://metadata.example/{id}.json"}
+	pool, closeRPC := metadataRefreshRPCPool(t, rpcService)
+	defer closeRPC()
+	sourceDiscoverer, err := metadata.NewSourceDiscoverer(repository, pool, metadata.SourceDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := sourceDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process direct source=%t err=%v", processed, err)
+	}
+	if len(rpcService.calls) != 1 || rpcService.calls[0].tokenID != "42" ||
+		rpcService.calls[0].selector.BlockHash == nil || *rpcService.calls[0].selector.BlockHash != oneHash ||
+		!rpcService.calls[0].selector.RequireCanonical {
+		t.Fatalf("direct RPC calls=%+v", rpcService.calls)
+	}
+	var sameSourceVersions, pendingRows int
+	if err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM nft_metadata_source_observations
+		WHERE chain_id = 1 AND token_address = $1 AND token_id = 42 AND source_uri = $2`,
+		token721.Bytes(), sameURI,
+	).Scan(&sameSourceVersions); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM external_metadata
+		WHERE chain_id = 1 AND resource_kind = 'nft' AND token_address = $1
+		  AND token_id = 42 AND observed_block_hash = $2 AND state = 'pending'`,
+		token721.Bytes(), oneHash.Bytes(),
+	).Scan(&pendingRows); err != nil {
+		t.Fatal(err)
+	}
+	if sameSourceVersions != 2 || pendingRows != 1 {
+		t.Fatalf("same URI source versions=%d pending rows=%d", sameSourceVersions, pendingRows)
+	}
+
+	batchTopic := crypto.Keccak256Hash([]byte("BatchMetadataUpdate(uint256,uint256)"))
+	blockTwo := metadataUpdateBundle(t, 2, oneHash, "metadata-refresh-batch", token721, []*types.Log{{
+		Address: token721, Topics: []common.Hash{batchTopic}, Data: append(metadataUint256(1), metadataUint256(30)...),
+	}})
+	commitCanonical(t, ctx, core, blockTwo)
+	twoHash := blockTwo.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token721, twoHash, 2, "erc721")
+	if processed, err := updateDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process batch update=%t err=%v", processed, err)
+	}
+	displayReader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := displayReader.NFTMetadata(ctx, token721, "19"); !errors.Is(err, metadata.ErrNFTMetadataNotFound) {
+		t.Fatalf("undiscovered batch token metadata error=%v", err)
+	}
+	var batchIDs []string
+	for {
+		candidate, found, err := repository.NextNFTSource(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !found || candidate.BlockHash != twoHash {
+			break
+		}
+		batchIDs = append(batchIDs, candidate.TokenID)
+		if err := repository.RecordNFTSource(ctx, metadata.NFTSourceObservation{
+			Candidate: candidate, State: metadata.NFTSourceFound,
+			SourceURI: "https://metadata.example/" + candidate.TokenID + ".json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(batchIDs, ",") != "5,20" {
+		t.Fatalf("bounded batch IDs=%v", batchIDs)
+	}
+
+	uriTopic := crypto.Keccak256Hash([]byte("URI(string,uint256)"))
+	blockThree := metadataUpdateBundle(t, 3, twoHash, "metadata-refresh-uri", token1155, []*types.Log{{
+		Address: token1155,
+		Topics:  []common.Hash{uriTopic, common.BigToHash(big.NewInt(7))},
+		Data:    metadataABIString("https://event.example/untrusted/{id}.json"),
+	}})
+	commitCanonical(t, ctx, core, blockThree)
+	threeHash := blockThree.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token1155, threeHash, 3, "erc1155")
+	if processed, err := updateDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process URI update=%t err=%v", processed, err)
+	}
+	if processed, err := sourceDiscoverer.ProcessOnce(ctx); err != nil || !processed {
+		t.Fatalf("process URI source=%t err=%v", processed, err)
+	}
+	wantExpanded := "https://metadata.example/" + strings.Repeat("0", 63) + "7.json"
+	var storedURI string
+	if err := db.QueryRowContext(ctx, `
+		SELECT source_uri FROM nft_metadata_source_observations
+		WHERE chain_id = 1 AND token_address = $1 AND token_id = 7 AND block_hash = $2`,
+		token1155.Bytes(), threeHash.Bytes(),
+	).Scan(&storedURI); err != nil {
+		t.Fatal(err)
+	}
+	lastCall := rpcService.calls[len(rpcService.calls)-1]
+	if storedURI != wantExpanded || lastCall.tokenID != "7" || lastCall.selector.BlockHash == nil || *lastCall.selector.BlockHash != threeHash {
+		t.Fatalf("stored URI=%q last RPC=%+v", storedURI, lastCall)
+	}
+}
+
+type metadataRefreshRPCCall struct {
+	tokenID  string
+	selector rpc.BlockNumberOrHash
+}
+
+type metadataRefreshRPC struct {
+	erc721URI  string
+	erc1155URI string
+	calls      []metadataRefreshRPCCall
+}
+
+func (service *metadataRefreshRPC) Call(
+	_ context.Context,
+	call map[string]any,
+	selector rpc.BlockNumberOrHash,
+) (hexutil.Bytes, error) {
+	encoded, ok := call["data"].(string)
+	if !ok {
+		return nil, errors.New("metadata refresh call data is not a string")
+	}
+	input := common.FromHex(encoded)
+	if len(input) != 36 {
+		return nil, errors.New("metadata refresh calldata length is invalid")
+	}
+	tokenID := new(big.Int).SetBytes(input[4:]).String()
+	service.calls = append(service.calls, metadataRefreshRPCCall{tokenID: tokenID, selector: selector})
+	uri := service.erc721URI
+	if hexutil.Encode(input[:4]) == "0x0e89341c" {
+		uri = service.erc1155URI
+	}
+	return hexutil.Bytes(metadataABIString(uri)), nil
+}
+
+func metadataRefreshRPCPool(t *testing.T, service *metadataRefreshRPC) (*ethrpc.Pool, func()) {
+	t.Helper()
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", service); err != nil {
+		t.Fatal(err)
+	}
+	client := rpc.DialInProc(server)
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{
+		Name: "metadata-state", Client: client,
+		Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true},
+	}}, ethrpc.PoolOptions{})
+	if err != nil {
+		client.Close()
+		server.Stop()
+		t.Fatal(err)
+	}
+	return pool, func() {
+		client.Close()
+		server.Stop()
+	}
+}
+
+func metadataUpdateBundle(
+	t *testing.T,
+	number uint64,
+	parentHash common.Hash,
+	variant string,
+	token common.Address,
+	logs []*types.Log,
+) chainbundle.Bundle {
+	t.Helper()
+	bundle, err := newIntegrationBundle(integrationBundleOptions{
+		Number: number, ParentHash: parentHash, ExtraData: []byte(variant),
+		Transactions: []integrationTransactionOptions{{
+			Type: types.DynamicFeeTxType, To: &token, Data: []byte(variant), Logs: logs,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bundle
+}
+
+func insertMetadataUpdateTokenContract(
+	t *testing.T,
+	ctx context.Context,
+	db *sql.DB,
+	token common.Address,
+	blockHash common.Hash,
+	blockNumber uint64,
+	standard string,
+) {
+	t.Helper()
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO token_contracts (
+			chain_id, address, code_hash, standard, confidence, metadata_state,
+			observed_block_number, observed_block_hash
+		) VALUES (1, $1, $2, $3, 'high', 'complete', $4, $5)`,
+		token.Bytes(), testHash(941+blockNumber).Bytes(), standard,
+		strconv.FormatUint(blockNumber, 10), blockHash.Bytes(),
+	); err != nil {
+		t.Fatalf("insert metadata update token contract: %v", err)
+	}
+}
+
+func metadataUint256(value int64) []byte {
+	return new(big.Int).SetInt64(value).FillBytes(make([]byte, 32))
+}
+
+func metadataABIString(value string) []byte {
+	length := len(value)
+	padded := (length + 31) / 32 * 32
+	result := make([]byte, 64+padded)
+	result[31] = 32
+	binary.BigEndian.PutUint64(result[56:64], uint64(length))
+	copy(result[64:], value)
+	return result
 }
 
 func TestPostgresNFTMetadataSourceDiscoveryIsExactAndImmutable(t *testing.T) {

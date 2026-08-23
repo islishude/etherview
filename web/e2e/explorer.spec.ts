@@ -1092,6 +1092,21 @@ test("capability pages survive the embedded binary boundary in both accessible t
   await activateInView(chineseWarning.getByRole("button", { name: "取消" }));
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
 
+  await page.goto(`/nft/${address}/2`);
+  const staleMetadata = page.getByRole("region", { name: "NFT metadata" });
+  await expect(staleMetadata.getByText("A newer metadata refresh is not available yet")).toBeVisible();
+  await expect(staleMetadata.getByText(/refresh at block 3 is Pending/)).toContainText("block 2");
+  await expect(staleMetadata.getByText("Prior canonical metadata remains visible.")).toBeVisible();
+  await expect(staleMetadata.locator("img")).toHaveCount(0);
+  expect(externalRequests).toEqual([]);
+  await assertA11yAndNoOverflow(page, "stale NFT metadata in English");
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  const staleChineseMetadata = page.getByRole("region", { name: "NFT 元数据" });
+  await expect(staleChineseMetadata.getByText("较新的元数据刷新尚不可用")).toBeVisible();
+  await expect(staleChineseMetadata.getByText(/区块 3 的刷新状态为处理中/)).toContainText("区块 2");
+  await assertA11yAndNoOverflow(page, "stale NFT metadata in Chinese");
+  await activateInView(page.getByRole("button", { name: "Switch to English" }));
+
   await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
   await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();

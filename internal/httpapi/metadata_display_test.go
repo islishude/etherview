@@ -50,13 +50,15 @@ func TestNFTMetadataResponseUsesBoundedGeneratedContract(t *testing.T) {
 	t.Parallel()
 	address := "0x" + strings.Repeat("12", 20)
 	hash := common.HexToHash("0x" + strings.Repeat("34", 32))
+	contentObservation := metadata.NFTMetadataObservation{BlockNumber: 12, BlockHash: hash}
 	reader := &fakeNFTMetadataReader{item: metadata.NFTMetadata{
 		State: metadata.StateAvailable,
 		Observation: metadata.NFTMetadataObservation{
 			BlockNumber: 12,
 			BlockHash:   hash,
 		},
-		Name: "Example NFT", Description: "Plain description",
+		ContentObservation: &contentObservation,
+		Name:               "Example NFT", Description: "Plain description",
 		NameTruncated: true, DescriptionTruncated: true,
 		Attributes: []metadata.NFTMetadataAttribute{
 			{TraitType: "Level", Value: "9007199254740993", DisplayType: "number"},
@@ -83,7 +85,8 @@ func TestNFTMetadataResponseUsesBoundedGeneratedContract(t *testing.T) {
 	}
 	data := response.Data
 	if data.ChainId != "11155111" || data.TokenAddress != common.HexToAddress(address).Hex() || data.TokenId != "42" ||
-		data.State != gen.NFTMetadataStateAvailable || data.Observation.BlockNumber != "12" || data.Observation.BlockHash != hash.Hex() {
+		data.State != gen.NFTMetadataStateAvailable || data.Observation.BlockNumber != "12" || data.Observation.BlockHash != hash.Hex() ||
+		data.ContentObservation == nil || *data.ContentObservation != data.Observation || data.ContentStale {
 		t.Fatalf("identity=%+v", data)
 	}
 	if data.Name == nil || *data.Name != "Example NFT" || data.Description == nil || *data.Description != "Plain description" ||
@@ -96,6 +99,43 @@ func TestNFTMetadataResponseUsesBoundedGeneratedContract(t *testing.T) {
 	if data.Image.State != gen.NFTMetadataImageStateAvailable || data.Image.Url == nil || *data.Image.Url != "https://media.example/nft.png?token=public" ||
 		data.Image.SourceScheme == nil || *data.Image.SourceScheme != gen.Https {
 		t.Fatalf("image=%+v", data.Image)
+	}
+}
+
+func TestNFTMetadataResponseRetainsPriorContentDuringRefresh(t *testing.T) {
+	t.Parallel()
+	address := "0x" + strings.Repeat("12", 20)
+	latestHash := common.HexToHash("0x" + strings.Repeat("67", 32))
+	contentHash := common.HexToHash("0x" + strings.Repeat("68", 32))
+	contentObservation := metadata.NFTMetadataObservation{BlockNumber: 11, BlockHash: contentHash}
+	reader := &fakeNFTMetadataReader{item: metadata.NFTMetadata{
+		State: metadata.StatePending,
+		Observation: metadata.NFTMetadataObservation{
+			BlockNumber: 12, BlockHash: latestHash,
+		},
+		ContentObservation: &contentObservation, ContentStale: true,
+		Name: "Prior NFT", Description: "Prior canonical content",
+		Attributes: []metadata.NFTMetadataAttribute{},
+		Image:      metadata.NFTMetadataImage{State: metadata.NFTMetadataImageMissing},
+	}}
+	recorder := httptest.NewRecorder()
+	nftMetadataTestHandler(t, true, reader).ServeHTTP(
+		recorder,
+		httptest.NewRequest(http.MethodGet, "/api/v1/nfts/"+address+"/42/metadata", nil),
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response gen.NFTMetadataResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	data := response.Data
+	if data.State != gen.NFTMetadataStatePending || !data.ContentStale ||
+		data.ContentObservation == nil || data.ContentObservation.BlockNumber != "11" ||
+		data.ContentObservation.BlockHash != contentHash.Hex() || data.Name == nil || *data.Name != "Prior NFT" ||
+		data.Observation.BlockNumber != "12" || data.Observation.BlockHash != latestHash.Hex() {
+		t.Fatalf("stale metadata=%+v", data)
 	}
 }
 

@@ -970,6 +970,21 @@ type NftMetadataSourceObservation struct {
 	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
+type NftMetadataUpdateObservation struct {
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash    []byte             `db:"block_hash" json:"block_hash"`
+	LogIndex     int64              `db:"log_index" json:"log_index"`
+	TokenAddress []byte             `db:"token_address" json:"token_address"`
+	Standard     string             `db:"standard" json:"standard"`
+	EventKind    string             `db:"event_kind" json:"event_kind"`
+	State        string             `db:"state" json:"state"`
+	FromTokenID  pgtype.Numeric     `db:"from_token_id" json:"from_token_id"`
+	ToTokenID    pgtype.Numeric     `db:"to_token_id" json:"to_token_id"`
+	ErrorCode    *string            `db:"error_code" json:"error_code"`
+	ObservedAt   pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
 type NormalizedTrace struct {
 	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`

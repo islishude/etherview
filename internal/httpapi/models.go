@@ -194,7 +194,14 @@ func nftMetadataModel(chainID, address, tokenID string, item metadata.NFTMetadat
 		},
 		NameTruncated: item.NameTruncated, DescriptionTruncated: item.DescriptionTruncated,
 		Attributes: attributes, OmittedAttributeCount: item.OmittedAttributeCount,
-		Image: gen.NFTMetadataImage{State: gen.NFTMetadataImageState(item.Image.State)},
+		ContentStale: item.ContentStale,
+		Image:        gen.NFTMetadataImage{State: gen.NFTMetadataImageState(item.Image.State)},
+	}
+	if item.ContentObservation != nil {
+		model.ContentObservation = &gen.CatalogSnapshot{
+			ChainId: chainID, BlockNumber: quantity(item.ContentObservation.BlockNumber),
+			BlockHash: item.ContentObservation.BlockHash.Hex(),
+		}
 	}
 	if item.Name != "" {
 		model.Name = &item.Name

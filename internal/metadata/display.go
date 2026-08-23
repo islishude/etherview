@@ -62,6 +62,8 @@ type NFTMetadataImage struct {
 type NFTMetadata struct {
 	State                 State
 	Observation           NFTMetadataObservation
+	ContentObservation    *NFTMetadataObservation
+	ContentStale          bool
 	Name                  string
 	NameTruncated         bool
 	Description           string
@@ -121,12 +123,16 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 	defer tx.Rollback() //nolint:errcheck
 
 	var (
-		state       State
-		document    []byte
-		blockNumber string
-		blockHash   []byte
+		state              State
+		blockNumber        string
+		blockHash          []byte
+		document           []byte
+		contentBlockNumber sql.NullString
+		contentBlockHash   []byte
 	)
-	err = tx.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(&state, &document, &blockNumber, &blockHash)
+	err = tx.QueryRowContext(ctx, dbgen.MetadataSelectCanonicalNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(
+		&state, &blockNumber, &blockHash, &document, &contentBlockNumber, &contentBlockHash,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
 		if queryErr := tx.QueryRowContext(ctx, dbgen.MetadataAnyNFTMetadata, reader.chainID, address.Bytes(), tokenID).Scan(&exists); queryErr != nil {
@@ -158,13 +164,27 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		Image:      NFTMetadataImage{State: NFTMetadataImageUnavailable},
 	}
 	switch state {
-	case StatePending, StateUnavailable, StateUnsafe, StateError:
-		if len(document) != 0 {
-			return NFTMetadata{}, errors.New("non-available NFT metadata display row contains a document")
+	case StatePending, StateAvailable, StateUnavailable, StateUnsafe, StateError:
+		// Valid below.
+	default:
+		return NFTMetadata{}, errors.New("select canonical NFT metadata display: unsupported state")
+	}
+	if contentBlockNumber.Valid != (len(document) != 0) || contentBlockNumber.Valid != (len(contentBlockHash) != 0) {
+		return NFTMetadata{}, errors.New("select canonical NFT metadata display: incomplete content identity")
+	}
+	if state == StateAvailable && !contentBlockNumber.Valid {
+		return NFTMetadata{}, errors.New("available NFT metadata display state has no content")
+	}
+	if contentBlockNumber.Valid {
+		contentHeight, parseErr := strconv.ParseUint(contentBlockNumber.String, 10, 64)
+		if parseErr != nil || strconv.FormatUint(contentHeight, 10) != contentBlockNumber.String || len(contentBlockHash) != common.HashLength {
+			return NFTMetadata{}, errors.New("select canonical NFT metadata display: invalid content identity")
 		}
-	case StateAvailable:
-		if len(document) == 0 {
-			return NFTMetadata{}, errors.New("available NFT metadata display row has no document")
+		contentObservation := NFTMetadataObservation{
+			BlockNumber: contentHeight, BlockHash: common.BytesToHash(contentBlockHash),
+		}
+		if state == StateAvailable && contentObservation != result.Observation {
+			return NFTMetadata{}, errors.New("available NFT metadata display state differs from content identity")
 		}
 		projection, projectErr := projectNFTMetadataDocument(document, reader.linkResolver)
 		if projectErr != nil {
@@ -172,9 +192,9 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		}
 		projection.State = state
 		projection.Observation = result.Observation
+		projection.ContentObservation = &contentObservation
+		projection.ContentStale = contentObservation != result.Observation
 		result = projection
-	default:
-		return NFTMetadata{}, errors.New("select canonical NFT metadata display: unsupported state")
 	}
 	if err := tx.Commit(); err != nil {
 		return NFTMetadata{}, fmt.Errorf("commit NFT metadata display snapshot: %w", err)

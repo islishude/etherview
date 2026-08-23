@@ -67,6 +67,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			}
 		case components.RoleMetadata:
 			if cfg.Features.NFTMetadata {
+				add("41-nft-metadata-updates")
 				add("42-nft-metadata-discovery")
 				addWorkerComponentKeys(add, "45-nft-metadata", cfg.Runtime.WorkerCount)
 			} else {

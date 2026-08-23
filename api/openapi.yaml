@@ -2963,6 +2963,7 @@ components:
         - token_id
         - state
         - observation
+        - content_stale
         - name_truncated
         - description_truncated
         - attributes
@@ -2979,6 +2980,18 @@ components:
           $ref: "#/components/schemas/NFTMetadataState"
         observation:
           $ref: "#/components/schemas/CatalogSnapshot"
+          description: Exact canonical identity of the newest update, source, or fetch state.
+        content_observation:
+          allOf:
+            - $ref: "#/components/schemas/CatalogSnapshot"
+          description: >-
+            Exact canonical identity of the available document supplying the
+            display fields. Absent when no canonical available document exists.
+        content_stale:
+          type: boolean
+          description: >-
+            True only when display fields come from an older available document
+            while observation identifies a newer pending or failed refresh.
         name:
           type: string
           maxLength: 512

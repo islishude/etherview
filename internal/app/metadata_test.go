@@ -36,16 +36,22 @@ func TestRegisterMetadataWorkersUseUniqueDurableSafeWorkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 4 {
-		t.Fatalf("metadata services = %d, want 4", len(services))
+	if len(services) != 5 {
+		t.Fatalf("metadata services = %d, want 5", len(services))
 	}
-	if _, ok := services[0].(*metadata.SourceDiscoverer); !ok {
-		t.Fatalf("metadata service type = %T", services[0])
+	if _, ok := services[0].(*metadata.UpdateDiscoverer); !ok {
+		t.Fatalf("metadata update service type = %T", services[0])
 	}
-	if services[0].Name() != "metadata-source-discovery" {
-		t.Fatalf("metadata discovery name = %q", services[0].Name())
+	if services[0].Name() != "metadata-update-discovery" {
+		t.Fatalf("metadata update discovery name = %q", services[0].Name())
 	}
-	for index, service := range services[1:] {
+	if _, ok := services[1].(*metadata.SourceDiscoverer); !ok {
+		t.Fatalf("metadata source service type = %T", services[1])
+	}
+	if services[1].Name() != "metadata-source-discovery" {
+		t.Fatalf("metadata source discovery name = %q", services[1].Name())
+	}
+	for index, service := range services[2:] {
 		named, ok := service.(*namedWorkerService)
 		if !ok {
 			t.Fatalf("metadata worker wrapper type = %T", service)

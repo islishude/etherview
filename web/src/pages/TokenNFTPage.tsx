@@ -299,13 +299,26 @@ function NFTMetadataPanel({
   locale: string;
 }) {
   const { t } = useTranslation();
+  const contentAvailable = Boolean(data?.content_observation);
   return (
     <section className="panel detail-card nft-metadata-card" aria-labelledby="nft-metadata-title">
       <h2 id="nft-metadata-title">{t("nftMetadata.title")}</h2>
       <NFTMetadataQueryNotice error={error} loading={loading} />
       {data ? (
         <>
-          {data.state !== "available" ? (
+          {data.content_stale && data.content_observation ? (
+            <div className="query-notice degraded compact" role="status">
+              <span className="status-dot warning" aria-hidden="true" />
+              <span>
+                <strong>{t("nftMetadata.staleTitle")}</strong>
+                <small>{t("nftMetadata.staleDetail", {
+                  state: nftMetadataStateLabel(data.state, t),
+                  latest: formatInteger(data.observation.block_number, locale),
+                  content: formatInteger(data.content_observation.block_number, locale),
+                })}</small>
+              </span>
+            </div>
+          ) : data.state !== "available" ? (
             <div className="query-notice degraded compact" role="status">
               <span className="status-dot warning" aria-hidden="true" />
               <span>
@@ -329,7 +342,24 @@ function NFTMetadataPanel({
                 </Link>
               )}
             />
-            {data.state === "available" ? (
+            {data.content_stale && data.content_observation ? (
+              <>
+                <Detail
+                  label={t("nftMetadata.contentBlock")}
+                  value={formatInteger(data.content_observation.block_number, locale)}
+                />
+                <Detail
+                  label={t("nftMetadata.contentBlockHash")}
+                  mono
+                  value={(
+                    <Link to="/blocks/$blockID" params={{ blockID: data.content_observation.block_hash }}>
+                      {data.content_observation.block_hash}
+                    </Link>
+                  )}
+                />
+              </>
+            ) : null}
+            {contentAvailable ? (
               <>
                 <Detail
                   label={t("detail.name")}
@@ -354,7 +384,7 @@ function NFTMetadataPanel({
               </>
             ) : null}
           </dl>
-          {data.state === "available" ? (
+          {contentAvailable ? (
             <div className="nft-traits">
               <h3>{t("nftMetadata.traits")}</h3>
               {data.attributes.length > 0 ? (

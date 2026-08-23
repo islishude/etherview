@@ -26,6 +26,13 @@ and improving its confidence.
   address, token ID, logical resource key, or source URI repeats. Exact source
   and terminal document facts are write-once, and media readers select the
   newest retained observation whose exact height/hash remains canonical.
+- Standard NFT metadata-update logs are also immutable exact-block facts.
+  ERC-4906 single/batch and ERC-1155 URI payloads only schedule refresh; the
+  exact post-block `tokenURI`/`uri` call remains authoritative. Batch ranges
+  visit only previously discovered IDs with bounded work. A newer canonical
+  pending or failed refresh may expose the prior canonical available document
+  only when the API reports both observation identities and marks that content
+  stale; an orphan update signal cannot affect the public selection.
 - Event-derived token deltas remain block-scoped candidate/evidence rows. They
   are never returned as authoritative NFT owner or balance state.
 - ERC-721 ownership is promoted only by `ownerOf(tokenId)` at the exact
@@ -59,6 +66,10 @@ and improving its confidence.
   the database query before the external image fetch and then rechecks the
   selected exact observation, so neither path holds a PostgreSQL snapshot over
   network latency.
+- Metadata refresh is event-driven only. Silent setter changes without an
+  ERC-4906 or ERC-1155 URI event remain undiscovered until another canonical
+  supported event supplies a candidate; no periodic or request-time RPC work
+  is inferred by a public read.
 - Token detection and proxy discovery use one exact-state error classifier.
   Missing EIP-1898 support and known pruned or unavailable historical state are
   terminal `unavailable` capability facts for that block. Transport failures

@@ -24,6 +24,11 @@ export const tokensResources = {
             notFound: "No canonical metadata observation exists for this NFT.",
             noncanonical: "Metadata exists only on a retained orphan block and is not displayed.",
             stateDetail: "No metadata document is inferred from this state.",
+            staleTitle: "A newer metadata refresh is not available yet",
+            staleDetail:
+              "The refresh at block {{latest}} is {{state}}. Showing the last available canonical content from block {{content}}.",
+            contentBlock: "Displayed content block",
+            contentBlockHash: "Displayed content block hash",
             state: {
               available: "Available",
               pending: "Pending",
@@ -86,6 +91,11 @@ export const tokensResources = {
             notFound: "该 NFT 没有规范链元数据观测。",
             noncanonical: "元数据仅存在于已保留的孤块中，因此不会展示。",
             stateDetail: "不会根据该状态推断或伪造元数据文档。",
+            staleTitle: "较新的元数据刷新尚不可用",
+            staleDetail:
+              "区块 {{latest}} 的刷新状态为{{state}}；当前继续展示区块 {{content}} 的上一版规范链内容。",
+            contentBlock: "展示内容区块",
+            contentBlockHash: "展示内容区块哈希",
             state: {
               available: "可用",
               pending: "处理中",

@@ -134,6 +134,20 @@ func TestSourceDiscovererExpandsERC1155IDAndPersistsPermanentGaps(t *testing.T) 
 	})
 }
 
+func TestSourceDiscovererDropsCandidateThatReorgsDuringExactCall(t *testing.T) {
+	t.Parallel()
+	candidate := sourceCandidate(t, NFTStandardERC721)
+	repository := &fakeSourceRepository{candidate: candidate, found: true, canonical: false}
+	service := &sourceRPC{result: encodeSourceString("https://metadata.example/42-v2.json")}
+	processed, err := newTestSourceDiscoverer(t, repository, newSourceRPCClient(t, service)).ProcessOnce(t.Context())
+	if err != nil || !processed {
+		t.Fatalf("processed=%t err=%v", processed, err)
+	}
+	if service.call == nil || len(repository.requests) != 0 || len(repository.observations) != 0 {
+		t.Fatalf("RPC=%#v requests=%+v observations=%+v", service.call, repository.requests, repository.observations)
+	}
+}
+
 type sourceRPCError struct {
 	code    int
 	message string

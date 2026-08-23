@@ -1884,11 +1884,16 @@ export interface components {
         NFTMetadata: {
             attributes: components["schemas"]["NFTMetadataAttribute"][];
             chain_id: components["schemas"]["Quantity"];
+            /** @description Exact canonical identity of the available document supplying the display fields. Absent when no canonical available document exists. */
+            content_observation?: components["schemas"]["CatalogSnapshot"];
+            /** @description True only when display fields come from an older available document while observation identifies a newer pending or failed refresh. */
+            content_stale: boolean;
             description?: string;
             description_truncated: boolean;
             image: components["schemas"]["NFTMetadataImage"];
             name?: string;
             name_truncated: boolean;
+            /** @description Exact canonical identity of the newest update, source, or fetch state. */
             observation: components["schemas"]["CatalogSnapshot"];
             omitted_attribute_count: number;
             state: components["schemas"]["NFTMetadataState"];

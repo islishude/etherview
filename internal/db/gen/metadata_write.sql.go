@@ -287,6 +287,73 @@ func (q *Queries) MetadataWriteInsertNFTSource(ctx context.Context, arg Metadata
 	return items, nil
 }
 
+const MetadataWriteInsertNFTUpdateObservation = `-- name: MetadataWriteInsertNFTUpdateObservation :many
+WITH canonical AS (
+    SELECT 1
+    FROM canonical_blocks
+    WHERE chain_id = $1::numeric
+      AND number = $2::numeric
+      AND block_hash = $3
+    FOR KEY SHARE
+)
+INSERT INTO nft_metadata_update_observations (
+    chain_id, block_number, block_hash, log_index, token_address,
+    standard, event_kind, state, from_token_id, to_token_id, error_code
+)
+SELECT
+    $1::numeric, $2::numeric, $3, $4, $5,
+    $6, $7, $8, $9::numeric, $10::numeric, $11
+FROM canonical
+ON CONFLICT DO NOTHING
+RETURNING 1
+`
+
+type MetadataWriteInsertNFTUpdateObservationParams struct {
+	Column1      pgtype.Numeric `db:"column_1" json:"column_1"`
+	Column2      pgtype.Numeric `db:"column_2" json:"column_2"`
+	BlockHash    []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex     int64          `db:"log_index" json:"log_index"`
+	TokenAddress []byte         `db:"token_address" json:"token_address"`
+	Standard     string         `db:"standard" json:"standard"`
+	EventKind    string         `db:"event_kind" json:"event_kind"`
+	State        string         `db:"state" json:"state"`
+	Column9      pgtype.Numeric `db:"column_9" json:"column_9"`
+	Column10     pgtype.Numeric `db:"column_10" json:"column_10"`
+	ErrorCode    *string        `db:"error_code" json:"error_code"`
+}
+
+func (q *Queries) MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, MetadataWriteInsertNFTUpdateObservation,
+		arg.Column1,
+		arg.Column2,
+		arg.BlockHash,
+		arg.LogIndex,
+		arg.TokenAddress,
+		arg.Standard,
+		arg.EventKind,
+		arg.State,
+		arg.Column9,
+		arg.Column10,
+		arg.ErrorCode,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var column_1 int32
+		if err := rows.Scan(&column_1); err != nil {
+			return nil, err
+		}
+		items = append(items, column_1)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const MetadataWriteRecordMetadataRetry = `-- name: MetadataWriteRecordMetadataRetry :exec
 UPDATE external_metadata
 SET state = 'pending', attempt_count = $6, last_error_code = $7, last_error = $8,

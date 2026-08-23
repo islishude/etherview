@@ -235,7 +235,8 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery",
+			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates",
+			"42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 			"45-nft-metadata-03", "45-nft-metadata-04",
 		}},
@@ -342,7 +343,8 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"42-factory-derived-forward-01", "42-factory-derived-forward-02",
 		}},
 		{role: components.RoleMetadata, want: []string{
-			"00-operations-http", "02-durable-metrics", "42-nft-metadata-discovery",
+			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates",
+			"42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 		}},
 		{role: components.RoleMaintenance, want: []string{

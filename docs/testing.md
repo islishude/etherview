@@ -291,17 +291,20 @@ replace a required `make test-e2e` pass.
   run a Go-owned, public-IPFS acceptance gate against a unique full Preview
   Compose project with fresh volumes and random loopback ports. It uses the
   fixed CIDv1 `/metadata.json` documented by IPFS, a reviewed solc 0.8.30
-  ERC-721 creation artifact, Geth's unlocked development account, and the
-  trusted local Preview certificate. The gate requires exact ERC-721/source/
-  durable-job block identity, one successful attempt, `application/json`, 205
-  bytes, SHA-256
+  ERC-721/ERC-4906 creation artifact, Geth's unlocked development account, and
+  the trusted local Preview certificate. After the initial version succeeds,
+  a transaction with no Transfer changes `tokenURI`, emits `MetadataUpdate(1)`,
+  and requires a second exact source/document/job version. Each version has one
+  successful attempt, `application/json`, 205 bytes, SHA-256
   `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`,
   bounded structured network evidence, and restart-stable persistence. Public
   DNS is accepted directly; only Docker fake-IP `198.18.0.0/15` may use the
   Preview metadata exception. Other private routes, alternate gateways,
   retries, content drift, and internal fixtures fail. The checked-in Preview
-  keeps this cold public-gateway request bounded to 30 seconds so it can remain
-  one durable attempt; the ordinary metadata default remains 10 seconds. Run
+  keeps each cold public-gateway request bounded to 30 seconds so it can remain
+  one durable attempt; a reused policy-checked keep-alive connection may omit a
+  new DNS list but must retain its connected IP and bypass decision. The
+  ordinary metadata default remains 10 seconds. Run
   `make preview-cert` once first. This live external-service gate is explicit
   and is not included in `make check`.
 - `make test-load`: run the bounded public-API driver. Defaults are a 100 RPS,

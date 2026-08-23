@@ -370,7 +370,7 @@ type Querier interface {
 	MempoolWriteStoreSnapshotStatement7(ctx context.Context, column1 pgtype.Numeric, lastSnapshotWriteID *int64) error
 	MempoolWriteStoreSnapshotStatement8(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz, iD int64) error
 	MempoolWriteStoreSnapshotStatement9(ctx context.Context, column1 pgtype.Numeric, expiresAt pgtype.Timestamptz) error
-	MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]bool, error)
+	MetadataAnyNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]*bool, error)
 	MetadataCanonicalNFTContract(ctx context.Context, column1 pgtype.Numeric, address []byte) ([]bool, error)
 	MetadataCanonicalObservation(ctx context.Context, column1 pgtype.Numeric, column2 pgtype.Numeric, blockHash []byte) ([]bool, error)
 	MetadataClaimMetadataJob(ctx context.Context, arg MetadataClaimMetadataJobParams) ([]MetadataClaimMetadataJobRow, error)
@@ -380,9 +380,11 @@ type Querier interface {
 	MetadataExistingMetadataJob(ctx context.Context, column1 pgtype.Numeric, idempotencyKey string) ([]int64, error)
 	MetadataExistingMetadataResource(ctx context.Context, arg MetadataExistingMetadataResourceParams) ([]MetadataExistingMetadataResourceRow, error)
 	MetadataExistingNFTSource(ctx context.Context, arg MetadataExistingNFTSourceParams) ([]MetadataExistingNFTSourceRow, error)
+	MetadataExistingNFTUpdateObservation(ctx context.Context, arg MetadataExistingNFTUpdateObservationParams) ([]MetadataExistingNFTUpdateObservationRow, error)
 	MetadataLockMetadataResource(ctx context.Context, arg MetadataLockMetadataResourceParams) ([]*bool, error)
 	MetadataLockOwnedMetadataJob(ctx context.Context, iD int64, leaseToken *string) ([]MetadataLockOwnedMetadataJobRow, error)
 	MetadataNextNFTSource(ctx context.Context, dollar_1 pgtype.Numeric) ([]MetadataNextNFTSourceRow, error)
+	MetadataNextNFTUpdateLog(ctx context.Context, arg MetadataNextNFTUpdateLogParams) ([]MetadataNextNFTUpdateLogRow, error)
 	MetadataSelectCanonicalNFTImage(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTImageRow, error)
 	MetadataSelectCanonicalNFTMetadata(ctx context.Context, column1 pgtype.Numeric, tokenAddress []byte, column3 pgtype.Numeric) ([]MetadataSelectCanonicalNFTMetadataRow, error)
 	MetadataWriteEnqueueMetadataJob(ctx context.Context, arg MetadataWriteEnqueueMetadataJobParams) ([]int64, error)
@@ -391,6 +393,7 @@ type Querier interface {
 	MetadataWriteInsertMetadataAttempt(ctx context.Context, arg MetadataWriteInsertMetadataAttemptParams) error
 	MetadataWriteInsertMetadataResource(ctx context.Context, arg MetadataWriteInsertMetadataResourceParams) ([]int32, error)
 	MetadataWriteInsertNFTSource(ctx context.Context, arg MetadataWriteInsertNFTSourceParams) ([]int32, error)
+	MetadataWriteInsertNFTUpdateObservation(ctx context.Context, arg MetadataWriteInsertNFTUpdateObservationParams) ([]int32, error)
 	MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) error
 	MetadataWriteRenewMetadataJob(ctx context.Context, iD int64, leaseToken *string, column3 interface{}) error
 	MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) error

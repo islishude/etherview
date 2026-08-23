@@ -72,8 +72,9 @@ exception lets a public IPFS request traverse Docker Desktop's `198.18/15`
 fake-IP proxy; API NFT media and every other role remain strict. Run
 `make test-preview-metadata` after `make preview-cert` for the isolated live
 acceptance gate. It uses a unique Compose project and fresh volumes, requires
-one exact fixed-CID fetch, permits no private route other than the diagnosed
-Docker fake-IP, and proves a metadata-worker restart does not refetch.
+one initial and one no-Transfer ERC-4906-triggered exact fixed-CID fetch,
+permits no private route other than the diagnosed Docker fake-IP, and proves a
+metadata-worker restart does not add a third attempt.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the
@@ -127,6 +128,12 @@ are coalesced into the next record, idle heads do not produce heartbeats, and
 non-reporter sync replicas stay silent. Durable worker outcomes remain
 event-driven and are not delayed by this interval.
 
+`metadata update observation transitioned` records one exact ERC-4906 or
+ERC-1155 URI log after its immutable observation commits. Its bounded
+`nft`, `block`, `kind`, and `transition` fields contain contract, standard,
+token range, block/log identity, result, and stable malformed/stale code. It
+never logs the event URI, raw log, metadata source, or nested parser text.
+
 `metadata fetch transitioned` is emitted only after the corresponding retry or
 terminal outcome commits. Its `job`, `nft`, `block`, and `transition` groups
 identify the exact attempt and canonical observation. `source.scheme` and the
@@ -136,8 +143,10 @@ source, `request.path` may contain only the public `/ipfs/<CID>/<path>` content
 path and is omitted above 1024 bytes. Arbitrary HTTPS and redirect paths are
 represented only by `path_length` and `path_sha256`; query values, userinfo,
 fragments, and configured gateway path prefixes are never logged. DNS arrays
-retain at most eight unique addresses and report their total and truncation.
-For example, Docker fake-IP rejection includes
+retain at most eight unique addresses and report their total and truncation. A
+request that reuses an already policy-checked keep-alive connection may omit a
+new DNS array while retaining the mandatory connected IP and policy-bypass
+decision. For example, Docker fake-IP rejection includes
 `nft.contract=0x... nft.id=0 transition.code=unsafe_url
 request.host=ipfs.io network.resolved_ips=[198.18.17.210]
 network.rejected_reasons=[special_use]

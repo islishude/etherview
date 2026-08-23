@@ -4159,7 +4159,13 @@ type NFTMetadata struct {
 	Attributes []NFTMetadataAttribute `json:"attributes"`
 
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId               Quantity         `json:"chain_id"`
+	ChainId Quantity `json:"chain_id"`
+
+	// ContentObservation Exact canonical identity of the available document supplying the display fields. Absent when no canonical available document exists.
+	ContentObservation *CatalogSnapshot `json:"content_observation,omitempty"`
+
+	// ContentStale True only when display fields come from an older available document while observation identifies a newer pending or failed refresh.
+	ContentStale          bool             `json:"content_stale"`
 	Description           *string          `json:"description,omitempty"`
 	DescriptionTruncated  bool             `json:"description_truncated"`
 	Image                 NFTMetadataImage `json:"image"`

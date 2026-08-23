@@ -217,6 +217,8 @@ describe("P50 capability pages", () => {
             chain_id: "1", token_address: address, token_id: tokenID,
             state: "available",
             observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            content_stale: false,
             name: "<img src=x onerror=alert(1)>", name_truncated: false,
             description: "**plain text only**", description_truncated: true,
             attributes: [
@@ -285,6 +287,8 @@ describe("P50 capability pages", () => {
             chain_id: "1", token_address: address, token_id: tokenID,
             state: "available",
             observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            content_observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            content_stale: false,
             name: "Shared collectible #42", name_truncated: false,
             description_truncated: false,
             attributes: [], omitted_attribute_count: 0,
@@ -315,6 +319,7 @@ describe("P50 capability pages", () => {
           data: {
             chain_id: "1", token_address: address, token_id: "7", state: "unsafe",
             observation: { chain_id: "1", block_number: "519", block_hash: blockHash },
+            content_stale: false,
             name_truncated: false, description_truncated: false,
             attributes: [], omitted_attribute_count: 0,
             image: { state: "unavailable" },
@@ -330,6 +335,55 @@ describe("P50 capability pages", () => {
     expect((await within(metadataRegion).findAllByText("Rejected as unsafe")).length).toBeGreaterThan(0);
     expect(within(metadataRegion).getByText("No metadata document is inferred from this state.")).toBeVisible();
     expect(within(metadataRegion).queryByText("Traits")).toBeNull();
+  });
+
+  it("keeps prior canonical metadata visible with a bilingual refresh warning", async () => {
+    const tokenID = "8";
+    const latestHash = `0x${"91".repeat(32)}`;
+    const contentHash = `0x${"92".repeat(32)}`;
+    const imageURL = "https://media.example/prior.png?version=1";
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      requested.push(path);
+      if (path === `/api/v1/tokens/${address}`) {
+        return Response.json({ data: { ...tokenContract("Refreshable collectible"), standard: "erc1155" }, meta });
+      }
+      if (path === `/api/v1/nfts/${address}/${tokenID}/metadata`) {
+        return Response.json({
+          data: {
+            chain_id: "1", token_address: address, token_id: tokenID, state: "pending",
+            observation: { chain_id: "1", block_number: "520", block_hash: latestHash },
+            content_observation: { chain_id: "1", block_number: "519", block_hash: contentHash },
+            content_stale: true,
+            name: "Prior collectible #8", name_truncated: false,
+            description: "Last available canonical content", description_truncated: false,
+            attributes: [{ trait_type: "Version", value: "1" }], omitted_attribute_count: 0,
+            image: { state: "available", url: imageURL, source_scheme: "https" },
+          },
+          meta,
+        });
+      }
+      return apiError("not_found", 404);
+    }));
+    renderExplorer(`/nft/${address}/${tokenID}`);
+
+    expect(await screen.findByRole("heading", { name: "Prior collectible #8", level: 1 })).toBeVisible();
+    const metadataRegion = screen.getByRole("region", { name: "NFT metadata" });
+    expect(within(metadataRegion).getByText("A newer metadata refresh is not available yet")).toBeVisible();
+    expect(within(metadataRegion).getByText(/refresh at block 520 is Pending/)).toHaveTextContent("block 519");
+    expect(within(metadataRegion).getByText("Last available canonical content")).toBeVisible();
+    expect(within(metadataRegion).getByText("Version")).toBeVisible();
+    expect(within(metadataRegion).getByRole("button", {
+      name: `Review unverified external image target ${imageURL}`,
+    })).toBeVisible();
+    expect(within(metadataRegion).queryByRole("img")).toBeNull();
+    expect(requested).not.toContain(`/api/v1/nfts/${address}/${tokenID}/media`);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+    const localized = screen.getByRole("region", { name: "NFT 元数据" });
+    expect(within(localized).getByText("较新的元数据刷新尚不可用")).toBeVisible();
+    expect(within(localized).getByText(/区块 520 的刷新状态为处理中/)).toHaveTextContent("区块 519");
   });
 
   it("keeps NFT stage loss distinct from an authoritative empty balance page", async () => {

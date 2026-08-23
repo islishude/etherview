@@ -22,13 +22,26 @@ with separate invalidation and content-moderation obligations.
   identical concurrent writes are no-ops and disagreements are integrity
   failures.
 - The metadata role discovers ERC-721 `tokenURI(uint256)` and ERC-1155
-  `uri(uint256)` from canonical event candidates. One state RPC endpoint and
-  one EIP-1898 block-hash selector are used for the whole exact observation.
-  ERC-1155 `{id}` templates use the required 64-character lowercase hexadecimal
-  token ID. The canonical mapping is rechecked after the RPC call and before a
-  successful URI enters the durable fetch queue. Reverts, malformed results,
-  and exact-state capability gaps become stable source observations; transient
-  transport failures remain retryable without persisting nested RPC text.
+  `uri(uint256)` from canonical transfer candidates and exact standard update
+  signals: ERC-4906 `MetadataUpdate`/`BatchMetadataUpdate` and ERC-1155 `URI`.
+  Update logs are validated, stored by exact block hash/log identity, immutable,
+  and retained after reorg. Their payload is only a trigger; one state RPC
+  endpoint and one EIP-1898 block-hash selector remain the source authority for
+  the whole exact observation. ERC-1155 `{id}` templates use the required
+  64-character lowercase hexadecimal token ID. The canonical mapping is
+  rechecked after the RPC call and before a successful URI enters the durable
+  fetch queue. Reverts, malformed results, and exact-state capability gaps
+  become stable source observations; transient transport failures remain
+  retryable without persisting nested RPC text.
+- A direct standard update refreshes its exact token ID. A batch ERC-4906 range
+  walks only token IDs already discovered from canonical transfers or retained
+  exact source observations and produces one bounded candidate at a time; it
+  never numerically expands an untrusted uint256 range. Transfer and update
+  signals for the same contract, token ID, and block hash collapse to the
+  block's final post-state URI. Every accepted standard update refetches the
+  document even when the URI string is unchanged. There is deliberately no
+  periodic, request-triggered, or manual refresh for contracts that omit the
+  standard events.
 - The media endpoint selects `image` only from an `available` metadata document
   whose observed block hash is still the current canonical mapping at that
   height. It copies the bounded source identity, releases the database query,
@@ -39,12 +52,15 @@ with separate invalidation and content-moderation obligations.
   select an older retained canonical document; an observation that changes
   during the fetch is rejected instead of returning stale bytes.
 - The native metadata display endpoint is a separate, bounded read projection.
-  It selects the newest exact canonical document in one repeatable-read
-  snapshot and returns only inert name/description text, at most 100 ordered
-  scalar traits, exact observation identity, and a typed image-link state. It
-  never returns raw JSON, the metadata source/resolved URI, `animation_url`, or
-  `external_url`. Terminal metadata states remain visible without fabricating a
-  document; orphan-only and missing histories stay distinct.
+  It selects the newest exact canonical update/source/fetch signal and the
+  newest canonical available document in one repeatable-read snapshot. While a
+  newer refresh is pending or failed, the prior available document remains
+  visible with distinct latest and content observation identities plus an
+  explicit stale marker. It returns only inert name/description text, at most
+  100 ordered scalar traits, exact observation identity, and a typed image-link
+  state. It never returns raw JSON, the metadata source/resolved URI,
+  `animation_url`, or `external_url`. Orphan-only and missing histories stay
+  distinct.
 - A displayable `image` value is navigation data, not validated media. Absolute
   HTTPS values may be returned after rejecting credentials, fragments, control
   characters, localhost, and non-public IP literals. Valid `ipfs://` values are
