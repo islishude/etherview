@@ -648,7 +648,73 @@ function ProxySummary({
       ) : null}
       {detail && (detail.status !== "not_detected" || v2Detected) ? (
         <dl className="proxy-facts">
-          {detectionV2 ? (
+          <ProxyDetectionFacts
+            detectionV2={detectionV2}
+            diamond={diamond}
+            layers={layers}
+            primary={v2Primary}
+            t={t}
+          />
+          {detail.pattern ? <Fact label={t("contracts.proxy.pattern")} value={proxyPatternLabel(detail.pattern, t)} /> : null}
+          {detail.mechanism ? <Fact label={t("contracts.proxy.mechanism")} value={proxyMechanismLabel(detail.mechanism, t)} /> : null}
+          {detail.evidence_state ? <Fact label={t("contracts.proxy.evidenceState")} value={proxyEvidenceStateLabel(detail.evidence_state, t)} /> : null}
+          {detail.confidence ? <Fact label={t("contracts.proxy.confidence")} value={proxyConfidenceLabel(detail.confidence, t)} /> : null}
+          {detail.standard_version ? <Fact label={t("contracts.proxy.standardVersion")} value={detail.standard_version} /> : null}
+          {detail.implementation ? <IdentityFact label={t("contracts.proxy.implementation")} identity={detail.implementation} /> : null}
+          {detail.admin ? <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} /> : null}
+          {detail.beacon ? <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} /> : null}
+          {detail.management?.target ? <IdentityFact label={t("contracts.proxy.managementTarget")} identity={detail.management.target} /> : null}
+          {detail.management?.affected_proxy_count ? <Fact label={t("contracts.proxy.affectedProxies")} value={detail.management.affected_proxy_count} /> : null}
+          {detail.binding_id ? <Fact label={t("contracts.proxy.binding")} value={detail.binding_id} mono /> : null}
+          <Fact
+            label={t("contracts.proxy.snapshot")}
+            value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
+            mono
+          />
+          <ImmutableArgsFacts detail={detail} t={t} />
+        </dl>
+      ) : null}
+      <CWIAImmutableArgsDetails detail={detail} t={t} />
+      {detail && detail.evidence.length > 0 ? (
+        <details className="proxy-evidence">
+          <summary>{t("contracts.proxy.evidence", { count: detail.evidence.length })}</summary>
+          <ul>
+            {detail.evidence.map((item, index) => (
+              <li key={`${item.source}:${item.subject}:${item.block_hash ?? "snapshot"}:${index}`}>
+                {proxyEvidenceSourceLabel(item.source, t)} · {proxyEvidenceSubjectLabel(item.subject, t)} · {proxyEvidenceResultLabel(item.result, t)}
+                {item.address ? <> · <code>{item.address}</code></> : null}
+                {item.block_number ? <> · #{item.block_number}</> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {diamond ? (
+        <p className="context-note" role="note">{t("contracts.diamond.interactionSafety")}</p>
+		) : detail?.mechanism === "cwia" ? null
+			: detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
+        <p className="chain-warning" role="status">{t("contracts.proxy.writeDisabled")}</p>
+      ) : null}
+      <CloneImmutabilityNote detail={detail} t={t} />
+    </details>
+  );
+}
+
+type ProxyDetectionV2 = NonNullable<ContractProxyDetails["proxy_detection_v2"]>;
+type ProxyDiamond = NonNullable<ProxyDetectionV2["outcomes"][number]["diamond"]>;
+
+function ProxyDetectionFacts({
+  detectionV2, diamond, layers, primary, t,
+}: {
+  detectionV2?: ProxyDetectionV2;
+  diamond?: ProxyDiamond;
+  layers?: string;
+  primary?: ProxyDetectionV2["primary"];
+  t: Translate;
+}) {
+  if (!detectionV2) return null;
+  const v2Primary = primary;
+  return (
             <>
               <Fact label={t("contracts.proxy.detectorStatus")} value={proxyDetectionV2StatusLabel(detectionV2.status, t)} />
               <Fact label={t("contracts.proxy.family")} value={v2Primary?.family ?? "—"} />
@@ -699,52 +765,8 @@ function ProxySummary({
                 </>
               ) : null}
             </>
-          ) : null}
-          {detail.pattern ? <Fact label={t("contracts.proxy.pattern")} value={proxyPatternLabel(detail.pattern, t)} /> : null}
-          {detail.mechanism ? <Fact label={t("contracts.proxy.mechanism")} value={proxyMechanismLabel(detail.mechanism, t)} /> : null}
-          {detail.evidence_state ? <Fact label={t("contracts.proxy.evidenceState")} value={proxyEvidenceStateLabel(detail.evidence_state, t)} /> : null}
-          {detail.confidence ? <Fact label={t("contracts.proxy.confidence")} value={proxyConfidenceLabel(detail.confidence, t)} /> : null}
-          {detail.standard_version ? <Fact label={t("contracts.proxy.standardVersion")} value={detail.standard_version} /> : null}
-          {detail.implementation ? <IdentityFact label={t("contracts.proxy.implementation")} identity={detail.implementation} /> : null}
-          {detail.admin ? <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} /> : null}
-          {detail.beacon ? <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} /> : null}
-          {detail.management?.target ? <IdentityFact label={t("contracts.proxy.managementTarget")} identity={detail.management.target} /> : null}
-          {detail.management?.affected_proxy_count ? <Fact label={t("contracts.proxy.affectedProxies")} value={detail.management.affected_proxy_count} /> : null}
-          {detail.binding_id ? <Fact label={t("contracts.proxy.binding")} value={detail.binding_id} mono /> : null}
-          <Fact
-            label={t("contracts.proxy.snapshot")}
-            value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
-            mono
-          />
-          <ImmutableArgsFacts detail={detail} t={t} />
-        </dl>
-      ) : null}
-      <CWIAImmutableArgsDetails detail={detail} t={t} />
-      {detail && detail.evidence.length > 0 ? (
-        <details className="proxy-evidence">
-          <summary>{t("contracts.proxy.evidence", { count: detail.evidence.length })}</summary>
-          <ul>
-            {detail.evidence.map((item, index) => (
-              <li key={`${item.source}:${item.subject}:${item.block_hash ?? "snapshot"}:${index}`}>
-                {proxyEvidenceSourceLabel(item.source, t)} · {proxyEvidenceSubjectLabel(item.subject, t)} · {proxyEvidenceResultLabel(item.result, t)}
-                {item.address ? <> · <code>{item.address}</code></> : null}
-                {item.block_number ? <> · #{item.block_number}</> : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {diamond ? (
-        <p className="context-note" role="note">{t("contracts.diamond.interactionSafety")}</p>
-		) : detail?.mechanism === "cwia" ? null
-			: detail && detail.status !== "verified" && detail.status !== "not_detected" ? (
-        <p className="chain-warning" role="status">{t("contracts.proxy.writeDisabled")}</p>
-      ) : null}
-      <CloneImmutabilityNote detail={detail} t={t} />
-    </details>
   );
 }
-
 function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return <div><dt>{label}</dt><dd className={mono ? "mono-wrap" : undefined}>{value}</dd></div>;
 }

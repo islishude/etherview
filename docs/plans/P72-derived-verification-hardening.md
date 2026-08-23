@@ -26,7 +26,7 @@ complexity.
 | P72-T01 | done | P71 | Generation-bound trace/proxy forward events, fork-aware scan rewind, canonical attempt writes, and success-reset pagination budgets | state-machine unit and PostgreSQL reorg/pagination regressions; generation/source/plan checks |
 | P72-T02 | done | P72-T01 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
 | P72-T03 | done | P72-T02 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
-| P72-T04 | todo | P72-T03 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
+| P72-T04 | done | P72-T03 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
 | P72-T05 | todo | P72-T04 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
@@ -91,3 +91,19 @@ None.
   late-verification, A-to-B-to-A, direct-child/no-second-job, transitive, and
   code-epoch assertions. All 360 Vitest cases, Web/Go lint, generation,
   source/plan checks, and `git diff --check` pass on 2026-08-23.
+- P72-T04 splits transaction internal-transfer orchestration, proxy detection
+  facts/history mapping, ABI types/budgets, API providers, ABI/proxy/state-diff/
+  trace helpers, the E2E server, and oversized Hardhat/integration/Web tests.
+  Source checking now caps hand-written Go production/test files at 1,500/2,500
+  lines; Go cognitive complexity is 100; Biome enforces production
+  1,400-file/400-function/75-cognitive and test 2,500-file/1,000-function
+  ceilings without new exclusions. Go lint reports zero issues, targeted Go and
+  build-tag compilation pass, and all 360 Vitest cases plus Web lint pass.
+  The first canonical real-Chrome request was rejected when the Codex host
+  reached its external-execution usage limit; after the user resumed the task,
+  the unchanged `make test-e2e` gate passed all 24 Chromium cases in 44.3s.
+- P72-T04 sandbox-safe acceptance additionally passes aggregate `make test` and
+  `make test-race`, all 35 Web files/360 Vitest cases, TypeScript, Biome, Go vet
+  and lint, source/generation/plan checks, build-tag compilation, and `git diff
+  --check`. The host initially rejected the fourth Git commit with the same
+  usage limit; the task was resumed without altering or losing the worktree.

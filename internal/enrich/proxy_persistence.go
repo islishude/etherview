@@ -69,129 +69,17 @@ func (processor *PostgresProxyProcessor) persistTx(
 			return StageResult{}, err
 		}
 	}
-	codeObservations := make(map[common.Address]proxyCodeObservation)
-	beaconObservations := make(map[common.Address]proxyBeaconObservation)
-	proxyCount := 0
-	rejectedCount := 0
-	v2DifferenceCount := 0
-	uupsCompatibleCount := 0
-	uupsRejectedCount := 0
-	for _, result := range uupsProbes {
-		if err := mergeProxyCodeObservation(
-			codeObservations, result.target.address, result.target.codeHash, result.code,
-		); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-		if result.compatible() {
-			uupsCompatibleCount++
-		} else {
-			uupsRejectedCount++
-		}
+	collected, err := collectProxyObservations(detections, beacons, uupsProbes)
+	if err != nil {
+		return StageResult{}, err
 	}
-	for _, detection := range detections {
-		if detection.v2Active && detection.v2.LegacyProjectionChanged {
-			v2DifferenceCount++
-		}
-		if err := mergeProxyCodeObservation(codeObservations, detection.candidate.address, detection.codeHash, detection.code); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-		if detection.proxy == nil {
-			if detection.rejected != "" {
-				rejectedCount++
-			}
-			continue
-		}
-		proxyCount++
-		if detection.exact != nil {
-			if err := mergeProxyCodeObservation(
-				codeObservations, detection.exact.implementation,
-				detection.exact.implementationHash, detection.exact.implementationCode,
-			); err != nil {
-				return StageResult{}, Permanent(err)
-			}
-			if detection.exact.admin != nil {
-				if err := mergeProxyCodeObservation(
-					codeObservations, *detection.exact.admin,
-					detection.exact.adminHash, detection.exact.adminCode,
-				); err != nil {
-					return StageResult{}, Permanent(err)
-				}
-			}
-			if detection.exact.beacon != nil {
-				if err := mergeProxyCodeObservation(
-					codeObservations, *detection.exact.beacon,
-					detection.exact.beaconHash, detection.exact.beaconCode,
-				); err != nil {
-					return StageResult{}, Permanent(err)
-				}
-				if err := mergeProxyBeaconObservation(beaconObservations, proxyBeaconObservation{
-					address: *detection.exact.beacon, codeHash: detection.exact.beaconHash,
-					implementation:     detection.exact.implementation,
-					implementationHash: detection.exact.implementationHash,
-					sources:            map[string]struct{}{"runtime_immutable": {}},
-				}); err != nil {
-					return StageResult{}, Permanent(err)
-				}
-			}
-		}
-		if err := mergeProxyCodeObservation(
-			codeObservations, detection.proxy.implementation,
-			detection.proxy.implementationHash, detection.proxy.implementationCode,
-		); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-		if detection.proxy.admin != nil {
-			if err := mergeProxyCodeObservation(
-				codeObservations, *detection.proxy.admin,
-				detection.proxy.adminHash, detection.proxy.adminCode,
-			); err != nil {
-				return StageResult{}, Permanent(err)
-			}
-		}
-		if detection.proxy.beacon != nil {
-			if err := mergeProxyCodeObservation(
-				codeObservations, *detection.proxy.beacon,
-				detection.proxy.beaconHash, detection.proxy.beaconCode,
-			); err != nil {
-				return StageResult{}, Permanent(err)
-			}
-			if err := mergeProxyBeaconObservation(beaconObservations, proxyBeaconObservation{
-				address: *detection.proxy.beacon, codeHash: detection.proxy.beaconHash,
-				implementation:     detection.proxy.implementation,
-				implementationHash: detection.proxy.implementationHash,
-				sources:            map[string]struct{}{"proxy_slot": {}},
-			}); err != nil {
-				return StageResult{}, Permanent(err)
-			}
-		}
-	}
-	for _, detection := range beacons {
-		if err := mergeProxyCodeObservation(
-			codeObservations, detection.candidate.address, detection.codeHash, detection.code,
-		); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-		if detection.implementation == (common.Address{}) {
-			if detection.rejected != "" {
-				rejectedCount++
-			}
-			continue
-		}
-		if err := mergeProxyCodeObservation(
-			codeObservations, detection.implementation,
-			detection.implementationHash, detection.implementationCode,
-		); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-		if err := mergeProxyBeaconObservation(beaconObservations, proxyBeaconObservation{
-			address: detection.candidate.address, codeHash: detection.codeHash,
-			implementation:     detection.implementation,
-			implementationHash: detection.implementationHash,
-			sources:            map[string]struct{}{"standalone_probe": {}},
-		}); err != nil {
-			return StageResult{}, Permanent(err)
-		}
-	}
+	codeObservations := collected.code
+	beaconObservations := collected.beacons
+	proxyCount := collected.proxies
+	rejectedCount := collected.rejected
+	v2DifferenceCount := collected.v2Differences
+	uupsCompatibleCount := collected.uupsCompatible
+	uupsRejectedCount := collected.uupsRejected
 	addresses := make([]common.Address, 0, len(codeObservations))
 	for address := range codeObservations {
 		addresses = append(addresses, address)

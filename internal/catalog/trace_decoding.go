@@ -13,7 +13,7 @@ import (
 
 	gethabi "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/db/gen"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 )
 
@@ -108,132 +108,153 @@ func (catalog *Postgres) decorateTraceFrames(
 	verifiedSelectorLookups := 0
 	for index := range trace.Frames {
 		frame := &trace.Frames[index]
-		if frame.CallType == "CREATE" || frame.CallType == "CREATE2" {
-			if err := catalog.decorateConstructorFrame(ctx, tx, identity, frame, persisted); err != nil {
-				return err
-			}
-			continue
-		}
-		if !callLikeTraceType(frame.CallType) {
-			continue
-		}
-		if frame.Execution != nil && (frame.Execution.Resolution == "empty" || frame.Execution.Resolution == "not_applicable") {
-			frame.Decoding = notApplicableTraceCallDecoding("call execution code is empty")
-			continue
-		}
-		frame.Decoding = unavailableTraceCallDecoding(frame.DirectReverted, "no ABI is available for the call target at this block")
-		if directVerifiedAddressTraceFallback(frame) {
-			input, err := decodeTraceData(*frame.Input)
-			if err != nil {
-				return ErrCorruptData
-			}
-			if len(input) >= 4 {
-				if !stateDiffChecked {
-					state, _, stateErr := transactionStageState(
-						ctx, tx, identity.ChainID, identity.BlockNumber, blockHash, true, StageStateDiff,
-					)
-					if stateErr != nil {
-						return stateErr
-					}
-					stateDiffChecked, stateDiffComplete = true, state == StageComplete
-				}
-				if stateDiffComplete {
-					if verifiedSelectorLookups >= maxReadTimeTraceVerifiedSelectorLookups {
-						frame.Decoding.Status = "unknown"
-						frame.Decoding.Warning = "read-time verified selector lookup limit exceeded"
-						continue
-					}
-					verifiedSelectorLookups++
-					contextBytes, decodeErr := decodeFixedHex(frame.Execution.ContextAddress, common.AddressLength)
-					if decodeErr != nil {
-						return ErrCorruptData
-					}
-					var output []byte
-					if frame.Output != nil {
-						output, decodeErr = decodeTraceData(*frame.Output)
-						if decodeErr != nil {
-							return ErrCorruptData
-						}
-					}
-					decoding, found, decodeErr := decodeVerifiedAddressSelectorTraceCall(
-						ctx, tx, identity.ChainID, blockNumber, blockHash,
-						common.BytesToAddress(contextBytes), input, output, frame.DirectReverted,
-					)
-					if decodeErr != nil {
-						return decodeErr
-					}
-					if found {
-						frame.Decoding = decoding
-						continue
-					}
-				}
-			}
-		}
-		if frame.Execution == nil || frame.Execution.Address == "" || frame.Input == nil {
-			frame.Decoding.Status = "unknown"
-			frame.Decoding.Warning = "call frame has no exact execution code identity or calldata"
-			continue
-		}
-		targetBytes, err := decodeFixedHex(frame.Execution.Address, common.AddressLength)
-		if err != nil {
-			return ErrCorruptData
-		}
-		target := common.BytesToAddress(targetBytes)
-		path := tracePathText(frame.Path)
-		storedCall := persisted[path+"\x00"+"trace_calldata"]
-		storedRevert := persisted[path+"\x00"+"trace_revert"]
-		if storedCall != nil && storedCall.strongFor(target) {
-			decoding, err := storedCall.publicCall(frame.DirectReverted)
-			if err != nil {
-				return err
-			}
-			if frame.DirectReverted && storedRevert != nil && storedRevert.strongFor(target) {
-				decoding.Revert, err = storedRevert.publicRevert()
-				if err != nil {
-					return err
-				}
-			}
-			frame.Decoding = decoding
-			continue
-		}
-		registryResult, ok := loaded[target]
-		if !ok {
-			if len(loaded) >= maxReadTimeTraceABIIdentities {
-				frame.Decoding.Warning = "read-time ABI identity limit exceeded"
-				continue
-			}
-			registryResult, err = loadTraceRegistry(ctx, tx, identity.ChainID, blockNumber, blockHash, target)
-			if err != nil {
-				return err
-			}
-			loaded[target] = registryResult
-		}
-		if registryResult.registry == nil {
-			continue
-		}
-		input, err := decodeTraceData(*frame.Input)
-		if err != nil {
-			return ErrCorruptData
-		}
-		var output []byte
-		if frame.Output != nil {
-			output, err = decodeTraceData(*frame.Output)
-			if err != nil {
-				return ErrCorruptData
-			}
-		}
-		decoded := registryResult.registry.DecodeCall(
-			registryResult.identity, input, output, frame.DirectReverted,
-		)
-		frame.Decoding = publicTraceCall(decoded)
-		if frame.DirectReverted {
-			reverted := registryResult.registry.DecodeRevert(registryResult.identity, output)
-			frame.Decoding.Revert = publicTraceRevert(reverted)
+		if err := catalog.decorateTraceFrame(
+			ctx, tx, identity, frame, blockNumber, blockHash, persisted, loaded,
+			&stateDiffChecked, &stateDiffComplete, &verifiedSelectorLookups,
+		); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+func (catalog *Postgres) decorateTraceFrame(
+	ctx context.Context,
+	tx *sql.Tx,
+	identity traceIdentity,
+	frame *TraceFrame,
+	blockNumber uint64,
+	blockHash []byte,
+	persisted map[string]*persistedTraceDecoding,
+	loaded map[common.Address]traceRegistryResult,
+	stateDiffChecked *bool,
+	stateDiffComplete *bool,
+	verifiedSelectorLookups *int,
+) error {
+	if frame.CallType == "CREATE" || frame.CallType == "CREATE2" {
+		if err := catalog.decorateConstructorFrame(ctx, tx, identity, frame, persisted); err != nil {
+			return err
+		}
+		return nil
+	}
+	if !callLikeTraceType(frame.CallType) {
+		return nil
+	}
+	if frame.Execution != nil && (frame.Execution.Resolution == "empty" || frame.Execution.Resolution == "not_applicable") {
+		frame.Decoding = notApplicableTraceCallDecoding("call execution code is empty")
+		return nil
+	}
+	frame.Decoding = unavailableTraceCallDecoding(frame.DirectReverted, "no ABI is available for the call target at this block")
+	if directVerifiedAddressTraceFallback(frame) {
+		input, err := decodeTraceData(*frame.Input)
+		if err != nil {
+			return ErrCorruptData
+		}
+		if len(input) >= 4 {
+			if !*stateDiffChecked {
+				state, _, stateErr := transactionStageState(
+					ctx, tx, identity.ChainID, identity.BlockNumber, blockHash, true, StageStateDiff,
+				)
+				if stateErr != nil {
+					return stateErr
+				}
+				*stateDiffChecked, *stateDiffComplete = true, state == StageComplete
+			}
+			if *stateDiffComplete {
+				if *verifiedSelectorLookups >= maxReadTimeTraceVerifiedSelectorLookups {
+					frame.Decoding.Status = "unknown"
+					frame.Decoding.Warning = "read-time verified selector lookup limit exceeded"
+					return nil
+				}
+				(*verifiedSelectorLookups)++
+				contextBytes, decodeErr := decodeFixedHex(frame.Execution.ContextAddress, common.AddressLength)
+				if decodeErr != nil {
+					return ErrCorruptData
+				}
+				var output []byte
+				if frame.Output != nil {
+					output, decodeErr = decodeTraceData(*frame.Output)
+					if decodeErr != nil {
+						return ErrCorruptData
+					}
+				}
+				decoding, found, decodeErr := decodeVerifiedAddressSelectorTraceCall(
+					ctx, tx, identity.ChainID, blockNumber, blockHash,
+					common.BytesToAddress(contextBytes), input, output, frame.DirectReverted,
+				)
+				if decodeErr != nil {
+					return decodeErr
+				}
+				if found {
+					frame.Decoding = decoding
+					return nil
+				}
+			}
+		}
+	}
+	if frame.Execution == nil || frame.Execution.Address == "" || frame.Input == nil {
+		frame.Decoding.Status = "unknown"
+		frame.Decoding.Warning = "call frame has no exact execution code identity or calldata"
+		return nil
+	}
+	targetBytes, err := decodeFixedHex(frame.Execution.Address, common.AddressLength)
+	if err != nil {
+		return ErrCorruptData
+	}
+	target := common.BytesToAddress(targetBytes)
+	path := tracePathText(frame.Path)
+	storedCall := persisted[path+"\x00"+"trace_calldata"]
+	storedRevert := persisted[path+"\x00"+"trace_revert"]
+	if storedCall != nil && storedCall.strongFor(target) {
+		decoding, err := storedCall.publicCall(frame.DirectReverted)
+		if err != nil {
+			return err
+		}
+		if frame.DirectReverted && storedRevert != nil && storedRevert.strongFor(target) {
+			decoding.Revert, err = storedRevert.publicRevert()
+			if err != nil {
+				return err
+			}
+		}
+		frame.Decoding = decoding
+		return nil
+	}
+	registryResult, ok := loaded[target]
+	if !ok {
+		if len(loaded) >= maxReadTimeTraceABIIdentities {
+			frame.Decoding.Warning = "read-time ABI identity limit exceeded"
+			return nil
+		}
+		registryResult, err = loadTraceRegistry(ctx, tx, identity.ChainID, blockNumber, blockHash, target)
+		if err != nil {
+			return err
+		}
+		loaded[target] = registryResult
+	}
+	if registryResult.registry == nil {
+		return nil
+	}
+	input, err := decodeTraceData(*frame.Input)
+	if err != nil {
+		return ErrCorruptData
+	}
+	var output []byte
+	if frame.Output != nil {
+		output, err = decodeTraceData(*frame.Output)
+		if err != nil {
+			return ErrCorruptData
+		}
+	}
+	decoded := registryResult.registry.DecodeCall(
+		registryResult.identity, input, output, frame.DirectReverted,
+	)
+	frame.Decoding = publicTraceCall(decoded)
+	if frame.DirectReverted {
+		reverted := registryResult.registry.DecodeRevert(registryResult.identity, output)
+		frame.Decoding.Revert = publicTraceRevert(reverted)
+	}
+	return nil
+}
 func (catalog *Postgres) decorateConstructorFrame(
 	ctx context.Context, tx *sql.Tx, identity traceIdentity, frame *TraceFrame,
 	persisted map[string]*persistedTraceDecoding,

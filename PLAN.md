@@ -382,13 +382,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P71-T08 corrects late-verification scans to begin at the authenticated
   creator code epoch and adds real Hardhat/Foundry constructor-child gates,
   including the reproduced Preview ProxyAdmin recovery.
-- P72 is in progress: P72-T01 completes generation-bound trace/proxy forward
+- P72 is in progress after completing T01 through T03: T01 completes generation-bound trace/proxy forward
   events, fork-aware rescan, canonical attempt writes, pending-runtime wakeup,
   and success-reset pagination budgets. P72-T02 adds heartbeat-fenced leases,
   one prepared match, and short canonical publication. P72-T03 completes
   compilation/epoch-bound provenance and additive submitted-child creation
-  evidence without a wire-shape change. Structural hardening and final
-  acceptance proceed in the remaining dependency-ordered items.
+  evidence without a wire-shape change. P72-T04 completes directly related
+  Go/Web/test modularization and lower enforced structural ceilings in the
+  current worktree, including the canonical real-Chrome gate. Its independent
+  commit now precedes P72-T05 final acceptance.
 
 ## Global Release Gates
 

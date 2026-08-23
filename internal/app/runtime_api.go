@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/islishude/etherview/internal/accelerator"
-	"github.com/islishude/etherview/internal/adapters"
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/catalog"
@@ -68,25 +66,9 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			nameResolver = ensService
 			addressNames = ensService
 		}
-		if cfg.Features.Pricing {
-			adapterClient, clientErr := metadata.New(metadata.Policy{
-				Timeout: cfg.Adapters.FetchTimeout, MaxBytes: int64(cfg.Adapters.MaxResponseBytes),
-				MaxRedirects: cfg.Adapters.MaxRedirects, UserAgent: "etherview-adapters/1",
-			}, nil)
-			if clientErr != nil {
-				return fmt.Errorf("configure external adapters: %w", clientErr)
-			}
-			priceService, priceErr := adapters.NewPostgresPriceService(db, cfg.Chain.ID, adapterClient, adapters.PriceOptions{
-				BaseURL: cfg.Adapters.PriceBaseURL, Freshness: cfg.Adapters.PriceFreshness,
-				FailureTTL: cfg.Adapters.FailureTTL,
-			})
-			if priceErr != nil {
-				return fmt.Errorf("configure price adapter: %w", priceErr)
-			}
-			priceProvider = func(callbackCtx context.Context) (etherscan.NativePrice, error) {
-				price, quoteErr := priceService.NativePrice(callbackCtx)
-				return etherscan.NativePrice{USD: price.USD, BTC: price.BTC, ObservedAt: price.ObservedAt}, quoteErr
-			}
+		priceProvider, err = newAPIPriceProvider(db, cfg)
+		if err != nil {
+			return err
 		}
 		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
 			stateReconciler, stateErr := state.NewNFTReconciler(db, rpcBuild.Pool, canonicalState)
@@ -96,17 +78,9 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			nftState = stateReconciler
 			erc20State = stateReconciler
 		}
-		var traceCache accelerator.BlobStore
-		if cfg.Adapters.S3Endpoint != "" {
-			traceCache, err = accelerator.NewS3BlobStore(ctx, cfg.Adapters.S3Endpoint, accelerator.S3Options{
-				Bucket: cfg.Adapters.S3Bucket, Prefix: cfg.Adapters.S3Prefix, Region: cfg.Adapters.S3Region,
-				AccessKey: cfg.Adapters.S3AccessKey, SecretKey: cfg.Adapters.S3SecretKey,
-				SessionToken: cfg.Adapters.S3SessionToken, PathStyle: cfg.Adapters.S3PathStyle,
-				OperationTimeout: cfg.Adapters.OperationTimeout, MaxObjectBytes: cfg.Adapters.S3MaxObjectBytes,
-			})
-			if err != nil {
-				return err
-			}
+		traceCache, err := newAPITraceCache(ctx, cfg)
+		if err != nil {
+			return err
 		}
 		catalogReader, err := catalog.NewPostgres(readDB, catalog.Options{
 			NFTState: nftState, ERC20State: erc20State,
