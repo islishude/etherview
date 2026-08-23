@@ -899,6 +899,46 @@ replica:
    The post-`trace@3` dispatcher then schedules future and transitive work
    without running the matcher in the trace transaction.
 
+Migration `0057` replaces the block-keyed forward queue with immutable
+`trace@3`/`proxy@2` publication-generation events. If derived verification is
+already enabled, stop or replace every `all`/`api` replica as one rollout; do
+not let an older worker run against the generation-aware queue. The migration
+preserves compilation units, attempts, publications, and scans. It converts an
+old running redispatch request into a durable rescan floor, but deliberately
+does not queue existing failed scans or `pending_runtime` attempts and does not
+create a historical workload.
+
+Before recovering an upgraded Preview deployment, record redacted aggregate
+state from an operator database session. Preserve the result with the rollout
+evidence; do not include connection strings, addresses, hashes, compilation
+IDs, or other row-level data:
+
+```sql
+SELECT status, count(*) FROM derived_verification_scans
+GROUP BY status ORDER BY status;
+SELECT count(*) AS scan_count FROM derived_verification_scans;
+SELECT status, count(*) FROM derived_verification_attempts
+GROUP BY status ORDER BY status;
+SELECT status, count(*) FROM derived_verification_forward_blocks
+GROUP BY status ORDER BY status;
+```
+
+After all new replicas are healthy, explicitly recover Preview with the
+existing audited command; migration startup must not substitute for it:
+
+```sh
+etherview admin derived-verification backfill \
+  --config /etc/etherview/config.yaml \
+  --reason "P72 queue hardening recovery"
+```
+
+Then observe only the closed-label
+`etherview_derived_verification_total{kind,result}` series. In particular,
+review `dispatch=trace_generation|proxy_generation`,
+`rewind=trace|pending_runtime`, and `lease=renewed|lost` together with the
+aggregate scan/attempt/forward-event counts. Never add addresses, hashes, or
+compilation IDs as metric labels. Production defaults remain disabled.
+
 Worker and scan bounds are controlled by `DERIVED_VERIFY_WORKER_COUNT` and
 `DERIVED_VERIFY_MAX_TRACES_PER_SCAN`. To request an audited idempotent rescan of
 all eligible compilation epochs, or one factory only, use:

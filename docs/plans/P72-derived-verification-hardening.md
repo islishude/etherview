@@ -1,6 +1,6 @@
 # P72 — Factory-derived Verification Hardening
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -27,28 +27,28 @@ complexity.
 | P72-T02 | done | P72-T01 | Heartbeat-fenced scan/event leases plus one prepared match and short canonical publication transaction | lease-contention, slow-match/reorg, stale-publication, integration-race, and runtime parity tests |
 | P72-T03 | done | P72-T02 | Exact-epoch parent/child provenance with additive direct-verification creation provenance and unchanged wire shape | A-to-B-to-A, FQN conflict, direct-child, code-hash, API, Web, and generation checks |
 | P72-T04 | done | P72-T03 | Split derived-adjacent Go/Web presentation modules and enforce lower production/test structural ceilings | Go/Web lint, unit, browser, and source-boundary checks |
-| P72-T05 | todo | P72-T04 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
+| P72-T05 | done | P72-T04 | Complete release, topology, migration, documentation, and operator evidence without implementation changes | common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, browser, deployment, and diff gates |
 
 Allowed item states are `todo`, `in_progress`, `blocked`, `done`, and `dropped`.
 
 ## Acceptance
 
-- [ ] Successful scan pages do not consume the consecutive-failure budget, and
+- [x] Successful scan pages do not consume the consecutive-failure budget, and
       exact full pages plus histories larger than five pages complete.
-- [ ] Every published `trace@3` and `proxy@2` generation creates at most one
+- [x] Every published `trace@3` and `proxy@2` generation creates at most one
       durable forward event; replacement forks, same-hash replay, and delayed
       runtime observations request an exact bounded rescan.
-- [ ] A worker cannot lose a healthy lease during bounded matching, renew after
+- [x] A worker cannot lose a healthy lease during bounded matching, renew after
       completion, publish after lease loss, or terminate the API process because
       ordinary configured work exceeded one lease period.
-- [ ] Candidate matching and result construction hold no PostgreSQL snapshot or
+- [x] Candidate matching and result construction hold no PostgreSQL snapshot or
       canonical row lock; the final short transaction rejects changed evidence.
-- [ ] Parent and child provenance is bound to the resolved source compilation and
+- [x] Parent and child provenance is bound to the resolved source compilation and
       code epoch. Existing submitted verification may expose additive creation
       provenance without changing its origin or creating another publication.
-- [ ] Public routes, JSON fields, enums, configuration keys, CLI arguments, and
+- [x] Public routes, JSON fields, enums, configuration keys, CLI arguments, and
       monolith/split behavior remain unchanged.
-- [ ] Named large Go/Web modules are split and the approved production/test
+- [x] Named large Go/Web modules are split and the approved production/test
       structural limits pass without new exclusions.
 
 ## Current Blockers
@@ -107,3 +107,15 @@ None.
   and lint, source/generation/plan checks, build-tag compilation, and `git diff
   --check`. The host initially rejected the fourth Git commit with the same
   usage limit; the task was resumed without altering or losing the worktree.
+- P72-T05 records the coordinated migration `0057` rollout, redacted aggregate
+  pre-backfill capture, explicit Preview recovery reason, and closed-label
+  generation/rewind/lease observations in the runbook. The unchanged final
+  gates pass on 2026-08-23: `make check`; PostgreSQL 18 `make
+  test-integration` (core integration package 172.289s) and `make
+  test-integration-race` (184.245s); `make test-schema-e2e`; monolith/split
+  `make test-runtime-e2e` (82.49s); `make test-hardhat3-e2e` (221.40s); and
+  `make test-foundry-e2e` (96.60s). The real-Chromium `make test-e2e` gate
+  passes 24/24 in 44.3s. Final generation/source/plan and whitespace checks
+  also pass. Implementation remains split into independent commits
+  `d8f1568` (T01), `07c1793` (T02), `33abd82` (T03), and `3549302` (T04);
+  T05 contains documentation, plan state, and acceptance evidence only.

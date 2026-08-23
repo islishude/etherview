@@ -39,7 +39,7 @@ batch semantics are not core v1 scope.
 | P69 | [Solady Legacy CWIA Proxies](docs/plans/P69-solady-legacy-cwia-proxies.md) | done | P20, P30, P40, P50, P58, P60 | Exact legacy LibCWIA recognition, verified immutable-argument decoding, and read/write interaction fencing |
 | P70 | [Release](docs/plans/P70-release.md) | blocked | P10–P69, P71, P72 | Security, conformance, performance, E2E, documentation, and v1 release |
 | P71 | [Factory-derived Contract Verification](docs/plans/P71-factory-derived-verification.md) | done | P20, P30, P40, P50, P60 | Authenticated compilation-unit persistence and canonical CREATE/CREATE2 verification propagation |
-| P72 | [Factory-derived Verification Hardening](docs/plans/P72-derived-verification-hardening.md) | in_progress | P71 | Generation-safe derived work, short publication, exact provenance, and structural hardening |
+| P72 | [Factory-derived Verification Hardening](docs/plans/P72-derived-verification-hardening.md) | done | P71 | Generation-safe derived work, short publication, exact provenance, and structural hardening |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
@@ -382,15 +382,17 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
   P71-T08 corrects late-verification scans to begin at the authenticated
   creator code epoch and adds real Hardhat/Foundry constructor-child gates,
   including the reproduced Preview ProxyAdmin recovery.
-- P72 is in progress after completing T01 through T03: T01 completes generation-bound trace/proxy forward
-  events, fork-aware rescan, canonical attempt writes, pending-runtime wakeup,
-  and success-reset pagination budgets. P72-T02 adds heartbeat-fenced leases,
-  one prepared match, and short canonical publication. P72-T03 completes
-  compilation/epoch-bound provenance and additive submitted-child creation
-  evidence without a wire-shape change. P72-T04 completes directly related
-  Go/Web/test modularization and lower enforced structural ceilings in the
-  current worktree, including the canonical real-Chrome gate. Its independent
-  commit now precedes P72-T05 final acceptance.
+- P72 is complete: generation-bound trace/proxy events, fork-aware rescan,
+  pending-runtime wakeup, and success-reset pagination budgets prevent lost or
+  exhausted derived work. Heartbeat-fenced leases and one prepared match keep
+  publication short and stale-safe; compilation/epoch-bound provenance adds
+  exact factory creation evidence without changing the wire shape. Directly
+  related Go/Web/test modules now meet the lower enforced structural ceilings.
+  Coordinated `0057` rollout and explicit Preview recovery are documented, and
+  common, PostgreSQL/race, schema/runtime, Hardhat, Foundry, real-Chromium,
+  deployment, generation, source, plan, and whitespace gates pass. Reviewable
+  commands and results remain in [P72
+  evidence](docs/plans/P72-derived-verification-hardening.md#evidence).
 
 ## Global Release Gates
 
