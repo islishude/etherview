@@ -211,7 +211,7 @@ func TestCompatibilityKeyedActionsGoldenRejection(t *testing.T) {
 		if !test.keyed {
 			continue
 		}
-		test := test
+
 		t.Run(test.key(), func(t *testing.T) {
 			backend := &fakeBackend{result: "must not dispatch"}
 			recorder := httptest.NewRecorder()

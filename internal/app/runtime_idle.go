@@ -17,7 +17,7 @@ func (assembly runtimeAssembly) registerIdleRoleComponents() error {
 			role == components.RoleMetadata && cfg.Features.NFTMetadata {
 			continue
 		}
-		role := role
+
 		key := "50-role-" + string(role)
 		if err := componentRegistry.Register(role, key, func() (components.Service, error) {
 			return &databaseRoleService{name: string(role) + "-worker", db: db, interval: cfg.Runtime.PollInterval}, nil

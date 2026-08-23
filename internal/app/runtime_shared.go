@@ -47,7 +47,7 @@ func (assembly runtimeAssembly) registerSharedComponents() error {
 			if !roleUsesNATSWake(role, cfg) {
 				continue
 			}
-			role := role
+
 			if err := componentRegistry.Register(role, "04-optional-nats-wake", func() (components.Service, error) {
 				return natsWake, nil
 			}); err != nil {

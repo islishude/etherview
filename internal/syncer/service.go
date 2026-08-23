@@ -166,7 +166,7 @@ func (s *Service) Run(ctx context.Context) error {
 		results <- s.runLive(runCtx, backfillWake)
 	})
 	for index := 0; index < s.workerCount(); index++ {
-		index := index
+
 		wait.Go(func() {
 			results <- s.runBackfill(runCtx, backfillWake, s.backfillOwner(index))
 		})

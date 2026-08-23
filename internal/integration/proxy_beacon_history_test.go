@@ -146,7 +146,6 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 			  AND observation.proxy_address IN ($1, $2)
 			ORDER BY observation.proxy_address`, proxyOne.Bytes(), proxyTwo.Bytes())
 		if queryErr == nil {
-			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var address, pattern, observationCodeHash, currentCodeHash string
 				var hasNegative bool
@@ -157,14 +156,14 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 						address, pattern, observationCodeHash, currentCodeHash, hasNegative)
 				}
 			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if err := rows.Close(); err != nil {
+				t.Fatal(err)
+			}
 		}
 		t.Fatalf("current Beacon proxy count = %s, want 2", beaconProxyCount)
-		if err := rows.Err(); err != nil {
-			t.Fatal(err)
-		}
-		if err := rows.Close(); err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	commitCanonical(t, ctx, repository, oldUpgrade)

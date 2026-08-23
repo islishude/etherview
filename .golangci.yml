@@ -20,6 +20,8 @@ linters:
     - gocognit
     - modernize
     - unparam
+    - copyloopvar
+    - rowserrcheck
   settings:
     dupl:
       threshold: 150
